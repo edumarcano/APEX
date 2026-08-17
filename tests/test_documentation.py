@@ -136,7 +136,7 @@ class DocumentationCheckerTests(unittest.TestCase):
         issues = check_default_briefing_provider(
             ROOT,
             readme_text=(
-                "### Produces briefings on my terms\n"
+                "### Produces briefings on user-defined terms\n"
                 "A briefing can use Mus through Ollama.\n\n"
                 "```mermaid\n"
                 'B --> M["OpenAI · Ollama"]\n'

@@ -14,8 +14,6 @@ Distinguish verified behavior from inference, proposals, limitations, and unreso
 
 Write project documentation for the project owner's future reference first, and for external engineers who want to understand or run APEX second. Make the project understandable through concrete motivation, working behavior, and honest trade-offs, not evaluative or promotional framing.
 
-Use first person only where it adds useful context about personal motivation, constraints, or a decision. The README, roadmap framing, and engineering decisions may use that voice. Technical references should remain neutral, direct, and specific.
-
 Prefer ordinary engineering language over abstract or inflated phrasing. Avoid unnecessary modifiers, stacked abstractions, and formulaic wording when a simpler sentence would be equally precise.
 
 ## Documentation Structure and Ownership

@@ -53,7 +53,7 @@ APEX
 
 ### Cortex
 
-**Cortex** is where I work with the Agents in more detail.
+**Cortex** is where the operator interacts with the Agents in more detail.
 
 The **Cortex workspace** contains conversations, Agent and model selection, reasoning and local-model controls, tools, history, and execution details.
 

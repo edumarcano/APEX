@@ -12,7 +12,7 @@ APEX started as a small, fun experiment: could I build something that gave me a 
 
 Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, and Apex Agent work into one deliberate workspace. It turns those signals into Home telemetry, concise briefings, and Agent queries while keeping the local machine, not a hosted account, at the center of the system.
 
-APEX has two main workspaces: Home, which shows telemetry and briefings, and Cortex, which is where I work with Apex Panthera and Apex Felis. Telemetry means structured status collected from connected services; a briefing summarizes that status; and an Agent query is a request sent to the selected Agent.
+APEX has two main workspaces: Home, which shows telemetry and briefings, and Cortex, which is the workspace for interacting directly with Apex Panthera and Apex Felis. Telemetry means structured status collected from connected services; a briefing summarizes that status; and an Agent query is a request sent to the selected Agent.
 
 <p align="center">
   <img
@@ -32,7 +32,7 @@ APEX has two main workspaces: Home, which shows telemetry and briefings, and Cor
 
 APEX collects enabled weather, calendar, inbox, news, sports, reminder, and market signals into typed telemetry. Each connector reports its own freshness and health, so missing data is visible rather than hidden inside generated prose.
 
-### Produces briefings on my terms
+### Produces briefings on user-defined terms
 
 A briefing can use Panthera, Felis, or Structured Digest, a deterministic briefing that does not use a model. Panthera falls back to Felis and then Structured Digest; an explicit Felis request falls directly to Structured Digest. All routes receive the same selected, size-limited facts, and a provider failure ends in a useful model-free result instead of a blank screen.
 

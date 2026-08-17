@@ -1,6 +1,6 @@
 # Privacy and Data Boundaries
 
-APEX is local-first, not entirely offline. This reference separates behavior APEX controls from external provider policy so I can make an informed choice before enabling personal connectors or cloud processing.
+APEX is local-first, not entirely offline. This reference separates behavior APEX controls from external provider policy so the user can make an informed choice before enabling personal connectors or cloud processing.
 
 > **Provider terms last verified: August 10, 2026.** External terms can change independently of this repository; follow the linked primary sources before relying on a cloud-service claim.
 

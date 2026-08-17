@@ -536,7 +536,7 @@ def check_default_briefing_provider(
             )
 
     briefing_section_match = re.search(
-        r"(?ms)^###\s+Produces briefings on my terms\s*$.*?(?=^###\s|\Z)",
+        r"(?ms)^###\s+Produces briefings on user-defined terms\s*$.*?(?=^###\s|\Z)",
         readme,
     )
     if briefing_section_match is not None:

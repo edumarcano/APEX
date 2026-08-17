@@ -253,7 +253,7 @@ def get_llama_cpp_server_status() -> LlamaCppServerStatusResponse:
 @router.get("/api/v1/status", response_model=PipelineStatusSnapshot)
 def get_pipeline_diagnostic_status() -> PipelineStatusSnapshot:
     """
-    Diagnostic snapshot keyed off global_pipeline_state for operators and probes.
+    Diagnostic snapshot keyed off global_pipeline_state for the user and probes.
     """
     snapshot = global_pipeline_state.get_state()
     if snapshot is None:
@@ -267,6 +267,6 @@ def get_pipeline_diagnostic_status() -> PipelineStatusSnapshot:
 @router.get("/api/v1/diagnostics")
 def get_system_diagnostics() -> dict[str, float]:
     """
-    Hardware utilization snapshot for operators and HUD diagnostics panels.
+    Hardware utilization snapshot for the user and HUD diagnostics panels.
     """
     return scanner.sample_system_vitals()
