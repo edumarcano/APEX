@@ -164,7 +164,7 @@ The four-stage path is supported behavior, but it is no longer the only way to u
 
 `POST /api/v1/cortex/conversations/{conversation_id}/turns` performs one bounded Cortex Engine turn. The backend stores a pending Agent placeholder, reconstructs the selected branch, and persists the final client-visible response metadata after execution.
 
-The frontend runtime loads every stored message node, including parent IDs, timestamps, statuses, response metadata, and the persisted active leaf. Editing creates a new user sibling; retrying reuses the user node and creates a new Agent sibling. Selecting a branch patches the terminal leaf back to APEX and reloads the thread if that patch fails. Individual message callbacks do not write to the backend because the turn endpoint commits the user and Agent pair transactionally.
+The frontend runtime loads every stored message node, including parent IDs, timestamps, statuses, response metadata, and the persisted active leaf. HUD-created empty threads remain transient until their first accepted turn; the turn path initializes the durable conversation immediately before submitting that turn. Editing creates a new user sibling; retrying reuses the user node and creates a new Agent sibling. Selecting a branch patches the terminal leaf back to APEX and reloads the thread if that patch fails. Individual message callbacks do not write to the backend because the turn endpoint commits the user and Agent pair transactionally. Archived conversations may be permanently deleted through the archived-only API route.
 
 HUD context is explicit:
 

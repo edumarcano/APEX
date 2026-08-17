@@ -149,6 +149,30 @@ class ConversationStoreTests(unittest.TestCase):
         with self.assertRaises(ConversationConflictError):
             self._begin()
 
+    def test_delete_removes_archived_conversation_and_message_tree(self) -> None:
+        user, agent, _, _ = self._begin(prompt="Remove me")
+        self.store.finalize(
+            conversation_id=self.conversation_id,
+            agent_id=agent.id,
+            answer="Gone",
+            status="completed",
+            response_metadata={},
+        )
+        self.store.patch(self.conversation_id, "production", {"archived": True})
+        self.store.delete(self.conversation_id, "production")
+        with self.assertRaises(Exception):
+            self.store.detail(self.conversation_id, "production")
+        with self.assertRaises(Exception):
+            self.store.detail(self.conversation_id, "sandbox")
+
+    def test_delete_rejects_active_and_pending_conversations(self) -> None:
+        with self.assertRaises(ConversationConflictError):
+            self.store.delete(self.conversation_id, "production")
+        self._begin(prompt="Pending")
+        self.store.patch(self.conversation_id, "production", {"archived": True})
+        with self.assertRaises(ConversationConflictError):
+            self.store.delete(self.conversation_id, "production")
+
 
 if __name__ == "__main__":
     unittest.main()

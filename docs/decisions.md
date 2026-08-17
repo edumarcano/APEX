@@ -198,7 +198,7 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 **Trade-off.** The adapter must carry focused conversion coverage whenever the pinned assistant-ui release changes, particularly because its message and thread identifiers are not a stable public contract.
 
-The adapter boundary is intentionally isolated in `frontend/src/components/ApexAssistantRuntime.tsx`. APEX does not expose assistant-ui cancellation, client-side tools, attachments, cloud storage, feedback, title generation, or permanent deletion; these features would imply backend capabilities that do not exist in this beta.
+The adapter boundary is intentionally isolated in `frontend/src/components/ApexAssistantRuntime.tsx`. APEX does not expose assistant-ui cancellation, client-side tools, attachments, cloud storage, feedback, or automatic title generation. HUD empty threads remain transient until their first accepted turn. Permanent deletion is a separate APEX-owned capability limited to archived conversations and is exposed through the archived-only API route.
 
 ### Enforce one resident model and non-blocking admission
 

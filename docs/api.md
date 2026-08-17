@@ -52,6 +52,7 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | POST | `/api/v1/cortex/conversations` | Create a durable Cortex conversation |
 | GET | `/api/v1/cortex/conversations/{conversation_id}` | Read one conversation |
 | PATCH | `/api/v1/cortex/conversations/{conversation_id}` | Update one conversation |
+| DELETE | `/api/v1/cortex/conversations/{conversation_id}` | Permanently delete one archived conversation |
 | POST | `/api/v1/cortex/conversations/{conversation_id}/turns` | Run one durable Cortex turn |
 | GET | `/api/v1/market` | Independent EOD market data |
 | GET | `/api/v1/mcp/status` | Sanitized MCP runtime status |
@@ -418,9 +419,15 @@ Returns one conversation and every stored message node in stable creation order.
 
 Updates title, archive state, active branch, or saved Agent/tool-selection state.
 
+### DELETE `/api/v1/cortex/conversations/{conversation_id}`
+
+Permanently deletes an archived conversation and its stored message tree. The
+conversation must belong to the current server-derived partition and must not
+have a pending turn. Active conversations cannot be deleted; archive them first.
+
 ### Cortex turns
 
-APEX owns Cortex conversation history in `apex_memory.db`. Conversations contain a tree of user and Agent messages, an active branch, Agent/tool selection state, timestamps, and archive state. They are never permanently deleted by this API.
+APEX owns Cortex conversation history in `apex_memory.db`. Conversations contain a tree of user and Agent messages, an active branch, Agent/tool selection state, timestamps, and archive state. HUD scratch threads remain browser-local until their first accepted turn; archived conversations can be permanently deleted through the archived-only DELETE route.
 
 `GET /api/v1/cortex/conversations` lists the current server-derived partition. `POST /api/v1/cortex/conversations` creates a `hud` or `cli` conversation. `GET` and `PATCH /api/v1/cortex/conversations/{conversation_id}` read or update title, archive state, active branch, and saved Agent/tool state.
 

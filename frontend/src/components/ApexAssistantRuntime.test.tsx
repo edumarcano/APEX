@@ -115,6 +115,137 @@ describe('ApexAssistantRuntime', () => {
     expect(fetchMock).toHaveBeenCalled()
   })
 
+  it('keeps a user edit composer mounted across host rerenders', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const userId = '00000000-0000-4000-8000-000000000010'
+    const agentId = '00000000-0000-4000-8000-000000000011'
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([summary])
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}`)) {
+        return response({
+          ...summary,
+          active_leaf_message_id: agentId,
+          messages: [
+            { id: userId, parent_message_id: null, role: 'user', content: 'Original prompt', status: 'completed', created_at: '2026-08-17T12:00:00Z', response_metadata: null },
+            { id: agentId, parent_message_id: userId, role: 'agent', content: 'Original answer', status: 'completed', created_at: '2026-08-17T12:00:01Z', response_metadata: {} },
+          ],
+        })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const { rerender } = render(
+      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+    await waitFor(() => expect(screen.getByText('Original prompt')).toBeInTheDocument())
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Edit' }))
+    expect(screen.getByPlaceholderText('Edit message…')).toHaveValue('Original prompt')
+    rerender(
+      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'high', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+    expect(screen.getByPlaceholderText('Edit message…')).toHaveValue('Original prompt')
+    expect(fetchMock).toHaveBeenCalled()
+  })
+
+  it('does not persist an empty HUD thread and creates it only when the first turn is accepted', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const createdId = '00000000-0000-4000-8000-000000000020'
+    let createCalls = 0
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations') && init?.method === 'POST') {
+        createCalls += 1
+        return response({ ...summary, id: createdId })
+      }
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([])
+      if (url.endsWith(`/api/v1/cortex/conversations/${createdId}`)) return response({ ...summary, id: createdId, active_leaf_message_id: null, messages: [] })
+      if (url.endsWith(`/api/v1/cortex/conversations/${createdId}/turns`)) return response({ answer: 'Created after use.', tool_trace: [], tool_outputs: [], citations: [] })
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+    const beforeRun = vi.fn(async () => true)
+    render(
+      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }} beforeRun={beforeRun}>
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+    await waitFor(() => expect(screen.getByText('APEX is ready. Start a session with a focused question.')).toBeInTheDocument())
+    expect(createCalls).toBe(0)
+    await user.type(screen.getByPlaceholderText('Ask APEX…'), 'Use this thread')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() => expect(screen.getByText('Created after use.')).toBeInTheDocument())
+    expect(createCalls).toBe(1)
+    expect(beforeRun).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalled()
+  })
+
+  it('only deletes archived conversations after confirmation', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const archivedId = '00000000-0000-4000-8000-000000000030'
+    const archivedSummary = { ...summary, id: archivedId, title: 'Archived HUD', archived_at: '2026-08-17T12:00:00Z' }
+    let archivedPresent = true
+    let deleteCalls = 0
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response(archivedPresent ? [archivedSummary] : [])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([])
+      if (url.endsWith(`/api/v1/cortex/conversations/${archivedId}`) && init?.method === 'DELETE') {
+        deleteCalls += 1
+        archivedPresent = false
+        return new Response(null, { status: 204 })
+      }
+      if (url.endsWith(`/api/v1/cortex/conversations/${archivedId}`)) return response({ ...archivedSummary, active_leaf_message_id: null, messages: [] })
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const confirmMock = vi.spyOn(globalThis, 'confirm').mockReturnValue(false)
+    const user = userEvent.setup()
+    render(
+      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+        <ApexConversationRail className="block" />
+      </ApexAssistantRuntime>,
+    )
+    await user.click(await screen.findByRole('button', { name: 'Archived' }))
+    const deleteButton = await screen.findByRole('button', { name: 'Delete Archived HUD permanently' })
+    await user.click(deleteButton)
+    expect(deleteCalls).toBe(0)
+    confirmMock.mockReturnValue(true)
+    await user.click(deleteButton)
+    await waitFor(() => expect(deleteCalls).toBe(1))
+    expect(fetchMock).toHaveBeenCalled()
+  })
+
+  it('does not initialize a transient thread when preflight rejects', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    let createCalls = 0
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations') && init?.method === 'POST') {
+        createCalls += 1
+        return response(summary)
+      }
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([])
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+    render(
+      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }} beforeRun={async () => false}>
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+    await waitFor(() => expect(screen.getByText('APEX is ready. Start a session with a focused question.')).toBeInTheDocument())
+    await user.type(screen.getByPlaceholderText('Ask APEX…'), 'Blocked request')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+    expect(createCalls).toBe(0)
+    expect(fetchMock).toHaveBeenCalled()
+  })
+
   it('coalesces transient list failures until an explicit retry', async () => {
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
     let calls = 0
