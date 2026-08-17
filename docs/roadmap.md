@@ -8,11 +8,11 @@
 
 ## Current Focus
 
-**Current Phase:** [Phase V: Persistent Agent Runtime](#phase-v-persistent-agent-runtime)
-**Active Milestone:** [v1.21.0 - Cortex: Persistent Context, World Model & Retrieval](#v1210---cortex-persistent-context-world-model--retrieval)
+**Current Phase:** [Phase V: APEX 2.0 Beta](#phase-v-apex-20-beta)
+**Active Milestone:** [v2.0.0-beta.1 - Cortex: Persistent Context, World Model & Retrieval](#v200-beta1---cortex-persistent-context-world-model--retrieval)
 **Current Initiative:** [Cortex Initiative - Continued](#cortex-initiative---continued)
 
-**Next Milestone:** [v1.22.0 - Cortex: Bounded Task Execution & Observability](#v1220---cortex-bounded-task-execution--observability)
+**Next Milestone:** [v2.0.0-beta.2 - Cortex: Bounded Task Execution & Observability](#v200-beta2---cortex-bounded-task-execution--observability)
 
 ### Navigation
 
@@ -20,7 +20,7 @@
 [Phase II: Modernization](#phase-ii-modernization) ·
 [Phase III: Cognitive Interface](#phase-iii-cognitive-interface) ·
 [Phase IV: Interactive Intelligence](#phase-iv-interactive-intelligence) ·
-[Phase V: Persistent Agent Runtime](#phase-v-persistent-agent-runtime) ·
+[Phase V: APEX 2.0 Beta](#phase-v-apex-20-beta) ·
 [Phase VI: Platform Consolidation & Physical Integration](#phase-vi-platform-consolidation--physical-integration)
 
 ---
@@ -376,12 +376,12 @@ Give Cortex its first safe write path through verified Microsoft To Do actions, 
 
 ---
 
-# Phase V: Persistent Agent Runtime
+# Phase V: APEX 2.0 Beta
 
 **Status:** In Progress
 
 **Core Focus:**
-Giving APEX durable personal context and retrieval, then giving Cortex the loops, workflows, and reusable procedures needed to use that context safely over time.
+Building the new APEX 2.0 architecture around persistent personal context, bounded Agent execution, reusable workflows, and proactive operation before the stable 2.0 release.
 
 APEX should remain the owner of its personal context even when outside models or workers are allowed to use parts of it.
 
@@ -401,7 +401,7 @@ The design should keep software in control of permissions and limits. Evidence s
 
 ---
 
-## v1.21.0 - Cortex: Persistent Context, World Model & Retrieval
+## v2.0.0-beta.1 - Cortex: Persistent Context, World Model & Retrieval
 
 **Status:** In Progress
 
@@ -422,7 +422,7 @@ As an early real use of the context engine, Cortex should be able to search APEX
 
 ---
 
-## v1.22.0 - Cortex: Bounded Task Execution & Observability
+## v2.0.0-beta.2 - Cortex: Bounded Task Execution & Observability
 
 **Status:** Planned
 
@@ -441,7 +441,7 @@ The CLI should grow with the loop runtime so it can inspect resources and active
 
 ---
 
-## v1.23.0 - Cortex: Workflow Graphs & Worker Orchestration
+## v2.0.0-beta.3 - Cortex: Workflow Graphs & Worker Orchestration
 
 **Status:** Planned
 
@@ -458,7 +458,7 @@ Each graph step should use a common worker interface so APEX can send work to Ap
 
 ---
 
-## v1.24.0 - Cortex: Procedural Learning & Skills
+## v2.0.0-beta.4 - Cortex: Procedural Learning & Skills
 
 **Status:** Planned
 
@@ -473,7 +473,7 @@ New procedures should be reviewable, reversible, and subject to operator or poli
 
 ---
 
-## v1.25.0 - Cortex: Hermes Worker Integration
+## v2.0.0-beta.5 - Cortex: Hermes Worker Integration
 
 **Status:** Planned
 
@@ -490,7 +490,7 @@ Hermes should not keep its own personal or world-state memory at first. APEX sho
 
 ---
 
-## v1.26.0 - Cortex: Context Access & Workspace Integration
+## v2.0.0-beta.6 - Cortex: Context Access & Workspace Integration
 
 **Status:** Planned
 
@@ -509,7 +509,7 @@ Workspace support may include an APEX-managed Markdown knowledge folder using po
 
 ---
 
-## v1.27.0 - Cortex: Proactive Automation & Event Response
+## v2.0.0-beta.7 - Cortex: Proactive Automation & Event Response
 
 **Status:** Planned
 
@@ -542,7 +542,7 @@ Phase VI is where APEX can stop carrying forward temporary 1.x compatibility cho
 **Status:** Planned
 
 **Objective:**
-Clean up the APEX 2.x foundation by removing obsolete 1.x compatibility layers and settling on the persistence, configuration, API, and runtime structures that future work should use.
+Graduate the Phase V beta architecture into the stable APEX 2.0 platform, removing obsolete 1.x compatibility layers and settling on the persistence, configuration, API, and runtime structures that future work should use.
 
 This milestone should audit the database, configuration system, APIs, persistence paths, runtime code, naming, and compatibility code.
 
@@ -621,7 +621,7 @@ The single-user, local-first model remains the default. External access should b
 
 ## Current Focus
 
-APEX is currently in **Phase V: Persistent Agent Runtime**.
+APEX is currently in **Phase V: APEX 2.0 Beta**.
 
 **Active milestone:**
-[v1.21.0 - Cortex: Persistent Context, World Model & Retrieval](#v1210---cortex-persistent-context-world-model--retrieval)
+[v2.0.0-beta.1 - Cortex: Persistent Context, World Model & Retrieval](#v200-beta1---cortex-persistent-context-world-model--retrieval)
