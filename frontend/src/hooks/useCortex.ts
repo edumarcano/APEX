@@ -900,6 +900,17 @@ export function useCortex(
   const conversationIdRef = useRef<string | null>(null)
   const activeLeafRef = useRef<string | null>(null)
   const conversationGenerationRef = useRef(0)
+  const isCortexQueryingRef = useRef(false)
+  const conversationPatchInFlightRef = useRef<Promise<boolean> | null>(null)
+  const pendingConversationPatchRef = useRef<{
+    conversationId: string
+    generation: number
+    updates: {
+      agent?: AgentKey
+      selectedToolNames?: string[] | null
+      toolProfileId?: string | null
+    }
+  } | null>(null)
 
   useEffect(() => {
     productionHistoryRef.current = productionHistory
@@ -999,7 +1010,9 @@ export function useCortex(
       productionHistoryRef.current = []
       setProductionHistory([])
     }
+    isCortexQueryingRef.current = false
     setIsCortexQuerying(false)
+    setActiveQueryAgent(null)
     const hydrate = async (): Promise<void> => {
       try {
         const response = await fetch(API_ENDPOINTS.cortexConversations)
@@ -1035,43 +1048,77 @@ export function useCortex(
     }
   }, [applyConversationDetail])
 
-  const patchConversation = useCallback(async (updates: {
+  const patchConversation = useCallback((updates: {
     agent?: AgentKey
     selectedToolNames?: string[] | null
     toolProfileId?: string | null
   }): Promise<boolean> => {
     const conversationId = conversationIdRef.current
     const generation = conversationGenerationRef.current
-    if (!conversationId) return false
-    const body: Record<string, unknown> = {}
-    if (updates.agent !== undefined) body.agent = updates.agent
-    if (updates.selectedToolNames !== undefined) body.selected_tool_names = updates.selectedToolNames
-    if (updates.toolProfileId !== undefined) body.tool_profile_id = updates.toolProfileId
-    try {
-      const response = await fetch(API_ENDPOINTS.cortexConversation(conversationId), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!response.ok || conversationGenerationRef.current !== generation || conversationIdRef.current !== conversationId) return false
-      setConversationPreferences((current) => current ? {
-        agent: updates.agent ?? current.agent,
-        selectedToolNames: updates.selectedToolNames !== undefined
-          ? updates.selectedToolNames
-          : current.selectedToolNames,
-        toolProfileId: updates.toolProfileId !== undefined
-          ? updates.toolProfileId
-          : current.toolProfileId,
-      } : current)
-      return true
-    } catch {
-      return false
+    if (!conversationId) return Promise.resolve(false)
+    const pending = pendingConversationPatchRef.current
+    if (pending && pending.conversationId === conversationId && pending.generation === generation) {
+      pending.updates = { ...pending.updates, ...updates }
+    } else {
+      pendingConversationPatchRef.current = { conversationId, generation, updates: { ...updates } }
     }
-  }, [])
+    const inFlight = conversationPatchInFlightRef.current
+    if (inFlight) return inFlight
 
-  // Mirrors isCortexQuerying for the poll loop without restarting it on
-  // every query state transition.
-  const isCortexQueryingRef = useRef(false)
+    const process = async (): Promise<boolean> => {
+      let succeeded = true
+      while (pendingConversationPatchRef.current) {
+        const next = pendingConversationPatchRef.current
+        pendingConversationPatchRef.current = null
+        if (
+          conversationGenerationRef.current !== next.generation ||
+          conversationIdRef.current !== next.conversationId
+        ) {
+          succeeded = false
+          continue
+        }
+        const body: Record<string, unknown> = {}
+        if (next.updates.agent !== undefined) body.agent = next.updates.agent
+        if (next.updates.selectedToolNames !== undefined) body.selected_tool_names = next.updates.selectedToolNames
+        if (next.updates.toolProfileId !== undefined) body.tool_profile_id = next.updates.toolProfileId
+        try {
+          const response = await fetch(API_ENDPOINTS.cortexConversation(next.conversationId), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          })
+          if (
+            !response.ok ||
+            conversationGenerationRef.current !== next.generation ||
+            conversationIdRef.current !== next.conversationId
+          ) {
+            succeeded = false
+            continue
+          }
+          setConversationPreferences((current) => current ? {
+            agent: next.updates.agent ?? current.agent,
+            selectedToolNames: next.updates.selectedToolNames !== undefined
+              ? next.updates.selectedToolNames
+              : current.selectedToolNames,
+            toolProfileId: next.updates.toolProfileId !== undefined
+              ? next.updates.toolProfileId
+              : current.toolProfileId,
+          } : current)
+        } catch {
+          succeeded = false
+        }
+      }
+      return succeeded
+    }
+    const promise = process()
+    conversationPatchInFlightRef.current = promise
+    void promise.then(() => {
+      if (conversationPatchInFlightRef.current === promise) {
+        conversationPatchInFlightRef.current = null
+      }
+    })
+    return promise
+  }, [])
 
   const agentsStatusFetchGenerationRef = useRef(0)
 
@@ -1388,6 +1435,9 @@ export function useCortex(
     activeLeafRef.current = null
     setCortexConversationId(null)
     setConversationPreferences(null)
+    isCortexQueryingRef.current = false
+    setIsCortexQuerying(false)
+    setActiveQueryAgent(null)
     const generation = ++conversationGenerationRef.current
     void createConversation(generation).catch((error: unknown) => setCortexError(error instanceof Error ? error.message : 'Failed to create conversation.'))
   }, [createConversation, devModeActive, sandboxMode])

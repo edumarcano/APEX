@@ -131,4 +131,61 @@ describe('useCortex', () => {
     })
     expect(patchBodies).toEqual([{ tool_profile_id: null }])
   })
+
+  it('serializes preference patches and keeps the latest queued update', async () => {
+    const patchBodies: Record<string, unknown>[] = []
+    let releaseFirstPatch!: () => void
+    const firstPatchReleased = new Promise<void>((resolve) => { releaseFirstPatch = resolve })
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/conversations') && !init?.method) return new Response(JSON.stringify([conversation]))
+      if (url.endsWith(conversation.id) && init?.method === 'PATCH') {
+        patchBodies.push(JSON.parse(String(init.body)) as Record<string, unknown>)
+        if (patchBodies.length === 1) await firstPatchReleased
+        return new Response(JSON.stringify(conversation))
+      }
+      if (url.endsWith(conversation.id) && !init?.method) return new Response(JSON.stringify(conversation))
+      return new Response(JSON.stringify([]))
+    })
+    const { result } = renderHook(() => useCortex(false))
+    await waitFor(() => expect(result.current.conversationPreferences?.agent).toBe('panthera'))
+
+    const first = result.current.patchConversation({ selectedToolNames: ['old_tool'] })
+    await waitFor(() => expect(patchBodies).toHaveLength(1))
+    const second = result.current.patchConversation({ selectedToolNames: ['new_tool'] })
+    releaseFirstPatch()
+    await act(async () => { await Promise.all([first, second]) })
+
+    expect(patchBodies).toEqual([
+      { selected_tool_names: ['old_tool'] },
+      { selected_tool_names: ['new_tool'] },
+    ])
+  })
+
+  it('clears query indicators when a partition change invalidates an active turn', async () => {
+    let releaseTurn!: (response: Response) => void
+    const pendingTurn = new Promise<Response>((resolve) => { releaseTurn = resolve })
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/conversations') && !init?.method) return new Response(JSON.stringify([conversation]))
+      if (url.endsWith(conversation.id) && !init?.method) return new Response(JSON.stringify(conversation))
+      if (url.endsWith('/turns')) return pendingTurn
+      return new Response(JSON.stringify([]))
+    })
+    const { result, rerender } = renderHook(
+      ({ sandboxMode }) => useCortex(false, { devModeActive: true, sandboxMode }),
+      { initialProps: { sandboxMode: false } },
+    )
+    await waitFor(() => expect(result.current.cortexConversationId).toBe(conversation.id))
+    let queryPromise!: Promise<void>
+    act(() => { queryPromise = result.current.queryAgent('in flight', 'panthera') })
+    await waitFor(() => expect(result.current.isCortexQuerying).toBe(true))
+
+    rerender({ sandboxMode: true })
+    await waitFor(() => expect(result.current.isCortexQuerying).toBe(false))
+    expect(result.current.activeQueryAgent).toBeNull()
+
+    releaseTurn(new Response(JSON.stringify({ answer: 'late response' })))
+    await act(async () => { await queryPromise })
+  })
 })

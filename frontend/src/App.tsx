@@ -83,6 +83,10 @@ import type {
 } from './types/settings'
 import { BASE_SETTINGS, buildSettingsResponse } from './test/settingsFixtures'
 
+function sameToolNames(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((name) => right.includes(name))
+}
+
 interface ParsedEmail {
   subject: string
   time: string
@@ -318,10 +322,23 @@ export default function App(): ReactElement {
 
   const agentSelectionHydratedRef = useRef(false)
   const conversationHydrationRef = useRef<string | null>(null)
+  const conversationHydrationTargetRef = useRef<{
+    conversationId: string
+    agent: AgentKey
+    selectedToolNames: string[] | null
+    toolProfileId: string | null
+  } | null>(null)
+  const conversationSelectionBaselineRef = useRef<{
+    conversationId: string
+    selectedToolNames: string[]
+    toolProfileId: string | null
+  } | null>(null)
 
   useEffect(() => {
     if (!cortexConversationId || !conversationPreferences) {
       conversationHydrationRef.current = null
+      conversationHydrationTargetRef.current = null
+      conversationSelectionBaselineRef.current = null
       return
     }
     if (conversationHydrationRef.current === cortexConversationId) return
@@ -337,11 +354,28 @@ export default function App(): ReactElement {
     ) {
       return
     }
-    toolCatalogState.setToolSelection(
-      conversationPreferences.selectedToolNames ?? [],
-      conversationPreferences.toolProfileId,
-    )
+    const selectedToolNames = conversationPreferences.selectedToolNames
+    const namesToApply = selectedToolNames ?? toolCatalogState.selectedToolNames
+    const selectionMatches =
+      sameToolNames(namesToApply, toolCatalogState.selectedToolNames) &&
+      conversationPreferences.toolProfileId === toolCatalogState.activeToolProfileId
+    conversationHydrationTargetRef.current = {
+      conversationId: cortexConversationId,
+      agent: conversationPreferences.agent,
+      selectedToolNames,
+      toolProfileId: conversationPreferences.toolProfileId,
+    }
+    if (!selectionMatches) {
+      toolCatalogState.setToolSelection(namesToApply, conversationPreferences.toolProfileId)
+      return
+    }
     conversationHydrationRef.current = cortexConversationId
+    conversationHydrationTargetRef.current = null
+    conversationSelectionBaselineRef.current = {
+      conversationId: cortexConversationId,
+      selectedToolNames: toolCatalogState.selectedToolNames,
+      toolProfileId: toolCatalogState.activeToolProfileId,
+    }
   }, [
     activeAgent,
     conversationPreferences,
@@ -359,13 +393,21 @@ export default function App(): ReactElement {
     ) {
       return
     }
-    if (
-      conversationPreferences &&
-      conversationPreferences.agent === activeAgent &&
-      (conversationPreferences.selectedToolNames ?? []).length === toolCatalogState.selectedToolNames.length &&
-      (conversationPreferences.selectedToolNames ?? []).every((name) => toolCatalogState.selectedToolNames.includes(name)) &&
-      conversationPreferences.toolProfileId === toolCatalogState.activeToolProfileId
-    ) {
+    if (!conversationPreferences) return
+    if (conversationHydrationTargetRef.current?.conversationId === cortexConversationId) {
+      return
+    }
+    const baseline = conversationSelectionBaselineRef.current?.conversationId === cortexConversationId
+      ? conversationSelectionBaselineRef.current
+      : null
+    const selectedNamesChanged = conversationPreferences.selectedToolNames === null
+      ? Boolean(baseline && (
+        !sameToolNames(baseline.selectedToolNames, toolCatalogState.selectedToolNames) ||
+        baseline.toolProfileId !== toolCatalogState.activeToolProfileId
+      ))
+      : !sameToolNames(conversationPreferences.selectedToolNames, toolCatalogState.selectedToolNames) ||
+        conversationPreferences.toolProfileId !== toolCatalogState.activeToolProfileId
+    if (conversationPreferences.agent === activeAgent && !selectedNamesChanged) {
       return
     }
     void patchConversation({
