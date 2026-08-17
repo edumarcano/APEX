@@ -433,10 +433,18 @@ export default function App(): ReactElement {
     if (assistantConversationPreferences.agent === activeAgent && !selectedNamesChanged) {
       return
     }
+    const conversationIdAtPatch = assistantConversationId
     void assistantRuntimeRef.current?.patchPreferences({
       agent: activeAgent,
       selectedToolNames: toolCatalogState.selectedToolNames,
       toolProfileId: toolCatalogState.activeToolProfileId,
+    }).then((updated) => {
+      if (!updated || assistantConversationId !== conversationIdAtPatch) return
+      setAssistantConversationPreferences({
+        agent: updated.agent,
+        selected_tool_names: updated.selected_tool_names,
+        tool_profile_id: updated.tool_profile_id,
+      })
     })
   }, [
     activeAgent,

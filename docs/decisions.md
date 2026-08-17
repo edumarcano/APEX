@@ -186,7 +186,7 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 **Decision.** APEX stores Cortex conversations and reconstructs bounded active-branch history on the backend, while each Agent turn remains one synchronous request with no server-side model session.
 
-**Why.** The browser tab already owns this single-user interaction. A server store would add expiry, cleanup, multi-tab conflicts, and another sensitive persistence surface.
+**Why.** Conversation persistence is deliberately local-first: SQLite keeps the durable tree and client-visible metadata, while the backend still executes each turn as one bounded request instead of maintaining a long-lived server-side Agent session. This keeps model-session expiry, cleanup, and multi-tab coordination out of the execution path without losing conversation continuity.
 
 **Trade-off.** Conversation text and client-visible response metadata are retained in unencrypted local SQLite, while only bounded history reaches a model. The frontend must reconcile assistant-ui's transient branch state with the durable active leaf.
 
