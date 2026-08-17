@@ -19,6 +19,7 @@ import {
 import { ApexLogo, type ApexLogoProps } from './components/ApexLogo'
 import { CelestialBackground } from './components/CelestialBackground'
 import { CortexWorkspace } from './components/CortexWorkspace'
+import type { ApexAssistantRunConfig } from './components/ApexAssistantRuntime'
 import { BriefingDigest } from './components/BriefingDigest'
 import { CalendarEventList } from './components/CalendarEventList'
 import { FootballFixtureList } from './components/FootballFixtureList'
@@ -972,6 +973,27 @@ export default function App(): ReactElement {
   const inboxCompactValue = hasSnapshot ? `${emailInfo.count} unread` : null
   const newsCompactValue = hasSnapshot ? `${newsItems.length} headlines` : null
   const remindersCompactValue = `${pendingReminderCount} pending`
+  const runAssistantPreflight = useCallback(async (config: ApexAssistantRunConfig): Promise<boolean> => {
+    if (submissionPendingRef.current) return false
+    submissionPendingRef.current = true
+    setSubmissionPending(true)
+    try {
+      if (
+        activeAgentRef.current !== config.agent ||
+        !toolCatalogState.selectionReady ||
+        toolCatalogState.catalog?.agent !== config.agent
+      ) return false
+      const resolution = await preflight.requestOperation('cortex_query', {
+        synthesis_agent: config.agent,
+        involves_cloud: isCloudAgentKey(config.agent, agentsStatus),
+      })
+      return resolution === 'proceed' && activeAgentRef.current === config.agent && toolCatalogState.selectionReady && toolCatalogState.catalog?.agent === config.agent
+    } finally {
+      submissionPendingRef.current = false
+      setSubmissionPending(false)
+    }
+  }, [agentsStatus, preflight, toolCatalogState.catalog, toolCatalogState.selectionReady])
+
   const queryAgentWithContext = useCallback(
     async (
       prompt: string,
@@ -979,29 +1001,8 @@ export default function App(): ReactElement {
       selectedToolNames: string[],
       toolProfileId: string | null,
     ): Promise<boolean> => {
-      if (submissionPendingRef.current) return false
-      submissionPendingRef.current = true
-      setSubmissionPending(true)
-      try {
-        if (
-          activeAgentRef.current !== agent ||
-          !toolCatalogState.selectionReady ||
-          toolCatalogState.catalog?.agent !== agent
-        ) {
-          return false
-        }
-        const resolution = await preflight.requestOperation('cortex_query', {
-          synthesis_agent: agent,
-          involves_cloud: isCloudAgentKey(agent, agentsStatus),
-        })
-        if (
-          resolution !== 'proceed' ||
-          activeAgentRef.current !== agent ||
-          !toolCatalogState.selectionReady ||
-          toolCatalogState.catalog?.agent !== agent
-        ) {
-          return false
-        }
+      const accepted = await runAssistantPreflight({ agent, effort: isCloudAgentKey(agent, agentsStatus) ? cloudEffort : null, selectedToolNames, toolProfileId, snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null })
+      if (!accepted) return false
         void queryAgent(prompt, agent, {
           snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
           selectedToolNames,
@@ -1009,20 +1010,14 @@ export default function App(): ReactElement {
           effort: isCloudAgentKey(agent, agentsStatus) ? cloudEffort : null,
         })
         return true
-      } finally {
-        submissionPendingRef.current = false
-        setSubmissionPending(false)
-      }
     },
     [
-      preflight,
+      runAssistantPreflight,
       queryAgent,
       telemetry.snapshot?.snapshot_id,
       agentsStatus,
       cloudEffort,
       snapshotAttached,
-      toolCatalogState.catalog,
-      toolCatalogState.selectionReady,
     ],
   )
 
@@ -1867,6 +1862,14 @@ export default function App(): ReactElement {
             onNewSession={handleNewCortexSession}
             actions={actions}
             demoModeActive={demoModeActive}
+            assistantRunConfig={{
+              agent: activeAgent,
+              effort: isCloudAgentKey(activeAgent, agentsStatus) ? cloudEffort : null,
+              selectedToolNames: toolCatalogState.selectedToolNames,
+              toolProfileId: toolCatalogState.activeToolProfileId,
+              snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
+            }}
+            onAssistantPreflight={runAssistantPreflight}
           />
       )}
       {isReminderReviewOpen ? (

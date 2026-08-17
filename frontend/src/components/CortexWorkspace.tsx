@@ -33,6 +33,7 @@ import { AgentQueryBar } from './AgentQueryBar'
 import { AgentSelector } from './AgentSelector'
 import { ModelSelector } from './ModelSelector'
 import { OPERATION_PROMPT_CHIPS } from '../lib/promptChips'
+import { ApexAssistantNewConversation, ApexAssistantRuntime, ApexAssistantThread, type ApexAssistantRunConfig } from './ApexAssistantRuntime'
 
 interface CortexWorkspaceProps {
   activeAgent: AgentKey
@@ -98,6 +99,8 @@ interface CortexWorkspaceProps {
   onNewSession: () => void
   actions: UseActionsResult
   demoModeActive: boolean
+  assistantRunConfig?: ApexAssistantRunConfig
+  onAssistantPreflight?: (config: ApexAssistantRunConfig) => Promise<boolean>
 }
 
 function LocalContextControl({
@@ -296,7 +299,7 @@ function Metric({ label, value, detail }: { label: string; value: string; detail
   return <div className="rounded-lg border border-white/5 bg-white/[0.02] p-2.5"><p className="font-mono uppercase tracking-wider text-zinc-500">{label}</p><p className="mt-1 font-mono text-zinc-200">{value}</p><p className="mt-1 text-zinc-500">{detail}</p></div>
 }
 
-function Conversation({ history, latestTrace, error, isQuerying, agentsStatus, activeAgent, onPromptSelect }: { history: AgentMessage[]; latestTrace: ToolTraceItem[]; error: string | null; isQuerying: boolean; agentsStatus: AgentStatus[]; activeAgent: AgentKey; onPromptSelect: ((query: string) => void) | null }): ReactElement {
+export function Conversation({ history, latestTrace, error, isQuerying, agentsStatus, activeAgent, onPromptSelect }: { history: AgentMessage[]; latestTrace: ToolTraceItem[]; error: string | null; isQuerying: boolean; agentsStatus: AgentStatus[]; activeAgent: AgentKey; onPromptSelect: ((query: string) => void) | null }): ReactElement {
   const endRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const target = endRef.current
@@ -315,6 +318,11 @@ function Conversation({ history, latestTrace, error, isQuerying, agentsStatus, a
     {isQuerying ? <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-[#D8B4FE]"><Loader2 className="size-4 animate-spin" aria-hidden />{agentName} working</div> : null}
     <div ref={endRef} />
   </div>
+}
+
+function AssistantBoundary({ config, beforeRun, onRunningChange, children }: { config?: ApexAssistantRunConfig; beforeRun?: (config: ApexAssistantRunConfig) => Promise<boolean>; onRunningChange: (running: boolean) => void; children: React.ReactNode }): ReactElement {
+  if (!config) return <>{children}</>
+  return <ApexAssistantRuntime config={config} beforeRun={beforeRun} onRunningChange={(running) => onRunningChange(running)}>{children}</ApexAssistantRuntime>
 }
 
 function formatCountdown(seconds: number | null): string {
@@ -378,27 +386,29 @@ function LocalModelLifecycle({ agent, busy, actionPending, onLoad, onUnload }: {
 }
 
 export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
+  const [assistantRunning, setAssistantRunning] = useState(false)
+  const isQuerying = props.isQuerying || assistantRunning
   const activeStatus = props.agentsStatus.find((agent) => agent.key === props.activeAgent)
   const localContextLocked =
     props.lifecycleBusy ||
     props.lifecycleActionPending ||
-    props.isQuerying ||
+    isQuerying ||
     Boolean(activeStatus?.active || activeStatus?.loading)
   const promptChipsEnabled =
     props.agentQueriesEnabled &&
     (props.selectionReady ?? false) &&
     !props.submissionPending &&
     props.toolPreflight?.can_proceed !== false
-  return <section className="relative z-[var(--z-bento-hud)] mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/45 shadow-2xl backdrop-blur-xl" aria-label="Cortex workspace">
-    <header className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-black/20 px-4 py-3 sm:px-5"><div className="mr-auto flex items-center gap-2"><div data-slot="cortex-logo" className="filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]"><ApexLogo {...props.logoProps} className="h-8 w-auto" /></div><div><h1 className="font-orbitron text-sm font-semibold uppercase tracking-[0.16em] text-white">Cortex</h1><p className="font-mono text-[10px] text-zinc-500">Operate and configure Apex Agents</p></div></div><button type="button" onClick={props.onNewSession} disabled={props.isQuerying || props.submissionPending} className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 hover:border-[#7EB3FF]/50 hover:text-white disabled:opacity-40"><Plus className="size-3.5" aria-hidden />New session</button></header>
-    <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem]"><div className="order-1 flex min-h-0 flex-col"><Conversation history={props.history} latestTrace={props.latestTrace} error={props.error} isQuerying={props.isQuerying} agentsStatus={props.agentsStatus} activeAgent={props.activeAgent} onPromptSelect={promptChipsEnabled ? (query) => { void props.onSubmit(query, props.activeAgent, props.selectedToolNames ?? [], props.activeToolProfileId ?? null) } : null} />{props.agentQueriesEnabled ? <footer className="border-t border-white/10 bg-black/20 p-3 sm:p-4"><AgentQueryBar presentation="cortex" activeAgent={props.activeAgent} onSubmit={props.onSubmit} agentsStatus={props.agentsStatus} catalog={props.toolCatalog ?? null} selectedToolNames={props.selectedToolNames ?? []} activeToolProfileId={props.activeToolProfileId ?? null} selectionReady={props.selectionReady ?? false} submissionPending={props.submissionPending} onToolSelectionChange={props.onToolSelectionChange} onToolProfileChange={props.onToolProfileChange} toolPreflight={props.toolPreflight} toolPreflightLoading={props.toolPreflightLoading} toolCatalogError={props.toolCatalogError} toolPreflightError={props.toolPreflightError} toolProfileFeedback={props.toolProfileFeedback} toolProfileError={props.toolProfileError} onSaveToolProfile={props.onSaveToolProfile} onDuplicateToolProfile={props.onDuplicateToolProfile} onRenameToolProfile={props.onRenameToolProfile} onDeleteToolProfile={props.onDeleteToolProfile} onRestoreToolProfile={props.onRestoreToolProfile} onSetDefaultToolProfile={props.onSetDefaultToolProfile} draftPrompt={props.draftPrompt} onDraftChange={props.onDraftChange} isSubmitting={props.isQuerying} error={props.error} /></footer> : <footer className="border-t border-white/10 p-4 text-sm text-zinc-500">Agent queries are disabled in Settings.</footer>}</div>
+  return <AssistantBoundary config={props.assistantRunConfig} beforeRun={props.onAssistantPreflight} onRunningChange={setAssistantRunning}><section className="relative z-[var(--z-bento-hud)] mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/45 shadow-2xl backdrop-blur-xl" aria-label="Cortex workspace">
+    <header className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-black/20 px-4 py-3 sm:px-5"><div className="mr-auto flex items-center gap-2"><div data-slot="cortex-logo" className="filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]"><ApexLogo {...props.logoProps} className="h-8 w-auto" /></div><div><h1 className="font-orbitron text-sm font-semibold uppercase tracking-[0.16em] text-white">Cortex</h1><p className="font-mono text-[10px] text-zinc-500">Operate and configure Apex Agents</p></div></div>{props.assistantRunConfig ? <ApexAssistantNewConversation disabled={isQuerying || Boolean(props.submissionPending)} /> : <button type="button" onClick={props.onNewSession} disabled={props.isQuerying || props.submissionPending} className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 hover:border-[#7EB3FF]/50 hover:text-white disabled:opacity-40"><Plus className="size-3.5" aria-hidden />New session</button>}</header>
+    <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem]"><div className="order-1 flex min-h-0 flex-col">{props.assistantRunConfig ? (props.agentQueriesEnabled ? <ApexAssistantThread disabled={isQuerying || Boolean(props.submissionPending) || !props.selectionReady} /> : <footer className="border-t border-white/10 p-4 text-sm text-zinc-500">Agent queries are disabled in Settings.</footer>) : <><Conversation history={props.history} latestTrace={props.latestTrace} error={props.error} isQuerying={props.isQuerying} agentsStatus={props.agentsStatus} activeAgent={props.activeAgent} onPromptSelect={promptChipsEnabled ? (query) => { void props.onSubmit(query, props.activeAgent, props.selectedToolNames ?? [], props.activeToolProfileId ?? null) } : null} />{props.agentQueriesEnabled ? <footer className="border-t border-white/10 bg-black/20 p-3 sm:p-4"><AgentQueryBar presentation="cortex" activeAgent={props.activeAgent} onSubmit={props.onSubmit} agentsStatus={props.agentsStatus} catalog={props.toolCatalog ?? null} selectedToolNames={props.selectedToolNames ?? []} activeToolProfileId={props.activeToolProfileId ?? null} selectionReady={props.selectionReady ?? false} submissionPending={props.submissionPending} onToolSelectionChange={props.onToolSelectionChange} onToolProfileChange={props.onToolProfileChange} toolPreflight={props.toolPreflight} toolPreflightLoading={props.toolPreflightLoading} toolCatalogError={props.toolCatalogError} toolPreflightError={props.toolPreflightError} toolProfileFeedback={props.toolProfileFeedback} toolProfileError={props.toolProfileError} onSaveToolProfile={props.onSaveToolProfile} onDuplicateToolProfile={props.onDuplicateToolProfile} onRenameToolProfile={props.onRenameToolProfile} onDeleteToolProfile={props.onDeleteToolProfile} onRestoreToolProfile={props.onRestoreToolProfile} onSetDefaultToolProfile={props.onSetDefaultToolProfile} draftPrompt={props.draftPrompt} onDraftChange={props.onDraftChange} isSubmitting={props.isQuerying} error={props.error} /></footer> : null}</>}</div>
       <aside className="order-2 space-y-4 border-t border-white/10 bg-black/15 p-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 scrollbar-thin" aria-label="Cortex inspector"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Agent</p><AgentSelector activeAgent={props.activeAgent} onChange={props.onAgentChange} agentsStatus={props.agentsStatus} agentsStatusHydrated={props.agentsStatusHydrated} isQuerying={props.isQuerying || Boolean(props.submissionPending)} verifyingAgent={props.verifyingCloudAgent} onVerify={props.onVerifyCloudAgent} /></section>
         <RuntimeControls {...props} activeStatus={activeStatus ?? null} localContextLocked={localContextLocked} />
         <ContextControl {...props} />
         <CortexActions actions={props.actions} demoModeActive={props.demoModeActive} />
       </aside>
     </div>
-  </section>
+  </section></AssistantBoundary>
 }
 
 function RuntimeControls({

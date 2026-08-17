@@ -105,14 +105,15 @@ The HUD and `uv run apex` CLI are separate clients of the same loopback API. The
 | `useTelemetrySnapshot` | Current process-local telemetry snapshot and refresh state |
 | `useBriefingPipeline` | Briefing generation, trigger/status polling, digest, and transcript |
 | `useVoiceDelivery` | Manual and automatic speech requests |
-| `useCortex` | Durable conversation hydration, Agent status, turn submission, tool traces, and returned tool cards |
+| `useCortex` | Agent status, verification, polling, local-model lifecycle, and returned tool rendering inputs |
+| `ApexAssistantRuntime` | Replaceable assistant-ui thread state and presentation adapter; translates APEX conversation trees and one-turn requests without becoming a persistence authority |
 | `useActions` | Cortex-visible action list, expanded audit detail, bounded polling, and versioned action controls |
 | `useToolCatalog` | Agent-specific tool catalog, profile application, and session-persistent selection |
 | `useToolPreflight` | Debounced next-request tool and context token estimates |
 | `useMarketData` | Independent market polling and stale fallback |
 | `useSystemDiagnostics` | Independent CPU, memory, disk, network, and clock polling |
 
-The browser holds activation state, while APEX owns Cortex conversations in SQLite. Reloading Cortex opens the most recently updated unarchived conversation in the current partition.
+The browser holds activation state and transient assistant-ui thread state, while APEX owns Cortex conversations in SQLite. `ApexAssistantRuntime` pins assistant-ui and contains its runtime-specific identifier handling: only UUIDs cross into the APEX turn API, and response metadata remains APEX data. Reloading Cortex rehydrates the authoritative branch from the current server-derived partition.
 
 When Cortex is visible in normal mode, its inspector owns action review. `useActions` reads the newest 50 durable actions, fetches audit detail only for an expanded item, and polls every five seconds only while the browser tab remains visible. It submits the backend-provided action version for approval, rejection, and verification retry, then refetches the current ledger state. Conversation cards only identify newly proposed actions and direct the operator to the inspector; they never resolve an action themselves. Demo mode does not access the action API.
 

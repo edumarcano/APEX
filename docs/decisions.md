@@ -190,6 +190,14 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 **Trade-off.** Conversation text and client-visible response metadata are retained in unencrypted local SQLite, while only bounded history reaches a model.
 
+### Keep assistant-ui replaceable and behind an APEX adapter
+
+**Decision.** Cortex uses a pinned assistant-ui runtime only for browser thread state and low-level UI primitives. `ApexAssistantRuntime` is the sole frontend module that references assistant-ui runtime APIs and canonicalizes generated identifiers before an APEX request.
+
+**Why.** APEX already owns message-tree persistence, execution, tools, actions, preflight, and runtime policy. Keeping that boundary narrow permits editing and branch interaction without duplicating a second durable conversation system.
+
+**Trade-off.** The adapter must carry focused conversion coverage whenever the pinned assistant-ui release changes, particularly because its message and thread identifiers are not a stable public contract.
+
 ### Enforce one resident model and non-blocking admission
 
 **Decision.** APEX keeps one selected local model resident across Ollama and llama.cpp and rejects competing local execution rather than queueing it.
