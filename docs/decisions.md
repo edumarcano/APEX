@@ -184,11 +184,11 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 ### Keep Agent sessions stateless on the server
 
-**Decision.** The browser sends bounded conversation history with every query; FastAPI stores no chat session.
+**Decision.** APEX stores Cortex conversations and reconstructs bounded active-branch history on the backend.
 
 **Why.** The browser tab already owns this single-user interaction. A server store would add expiry, cleanup, multi-tab conflicts, and another sensitive persistence surface.
 
-**Trade-off.** Reloading loses the conversation, and each request resends retained history to the model.
+**Trade-off.** Conversation text and client-visible response metadata are retained in unencrypted local SQLite, while only bounded history reaches a model.
 
 ### Enforce one resident model and non-blocking admission
 

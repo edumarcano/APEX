@@ -1,13 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { API_ENDPOINTS } from '../lib/api'
-import type {
-  AgentKey,
-  AgentMessage,
-  ToolPreflightEstimate,
-} from '../types/telemetry'
-
-const EMPTY_HISTORY: AgentMessage[] = []
+import type { AgentKey, ToolPreflightEstimate } from '../types/telemetry'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -104,8 +98,7 @@ interface UseToolPreflightOptions {
   selectedToolNames: string[]
   toolProfileId: string | null
   prompt?: string
-  history?: AgentMessage[]
-  historyPartition?: 'production' | 'sandbox'
+  conversationId?: string | null
   snapshotId?: string | null
   briefingId?: number | null
   enabled?: boolean
@@ -116,8 +109,7 @@ export function useToolPreflight({
   selectedToolNames,
   toolProfileId,
   prompt = '',
-  history = EMPTY_HISTORY,
-  historyPartition = 'production',
+  conversationId = null,
   snapshotId = null,
   briefingId = null,
   enabled = true,
@@ -152,8 +144,7 @@ export function useToolPreflight({
           selected_tool_names: selectedToolNames,
           ...(toolProfileId ? { tool_profile_id: toolProfileId } : {}),
           prompt,
-          history,
-          history_partition: historyPartition,
+          ...(conversationId ? { conversation_id: conversationId } : {}),
           ...(snapshotId ? { snapshot_id: snapshotId } : {}),
           ...(briefingId != null ? { briefing_id: briefingId } : {}),
         }),
@@ -201,8 +192,7 @@ export function useToolPreflight({
     agent,
     briefingId,
     enabled,
-    history,
-    historyPartition,
+    conversationId,
     prompt,
     selectedToolNames,
     snapshotId,

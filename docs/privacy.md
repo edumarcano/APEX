@@ -11,7 +11,7 @@ APEX is local-first, not entirely offline. This reference separates behavior APE
 | HUD and API traffic | Yes, loopback only | No | No | Default behavior |
 | Telemetry collection | Snapshot and normalization | Enabled connector receives its request | Snapshot is memory-only | Disable external connectors or use demo mode |
 | Briefing synthesis | Selected, size-limited input is built locally | Panthera sends it to the selected cloud provider; Felis sends it to the local Ollama or llama.cpp runtime | Normal-mode transcript/digest in SQLite | Felis or Structured Digest |
-| Interactive Agent conversation | Browser tab owns history | The selected Panthera or Felis model and explicitly selected APEX/MCP schemas receive required context; provider-hosted grounding remains a separate provider path | No server-side chat store | Felis with No APEX Tools |
+| Interactive Agent conversation | APEX owns durable local history | The selected Panthera or Felis model and explicitly selected APEX/MCP schemas receive the bounded active branch; provider-hosted grounding remains a separate provider path | Unencrypted SQLite conversation tree and response metadata | Felis with No APEX Tools |
 | Reminders | Selected Microsoft To Do list or local queue | Approved task fields go to Microsoft Graph | Small task cache and retained local outbox rows in SQLite | Leave the list unselected or integration disconnected |
 | Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected Agent | Authorization cache, selected-list cache, and action evidence | Leave integration disconnected |
 | Action controls | Proposal, lifecycle state, and execution/verification evidence | A supported native action receives its saved arguments after local approval | SQLite action and audit ledger | Demo mode does not read or mutate the action ledger |
@@ -94,7 +94,7 @@ An explicit cloud access check sends the configured model identifier and credent
 
 HUD context is opt-in for each request. A briefing is attached only through a valid `briefing_id`; telemetry is attached only through the current matching `snapshot_id`. Omitting both attaches neither. Tool results and HUD context are marked as untrusted model data.
 
-Conversation history lives in the browser tab and is lost on reload. The backend has no chat-session store. Local context trimming can remove old complete interactions when needed, but diagnostics report only counts rather than prompt or tool-result content.
+Conversation history lives in local unencrypted SQLite storage and survives reloads. APEX retains the full message tree but sends only the configured bounded active branch to a model. `DEMO_MODE` uses process-local in-memory conversations and makes no durable conversation writes.
 
 `DEV_MODE` sandbox queries keep history in the `sandbox` partition and can receive only the small non-personal allowlist defined for sandbox mode, plus a masked development briefing. They do not receive full telemetry, Gmail, Calendar, Microsoft To Do, normal briefing history, private GitHub/MCP data, files, images, or normal-mode conversation history.
 

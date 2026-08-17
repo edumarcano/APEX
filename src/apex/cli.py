@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import uuid
 from dataclasses import dataclass
 from typing import Any, Sequence
 from urllib.parse import quote
@@ -224,8 +225,18 @@ def _ask(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
         request_payload["effort"] = args.effort
     if args.profile is not None:
         request_payload["tool_profile_id"] = args.profile
+    conversation = _require_mapping(client.request(
+        "POST", "/api/v1/cortex/conversations",
+        payload={"origin": "cli", "title": _cli_conversation_title(prompt)},
+    ), "conversation")
+    conversation_id = conversation.get("id")
+    if not isinstance(conversation_id, str):
+        raise CliError("invalid_response", "APEX did not return a conversation ID.")
+    request_payload["user_message_id"] = str(uuid.uuid4())
+    request_payload["agent_message_id"] = str(uuid.uuid4())
     payload = client.request(
-        "POST", "/api/v1/cortex/query", payload=request_payload, long_running=True
+        "POST", f"/api/v1/cortex/conversations/{quote(conversation_id, safe='')}/turns",
+        payload=request_payload, long_running=True,
     )
     response = _require_mapping(payload, "Agent response")
     if not isinstance(response.get("answer"), str):
@@ -240,6 +251,11 @@ def _ask(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
         return 1
     _emit(payload, json_mode, _render_ask)
     return 0
+
+
+def _cli_conversation_title(prompt: str) -> str:
+    title = f"CLI: {' '.join(prompt.split())}"
+    return title if len(title) <= 80 else f"{title[:79]}…"
 
 
 def _briefing(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:

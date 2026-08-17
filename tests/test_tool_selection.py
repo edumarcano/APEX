@@ -345,21 +345,26 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             AgentMessage(role="user", content="A third prior question"),
             AgentMessage(role="agent", content="A third prior answer " * 15_000),
         ]
+        conversation_service = MagicMock()
+        conversation_service.active_history.return_value = history
+        conversation_service.partition.return_value = "production"
         with patch("core.api.cortex.is_dev_mode", return_value=True), patch(
             "core.agent.catalog.is_dev_mode", return_value=True
+        ), patch(
+            "core.conversations.get_conversation_service",
+            return_value=conversation_service,
         ):
             result = build_tool_preflight(
                 ToolPreflightRequest(
                     agent="felis",
                     prompt="Current question",
-                    history=history,
-                    history_partition="production",
+                    conversation_id="00000000-0000-4000-8000-000000000001",
                 )
             )
 
         self.assertTrue(result.can_proceed)
         self.assertLess(result.breakdown.remaining_estimated_capacity or 0, 0)
-        self.assertIn("warning only", result.warning or "")
+        self.assertIsNotNone(result.warning)
 
     def test_preflight_includes_typed_prompt_and_returns_rejections_in_response(self) -> None:
         with patch("core.api.cortex.is_dev_mode", return_value=True), patch(

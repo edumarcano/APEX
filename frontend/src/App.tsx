@@ -81,8 +81,11 @@ import type {
   SettingsResponse,
   VoiceMode,
 } from './types/settings'
-import { resolveHistoryPartition } from './lib/settings'
 import { BASE_SETTINGS, buildSettingsResponse } from './test/settingsFixtures'
+
+function sameToolNames(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((name) => right.includes(name))
+}
 
 interface ParsedEmail {
   subject: string
@@ -207,9 +210,6 @@ export default function App(): ReactElement {
   const submissionPendingRef = useRef(false)
   const [toolProfileFeedback, setToolProfileFeedback] = useState<string | null>(null)
   const [toolProfileError, setToolProfileError] = useState<string | null>(null)
-  const [cortexSessionId, setCortexSessionId] = useState(() =>
-    globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`,
-  )
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isReminderReviewOpen, setIsReminderReviewOpen] = useState(false)
   const [isCompletedRemindersOpen, setIsCompletedRemindersOpen] = useState(false)
@@ -272,6 +272,8 @@ export default function App(): ReactElement {
 
   const {
     cortexHistory,
+    cortexConversationId,
+    conversationPreferences,
     isCortexQuerying,
     activeQueryAgent,
     cortexLatestTrace,
@@ -280,6 +282,7 @@ export default function App(): ReactElement {
     agentsStatus,
     agentsStatusHydrated,
     queryAgent,
+    patchConversation,
     isLocalModelActionPending,
     verifyingCloudAgent,
     loadLocalModel,
@@ -307,9 +310,8 @@ export default function App(): ReactElement {
     selectedToolNames: toolCatalogState.selectedToolNames,
     toolProfileId: toolCatalogState.activeToolProfileId,
     prompt: draftPrompt,
-    history: cortexHistory,
+    conversationId: cortexConversationId,
     snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
-    historyPartition: resolveHistoryPartition(devModeActive, sandboxMode),
     enabled: Boolean(
       agentQueriesEnabled &&
       !toolCatalogState.isLoading &&
@@ -319,6 +321,108 @@ export default function App(): ReactElement {
   })
 
   const agentSelectionHydratedRef = useRef(false)
+  const conversationHydrationRef = useRef<string | null>(null)
+  const conversationHydrationTargetRef = useRef<{
+    conversationId: string
+    agent: AgentKey
+    selectedToolNames: string[] | null
+    toolProfileId: string | null
+  } | null>(null)
+  const conversationSelectionBaselineRef = useRef<{
+    conversationId: string
+    selectedToolNames: string[]
+    toolProfileId: string | null
+  } | null>(null)
+
+  useEffect(() => {
+    if (!cortexConversationId || !conversationPreferences) {
+      conversationHydrationRef.current = null
+      conversationHydrationTargetRef.current = null
+      conversationSelectionBaselineRef.current = null
+      return
+    }
+    if (conversationHydrationRef.current === cortexConversationId) return
+    if (conversationPreferences.agent !== activeAgent) {
+      activeAgentRef.current = conversationPreferences.agent
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Conversation hydration selects the durable Agent before catalog hydration.
+      setAgent(conversationPreferences.agent)
+      return
+    }
+    if (
+      !toolCatalogState.selectionReady ||
+      toolCatalogState.catalog?.agent !== activeAgent
+    ) {
+      return
+    }
+    const selectedToolNames = conversationPreferences.selectedToolNames
+    const namesToApply = selectedToolNames ?? toolCatalogState.selectedToolNames
+    const selectionMatches =
+      sameToolNames(namesToApply, toolCatalogState.selectedToolNames) &&
+      conversationPreferences.toolProfileId === toolCatalogState.activeToolProfileId
+    conversationHydrationTargetRef.current = {
+      conversationId: cortexConversationId,
+      agent: conversationPreferences.agent,
+      selectedToolNames,
+      toolProfileId: conversationPreferences.toolProfileId,
+    }
+    if (!selectionMatches) {
+      toolCatalogState.setToolSelection(namesToApply, conversationPreferences.toolProfileId)
+      return
+    }
+    conversationHydrationRef.current = cortexConversationId
+    conversationHydrationTargetRef.current = null
+    conversationSelectionBaselineRef.current = {
+      conversationId: cortexConversationId,
+      selectedToolNames: toolCatalogState.selectedToolNames,
+      toolProfileId: toolCatalogState.activeToolProfileId,
+    }
+  }, [
+    activeAgent,
+    conversationPreferences,
+    cortexConversationId,
+    toolCatalogState.catalog?.agent,
+    toolCatalogState.selectionReady,
+    toolCatalogState.setToolSelection,
+    toolCatalogState,
+  ])
+
+  useEffect(() => {
+    if (
+      !cortexConversationId ||
+      conversationHydrationRef.current !== cortexConversationId
+    ) {
+      return
+    }
+    if (!conversationPreferences) return
+    if (conversationHydrationTargetRef.current?.conversationId === cortexConversationId) {
+      return
+    }
+    const baseline = conversationSelectionBaselineRef.current?.conversationId === cortexConversationId
+      ? conversationSelectionBaselineRef.current
+      : null
+    const selectedNamesChanged = conversationPreferences.selectedToolNames === null
+      ? Boolean(baseline && (
+        !sameToolNames(baseline.selectedToolNames, toolCatalogState.selectedToolNames) ||
+        baseline.toolProfileId !== toolCatalogState.activeToolProfileId
+      ))
+      : !sameToolNames(conversationPreferences.selectedToolNames, toolCatalogState.selectedToolNames) ||
+        conversationPreferences.toolProfileId !== toolCatalogState.activeToolProfileId
+    if (conversationPreferences.agent === activeAgent && !selectedNamesChanged) {
+      return
+    }
+    void patchConversation({
+      agent: activeAgent,
+      selectedToolNames: toolCatalogState.selectedToolNames,
+      toolProfileId: toolCatalogState.activeToolProfileId,
+    })
+  }, [
+    activeAgent,
+    cortexConversationId,
+    conversationPreferences,
+    patchConversation,
+    toolCatalogState.activeToolProfileId,
+    toolCatalogState.selectedToolNames,
+  ])
 
   // Hydrate backend defaults once; later agent changes belong to the active session.
   useEffect(() => {
@@ -903,7 +1007,6 @@ export default function App(): ReactElement {
           selectedToolNames,
           toolProfileId,
           effort: isCloudAgentKey(agent, agentsStatus) ? cloudEffort : null,
-          sessionId: cortexSessionId,
         })
         return true
       } finally {
@@ -918,7 +1021,6 @@ export default function App(): ReactElement {
       agentsStatus,
       cloudEffort,
       snapshotAttached,
-      cortexSessionId,
       toolCatalogState.catalog,
       toolCatalogState.selectionReady,
     ],
@@ -1205,7 +1307,6 @@ export default function App(): ReactElement {
   const handleNewCortexSession = useCallback((): void => {
     clearCortexSession()
     setSnapshotAttached(false)
-    setCortexSessionId(globalThis.crypto?.randomUUID?.() ?? `cortex-${Date.now()}`)
   }, [clearCortexSession])
 
   const handleHomeSubmit = useCallback(async (

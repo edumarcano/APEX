@@ -105,14 +105,14 @@ The HUD and `uv run apex` CLI are separate clients of the same loopback API. The
 | `useTelemetrySnapshot` | Current process-local telemetry snapshot and refresh state |
 | `useBriefingPipeline` | Briefing generation, trigger/status polling, digest, and transcript |
 | `useVoiceDelivery` | Manual and automatic speech requests |
-| `useCortex` | Browser-held conversation, Agent status, query submission, tool traces, and returned tool cards |
+| `useCortex` | Durable conversation hydration, Agent status, turn submission, tool traces, and returned tool cards |
 | `useActions` | Cortex-visible action list, expanded audit detail, bounded polling, and versioned action controls |
 | `useToolCatalog` | Agent-specific tool catalog, profile application, and session-persistent selection |
 | `useToolPreflight` | Debounced next-request tool and context token estimates |
 | `useMarketData` | Independent market polling and stale fallback |
 | `useSystemDiagnostics` | Independent CPU, memory, disk, network, and clock polling |
 
-The browser holds activation state and Agent history for the tab lifetime. Reloading the page returns the UI to standby and clears conversation history, but it does not erase reminders or persisted briefing history.
+The browser holds activation state, while APEX owns Cortex conversations in SQLite. Reloading Cortex opens the most recently updated unarchived conversation in the current partition.
 
 When Cortex is visible in normal mode, its inspector owns action review. `useActions` reads the newest 50 durable actions, fetches audit detail only for an expanded item, and polls every five seconds only while the browser tab remains visible. It submits the backend-provided action version for approval, rejection, and verification retry, then refetches the current ledger state. Conversation cards only identify newly proposed actions and direct the operator to the inspector; they never resolve an action themselves. Demo mode does not access the action API.
 
@@ -160,7 +160,7 @@ The four-stage path is supported behavior, but it is no longer the only way to u
 
 ## Cortex Engine execution
 
-`POST /api/v1/cortex/query` performs one bounded Cortex Engine turn. The browser sends the current prompt and its bounded conversation history. The backend does not look up a default chat session and does not persist the returned conversation.
+`POST /api/v1/cortex/conversations/{conversation_id}/turns` performs one bounded Cortex Engine turn. The backend stores a pending Agent placeholder, reconstructs the selected branch, and persists the final client-visible response metadata after execution.
 
 HUD context is explicit:
 

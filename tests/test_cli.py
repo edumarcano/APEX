@@ -99,24 +99,25 @@ class CliTests(unittest.TestCase):
         self.assertEqual(agent_session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/agents")
 
     def test_ask_preserves_backend_defaults_and_sends_explicit_options(self) -> None:
+        conversation = _Response(201, {"id": "conversation-1"})
         response = _Response(200, {"answer": "Ready.", "tool_outputs": []})
-        code, _, _, session = self._run(["ask", "  Hello  "], [response])
+        code, _, _, session = self._run(["ask", "  Hello  "], [conversation, response])
         self.assertEqual(code, 0)
-        self.assertEqual(session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/query")
-        self.assertEqual(session.calls[0]["json"], {"prompt": "Hello"})
-        self.assertNotIn("history", session.calls[0]["json"])
-        self.assertNotIn("snapshot_id", session.calls[0]["json"])
+        self.assertEqual(session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/conversations")
+        self.assertEqual(session.calls[0]["json"], {"origin": "cli", "title": "CLI: Hello"})
+        self.assertEqual(session.calls[1]["url"], f"{cli.API_ROOT}/api/v1/cortex/conversations/conversation-1/turns")
+        self.assertEqual(session.calls[1]["json"]["prompt"], "Hello")
 
         code, _, _, session = self._run(
             ["ask", "Plan", "--agent", "panthera", "--effort", "focused", "--profile", "daily_planning"],
-            [response],
+            [_Response(201, {"id": "conversation-2"}), response],
         )
         self.assertEqual(code, 0)
-        self.assertEqual(session.calls[0]["json"], {
+        self.assertEqual({key: value for key, value in session.calls[1]["json"].items() if key not in {"user_message_id", "agent_message_id"}}, {
             "prompt": "Plan", "agent": "panthera", "effort": "focused",
             "tool_profile_id": "daily_planning",
         })
-        self.assertEqual(session.calls[0]["timeout"], (3.0, 600.0))
+        self.assertEqual(session.calls[1]["timeout"], (3.0, 600.0))
 
     def test_briefing_and_action_reads_map_to_their_existing_routes(self) -> None:
         briefing_code, briefing_output, _, briefing_session = self._run(
@@ -238,7 +239,7 @@ class CliTests(unittest.TestCase):
         self.assertIn("invalid readiness", errors)
 
         code, output, errors, _ = self._run(
-            ["ask", "Hello"], [_Response(200, {"answer": "Partial.", "error": "Agent stopped."})]
+            ["ask", "Hello"], [_Response(201, {"id": "conversation-1"}), _Response(200, {"answer": "Partial.", "error": "Agent stopped."})]
         )
         self.assertEqual(code, 1)
         self.assertIn("Partial.", output)
@@ -246,7 +247,7 @@ class CliTests(unittest.TestCase):
 
         code, output, errors, _ = self._run(
             ["--json", "ask", "Hello"],
-            [_Response(200, {"answer": "Partial.", "error": "Agent stopped."})],
+            [_Response(201, {"id": "conversation-1"}), _Response(200, {"answer": "Partial.", "error": "Agent stopped."})],
         )
         self.assertEqual(code, 1)
         self.assertEqual(errors, "")
