@@ -1,7 +1,7 @@
 import { ExternalLink, Loader2, Plus } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 
-import { parseAgentQueryResponse, type AgentMessage, type AgentQueryMetadata, type ToolTraceItem } from '../hooks/useCortex'
+import { parseAgentQueryResponse, type AgentMessage, type AgentQueryMetadata, type ToolTraceItem } from '../lib/cortexResponse'
 import type { UseActionsResult } from '../hooks/useActions'
 import type {
   AgentStatus,
@@ -498,6 +498,7 @@ function RuntimeControls({
   activeStatus: AgentStatus | null
   localContextLocked: boolean
 }): ReactElement {
+  const controlsDisabled = props.isQuerying || Boolean(props.submissionPending) || Boolean(props.conversationHydrating)
   const localModel = props.felisModel ?? 'gemma-4-E2B-Q4_K_M.gguf'
   const onLocalModelChange = props.onFelisModelChange ?? (() => {})
   const pantheraStatus = props.agentsStatus.find((agent) => agent.key === 'panthera')
@@ -529,7 +530,7 @@ function RuntimeControls({
             onModelChange={props.onPantheraModelChange}
             catalog={models}
             activeStatus={pantheraStatus ?? null}
-            disabled={props.isQuerying}
+            disabled={controlsDisabled}
             isQuerying={props.isQuerying}
             verifyingAgent={props.verifyingCloudAgent}
             onVerify={props.onVerifyCloudAgent}
@@ -542,6 +543,7 @@ function RuntimeControls({
               <select
                 id="cortex-effort"
                 value={props.cloudEffort}
+                disabled={controlsDisabled}
                 onChange={(event) => props.onEffortChange(event.target.value as CloudEffort)}
                 className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]"
               >
@@ -562,7 +564,7 @@ function RuntimeControls({
             onModelChange={onLocalModelChange}
             catalog={models}
             activeStatus={felisStatus ?? null}
-            disabled={props.isQuerying}
+            disabled={controlsDisabled}
             isQuerying={props.isQuerying}
           />
           {activeStatus ? (
@@ -571,7 +573,7 @@ function RuntimeControls({
                 <LocalReasoningControl
                   key={`${activeStatus.key}-reasoning`}
                   agent={activeStatus}
-                  disabled={props.isQuerying || Boolean(props.submissionPending)}
+                  disabled={controlsDisabled}
                   onChange={props.onLocalReasoningModeChange}
                 />
               ) : null}
@@ -585,7 +587,7 @@ function RuntimeControls({
               ) : null}
               <LocalModelLifecycle
                 agent={activeStatus}
-                busy={props.lifecycleBusy}
+                busy={props.lifecycleBusy || controlsDisabled}
                 actionPending={props.lifecycleActionPending}
                 onLoad={props.onLoadLocalModel}
                 onUnload={props.onUnloadLocalModel}
@@ -602,6 +604,7 @@ function RuntimeControls({
               label="Google Search"
               detail="Provider grounding for later requests"
               checked={props.pantheraHostedTools.google_search}
+              disabled={controlsDisabled}
               onChange={(enabled) => props.onHostedToolChange('google_search', enabled)}
             />
           ) : null}
@@ -610,6 +613,7 @@ function RuntimeControls({
               label="Google Maps"
               detail="Provider grounding for later requests"
               checked={props.pantheraHostedTools.google_maps}
+              disabled={controlsDisabled}
               onChange={(enabled) => props.onHostedToolChange('google_maps', enabled)}
             />
           ) : null}
@@ -618,6 +622,7 @@ function RuntimeControls({
               label="X Search"
               detail="Provider grounding for later requests"
               checked={props.pantheraHostedTools.x_search}
+              disabled={controlsDisabled}
               onChange={(enabled) => props.onHostedToolChange('x_search', enabled)}
             />
           ) : null}
@@ -634,6 +639,7 @@ function RuntimeControls({
             <input
               aria-label="Sandbox mode"
               type="checkbox"
+              disabled={controlsDisabled}
               checked={props.sandboxMode}
               onChange={(event) => props.onSandboxModeChange(event.target.checked)}
               className="size-4 accent-cyan-400"
@@ -654,7 +660,7 @@ function ContextControl(props: CortexWorkspaceProps): ReactElement {
     const tool = props.toolCatalog?.tools.find((item) => item.name === name)
     return !tool || !tool.available || !tool.allowed_for_agent
   }).length
-  return <div className="space-y-4"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Context</p><label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2"><span className="text-xs text-zinc-300">Current HUD snapshot</span><input type="checkbox" checked={props.snapshotAttached} disabled={!props.snapshotAvailable} onChange={(event) => props.onSnapshotAttachedChange(event.target.checked)} className="size-4 accent-[#0F4DB8]" /></label><p className="text-[11px] leading-relaxed text-zinc-500">{props.snapshotAttached && props.snapshotAvailable ? 'The current snapshot will be included with the next turn.' : 'No HUD context will be attached.'}</p></section><section className="space-y-2" aria-label="Selected tools summary"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Prompt tools</p><div className="rounded-lg border border-purple-300/15 bg-purple-950/10 p-3 font-mono text-[10px] text-zinc-400"><p className="text-zinc-200">{activeProfile?.name ?? 'Custom'} · {selectedNames.length} selected</p><p className="mt-1 text-zinc-500">{props.selectionReady ? 'Configured beside the prompt.' : 'Hydrating this Agent selection…'}</p>{props.toolCatalog?.provider_hosted_tools.length ? <p className="mt-1 text-cyan-200/80">Hosted grounding: {props.toolCatalog.provider_hosted_tools.join(', ')}</p> : <p className="mt-1 text-zinc-600">Hosted grounding is controlled separately.</p>}{unavailableCount > 0 ? <p className="mt-1 text-red-200">{unavailableCount} unavailable selection{unavailableCount === 1 ? '' : 's'} need removal.</p> : null}{props.contextUsage ? <p className="mt-2 text-zinc-600">Last local estimate: {formatNumber(props.contextUsage.estimated_prompt_tokens)}/{formatNumber(props.contextUsage.context_window)} tokens.</p> : null}{props.toolCatalogError ? <p className="mt-2 text-red-200" role="alert">{props.toolCatalogError}</p> : null}</div></section></div>
+  return <div className="space-y-4"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Context</p><label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2"><span className="text-xs text-zinc-300">Current HUD snapshot</span><input type="checkbox" checked={props.snapshotAttached} disabled={!props.snapshotAvailable || props.isQuerying || Boolean(props.submissionPending) || Boolean(props.conversationHydrating)} onChange={(event) => props.onSnapshotAttachedChange(event.target.checked)} className="size-4 accent-[#0F4DB8]" /></label><p className="text-[11px] leading-relaxed text-zinc-500">{props.snapshotAttached && props.snapshotAvailable ? 'The current snapshot will be included with the next turn.' : 'No HUD context will be attached.'}</p></section><section className="space-y-2" aria-label="Selected tools summary"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Prompt tools</p><div className="rounded-lg border border-purple-300/15 bg-purple-950/10 p-3 font-mono text-[10px] text-zinc-400"><p className="text-zinc-200">{activeProfile?.name ?? 'Custom'} · {selectedNames.length} selected</p><p className="mt-1 text-zinc-500">{props.selectionReady ? 'Configured beside the prompt.' : 'Hydrating this Agent selection…'}</p>{props.toolCatalog?.provider_hosted_tools.length ? <p className="mt-1 text-cyan-200/80">Hosted grounding: {props.toolCatalog.provider_hosted_tools.join(', ')}</p> : <p className="mt-1 text-zinc-600">Hosted grounding is controlled separately.</p>}{unavailableCount > 0 ? <p className="mt-1 text-red-200">{unavailableCount} unavailable selection{unavailableCount === 1 ? '' : 's'} need removal.</p> : null}{props.contextUsage ? <p className="mt-2 text-zinc-600">Last local estimate: {formatNumber(props.contextUsage.estimated_prompt_tokens)}/{formatNumber(props.contextUsage.context_window)} tokens.</p> : null}{props.toolCatalogError ? <p className="mt-2 text-red-200" role="alert">{props.toolCatalogError}</p> : null}</div></section></div>
 }
-function GroundingToggle({ label, detail, checked, onChange }: { label: string; detail: string; checked: boolean; onChange: (enabled: boolean) => void }): ReactElement { return <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2"><span><span className="block font-mono text-[10px] uppercase tracking-wider text-zinc-300">{label}</span><span className="block text-[11px] text-zinc-500">{detail} · {checked ? 'Enabled' : 'Disabled'}</span></span><input aria-label={`${label} grounding`} type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="size-4 accent-[#0F4DB8]" /></label> }
+function GroundingToggle({ label, detail, checked, disabled = false, onChange }: { label: string; detail: string; checked: boolean; disabled?: boolean; onChange: (enabled: boolean) => void }): ReactElement { return <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50"><span><span className="block font-mono text-[10px] uppercase tracking-wider text-zinc-300">{label}</span><span className="block text-[11px] text-zinc-500">{detail} · {checked ? 'Enabled' : 'Disabled'}</span></span><input aria-label={`${label} grounding`} type="checkbox" disabled={disabled} checked={checked} onChange={(event) => onChange(event.target.checked)} className="size-4 accent-[#0F4DB8]" /></label> }
 function GroundingControls({ note, children }: { note: string; children: React.ReactNode }): ReactElement { return <section className="space-y-2" aria-label="Grounding"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Grounding</p>{children}<p className="text-[11px] leading-relaxed text-zinc-500">{note}</p></section> }

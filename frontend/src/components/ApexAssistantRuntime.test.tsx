@@ -330,6 +330,80 @@ describe('ApexAssistantRuntime', () => {
     expect(fetchMock).toHaveBeenCalled()
   })
 
+  it('views an archived conversation without restoring it', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const archivedId = '00000000-0000-4000-8000-000000000031'
+    const archivedSummary = { ...summary, id: archivedId, title: 'Archived HUD', archived_at: '2026-08-17T12:00:00Z' }
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([archivedSummary])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([])
+      if (url.endsWith(`/api/v1/cortex/conversations/${archivedId}`) && init?.method === 'PATCH') throw new Error('Archived view must not restore the conversation.')
+      if (url.endsWith(`/api/v1/cortex/conversations/${archivedId}`)) return response({ ...archivedSummary, active_leaf_message_id: null, messages: [] })
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+    render(
+      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+        <ApexConversationRail className="block" />
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+    await user.click(await screen.findByRole('button', { name: 'Archived' }))
+    await user.click(await screen.findByRole('button', { name: 'Archived HUD' }))
+    await waitFor(() => expect(screen.getByText('APEX is ready. Start a session with a focused question.')).toBeInTheDocument())
+    expect(fetchMock).toHaveBeenCalled()
+  })
+
+  it('locks message mutation controls while an APEX turn is running', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const userId = '00000000-0000-4000-8000-000000000050'
+    const agentId = '00000000-0000-4000-8000-000000000051'
+    let resolveTurn: (value: Response) => void = () => undefined
+    const turnResponse = new Promise<Response>((resolve) => { resolveTurn = resolve })
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([summary])
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}`)) return response({ ...summary, active_leaf_message_id: agentId, messages: [
+        { id: userId, parent_message_id: null, role: 'user', content: 'Existing prompt', status: 'completed', created_at: '2026-08-17T12:00:00Z', response_metadata: null },
+        { id: agentId, parent_message_id: userId, role: 'agent', content: 'Existing answer', status: 'completed', created_at: '2026-08-17T12:00:01Z', response_metadata: {} },
+      ] })
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}/turns`) && init?.method === 'POST') return turnResponse
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+    render(<ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}><ApexAssistantThread /></ApexAssistantRuntime>)
+    await waitFor(() => expect(screen.getByText('Existing prompt')).toBeInTheDocument())
+    await user.type(screen.getByPlaceholderText('Ask APEX…'), 'New request')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Edit' }).every((button) => (button as HTMLButtonElement).disabled)).toBe(true))
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeDisabled()
+    resolveTurn(response({ answer: 'Completed.', tool_trace: [], tool_outputs: [], citations: [] }))
+    await waitFor(() => expect(screen.getByText('Completed.')).toBeInTheDocument())
+  })
+
+  it('treats a persisted pending turn as globally running after reload', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const userId = '00000000-0000-4000-8000-000000000060'
+    const agentId = '00000000-0000-4000-8000-000000000061'
+    const onRunningChange = vi.fn()
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([summary])
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}`)) return response({ ...summary, active_leaf_message_id: agentId, messages: [
+        { id: userId, parent_message_id: null, role: 'user', content: 'Persisted prompt', status: 'completed', created_at: '2026-08-17T12:00:00Z', response_metadata: null },
+        { id: agentId, parent_message_id: userId, role: 'agent', content: '', status: 'pending', created_at: '2026-08-17T12:00:01Z', response_metadata: null },
+      ] })
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    render(<ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }} onRunningChange={onRunningChange}><ApexAssistantThread /></ApexAssistantRuntime>)
+    await waitFor(() => expect(screen.getByText('Agent working')).toBeInTheDocument())
+    expect(onRunningChange).toHaveBeenCalledWith(true, 'panthera')
+    expect(screen.getByPlaceholderText('Ask APEX…')).toBeDisabled()
+  })
+
   it('does not initialize a transient thread when preflight rejects', async () => {
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
     let createCalls = 0

@@ -137,7 +137,7 @@ type HistoryLoadState = {
   failureUntil: Map<string, number>
 }
 
-function ThreadHistory({ children, getThreadIds, onConversationChangeRef, historyLoadStateRef, forceHistoryReloadRef }: { children?: ReactNode; getThreadIds: (remoteId: string) => Map<string, string>; onConversationChangeRef: React.MutableRefObject<((conversation: ConversationSummary | null) => void) | undefined>; historyLoadStateRef: React.MutableRefObject<HistoryLoadState>; forceHistoryReloadRef: React.MutableRefObject<boolean> }): ReactNode {
+function ThreadHistory({ children, getThreadIds, onConversationChangeRef, onPendingChangeRef, historyLoadStateRef, forceHistoryReloadRef }: { children?: ReactNode; getThreadIds: (remoteId: string) => Map<string, string>; onConversationChangeRef: React.MutableRefObject<((conversation: ConversationSummary | null) => void) | undefined>; onPendingChangeRef: React.MutableRefObject<((conversationId: string, agent: AgentKey, pending: boolean) => void) | undefined>; historyLoadStateRef: React.MutableRefObject<HistoryLoadState>; forceHistoryReloadRef: React.MutableRefObject<boolean> }): ReactNode {
   const aui = useAui()
   const history = useMemo<ThreadHistoryAdapter>(() => ({
     async load() {
@@ -154,6 +154,7 @@ function ThreadHistory({ children, getThreadIds, onConversationChangeRef, histor
         try {
           const detail = await requestJson<ConversationDetail>(API_ENDPOINTS.cortexConversation(remoteId))
           onConversationChangeRef.current?.(detail)
+          onPendingChangeRef.current?.(detail.id, detail.agent, detail.messages.some((message) => message.role === 'agent' && message.status === 'pending'))
           // A reload is authoritative: loaded backend UUIDs supersede any opaque
           // assistant-ui IDs that were generated during the previous local run.
           getThreadIds(remoteId).clear()
@@ -197,7 +198,7 @@ function ThreadHistory({ children, getThreadIds, onConversationChangeRef, histor
     },
     async append() {},
     async update() {},
-  }), [aui, forceHistoryReloadRef, getThreadIds, historyLoadStateRef, onConversationChangeRef])
+  }), [aui, forceHistoryReloadRef, getThreadIds, historyLoadStateRef, onConversationChangeRef, onPendingChangeRef])
   return <RuntimeAdapterProvider adapters={{ history }}>{children}</RuntimeAdapterProvider>
 }
 
@@ -210,6 +211,9 @@ type ApexAssistantComposerContextValue = {
   branchPersistenceError: string | null
   reloadThreads: () => Promise<void>
   threadListError: string | null
+  isTurnLocked: boolean
+  beginTurn: (agent: AgentKey) => boolean
+  finishTurn: () => void
 }
 
 const ApexAssistantComposerContext = createContext<ApexAssistantComposerContextValue | null>(null)
@@ -238,25 +242,37 @@ export function useApexAssistantComposer(composerOverride?: ApexComposerSubmitRu
   const beforeRun = context?.beforeRun
   const configRef = context?.configRef
   const markPreflightPassed = context?.markPreflightPassed
+  const beginTurn = context?.beginTurn
+  const finishTurn = context?.finishTurn
   const isRunning = useAuiState((state) => state.thread.isRunning)
   const isLoading = useAuiState((state) => state.thread.isLoading)
   if (!context) throw new Error('useApexAssistantComposer must be used inside ApexAssistantRuntime.')
   const composer = composerOverride ?? aui.composer
   const submit = useCallback(async (): Promise<boolean> => {
     const text = composer.getState().text.trim()
-    if (!text || isRunning || isLoading) return false
-    if (beforeRun && configRef && !await beforeRun(configRef.current)) return false
+    if (!text || isRunning || isLoading || !configRef || !beginTurn || !finishTurn) return false
+    if (!beginTurn(configRef.current.agent)) return false
+    try {
+      if (beforeRun && !await beforeRun(configRef.current)) {
+        finishTurn()
+        return false
+      }
+    } catch {
+      finishTurn()
+      return false
+    }
     if (!aui.threadListItem.getState().remoteId) {
       try {
         await aui.threadListItem.initialize()
       } catch {
+        finishTurn()
         return false
       }
     }
     markPreflightPassed?.()
     composer.send()
     return true
-  }, [aui, beforeRun, composer, configRef, isLoading, isRunning, markPreflightPassed])
+  }, [aui, beforeRun, beginTurn, composer, configRef, finishTurn, isLoading, isRunning, markPreflightPassed])
   return { submit, isRunning }
 }
 
@@ -327,6 +343,10 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
   const onConversationChangeRef = useRef(onConversationChange)
   const onRunningChangeRef = useRef(onRunningChange)
   const onResponseChangeRef = useRef(onResponseChange)
+  const pendingTurnRef = useRef<{ conversationId: string; agent: AgentKey } | null>(null)
+  const launchTurnRef = useRef(false)
+  const modelTurnRef = useRef(false)
+  const [isTurnLocked, setIsTurnLocked] = useState(false)
   // Host callbacks are intentionally read through refs so App polling and
   // diagnostics updates cannot recreate assistant-ui's remote adapter.
   useEffect(() => {
@@ -369,6 +389,31 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
   const listFailureRef = useRef<{ error: Error; until: number } | null>(null)
   const historyLoadStateRef = useRef<HistoryLoadState>({ inFlight: new Map(), failureUntil: new Map() })
   const forceHistoryReloadRef = useRef(false)
+  const syncTurnLock = useCallback((activeAgent?: AgentKey): void => {
+    const pending = pendingTurnRef.current
+    const running = launchTurnRef.current || modelTurnRef.current || pending !== null
+    setIsTurnLocked(running)
+    onRunningChangeRef.current?.(running, running ? (pending?.agent ?? activeAgent ?? configRef.current.agent) : null)
+  }, [])
+  const beginTurn = useCallback((agent: AgentKey): boolean => {
+    if (launchTurnRef.current || modelTurnRef.current || pendingTurnRef.current) return false
+    launchTurnRef.current = true
+    syncTurnLock(agent)
+    return true
+  }, [syncTurnLock])
+  const finishTurn = useCallback((): void => {
+    launchTurnRef.current = false
+    modelTurnRef.current = false
+    syncTurnLock()
+  }, [syncTurnLock])
+  const handlePendingChange = useCallback((conversationId: string, agent: AgentKey, pending: boolean): void => {
+    const current = pendingTurnRef.current
+    if (pending) pendingTurnRef.current = { conversationId, agent }
+    else if (current?.conversationId === conversationId) pendingTurnRef.current = null
+    syncTurnLock()
+  }, [syncTurnLock])
+  const onPendingChangeRef = useRef(handlePendingChange)
+  useEffect(() => { onPendingChangeRef.current = handlePendingChange }, [handlePendingChange])
 
   const adapter = useMemo<RemoteThreadListAdapter>(() => ({
     async list(): Promise<ApexThreadListResult> {
@@ -452,7 +497,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
       onConversationChangeRef.current?.(item)
       return { remoteId: item.id, status: item.archived_at ? 'archived' : 'regular', title: item.title, lastMessageAt: new Date(item.updated_at), custom: item }
     },
-    unstable_Provider: ({ children }: { children?: ReactNode }) => <ThreadHistory forceHistoryReloadRef={forceHistoryReloadRef} getThreadIds={getThreadIds} historyLoadStateRef={historyLoadStateRef} onConversationChangeRef={onConversationChangeRef}>{children}</ThreadHistory>,
+    unstable_Provider: ({ children }: { children?: ReactNode }) => <ThreadHistory forceHistoryReloadRef={forceHistoryReloadRef} getThreadIds={getThreadIds} historyLoadStateRef={historyLoadStateRef} onConversationChangeRef={onConversationChangeRef} onPendingChangeRef={onPendingChangeRef}>{children}</ThreadHistory>,
   }), [getThreadIds, onConversationChangeRef])
 
   const runtimeHook = useCallback(() => {
@@ -463,9 +508,20 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
         const user = options.messages.at(-1)
         if (!remoteId || !user || user.role !== 'user' || !options.unstable_assistantMessageId) throw new Error('Conversation is not ready.')
         const current = configRef.current
-        if (beforeRunRef.current && !preflightPassedRef.current && !await beforeRunRef.current(current)) throw new Error('This request did not pass APEX preflight.')
+        if (beforeRunRef.current && !preflightPassedRef.current) {
+          try {
+            if (!await beforeRunRef.current(current)) {
+              finishTurn()
+              throw new Error('This request did not pass APEX preflight.')
+            }
+          } catch (error) {
+            finishTurn()
+            throw error
+          }
+        }
         preflightPassedRef.current = false
-        onRunningChangeRef.current?.(true, current.agent)
+        modelTurnRef.current = true
+        syncTurnLock()
         try {
           const response = await requestJson<Record<string, unknown>>(API_ENDPOINTS.cortexConversationTurns(remoteId), {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -494,13 +550,13 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
           const message = error instanceof Error ? error.message : 'APEX request failed.'
           onResponseChangeRef.current?.(null, message)
           throw error
-        } finally { onRunningChangeRef.current?.(false, null) }
+        } finally { finishTurn() }
       },
     }
     // assistant-ui invokes this callback as a hook host for each active thread.
     // eslint-disable-next-line react-hooks/rules-of-hooks
     return useLocalRuntime(model, { maxSteps: 1 })
-  }, [getThreadIds])
+  }, [finishTurn, getThreadIds, syncTurnLock])
 
   const handleThreadIdChange = useCallback((nextThreadId: string | undefined): void => {
     setThreadId(nextThreadId)
@@ -509,6 +565,22 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
     if (!nextThreadId) onConversationChangeRef.current?.(null)
   }, [onConversationChangeRef])
   const runtime = useRemoteThreadListRuntime({ runtimeHook, adapter, threadId, onThreadIdChange: handleThreadIdChange })
+  useEffect(() => {
+    const pending = pendingTurnRef.current
+    if (!pending) return
+    let cancelled = false
+    const poll = async (): Promise<void> => {
+      try {
+        forceHistoryReloadRef.current = true
+        await runtime.threads.reloadMainThread()
+      } catch {
+        // Retain the lock while an authoritative pending turn cannot be read.
+      }
+      if (!cancelled && pendingTurnRef.current) window.setTimeout(() => { void poll() }, 1_500)
+    }
+    const timeout = window.setTimeout(() => { void poll() }, 1_500)
+    return () => { cancelled = true; window.clearTimeout(timeout) }
+  }, [isTurnLocked, runtime])
   const reloadThreads = useCallback(async (): Promise<void> => {
     forceListReloadRef.current = true
     await runtime.threads.reload()
@@ -517,7 +589,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
   const runBefore = useCallback(async (runConfig: ApexAssistantRunConfig): Promise<boolean> => {
     return beforeRunRef.current ? beforeRunRef.current(runConfig) : true
   }, [])
-  const composerContext = useMemo(() => ({ configRef, beforeRun: runBefore, markPreflightPassed }), [markPreflightPassed, runBefore])
+  const composerContext = useMemo(() => ({ configRef, beforeRun: runBefore, markPreflightPassed, isTurnLocked, beginTurn, finishTurn }), [beginTurn, finishTurn, isTurnLocked, markPreflightPassed, runBefore])
   const runtimeContext = useMemo(() => ({
     ...composerContext,
     persistActiveLeaf: (messageId: string) => branchPersistRef.current(messageId),
@@ -544,6 +616,7 @@ function GatedComposer({
   composer?: ApexAssistantComposerProps
 }): ReactNode {
   const aui = useAui()
+  const context = useContext(ApexAssistantComposerContext)
   const { submit } = useApexAssistantComposer(edit ? aui.composer : undefined)
   const queryActive = useAuiState((state) => state.thread.isRunning)
   const threadLoading = useAuiState((state) => state.thread.isLoading)
@@ -552,7 +625,7 @@ function GatedComposer({
     event.preventDefault()
     void submit()
   }
-  const blocked = disabled || threadLoading
+  const blocked = disabled || threadLoading || Boolean(context?.isTurnLocked)
   return <ComposerPrimitive.Root onSubmit={handleSubmit} className="relative border-t border-white/10 bg-black/20 p-3 sm:p-4">
     {!edit && composer && queryActive ? <CortexQueryRim /> : null}
     <div className="flex items-end gap-2">
@@ -587,6 +660,7 @@ function ApexAssistantMessage(): ReactNode {
     .map((part) => part.text)
     .join('\n')
   const selectBranch = (position: 'previous' | 'next'): void => {
+    if (context?.isTurnLocked) return
     context?.clearBranchPersistenceError()
     aui.message().switchToBranch({ position })
     queueMicrotask(() => {
@@ -597,7 +671,7 @@ function ApexAssistantMessage(): ReactNode {
   }
   if (status?.type === 'running') return null
   return <MessagePrimitive.Root className={role === 'user' ? 'flex justify-end' : 'max-w-5xl'}>
-    {editing && role === 'user' ? <GatedComposer edit disabled={composer?.disabled} /> : null}
+    {editing && role === 'user' ? <GatedComposer edit disabled={Boolean(composer?.disabled) || Boolean(context?.isTurnLocked)} /> : null}
     {editing && role === 'user' ? null : <>
     <div className={role === 'user'
       ? 'max-w-[85%] rounded-2xl rounded-br-md border border-[#0F4DB8]/35 bg-[#0F4DB8]/15 px-4 py-3 text-sm text-white'
@@ -606,8 +680,8 @@ function ApexAssistantMessage(): ReactNode {
       {role === 'assistant' && status?.type === 'incomplete' ? <ApexAssistantError /> : null}
       <div className="mt-2 flex items-center gap-2 font-mono text-[10px] text-zinc-500">
         <button type="button" onClick={() => void navigator.clipboard?.writeText(text)} className="hover:text-white">Copy</button>
-        {role === 'user' ? <button type="button" onClick={() => aui.message().composer().beginEdit()} className="hover:text-white">Edit</button> : <button type="button" onClick={() => aui.message().reload()} className="hover:text-white">Retry</button>}
-        {branchCount > 1 ? <><button type="button" aria-label="Previous branch" onClick={() => selectBranch('previous')} className="hover:text-white">‹</button><span>{branchNumber + 1}/{branchCount}</span><button type="button" aria-label="Next branch" onClick={() => selectBranch('next')} className="hover:text-white">›</button></> : null}
+        {role === 'user' ? <button type="button" disabled={context?.isTurnLocked} onClick={() => aui.message().composer().beginEdit()} className="hover:text-white disabled:cursor-not-allowed disabled:opacity-40">Edit</button> : <button type="button" disabled={context?.isTurnLocked} onClick={() => aui.message().reload()} className="hover:text-white disabled:cursor-not-allowed disabled:opacity-40">Retry</button>}
+        {branchCount > 1 ? <><button type="button" aria-label="Previous branch" disabled={context?.isTurnLocked} onClick={() => selectBranch('previous')} className="hover:text-white disabled:cursor-not-allowed disabled:opacity-40">‹</button><span>{branchNumber + 1}/{branchCount}</span><button type="button" aria-label="Next branch" disabled={context?.isTurnLocked} onClick={() => selectBranch('next')} className="hover:text-white disabled:cursor-not-allowed disabled:opacity-40">›</button></> : null}
       </div>
     </div>
     </>}
@@ -631,8 +705,11 @@ export function ApexAssistantThread({ disabled = false, renderAgent, composer }:
   </ThreadPrimitive.Root></ApexAssistantPresentationContext.Provider>
 }
 
-function ApexConversationRailItem({ disabled = false }: { disabled?: boolean }): ReactNode {
+function ApexConversationRailItem(): ReactNode {
   const aui = useAui()
+  const context = useContext(ApexAssistantComposerContext)
+  const threadLoading = useAuiState((state) => state.thread.isLoading)
+  const disabled = threadLoading || Boolean(context?.isTurnLocked)
   const renameTriggerRef = useRef<HTMLButtonElement>(null)
   const wasRenaming = useRef(false)
   const [renaming, setRenaming] = useState(false)
@@ -684,7 +761,7 @@ function ApexConversationRailItem({ disabled = false }: { disabled?: boolean }):
     }
   }
   return <ThreadListItemPrimitive.Root className="group flex items-center gap-1 rounded-md px-2 py-1 hover:bg-white/5">
-    {renaming ? <input autoFocus disabled={disabled} value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setRenaming(false); if (event.key === 'Enter') void rename() }} className="min-w-0 flex-1 bg-transparent text-xs text-white outline-none" /> : <ThreadListItemPrimitive.Trigger disabled={disabled} className="min-w-0 flex-1 truncate text-left text-xs text-zinc-300"><ThreadListItemPrimitive.Title /></ThreadListItemPrimitive.Trigger>}
+    {renaming ? <input autoFocus disabled={disabled} value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setRenaming(false); if (event.key === 'Enter') void rename() }} className="min-w-0 flex-1 bg-transparent text-xs text-white outline-none" /> : <button type="button" disabled={disabled} onClick={() => aui.threadListItem.switchTo({ unarchive: false })} className="min-w-0 flex-1 truncate text-left text-xs text-zinc-300 disabled:cursor-not-allowed disabled:opacity-40"><ThreadListItemPrimitive.Title /></button>}
     {!renaming ? <button ref={renameTriggerRef} type="button" disabled={disabled} aria-label={`Rename ${currentTitle}`} onClick={() => { setTitle(currentTitle); setRenaming(true) }} className="text-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">✎</button> : null}
     <button type="button" disabled={disabled} onClick={() => void archive()} className="text-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">{archived ? 'Restore' : 'Archive'}</button>
     {archived ? <button type="button" disabled={disabled} onClick={() => void deleteConversation()} className="rounded p-1 text-zinc-500 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-40" aria-label={`Delete ${currentTitle} permanently`} title="Delete permanently"><Trash2 className="size-3.5" aria-hidden /></button> : null}
@@ -696,12 +773,13 @@ export function ApexConversationRail({ className = 'hidden xl:block', disabled =
   const aui = useAui()
   const [archived, setArchived] = useState(false)
   const threadLoading = useAuiState((state) => state.thread.isLoading)
-  const interactionDisabled = disabled || threadLoading
   const isLoading = useAuiState((state) => state.threads.isLoading)
   const threadCount = useAuiState((state) => (archived ? state.threads.archivedThreadIds.length : state.threads.threadIds.length))
   const context = useContext(ApexAssistantComposerContext)
+  const interactionDisabled = disabled || threadLoading || Boolean(context?.isTurnLocked)
   const threadListError = context?.threadListError ?? null
-  return <aside className={`${className} w-56 shrink-0 border-r border-white/10 bg-black/15 p-3`} aria-label="Conversations"><div className="mb-3 flex items-center justify-between"><p className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">Conversations</p><ApexAssistantNewConversation disabled={interactionDisabled} /></div><div className="mb-2 flex gap-2"><button type="button" disabled={interactionDisabled} onClick={() => setArchived(false)} aria-pressed={!archived} className="text-[10px] text-zinc-400 hover:text-white disabled:opacity-40">Active</button><button type="button" disabled={interactionDisabled} onClick={() => setArchived(true)} aria-pressed={archived} className="text-[10px] text-zinc-400 hover:text-white disabled:opacity-40">Archived</button></div>{isLoading ? <p className="px-2 py-4 text-xs text-zinc-500" role="status">Loading conversations…</p> : threadListError ? <div className="space-y-2 px-2 py-4"><p className="text-xs text-red-300" role="alert">{threadListError}</p><button type="button" disabled={interactionDisabled} onClick={() => void (context?.reloadThreads() ?? aui.threads.reload())} className="text-[10px] text-[#7EB3FF] hover:text-white disabled:opacity-40">Retry</button></div> : threadCount === 0 ? <div className="space-y-2 px-2 py-4"><p className="text-xs text-zinc-500">No {archived ? 'archived' : 'active'} conversations.</p></div> : <ThreadListPrimitive.Root><ThreadListPrimitive.Items archived={archived} components={{ ThreadListItem: () => <ApexConversationRailItem disabled={interactionDisabled} /> }} /></ThreadListPrimitive.Root>}</aside>
+  const itemComponents = useMemo(() => ({ ThreadListItem: ApexConversationRailItem }), [])
+  return <aside className={`${className} w-56 shrink-0 border-r border-white/10 bg-black/15 p-3`} aria-label="Conversations"><div className="mb-3 flex items-center justify-between"><p className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">Conversations</p><ApexAssistantNewConversation disabled={interactionDisabled} /></div><div className="mb-2 flex gap-2"><button type="button" disabled={interactionDisabled} onClick={() => setArchived(false)} aria-pressed={!archived} className="text-[10px] text-zinc-400 hover:text-white disabled:opacity-40">Active</button><button type="button" disabled={interactionDisabled} onClick={() => setArchived(true)} aria-pressed={archived} className="text-[10px] text-zinc-400 hover:text-white disabled:opacity-40">Archived</button></div>{isLoading ? <p className="px-2 py-4 text-xs text-zinc-500" role="status">Loading conversations…</p> : threadListError ? <div className="space-y-2 px-2 py-4"><p className="text-xs text-red-300" role="alert">{threadListError}</p><button type="button" disabled={interactionDisabled} onClick={() => void (context?.reloadThreads() ?? aui.threads.reload())} className="text-[10px] text-[#7EB3FF] hover:text-white disabled:opacity-40">Retry</button></div> : threadCount === 0 ? <div className="space-y-2 px-2 py-4"><p className="text-xs text-zinc-500">No {archived ? 'archived' : 'active'} conversations.</p></div> : <ThreadListPrimitive.Root><ThreadListPrimitive.Items archived={archived} components={itemComponents} /></ThreadListPrimitive.Root>}</aside>
 }
 
 export function ApexAssistantNewConversation({ disabled = false }: { disabled?: boolean }): ReactNode {

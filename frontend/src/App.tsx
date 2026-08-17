@@ -284,12 +284,6 @@ export default function App(): ReactElement {
   )
 
   const {
-    cortexHistory,
-    isCortexQuerying: legacyIsCortexQuerying,
-    activeQueryAgent: legacyActiveQueryAgent,
-    cortexLatestTrace: legacyCortexLatestTrace,
-    cortexError: legacyCortexError,
-    cortexContextUsage: legacyCortexContextUsage,
     agentsStatus,
     agentsStatusHydrated,
     isLocalModelActionPending,
@@ -298,16 +292,16 @@ export default function App(): ReactElement {
     unloadLocalModel,
     verifyCloudAgent,
     refreshAgentsStatus,
-  } = useCortex(true, { devModeActive, sandboxMode, manageConversations: false })
-  const isCortexQuerying = legacyIsCortexQuerying || assistantRunning
-  const activeQueryAgent = assistantRunningAgent ?? legacyActiveQueryAgent
+  } = useCortex(true)
+  const isCortexQuerying = assistantRunning
+  const activeQueryAgent = assistantRunningAgent
   const cortexLatestTrace = assistantResponse && Array.isArray(assistantResponse.tool_trace)
-    ? assistantResponse.tool_trace as typeof legacyCortexLatestTrace
-    : legacyCortexLatestTrace
-  const cortexError = assistantResponseError ?? legacyCortexError
+    ? assistantResponse.tool_trace as Array<{ name: string; status: string; duration_ms: number }>
+    : []
+  const cortexError = assistantResponseError
   const cortexContextUsage = assistantResponse && assistantResponse.local_context_usage && typeof assistantResponse.local_context_usage === 'object'
-    ? assistantResponse.local_context_usage as typeof legacyCortexContextUsage
-    : legacyCortexContextUsage
+    ? assistantResponse.local_context_usage as { estimated_prompt_tokens: number; peak_prompt_tokens: number | null; context_window: number; history_messages_dropped: number }
+    : null
   const mcpRuntime = useMcpStatus(true)
   const mcpAvailabilityVersion = useMemo(() => {
     if (!mcpRuntime.status) return null
@@ -1854,7 +1848,7 @@ export default function App(): ReactElement {
             agentQueriesEnabled={Boolean(agentQueriesEnabled)}
             agentsStatus={agentsStatus}
             agentsStatusHydrated={agentsStatusHydrated}
-            history={cortexHistory}
+            history={[]}
             latestTrace={cortexLatestTrace}
             error={cortexError}
             contextUsage={cortexContextUsage}
