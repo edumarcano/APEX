@@ -11,7 +11,7 @@ APEX is local-first, not entirely offline. This reference separates behavior APE
 | HUD and API traffic | Yes, loopback only | No | No | Default behavior |
 | Telemetry collection | Snapshot and normalization | Enabled connector receives its request | Snapshot is memory-only | Disable external connectors or use demo mode |
 | Briefing synthesis | Selected, size-limited input is built locally | Panthera sends it to the selected cloud provider; Felis sends it to the local Ollama or llama.cpp runtime | Normal-mode transcript/digest in SQLite | Felis or Structured Digest |
-| Interactive Agent conversation | Browser tab owns history | Selected cloud/local Agent and explicitly selected APEX/MCP schemas receive required context; provider-hosted grounding remains a separate provider path | No server-side chat store | Local Agent with No APEX Tools or local runtime |
+| Interactive Agent conversation | Browser tab owns history | The selected Panthera or Felis model and explicitly selected APEX/MCP schemas receive required context; provider-hosted grounding remains a separate provider path | No server-side chat store | Felis with No APEX Tools |
 | Reminders | Selected Microsoft To Do list or local queue | Approved task fields go to Microsoft Graph | Small task cache and retained local outbox rows in SQLite | Leave the list unselected or integration disconnected |
 | Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected Agent | Authorization cache, selected-list cache, and action evidence | Leave integration disconnected |
 | Action controls | Proposal, lifecycle state, and execution/verification evidence | A supported native action receives its saved arguments after local approval | SQLite action and audit ledger | Demo mode does not read or mutate the action ledger |
@@ -41,13 +41,13 @@ loopback by default"]
 
     subgraph EXTERNAL["External services when enabled"]
         CONNECTORS["Weather, news, mail,<br/>calendar, markets, tasks"]
-        CLOUD_AGENTS["OpenAI, Google, SpaceXAI"]
+        CLOUD_PROVIDERS["Cloud model providers<br/>OpenAI · Google · SpaceXAI"]
         CLOUD_TTS["Google Cloud TTS"]
         MCP["MCP providers"]
     end
 
     API -->|"connector requests"| CONNECTORS
-    API -->|"selected prompt and context"| CLOUD_AGENTS
+    API -->|"selected prompt and context"| CLOUD_PROVIDERS
     API -->|"transcript text"| CLOUD_TTS
     API -->|"approved tool arguments"| MCP
 ```

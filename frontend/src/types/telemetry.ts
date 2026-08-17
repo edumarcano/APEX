@@ -263,7 +263,6 @@ export interface AgentStatus {
   native_tools: Record<string, boolean>
   display_name: string
   provider: CloudProvider | LocalRuntime
-  version: string
   sort_order: number
   capabilities: string[]
   runtime: AgentRuntime

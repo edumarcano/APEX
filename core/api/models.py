@@ -615,7 +615,6 @@ class AgentStatus(BaseModel):
     provider: Literal["ollama", "llama_cpp", "gemini", "openai", "xai"] = Field(
         description="Inference backend for this Agent.",
     )
-    version: str = Field(description="Agent configuration version string.")
     configured_model: str = Field(description="Configured provider model identifier.")
     sort_order: int = Field(default=0, ge=0, description="Stable HUD ordering for this Agent.")
     capabilities: list[str] = Field(

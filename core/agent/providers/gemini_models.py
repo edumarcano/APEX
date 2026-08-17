@@ -10,9 +10,6 @@ class GeminiModelProfile(BaseModel):
     runtime: ClassVar[Literal["cloud"]] = "cloud"
 
     display_name: str = Field(description="Visual name surfaced in HUD UI components.")
-    agent_version: str = Field(
-        description="Version of the named Apex Agent product identity."
-    )
     api_model: str = Field(description="Exact Gemini API model identifier string.")
     stability: Literal["stable", "preview", "experimental"] = Field(
         description="Release stage classification of the target model."

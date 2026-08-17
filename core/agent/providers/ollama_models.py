@@ -13,9 +13,6 @@ class OllamaModelProfile(BaseModel):
     provider: ClassVar[Literal["ollama"]] = "ollama"
     runtime: ClassVar[Literal["local"]] = "local"
     display_name: str = Field(description="Visual name surfaced in HUD UI components.")
-    agent_version: str = Field(
-        description="Version of the named Apex Agent product identity."
-    )
     api_model: str = Field(description="Exact Ollama model tag string.")
     stability: Literal["stable", "preview", "experimental"] = Field(
         description="Release stage classification of the target model."
@@ -80,7 +77,6 @@ class OllamaModelProfile(BaseModel):
     def runtime_model_id(self) -> str:
         """Provider runtime identifier used for load, unload, and residency checks."""
         return self.api_model
-
 
 
 class OllamaRuntimeConfig(BaseModel):

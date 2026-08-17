@@ -50,7 +50,6 @@ class ResponsesModelProfile:
         *,
         provider: ResponsesProviderKind,
         display_name: str,
-        agent_version: str,
         api_model: str,
         max_tool_turns: int,
         max_tool_calls: int,
@@ -63,7 +62,6 @@ class ResponsesModelProfile:
     ) -> None:
         self.provider = provider
         self.display_name = display_name
-        self.agent_version = agent_version
         self.api_model = api_model
         self.max_tool_turns = max_tool_turns
         self.max_tool_calls = max_tool_calls
@@ -76,7 +74,6 @@ class ResponsesModelProfile:
         return {
             "provider": self.provider,
             "display_name": self.display_name,
-            "agent_version": self.agent_version,
             "api_model": self.api_model,
             "max_tool_turns": self.max_tool_turns,
             "max_tool_calls": self.max_tool_calls,

@@ -71,7 +71,6 @@ class AgentSpec:
     display_name: str
     description: str
     identity_instruction: str
-    agent_version: str
     runtime: AgentRuntime
     capability_tags: tuple[str, ...]
 
@@ -85,7 +84,6 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "You are Apex Panthera, the cloud Apex Agent. "
             "You run through the operator's selected cloud provider and model."
         ),
-        agent_version="2.0",
         runtime="cloud",
         capability_tags=("Cloud", "Generalist", "Planning"),
     ),
@@ -97,7 +95,6 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "You are Apex Felis, the local Apex Agent. "
             "You run through the operator's selected local runtime and model."
         ),
-        agent_version="2.0",
         runtime="local",
         capability_tags=("Local", "Private", "On-device"),
     ),
@@ -248,7 +245,6 @@ def build_concrete_agent(
         )
         return GeminiModelProfile(
             display_name=spec.display_name,
-            agent_version=spec.agent_version,
             api_model=model_profile.model_id,
             stability=model_profile.stability,
             thinking_level=thinking,
@@ -269,7 +265,6 @@ def build_concrete_agent(
         )
         return OllamaModelProfile(
             display_name=spec.display_name,
-            agent_version=spec.agent_version,
             api_model=model_profile.model_id,
             stability=model_profile.stability,
             default_temperature=runtime.default_temperature,
@@ -296,7 +291,6 @@ def build_concrete_agent(
         return build_llama_cpp_profile(
             model_profile.model_id,
             display_name=spec.display_name,
-            agent_version=spec.agent_version,
             api_model=model_profile.model_id,
             stability=model_profile.stability,
             max_tool_turns=model_profile.max_tool_turns,
@@ -317,7 +311,6 @@ def build_concrete_agent(
     return ResponsesModelProfile(
         provider=model_profile.provider,  # type: ignore[arg-type]
         display_name=spec.display_name,
-        agent_version=spec.agent_version,
         api_model=model_profile.model_id,
         max_tool_turns=model_profile.max_tool_turns,
         max_tool_calls=model_profile.max_tool_calls,
@@ -347,7 +340,6 @@ def build_agent_used_metadata(
     spec = AGENT_SPECS[agent_key]
     metadata: dict[str, Any] = {
         "key": agent_key,
-        "version": spec.agent_version,
         "provider": provider,
         "configured_model": configured_model,
         "resolved_model": resolved_model or configured_model,

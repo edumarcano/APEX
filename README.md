@@ -12,7 +12,7 @@ APEX started as a small, fun experiment: could I build something that gave me a 
 
 Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, and Apex Agent work into one deliberate workspace. It turns those signals into Home telemetry, concise briefings, and Agent queries while keeping the local machine, not a hosted account, at the center of the system.
 
-APEX has two main workspaces: Home, which shows telemetry and briefings, and Cortex, which lets you work with configured Apex Agents. Telemetry means structured status collected from connected services; a briefing summarizes that status; and an Agent query is a request sent to one of the configured Agents.
+APEX has two main workspaces: Home, which shows telemetry and briefings, and Cortex, which is where I work with Apex Panthera and Apex Felis. Telemetry means structured status collected from connected services; a briefing summarizes that status; and an Agent query is a request sent to the selected Agent.
 
 <p align="center">
   <img
@@ -34,18 +34,18 @@ APEX collects enabled weather, calendar, inbox, news, sports, reminder, and mark
 
 ### Produces briefings on my terms
 
-A briefing can use a cloud Agent, a local Agent, or Structured Digest, a deterministic briefing that does not use a model. The cloud Agent falls back to the local Agent and then Structured Digest; an explicit local Agent request falls directly to Structured Digest. All routes receive the same selected, size-limited facts, and a provider failure ends in a useful model-free result instead of a blank screen.
+A briefing can use Panthera, Felis, or Structured Digest, a deterministic briefing that does not use a model. Panthera falls back to Felis and then Structured Digest; an explicit Felis request falls directly to Structured Digest. All routes receive the same selected, size-limited facts, and a provider failure ends in a useful model-free result instead of a blank screen.
 
 ### Operates Apex Agents
 
 Agent queries can use approved read tools for live data, briefing history, Gmail, Microsoft To Do, and optional MCP (Model Context Protocol) providers. Reads run directly. Supported native writes create action proposals that require local approval and verification before they are considered complete.
 
-After a Microsoft To Do list is selected, its incomplete tasks become the Home reminder source. SQLite keeps a small cache for stale display and an offline queue for local reminders that still need to sync. The Home Reminders panel can edit, complete, delete, reopen, and review completed tasks directly without adding the Agent approval step. Cloud and local Agents use the same Tools selector, while each Agent's tool policy and MCP permissions remain separate.
+After a Microsoft To Do list is selected, its incomplete tasks become the Home reminder source. SQLite keeps a small cache for stale display and an offline queue for local reminders that still need to sync. The Home Reminders panel can edit, complete, delete, reopen, and review completed tasks directly without adding the Agent approval step. Panthera and Felis use the same Tools selector, while each Agent's tool policy and MCP permissions remain separate.
 
 <p align="center">
   <img
   src="docs/assets/apex-cortex.png"
-  alt="APEX Cortex workspace showing an Agent response, tool trace, structured reminder results, effort selection, and context controls"
+  alt="APEX Cortex workspace showing an Agent response, tool trace, structured reminder results, reasoning selection, and context controls"
   width="900"
 >
 </p>
@@ -63,7 +63,7 @@ The HUD exposes connector health, CPU and memory use, active model state, briefi
 - **Local-first:** FastAPI, the React HUD, SQLite, runtime settings, and the default Ollama endpoint stay on the machine and bind to loopback.
 - **Independent features:** Telemetry, briefing generation, Agent work, and voice delivery can fail independently instead of taking the whole HUD down.
 - **Safer model input:** Connectors produce structured results, and briefing models receive only selected facts marked as untrusted data.
-- **Cloud, local, and model-free briefings:** APEX can use cloud or local Agents and always keeps Structured Digest as the final fallback.
+- **Cloud, local, and model-free briefings:** APEX can use Panthera, Felis, or Structured Digest and always keeps Structured Digest as the final fallback.
 - **One local model at a time:** APEX avoids hidden local-inference queues and keeps model loading visible.
 - **Local storage:** SQLite keeps briefing history, the reminder cache and offline queue, and the durable action ledger. Browser-held Agent conversations disappear on reload.
 - **Visible failures:** Readiness checks, connector health, stable errors, run IDs, and preflight warnings make degraded states easier to understand.
@@ -80,7 +80,7 @@ flowchart LR
     HUD --> A["Agent queries"]
     HUD --> V["Voice delivery"]
     T --> C["Local and external connectors"]
-    B --> M["Cloud Agent/OpenAI · Local Agent/llama.cpp · Structured Digest"]
+    B --> M["Panthera/OpenAI · Felis/llama.cpp · Structured Digest"]
     A --> P["Native and approved MCP capabilities"]
     API --> DB["SQLite"]
 ```
@@ -136,7 +136,7 @@ The CLI talks only to APEX's loopback API at `127.0.0.1:8000`; it does not start
 
 APEX is local-first, not fully offline. Enabled connectors and selected cloud model or speech providers receive the data required for their operation. The API has no authentication and intentionally binds only to `127.0.0.1`; CORS is not an access-control boundary.
 
-Use a local Agent or Structured Digest to avoid sending briefing data to a cloud provider. Review [Privacy and Data Boundaries](docs/privacy.md) before enabling personal connectors or cloud processing.
+Use Felis or Structured Digest to avoid sending briefing data to a cloud model provider. Review [Privacy and Data Boundaries](docs/privacy.md) before enabling personal connectors or cloud processing.
 
 ## Documentation
 
@@ -148,7 +148,7 @@ Use a local Agent or Structured Digest to avoid sending briefing data to a cloud
 | [API](docs/api.md) | Use the public HTTP workflows and understand their behavioral contracts |
 | [CLI](docs/cli.md) | Use the running local backend from a terminal without duplicating backend logic |
 | [Engineering Decisions](docs/decisions.md) | Understand why important technical choices and trade-offs were made |
-| [Identity and Naming](docs/identity-and-naming.md) | Understand the APEX name, logo symbolism, product vocabulary, and Apex Agent taxonomy |
+| [Identity and Naming](docs/identity-and-naming.md) | Understand the APEX name, logo symbolism, product vocabulary, and Apex Agent names |
 | [Privacy](docs/privacy.md) | See what stays local, what can leave the machine, and what is persisted |
 | [Design System](docs/design-system.md) | Preserve the HUD's visual language, state semantics, responsiveness, and accessibility |
 | [Roadmap](docs/roadmap.md) | Follow APEX's product and architectural evolution and its planned direction |

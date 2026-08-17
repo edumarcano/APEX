@@ -109,9 +109,6 @@ class LlamaCppModelProfile(BaseModel):
     runtime: ClassVar[Literal["local"]] = "local"
 
     display_name: str = Field(description="Visual name surfaced in HUD UI components.")
-    agent_version: str = Field(
-        description="Version of the named Apex Agent product identity."
-    )
     api_model: str = Field(
         description="Configured GGUF model identity shown in Agent metadata."
     )
@@ -283,7 +280,6 @@ def build_llama_cpp_profile(
     model_id: str,
     *,
     display_name: str,
-    agent_version: str,
     api_model: str,
     stability: Literal["stable", "preview", "experimental"],
     max_tool_turns: int,
@@ -304,7 +300,6 @@ def build_llama_cpp_profile(
         final_answer_max_tokens = runtime.final_answer_max_tokens
     return LlamaCppModelProfile(
         display_name=display_name,
-        agent_version=agent_version,
         api_model=api_model,
         stability=stability,
         default_temperature=runtime.default_temperature,

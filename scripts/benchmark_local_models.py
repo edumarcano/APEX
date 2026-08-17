@@ -570,7 +570,6 @@ def _build_candidate_configuration(
     profile = build_llama_cpp_profile(
         DEFAULT_FELIS_MODEL,
         display_name="Benchmark candidate",
-        agent_version="benchmark-v0",
         api_model=model_name,
         stability=felis_profile.stability,
         max_tool_turns=felis_profile.max_tool_turns,
@@ -958,7 +957,6 @@ def score_tool_case(
                 if invocation.name == name and invocation.schema_valid:
                     valid_call_count += 1
                 continue
-        # A tool outside the attached schemas cannot be schema-valid here.
         invocation_index += 0
 
     schema_validity = valid_call_count == total_call_count
@@ -1152,9 +1150,6 @@ class BenchmarkRunner:
     ) -> tuple[AgentQueryResponse, float]:
         request = AgentQueryRequest(
             prompt=prompt,
-            # AgentQueryRequest intentionally accepts only product Agent keys.
-            # Candidates use the local system prompt and omit agent_key below;
-            # this value is never used to resolve a candidate profile.
             agent="felis",
             selected_tool_names=[descriptor.name for descriptor in descriptors],
         )
@@ -1182,7 +1177,6 @@ class BenchmarkRunner:
         self,
         configuration: BenchmarkConfiguration,
     ) -> tuple[bool, str | None]:
-        """Wait for the next model's resource gate to be stably open."""
         poll_seconds = self.resource_recovery_poll_seconds
         max_checks = max(
             self.resource_recovery_stable_samples,
@@ -1208,7 +1202,6 @@ class BenchmarkRunner:
         return False, last_reason or "resource gate did not remain stable after unload"
 
     def _unload_known_residents(self) -> None:
-        """Unload only recognized models, then verify an empty runtime."""
         _, residents = inspect_runtime_residents(self._allowed_refs)
         active = get_active_local_model()
         if active is not None:
@@ -1493,8 +1486,6 @@ class BenchmarkRunner:
             run["load_seconds"] = (
                 0.0 if reused else round(time.perf_counter() - load_started, 4)
             )
-            # switch_local_model succeeded, so the benchmark owns the target
-            # even if post-load verification rejects its reported state.
             self._owned_model = True
             self._owned_ref = configuration.runtime_ref
             self._verify_target_resident(configuration)
@@ -1551,7 +1542,6 @@ class BenchmarkRunner:
         return run
 
     def _cleanup_owned_model(self) -> None:
-        """Unload the benchmark-owned model and verify no model remains."""
         owned_ref = self._owned_ref
         if not self._owned_model or owned_ref is None:
             return
@@ -1606,7 +1596,6 @@ class BenchmarkRunner:
             )
 
     def run(self) -> dict[str, Any]:
-        """Run all configurations under one process-wide local execution slot."""
         result: dict[str, Any] = {
             "benchmark_version": 0,
             "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -1722,7 +1711,6 @@ class _BenchmarkLock:
 
 
 def render_markdown(result: Mapping[str, Any]) -> str:
-    """Render a compact human-readable companion report."""
     system = result.get("system", {})
     lines = [
         "# APEX Local Model Benchmark v0",
@@ -1839,7 +1827,6 @@ def _display_bytes(value: Any) -> str:
 
 
 def write_results(result: Mapping[str, Any], output_path: Path) -> tuple[Path, Path]:
-    """Write JSON and the adjacent Markdown summary."""
     json_path = output_path
     if json_path.suffix.lower() != ".json":
         json_path = json_path.with_suffix(".json")
@@ -1854,7 +1841,6 @@ def write_results(result: Mapping[str, Any], output_path: Path) -> tuple[Path, P
 
 
 def render_terminal_summary(result: Mapping[str, Any]) -> str:
-    """Return the concise terminal summary shown after a run."""
     lines = [
         "APEX LOCAL MODEL BENCHMARK v0",
         "",

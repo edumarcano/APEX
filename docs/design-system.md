@@ -2,7 +2,7 @@
 
 This reference defines the visual and interaction language for contributors working on the React HUD. It explains the design intent and reusable rules rather than individual component implementation; runtime ownership belongs in [Architecture](architecture.md), and frontend code conventions live in the [Frontend Guide](../frontend/README.md).
 
-The meaning of the APEX mark and its relationship to the product and Agent taxonomy is documented in [Identity and Naming](identity-and-naming.md).
+The meaning of the APEX mark and its relationship to the product and Agent names is documented in [Identity and Naming](identity-and-naming.md).
 
 ## Visual Direction
 
@@ -155,17 +155,19 @@ Use uppercase text and wide tracking primarily for short operational labels. Avo
 
 ### Unified Tools selector
 
-The Tools control is shared by cloud and local Agents. Its collapsed state shows the active profile or `Custom`, selected-tool count, and cumulative estimated schema tokens. Its expanded surface provides profile selection, search, APEX-family and MCP-server toggles, individual tool overrides, disabled availability reasons, group subtotals, select-all/clear actions, and the estimated next-request breakdown. Selection changes only which tools are offered to the Agent; MCP settings remain a separate permission boundary.
+The Tools control is shared by Panthera and Felis. Its collapsed state shows the active profile or `Custom`, selected-tool count, and cumulative estimated schema tokens. Its expanded surface provides profile selection, search, APEX-family and MCP-server toggles, individual tool overrides, disabled availability reasons, group subtotals, select-all/clear actions, and the estimated next-request breakdown. Selection changes only which tools are offered to the Agent; MCP settings remain a separate permission boundary.
 
 The local context meter uses monospace tabular numerals and displays used/available tokens. Neutral text is the default; amber is reserved for at least 80% utilization. Token estimates are diagnostics, not progress animation, and must remain readable without color.
 
-### Cortex Agent catalog
+### Cortex Agent and model selector
 
-The Cortex inspector is the detailed Agent-configuration surface. Show one selected `Apex <Agent>` card for Panthera or Felis; its popover presents catalog-provided names, descriptions, selected model metadata, the selected provider/runtime, model catalogs, ordered tags, availability, and compact pricing. The Home command rail may expose the same catalog through a compact Agent trigger, but it does not duplicate inspector-owned effort, grounding, local-tool, or lifecycle controls. The composer shows only the short Agent name and a send control. Agent marks, accent color, responsive card layout, and popover behavior are frontend presentation concerns; catalog content is backend-owned.
+Cortex shows Panthera or Felis first, with model selection and model-supported controls underneath the selected Agent. The Agent card can show the selected model, its provider or local runtime, availability, and compact pricing, while the model catalog stays in the Agent's popover. Provider and runtime are displayed as information derived from the model, not as separate routing controls.
 
-Treat `Configured` as credentials present but not provider-verified. Display verification and runtime-failure states with text and iconography, not color alone. `Verify access` remains a secondary action inside an expanded cloud card and must not be nested inside its Agent-selection button.
+The selected model determines which reasoning controls, hosted tools, local context options, and lifecycle controls make sense. Home may offer a smaller Agent trigger, but those detailed model controls stay in Cortex. The composer shows only the short Agent name and a send control.
 
-Stability is a reusable catalog treatment: **Preview** uses amber, **Experimental** uses cyan, and **Stable** has no stability badge. Apply these semantics wherever Agent catalog stability is shown; do not infer stability from the provider, runtime, or Agent mark.
+Treat `Configured` as credentials present but not provider-verified. Display verification and runtime-failure states with text and iconography, not color alone. `Verify access` remains a secondary action inside an expanded Panthera card and must not be nested inside its Agent-selection button.
+
+Stability belongs to the model. **Preview** uses amber, **Experimental** uses cyan, and **Stable** has no stability badge. Do not infer model stability from the provider, runtime, or Agent name.
 
 Weather conditions, market trends, provider badges, tool-result cards, demo/developer indicators, and data visualizations may use local palettes beyond the global state families.
 

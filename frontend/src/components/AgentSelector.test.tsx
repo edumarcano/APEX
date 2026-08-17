@@ -17,7 +17,6 @@ function agent(overrides: Partial<AgentStatus> = {}): AgentStatus {
     capabilities: ['Generalist'],
     native_tools: {},
     provider: 'openai',
-    version: '2.0',
     runtime: 'cloud',
     model_stability: stability,
     reasoning_options: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'],
