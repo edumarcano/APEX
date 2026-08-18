@@ -241,7 +241,14 @@ class RetrievalService:
             fused = sorted(candidates, key=lambda item_id: (-(1 / (60 + lexical_rank[item_id]) if item_id in lexical_rank else 0.0) - (1 / (60 + semantic_rank[item_id]) if item_id in semantic_rank else 0.0), item_id))
             by_id = all_hits
             return [
-                RetrievalHit(**{**by_id[item_id].__dict__, "score": (1 / (60 + lexical_rank[item_id]) if item_id in lexical_rank else 0.0) + (1 / (60 + semantic_rank[item_id]) if item_id in semantic_rank else 0.0), "semantic_score": semantic_score.get(item_id)})
+                RetrievalHit(
+                    **{
+                        **by_id[item_id].__dict__,
+                        "score": (1 / (60 + lexical_rank[item_id]) if item_id in lexical_rank else 0.0) + (1 / (60 + semantic_rank[item_id]) if item_id in semantic_rank else 0.0),
+                        "lexical_score": lexical_score.get(item_id),
+                        "semantic_score": semantic_score.get(item_id),
+                    }
+                )
                 for item_id in fused[: max(1, min(limit, 100))]
                 if item_id in by_id
             ]
