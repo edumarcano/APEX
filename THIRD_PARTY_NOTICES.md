@@ -38,6 +38,7 @@ APEX also uses third-party components under permissive or weak-copyleft licenses
 - python-dotenv: BSD-3-Clause
 - pygame-ce: LGPL-2.1-or-later
 - pyttsx3: MPL-2.0
+- FastEmbed and the pinned `BAAI/bge-small-en-v1.5` retrieval model: MIT
 
 These components remain subject to their respective upstream license terms.
 

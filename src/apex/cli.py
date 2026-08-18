@@ -128,6 +128,16 @@ def build_parser() -> argparse.ArgumentParser:
     ask.add_argument("--profile", help="Saved or built-in tool profile ID.")
     ask.set_defaults(handler=_ask)
 
+    context = commands.add_parser("context", help="Inspect or prepare local retrieval.")
+    _add_json_option(context)
+    context_commands = context.add_subparsers(dest="context_command", required=True)
+    context_status = context_commands.add_parser("status", help="Show retrieval readiness.")
+    _add_json_option(context_status)
+    context_status.set_defaults(handler=_context_status)
+    context_prepare = context_commands.add_parser("prepare", help="Download and prepare the local embedding model.")
+    _add_json_option(context_prepare)
+    context_prepare.set_defaults(handler=_context_prepare)
+
     briefing = commands.add_parser("briefing", help="Refresh and generate a briefing.")
     _add_json_option(briefing)
     briefing.add_argument(
@@ -250,6 +260,28 @@ def _ask(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
         )
         return 1
     _emit(payload, json_mode, _render_ask)
+    return 0
+
+
+def _context_status(_args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    payload = _require_mapping(
+        client.request("GET", "/api/v1/cortex/retrieval/status"),
+        "retrieval status",
+    )
+    _emit(payload, json_mode, _render_context_status)
+    return 0
+
+
+def _context_prepare(_args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    payload = _require_mapping(
+        client.request(
+            "POST",
+            "/api/v1/cortex/retrieval/prepare",
+            long_running=True,
+        ),
+        "retrieval preparation response",
+    )
+    _emit(payload, json_mode, _render_context_status)
     return 0
 
 
@@ -416,6 +448,21 @@ def _render_ask(payload: object) -> None:
             print(f"\n{message}")
         if isinstance(action_id, str):
             print(f"Action ID: {action_id}")
+
+
+def _render_context_status(payload: object) -> None:
+    if not isinstance(payload, dict):
+        print("APEX returned an unexpected retrieval status.")
+        return
+    mode = payload.get("mode", "unknown")
+    state = payload.get("state", "unknown")
+    print(f"Retrieval: {mode} ({state})")
+    print(f"Indexed items: {payload.get('indexed_items', 0)}")
+    print(f"Embeddings: {payload.get('embedding_items', 0)}")
+    print(f"Pending items: {payload.get('pending_items', 0)}")
+    error = payload.get("error_category")
+    if isinstance(error, str) and error:
+        print(f"Status: {error}")
 
 
 def _render_briefing(payload: object) -> None:

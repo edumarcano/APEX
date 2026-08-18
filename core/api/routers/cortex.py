@@ -44,6 +44,7 @@ from core.conversations.store import (
     ConversationConflictError,
     ConversationNotFoundError,
 )
+from core.retrieval import RetrievalBusyError, get_retrieval_service
 from core.api.models import (
     AgentStatus,
     CloudAgentVerificationResponse,
@@ -55,6 +56,8 @@ from core.api.models import (
     ToolProfileUpdateRequest,
     ToolPreflightRequest,
     ToolProfilesResponse,
+    RetrievalPrepareResponse,
+    RetrievalStatusResponse,
 )
 
 router = APIRouter(tags=["cortex"])
@@ -134,6 +137,25 @@ def _conversation_error(error: Exception) -> HTTPException:
     if isinstance(error, ConversationBusyError):
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="turn_in_progress")
     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error))
+
+
+@router.get(
+    "/api/v1/cortex/retrieval/status",
+    response_model=RetrievalStatusResponse,
+)
+def retrieval_status() -> RetrievalStatusResponse:
+    return RetrievalStatusResponse(**get_retrieval_service().status().as_dict())
+
+
+@router.post(
+    "/api/v1/cortex/retrieval/prepare",
+    response_model=RetrievalPrepareResponse,
+)
+def retrieval_prepare() -> RetrievalPrepareResponse:
+    try:
+        return RetrievalPrepareResponse(**get_retrieval_service().prepare().as_dict())
+    except RetrievalBusyError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="retrieval_prepare_in_progress") from exc
 
 
 @router.get("/api/v1/cortex/conversations", response_model=list[ConversationSummary])
@@ -252,6 +274,11 @@ def conversation_turn(conversation_id: str, payload: ConversationTurnRequest) ->
             tool_profile_id=tool_profile_id,
         )
         if replayed:
+            if agent_message.status == "completed":
+                try:
+                    get_retrieval_service().index_turn(user, agent_message)
+                except Exception:
+                    pass
             return _turn_result(parsed_id, user, agent_message)
     except (ConversationNotFoundError, ConversationConflictError) as exc:
         raise _conversation_error(exc) from exc
@@ -291,6 +318,13 @@ def conversation_turn(conversation_id: str, payload: ConversationTurnRequest) ->
         status="failed" if response.error else "completed",
         response_metadata=response_data,
     )
+    if completed.status == "completed":
+        try:
+            get_retrieval_service().index_turn(user, completed)
+        except Exception:
+            # Retrieval is a repairable secondary index and must not change the
+            # established successful-turn contract.
+            pass
     return _turn_result(parsed_id, user, completed)
 
 

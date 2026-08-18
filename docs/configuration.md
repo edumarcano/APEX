@@ -198,7 +198,13 @@ Machine-local overrides may enable the backend without committing host or path d
 
 #### External and managed router modes
 
-APEX does not install, bundle, or update llama.cpp, and it does not download model weights. Two operator modes are supported:
+APEX does not install, bundle, or update llama.cpp, and it does not download
+llama.cpp model weights. Retrieval has a separate explicit `apex context prepare`
+operation for downloading the optional FastEmbed embedding model into the
+ignored `weights/fastembed/` cache; this does not affect llama.cpp runtime
+management. The pinned retrieval model is `BAAI/bge-small-en-v1.5` (384
+dimensions, approximately 67 MB, MIT license) through `fastembed==0.8.0`.
+Two operator modes are supported:
 
 - **External mode** (`managed: false`): you start `llama-server` yourself. APEX only talks to the configured loopback URL over HTTP.
 - **Managed mode** (`managed: true`): when llama.cpp is enabled and the router is unreachable, APEX starts your installed executable with the configured preset. If the router is already reachable, APEX uses it as an external server and does not spawn a duplicate process. APEX terminates only a child process it launched, never an externally started server.

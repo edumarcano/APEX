@@ -16,7 +16,7 @@ Switching between Home and Cortex changes only what is visible. It does not canc
 
 ## Architecture in 60 seconds
 
-`launcher.py` starts two loopback-bound child processes: FastAPI on port 8000 and a static server for the compiled React HUD on port 5500. The browser owns the interactive session; FastAPI owns connectors, runtime settings, model and tool execution, speech, and SQLite persistence.
+`launcher.py` starts two loopback-bound child processes: FastAPI on port 8000 and a static server for the compiled React HUD on port 5500. The browser owns the interactive session; FastAPI owns connectors, runtime settings, model and tool execution, speech, and SQLite persistence. The retrieval domain owns local FTS and optional embedding indexes in that same database.
 
 The HUD starts in standby. Activation, telemetry refresh, briefing generation, Agent requests, and voice delivery are separate operations. The full-run trigger remains available when one request should refresh telemetry, generate and persist a briefing, and optionally start speech.
 
@@ -35,7 +35,7 @@ flowchart TB
     Telemetry --> Connectors["Local + external connectors"]
     Briefing --> Models["OpenAI · llama.cpp · Structured Digest"]
     Cortex --> Capabilities["Native + approved MCP capabilities"]
-    API --> SQLite["SQLite briefing, reminder-cache, and action state"]
+    API --> SQLite["SQLite briefing, conversations, retrieval, reminder-cache, and action state"]
 ```
 
 | Runtime path | Trigger | Primary owner | Durable state | External work |
@@ -44,6 +44,7 @@ flowchart TB
 | Telemetry | Refresh all or selected connectors | Process-local telemetry service | Current snapshot is memory-only | Enabled connectors |
 | Briefing | Current snapshot or full trigger | Briefing orchestration | Normal-mode briefing ledger | Panthera/OpenAI, Felis/llama.cpp, or Structured Digest |
 | Cortex query | User prompt | `ApexAssistantRuntime` bridge plus backend turn execution | SQLite conversation tree and response metadata | Selected Agent and approved capabilities |
+| Retrieval | Explicit status/prepare or completed conversation turn | Retrieval service | SQLite retrieval items, FTS mirror, and optional vectors | None during normal search; explicit local model preparation only |
 | Voice | Manual or automatic delivery | Voice hook and backend speaker | None | Selected TTS engine |
 | Settings | Runtime Settings save | Runtime settings store | `config.local.json` | MCP reconciliation when provider enablement changes |
 
@@ -269,6 +270,7 @@ Delivery mode controls orchestration:
 - the most recent 50 normal-mode briefings;
 - structured digests and runtime metadata, including `run_id` and snapshot identity;
 - action proposals and their ordered audit events.
+- durable Cortex conversations plus the retrieval item's FTS mirror and optional local embeddings.
 
 Action records keep the Agent, capability, proposal arguments, target, risk, summary, state, timestamps, and proposal hash. Transition events keep limited execution or verification evidence and stable result codes; each state change and matching event commit together.
 
@@ -279,6 +281,13 @@ The action lifecycle is `proposed`, `approved`, `executing`, `verifying`, and `v
 FastAPI owns one normal-mode `ActionService`, recovers interrupted records before requests are accepted, and clears it at shutdown. Proposal creation never invokes a capability handler. The atomic execution claim ensures only one concurrent approval can execute an action. Demo mode creates, executes, expires, and reads no actions.
 
 The database is not encrypted by APEX. Filesystem and operating-system account protections are the at-rest boundary.
+
+Retrieval preparation is an explicit operator action. APEX keeps conversation
+text local, does not download embedding weights during startup or normal search,
+and falls back to SQLite FTS when the ignored `weights/fastembed/` cache is
+missing or unusable. Retrieval status exposes only stable categories; it never
+returns request metadata, response metadata, tool payloads, vectors, or raw
+model exceptions.
 
 ## Concurrency and failure model
 

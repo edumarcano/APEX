@@ -22,6 +22,12 @@ uv run apex actions verify <action-id>
 
 `status` checks backend readiness, including configuration and database access, and shows the effective saved Agent and runtime that an `ask` command will use when `--agent` is omitted. `agents` lists the visible Agents and their current availability. Each `ask` invocation creates one persisted CLI conversation and submits one turn; it does not attach the current HUD snapshot. When `--profile` is omitted, the backend chooses the saved default profile for the selected Agent.
 
+`context status` shows local retrieval mode, indexing counts, pending messages,
+and any safe degraded category. `context prepare` explicitly prepares the local
+FastEmbed model and backfills semantic vectors; it may take a while and is the
+only CLI command that can download model files. Both commands talk only to the
+loopback API and support `--json`.
+
 `briefing` uses the normal full refresh-and-generate route. Omitting `--mode` uses the saved briefing default; supported overrides are `panthera`, `felis`, and `structured_digest`.
 
 ## Actions
