@@ -800,6 +800,24 @@ class ToolProfilesResponse(BaseModel):
     affected_profile_id: str | None = None
 
 
+class RetrievalStatusResponse(BaseModel):
+    """Safe local retrieval readiness and indexing counters."""
+
+    enabled: bool
+    mode: Literal["disabled", "fts_only", "semantic"]
+    state: Literal["disabled", "unprepared", "preparing", "ready", "degraded"]
+    indexed_items: int = Field(default=0, ge=0)
+    embedding_items: int = Field(default=0, ge=0)
+    pending_items: int = Field(default=0, ge=0)
+    last_prepared_at: str | None = None
+    error_category: str | None = None
+    model_fingerprint: str | None = None
+
+
+class RetrievalPrepareResponse(RetrievalStatusResponse):
+    """Result of the explicit local model preparation operation."""
+
+
 class CloudAgentVerificationResponse(BaseModel):
     agent: str
     status: AgentAvailabilityStatus

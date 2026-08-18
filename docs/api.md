@@ -54,6 +54,8 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | PATCH | `/api/v1/cortex/conversations/{conversation_id}` | Update one conversation |
 | DELETE | `/api/v1/cortex/conversations/{conversation_id}` | Permanently delete one archived conversation |
 | POST | `/api/v1/cortex/conversations/{conversation_id}/turns` | Run one durable Cortex turn |
+| GET | `/api/v1/cortex/retrieval/status` | Show local retrieval readiness and indexing state |
+| POST | `/api/v1/cortex/retrieval/prepare` | Explicitly prepare the local embedding model and backfill vectors |
 | GET | `/api/v1/market` | Independent EOD market data |
 | GET | `/api/v1/mcp/status` | Sanitized MCP runtime status |
 | GET | `/api/v1/llama-cpp/status` | Sanitized llama.cpp server ownership status |
@@ -460,6 +462,22 @@ The effective exposure is `selected tools ∩ Agent policy ∩ runtime availabil
 - `503` — selected provider/model unavailable, cold-load gate failed, or model load failed.
 
 Cortex Engine Agent loops are bounded by the selected model profile. The default Panthera model can use up to 6 model turns and 10 tool calls; other cloud models can use up to 4 turns and 6 calls; the lightweight Ollama development model uses up to 2/3 turns/calls, while the default Felis llama.cpp models use up to 4 turns/4 calls. The last model turn is answer-only, leaving Felis up to three tool-calling turns for workflows that need list resolution, task lookup, and an approval-gated action proposal.
+
+### Local retrieval foundation
+
+`GET /api/v1/cortex/retrieval/status` reports whether local retrieval is disabled,
+FTS-only, or semantic-ready, along with indexed, embedded, and pending item
+counts. It reports stable error categories only. Conversation messages are
+indexed locally in the shared unencrypted SQLite database and remain scoped to
+the server-derived `production` or `sandbox` partition.
+
+`POST /api/v1/cortex/retrieval/prepare` is the only operation that may download
+the optional FastEmbed model into the ignored `weights/fastembed/` cache. It
+repairs missing conversation items and backfills embeddings. Preparation is
+explicit and synchronous; a concurrent request returns `409`. Missing or
+invalid model files leave lexical FTS available and do not block startup or
+Cortex turns. No general search endpoint or automatic prompt injection is
+provided by this foundation branch.
 
 ## Actions
 

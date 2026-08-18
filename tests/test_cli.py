@@ -144,6 +144,25 @@ class CliTests(unittest.TestCase):
         self.assertIn("action/a", shown_output)
         self.assertEqual(shown_session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/actions/action%2Fa")
 
+    def test_context_status_and_prepare_use_explicit_retrieval_routes(self) -> None:
+        code, output, _, session = self._run(
+            ["context", "status"],
+            [_Response(200, {"enabled": True, "mode": "fts_only", "state": "unprepared", "indexed_items": 2, "embedding_items": 0, "pending_items": 1})],
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("fts_only", output)
+        self.assertEqual(session.calls[0]["method"], "GET")
+        self.assertEqual(session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/retrieval/status")
+
+        code, _, _, session = self._run(
+            ["context", "prepare"],
+            [_Response(200, {"enabled": True, "mode": "semantic", "state": "ready", "indexed_items": 2, "embedding_items": 2, "pending_items": 0})],
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(session.calls[0]["method"], "POST")
+        self.assertEqual(session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/retrieval/prepare")
+        self.assertEqual(session.calls[0]["timeout"], (3.0, 600.0))
+
     def test_action_mutations_fetch_current_version_once_then_submit_it(self) -> None:
         for operation, expected_status in (("approve", "verified"), ("reject", "rejected"), ("verify", "verified")):
             with self.subTest(operation=operation):
