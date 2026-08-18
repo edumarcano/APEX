@@ -97,6 +97,8 @@ class ContextAssembler:
             if sum(1 for _, ref in candidates if ref.namespace == "personal_context") >= MAX_PERSONAL_RECORDS:
                 break
         for entity in self._knowledge.entities_mentioned_in(prompt):
+            if sum(1 for _, ref in candidates if ref.namespace == "personal_context") >= MAX_PERSONAL_RECORDS:
+                break
             for record in self._knowledge.one_hop_relationships(entity.id, partition="production"):
                 if record.status not in {"active", "conflicting"} or str(record.id) in seen:
                     continue
