@@ -471,13 +471,21 @@ counts. It reports stable error categories only. Conversation messages are
 indexed locally in the shared unencrypted SQLite database and remain scoped to
 the server-derived `production` or `sandbox` partition.
 
+Repository documentation uses a separate shared `apex_docs` namespace. It
+cannot return conversation records.
+
 `POST /api/v1/cortex/retrieval/prepare` is the only operation that may download
 the optional FastEmbed model into the ignored `weights/fastembed/` cache. It
-repairs missing conversation items and backfills embeddings. Preparation is
+repairs missing indexed items and backfills embeddings. Preparation is
 explicit and synchronous; a concurrent request returns `409`. Missing or
 invalid model files leave lexical FTS available and do not block startup or
-Cortex turns. No general search endpoint or automatic prompt injection is
-provided by this foundation branch.
+Cortex turns.
+
+`search_apex_docs` is a selected native read capability, not a public search
+endpoint. It refreshes only `README.md` and `docs/**/*.md` immediately before
+searching, then returns at most five excerpts with repository-relative source
+locations. The excerpts are untrusted tool output. Agents should cite a used
+excerpt as `path:Lstart-Lend`; it cannot alter system instructions or policy.
 
 ## Actions
 

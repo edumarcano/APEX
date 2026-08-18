@@ -49,6 +49,12 @@ class ApexToolFamily:
 
 APEX_TOOL_FAMILIES: tuple[ApexToolFamily, ...] = (
     ApexToolFamily(
+        "apex_docs",
+        "APEX Docs",
+        "Search local README and repository documentation.",
+        ("search_apex_docs",),
+    ),
+    ApexToolFamily(
         "schedule",
         "Schedule",
         "Calendar events and pending reminders.",
@@ -227,6 +233,21 @@ def _native_availability(name: str) -> tuple[bool, str | None]:
     environment/configuration, persisted credential markers, and the latest
     in-memory connector snapshot. It never authenticates or calls a provider.
     """
+    if name == "search_apex_docs":
+        if DEMO_MODE:
+            return False, "APEX documentation search is unavailable in demo mode."
+        try:
+            from core.retrieval import get_retrieval_service
+
+            retrieval = get_retrieval_service().status()
+            if not retrieval.enabled or retrieval.error_category in {
+                "retrieval_initialization_failed",
+                "retrieval_unavailable",
+            }:
+                return False, "Local retrieval is unavailable."
+        except Exception:
+            return False, "Local retrieval is unavailable."
+
     connector_name = {
         "get_weather_forecast": "weather",
         "get_upcoming_calendar_events": "calendar",

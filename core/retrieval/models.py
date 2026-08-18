@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 RetrievalMode = Literal["disabled", "fts_only", "semantic"]
 RetrievalState = Literal["disabled", "unprepared", "preparing", "ready", "degraded"]
+RetrievalPartition = Literal["production", "sandbox", "shared"]
 
 
 @dataclass(frozen=True)
@@ -14,7 +15,7 @@ class RetrievalItem:
     namespace: str
     source_type: str
     source_id: str
-    partition: str
+    partition: RetrievalPartition
     conversation_id: str | None
     message_id: str | None
     role: str | None
@@ -33,7 +34,7 @@ class RetrievalHit:
     namespace: str
     source_type: str
     source_id: str
-    partition: str
+    partition: RetrievalPartition
     locator: str
     text: str
     role: str | None
@@ -41,6 +42,9 @@ class RetrievalHit:
     message_id: str | None
     timestamp: str
     score: float
+    title: str | None = None
+    heading: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
     lexical_score: float | None = None
     semantic_score: float | None = None
 

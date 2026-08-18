@@ -11,6 +11,7 @@ _SANDBOX_NATIVE_TOOLS = frozenset(
         "get_weather_forecast",
         "get_f1_driver_standings",
         "get_f1_season_calendar",
+        "search_apex_docs",
     }
 )
 _SANDBOX_MCP_PREFIXES = ("brave_", "alphavantage_")

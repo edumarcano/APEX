@@ -43,6 +43,7 @@ class CapabilityRegistryTests(unittest.TestCase):
             names,
             {
                 "get_weather_forecast",
+                "search_apex_docs",
                 "get_f1_driver_standings",
                 "get_f1_season_calendar",
                 "get_upcoming_calendar_events",
@@ -84,6 +85,15 @@ class CapabilityRegistryTests(unittest.TestCase):
         self.assertEqual(days_schema["minimum"], 1)
         self.assertEqual(days_schema["maximum"], 14)
         self.assertEqual(days_schema["default"], 14)
+
+    def test_documentation_search_is_bounded_read_only(self) -> None:
+        capability = next(
+            candidate for candidate in list_agent_capabilities()
+            if candidate.name == "search_apex_docs"
+        )
+        self.assertEqual(capability.risk, "read")
+        self.assertEqual(capability.input_schema["properties"]["query"]["maxLength"], 500)
+        self.assertFalse(capability.expose_to_mcp_server)
 
     def test_gmail_capabilities_are_bounded_and_read_only(self) -> None:
         capabilities = {

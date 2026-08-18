@@ -12,6 +12,7 @@ APEX is local-first, not entirely offline. This reference separates behavior APE
 | Telemetry collection | Snapshot and normalization | Enabled connector receives its request | Snapshot is memory-only | Disable external connectors or use demo mode |
 | Briefing synthesis | Selected, size-limited input is built locally | Panthera sends it to the selected cloud provider; Felis sends it to the local Ollama or llama.cpp runtime | Normal-mode transcript/digest in SQLite | Felis or Structured Digest |
 | Interactive Agent conversation | APEX owns durable local history and a local retrieval index | The selected Panthera or Felis model and explicitly selected APEX/MCP schemas receive the bounded active branch; provider-hosted grounding remains a separate provider path | Unencrypted SQLite conversation tree, response metadata, FTS mirror, and optional local embeddings | Felis with No APEX Tools |
+| APEX documentation search | README and `docs/**/*.md` are indexed locally on demand | A selected Agent receives up to five requested excerpts; Panthera can send those excerpts to its selected cloud provider | Local FTS rows and optional embeddings | Do not select `search_apex_docs`; use Felis for local inference |
 | Reminders | Selected Microsoft To Do list or local queue | Approved task fields go to Microsoft Graph | Small task cache and retained local outbox rows in SQLite | Leave the list unselected or integration disconnected |
 | Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected Agent | Authorization cache, selected-list cache, and action evidence | Leave integration disconnected |
 | Action controls | Proposal, lifecycle state, and execution/verification evidence | A supported native action receives its saved arguments after local approval | SQLite action and audit ledger | Demo mode does not read or mutate the action ledger |
@@ -99,7 +100,10 @@ Conversation history lives in local unencrypted SQLite storage and survives relo
 Completed conversation messages may also be copied into the local retrieval
 index. The index stores message text, stable source locators, partition, role,
 timestamps, and content hashes; it does not separately index request metadata,
-response metadata, secrets, or tool payloads. SQLite FTS is immediately
+response metadata, secrets, or tool payloads. `search_apex_docs` adds only
+README and Markdown files under `docs/` to a separate shared namespace when an
+Agent calls it; it never scans `.env`, local plans, configuration overrides, or
+arbitrary files. SQLite FTS is immediately
 available. Optional FastEmbed vectors are prepared only by the explicit local
 `context prepare` command or its API equivalent, remain under the ignored
 `weights/fastembed/` cache, and are never sent to a provider. Missing or broken
@@ -109,7 +113,7 @@ The optional embedding dependency is FastEmbed `0.8.0`; its pinned
 `BAAI/bge-small-en-v1.5` model is distributed under the MIT license. APEX uses
 the model locally for ranking only and does not upload conversation text.
 
-`DEV_MODE` sandbox queries keep history in the `sandbox` partition and can receive only the small non-personal allowlist defined for sandbox mode, plus a masked development briefing. They do not receive full telemetry, Gmail, Calendar, Microsoft To Do, normal briefing history, private GitHub/MCP data, files, images, or normal-mode conversation history.
+`DEV_MODE` sandbox queries keep history in the `sandbox` partition and can receive only the small non-personal allowlist defined for sandbox mode, plus a masked development briefing. They can use the shared `search_apex_docs` capability, whose excerpts remain untrusted reference data. They do not receive full telemetry, Gmail, Calendar, Microsoft To Do, normal briefing history, private GitHub/MCP data, files, images, or normal-mode conversation history.
 
 ### Native personal-data tools
 
