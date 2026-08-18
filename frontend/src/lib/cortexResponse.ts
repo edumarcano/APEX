@@ -48,7 +48,25 @@ const nullableNumber = (value: unknown): number | null => typeof value === 'numb
 
 export function parseAgentQueryResponse(body: unknown): AgentQueryResponseBody {
   const record = asRecord(body) ?? {}
-  const metadataRecord = asRecord(record.metadata)
+  // The conversation-turn API keeps response telemetry flat for its durable
+  // message contract, while older callers may still provide a nested
+  // `metadata` envelope. Normalize both shapes before parsing the display
+  // metadata used by CortexWorkspace.
+  const metadataRecord = asRecord(record.metadata) ?? (
+    record.agent_used !== undefined || record.usage !== undefined || record.timing !== undefined ||
+    record.cost_estimate !== undefined || record.citations !== undefined || record.grounding !== undefined ||
+    record.resolved_tool_selection !== undefined
+      ? {
+          agent: record.agent_used,
+          usage: record.usage,
+          timing: record.timing,
+          cost: record.cost_estimate,
+          citations: record.citations,
+          grounding: record.grounding,
+          tool_selection: record.resolved_tool_selection,
+        }
+      : null
+  )
   const agentRecord = asRecord(metadataRecord?.agent)
   const usageRecord = asRecord(metadataRecord?.usage)
   const timingRecord = asRecord(metadataRecord?.timing)
