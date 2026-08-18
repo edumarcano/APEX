@@ -276,7 +276,7 @@ def conversation_turn(conversation_id: str, payload: ConversationTurnRequest) ->
         if replayed:
             if agent_message.status == "completed":
                 try:
-                    get_retrieval_service().index_turn(user, agent_message)
+                    get_retrieval_service().index_turn(user, agent_message, partition=service.partition())
                 except Exception:
                     pass
             return _turn_result(parsed_id, user, agent_message)
@@ -320,7 +320,7 @@ def conversation_turn(conversation_id: str, payload: ConversationTurnRequest) ->
     )
     if completed.status == "completed":
         try:
-            get_retrieval_service().index_turn(user, completed)
+            get_retrieval_service().index_turn(user, completed, partition=service.partition())
         except Exception:
             # Retrieval is a repairable secondary index and must not change the
             # established successful-turn contract.

@@ -5,9 +5,10 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
+import numbers
 import threading
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from core.config import DEMO_MODE, PROJECT_ROOT
 from core.connectors.models import utc_now_iso
@@ -63,6 +64,7 @@ class RetrievalService:
         try:
             self.store.initialize()
             self.reconcile()
+            self.initialization_error = None
         except Exception as exc:
             self.initialization_error = "retrieval_initialization_failed"
             _LOGGER.error(
@@ -71,13 +73,13 @@ class RetrievalService:
             )
             raise exc
 
-    def _item_for_message(self, message: ConversationMessage) -> RetrievalItem:
+    def _item_for_message(self, message: ConversationMessage, partition: str) -> RetrievalItem:
         content = message.content
         return RetrievalItem(
             namespace="conversation",
             source_type="message",
             source_id=str(message.id),
-            partition="sandbox" if self._message_partition(message) == "sandbox" else "production",
+            partition=partition,
             conversation_id=str(message.conversation_id),
             message_id=str(message.id),
             role=message.role,
@@ -87,46 +89,50 @@ class RetrievalService:
             text=content,
         )
 
-    def _message_partition(self, message: ConversationMessage) -> str:
-        # The conversation store does not put partition on each message. The
-        # shared database is authoritative when available; tests and demo use
-        # production as the safe default unless a matching conversation exists.
-        if self.store.db_path is None:
-            return "production"
-        try:
-            import sqlite3
-
-            conn = sqlite3.connect(self.store.db_path)
-            try:
-                row = conn.execute("SELECT partition FROM conversations WHERE id = ?", (str(message.conversation_id),)).fetchone()
-            finally:
-                conn.close()
-            return str(row[0]) if row else "production"
-        except Exception:
-            return "production"
-
     def reconcile(self) -> int:
         if not self.enabled or self.conversation_store is None:
             return 0
-        messages = self.conversation_store.completed_messages()
-        return self.index_messages(messages)
+        records = self.conversation_store.completed_messages_with_partitions()
+        return self.index_messages(
+            (message for message, _ in records),
+            partitions={str(message.conversation_id): partition for message, partition in records},
+        )
 
-    def index_messages(self, messages: Iterable[ConversationMessage]) -> int:
+    def index_messages(
+        self,
+        messages: Iterable[ConversationMessage],
+        *,
+        partition: str | None = None,
+        partitions: Mapping[str, str] | None = None,
+    ) -> int:
         if not self.enabled:
             return 0
         count = 0
         for message in messages:
             if message.status != "completed" or message.role not in {"user", "agent"}:
                 continue
-            self.store.upsert_item(self._item_for_message(message))
+            resolved_partition = partition or (partitions or {}).get(str(message.conversation_id))
+            if resolved_partition not in {"production", "sandbox"}:
+                _LOGGER.warning("Conversation retrieval update skipped: category=partition_unresolved")
+                continue
+            self.store.upsert_item(self._item_for_message(message, resolved_partition))
             count += 1
         return count
 
-    def index_turn(self, user: ConversationMessage, agent: ConversationMessage) -> None:
+    def index_turn(
+        self,
+        user: ConversationMessage,
+        agent: ConversationMessage,
+        *,
+        partition: str | None = None,
+    ) -> None:
         if not self.enabled:
             return
         try:
-            self.index_messages((user, agent))
+            resolved_partition = partition
+            if resolved_partition is None and self.conversation_store is not None:
+                resolved_partition = self.conversation_store.conversation_partition(user.conversation_id)
+            self.index_messages((user, agent), partition=resolved_partition)
         except Exception:
             _LOGGER.error("Conversation retrieval update failed: category=indexing_failed")
 
@@ -139,7 +145,7 @@ class RetrievalService:
             raise EmbeddingError("invalid_vector")
         norm = 0.0
         for value in vector:
-            if not isinstance(value, (float, int)) or not math.isfinite(float(value)):
+            if not isinstance(value, numbers.Real) or not math.isfinite(float(value)):
                 raise EmbeddingError("invalid_vector")
             norm += float(value) * float(value)
         if norm <= 0:
@@ -188,8 +194,10 @@ class RetrievalService:
             state, fingerprint, prepared, error = self.store.model_state()
         except Exception:
             return RetrievalStatus(enabled=True, mode="fts_only", state="degraded", error_category="retrieval_unavailable")
-        mode = "semantic" if state == "ready" and embeddings > 0 else "fts_only"
-        return RetrievalStatus(enabled=True, mode=mode, state=state, indexed_items=indexed, embedding_items=embeddings, pending_items=pending, last_prepared_at=prepared, error_category=error, model_fingerprint=fingerprint)
+        effective_error = error or self.initialization_error
+        effective_state = "degraded" if self.initialization_error else state
+        mode = "semantic" if effective_state == "ready" and embeddings > 0 else "fts_only"
+        return RetrievalStatus(enabled=True, mode=mode, state=effective_state, indexed_items=indexed, embedding_items=embeddings, pending_items=pending, last_prepared_at=prepared, error_category=effective_error, model_fingerprint=fingerprint)
 
     def search(self, query: str, *, namespace: str, partition: str, source_type: str | None = None, limit: int = 10) -> list[RetrievalHit]:
         if not self.enabled:
@@ -243,7 +251,7 @@ class RetrievalService:
             _LOGGER.warning("Semantic retrieval degraded: category=%s", category)
             return lexical
         except RetrievalStoreError as exc:
-            category = str(exc) if str(exc) == "embedding_dimension_mismatch" else "semantic_search_failed"
+            category = str(exc) if str(exc) in {"embedding_dimension_mismatch", "invalid_vector"} else "semantic_search_failed"
             self.store.set_model_state(state="degraded", fingerprint=None, error_category=category)
             _LOGGER.warning("Semantic retrieval degraded: category=%s", category)
             return lexical

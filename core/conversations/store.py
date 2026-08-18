@@ -225,6 +225,31 @@ class ConversationStore:
                 ).fetchall()
         return [self._message(row) for row in rows]
 
+    def completed_messages_with_partitions(self) -> list[tuple[ConversationMessage, str]]:
+        """Return completed messages together with their authoritative partition."""
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT m.id,m.conversation_id,m.parent_message_id,m.role,m.content,
+                       m.status,m.agent,m.request_metadata_json,m.response_metadata_json,
+                       m.created_at,m.updated_at,c.partition
+                FROM conversation_messages m
+                JOIN conversations c ON c.id = m.conversation_id
+                WHERE m.status = 'completed'
+                ORDER BY m.created_at, m.id
+                """
+            ).fetchall()
+        return [(self._message(row), str(row[11])) for row in rows]
+
+    def conversation_partition(self, conversation_id: UUID) -> str | None:
+        """Return a conversation's partition, or None when it cannot be resolved."""
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT partition FROM conversations WHERE id = ?",
+                (str(conversation_id),),
+            ).fetchone()
+        return str(row[0]) if row else None
+
     def active_history(self, conversation_id: UUID, partition: str, limit: int) -> list[AgentMessage]:
         summary = self.get_summary(conversation_id, partition)
         with self._connection() as conn:

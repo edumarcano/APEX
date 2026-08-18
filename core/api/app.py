@@ -74,7 +74,7 @@ async def _app_lifespan(_app: FastAPI):
         enabled=not DEMO_MODE,
     )
     try:
-        retrieval_service.initialize()
+        await asyncio.to_thread(retrieval_service.initialize)
     except Exception:
         # Retrieval is optional and repairable; it must never block Cortex readiness.
         pass

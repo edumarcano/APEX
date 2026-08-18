@@ -69,7 +69,9 @@ class FastEmbedAdapter:
         model = self._load(allow_download=allow_download)
         try:
             values = model.embed(list(texts))
-            return [list(vector) for vector in values]
+            # FastEmbed returns NumPy arrays; normalize scalars at this
+            # boundary so the rest of retrieval only handles plain floats.
+            return [[float(value) for value in vector] for vector in values]
         except Exception as exc:
             _LOGGER.debug("FastEmbed inference failed: category=embedding_inference_failed")
             raise EmbeddingError("embedding_inference_failed") from exc

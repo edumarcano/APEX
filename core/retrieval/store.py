@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import sqlite3
 import struct
 import threading
@@ -31,7 +32,15 @@ def vector_to_blob(vector: list[float]) -> bytes:
 def blob_to_vector(blob: bytes, dimension: int) -> list[float]:
     if len(blob) != dimension * 4:
         raise RetrievalStoreError("embedding_dimension_mismatch")
-    return list(struct.unpack(f"<{dimension}f", blob))
+    vector = list(struct.unpack(f"<{dimension}f", blob))
+    norm = 0.0
+    for value in vector:
+        if not math.isfinite(value):
+            raise RetrievalStoreError("invalid_vector")
+        norm += value * value
+    if norm <= 0.0:
+        raise RetrievalStoreError("invalid_vector")
+    return vector
 
 
 class RetrievalStore:
