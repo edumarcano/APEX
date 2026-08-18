@@ -55,4 +55,3 @@ class KnowledgeRecordDetail:
     record: KnowledgeRecord
     sources: tuple[KnowledgeSource, ...] = field(default_factory=tuple)
     superseded_by: tuple[UUID, ...] = field(default_factory=tuple)
-
