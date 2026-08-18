@@ -42,8 +42,8 @@ class KnowledgeStoreTests(unittest.TestCase):
         try:
             with conn:
                 version = conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()
-                self.assertEqual(version[0], 1)
-                conn.execute("UPDATE schema_versions SET version = 2 WHERE domain = 'knowledge'")
+                self.assertEqual(version[0], 2)
+                conn.execute("UPDATE schema_versions SET version = 3 WHERE domain = 'knowledge'")
         finally:
             conn.close()
         with self.assertRaises(KnowledgeStoreError):

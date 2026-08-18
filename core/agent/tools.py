@@ -527,6 +527,34 @@ def register_native_capabilities() -> None:
     )
     register_capability(
         CapabilityDescriptor(
+            name="remember_personal_context",
+            title="Remember Personal Context",
+            description=(
+                "Propose saving an operator-provided idea, preference, decision, or fact "
+                "as personal context. The operator must approve the proposal before APEX saves it."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "enum": ["idea", "preference", "decision", "goal", "fact", "constraint", "note", "observation"]},
+                    "text": {"type": "string", "minLength": 1, "maxLength": 10000},
+                    "subject": {"type": "string", "minLength": 1, "maxLength": 240},
+                    "predicate": {"type": "string", "minLength": 1, "maxLength": 240},
+                    "object_entity": {"type": "string", "minLength": 1, "maxLength": 240},
+                    "object_value": {"type": "string", "minLength": 1, "maxLength": 1000},
+                    "effective_at": {"type": "string", "maxLength": 64},
+                },
+                "required": ["kind", "text"],
+                "additionalProperties": False,
+            },
+            origin="native", risk="write", expose_to_agent=True,
+            expose_to_mcp_server=False, expose_to_client_display=True,
+            timeout_seconds=_NATIVE_TIMEOUT_SECONDS, max_output_chars=_NATIVE_MAX_OUTPUT_CHARS,
+        ),
+        lambda **_arguments: {"status": "proposal_required"},
+    )
+    register_capability(
+        CapabilityDescriptor(
             name="get_f1_driver_standings",
             title="F1 Driver Standings",
             description=(

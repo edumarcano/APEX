@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Any, Callable, Protocol, TypeGuard, TypeVar, runtime_checkable
+from typing import Any, Callable, Mapping, Protocol, TypeGuard, TypeVar, runtime_checkable
 
 from core.agent.capabilities import (
     CapabilityDescriptor,
@@ -125,6 +125,7 @@ def run_agent_loop(
     selected_tools: list[CapabilityDescriptor] | None = None,
     tool_selection: ToolSelectionDiagnostics | None = None,
     agent_key: str | None = None,
+    action_provenance: Mapping[str, object] | None = None,
 ) -> AgentQueryResponse:
     history: list[AgentMessage] = list(request.history)
     history.append(AgentMessage(role="user", content=request.prompt))
@@ -369,6 +370,17 @@ def run_agent_loop(
                         arguments = validate_capability_arguments(
                             call.name, call.arguments
                         )
+                        if call.name == "remember_personal_context":
+                            from core.knowledge.capture import reject_secret_text, validate_effective_at
+
+                            reject_secret_text(str(arguments.get("text", "")))
+                            validate_effective_at(arguments.get("effective_at"))
+                            if action_provenance is None:
+                                raise CapabilityError(
+                                    CapabilityErrorCategory.UNAVAILABLE,
+                                    "Personal context capture requires a persisted conversation source.",
+                                )
+                            arguments["_apex_provenance"] = dict(action_provenance)
                         action = action_service.propose(
                             agent_key=agent_key or request.agent,
                             capability_name=call.name,

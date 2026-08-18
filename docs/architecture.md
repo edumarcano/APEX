@@ -190,7 +190,7 @@ The final permitted turn is answer-only, preventing a model from requesting a to
 
 Each non-demo Agent request begins with the selected Agent's identity instruction, followed by prompt behavior loaded from `config.json`, an optional user designation from local settings, scoped context, and the security boundary. Agent identity describes the active Agent and its selected model; it does not grant tools or override privacy policy.
 
-Panthera can receive the general APEX capability registry. Brave MCP is the only general web-search path. Optional Google Search, Google Maps, and X Search attach only when the selected Panthera model and persisted hosted-tool settings allow them. `search_apex_docs` is a local read capability over README and `docs/**/*.md`; it is also permitted in the `DEV_MODE` sandbox because it searches a shared documentation namespace rather than personal context. Every returned excerpt remains inside the existing untrusted-tool-output boundary.
+Panthera can receive the general APEX capability registry. Brave MCP is the only general web-search path. Optional Google Search, Google Maps, and X Search attach only when the selected Panthera model and persisted hosted-tool settings allow them. `search_apex_docs` is a local read capability over README and `docs/**/*.md`; it is also permitted in the `DEV_MODE` sandbox because it searches a shared documentation namespace rather than personal context. `remember_personal_context` is an approval-gated write capability. Its executor loads the initiating persisted user message as immutable evidence, then reconciles the approved interpretation into the local knowledge store. Every returned excerpt remains inside the existing untrusted-tool-output boundary.
 
 `GET /api/v1/agents` is the backend-owned Agent catalog. It publishes Panthera and Felis, their selected models and provider/runtime, each model catalog, model-native reasoning metadata, selectable local context and reasoning metadata, grounding state, pricing metadata, and safe availability information. Cortex owns presentation and interaction. Agent polling never performs a provider probe; cloud availability becomes stronger only after an explicit check or real inference.
 
@@ -276,6 +276,7 @@ Delivery mode controls orchestration:
 - structured digests and runtime metadata, including `run_id` and snapshot identity;
 - action proposals and their ordered audit events.
 - durable Cortex conversations plus the retrieval item's FTS mirror and optional local embeddings.
+- source-tracked personal knowledge records and one durable capture effect for each approved context action.
 
 Action records keep the Agent, capability, proposal arguments, target, risk, summary, state, timestamps, and proposal hash. Transition events keep limited execution or verification evidence and stable result codes; each state change and matching event commit together.
 

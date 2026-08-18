@@ -208,6 +208,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         self.assertEqual(
             [call.args[0] for call in action_service.register_handler.call_args_list],
             [
+                "remember_personal_context",
                 "create_microsoft_todo_task",
                 "update_microsoft_todo_task",
                 "complete_microsoft_todo_task",
@@ -216,12 +217,13 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            action_service.mock_calls[:6],
+            action_service.mock_calls[:7],
             [
                 mock.call.register_handler(
                     name, executor=mock.ANY, verifier=mock.ANY
                 )
                 for name in (
+                    "remember_personal_context",
                     "create_microsoft_todo_task",
                     "update_microsoft_todo_task",
                     "complete_microsoft_todo_task",
