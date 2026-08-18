@@ -54,6 +54,7 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | PATCH | `/api/v1/cortex/conversations/{conversation_id}` | Update one conversation |
 | DELETE | `/api/v1/cortex/conversations/{conversation_id}` | Permanently delete one archived conversation |
 | POST | `/api/v1/cortex/conversations/{conversation_id}/turns` | Run one durable Cortex turn |
+| POST | `/api/v1/cortex/context/captures` | Propose a manual personal-context capture |
 | GET | `/api/v1/cortex/retrieval/status` | Show local retrieval readiness and indexing state |
 | POST | `/api/v1/cortex/retrieval/prepare` | Explicitly prepare the local embedding model and backfill vectors |
 | GET | `/api/v1/market` | Independent EOD market data |
@@ -462,6 +463,12 @@ The effective exposure is `selected tools ∩ Agent policy ∩ runtime availabil
 - `503` — selected provider/model unavailable, cold-load gate failed, or model load failed.
 
 Cortex Engine Agent loops are bounded by the selected model profile. The default Panthera model can use up to 6 model turns and 10 tool calls; other cloud models can use up to 4 turns and 6 calls; the lightweight Ollama development model uses up to 2/3 turns/calls, while the default Felis llama.cpp models use up to 4 turns/4 calls. The last model turn is answer-only, leaving Felis up to three tool-calling turns for workflows that need list resolution, task lookup, and an approval-gated action proposal.
+
+### POST `/api/v1/cortex/context/captures`
+
+Creates a `remember_personal_context` action proposal from direct operator input. It does not write a knowledge record until the normal action approval, execution, and verification flow completes. Structured captures require a subject, predicate, and exactly one entity or scalar value. Requests that resemble credentials or private keys are rejected before proposal creation.
+
+When an Agent proposes the same capability from a durable Cortex turn, APEX stores the initiating user message as the source evidence. The model cannot select another conversation or source message.
 
 ### Local retrieval foundation
 

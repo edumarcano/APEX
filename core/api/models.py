@@ -418,6 +418,38 @@ class ActionMutationRequest(BaseModel):
     expected_version: int = Field(ge=0)
 
 
+class ContextCaptureRequest(BaseModel):
+    """Operator-supplied personal context that still requires approval."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["idea", "preference", "decision", "goal", "fact", "constraint", "note", "observation"]
+    text: str = Field(min_length=1, max_length=10_000)
+    subject: str | None = Field(default=None, min_length=1, max_length=240)
+    predicate: str | None = Field(default=None, min_length=1, max_length=240)
+    object_entity: str | None = Field(default=None, min_length=1, max_length=240)
+    object_value: str | None = Field(default=None, min_length=1, max_length=1_000)
+    effective_at: str | None = Field(default=None, max_length=64)
+
+    @field_validator("effective_at")
+    @classmethod
+    def effective_at_is_iso(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        from core.knowledge.capture import validate_effective_at
+
+        validate_effective_at(value)
+        return value
+
+    @model_validator(mode="after")
+    def structured_fields_are_complete(self):
+        values = (self.subject, self.predicate, self.object_entity, self.object_value)
+        if any(value is not None for value in values):
+            if not self.subject or not self.predicate or bool(self.object_entity) == bool(self.object_value):
+                raise ValueError("Structured context requires subject, predicate, and exactly one object value.")
+        return self
+
+
 MicrosoftTodoState = Literal[
     "not-configured",
     "disconnected",

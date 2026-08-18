@@ -45,8 +45,11 @@ from core.conversations.store import (
     ConversationNotFoundError,
 )
 from core.retrieval import RetrievalBusyError, get_retrieval_service
+from core.actions.runtime import get_action_service
+from core.knowledge.capture import CAPABILITY_NAME, ContextCaptureError, reject_secret_text
 from core.api.models import (
     AgentStatus,
+    ActionResponse,
     CloudAgentVerificationResponse,
     LocalLoadRequest,
     LocalLoadResponse,
@@ -58,10 +61,36 @@ from core.api.models import (
     ToolProfilesResponse,
     RetrievalPrepareResponse,
     RetrievalStatusResponse,
+    ContextCaptureRequest,
 )
 
 router = APIRouter(tags=["cortex"])
 _PROFILE_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,79}$")
+
+
+@router.post("/api/v1/cortex/context/captures", response_model=ActionResponse)
+def propose_context_capture(payload: ContextCaptureRequest) -> ActionResponse:
+    """Create an approval-gated manual personal-context capture."""
+    from core.api.routers.actions import _record_response
+    from core.config import DEMO_MODE
+
+    if DEMO_MODE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Actions are unavailable in demo mode.")
+    try:
+        reject_secret_text(payload.text)
+    except ContextCaptureError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    service = get_action_service()
+    if service is None or not service.supports(CAPABILITY_NAME):
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Personal context capture is unavailable.")
+    action = service.propose(
+        agent_key="operator", capability_name=CAPABILITY_NAME,
+        arguments={**payload.model_dump(), "_apex_provenance": {
+            "source_kind": "manual", "partition": get_conversation_service().partition(),
+            "original_text": payload.text,
+        }}, target="Personal Context", risk="write", summary="Approve personal context capture", actor="operator",
+    )
+    return _record_response(action)
 
 
 def _ensure_agent_api_access(agent_key: str) -> None:
@@ -299,7 +328,15 @@ def conversation_turn(conversation_id: str, payload: ConversationTurnRequest) ->
         **execution_kwargs,
     )
     try:
-        response = query_agent(execution_payload)
+        response = query_agent(
+            execution_payload,
+            action_provenance={
+                "source_kind": "conversation_message",
+                "conversation_id": str(parsed_id),
+                "message_id": str(user.id),
+                "partition": service.partition(),
+            },
+        )
     except HTTPException as exc:
         failed = service.finalize(
             parsed_id,

@@ -97,6 +97,12 @@ APEX_TOOL_FAMILIES: tuple[ApexToolFamily, ...] = (
         ("get_briefing_history",),
     ),
     ApexToolFamily(
+        "personal_context",
+        "Personal Context",
+        "Approval-gated capture of operator-provided personal context.",
+        ("remember_personal_context",),
+    ),
+    ApexToolFamily(
         "microsoft_todo",
         "Microsoft To Do",
         "Microsoft To Do lists, tasks, and approval-gated task actions.",

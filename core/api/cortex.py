@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, Mapping
 
 from fastapi import HTTPException, status
 
@@ -887,6 +887,7 @@ def _execute_agent_turn(
     tool_selection: ToolSelectionDiagnostics | None = None,
     disable_hud_context: bool = False,
     user_designation: str = "",
+    action_provenance: Mapping[str, object] | None = None,
 ) -> AgentQueryResponse:
     """Build HUD context, select the provider, and run the bounded agent loop."""
     try:
@@ -933,6 +934,7 @@ def _execute_agent_turn(
             selected_tools=selected_tools,
             tool_selection=tool_selection,
             agent_key=agent_key,
+            action_provenance=action_provenance,
         )
         if not is_local_profile(profile):
             record_cloud_request_success(
@@ -1161,7 +1163,11 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
     )
 
 
-def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
+def query_agent(
+    payload: AgentQueryRequest,
+    *,
+    action_provenance: Mapping[str, object] | None = None,
+) -> AgentQueryResponse:
     """
     Execute one Cortex Engine Agent turn with optional tool calling.
 
@@ -1297,6 +1303,7 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
                 tool_selection=selection.diagnostics,
                 disable_hud_context=False,
                 user_designation=settings.user_designation,
+                action_provenance=action_provenance,
             )
         finally:
             end_local_execution()
@@ -1317,4 +1324,5 @@ def query_agent(payload: AgentQueryRequest) -> AgentQueryResponse:
         tool_selection=selection.diagnostics,
         disable_hud_context=False,
         user_designation=settings.user_designation,
+        action_provenance=action_provenance,
     )

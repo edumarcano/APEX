@@ -90,7 +90,7 @@ class KnowledgeStore:
                 "domain TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL CHECK(version >= 1))"
             )
             row = conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()
-            if row is not None and int(row[0]) > 1:
+            if row is not None and int(row[0]) > 2:
                 raise KnowledgeStoreError("Knowledge schema is newer than this APEX build.")
             conn.executescript(
                 """
@@ -142,6 +142,13 @@ class KnowledgeStore:
                     linked_at TEXT NOT NULL,
                     PRIMARY KEY(record_id, source_id)
                 );
+                CREATE TABLE IF NOT EXISTS knowledge_action_effects (
+                    action_id TEXT PRIMARY KEY NOT NULL,
+                    record_id TEXT NOT NULL REFERENCES knowledge_records(id),
+                    source_id TEXT NOT NULL REFERENCES knowledge_sources(id),
+                    outcome TEXT NOT NULL CHECK(outcome IN ('created', 'confirmed', 'conflicting')),
+                    created_at TEXT NOT NULL
+                );
                 CREATE INDEX IF NOT EXISTS idx_knowledge_records_partition_status
                     ON knowledge_records(partition, status, updated_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_knowledge_records_subject
@@ -153,7 +160,7 @@ class KnowledgeStore:
                 """
             )
             conn.execute(
-                "INSERT INTO schema_versions(domain, version) VALUES ('knowledge', 1) "
+                "INSERT INTO schema_versions(domain, version) VALUES ('knowledge', 2) "
                 "ON CONFLICT(domain) DO UPDATE SET version = excluded.version"
             )
 
@@ -369,6 +376,116 @@ class KnowledgeStore:
 
     def one_hop_relationships(self, entity_id: UUID, *, partition: str) -> list[KnowledgeRecord]:
         return self.list_records(partition=partition, entity_id=entity_id)
+
+    def apply_capture(
+        self, *, action_id: str, partition: str, source_kind: str, locator: str,
+        original_text: str, kind: str, text: str, subject: str | None = None,
+        predicate: str | None = None, object_entity: str | None = None,
+        object_value: str | None = None, effective_at: str | None = None,
+    ) -> tuple[KnowledgeRecord, KnowledgeSource, str]:
+        """Apply one approved capture once and record an auditable outcome."""
+        if partition not in _PARTITIONS or source_kind not in _SOURCE_KINDS or kind not in _KINDS:
+            raise KnowledgeStoreError("capture_invalid")
+        text = _required_text(text, "text")
+        original_text = _required_text(original_text, "original_text")
+        locator = _required_text(locator, "locator")
+        structured = any(value is not None for value in (subject, predicate, object_entity, object_value))
+        if structured and (not subject or not predicate or bool(object_entity) == bool(object_value)):
+            raise KnowledgeStoreError("record_structure_invalid")
+        now = utc_now_iso()
+        digest = hashlib.sha256(original_text.encode("utf-8")).hexdigest()
+        with self._connection() as conn, conn:
+            existing_effect = conn.execute(
+                "SELECT r.* , s.id,s.kind,s.partition,s.locator,s.original_text,s.content_hash,s.created_at "
+                "FROM knowledge_action_effects e JOIN knowledge_records r ON r.id=e.record_id "
+                "JOIN knowledge_sources s ON s.id=e.source_id WHERE e.action_id=?", (action_id,)
+            ).fetchone()
+            if existing_effect is not None:
+                return self._record(existing_effect[:13]), self._source(existing_effect[13:]), "confirmed"
+            source_row = conn.execute(
+                "SELECT id,kind,partition,locator,original_text,content_hash,created_at FROM knowledge_sources "
+                "WHERE kind=? AND partition=? AND locator=? AND content_hash=?",
+                (source_kind, partition, locator, digest),
+            ).fetchone()
+            if source_row is None:
+                source_id = uuid4()
+                conn.execute("INSERT INTO knowledge_sources VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (str(source_id), source_kind, partition, locator, original_text, digest, now))
+                source = KnowledgeSource(source_id, source_kind, partition, locator, original_text, digest, now)
+            else:
+                source = self._source(source_row)
+            subject_id = None
+            object_id = None
+            if structured:
+                subject_id = self._resolve_or_create_entity_in_transaction(conn, subject or "", now)
+                if object_entity:
+                    object_id = self._resolve_or_create_entity_in_transaction(conn, object_entity, now)
+                predicate = _required_text(predicate or "", "predicate", limit=240)
+                if object_value:
+                    object_value = _required_text(object_value, "object_value", limit=1_000)
+                rows = conn.execute(
+                    "SELECT * FROM knowledge_records WHERE partition=? AND subject_entity_id=? AND predicate=? "
+                    "AND status IN ('active','conflicting') ORDER BY created_at,id",
+                    (partition, str(subject_id), predicate),
+                ).fetchall()
+                same = next((row for row in rows if str(row[7] or '') == str(object_id or '') and str(row[8] or '') == str(object_value or '')), None)
+                if same is not None:
+                    record = self._record(same)
+                    outcome = "confirmed"
+                else:
+                    if rows:
+                        conn.execute("UPDATE knowledge_records SET status='conflicting', updated_at=? WHERE id IN (%s)" % ",".join("?" for _ in rows), (now, *(str(row[0]) for row in rows)))
+                        status, outcome = "conflicting", "conflicting"
+                    else:
+                        status, outcome = "active", "created"
+                    record = self._insert_record_in_transaction(conn, partition=partition, kind=kind, text=text, status=status,
+                        subject_entity_id=subject_id, predicate=predicate, object_entity_id=object_id, object_value=object_value,
+                        effective_at=effective_at, now=now)
+            else:
+                normalized = normalize_alias(text)
+                candidates = conn.execute("SELECT * FROM knowledge_records WHERE partition=? AND status IN ('active','conflicting') ORDER BY created_at,id", (partition,)).fetchall()
+                rows = [row for row in candidates if normalize_alias(str(row[3])) == normalized]
+                if rows:
+                    record, outcome = self._record(rows[0]), "confirmed"
+                else:
+                    record, outcome = self._insert_record_in_transaction(conn, partition=partition, kind=kind, text=text, status="active", now=now), "created"
+            conn.execute("INSERT OR IGNORE INTO knowledge_record_sources VALUES (?, ?, ?, ?)", (str(record.id), str(source.id), action_id, now))
+            conn.execute("INSERT INTO knowledge_action_effects VALUES (?, ?, ?, ?, ?)", (action_id, str(record.id), str(source.id), outcome, now))
+            self._sync_retrieval(conn)
+        return record, source, outcome
+
+    @staticmethod
+    def _resolve_or_create_entity_in_transaction(conn: sqlite3.Connection, name: str, now: str) -> UUID:
+        name = _required_text(name, "name", limit=240)
+        normalized = normalize_alias(name)
+        row = conn.execute("SELECT entity_id FROM entity_aliases WHERE normalized_alias=?", (normalized,)).fetchone()
+        if row is not None:
+            return UUID(str(row[0]))
+        identifier = uuid4()
+        conn.execute("INSERT INTO entities VALUES (?, ?, ?, ?)", (str(identifier), name, normalized, now))
+        conn.execute("INSERT INTO entity_aliases VALUES (?, ?, ?, ?)", (normalized, str(identifier), name, now))
+        return identifier
+
+    @staticmethod
+    def _insert_record_in_transaction(conn: sqlite3.Connection, *, partition: str, kind: str, text: str, status: str,
+        now: str, subject_entity_id: UUID | None = None, predicate: str | None = None,
+        object_entity_id: UUID | None = None, object_value: str | None = None, effective_at: str | None = None) -> KnowledgeRecord:
+        identifier = uuid4()
+        conn.execute("INSERT INTO knowledge_records VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)",
+            (str(identifier), partition, kind, text, status, str(subject_entity_id) if subject_entity_id else None,
+             predicate, str(object_entity_id) if object_entity_id else None, object_value, effective_at, now, now))
+        row = conn.execute("SELECT * FROM knowledge_records WHERE id=?", (str(identifier),)).fetchone()
+        assert row is not None
+        return KnowledgeStore._record(row)
+
+    def capture_effect(self, action_id: str) -> tuple[KnowledgeRecord, KnowledgeSource, str] | None:
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT r.*,s.id,s.kind,s.partition,s.locator,s.original_text,s.content_hash,s.created_at,e.outcome "
+                "FROM knowledge_action_effects e JOIN knowledge_records r ON r.id=e.record_id "
+                "JOIN knowledge_sources s ON s.id=e.source_id WHERE e.action_id=?", (action_id,)
+            ).fetchone()
+        return (self._record(row[:13]), self._source(row[13:20]), str(row[20])) if row else None
 
     def _sync_retrieval(self, conn: sqlite3.Connection) -> None:
         if self._memory_connection is not None:

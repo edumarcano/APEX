@@ -145,9 +145,11 @@ APEX is a personal, non-commercial application. A public source repository does 
 
 ## Local persistence
 
-`apex_memory.db` stores normal-mode run timestamps, up to 50 recent briefing records and their runtime metadata, the Microsoft To Do reminder cache and local outbox, legacy reminder rows kept for compatibility, and the durable action ledger.
+`apex_memory.db` stores normal-mode run timestamps, up to 50 recent briefing records and their runtime metadata, the Microsoft To Do reminder cache and local outbox, legacy reminder rows kept for compatibility, the durable action ledger, and source-tracked personal context approved by the operator.
 
 Action records keep the proposing Agent, capability, saved arguments, target, risk, summary, state, timestamps, and proposal hash. Their audit events keep state changes, stable result codes, and limited execution or verification evidence. New timestamps use UTC; old timezone-naive run timestamps remain readable as local wall-clock values.
+
+Personal-context captures retain the operator-provided source text, the approved record, and a link to the action that created or confirmed it. APEX rejects obvious credentials and private-key material before creating a capture proposal, but this is a limited guardrail rather than a guarantee that sensitive text will be detected.
 
 The database is not encrypted by APEX. Operating-system account access and filesystem permissions protect it at rest. Database files, WAL files, caches, OAuth tokens, credentials, generated audio, local settings, and model weights are gitignored.
 

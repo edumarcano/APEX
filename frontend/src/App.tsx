@@ -266,7 +266,7 @@ export default function App(): ReactElement {
     applyBootSettings,
   } = apexData
   const actions = useActions(
-    workspace === 'cortex' && apexData.status === 'success' && !demoModeActive,
+    workspace === 'cortex' && !demoModeActive,
   )
   const { data: marketData, isLoading: isMarketLoading } = useMarketData(
     marketEnabled,
@@ -1334,7 +1334,10 @@ export default function App(): ReactElement {
   const handleAssistantResponseChange = useCallback((response: Record<string, unknown> | null, error: string | null): void => {
     setAssistantResponse(response)
     setAssistantResponseError(error)
-  }, [])
+    if (response) {
+      void actions.refresh()
+    }
+  }, [actions])
 
   return (
     <main

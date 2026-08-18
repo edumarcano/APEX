@@ -58,6 +58,7 @@ class CapabilityRegistryTests(unittest.TestCase):
                 "reopen_microsoft_todo_task",
                 "delete_microsoft_todo_task",
                 "get_gmail_message",
+                "remember_personal_context",
             },
         )
         for capability in capabilities:
@@ -67,6 +68,7 @@ class CapabilityRegistryTests(unittest.TestCase):
                 else "write" if capability.name in {
                     "create_microsoft_todo_task", "update_microsoft_todo_task",
                     "complete_microsoft_todo_task", "reopen_microsoft_todo_task",
+                    "remember_personal_context",
                 } else "read"
             )
             self.assertEqual(capability.risk, expected_risk)

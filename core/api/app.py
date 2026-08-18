@@ -30,6 +30,7 @@ from core.agent.providers.llama_cpp_supervisor import get_llama_cpp_server_super
 from core import database, speaker
 from core.conversations import ConversationService, ConversationStore, set_conversation_service
 from core.knowledge import KnowledgeService, KnowledgeStore, set_knowledge_service
+from core.knowledge.capture import ContextCaptureExecutor, ContextCaptureVerifier, CAPABILITY_NAME
 from core.retrieval import RetrievalService, RetrievalStore, set_retrieval_service
 from core.mcp import load_mcp_config, set_mcp_manager
 from core.mcp.manager import MCPClientManager
@@ -87,6 +88,11 @@ async def _app_lifespan(_app: FastAPI):
     if not DEMO_MODE:
         assert microsoft_todo_client is not None
         action_service = ActionService()
+        action_service.register_handler(
+            CAPABILITY_NAME,
+            executor=ContextCaptureExecutor(knowledge_store, conversation_service),
+            verifier=ContextCaptureVerifier(knowledge_store),
+        )
         action_service.register_handler(
             "create_microsoft_todo_task",
             executor=CreateMicrosoftTodoTaskExecutor(microsoft_todo_client),
