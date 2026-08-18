@@ -19,6 +19,7 @@ import {
 import { ApexLogo, type ApexLogoProps } from './components/ApexLogo'
 import { CelestialBackground } from './components/CelestialBackground'
 import { CortexWorkspace } from './components/CortexWorkspace'
+import { ApexAssistantRuntime, type ApexAssistantRunConfig, type ApexAssistantRuntimeHandle } from './components/ApexAssistantRuntime'
 import { BriefingDigest } from './components/BriefingDigest'
 import { CalendarEventList } from './components/CalendarEventList'
 import { FootballFixtureList } from './components/FootballFixtureList'
@@ -221,6 +222,18 @@ export default function App(): ReactElement {
   const [reminderActionError, setReminderActionError] = useState<string | null>(null)
   const [marketPollKey, setMarketPollKey] = useState(0)
   const [briefingTargets, setBriefingTargets] = useState<BriefingTargetStatus[]>([])
+  const assistantRuntimeRef = useRef<ApexAssistantRuntimeHandle | null>(null)
+  const [assistantRunning, setAssistantRunning] = useState(false)
+  const [assistantRunningAgent, setAssistantRunningAgent] = useState<AgentKey | null>(null)
+  const [assistantConversationId, setAssistantConversationId] = useState<string | null>(null)
+  const [assistantConversationPreferences, setAssistantConversationPreferences] = useState<{
+    agent: AgentKey
+    selected_tool_names: string[] | null
+    tool_profile_id: string | null
+  } | null>(null)
+  const [conversationHydrating, setConversationHydrating] = useState(false)
+  const [assistantResponse, setAssistantResponse] = useState<Record<string, unknown> | null>(null)
+  const [assistantResponseError, setAssistantResponseError] = useState<string | null>(null)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
   const activeAgentRef = useRef(activeAgent)
   useEffect(() => {
@@ -271,26 +284,24 @@ export default function App(): ReactElement {
   )
 
   const {
-    cortexHistory,
-    cortexConversationId,
-    conversationPreferences,
-    isCortexQuerying,
-    activeQueryAgent,
-    cortexLatestTrace,
-    cortexError,
-    cortexContextUsage,
     agentsStatus,
     agentsStatusHydrated,
-    queryAgent,
-    patchConversation,
     isLocalModelActionPending,
     verifyingCloudAgent,
     loadLocalModel,
     unloadLocalModel,
     verifyCloudAgent,
     refreshAgentsStatus,
-    clearCortexSession,
-  } = useCortex(true, { devModeActive, sandboxMode })
+  } = useCortex(true)
+  const isCortexQuerying = assistantRunning
+  const activeQueryAgent = assistantRunningAgent
+  const cortexLatestTrace = assistantResponse && Array.isArray(assistantResponse.tool_trace)
+    ? assistantResponse.tool_trace as Array<{ name: string; status: string; duration_ms: number }>
+    : []
+  const cortexError = assistantResponseError
+  const cortexContextUsage = assistantResponse && assistantResponse.local_context_usage && typeof assistantResponse.local_context_usage === 'object'
+    ? assistantResponse.local_context_usage as { estimated_prompt_tokens: number; peak_prompt_tokens: number | null; context_window: number; history_messages_dropped: number }
+    : null
   const mcpRuntime = useMcpStatus(true)
   const mcpAvailabilityVersion = useMemo(() => {
     if (!mcpRuntime.status) return null
@@ -310,7 +321,7 @@ export default function App(): ReactElement {
     selectedToolNames: toolCatalogState.selectedToolNames,
     toolProfileId: toolCatalogState.activeToolProfileId,
     prompt: draftPrompt,
-    conversationId: cortexConversationId,
+    conversationId: assistantConversationId,
     snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
     enabled: Boolean(
       agentQueriesEnabled &&
@@ -335,17 +346,20 @@ export default function App(): ReactElement {
   } | null>(null)
 
   useEffect(() => {
-    if (!cortexConversationId || !conversationPreferences) {
+    if (!assistantConversationId || !assistantConversationPreferences) {
       conversationHydrationRef.current = null
       conversationHydrationTargetRef.current = null
       conversationSelectionBaselineRef.current = null
       return
     }
-    if (conversationHydrationRef.current === cortexConversationId) return
-    if (conversationPreferences.agent !== activeAgent) {
-      activeAgentRef.current = conversationPreferences.agent
+    if (conversationHydrationRef.current === assistantConversationId) {
+      queueMicrotask(() => setConversationHydrating(false))
+      return
+    }
+    if (assistantConversationPreferences.agent !== activeAgent) {
+      activeAgentRef.current = assistantConversationPreferences.agent
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Conversation hydration selects the durable Agent before catalog hydration.
-      setAgent(conversationPreferences.agent)
+      setAgent(assistantConversationPreferences.agent)
       return
     }
     if (
@@ -354,32 +368,35 @@ export default function App(): ReactElement {
     ) {
       return
     }
-    const selectedToolNames = conversationPreferences.selectedToolNames
+    const selectedToolNames = assistantConversationPreferences.selected_tool_names
     const namesToApply = selectedToolNames ?? toolCatalogState.selectedToolNames
     const selectionMatches =
       sameToolNames(namesToApply, toolCatalogState.selectedToolNames) &&
-      conversationPreferences.toolProfileId === toolCatalogState.activeToolProfileId
+      assistantConversationPreferences.tool_profile_id === toolCatalogState.activeToolProfileId
     conversationHydrationTargetRef.current = {
-      conversationId: cortexConversationId,
-      agent: conversationPreferences.agent,
+      conversationId: assistantConversationId,
+      agent: assistantConversationPreferences.agent,
       selectedToolNames,
-      toolProfileId: conversationPreferences.toolProfileId,
+      toolProfileId: assistantConversationPreferences.tool_profile_id,
     }
     if (!selectionMatches) {
-      toolCatalogState.setToolSelection(namesToApply, conversationPreferences.toolProfileId)
+      toolCatalogState.setToolSelection(namesToApply, assistantConversationPreferences.tool_profile_id)
       return
     }
-    conversationHydrationRef.current = cortexConversationId
+    conversationHydrationRef.current = assistantConversationId
     conversationHydrationTargetRef.current = null
     conversationSelectionBaselineRef.current = {
-      conversationId: cortexConversationId,
+      conversationId: assistantConversationId,
       selectedToolNames: toolCatalogState.selectedToolNames,
       toolProfileId: toolCatalogState.activeToolProfileId,
     }
+    queueMicrotask(() => {
+      if (conversationHydrationRef.current === assistantConversationId) setConversationHydrating(false)
+    })
   }, [
     activeAgent,
-    conversationPreferences,
-    cortexConversationId,
+    assistantConversationPreferences,
+    assistantConversationId,
     toolCatalogState.catalog?.agent,
     toolCatalogState.selectionReady,
     toolCatalogState.setToolSelection,
@@ -388,38 +405,45 @@ export default function App(): ReactElement {
 
   useEffect(() => {
     if (
-      !cortexConversationId ||
-      conversationHydrationRef.current !== cortexConversationId
+      !assistantConversationId ||
+      conversationHydrationRef.current !== assistantConversationId
     ) {
       return
     }
-    if (!conversationPreferences) return
-    if (conversationHydrationTargetRef.current?.conversationId === cortexConversationId) {
+    if (!assistantConversationPreferences) return
+    if (conversationHydrationTargetRef.current?.conversationId === assistantConversationId) {
       return
     }
-    const baseline = conversationSelectionBaselineRef.current?.conversationId === cortexConversationId
+    const baseline = conversationSelectionBaselineRef.current?.conversationId === assistantConversationId
       ? conversationSelectionBaselineRef.current
       : null
-    const selectedNamesChanged = conversationPreferences.selectedToolNames === null
+    const selectedNamesChanged = assistantConversationPreferences.selected_tool_names === null
       ? Boolean(baseline && (
         !sameToolNames(baseline.selectedToolNames, toolCatalogState.selectedToolNames) ||
         baseline.toolProfileId !== toolCatalogState.activeToolProfileId
       ))
-      : !sameToolNames(conversationPreferences.selectedToolNames, toolCatalogState.selectedToolNames) ||
-        conversationPreferences.toolProfileId !== toolCatalogState.activeToolProfileId
-    if (conversationPreferences.agent === activeAgent && !selectedNamesChanged) {
+      : !sameToolNames(assistantConversationPreferences.selected_tool_names, toolCatalogState.selectedToolNames) ||
+        assistantConversationPreferences.tool_profile_id !== toolCatalogState.activeToolProfileId
+    if (assistantConversationPreferences.agent === activeAgent && !selectedNamesChanged) {
       return
     }
-    void patchConversation({
+    const conversationIdAtPatch = assistantConversationId
+    void assistantRuntimeRef.current?.patchPreferences({
       agent: activeAgent,
       selectedToolNames: toolCatalogState.selectedToolNames,
       toolProfileId: toolCatalogState.activeToolProfileId,
+    }).then((updated) => {
+      if (!updated || assistantConversationId !== conversationIdAtPatch) return
+      setAssistantConversationPreferences({
+        agent: updated.agent,
+        selected_tool_names: updated.selected_tool_names,
+        tool_profile_id: updated.tool_profile_id,
+      })
     })
   }, [
     activeAgent,
-    cortexConversationId,
-    conversationPreferences,
-    patchConversation,
+    assistantConversationId,
+    assistantConversationPreferences,
     toolCatalogState.activeToolProfileId,
     toolCatalogState.selectedToolNames,
   ])
@@ -972,59 +996,26 @@ export default function App(): ReactElement {
   const inboxCompactValue = hasSnapshot ? `${emailInfo.count} unread` : null
   const newsCompactValue = hasSnapshot ? `${newsItems.length} headlines` : null
   const remindersCompactValue = `${pendingReminderCount} pending`
-  const queryAgentWithContext = useCallback(
-    async (
-      prompt: string,
-      agent: AgentKey,
-      selectedToolNames: string[],
-      toolProfileId: string | null,
-    ): Promise<boolean> => {
-      if (submissionPendingRef.current) return false
-      submissionPendingRef.current = true
-      setSubmissionPending(true)
-      try {
-        if (
-          activeAgentRef.current !== agent ||
-          !toolCatalogState.selectionReady ||
-          toolCatalogState.catalog?.agent !== agent
-        ) {
-          return false
-        }
-        const resolution = await preflight.requestOperation('cortex_query', {
-          synthesis_agent: agent,
-          involves_cloud: isCloudAgentKey(agent, agentsStatus),
-        })
-        if (
-          resolution !== 'proceed' ||
-          activeAgentRef.current !== agent ||
-          !toolCatalogState.selectionReady ||
-          toolCatalogState.catalog?.agent !== agent
-        ) {
-          return false
-        }
-        void queryAgent(prompt, agent, {
-          snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
-          selectedToolNames,
-          toolProfileId,
-          effort: isCloudAgentKey(agent, agentsStatus) ? cloudEffort : null,
-        })
-        return true
-      } finally {
-        submissionPendingRef.current = false
-        setSubmissionPending(false)
-      }
-    },
-    [
-      preflight,
-      queryAgent,
-      telemetry.snapshot?.snapshot_id,
-      agentsStatus,
-      cloudEffort,
-      snapshotAttached,
-      toolCatalogState.catalog,
-      toolCatalogState.selectionReady,
-    ],
-  )
+  const runAssistantPreflight = useCallback(async (config: ApexAssistantRunConfig): Promise<boolean> => {
+    if (submissionPendingRef.current) return false
+    submissionPendingRef.current = true
+    setSubmissionPending(true)
+    try {
+      if (
+        activeAgentRef.current !== config.agent ||
+        !toolCatalogState.selectionReady ||
+        toolCatalogState.catalog?.agent !== config.agent
+      ) return false
+      const resolution = await preflight.requestOperation('cortex_query', {
+        synthesis_agent: config.agent,
+        involves_cloud: isCloudAgentKey(config.agent, agentsStatus),
+      })
+      return resolution === 'proceed' && activeAgentRef.current === config.agent && toolCatalogState.selectionReady && toolCatalogState.catalog?.agent === config.agent
+    } finally {
+      submissionPendingRef.current = false
+      setSubmissionPending(false)
+    }
+  }, [agentsStatus, preflight, toolCatalogState.catalog, toolCatalogState.selectionReady])
 
   const refreshToolCatalog = toolCatalogState.refreshCatalog
   const persistAgentSettings = useCallback(
@@ -1305,22 +1296,45 @@ export default function App(): ReactElement {
   }, [persistAgentSettings])
 
   const handleNewCortexSession = useCallback((): void => {
-    clearCortexSession()
     setSnapshotAttached(false)
-  }, [clearCortexSession])
+  }, [])
 
   const handleHomeSubmit = useCallback(async (
     query: string,
-    agent: AgentKey,
-    selectedToolNames: string[],
-    toolProfileId: string | null,
   ): Promise<boolean> => {
-    const accepted = await queryAgentWithContext(query, agent, selectedToolNames, toolProfileId)
+    const accepted = await assistantRuntimeRef.current?.submitPrompt(query) ?? false
     if (accepted) {
       setWorkspace('cortex')
     }
     return accepted
-  }, [queryAgentWithContext])
+  }, [])
+
+  const handleAssistantConversationChange = useCallback((summary: {
+    id: string
+    agent: AgentKey
+    selected_tool_names: string[] | null
+    tool_profile_id: string | null
+  } | null): void => {
+    setAssistantConversationId(summary?.id ?? null)
+    setAssistantConversationPreferences(summary ? {
+      agent: summary.agent,
+      selected_tool_names: summary.selected_tool_names,
+      tool_profile_id: summary.tool_profile_id,
+    } : null)
+    setConversationHydrating(Boolean(summary))
+    setAssistantResponse(null)
+    setAssistantResponseError(null)
+  }, [])
+
+  const handleAssistantRunningChange = useCallback((running: boolean, agent: AgentKey | null): void => {
+    setAssistantRunning(running)
+    setAssistantRunningAgent(agent)
+  }, [])
+
+  const handleAssistantResponseChange = useCallback((response: Record<string, unknown> | null, error: string | null): void => {
+    setAssistantResponse(response)
+    setAssistantResponseError(error)
+  }, [])
 
   return (
     <main
@@ -1382,6 +1396,21 @@ export default function App(): ReactElement {
           mcpRuntime={mcpRuntime}
         />
 
+        <ApexAssistantRuntime
+          key={`${demoModeActive ? 'demo' : devModeActive && sandboxMode ? 'sandbox' : 'production'}`}
+          config={{
+            agent: activeAgent,
+            effort: isCloudAgentKey(activeAgent, agentsStatus) ? cloudEffort : null,
+            selectedToolNames: toolCatalogState.selectedToolNames,
+            toolProfileId: toolCatalogState.activeToolProfileId,
+            snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
+          }}
+          beforeRun={runAssistantPreflight}
+          runtimeRef={assistantRuntimeRef}
+          onConversationChange={handleAssistantConversationChange}
+          onRunningChange={handleAssistantRunningChange}
+          onResponseChange={handleAssistantResponseChange}
+        >
         {workspace === 'home' ? (
           <>
         <div className="hud-body-layout flex w-full flex-col gap-4 overflow-visible xl:h-full xl:min-h-0 xl:flex-1 xl:flex-row xl:overflow-hidden xl:gap-6">
@@ -1819,7 +1848,7 @@ export default function App(): ReactElement {
             agentQueriesEnabled={Boolean(agentQueriesEnabled)}
             agentsStatus={agentsStatus}
             agentsStatusHydrated={agentsStatusHydrated}
-            history={cortexHistory}
+            history={[]}
             latestTrace={cortexLatestTrace}
             error={cortexError}
             contextUsage={cortexContextUsage}
@@ -1828,6 +1857,7 @@ export default function App(): ReactElement {
             activeToolProfileId={toolCatalogState.activeToolProfileId}
             selectionReady={toolCatalogState.selectionReady}
             submissionPending={submissionPending}
+            conversationHydrating={conversationHydrating}
             onToolSelectionChange={toolCatalogState.setSelectedToolNames}
             onToolProfileChange={toolCatalogState.applyToolProfile}
             toolPreflight={toolPreflightState.estimate}
@@ -1867,8 +1897,17 @@ export default function App(): ReactElement {
             onNewSession={handleNewCortexSession}
             actions={actions}
             demoModeActive={demoModeActive}
+            assistantRunConfig={{
+              agent: activeAgent,
+              effort: isCloudAgentKey(activeAgent, agentsStatus) ? cloudEffort : null,
+              selectedToolNames: toolCatalogState.selectedToolNames,
+              toolProfileId: toolCatalogState.activeToolProfileId,
+              snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
+            }}
+            onAssistantPreflight={runAssistantPreflight}
           />
       )}
+        </ApexAssistantRuntime>
       {isReminderReviewOpen ? (
         <ReminderReviewDialog
           reminders={activeReminders}

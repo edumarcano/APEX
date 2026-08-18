@@ -20,7 +20,7 @@ import { agentShortName } from '../lib/agentDisplay'
 import { AgentMark } from './AgentMark'
 import { ToolsSelector } from './ToolsSelector'
 
-function CortexQueryRim(): ReactElement {
+export function CortexQueryRim(): ReactElement {
   const accentRgb = '168, 85, 247'
   const dualSweep = `conic-gradient(from 0deg,
     rgba(${accentRgb}, 0) 0deg,
@@ -51,7 +51,7 @@ function CortexQueryRim(): ReactElement {
   </div>
 }
 
-function CortexErrorFeedback({ error }: { error: string }): ReactElement | null {
+export function CortexErrorFeedback({ error }: { error: string }): ReactElement | null {
   const [visible, setVisible] = useState(true)
 
   useEffect(() => {
@@ -63,7 +63,7 @@ function CortexErrorFeedback({ error }: { error: string }): ReactElement | null 
   return <span className="cortex-error-feedback pointer-events-none absolute inset-0 flex items-center justify-end rounded-xl border border-red-400/70 pr-12 text-red-300" role="status" aria-label={`Last query failed: ${error}`}><CircleAlert className="size-4" aria-hidden /></span>
 }
 
-interface AgentQueryBarProps {
+export interface AgentQueryBarProps {
   activeAgent: AgentKey
   onSubmit: (
     query: string,

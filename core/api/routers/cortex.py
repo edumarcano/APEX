@@ -180,6 +180,21 @@ def patch_conversation(conversation_id: str, payload: ConversationPatchRequest) 
         raise _conversation_error(exc) from exc
 
 
+@router.delete(
+    "/api/v1/cortex/conversations/{conversation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_conversation(conversation_id: str) -> None:
+    from uuid import UUID
+
+    try:
+        get_conversation_service().delete(UUID(conversation_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation was not found.") from exc
+    except (ConversationNotFoundError, ConversationConflictError) as exc:
+        raise _conversation_error(exc) from exc
+
+
 def _turn_result(conversation_id, user, agent) -> ConversationTurnResult:
     metadata = agent.response_metadata or {}
     return ConversationTurnResult(

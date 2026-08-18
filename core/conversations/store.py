@@ -227,6 +227,32 @@ class ConversationStore:
             conn.execute(f"UPDATE conversations SET {columns} WHERE id = ? AND partition = ?", (*values.values(), str(conversation_id), partition))
         return self.get_summary(conversation_id, partition)
 
+    def delete(self, conversation_id: UUID, partition: str) -> None:
+        """Permanently remove one archived conversation and its message tree."""
+        with self._connection() as conn, conn:
+            row = conn.execute(
+                "SELECT archived_at FROM conversations WHERE id = ? AND partition = ?",
+                (str(conversation_id), partition),
+            ).fetchone()
+            if row is None:
+                raise ConversationNotFoundError("Conversation was not found.")
+            if row[0] is None:
+                raise ConversationConflictError("Only archived conversations can be permanently deleted.")
+            pending = conn.execute(
+                "SELECT 1 FROM conversation_messages WHERE conversation_id = ? AND role = 'agent' AND status = 'pending' LIMIT 1",
+                (str(conversation_id),),
+            ).fetchone()
+            if pending is not None:
+                raise ConversationConflictError("A conversation with a pending turn cannot be deleted.")
+            conn.execute(
+                "DELETE FROM conversation_messages WHERE conversation_id = ?",
+                (str(conversation_id),),
+            )
+            conn.execute(
+                "DELETE FROM conversations WHERE id = ? AND partition = ?",
+                (str(conversation_id), partition),
+            )
+
     def begin_turn(self, *, conversation_id: UUID, partition: str, user_id: UUID, agent_id: UUID, parent_id: UUID | None, prompt: str, agent: str, request_metadata: dict[str, Any], selected_tool_names: list[str] | None, tool_profile_id: str | None, history_limit: int) -> tuple[ConversationMessage, ConversationMessage, list[AgentMessage], bool]:
         now = utc_now_iso()
         canonical = _json(request_metadata)

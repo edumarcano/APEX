@@ -105,6 +105,30 @@ class ConversationStoreTests(unittest.TestCase):
                 history_limit=6,
             )
 
+    def test_retry_reuses_completed_user_and_creates_agent_sibling(self) -> None:
+        user, first_agent, _, _ = self._begin()
+        self.store.finalize(
+            conversation_id=self.conversation_id,
+            agent_id=first_agent.id,
+            answer="First answer",
+            status="completed",
+            response_metadata={},
+        )
+        retry_user, retry_agent, history, replayed = self._begin(
+            user_id=user.id,
+            parent_id=user.parent_message_id,
+            prompt=user.content,
+        )
+        self.assertFalse(replayed)
+        self.assertEqual(retry_user.id, user.id)
+        self.assertNotEqual(retry_agent.id, first_agent.id)
+        self.assertEqual(retry_agent.parent_message_id, user.id)
+        self.assertEqual(history, [])
+        self.assertEqual(
+            len([message for message in self.store.detail(self.conversation_id, "production").messages if message.role == "user"]),
+            1,
+        )
+
     def test_rejects_parallel_turn_and_recovers_pending_turn(self) -> None:
         _, agent, _, _ = self._begin()
         with self.assertRaises(ConversationBusyError):
@@ -124,6 +148,30 @@ class ConversationStoreTests(unittest.TestCase):
         self.store.patch(self.conversation_id, "production", {"archived": True})
         with self.assertRaises(ConversationConflictError):
             self._begin()
+
+    def test_delete_removes_archived_conversation_and_message_tree(self) -> None:
+        user, agent, _, _ = self._begin(prompt="Remove me")
+        self.store.finalize(
+            conversation_id=self.conversation_id,
+            agent_id=agent.id,
+            answer="Gone",
+            status="completed",
+            response_metadata={},
+        )
+        self.store.patch(self.conversation_id, "production", {"archived": True})
+        self.store.delete(self.conversation_id, "production")
+        with self.assertRaises(Exception):
+            self.store.detail(self.conversation_id, "production")
+        with self.assertRaises(Exception):
+            self.store.detail(self.conversation_id, "sandbox")
+
+    def test_delete_rejects_active_and_pending_conversations(self) -> None:
+        with self.assertRaises(ConversationConflictError):
+            self.store.delete(self.conversation_id, "production")
+        self._begin(prompt="Pending")
+        self.store.patch(self.conversation_id, "production", {"archived": True})
+        with self.assertRaises(ConversationConflictError):
+            self.store.delete(self.conversation_id, "production")
 
 
 if __name__ == "__main__":

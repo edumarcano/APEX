@@ -260,6 +260,15 @@ class ExtractedRouterHttpTests(unittest.TestCase):
         self.assertEqual(response.json()["status"], "verified")
         verify.assert_called_once_with("panthera")
 
+        service = mock.Mock()
+        conversation_id = "00000000-0000-4000-8000-000000000001"
+        with mock.patch(
+            "core.api.routers.cortex.get_conversation_service", return_value=service,
+        ):
+            deleted = self.client.delete(f"/api/v1/cortex/conversations/{conversation_id}")
+        self.assertEqual(deleted.status_code, 204)
+        service.delete.assert_called_once()
+
     def test_removed_agent_routes_and_profile_payload_are_rejected(self) -> None:
         self.assertEqual(self.client.get("/api/v1/agent/profiles").status_code, 404)
         self.assertEqual(self.client.post("/api/v1/agent/query").status_code, 404)
