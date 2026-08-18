@@ -220,6 +220,7 @@ class ToolTokenBreakdown(BaseModel):
     system_instructions: int = Field(default=0, ge=0)
     conversation_history: int = Field(default=0, ge=0)
     hud_context: int = Field(default=0, ge=0)
+    retrieved_context: int = Field(default=0, ge=0)
     selected_tool_schemas: int = Field(default=0, ge=0)
     current_prompt: int = Field(default=0, ge=0)
     total: int = Field(default=0, ge=0)
@@ -400,3 +401,5 @@ class AgentQueryResponse(BaseModel):
         default=None,
         description="Provider-supplied grounding presentation material.",
     )
+    context_usage: dict[str, Any] | None = Field(default=None)
+    context_references: list[dict[str, Any]] = Field(default_factory=list)

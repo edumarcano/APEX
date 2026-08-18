@@ -164,6 +164,8 @@ For repeatable Felis and candidate-model comparisons, see [Local Model Benchmark
 
 `ask_apex.sandbox_mode` applies only when `DEV_MODE=true`. In sandbox mode, Panthera and Felis queries use a restricted non-personal tool allowlist, keep history in the `sandbox` partition, and can attach only the process-current masked development briefing identified by its matching `snapshot_id`. The local `search_apex_docs` capability remains available because it reads only the shared README and `docs/**/*.md` corpus.
 
+`ask_apex.panthera.personal_context_enabled` and `ask_apex.felis.personal_context_enabled` default to `false`. Each Cortex Context control persists its own value to `config.local.json`. When enabled for the active Agent in production, APEX may add bounded excerpts from other conversations and saved personal context. Disable the Felis setting when preserving local-model context-window capacity matters more than recalled context. Sandbox never receives either source.
+
 #### llama.cpp configuration
 
 | Key | Default | Runtime Settings | Notes |

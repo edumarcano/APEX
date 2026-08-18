@@ -204,6 +204,7 @@ function parsePantheraSettings(value: unknown): RuntimeSettings['ask_apex']['pan
   return {
     model: value.model.trim(),
     effort: value.effort,
+    personal_context_enabled: value.personal_context_enabled === true,
     hosted_tools: hostedTools,
   }
 }
@@ -226,6 +227,7 @@ function parseFelisSettings(value: unknown): RuntimeSettings['ask_apex']['felis'
     model: value.model.trim(),
     context_window: value.context_window,
     reasoning_mode: value.reasoning_mode,
+    personal_context_enabled: value.personal_context_enabled === true,
   }
 }
 

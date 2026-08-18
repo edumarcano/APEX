@@ -33,5 +33,8 @@ class KnowledgeService:
     def resolve_entity(self, alias: str):
         return self.store.resolve_entity(alias)
 
+    def entities_mentioned_in(self, text: str):
+        return self.store.entities_mentioned_in(text)
+
     def one_hop_relationships(self, entity_id, *, partition: str):
         return self.store.one_hop_relationships(entity_id, partition=partition)

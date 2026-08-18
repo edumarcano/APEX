@@ -63,6 +63,7 @@ export interface PantheraHostedToolsSettings {
 export interface PantheraSettings {
   model: string
   effort: CloudEffort
+  personal_context_enabled: boolean
   hosted_tools: PantheraHostedToolsSettings
 }
 
@@ -70,6 +71,7 @@ export interface FelisSettings {
   model: string
   context_window: number
   reasoning_mode: LocalReasoningMode
+  personal_context_enabled: boolean
 }
 
 export interface AgentSettings {
@@ -164,6 +166,7 @@ export interface PantheraHostedToolsPatch {
 export interface PantheraSettingsPatch {
   model?: string
   effort?: CloudEffort
+  personal_context_enabled?: boolean
   hosted_tools?: PantheraHostedToolsPatch
 }
 
@@ -171,6 +174,7 @@ export interface FelisSettingsPatch {
   model?: string
   context_window?: number
   reasoning_mode?: LocalReasoningMode
+  personal_context_enabled?: boolean
 }
 
 export interface AgentSettingsPatch {
