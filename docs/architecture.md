@@ -190,7 +190,7 @@ The final permitted turn is answer-only, preventing a model from requesting a to
 
 Each non-demo Agent request begins with the selected Agent's identity instruction, followed by prompt behavior loaded from `config.json`, an optional user designation from local settings, scoped context, and the security boundary. Agent identity describes the active Agent and its selected model; it does not grant tools or override privacy policy.
 
-Panthera can receive the general APEX capability registry. Brave MCP is the only general web-search path. Optional Google Search, Google Maps, and X Search attach only when the selected Panthera model and persisted hosted-tool settings allow them. `DEV_MODE` sandbox queries use a restricted non-personal allowlist instead of the full registry.
+Panthera can receive the general APEX capability registry. Brave MCP is the only general web-search path. Optional Google Search, Google Maps, and X Search attach only when the selected Panthera model and persisted hosted-tool settings allow them. `search_apex_docs` is a local read capability over README and `docs/**/*.md`; it is also permitted in the `DEV_MODE` sandbox because it searches a shared documentation namespace rather than personal context. Every returned excerpt remains inside the existing untrusted-tool-output boundary.
 
 `GET /api/v1/agents` is the backend-owned Agent catalog. It publishes Panthera and Felis, their selected models and provider/runtime, each model catalog, model-native reasoning metadata, selectable local context and reasoning metadata, grounding state, pricing metadata, and safe availability information. Cortex owns presentation and interaction. Agent polling never performs a provider probe; cloud availability becomes stronger only after an explicit check or real inference.
 
@@ -211,6 +211,11 @@ Production native capabilities are mostly read-only, with a small set of approva
 MCP discovery registers only allowlisted tools with explicit local risk classifications. Imported tools are namespaced when needed, limited in size before model and client display, and never re-exported as an APEX MCP server.
 
 The Tools selector can only narrow what is already allowed. It cannot enable an MCP provider, change its allowlist, or bypass sandbox restrictions in `DEV_MODE`. Catalog and preflight responses use the same descriptors that provider turns receive.
+
+The documentation corpus is lazy. A docs search scans the fixed allowlist of
+repository files, produces heading-aware source chunks, and incrementally
+reconciles them with the local retrieval index. It has no watcher, startup
+scan, general filesystem access, or automatic prompt-context injection.
 
 Provider-hosted Search, Maps, and X activity is tracked separately from APEX tool calls. Successful billable uses can include provider-origin traces, citations where available, latency, and cost estimates.
 

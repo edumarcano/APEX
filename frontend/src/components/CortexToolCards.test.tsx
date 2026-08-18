@@ -46,6 +46,26 @@ describe('CortexToolCards MCP presentation', () => {
   })
 })
 
+describe('CortexToolCards documentation search presentation', () => {
+  it('renders local source locations as inert reference material', () => {
+    const { container } = render(
+      <CortexToolCards
+        toolOutputs={[{
+          name: 'search_apex_docs', status: 'ok', duration_ms: 11,
+          output: {
+            trust: 'untrusted_reference', retrieval_mode: 'fts_only',
+            results: [{ path: 'docs/architecture.md', heading: 'Capability and MCP boundary', line_start: 208, line_end: 214, text: '<img src=x onerror=alert(1)> Reference text', score: 0.8 }],
+          },
+        }]}
+      />,
+    )
+    expect(screen.getByText('Reference material · fts_only')).toBeInTheDocument()
+    expect(screen.getByText('docs/architecture.md:L208-L214')).toBeInTheDocument()
+    expect(screen.getByText('<img src=x onerror=alert(1)> Reference text')).toBeInTheDocument()
+    expect(container.querySelector('img')).toBeNull()
+  })
+})
+
 describe('CortexToolCards action proposals', () => {
   it('renders a compact card that directs approval to the Cortex inspector', () => {
     render(

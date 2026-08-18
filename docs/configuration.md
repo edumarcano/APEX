@@ -162,7 +162,7 @@ For repeatable Felis and candidate-model comparisons, see [Local Model Benchmark
 
 ### Development sandbox mode
 
-`ask_apex.sandbox_mode` applies only when `DEV_MODE=true`. In sandbox mode, Panthera and Felis queries use a restricted non-personal tool allowlist, keep history in the `sandbox` partition, and can attach only the process-current masked development briefing identified by its matching `snapshot_id`.
+`ask_apex.sandbox_mode` applies only when `DEV_MODE=true`. In sandbox mode, Panthera and Felis queries use a restricted non-personal tool allowlist, keep history in the `sandbox` partition, and can attach only the process-current masked development briefing identified by its matching `snapshot_id`. The local `search_apex_docs` capability remains available because it reads only the shared README and `docs/**/*.md` corpus.
 
 #### llama.cpp configuration
 
@@ -202,7 +202,9 @@ APEX does not install, bundle, or update llama.cpp, and it does not download
 llama.cpp model weights. Retrieval has a separate explicit `apex context prepare`
 operation for downloading the optional FastEmbed embedding model into the
 ignored `weights/fastembed/` cache; this does not affect llama.cpp runtime
-management. The pinned retrieval model is `BAAI/bge-small-en-v1.5` (384
+management. It backfills every source already present in the local retrieval
+index; documentation joins that index only when `search_apex_docs` is used.
+The pinned retrieval model is `BAAI/bge-small-en-v1.5` (384
 dimensions, approximately 67 MB, MIT license) through `fastembed==0.8.0`.
 Two operator modes are supported:
 

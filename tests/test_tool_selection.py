@@ -23,6 +23,7 @@ from core.agent.tool_schemas import (
 )
 from core.agent.tool_profiles import resolve_profile_names
 from core.agent.tool_selection import resolve_selected_tools
+from core.agent.sandbox_policy import is_sandbox_capability_allowed
 from core.agent.types import AgentMessage, AgentQueryRequest
 from core.api.cortex import build_tool_preflight
 from core.api.models import (
@@ -201,6 +202,9 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertFalse(reminders.available)
         self.assertFalse(reminders.allowed_for_agent)
         self.assertIn("selected Agent policy", reminders.unavailable_reason or "")
+
+    def test_sandbox_allows_local_documentation_search(self) -> None:
+        self.assertTrue(is_sandbox_capability_allowed("search_apex_docs"))
 
     def test_sandbox_catalog_disables_configured_undiscovered_personal_mcp_tools(
         self,

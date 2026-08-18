@@ -91,8 +91,11 @@ class RetrievalStore:
             row = conn.execute(
                 "SELECT version FROM schema_versions WHERE domain = 'retrieval'"
             ).fetchone()
-            if row is not None and int(row[0]) > 1:
+            version = int(row[0]) if row is not None else 0
+            if version > 2:
                 raise RetrievalStoreError("Retrieval schema is newer than this APEX build.")
+            if version == 1:
+                self._migrate_v1_to_v2(conn)
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS retrieval_items (
@@ -100,7 +103,7 @@ class RetrievalStore:
                     namespace TEXT NOT NULL,
                     source_type TEXT NOT NULL,
                     source_id TEXT NOT NULL,
-                    partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')),
+                    partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox', 'shared')),
                     conversation_id TEXT,
                     message_id TEXT,
                     role TEXT,
@@ -149,7 +152,7 @@ class RetrievalStore:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_retrieval_items_scope ON retrieval_items(namespace, source_type, partition, updated_at)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_retrieval_items_source ON retrieval_items(conversation_id, message_id)")
             conn.execute(
-                "INSERT INTO schema_versions(domain, version) VALUES ('retrieval', 1) "
+                "INSERT INTO schema_versions(domain, version) VALUES ('retrieval', 2) "
                 "ON CONFLICT(domain) DO UPDATE SET version = excluded.version"
             )
             conn.execute(
@@ -159,6 +162,57 @@ class RetrievalStore:
             )
             self._create_triggers(conn)
             self._reconcile_fts(conn)
+
+    @staticmethod
+    def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
+        """Preserve source rows while rebuilding derived retrieval state."""
+        conn.executescript(
+            """
+            DROP TRIGGER IF EXISTS retrieval_items_fts_insert;
+            DROP TRIGGER IF EXISTS retrieval_items_fts_delete;
+            DROP TRIGGER IF EXISTS retrieval_items_fts_update;
+            DROP TRIGGER IF EXISTS retrieval_items_embedding_update;
+            DROP TRIGGER IF EXISTS retrieval_cleanup_conversation_message;
+            DROP TABLE IF EXISTS retrieval_items_fts;
+            DROP TABLE IF EXISTS retrieval_embeddings;
+            ALTER TABLE retrieval_items RENAME TO retrieval_items_v1;
+            CREATE TABLE retrieval_items (
+                id TEXT PRIMARY KEY NOT NULL,
+                namespace TEXT NOT NULL,
+                source_type TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox', 'shared')),
+                conversation_id TEXT,
+                message_id TEXT,
+                role TEXT,
+                timestamp TEXT NOT NULL,
+                locator TEXT NOT NULL,
+                content_hash TEXT NOT NULL,
+                text TEXT NOT NULL,
+                title TEXT,
+                heading TEXT,
+                metadata_json TEXT NOT NULL CHECK(json_valid(metadata_json)),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(namespace, source_type, source_id)
+            );
+            INSERT INTO retrieval_items(
+                id, namespace, source_type, source_id, partition, conversation_id,
+                message_id, role, timestamp, locator, content_hash, text, title,
+                heading, metadata_json, created_at, updated_at
+            ) SELECT
+                id, namespace, source_type, source_id, partition, conversation_id,
+                message_id, role, timestamp, locator, content_hash, text, title,
+                heading, metadata_json, created_at, updated_at
+            FROM retrieval_items_v1;
+            DROP TABLE retrieval_items_v1;
+            """
+        )
+        conn.execute(
+            "UPDATE retrieval_model_state SET state = 'unprepared', model_fingerprint = NULL, "
+            "last_prepared_at = NULL, error_category = NULL, updated_at = ? WHERE id = 1",
+            (utc_now_iso(),),
+        )
 
     @staticmethod
     def _create_triggers(conn: sqlite3.Connection) -> None:
@@ -271,6 +325,73 @@ class RetrievalStore:
                      item.heading, metadata, now, now),
                 )
 
+    def sync_namespace(self, namespace: str, items: list[RetrievalItem]) -> list[str]:
+        """Incrementally reconcile one namespace without discarding unchanged vectors."""
+        expected = {item_id_for(item): item for item in items}
+        if any(item.namespace != namespace for item in items):
+            raise RetrievalStoreError("namespace_mismatch")
+        now = utc_now_iso()
+        changed: list[str] = []
+        with self._connection() as conn, conn:
+            existing = {
+                str(row[0]): tuple(row[1:])
+                for row in conn.execute(
+                    "SELECT id, content_hash, partition, conversation_id, message_id, role, "
+                    "timestamp, locator, title, heading, metadata_json FROM retrieval_items "
+                    "WHERE namespace = ?",
+                    (namespace,),
+                )
+            }
+            for identifier, item in expected.items():
+                metadata = json.dumps(item.metadata, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
+                current = existing.get(identifier)
+                item_state = (
+                    item.content_hash, item.partition, item.conversation_id, item.message_id,
+                    item.role, item.timestamp, item.locator, item.title, item.heading, metadata,
+                )
+                if current == item_state:
+                    continue
+                if current is not None and current[0] == item.content_hash:
+                    conn.execute(
+                        """
+                        UPDATE retrieval_items SET
+                            partition = ?, conversation_id = ?, message_id = ?, role = ?,
+                            timestamp = ?, locator = ?, title = ?, heading = ?, metadata_json = ?,
+                            updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            item.partition, item.conversation_id, item.message_id, item.role,
+                            item.timestamp, item.locator, item.title, item.heading,
+                            metadata,
+                            now, identifier,
+                        ),
+                    )
+                    continue
+                changed.append(identifier)
+                conn.execute(
+                    """
+                    INSERT INTO retrieval_items(
+                        id, namespace, source_type, source_id, partition, conversation_id,
+                        message_id, role, timestamp, locator, content_hash, text, title,
+                        heading, metadata_json, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(namespace, source_type, source_id) DO UPDATE SET
+                        partition=excluded.partition, conversation_id=excluded.conversation_id,
+                        message_id=excluded.message_id, role=excluded.role, timestamp=excluded.timestamp,
+                        locator=excluded.locator, content_hash=excluded.content_hash, text=excluded.text,
+                        title=excluded.title, heading=excluded.heading, metadata_json=excluded.metadata_json,
+                        updated_at=excluded.updated_at
+                    """,
+                    (identifier, item.namespace, item.source_type, item.source_id, item.partition,
+                     item.conversation_id, item.message_id, item.role, item.timestamp, item.locator,
+                     item.content_hash, item.text, item.title, item.heading, metadata, now, now),
+                )
+            stale = set(existing) - set(expected)
+            if stale:
+                conn.executemany("DELETE FROM retrieval_items WHERE id = ?", ((identifier,) for identifier in stale))
+        return changed
+
     def upsert_embedding(self, item_id: str, fingerprint: str, vector: list[float]) -> None:
         now = utc_now_iso()
         with self._connection() as conn, conn:
@@ -292,11 +413,16 @@ class RetrievalStore:
                 rows = conn.execute("SELECT item_id, vector, model_fingerprint FROM retrieval_embeddings WHERE model_fingerprint = ?", (fingerprint,)).fetchall()
         return [(str(row[0]), bytes(row[1]), str(row[2])) for row in rows]
 
-    def items_missing_embeddings(self, fingerprint: str) -> list[tuple[str, str]]:
+    def items_missing_embeddings(self, fingerprint: str, *, namespace: str | None = None) -> list[tuple[str, str]]:
+        clause = ""
+        params: list[Any] = [fingerprint]
+        if namespace is not None:
+            clause = " AND i.namespace = ?"
+            params.append(namespace)
         with self._connection() as conn:
             rows = conn.execute(
-                "SELECT i.id, i.text FROM retrieval_items i LEFT JOIN retrieval_embeddings e ON e.item_id = i.id AND e.model_fingerprint = ? WHERE e.item_id IS NULL ORDER BY i.id",
-                (fingerprint,),
+                "SELECT i.id, i.text FROM retrieval_items i LEFT JOIN retrieval_embeddings e ON e.item_id = i.id AND e.model_fingerprint = ? WHERE e.item_id IS NULL" + clause + " ORDER BY i.id",
+                params,
             ).fetchall()
         return [(str(row[0]), str(row[1])) for row in rows]
 
@@ -318,19 +444,16 @@ class RetrievalStore:
             embeddings = conn.execute("SELECT COUNT(*) FROM retrieval_embeddings").fetchone()
         return int(indexed[0]), int(embeddings[0])
 
-    def pending_count(self) -> int:
+    def pending_count(self, fingerprint: str | None = None) -> int:
         with self._connection() as conn:
-            tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-            if "conversation_messages" not in tables:
-                return 0
-            row = conn.execute(
-                """
-                SELECT COUNT(*) FROM conversation_messages m
-                LEFT JOIN retrieval_items i ON i.namespace = 'conversation'
-                  AND i.source_type = 'message' AND i.source_id = m.id
-                WHERE m.status = 'completed' AND i.id IS NULL
-                """
-            ).fetchone()
+            if fingerprint is None:
+                row = conn.execute("SELECT COUNT(*) FROM retrieval_items").fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM retrieval_items i LEFT JOIN retrieval_embeddings e "
+                    "ON e.item_id = i.id AND e.model_fingerprint = ? WHERE e.item_id IS NULL",
+                    (fingerprint,),
+                ).fetchone()
         return int(row[0])
 
     def search_fts(self, query: str, *, namespace: str, source_type: str | None, partition: str, limit: int) -> list[RetrievalHit]:
@@ -350,7 +473,8 @@ class RetrievalStore:
                     """
                     SELECT i.id, i.namespace, i.source_type, i.source_id, i.partition,
                            i.locator, i.text, i.role, i.conversation_id, i.message_id,
-                           i.timestamp, bm25(retrieval_items_fts) AS rank
+                           i.timestamp, i.title, i.heading, i.metadata_json,
+                           bm25(retrieval_items_fts) AS rank
                     FROM retrieval_items_fts f JOIN retrieval_items i ON i.id = f.item_id
                     WHERE retrieval_items_fts MATCH ? AND i.namespace = ? AND i.partition = ?
                     """ + source_clause + " ORDER BY rank ASC, i.id ASC LIMIT ?",
@@ -359,7 +483,7 @@ class RetrievalStore:
         except sqlite3.OperationalError:
             return []
         return [
-            RetrievalHit(item_id=str(row[0]), namespace=str(row[1]), source_type=str(row[2]), source_id=str(row[3]), partition=str(row[4]), locator=str(row[5]), text=str(row[6]), role=row[7], conversation_id=row[8], message_id=row[9], timestamp=str(row[10]), score=float(-row[11]), lexical_score=float(-row[11]))
+            RetrievalHit(item_id=str(row[0]), namespace=str(row[1]), source_type=str(row[2]), source_id=str(row[3]), partition=str(row[4]), locator=str(row[5]), text=str(row[6]), role=row[7], conversation_id=row[8], message_id=row[9], timestamp=str(row[10]), title=row[11], heading=row[12], metadata=json.loads(row[13]), score=float(-row[14]), lexical_score=float(-row[14]))
             for row in rows
         ]
 
@@ -371,6 +495,6 @@ class RetrievalStore:
             params.append(source_type)
         with self._connection() as conn:
             return conn.execute(
-                "SELECT id, namespace, source_type, source_id, partition, locator, text, role, conversation_id, message_id, timestamp FROM retrieval_items WHERE namespace = ? AND partition = ?" + clause + " ORDER BY id",
+                "SELECT id, namespace, source_type, source_id, partition, locator, text, role, conversation_id, message_id, timestamp, title, heading, metadata_json FROM retrieval_items WHERE namespace = ? AND partition = ?" + clause + " ORDER BY id",
                 params,
             ).fetchall()

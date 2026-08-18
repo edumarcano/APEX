@@ -84,6 +84,7 @@ BUILT_IN_TOOL_PROFILES: tuple[ToolProfile, ...] = (
             "github_issue_read",
             "github_list_pull_requests",
             "github_pull_request_read",
+            "search_apex_docs",
         ),
     ),
     _profile(

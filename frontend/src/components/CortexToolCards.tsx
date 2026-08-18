@@ -1,5 +1,6 @@
 import {
   AlertCircle,
+  BookOpen,
   Calendar,
   CloudRain,
   Flag,
@@ -96,6 +97,21 @@ interface BriefingHistoryPayload {
   briefings?: BriefingHistoryEntry[]
   message?: string
   error?: string
+}
+
+interface DocumentationResult {
+  path: string
+  heading: string | null
+  line_start: number
+  line_end: number
+  text: string
+  score: number
+}
+
+interface DocumentationSearchPayload {
+  retrieval_mode: string
+  trust: string
+  results: DocumentationResult[]
 }
 
 interface GmailMetadata {
@@ -699,6 +715,15 @@ function parseBriefingHistoryPayload(output: unknown): BriefingHistoryPayload | 
         : undefined,
     briefings,
   }
+}
+
+function parseDocumentationSearchPayload(output: unknown): DocumentationSearchPayload | null {
+  if (!isRecord(output) || !Array.isArray(output.results) || typeof output.retrieval_mode !== 'string' || typeof output.trust !== 'string') return null
+  const results = output.results.flatMap((value): DocumentationResult[] => {
+    if (!isRecord(value) || typeof value.path !== 'string' || typeof value.line_start !== 'number' || typeof value.line_end !== 'number' || typeof value.text !== 'string' || typeof value.score !== 'number') return []
+    return [{ path: value.path, heading: typeof value.heading === 'string' ? value.heading : null, line_start: value.line_start, line_end: value.line_end, text: value.text, score: value.score }]
+  })
+  return { retrieval_mode: output.retrieval_mode, trust: output.trust, results }
 }
 
 function ToolCardFrame({
@@ -1418,6 +1443,23 @@ function BriefingHistoryCard({
   )
 }
 
+function DocumentationSearchCard({ durationMs, output }: { durationMs: number; output: unknown }): ReactElement {
+  const payload = parseDocumentationSearchPayload(output)
+  if (!payload) return <ErrorFallbackCard toolName="search_apex_docs" durationMs={durationMs} message="Documentation search data is unavailable." />
+  return (
+    <ToolCardFrame title="APEX Documentation Search" icon={<BookOpen className="size-3.5" aria-hidden />} durationMs={durationMs} accentClass="text-[#7EB3FF]">
+      <p className="mb-2 font-mono text-[10px] uppercase tracking-wider text-[#FBBF24]">Reference material · {payload.retrieval_mode}</p>
+      {payload.results.length === 0 ? <p className="text-sm text-zinc-500">No matching documentation excerpts.</p> : <ul className={LIST_SCROLL}>
+        {payload.results.map((result) => <li key={`${result.path}:${result.line_start}-${result.line_end}`} className="rounded-lg border border-white/5 bg-white/[0.02] px-2.5 py-2">
+          <p className="font-mono text-[10px] text-[#7EB3FF]">{result.path}:L{result.line_start}-L{result.line_end}</p>
+          {result.heading ? <p className="mt-1 text-xs text-zinc-300">{result.heading}</p> : null}
+          <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-zinc-400">{truncateText(result.text, 420)}</p>
+        </li>)}
+      </ul>}
+    </ToolCardFrame>
+  )
+}
+
 function resolveErrorMessage(output: unknown): string {
   if (typeof output === 'string') {
     return output
@@ -1506,6 +1548,8 @@ function ToolOutputCard({ item }: { item: ToolOutputItem }): ReactElement {
       return (
         <WeatherForecastCard durationMs={item.duration_ms} output={item.output} />
       )
+    case 'search_apex_docs':
+      return <DocumentationSearchCard durationMs={item.duration_ms} output={item.output} />
     case 'get_f1_driver_standings':
       return (
         <F1StandingsCard durationMs={item.duration_ms} output={item.output} />

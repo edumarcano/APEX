@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import math
 import numbers
@@ -57,6 +58,7 @@ class RetrievalService:
         self.initialization_error = initialization_error
         self.batch_size = max(1, batch_size)
         self._prepare_lock = threading.Lock()
+        self._sync_lock = threading.RLock()
 
     def initialize(self) -> None:
         if not self.enabled:
@@ -139,6 +141,32 @@ class RetrievalService:
     def _fingerprint(self) -> str:
         return str(getattr(self.adapter, "fingerprint", f"{self.adapter.model_id}:{self.adapter.dimension}:{self.adapter.version}"))
 
+    def _backfill_embeddings(self, fingerprint: str, *, namespace: str | None = None) -> None:
+        pending = self.store.items_missing_embeddings(fingerprint, namespace=namespace)
+        for offset in range(0, len(pending), self.batch_size):
+            batch = pending[offset : offset + self.batch_size]
+            vectors = self.adapter.embed((text for _, text in batch), allow_download=False)
+            if len(vectors) != len(batch):
+                raise EmbeddingError("invalid_vector")
+            for (item_id, _), vector in zip(batch, vectors):
+                self._validate_vector(vector, int(self.adapter.dimension))
+                self.store.upsert_embedding(item_id, fingerprint, vector)
+
+    def sync_namespace(self, namespace: str, items: list[RetrievalItem]) -> int:
+        """Synchronize a derived corpus and backfill it only from cached weights."""
+        if not self.enabled:
+            return 0
+        with self._sync_lock:
+            changed = self.store.sync_namespace(namespace, items)
+            state, fingerprint, _prepared, _error = self.store.model_state()
+            if state == "ready" and fingerprint is not None:
+                try:
+                    self._backfill_embeddings(fingerprint, namespace=namespace)
+                except EmbeddingError as exc:
+                    category = str(exc) if str(exc) in {"embedding_initialization_failed", "embedding_inference_failed", "invalid_vector"} else "semantic_search_failed"
+                    self.store.set_model_state(state="degraded", fingerprint=None, error_category=category)
+            return len(changed)
+
     @staticmethod
     def _validate_vector(vector: list[float], dimension: int) -> None:
         if len(vector) != dimension:
@@ -157,20 +185,13 @@ class RetrievalService:
         if not self._prepare_lock.acquire(blocking=False):
             raise RetrievalBusyError("retrieval_prepare_in_progress")
         try:
-            self.store.set_model_state(state="preparing", error_category=None)
-            self.reconcile()
-            fingerprint = self.adapter.prepare()
-            pending = self.store.items_missing_embeddings(fingerprint)
-            for offset in range(0, len(pending), self.batch_size):
-                batch = pending[offset : offset + self.batch_size]
-                vectors = self.adapter.embed((text for _, text in batch), allow_download=False)
-                if len(vectors) != len(batch):
-                    raise EmbeddingError("invalid_vector")
-                for (item_id, _), vector in zip(batch, vectors):
-                    self._validate_vector(vector, int(self.adapter.dimension))
-                    self.store.upsert_embedding(item_id, fingerprint, vector)
-            self.store.set_model_state(state="ready", fingerprint=fingerprint, prepared_at=utc_now_iso(), error_category=None)
-            return self.status()
+            with self._sync_lock:
+                self.store.set_model_state(state="preparing", error_category=None)
+                self.reconcile()
+                fingerprint = self.adapter.prepare()
+                self._backfill_embeddings(fingerprint)
+                self.store.set_model_state(state="ready", fingerprint=fingerprint, prepared_at=utc_now_iso(), error_category=None)
+                return self.status()
         except EmbeddingError as exc:
             category = str(exc) or "embedding_initialization_failed"
             if category not in {"model_download_failed", "embedding_initialization_failed", "embedding_inference_failed", "invalid_vector"}:
@@ -190,8 +211,8 @@ class RetrievalService:
             return RetrievalStatus(enabled=False, mode="disabled", state="disabled", error_category=self.initialization_error)
         try:
             indexed, embeddings = self.store.counts()
-            pending = self.store.pending_count()
             state, fingerprint, prepared, error = self.store.model_state()
+            pending = self.store.pending_count(fingerprint if state == "ready" else None)
         except Exception:
             return RetrievalStatus(enabled=True, mode="fts_only", state="degraded", error_category="retrieval_unavailable")
         effective_error = error or self.initialization_error
@@ -229,7 +250,8 @@ class RetrievalService:
                     item_id=str(row[0]), namespace=str(row[1]), source_type=str(row[2]),
                     source_id=str(row[3]), partition=str(row[4]), locator=str(row[5]),
                     text=str(row[6]), role=row[7], conversation_id=row[8],
-                    message_id=row[9], timestamp=str(row[10]), score=0.0,
+                    message_id=row[9], timestamp=str(row[10]), title=row[11],
+                    heading=row[12], metadata=json.loads(row[13]), score=0.0,
                 )
                 for row in all_rows
             }
