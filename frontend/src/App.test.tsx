@@ -107,6 +107,7 @@ vi.mock('./components/CortexWorkspace', () => ({
     onHostedToolChange,
     onSandboxModeChange,
     toolCatalog,
+    actions,
   }: {
     activeAgent: AgentKey
     devModeActive: boolean
@@ -115,6 +116,7 @@ vi.mock('./components/CortexWorkspace', () => ({
     onHostedToolChange: (tool: 'google_search' | 'google_maps' | 'x_search', enabled: boolean) => void
     onSandboxModeChange: (enabled: boolean) => void
     toolCatalog: ToolCatalog | null
+    actions?: { pendingCount: number }
   }) => {
     const authoritativeContextWindow = toolCatalog?.context_window ?? null
     const [selectedContextWindow, setSelectedContextWindow] = useState(authoritativeContextWindow)
@@ -153,6 +155,9 @@ vi.mock('./components/CortexWorkspace', () => ({
         </output>
         <output data-testid="catalog-context-window">
           {toolCatalog?.context_window ?? ''}
+        </output>
+        <output data-testid="actions-pending-count">
+          {actions?.pendingCount ?? 0}
         </output>
         {activeAgent === 'felis' ? (
           <select
@@ -206,6 +211,7 @@ vi.mock('./hooks/useApexData', () => ({
     deleteReminderTask: appMocks.deleteReminderTask,
     reopenReminderTask: appMocks.reopenReminderTask,
     refreshReminders: appMocks.refreshReminders,
+    status: 'success',
     applyBootSettings: appMocks.applyBootSettings,
   }),
 }))
@@ -564,6 +570,63 @@ describe('App catalog-affecting settings', () => {
     })
   })
 
+  it('refreshes action proposals when an assistant response is received', async () => {
+    const user = userEvent.setup()
+    const actionProposal = {
+      action_id: 'action-123',
+      proposal: {
+        agent_key: 'panthera',
+        capability_name: 'remember_personal_context',
+        arguments: { text: 'Prefers tea over coffee' },
+        target: 'Remember personal context',
+        risk: 'write',
+        summary: 'Approve Remember personal context',
+        proposed_at: '2026-08-18T12:00:00Z',
+        expires_at: '2026-08-19T12:00:00Z',
+        proposal_hash: 'a'.repeat(64),
+      },
+      status: 'proposed',
+      version: 0,
+      updated_at: '2026-08-18T12:00:00Z',
+    }
+
+    let actionsRequested = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL): Promise<Response> => {
+        const url = new URL(String(input))
+        if (url.pathname.endsWith('/cortex/tool-catalog')) {
+          return Promise.resolve(new Response(
+            JSON.stringify(catalogFor('panthera')),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ))
+        }
+        if (url.pathname.endsWith('/api/v1/actions')) {
+          actionsRequested += 1
+          const status = url.searchParams.get('status')
+          if (status === 'proposed') {
+            return Promise.resolve(new Response(
+              JSON.stringify([actionProposal]),
+              { status: 200, headers: { 'Content-Type': 'application/json' } },
+            ))
+          }
+          return Promise.resolve(new Response(
+            JSON.stringify([actionProposal]),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ))
+        }
+        return Promise.resolve(new Response('{}', { status: 200 }))
+      }),
+    )
+
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Cortex' }))
+    await waitFor(() => expect(actionsRequested).toBeGreaterThan(0))
+    await waitFor(() => {
+      expect(screen.getByTestId('actions-pending-count')).toHaveTextContent('1')
+    })
+  })
 })
 
 describe('App weather attribution', () => {
