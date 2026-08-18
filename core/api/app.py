@@ -29,6 +29,7 @@ from core.agent.local_runtime.registry import any_local_runtime_enabled
 from core.agent.providers.llama_cpp_supervisor import get_llama_cpp_server_supervisor
 from core import database, speaker
 from core.conversations import ConversationService, ConversationStore, set_conversation_service
+from core.knowledge import KnowledgeService, KnowledgeStore, set_knowledge_service
 from core.retrieval import RetrievalService, RetrievalStore, set_retrieval_service
 from core.mcp import load_mcp_config, set_mcp_manager
 from core.mcp.manager import MCPClientManager
@@ -51,6 +52,7 @@ async def _app_lifespan(_app: FastAPI):
     microsoft_todo_client: MicrosoftTodoClient | None = None
     conversation_store: ConversationStore | None = None
     retrieval_store: RetrievalStore | None = None
+    knowledge_store: KnowledgeStore | None = None
     if not DEMO_MODE:
         microsoft_auth = MicrosoftTodoAuthenticationService()
         await microsoft_auth.initialize()
@@ -79,6 +81,9 @@ async def _app_lifespan(_app: FastAPI):
         # Retrieval is optional and repairable; it must never block Cortex readiness.
         pass
     set_retrieval_service(retrieval_service)
+    knowledge_store = KnowledgeStore(None if DEMO_MODE else database.DB_NAME)
+    knowledge_store.initialize()
+    set_knowledge_service(KnowledgeService(knowledge_store))
     if not DEMO_MODE:
         assert microsoft_todo_client is not None
         action_service = ActionService()
@@ -176,10 +181,13 @@ async def _app_lifespan(_app: FastAPI):
                                 set_reminder_service(None)
                                 set_conversation_service(None)
                                 set_retrieval_service(None)
+                                set_knowledge_service(None)
                                 if conversation_store is not None:
                                     conversation_store.close()
                                 if retrieval_store is not None:
                                     retrieval_store.close()
+                                if knowledge_store is not None:
+                                    knowledge_store.close()
                                 if idle_model_task is not None:
                                     idle_model_task.cancel()
                                     try:
