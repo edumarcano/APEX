@@ -184,21 +184,19 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 ### Keep Agent execution stateless while storing conversations
 
-**Decision.** APEX stores Cortex conversations and reconstructs bounded active-branch history on the backend, while each Agent turn remains one synchronous request with no server-side model session.
+**Decision.** APEX stores Cortex conversations and reconstructs bounded active-branch history on the backend. Each Agent turn is one synchronous request with no server-side model session.
 
-**Why.** Conversation persistence is deliberately local-first: SQLite keeps the durable tree and client-visible metadata, while the backend still executes each turn as one bounded request instead of maintaining a long-lived server-side Agent session. This keeps model-session expiry, cleanup, and multi-tab coordination out of the execution path without losing conversation continuity.
+**Why.** SQLite holds the durable conversation tree and client-visible metadata; the backend executes each turn against a bounded slice of that history rather than keeping a long-lived model session open. That keeps session expiry, cleanup, and multi-tab coordination out of the execution path.
 
-**Trade-off.** Conversation text and client-visible response metadata are retained in unencrypted local SQLite, while only bounded history reaches a model. The frontend must reconcile assistant-ui's transient branch state with the durable active leaf.
+**Trade-off.** Conversation text and client-visible response metadata sit in unencrypted local SQLite, and only the bounded history slice reaches the model. The frontend has to reconcile assistant-ui's transient branch state with the durable active leaf.
 
 ### Keep assistant-ui replaceable and behind an APEX adapter
 
-**Decision.** Cortex uses a pinned assistant-ui runtime only for browser thread state and low-level UI primitives. `ApexAssistantRuntime` is the sole frontend module that references assistant-ui runtime APIs and canonicalizes generated identifiers before an APEX request.
+**Decision.** Cortex uses a pinned assistant-ui runtime only for browser thread state and low-level UI primitives. `ApexAssistantRuntime` is the one frontend module that touches assistant-ui runtime APIs and canonicalizes generated identifiers before an APEX request.
 
-**Why.** APEX already owns message-tree persistence, execution, tools, actions, preflight, and runtime policy. Keeping that boundary narrow permits editing and branch interaction without duplicating a second durable conversation system.
+**Why.** APEX owns message-tree persistence, execution, tools, actions, preflight, and runtime policy. A narrow adapter boundary lets editing and branch interaction work without a second durable conversation system alongside the one APEX already maintains.
 
-**Trade-off.** The adapter must carry focused conversion coverage whenever the pinned assistant-ui release changes, particularly because its message and thread identifiers are not a stable public contract.
-
-The adapter boundary is intentionally isolated in `frontend/src/components/ApexAssistantRuntime.tsx`. APEX does not expose assistant-ui cancellation, client-side tools, attachments, cloud storage, feedback, or automatic title generation. HUD empty threads remain transient until their first accepted turn. Permanent deletion is a separate APEX-owned capability limited to archived conversations and is exposed through the archived-only API route.
+**Trade-off.** The adapter needs focused conversion coverage whenever the pinned assistant-ui release changes, because its message and thread identifiers are not a stable public contract. The boundary is isolated in `frontend/src/components/ApexAssistantRuntime.tsx`. APEX does not expose assistant-ui cancellation, client-side tools, attachments, cloud storage, feedback, or automatic title generation. Empty threads are transient until their first accepted turn. Permanent deletion is an APEX-owned capability limited to archived conversations and exposed through the archived-only API route.
 
 ### Enforce one resident model and non-blocking admission
 
