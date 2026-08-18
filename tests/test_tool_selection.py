@@ -84,6 +84,28 @@ class _AnswerProvider:
 
 
 class UnifiedToolSelectionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp_dir = tempfile.TemporaryDirectory(prefix="apex_tool_selection_test_")
+        root = Path(self._temp_dir.name)
+        config_path = root / "config.json"
+        local_path = root / "config.local.json"
+        config_path.write_text(json.dumps({}), encoding="utf-8")
+        self.store = RuntimeSettingsStore(
+            config_path=config_path,
+            local_config_path=local_path,
+        )
+        self._patches = [
+            patch("core.settings.get_settings_store", return_value=self.store),
+            patch("core.agent.tool_profiles.get_settings_store", return_value=self.store),
+        ]
+        for p in self._patches:
+            p.start()
+
+    def tearDown(self) -> None:
+        for p in reversed(self._patches):
+            p.stop()
+        self._temp_dir.cleanup()
+
     def test_catalog_groups_native_and_configured_mcp_tools(self) -> None:
         catalog = build_tool_catalog("panthera")
         self.assertEqual(catalog.default_profile_id, "all_allowed")
