@@ -33,6 +33,7 @@ Redistributions must preserve the applicable Apache License 2.0 notices and any 
 APEX also uses third-party components under permissive or weak-copyleft licenses, including:
 
 - React and related frontend libraries: MIT
+- assistant-ui (`@assistant-ui/react`): MIT
 - Lucide: ISC
 - psutil: BSD-3-Clause
 - python-dotenv: BSD-3-Clause
