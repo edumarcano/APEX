@@ -327,69 +327,83 @@ class RetrievalStore:
 
     def sync_namespace(self, namespace: str, items: list[RetrievalItem]) -> list[str]:
         """Incrementally reconcile one namespace without discarding unchanged vectors."""
+        with self._connection() as conn, conn:
+            return self._sync_namespace_in_transaction(conn, namespace, items)
+
+    @staticmethod
+    def _sync_namespace_in_transaction(
+        conn: sqlite3.Connection,
+        namespace: str,
+        items: list[RetrievalItem],
+    ) -> list[str]:
+        """Synchronize a namespace using a caller-owned SQLite transaction.
+
+        Domains that own canonical rows in the shared APEX database use this helper
+        to update their derived retrieval rows atomically. It intentionally does
+        not initialize schema or create embeddings; the normal retrieval service
+        continues to own those repairable concerns.
+        """
         expected = {item_id_for(item): item for item in items}
         if any(item.namespace != namespace for item in items):
             raise RetrievalStoreError("namespace_mismatch")
         now = utc_now_iso()
         changed: list[str] = []
-        with self._connection() as conn, conn:
-            existing = {
-                str(row[0]): tuple(row[1:])
-                for row in conn.execute(
-                    "SELECT id, content_hash, partition, conversation_id, message_id, role, "
-                    "timestamp, locator, title, heading, metadata_json FROM retrieval_items "
-                    "WHERE namespace = ?",
-                    (namespace,),
-                )
-            }
-            for identifier, item in expected.items():
-                metadata = json.dumps(item.metadata, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
-                current = existing.get(identifier)
-                item_state = (
-                    item.content_hash, item.partition, item.conversation_id, item.message_id,
-                    item.role, item.timestamp, item.locator, item.title, item.heading, metadata,
-                )
-                if current == item_state:
-                    continue
-                if current is not None and current[0] == item.content_hash:
-                    conn.execute(
-                        """
-                        UPDATE retrieval_items SET
-                            partition = ?, conversation_id = ?, message_id = ?, role = ?,
-                            timestamp = ?, locator = ?, title = ?, heading = ?, metadata_json = ?,
-                            updated_at = ?
-                        WHERE id = ?
-                        """,
-                        (
-                            item.partition, item.conversation_id, item.message_id, item.role,
-                            item.timestamp, item.locator, item.title, item.heading,
-                            metadata,
-                            now, identifier,
-                        ),
-                    )
-                    continue
-                changed.append(identifier)
+        existing = {
+            str(row[0]): tuple(row[1:])
+            for row in conn.execute(
+                "SELECT id, content_hash, partition, conversation_id, message_id, role, "
+                "timestamp, locator, title, heading, metadata_json FROM retrieval_items "
+                "WHERE namespace = ?",
+                (namespace,),
+            )
+        }
+        for identifier, item in expected.items():
+            metadata = json.dumps(item.metadata, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
+            current = existing.get(identifier)
+            item_state = (
+                item.content_hash, item.partition, item.conversation_id, item.message_id,
+                item.role, item.timestamp, item.locator, item.title, item.heading, metadata,
+            )
+            if current == item_state:
+                continue
+            if current is not None and current[0] == item.content_hash:
                 conn.execute(
                     """
-                    INSERT INTO retrieval_items(
-                        id, namespace, source_type, source_id, partition, conversation_id,
-                        message_id, role, timestamp, locator, content_hash, text, title,
-                        heading, metadata_json, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(namespace, source_type, source_id) DO UPDATE SET
-                        partition=excluded.partition, conversation_id=excluded.conversation_id,
-                        message_id=excluded.message_id, role=excluded.role, timestamp=excluded.timestamp,
-                        locator=excluded.locator, content_hash=excluded.content_hash, text=excluded.text,
-                        title=excluded.title, heading=excluded.heading, metadata_json=excluded.metadata_json,
-                        updated_at=excluded.updated_at
+                    UPDATE retrieval_items SET
+                        partition = ?, conversation_id = ?, message_id = ?, role = ?,
+                        timestamp = ?, locator = ?, title = ?, heading = ?, metadata_json = ?,
+                        updated_at = ?
+                    WHERE id = ?
                     """,
-                    (identifier, item.namespace, item.source_type, item.source_id, item.partition,
-                     item.conversation_id, item.message_id, item.role, item.timestamp, item.locator,
-                     item.content_hash, item.text, item.title, item.heading, metadata, now, now),
+                    (
+                        item.partition, item.conversation_id, item.message_id, item.role,
+                        item.timestamp, item.locator, item.title, item.heading,
+                        metadata, now, identifier,
+                    ),
                 )
-            stale = set(existing) - set(expected)
-            if stale:
-                conn.executemany("DELETE FROM retrieval_items WHERE id = ?", ((identifier,) for identifier in stale))
+                continue
+            changed.append(identifier)
+            conn.execute(
+                """
+                INSERT INTO retrieval_items(
+                    id, namespace, source_type, source_id, partition, conversation_id,
+                    message_id, role, timestamp, locator, content_hash, text, title,
+                    heading, metadata_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(namespace, source_type, source_id) DO UPDATE SET
+                    partition=excluded.partition, conversation_id=excluded.conversation_id,
+                    message_id=excluded.message_id, role=excluded.role, timestamp=excluded.timestamp,
+                    locator=excluded.locator, content_hash=excluded.content_hash, text=excluded.text,
+                    title=excluded.title, heading=excluded.heading, metadata_json=excluded.metadata_json,
+                    updated_at=excluded.updated_at
+                """,
+                (identifier, item.namespace, item.source_type, item.source_id, item.partition,
+                 item.conversation_id, item.message_id, item.role, item.timestamp, item.locator,
+                 item.content_hash, item.text, item.title, item.heading, metadata, now, now),
+            )
+        stale = set(existing) - set(expected)
+        if stale:
+            conn.executemany("DELETE FROM retrieval_items WHERE id = ?", ((identifier,) for identifier in stale))
         return changed
 
     def upsert_embedding(self, item_id: str, fingerprint: str, vector: list[float]) -> None:
@@ -498,3 +512,12 @@ class RetrievalStore:
                 "SELECT id, namespace, source_type, source_id, partition, locator, text, role, conversation_id, message_id, timestamp, title, heading, metadata_json FROM retrieval_items WHERE namespace = ? AND partition = ?" + clause + " ORDER BY id",
                 params,
             ).fetchall()
+
+
+def sync_namespace_in_transaction(
+    conn: sqlite3.Connection,
+    namespace: str,
+    items: list[RetrievalItem],
+) -> list[str]:
+    """Synchronize derived rows using the caller's existing transaction."""
+    return RetrievalStore._sync_namespace_in_transaction(conn, namespace, items)
