@@ -4,7 +4,8 @@ import type { ComponentProps, ReactElement } from 'react'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { CortexWorkspace } from './CortexWorkspace'
+import { CortexWorkspace, ResponseMetrics } from './CortexWorkspace'
+import type { AgentQueryMetadata } from '../lib/cortexResponse'
 import type { AgentStatus, CloudEffort, ToolCatalog, ToolPreflightEstimate } from '../types/telemetry'
 import type { ApexLogoProps } from './ApexLogo'
 
@@ -183,6 +184,29 @@ function workspaceProps(overrides: Partial<ComponentProps<typeof CortexWorkspace
 describe('CortexWorkspace', () => {
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('collapses response information until it is explicitly expanded', async () => {
+    const metadata: AgentQueryMetadata = {
+      agent: { key: 'panthera', version: null, provider: 'gemini', configuredModel: 'gemini-2.5-pro', resolvedModel: 'gemini-2.5-pro', requestedEffort: null, resolvedEffort: null },
+      usage: { inputTokens: 120, cachedInputTokens: null, reasoningTokens: null, outputTokens: 30, totalTokens: 150 },
+      timing: { totalMs: 820, providerMs: 700, apexToolMs: 40 },
+      cost: { tokenCost: 0.01, hostedToolCost: 0, totalCost: 0.01, currency: 'USD', pricingVersion: 'v1', completeness: 'complete' },
+      citations: [],
+      grounding: null,
+      toolSelection: null,
+    }
+    const user = userEvent.setup()
+
+    render(<ResponseMetrics metadata={metadata} />)
+
+    const disclosure = screen.getByText('Response information')
+    expect(disclosure).toBeVisible()
+    expect(screen.queryByText('Latency')).not.toBeVisible()
+
+    await user.click(disclosure)
+    expect(screen.getByText('Latency')).toBeVisible()
+    expect(screen.getByText('820 ms')).toBeVisible()
   })
 
   it('renders the shared live logo in the header', () => {
