@@ -137,10 +137,12 @@ def resolve_effort(
     return model_profile.default_reasoning
 
 
-def agent_has_credentials(agent_key: str) -> bool:
+def agent_has_credentials(
+    agent_key: str, profile: ModelProfile | None = None
+) -> bool:
     """Return whether the selected model for an Agent has credentials."""
-    profile = resolve_selected_model_profile(agent_key)
-    return model_has_credentials(profile)
+    resolved_profile = profile or resolve_selected_model_profile(agent_key)
+    return model_has_credentials(resolved_profile)
 
 
 def compose_agent_system_instruction(

@@ -49,6 +49,7 @@ from core.agent.model_catalog import (
     visible_local_models,
 )
 from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
+from core.agent.providers.ollama_models import OLLAMA_RUNTIME_CONFIGS
 from core.agent.sandbox_context import get_masked_briefing
 from core.agent.tool_policies import effective_native_tools
 from core.agent.loop import is_local_profile
@@ -163,6 +164,11 @@ def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
         if profile.provider == "llama_cpp"
         else None
     )
+    ollama_runtime = (
+        OLLAMA_RUNTIME_CONFIGS.get(profile.model_id)
+        if profile.provider == "ollama"
+        else None
+    )
     reasoning_modes_tuple = (
         local_reasoning_modes_for_model(profile.model_id)
         if profile.runtime == "local"
@@ -176,7 +182,11 @@ def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
     maximum_context_window = (
         profile.maximum_context_window
         if profile.maximum_context_window is not None
-        else (llama_runtime.maximum_context_window if llama_runtime else None)
+        else (
+            llama_runtime.maximum_context_window
+            if llama_runtime
+            else (ollama_runtime.context_window if ollama_runtime else None)
+        )
     )
     reasoning_modes = list(reasoning_modes_tuple) if reasoning_modes_tuple else None
     default_reasoning_mode = (
@@ -1316,7 +1326,9 @@ def query_agent(
     if DEMO_MODE:
         return run_demo_agent_query(payload, tool_selection=selection.diagnostics)
 
-    if model_profile.credential_env and not model_has_credentials(model_profile):
+    if model_profile.credential_env and not agent_has_credentials(
+        agent_key, model_profile
+    ):
         return AgentQueryResponse(
             answer=credential_missing_message(agent_key, model_profile),
             agent_used=build_agent_used_metadata(
