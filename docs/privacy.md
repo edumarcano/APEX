@@ -12,6 +12,7 @@ APEX is local-first, not entirely offline. This reference separates behavior APE
 | Telemetry collection | Snapshot and normalization | Enabled connector receives its request | Snapshot is memory-only | Disable external connectors or use demo mode |
 | Briefing synthesis | Selected, size-limited input is built locally | Panthera sends it to the selected cloud provider; Felis sends it to the local Ollama or llama.cpp runtime | Normal-mode transcript/digest in SQLite | Felis or Structured Digest |
 | Interactive Agent conversation | APEX owns durable local history and a local retrieval index | The selected Panthera or Felis model and explicitly selected APEX/MCP schemas receive the bounded active branch; provider-hosted grounding remains a separate provider path | Unencrypted SQLite conversation tree, response metadata, FTS mirror, and optional local embeddings | Felis with No APEX Tools |
+| Personal context | Sources, records, aliases, merge markers, and reconciliation proposals stay local | Only bounded context references and content permitted by the active Agent policy can accompany a selected model request | Unencrypted SQLite knowledge records, source snapshots, and action evidence | Keep personal-context retrieval disabled or use Felis locally |
 | APEX documentation search | README and `docs/**/*.md` are indexed locally on demand | A selected Agent receives up to five requested excerpts; Panthera can send those excerpts to its selected cloud provider | Local FTS rows and optional embeddings | Do not select `search_apex_docs`; use Felis for local inference |
 | Reminders | Selected Microsoft To Do list or local queue | Approved task fields go to Microsoft Graph | Small task cache and retained local outbox rows in SQLite | Leave the list unselected or integration disconnected |
 | Microsoft To Do | Authorization and bounded task results | Microsoft Graph and selected Agent | Authorization cache, selected-list cache, and action evidence | Leave integration disconnected |
@@ -87,7 +88,7 @@ Selecting Felis or Structured Digest avoids sending briefing synthesis data to a
 
 ## Interactive Agent data
 
-Interactive Agent work is separate from briefing synthesis. Panthera can receive the prompt, optional local user designation, browser-provided history, explicitly selected HUD context, and results from tools it uses. Felis receives the same applicable categories through its configured Ollama or llama.cpp host.
+Interactive Agent work is separate from briefing synthesis. Panthera can receive the prompt, optional local user designation, server-reconstructed bounded active-branch history, explicitly selected HUD context, and results from tools it uses. Felis receives the same applicable categories through its configured Ollama or llama.cpp host.
 
 The optional user designation is stored only in gitignored `config.local.json` and is omitted when empty.
 
@@ -104,10 +105,12 @@ response metadata, secrets, or tool payloads. `search_apex_docs` adds only
 README and Markdown files under `docs/` to a separate shared namespace when an
 Agent calls it; it never scans `.env`, local plans, configuration overrides, or
 arbitrary files. SQLite FTS is immediately
-available. Optional FastEmbed vectors are prepared only by the explicit local
-`context prepare` command or its API equivalent, remain under the ignored
-`weights/fastembed/` cache, and are never sent to a provider. Missing or broken
-model files leave FTS-only retrieval available.
+available. APEX attempts a no-download retrieval warm-up at startup when cached
+model files are present. The explicit local `context prepare` command or its
+API equivalent remains available for first-time setup and repair. FastEmbed
+vectors remain under the ignored `weights/fastembed/` cache and are never sent
+to a provider. Missing or broken model files leave FTS-only retrieval
+available.
 
 The optional embedding dependency is FastEmbed `0.8.0`; its pinned
 `BAAI/bge-small-en-v1.5` model is distributed under the MIT license. APEX uses
@@ -150,6 +153,8 @@ APEX is a personal, non-commercial application. A public source repository does 
 Action records keep the proposing Agent, capability, saved arguments, target, risk, summary, state, timestamps, and proposal hash. Their audit events keep state changes, stable result codes, and limited execution or verification evidence. New timestamps use UTC; old timezone-naive run timestamps remain readable as local wall-clock values.
 
 Personal-context captures retain the operator-provided source text, the approved record, and a link to the action that created or confirmed it. APEX rejects obvious credentials and private-key material before creating a capture proposal, but this is a limited guardrail rather than a guarantee that sensitive text will be detected.
+
+Context corrections, retractions, restores, conflict resolution, aliases, and entity merges are stored as action proposals before they change local knowledge. Record sources and supersession history remain local. APEX does not send hidden instructions through the Context inspector; response provenance shows only local source identifiers and statuses.
 
 The database is not encrypted by APEX. Operating-system account access and filesystem permissions protect it at rest. Database files, WAL files, caches, OAuth tokens, credentials, generated audio, local settings, and model weights are gitignored.
 

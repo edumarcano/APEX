@@ -112,6 +112,7 @@ For a durable Cortex turn, the backend keeps active-branch history separate from
 | `ApexAssistantRuntime` | Replaceable assistant-ui thread state, conversation navigation, preference bridge, one-turn submission, branch persistence, and response metadata; it never becomes a persistence authority |
 | `CortexWorkspace` | APEX composer chrome and response rendering, including Markdown, citations, metrics, traces, tool cards, and action proposals |
 | `useActions` | Cortex-visible action list, expanded audit detail, bounded polling, and versioned action controls |
+| `useContextInspector` | Local context search/detail, retrieval preparation, capture, reconciliation proposals, and response provenance navigation |
 | `useToolCatalog` | Agent-specific tool catalog, profile application, and session-persistent selection |
 | `useToolPreflight` | Debounced next-request tool and context token estimates |
 | `useMarketData` | Independent market polling and stale fallback |
@@ -192,7 +193,7 @@ The final permitted turn is answer-only, preventing a model from requesting a to
 
 Each non-demo Agent request begins with the selected Agent's identity instruction, followed by prompt behavior loaded from `config.json`, an optional user designation from local settings, scoped context, and the security boundary. Agent identity describes the active Agent and its selected model; it does not grant tools or override privacy policy.
 
-Panthera can receive the general APEX capability registry. Brave MCP is the only general web-search path. Optional Google Search, Google Maps, and X Search attach only when the selected Panthera model and persisted hosted-tool settings allow them. `search_apex_docs` is a local read capability over README and `docs/**/*.md`; it is also permitted in the `DEV_MODE` sandbox because it searches a shared documentation namespace rather than personal context. `remember_personal_context` is an approval-gated write capability. Its executor loads the initiating persisted user message as immutable evidence, then reconciles the approved interpretation into the local knowledge store. Every returned excerpt remains inside the existing untrusted-tool-output boundary.
+Panthera can receive the general APEX capability registry. Brave MCP is the only general web-search path. Optional Google Search, Google Maps, and X Search attach only when the selected Panthera model and persisted hosted-tool settings allow them. `search_apex_docs` is a local read capability over README and `docs/**/*.md`; it is also permitted in the `DEV_MODE` sandbox because it searches a shared documentation namespace rather than personal context. `remember_personal_context` is an approval-gated write capability. Its executor loads the initiating persisted user message as immutable evidence, then reconciles the approved interpretation into the local knowledge store. The Cortex Context inspector reads only the active server-derived partition and proposes corrections, status changes, exact aliases, and explicit entity merges through the same durable action ledger. Entity merges are one-way canonicalization: aliases and record references move to the selected target while the source retains a local merged-into marker. Every returned excerpt remains inside the existing untrusted-tool-output boundary.
 
 `GET /api/v1/agents` is the backend-owned Agent catalog. It publishes Panthera and Felis, their selected models and provider/runtime, each model catalog, model-native reasoning metadata, selectable local context and reasoning metadata, grounding state, pricing metadata, and safe availability information. Cortex owns presentation and interaction. Agent polling never performs a provider probe; cloud availability becomes stronger only after an explicit check or real inference.
 
@@ -290,12 +291,13 @@ FastAPI owns one normal-mode `ActionService`, recovers interrupted records befor
 
 The database is not encrypted by APEX. Filesystem and operating-system account protections are the at-rest boundary.
 
-Retrieval preparation is an explicit operator action. APEX keeps conversation
-text local, does not download embedding weights during startup or normal search,
-and falls back to SQLite FTS when the ignored `weights/fastembed/` cache is
-missing or unusable. Retrieval status exposes only stable categories; it never
-returns request metadata, response metadata, tool payloads, vectors, or raw
-model exceptions.
+APEX attempts a no-download retrieval warm-up at startup when cached model
+files are present. The explicit Prepare action remains available for
+first-time setup and repair. APEX keeps conversation text local, does not
+download embedding weights during startup or normal search, and falls back to
+SQLite FTS when the ignored `weights/fastembed/` cache is missing or unusable.
+Retrieval status exposes only stable categories; it never returns request
+metadata, response metadata, tool payloads, vectors, or raw model exceptions.
 
 ## Concurrency and failure model
 

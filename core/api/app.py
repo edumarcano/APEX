@@ -31,6 +31,11 @@ from core import database, speaker
 from core.conversations import ConversationService, ConversationStore, set_conversation_service
 from core.knowledge import KnowledgeService, KnowledgeStore, set_knowledge_service
 from core.knowledge.capture import ContextCaptureExecutor, ContextCaptureVerifier, CAPABILITY_NAME
+from core.knowledge.reconciliation import (
+    CAPABILITY_NAME as RECONCILIATION_CAPABILITY_NAME,
+    ContextReconciliationExecutor,
+    ContextReconciliationVerifier,
+)
 from core.retrieval import RetrievalService, RetrievalStore, set_retrieval_service
 from core.mcp import load_mcp_config, set_mcp_manager
 from core.mcp.manager import MCPClientManager
@@ -100,6 +105,11 @@ async def _app_lifespan(_app: FastAPI):
             CAPABILITY_NAME,
             executor=ContextCaptureExecutor(knowledge_store, conversation_service),
             verifier=ContextCaptureVerifier(knowledge_store),
+        )
+        action_service.register_handler(
+            RECONCILIATION_CAPABILITY_NAME,
+            executor=ContextReconciliationExecutor(knowledge_store),
+            verifier=ContextReconciliationVerifier(knowledge_store),
         )
         action_service.register_handler(
             "create_microsoft_todo_task",

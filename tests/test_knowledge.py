@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from uuid import UUID
 
 from core.knowledge.store import (
     KnowledgeConflictError,
@@ -42,8 +43,8 @@ class KnowledgeStoreTests(unittest.TestCase):
         try:
             with conn:
                 version = conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()
-                self.assertEqual(version[0], 2)
-                conn.execute("UPDATE schema_versions SET version = 3 WHERE domain = 'knowledge'")
+                self.assertEqual(version[0], 3)
+                conn.execute("UPDATE schema_versions SET version = 4 WHERE domain = 'knowledge'")
         finally:
             conn.close()
         with self.assertRaises(KnowledgeStoreError):
@@ -113,6 +114,61 @@ class KnowledgeStoreTests(unittest.TestCase):
                 )
         self.assertEqual(self.store.list_records(partition="production"), [])
         self.assertEqual(self.retrieval.search_fts("Jordan", namespace="personal_context", source_type=None, partition="production", limit=10), [])
+
+    def test_reconciliation_retract_restore_and_correction_are_transactional(self) -> None:
+        source = self._source("Jordan prefers focused work")
+        record = self.store.create_record(
+            partition="production", kind="preference", text="Jordan prefers focused work.", source_ids=[source.id],
+        )
+        retracted = self.store.reconcile(
+            action_id="retract-1", operation="retract", partition="production",
+            arguments={"record_id": str(record.id), "expected_updated_at": record.updated_at},
+        )
+        self.assertEqual(retracted["outcome"], "retracted")
+        current = self.store.get_record(record.id, partition="production").record
+        restored = self.store.reconcile(
+            action_id="restore-1", operation="restore", partition="production",
+            arguments={"record_id": str(record.id), "expected_updated_at": current.updated_at},
+        )
+        self.assertEqual(restored["outcome"], "active")
+        current = self.store.get_record(record.id, partition="production").record
+        corrected = self.store.reconcile(
+            action_id="correct-1", operation="correct", partition="production",
+            arguments={"record_id": str(record.id), "expected_updated_at": current.updated_at, "capture": {"kind": "preference", "text": "Jordan prefers deep work."}},
+        )
+        self.assertEqual(corrected["outcome"], "corrected")
+        self.assertEqual(self.store.get_record(record.id, partition="production").record.status, "superseded")
+        replacement = self.store.get_record(UUID(corrected["target_id"]), partition="production").record
+        self.assertEqual(replacement.supersedes_record_id, record.id)
+        self.assertEqual(self.store.reconciliation_effect("correct-1")["target_id"], str(replacement.id))
+
+    def test_entity_merge_preserves_alias_resolution_and_reassigns_records(self) -> None:
+        source_entity = self.store.create_entity("Jordan")
+        target_entity = self.store.create_entity("Jordan Lee")
+        source = self._source("Jordan owns APEX")
+        record = self.store.create_record(
+            partition="production", kind="fact", text="Jordan owns APEX.", source_ids=[source.id],
+            subject_entity_id=source_entity.id, predicate="owns", object_value="APEX",
+        )
+        result = self.store.reconcile(
+            action_id="merge-1", operation="merge_entities", partition="production",
+            arguments={"source_entity_id": str(source_entity.id), "target_entity_id": str(target_entity.id)},
+        )
+        self.assertEqual(result["outcome"], "merged")
+        self.assertEqual(self.store.resolve_entity("Jordan").id, target_entity.id)
+        self.assertEqual(self.store.get_entity(source_entity.id, include_merged=True).merged_into_entity_id, target_entity.id)
+        self.assertEqual(self.store.get_record(record.id, partition="production").record.subject_entity_id, target_entity.id)
+
+    def test_partition_entity_listing_and_mutation_reject_cross_partition_records(self) -> None:
+        entity = self.store.create_entity("Private Sandbox Entity")
+        source = self._source("sandbox entity", partition="sandbox")
+        self.store.create_record(partition="sandbox", kind="fact", text="sandbox entity", source_ids=[source.id], subject_entity_id=entity.id, predicate="is", object_value="private")
+        self.assertEqual(self.store.list_entities_in_partition(partition="production"), [])
+        self.assertEqual([item.id for item in self.store.list_entities_in_partition(partition="sandbox")], [entity.id])
+        production_source = self._source("production entity")
+        self.store.create_record(partition="production", kind="fact", text="production entity", source_ids=[production_source.id], subject_entity_id=entity.id, predicate="is", object_value="shared")
+        with self.assertRaises(KnowledgeNotFoundError):
+            self.store.reconcile(action_id="alias-cross-partition", operation="add_alias", partition="sandbox", arguments={"entity_id": str(entity.id), "alias": "private"})
 
     def test_memory_store_is_process_local(self) -> None:
         store = KnowledgeStore(None)

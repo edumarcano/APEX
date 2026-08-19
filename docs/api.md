@@ -55,6 +55,10 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | DELETE | `/api/v1/cortex/conversations/{conversation_id}` | Permanently delete one archived conversation |
 | POST | `/api/v1/cortex/conversations/{conversation_id}/turns` | Run one durable Cortex turn |
 | POST | `/api/v1/cortex/context/captures` | Propose a manual personal-context capture |
+| GET | `/api/v1/cortex/context` | List local personal-context records in the current partition |
+| GET | `/api/v1/cortex/context/{record_id}` | Inspect one record, its sources, history, and related records |
+| GET | `/api/v1/cortex/context/entities` | Search unmerged local entities and exact aliases |
+| POST | `/api/v1/cortex/context/actions` | Propose an approval-gated context reconciliation operation |
 | GET | `/api/v1/cortex/retrieval/status` | Show local retrieval readiness and indexing state |
 | POST | `/api/v1/cortex/retrieval/prepare` | Explicitly prepare the local embedding model and backfill vectors |
 | GET | `/api/v1/market` | Independent EOD market data |
@@ -470,6 +474,25 @@ Creates a `remember_personal_context` action proposal from direct operator input
 
 When an Agent proposes the same capability from a durable Cortex turn, APEX stores the initiating user message as the source evidence. The model cannot select another conversation or source message.
 
+### Context inspection and reconciliation
+
+`GET /api/v1/cortex/context` lists up to 100 newest matching records in the
+server-derived `production` or `sandbox` partition. It accepts repeated
+`status` filters, an optional record kind, and a local text query over saved
+text and structured entity fields. `GET /api/v1/cortex/context/{record_id}`
+adds immutable source snapshots, supersession links, and nearby relationship
+records. `GET /api/v1/cortex/context/entities` exposes only current entities
+and their exact aliases for the local merge selector.
+
+`POST /api/v1/cortex/context/actions` creates a normal durable action proposal
+for `correct`, `retract`, `restore`, `set_current`, `add_alias`, or
+`merge_entities`. It never changes knowledge directly. The server freezes the
+selected record revision and current partition with the proposal, so a queued
+operation fails safely when the underlying record changes. Retraction is a
+destructive action; all other reconciliation operations are write actions.
+Entity merges are explicit and one-way: record references and aliases move to
+the selected target, while the source is retained only as a merged entity.
+
 ### Local retrieval foundation
 
 `GET /api/v1/cortex/retrieval/status` reports whether local retrieval is disabled,
@@ -480,6 +503,10 @@ the server-derived `production` or `sandbox` partition.
 
 Repository documentation uses a separate shared `apex_docs` namespace. It
 cannot return conversation records.
+
+APEX attempts a no-download retrieval warm-up at startup when cached model
+files are present. The explicit Prepare action remains available for
+first-time setup and repair.
 
 `POST /api/v1/cortex/retrieval/prepare` is the only operation that may download
 the optional FastEmbed model into the ignored `weights/fastembed/` cache. It

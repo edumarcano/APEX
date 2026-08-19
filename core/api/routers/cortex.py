@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from core.agent.catalog import AGENT_SPECS
 from core.agent.types import (
@@ -47,6 +47,8 @@ from core.conversations.store import (
 from core.retrieval import RetrievalBusyError, get_retrieval_service
 from core.actions.runtime import get_action_service
 from core.knowledge.capture import CAPABILITY_NAME, ContextCaptureError, reject_secret_text
+from core.knowledge.reconciliation import CAPABILITY_NAME as RECONCILIATION_CAPABILITY_NAME
+from core.knowledge.store import KnowledgeConflictError, KnowledgeNotFoundError, KnowledgeStoreError
 from core.context import ContextAssembler, ContextPolicy
 from core.knowledge import get_knowledge_service
 from core.api.models import (
@@ -64,10 +66,53 @@ from core.api.models import (
     RetrievalPrepareResponse,
     RetrievalStatusResponse,
     ContextCaptureRequest,
+    ContextActionRequest,
+    ContextEntityResponse,
+    ContextRecordDetailResponse,
+    ContextRecordResponse,
+    ContextSourceResponse,
 )
 
 router = APIRouter(tags=["cortex"])
 _PROFILE_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,79}$")
+
+
+def _context_entity(entity_id, *, partition: str) -> ContextEntityResponse | None:
+    if entity_id is None:
+        return None
+    service = get_knowledge_service()
+    try:
+        entity = service.get_entity(entity_id, include_merged=True)
+    except KnowledgeNotFoundError:
+        return None
+    if not service.entity_in_partition(entity.id, partition=partition):
+        return None
+    return ContextEntityResponse(
+        id=str(entity.id), name=entity.name,
+        aliases=service.aliases_for_entity(entity.id) if partition == "production" else [entity.name],
+        merged_into_entity_id=str(entity.merged_into_entity_id) if entity.merged_into_entity_id else None,
+    )
+
+
+def _context_record(record) -> ContextRecordResponse:
+    return ContextRecordResponse(
+        id=str(record.id), partition=record.partition, kind=record.kind, text=record.text,
+        status=record.status, subject=_context_entity(record.subject_entity_id, partition=record.partition),
+        predicate=record.predicate, object_entity=_context_entity(record.object_entity_id, partition=record.partition),
+        object_value=record.object_value, effective_at=record.effective_at,
+        supersedes_record_id=str(record.supersedes_record_id) if record.supersedes_record_id else None,
+        created_at=record.created_at, updated_at=record.updated_at,
+    )
+
+
+def _context_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, KnowledgeNotFoundError):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Context record was not found.")
+    if isinstance(exc, KnowledgeConflictError):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Context changed or cannot be reconciled.")
+    if isinstance(exc, (KnowledgeStoreError, ValueError)):
+        return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Context request is invalid.")
+    raise exc
 
 
 @router.post("/api/v1/cortex/context/captures", response_model=ActionResponse)
@@ -93,6 +138,115 @@ def propose_context_capture(payload: ContextCaptureRequest) -> ActionResponse:
         }}, target="Personal Context", risk="write", summary="Approve personal context capture", actor="operator",
     )
     return _record_response(action)
+
+
+@router.get("/api/v1/cortex/context", response_model=list[ContextRecordResponse])
+def list_context_records(
+    status_filter: list[str] | None = Query(default=None, alias="status"),
+    kind: str | None = Query(default=None),
+    q: str = Query(default="", max_length=240),
+    limit: int = Query(default=100, ge=1, le=100),
+) -> list[ContextRecordResponse]:
+    """List local context in the server-owned current partition."""
+    try:
+        records = get_knowledge_service().list_records(
+            partition=get_conversation_service().partition(),
+            statuses=tuple(status_filter or ("active", "conflicting")), kind=kind, query=q, limit=limit,
+        )
+        return [_context_record(record) for record in records]
+    except Exception as exc:
+        raise _context_error(exc) from exc
+
+
+@router.get("/api/v1/cortex/context/entities", response_model=list[ContextEntityResponse])
+def list_context_entities(
+    q: str = Query(default="", max_length=240), limit: int = Query(default=50, ge=1, le=100),
+) -> list[ContextEntityResponse]:
+    try:
+        service = get_knowledge_service()
+        return [
+            ContextEntityResponse(
+                id=str(entity.id), name=entity.name,
+                aliases=service.aliases_for_entity(entity.id) if get_conversation_service().partition() == "production" else [entity.name],
+            )
+            for entity in service.list_entities_in_partition(
+                partition=get_conversation_service().partition(), query=q, limit=limit,
+            )
+        ]
+    except Exception as exc:
+        raise _context_error(exc) from exc
+
+
+@router.get("/api/v1/cortex/context/{record_id}", response_model=ContextRecordDetailResponse)
+def get_context_record(record_id: str) -> ContextRecordDetailResponse:
+    from uuid import UUID
+
+    try:
+        service = get_knowledge_service()
+        detail = service.get_record(UUID(record_id), partition=get_conversation_service().partition())
+        related = []
+        for entity_id in (detail.record.subject_entity_id, detail.record.object_entity_id):
+            if entity_id is not None:
+                related.extend(service.one_hop_relationships(entity_id, partition=detail.record.partition))
+        related_by_id = {str(record.id): record for record in related if record.id != detail.record.id}
+        base = _context_record(detail.record)
+        return ContextRecordDetailResponse(
+            **base.model_dump(),
+            sources=[ContextSourceResponse(id=str(source.id), kind=source.kind, locator=source.locator, original_text=source.original_text, created_at=source.created_at) for source in detail.sources],
+            superseded_by=[str(identifier) for identifier in detail.superseded_by],
+            related_records=[_context_record(record) for record in list(related_by_id.values())[:20]],
+        )
+    except Exception as exc:
+        raise _context_error(exc) from exc
+
+
+@router.post("/api/v1/cortex/context/actions", response_model=ActionResponse)
+def propose_context_action(payload: ContextActionRequest) -> ActionResponse:
+    """Propose a frozen, approval-gated reconciliation operation."""
+    from uuid import UUID
+    from core.api.routers.actions import _record_response
+    from core.config import DEMO_MODE
+
+    if DEMO_MODE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Actions are unavailable in demo mode.")
+    service = get_action_service()
+    if service is None or not service.supports(RECONCILIATION_CAPABILITY_NAME):
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Personal context reconciliation is unavailable.")
+    try:
+        knowledge = get_knowledge_service()
+        partition = get_conversation_service().partition()
+        arguments = payload.model_dump(mode="json")
+        operation = str(arguments["operation"])
+        target = "Personal Context"
+        if operation in {"retract", "restore", "set_current", "correct"}:
+            detail = knowledge.get_record(UUID(str(arguments["record_id"])), partition=partition)
+            arguments["expected_updated_at"] = detail.record.updated_at
+            if operation == "correct":
+                reject_secret_text(str(arguments["capture"]["text"]))
+            target = detail.record.text[:120]
+        elif operation == "add_alias":
+            entity = knowledge.get_entity(UUID(str(arguments["entity_id"])))
+            if not knowledge.entity_in_partition(entity.id, partition=partition):
+                raise KnowledgeNotFoundError("entity_not_found")
+            target = entity.name
+        elif operation == "merge_entities":
+            source = knowledge.get_entity(UUID(str(arguments["source_entity_id"])))
+            target_entity = knowledge.get_entity(UUID(str(arguments["target_entity_id"])))
+            if not knowledge.entity_in_partition(source.id, partition=partition) or not knowledge.entity_in_partition(target_entity.id, partition=partition):
+                raise KnowledgeNotFoundError("entity_not_found")
+            if source.id == target_entity.id:
+                raise KnowledgeConflictError("entity_merge_invalid")
+            target = f"{source.name} → {target_entity.name}"
+        arguments["partition"] = partition
+        action = service.propose(
+            agent_key="operator", capability_name=RECONCILIATION_CAPABILITY_NAME,
+            arguments=arguments, target=target,
+            risk="destructive" if operation == "retract" else "write",
+            summary=f"Approve personal context {operation.replace('_', ' ')}", actor="operator",
+        )
+        return _record_response(action)
+    except Exception as exc:
+        raise _context_error(exc) from exc
 
 
 def _ensure_agent_api_access(agent_key: str) -> None:
