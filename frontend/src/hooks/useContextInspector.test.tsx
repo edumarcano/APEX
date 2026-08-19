@@ -63,4 +63,21 @@ describe('useContextInspector', () => {
     await waitFor(() => expect(result.current.selectedRecordId).toBeNull())
     expect(result.current.detail).toBeNull()
   })
+
+  it('keeps the latest selected record when an earlier detail request finishes late', async () => {
+    let resolveFirst: ((value: Response) => void) | undefined
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(response([RECORD]))
+      .mockResolvedValueOnce(response(STATUS))
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveFirst = resolve }))
+      .mockResolvedValueOnce(response({ ...DETAIL, id: 'record-2', text: 'Second record' }))
+    const { result } = renderHook(() => useContextInspector(true, vi.fn()))
+    await waitFor(() => expect(result.current.records).toHaveLength(1))
+    let firstRequest: Promise<void>
+    act(() => { firstRequest = result.current.selectRecord(RECORD.id) })
+    await act(async () => { await result.current.selectRecord('record-2') })
+    await waitFor(() => expect(result.current.detail?.id).toBe('record-2'))
+    await act(async () => { resolveFirst?.(response(DETAIL)); await firstRequest })
+    expect(result.current.detail?.id).toBe('record-2')
+  })
 })

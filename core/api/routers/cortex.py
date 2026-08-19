@@ -77,7 +77,7 @@ router = APIRouter(tags=["cortex"])
 _PROFILE_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,79}$")
 
 
-def _context_entity(entity_id) -> ContextEntityResponse | None:
+def _context_entity(entity_id, *, partition: str) -> ContextEntityResponse | None:
     if entity_id is None:
         return None
     service = get_knowledge_service()
@@ -85,8 +85,11 @@ def _context_entity(entity_id) -> ContextEntityResponse | None:
         entity = service.get_entity(entity_id, include_merged=True)
     except KnowledgeNotFoundError:
         return None
+    if not service.entity_in_partition(entity.id, partition=partition):
+        return None
     return ContextEntityResponse(
-        id=str(entity.id), name=entity.name, aliases=service.aliases_for_entity(entity.id),
+        id=str(entity.id), name=entity.name,
+        aliases=service.aliases_for_entity(entity.id) if partition == "production" else [entity.name],
         merged_into_entity_id=str(entity.merged_into_entity_id) if entity.merged_into_entity_id else None,
     )
 
@@ -94,8 +97,8 @@ def _context_entity(entity_id) -> ContextEntityResponse | None:
 def _context_record(record) -> ContextRecordResponse:
     return ContextRecordResponse(
         id=str(record.id), partition=record.partition, kind=record.kind, text=record.text,
-        status=record.status, subject=_context_entity(record.subject_entity_id),
-        predicate=record.predicate, object_entity=_context_entity(record.object_entity_id),
+        status=record.status, subject=_context_entity(record.subject_entity_id, partition=record.partition),
+        predicate=record.predicate, object_entity=_context_entity(record.object_entity_id, partition=record.partition),
         object_value=record.object_value, effective_at=record.effective_at,
         supersedes_record_id=str(record.supersedes_record_id) if record.supersedes_record_id else None,
         created_at=record.created_at, updated_at=record.updated_at,
@@ -162,8 +165,13 @@ def list_context_entities(
     try:
         service = get_knowledge_service()
         return [
-            ContextEntityResponse(id=str(entity.id), name=entity.name, aliases=service.aliases_for_entity(entity.id))
-            for entity in service.list_entities(query=q, limit=limit)
+            ContextEntityResponse(
+                id=str(entity.id), name=entity.name,
+                aliases=service.aliases_for_entity(entity.id) if get_conversation_service().partition() == "production" else [entity.name],
+            )
+            for entity in service.list_entities_in_partition(
+                partition=get_conversation_service().partition(), query=q, limit=limit,
+            )
         ]
     except Exception as exc:
         raise _context_error(exc) from exc
@@ -218,10 +226,14 @@ def propose_context_action(payload: ContextActionRequest) -> ActionResponse:
             target = detail.record.text[:120]
         elif operation == "add_alias":
             entity = knowledge.get_entity(UUID(str(arguments["entity_id"])))
+            if not knowledge.entity_in_partition(entity.id, partition=partition):
+                raise KnowledgeNotFoundError("entity_not_found")
             target = entity.name
         elif operation == "merge_entities":
             source = knowledge.get_entity(UUID(str(arguments["source_entity_id"])))
             target_entity = knowledge.get_entity(UUID(str(arguments["target_entity_id"])))
+            if not knowledge.entity_in_partition(source.id, partition=partition) or not knowledge.entity_in_partition(target_entity.id, partition=partition):
+                raise KnowledgeNotFoundError("entity_not_found")
             if source.id == target_entity.id:
                 raise KnowledgeConflictError("entity_merge_invalid")
             target = f"{source.name} → {target_entity.name}"

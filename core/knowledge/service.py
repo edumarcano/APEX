@@ -45,5 +45,11 @@ class KnowledgeService:
     def list_entities(self, *, query: str = "", limit: int = 50):
         return self.store.list_entities(query=query, limit=limit)
 
+    def list_entities_in_partition(self, *, partition: str, query: str = "", limit: int = 50):
+        return self.store.list_entities_in_partition(partition=partition, query=query, limit=limit)
+
+    def entity_in_partition(self, entity_id, *, partition: str):
+        return self.store.entity_in_partition(entity_id, partition=partition)
+
     def aliases_for_entity(self, entity_id):
         return self.store.aliases_for_entity(entity_id)

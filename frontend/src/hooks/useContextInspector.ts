@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type SetStateAction } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react'
 
 import { API_ENDPOINTS } from '../lib/api'
 import type { ActionRecord } from '../types/actions'
@@ -61,6 +61,7 @@ export function useContextInspector(enabled: boolean, onActionProposed: (action:
   const [isPreparing, setIsPreparing] = useState(false)
   const [lastCreatedRecordId, setLastCreatedRecordId] = useState<string | null>(null)
   const [entities, setEntities] = useState<ContextEntity[]>([])
+  const detailRequest = useRef(0)
 
   const updateFilters = useCallback((update: SetStateAction<ContextFilters>): void => {
     setFilters(update)
@@ -100,8 +101,9 @@ export function useContextInspector(enabled: boolean, onActionProposed: (action:
     }
   }, [enabled, filters])
 
-  const selectRecord = useCallback(async (recordId: string | null): Promise<void> => {
-    if (recordId && recordId === selectedRecordId) {
+  const selectRecord = useCallback(async (recordId: string | null, force = false): Promise<void> => {
+    const request = ++detailRequest.current
+    if (!force && recordId && recordId === selectedRecordId) {
       setSelectedRecordId(null)
       setDetail(null)
       return
@@ -113,12 +115,13 @@ export function useContextInspector(enabled: boolean, onActionProposed: (action:
     try {
       const parsed = asDetail(await fetch(API_ENDPOINTS.cortexContextRecord(recordId)).then(bodyOrError))
       if (!parsed) throw new Error('Context detail is unavailable.')
+      if (detailRequest.current !== request) return
       setDetail(parsed)
       setError(null)
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : 'Context detail could not be reached.')
     } finally {
-      setIsDetailLoading(false)
+      if (detailRequest.current === request) setIsDetailLoading(false)
     }
   }, [enabled, selectedRecordId])
 
@@ -157,7 +160,8 @@ export function useContextInspector(enabled: boolean, onActionProposed: (action:
   const rememberVerifiedRecord = useCallback((recordId: string | null): void => {
     if (recordId) setLastCreatedRecordId(recordId)
     void refresh()
-  }, [refresh])
+    if (selectedRecordId) void selectRecord(selectedRecordId, true)
+  }, [refresh, selectRecord, selectedRecordId])
 
   const searchEntities = useCallback(async (query = ''): Promise<void> => {
     try {

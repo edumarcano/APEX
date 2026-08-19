@@ -159,6 +159,17 @@ class KnowledgeStoreTests(unittest.TestCase):
         self.assertEqual(self.store.get_entity(source_entity.id, include_merged=True).merged_into_entity_id, target_entity.id)
         self.assertEqual(self.store.get_record(record.id, partition="production").record.subject_entity_id, target_entity.id)
 
+    def test_partition_entity_listing_and_mutation_reject_cross_partition_records(self) -> None:
+        entity = self.store.create_entity("Private Sandbox Entity")
+        source = self._source("sandbox entity", partition="sandbox")
+        self.store.create_record(partition="sandbox", kind="fact", text="sandbox entity", source_ids=[source.id], subject_entity_id=entity.id, predicate="is", object_value="private")
+        self.assertEqual(self.store.list_entities_in_partition(partition="production"), [])
+        self.assertEqual([item.id for item in self.store.list_entities_in_partition(partition="sandbox")], [entity.id])
+        production_source = self._source("production entity")
+        self.store.create_record(partition="production", kind="fact", text="production entity", source_ids=[production_source.id], subject_entity_id=entity.id, predicate="is", object_value="shared")
+        with self.assertRaises(KnowledgeNotFoundError):
+            self.store.reconcile(action_id="alias-cross-partition", operation="add_alias", partition="sandbox", arguments={"entity_id": str(entity.id), "alias": "private"})
+
     def test_memory_store_is_process_local(self) -> None:
         store = KnowledgeStore(None)
         try:
