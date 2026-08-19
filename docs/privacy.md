@@ -43,7 +43,7 @@ loopback by default"]
 
     subgraph EXTERNAL["External services when enabled"]
         CONNECTORS["Weather, news, mail,<br/>calendar, markets, tasks"]
-        CLOUD_PROVIDERS["Cloud model providers<br/>OpenAI · Google · SpaceXAI"]
+        CLOUD_PROVIDERS["Interactive cloud model providers<br/>OpenAI · OpenRouter · Google · SpaceXAI"]
         CLOUD_TTS["Google Cloud TTS"]
         MCP["MCP providers"]
     end
@@ -72,13 +72,13 @@ The backend child receives connector and provider credentials. The static server
 
 Enabled connectors return typed results. Briefing generation picks the weather, email, news, calendar, reminder, Formula 1, football, and connector-health facts that may be sent to a model. Text is cleaned, limited in size, and wrapped in `<untrusted_connector_data>` markers.
 
-Panthera through the selected cloud provider and Felis through its fixed Gemma E2B llama.cpp briefing path receive the same selected facts. The interactive Felis model and runtime selection in Cortex do not change briefing synthesis; Ollama remains available for interactive Felis requests but is not used for briefings. Display text, Agent tools, and conversation history are not sent as briefing input. Generated output is checked before use; invalid model output falls back to Structured Digest built from the same facts.
+Panthera briefings always use OpenAI GPT-5.6 Luna with None reasoning, while Felis uses its fixed Gemma E2B llama.cpp briefing path. Interactive Panthera model selection, including OpenRouter DeepSeek, does not change briefing synthesis. The interactive Felis model and runtime selection in Cortex do not change briefing synthesis; Ollama remains available for interactive Felis requests but is not used for briefings. Display text, Agent tools, and conversation history are not sent as briefing input. Generated output is checked before use; invalid model output falls back to Structured Digest built from the same facts.
 
 These boundaries reduce prompt-injection risk. They do not authorize actions, and model text is never treated as approval for a write.
 
 ### Panthera briefing policy boundary
 
-The Panthera briefing path sends briefing input to the selected cloud provider. With the default OpenAI model, that input goes to the OpenAI Responses API and can include personal facts such as calendar events, reminders, and limited email subjects.
+The Panthera briefing path always sends briefing input to OpenAI GPT-5.6 Luna through the OpenAI Responses API and can include personal facts such as calendar events, reminders, and limited email subjects. The interactive Panthera model selection does not alter this fixed briefing route.
 
 OpenAI states that API inputs and outputs are not used to train or improve its models by default. Abuse-monitoring and endpoint-specific retention still apply, and eligible accounts may have more restrictive retention controls. See OpenAI's [API data controls](https://platform.openai.com/docs/models/default-usage-policies-by-endpoint).
 

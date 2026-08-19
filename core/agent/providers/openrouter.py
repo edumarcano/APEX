@@ -21,6 +21,7 @@ from core.agent.tool_schemas import descriptor_to_openai_schema
 from core.agent.types import AgentMessage, TokenUsage, ToolCall, ToolResult
 
 OPENROUTER_API_BASE_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_REQUEST_TIMEOUT_SECONDS = 120.0
 _LOGGER = logging.getLogger(__name__)
 
 # This policy is intentionally not configurable. Every retry reuses the same
@@ -76,7 +77,12 @@ class OpenRouterProvider:
     """OpenRouter adapter restricted to ZDR, no-data-collection endpoints."""
 
     def __init__(self, api_key: str, *, base_url: str = OPENROUTER_API_BASE_URL) -> None:
-        self.client = OpenAI(api_key=api_key, base_url=base_url, max_retries=0)
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            max_retries=0,
+            timeout=OPENROUTER_REQUEST_TIMEOUT_SECONDS,
+        )
 
     def generate_turn(
         self,

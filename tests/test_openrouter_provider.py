@@ -7,6 +7,7 @@ from unittest import mock
 
 from core.agent.providers.openrouter import (
     OPENROUTER_API_BASE_URL,
+    OPENROUTER_REQUEST_TIMEOUT_SECONDS,
     OPENROUTER_PRIVACY_POLICY,
     OpenRouterModelProfile,
     OpenRouterProvider,
@@ -47,7 +48,10 @@ class OpenRouterProviderTests(unittest.TestCase):
         )
 
         client_cls.assert_called_once_with(
-            api_key="secret", base_url=OPENROUTER_API_BASE_URL, max_retries=0
+            api_key="secret",
+            base_url=OPENROUTER_API_BASE_URL,
+            max_retries=0,
+            timeout=OPENROUTER_REQUEST_TIMEOUT_SECONDS,
         )
         request = client_cls.return_value.chat.completions.create.call_args.kwargs
         self.assertEqual(request["model"], "deepseek/deepseek-v4-flash-0731")
@@ -62,6 +66,62 @@ class OpenRouterProviderTests(unittest.TestCase):
         self.assertEqual(result.usage.cached_input_tokens, 4)
         self.assertEqual(result.usage.reasoning_tokens, 7)
         self.assertEqual(result.usage.output_tokens, 5)
+
+    @mock.patch("core.agent.providers.openrouter.OpenAI")
+    def test_all_reasoning_efforts_are_sent_inside_extra_body(self, client_cls: mock.Mock) -> None:
+        response = mock.Mock()
+        response.model_dump.return_value = {
+            "model": "deepseek/deepseek-v4-flash-0731",
+            "choices": [{"message": {"content": "done"}}],
+        }
+        client_cls.return_value.chat.completions.create.return_value = response
+
+        for effort in ("none", "low", "high", "max"):
+            with self.subTest(effort=effort):
+                OpenRouterProvider("secret").generate_turn(
+                    [AgentMessage(role="user", content="hello")],
+                    [],
+                    self._profile(effort),
+                )
+                request = client_cls.return_value.chat.completions.create.call_args.kwargs
+                self.assertEqual(request["extra_body"]["reasoning"], {"effort": effort})
+                self.assertEqual(
+                    request["extra_body"]["provider"],
+                    OPENROUTER_PRIVACY_POLICY["provider"],
+                )
+
+    @mock.patch("core.agent.providers.openrouter.time.sleep")
+    @mock.patch("core.agent.providers.openrouter.OpenAI")
+    def test_retry_reuses_the_complete_privacy_policy(
+        self,
+        client_cls: mock.Mock,
+        sleep: mock.Mock,
+    ) -> None:
+        from httpx import Request
+        from openai import APIConnectionError
+
+        response = mock.Mock()
+        response.model_dump.return_value = {
+            "model": "deepseek/deepseek-v4-flash-0731",
+            "choices": [{"message": {"content": "done"}}],
+        }
+        client_cls.return_value.chat.completions.create.side_effect = [
+            APIConnectionError(request=Request("POST", OPENROUTER_API_BASE_URL)),
+            response,
+        ]
+
+        OpenRouterProvider("secret").generate_turn(
+            [AgentMessage(role="user", content="hello")], [], self._profile("high")
+        )
+
+        calls = client_cls.return_value.chat.completions.create.call_args_list
+        self.assertEqual(len(calls), 2)
+        for call in calls:
+            self.assertEqual(
+                call.kwargs["extra_body"],
+                {**OPENROUTER_PRIVACY_POLICY, "reasoning": {"effort": "high"}},
+            )
+        sleep.assert_called_once()
 
     def test_tool_continuation_preserves_reasoning_details_and_wraps_output(self) -> None:
         details = [{"type": "reasoning.encrypted", "data": "opaque"}]

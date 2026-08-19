@@ -232,6 +232,9 @@ def _probe_openrouter_zdr_model(model: str, api_key: str) -> tuple[CloudStatus, 
         payload = response.json()
     except ValueError:
         return "provider_error", "Provider returned an invalid ZDR endpoint response."
+    rows = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return "provider_error", "Provider returned an invalid ZDR endpoint response."
     if _zdr_payload_contains_model(payload, model):
         return "verified", None
     return "model_unavailable", "Configured model has no currently available ZDR route."

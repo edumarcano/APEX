@@ -6,6 +6,7 @@ import unittest
 from threading import Event, Thread
 from unittest import mock
 
+import requests
 from fastapi import HTTPException
 
 from core.agent.providers.cloud_verification import (
@@ -139,6 +140,49 @@ class CloudAgentVerificationTests(unittest.TestCase):
             headers={"Authorization": "Bearer secret"},
             timeout=5,
         )
+
+    def test_openrouter_probe_fails_closed_for_invalid_or_unavailable_zdr_responses(self) -> None:
+        from core.agent.providers.cloud_verification import _probe_model
+
+        cases = (
+            ({"data": []}, "model_unavailable"),
+            ({"unexpected": []}, "provider_error"),
+        )
+        for payload, expected_status in cases:
+            with self.subTest(payload=payload):
+                response = mock.Mock(ok=True)
+                response.json.return_value = payload
+                with mock.patch(
+                    "core.agent.providers.cloud_verification.requests.get",
+                    return_value=response,
+                ):
+                    status, _reason = _probe_model(
+                        "openrouter", "deepseek/deepseek-v4-flash-0731", "secret"
+                    )
+                self.assertEqual(status, expected_status)
+
+        for response, expected_status in (
+            (mock.Mock(ok=False, status_code=401), "unauthorized"),
+            (mock.Mock(ok=False, status_code=503), "provider_unreachable"),
+        ):
+            with self.subTest(status=response.status_code):
+                with mock.patch(
+                    "core.agent.providers.cloud_verification.requests.get",
+                    return_value=response,
+                ):
+                    status, _reason = _probe_model(
+                        "openrouter", "deepseek/deepseek-v4-flash-0731", "secret"
+                    )
+                self.assertEqual(status, expected_status)
+
+        with mock.patch(
+            "core.agent.providers.cloud_verification.requests.get",
+            side_effect=requests.Timeout,
+        ):
+            status, _reason = _probe_model(
+                "openrouter", "deepseek/deepseek-v4-flash-0731", "secret"
+            )
+        self.assertEqual(status, "provider_unreachable")
 
     def test_metadata_probe_does_not_clear_recent_account_failure(self) -> None:
         openai_profile = get_model_profile("gpt-5.6-luna")
