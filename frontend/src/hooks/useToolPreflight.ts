@@ -98,6 +98,9 @@ interface UseToolPreflightOptions {
   agent: AgentKey
   selectedToolNames: string[]
   toolProfileId: string | null
+  modelId?: string | null
+  contextWindow?: number | null
+  localReasoningMode?: 'none' | 'focused' | null
   prompt?: string
   conversationId?: string | null
   snapshotId?: string | null
@@ -109,6 +112,9 @@ export function useToolPreflight({
   agent,
   selectedToolNames,
   toolProfileId,
+  modelId = null,
+  contextWindow = null,
+  localReasoningMode = null,
   prompt = '',
   conversationId = null,
   snapshotId = null,
@@ -142,6 +148,9 @@ export function useToolPreflight({
         signal: controller.signal,
         body: JSON.stringify({
           agent,
+          ...(modelId ? { model_id: modelId } : {}),
+          ...(contextWindow ? { context_window: contextWindow } : {}),
+          ...(localReasoningMode ? { local_reasoning_mode: localReasoningMode } : {}),
           selected_tool_names: selectedToolNames,
           ...(toolProfileId ? { tool_profile_id: toolProfileId } : {}),
           prompt,
@@ -192,8 +201,11 @@ export function useToolPreflight({
   }, [
     agent,
     briefingId,
-    enabled,
+    contextWindow,
     conversationId,
+    enabled,
+    localReasoningMode,
+    modelId,
     prompt,
     selectedToolNames,
     snapshotId,

@@ -154,7 +154,7 @@ describe('HomeCommandRail', () => {
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).not.toBeInTheDocument()
   })
 
-  it('submits with the inferred Agent while keeping the composer free of a second selector', async () => {
+  it('submits with the selected model while keeping the composer free of a second selector', async () => {
     const onAgentSubmit = vi.fn().mockResolvedValue(true)
     const user = userEvent.setup()
     renderRail({ onAgentSubmit, selectedModelId: 'gpt-5.6-luna' })
@@ -163,10 +163,10 @@ describe('HomeCommandRail', () => {
     await user.type(screen.getByLabelText('Agent query'), 'Summarize my day')
     await user.click(screen.getByRole('button', { name: 'Send query' }))
 
-    expect(onAgentSubmit).toHaveBeenCalledWith('Summarize my day', 'panthera', [], null)
+    expect(onAgentSubmit).toHaveBeenCalledWith('Summarize my day', [], null)
   })
 
-  it('submits with Felis when local model is selected', async () => {
+  it('submits when local model is selected', async () => {
     const onAgentSubmit = vi.fn().mockResolvedValue(true)
     const user = userEvent.setup()
     renderRail({ onAgentSubmit, selectedModelId: 'gemma-4-E2B-Q4_K_M.gguf' })
@@ -174,7 +174,7 @@ describe('HomeCommandRail', () => {
     await user.type(screen.getByLabelText('Agent query'), 'Check local status')
     await user.click(screen.getByRole('button', { name: 'Send query' }))
 
-    expect(onAgentSubmit).toHaveBeenCalledWith('Check local status', 'felis', [], null)
+    expect(onAgentSubmit).toHaveBeenCalledWith('Check local status', [], null)
   })
 
   it('shows the resident local runtime beneath command rows and keeps its unload action separate from synthesis', async () => {

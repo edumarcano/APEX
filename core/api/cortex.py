@@ -1271,7 +1271,11 @@ def query_agent(
         if spec.runtime == "cloud"
         else None
     )
-    google_search, google_maps, x_search = _panthera_hosted_tool_settings()
+    google_search, google_maps, x_search = (
+        _panthera_hosted_tool_settings()
+        if spec.runtime == "cloud"
+        else (False, False, False)
+    )
     local_context = (
         payload.context_window
         if payload.context_window is not None

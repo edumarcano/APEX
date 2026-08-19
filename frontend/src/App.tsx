@@ -320,9 +320,44 @@ export default function App(): ReactElement {
       })),
     })
   }, [mcpRuntime.status])
-  const toolCatalogState = useToolCatalog(activeAgent, mcpAvailabilityVersion)
+
+  const fullModelCatalog = useMemo(() => {
+    const cloud = agentsStatus.find((a) => a.key === 'panthera')?.model_catalog ?? []
+    const local = agentsStatus.find((a) => a.key === 'felis')?.model_catalog ?? []
+    return [...cloud, ...local]
+  }, [agentsStatus])
+
+  const [homeSelectedModelId, setHomeSelectedModelId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = window.localStorage.getItem('apex_home_selected_model_id')
+      if (saved) return saved
+    }
+    return 'deepseek/deepseek-v4-flash-0731'
+  })
+
+  const handleHomeModelChange = useCallback((modelId: string) => {
+    setHomeSelectedModelId(modelId)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('apex_home_selected_model_id', modelId)
+    }
+  }, [])
+
+  const homeSelectedEntry = useMemo(
+    () => fullModelCatalog.find((entry) => entry.model_id === homeSelectedModelId) ?? fullModelCatalog[0],
+    [fullModelCatalog, homeSelectedModelId],
+  )
+  const homeOverrides = useMemo(
+    () => resolveHomeQueryOverrides(homeSelectedEntry),
+    [homeSelectedEntry],
+  )
+
+  const effectiveWorkspaceAgent = workspace === 'home' ? homeOverrides.agent : activeAgent
+  const toolCatalogState = useToolCatalog(effectiveWorkspaceAgent, mcpAvailabilityVersion)
   const toolPreflightState = useToolPreflight({
-    agent: activeAgent,
+    agent: effectiveWorkspaceAgent,
+    modelId: workspace === 'home' ? homeOverrides.modelId : null,
+    contextWindow: workspace === 'home' ? homeOverrides.contextWindow : null,
+    localReasoningMode: workspace === 'home' ? homeOverrides.localReasoningMode : null,
     selectedToolNames: toolCatalogState.selectedToolNames,
     toolProfileId: toolCatalogState.activeToolProfileId,
     prompt: draftPrompt,
@@ -332,7 +367,7 @@ export default function App(): ReactElement {
       agentQueriesEnabled &&
       !toolCatalogState.isLoading &&
       toolCatalogState.selectionReady &&
-      toolCatalogState.catalog?.agent === activeAgent,
+      toolCatalogState.catalog?.agent === effectiveWorkspaceAgent,
     ),
   })
 
@@ -1308,30 +1343,8 @@ export default function App(): ReactElement {
     setSnapshotAttached(false)
   }, [])
 
-  const fullModelCatalog = useMemo(() => {
-    const cloud = agentsStatus.find((a) => a.key === 'panthera')?.model_catalog ?? []
-    const local = agentsStatus.find((a) => a.key === 'felis')?.model_catalog ?? []
-    return [...cloud, ...local]
-  }, [agentsStatus])
-
-  const [homeSelectedModelId, setHomeSelectedModelId] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = window.localStorage.getItem('apex_home_selected_model_id')
-      if (saved) return saved
-    }
-    return 'deepseek/deepseek-v4-flash-0731'
-  })
-
-  const handleHomeModelChange = useCallback((modelId: string) => {
-    setHomeSelectedModelId(modelId)
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('apex_home_selected_model_id', modelId)
-    }
-  }, [])
-
   const handleHomeSubmit = useCallback(async (
     query: string,
-    _agent: AgentKey,
     selectedToolNames: string[],
     toolProfileId: string | null,
   ): Promise<boolean> => {
@@ -1352,6 +1365,19 @@ export default function App(): ReactElement {
     }
     return accepted
   }, [fullModelCatalog, homeSelectedModelId])
+
+  const handleCortexSubmit = useCallback(async (
+    query: string,
+    agent: AgentKey,
+    selectedToolNames: string[],
+    toolProfileId: string | null,
+  ): Promise<boolean> => {
+    return assistantRuntimeRef.current?.submitPrompt(query, {
+      agent,
+      selectedToolNames,
+      toolProfileId,
+    }) ?? false
+  }, [])
 
   const handleAssistantConversationChange = useCallback((summary: {
     id: string
@@ -1940,7 +1966,7 @@ export default function App(): ReactElement {
             onSandboxModeChange={handleSandboxModeChange}
             onLocalContextWindowChange={handleLocalContextWindowChange}
             onLocalReasoningModeChange={handleLocalReasoningModeChange}
-            onSubmit={handleHomeSubmit}
+            onSubmit={handleCortexSubmit}
             onNewSession={handleNewCortexSession}
             actions={actions}
             demoModeActive={demoModeActive}

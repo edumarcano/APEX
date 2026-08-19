@@ -27,7 +27,6 @@ interface HomeCommandRailProps {
   isCortexQuerying: boolean
   onAgentSubmit: (
     query: string,
-    agent: AgentKey,
     selectedToolNames: string[],
     toolProfileId: string | null,
   ) => Promise<boolean>
@@ -163,7 +162,7 @@ export function HomeCommandRail({
                 <AgentQueryBar
                   presentation="home"
                   activeAgent={inferredAgent}
-                  onSubmit={onAgentSubmit}
+                  onSubmit={(query, _agent, tools, profileId) => onAgentSubmit(query, tools, profileId)}
                   agentsStatus={agentsStatus}
                   catalog={toolCatalog}
                   selectedToolNames={selectedToolNames}
