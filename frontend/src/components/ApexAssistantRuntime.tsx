@@ -137,6 +137,43 @@ type HistoryLoadState = {
   failureUntil: Map<string, number>
 }
 
+function topologicalSortMessages(messages: ConversationMessage[]): ConversationMessage[] {
+  if (messages.length <= 1) return messages
+  const byId = new Map<string, ConversationMessage>()
+  const childrenMap = new Map<string | null, ConversationMessage[]>()
+  for (const msg of messages) {
+    byId.set(msg.id, msg)
+    const pid = msg.parent_message_id ?? null
+    const list = childrenMap.get(pid)
+    if (list) list.push(msg)
+    else childrenMap.set(pid, [msg])
+  }
+  const sorted: ConversationMessage[] = []
+  const visited = new Set<string>()
+  function visit(msg: ConversationMessage): void {
+    if (visited.has(msg.id)) return
+    visited.add(msg.id)
+    sorted.push(msg)
+    const children = childrenMap.get(msg.id)
+    if (children) {
+      for (const child of children) {
+        visit(child)
+      }
+    }
+  }
+  for (const msg of messages) {
+    if (!msg.parent_message_id || !byId.has(msg.parent_message_id)) {
+      visit(msg)
+    }
+  }
+  for (const msg of messages) {
+    if (!visited.has(msg.id)) {
+      visit(msg)
+    }
+  }
+  return sorted
+}
+
 function ThreadHistory({ children, getThreadIds, onConversationChangeRef, onPendingChangeRef, historyLoadStateRef, forceHistoryReloadRef }: { children?: ReactNode; getThreadIds: (remoteId: string) => Map<string, string>; onConversationChangeRef: React.MutableRefObject<((conversation: ConversationSummary | null) => void) | undefined>; onPendingChangeRef: React.MutableRefObject<((conversationId: string, agent: AgentKey, pending: boolean) => void) | undefined>; historyLoadStateRef: React.MutableRefObject<HistoryLoadState>; forceHistoryReloadRef: React.MutableRefObject<boolean> }): ReactNode {
   const aui = useAui()
   const history = useMemo<ThreadHistoryAdapter>(() => ({
@@ -155,12 +192,16 @@ function ThreadHistory({ children, getThreadIds, onConversationChangeRef, onPend
           const detail = await requestJson<ConversationDetail>(API_ENDPOINTS.cortexConversation(remoteId))
           onConversationChangeRef.current?.(detail)
           onPendingChangeRef.current?.(detail.id, detail.agent, detail.messages.some((message) => message.role === 'agent' && message.status === 'pending'))
-          // A reload is authoritative: loaded backend UUIDs supersede any opaque
-          // assistant-ui IDs that were generated during the previous local run.
-          getThreadIds(remoteId).clear()
+          const orderedMessages = topologicalSortMessages(detail.messages)
+          const idMap = getThreadIds(remoteId)
+          idMap.clear()
+          for (const msg of orderedMessages) {
+            idMap.set(msg.id, msg.id)
+          }
           historyLoadStateRef.current.failureUntil.delete(remoteId)
+          const headId = detail.active_leaf_message_id || (orderedMessages.at(-1)?.id ?? undefined)
           return ExportedMessageRepository.fromBranchableArray(
-            detail.messages.map((message) => ({
+            orderedMessages.map((message) => ({
               parentId: message.parent_message_id,
               message: message.role === 'user'
                 ? {
@@ -184,7 +225,7 @@ function ThreadHistory({ children, getThreadIds, onConversationChangeRef, onPend
                     metadata: { custom: { apex: message.response_metadata ?? {} } },
                   },
             })),
-            { headId: detail.active_leaf_message_id },
+            { headId },
           )
         } catch (error) {
           historyLoadStateRef.current.failureUntil.set(remoteId, Date.now() + HISTORY_FAILURE_COOLDOWN_MS)
@@ -274,6 +315,13 @@ export function useApexAssistantComposer(composerOverride?: ApexComposerSubmitRu
     }
     markPreflightPassed?.()
     composer.send()
+    queueMicrotask(() => {
+      try {
+        void aui.threadListItem.generateTitle()
+      } catch {
+        // Ignored if thread runtime not yet settled
+      }
+    })
     return true
   }, [aui, beforeRun, beginTurn, composer, configRef, finishTurn, isLoading, isRunning, markPreflightPassed, setPendingPrompt])
   return { submit, isRunning }
@@ -372,6 +420,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
     return map
   }, [])
   const remoteByLocal = useRef(new Map<string, string>())
+  const titleByRemote = useRef(new Map<string, string>())
   const preflightPassedRef = useRef(false)
   const branchPersistRef = useRef<(messageId: string) => Promise<void>>(async () => {})
   const [threadListError, setThreadListError] = useState<string | null>(null)
@@ -474,6 +523,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
         body: JSON.stringify({ origin: 'hud', agent: current.agent, title, selected_tool_names: current.selectedToolNames, tool_profile_id: current.toolProfileId }),
       })
       remoteByLocal.current.set(localId, item.id)
+      titleByRemote.current.set(item.id, item.title)
       activeRemoteIdRef.current = item.id
       listCacheRef.current = null
       listFailureRef.current = null
@@ -483,6 +533,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
     },
     async rename(remoteId, title) {
       await requestJson(API_ENDPOINTS.cortexConversation(remoteId), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) })
+      titleByRemote.current.set(remoteId, title)
       listCacheRef.current = null
       forceListReloadRef.current = true
     },
@@ -498,12 +549,15 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
     },
     async delete(remoteId) {
       await requestJson(API_ENDPOINTS.cortexConversation(remoteId), { method: 'DELETE' })
+      titleByRemote.current.delete(remoteId)
       listCacheRef.current = null
       forceListReloadRef.current = true
     },
-    async generateTitle(_remoteId, messages) {
+    async generateTitle(remoteId, messages) {
+      const cachedTitle = remoteId ? titleByRemote.current.get(remoteId) : undefined
       const firstUserText = messages.find((m) => m.role === 'user')?.content.filter((c) => c.type === 'text').map((c) => c.text).join(' ').trim()
-      const title = firstUserText ? (firstUserText.length > 40 ? `${firstUserText.slice(0, 37)}…` : firstUserText) : 'New conversation'
+      const promptTitle = firstUserText ? (firstUserText.length > 40 ? `${firstUserText.slice(0, 37)}…` : firstUserText) : undefined
+      const title = cachedTitle || promptTitle || 'New conversation'
       return createAssistantStream((controller) => {
         controller.appendText(title)
       })
@@ -521,7 +575,9 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
     const model: ChatModelAdapter = {
       async run(options) {
         const localThreadId = options.unstable_threadId
-        const remoteId = (localThreadId ? remoteByLocal.current.get(localThreadId) : undefined) ?? activeRemoteIdRef.current
+        const remoteId = (localThreadId && uuidPattern.test(localThreadId) ? localThreadId : undefined)
+          ?? (localThreadId ? remoteByLocal.current.get(localThreadId) : undefined)
+          ?? activeRemoteIdRef.current
         const user = options.messages.at(-1)
         if (!remoteId || !user || user.role !== 'user' || !options.unstable_assistantMessageId) throw new Error('Conversation is not ready.')
         const current = configRef.current
@@ -540,15 +596,21 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
         modelTurnRef.current = true
         syncTurnLock()
         try {
+          const idMap = getThreadIds(remoteId)
+          const userMessageId = canonicalId(user.id, idMap)
+          const agentMessageId = canonicalId(options.unstable_assistantMessageId, idMap)
+          let parentMessageId: string | undefined = undefined
+          const parentMessage = options.messages.at(-2)
+          if (parentMessage?.id) {
+            parentMessageId = canonicalId(parentMessage.id, idMap)
+          }
           const response = await requestJson<Record<string, unknown>>(API_ENDPOINTS.cortexConversationTurns(remoteId), {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               prompt: user.content.filter((part) => part.type === 'text').map((part) => part.text).join('\n'),
-              user_message_id: canonicalId(user.id, getThreadIds(remoteId)),
-              agent_message_id: canonicalId(options.unstable_assistantMessageId, getThreadIds(remoteId)),
-              ...(options.messages.at(-2)?.id
-                ? { parent_message_id: canonicalId(options.messages.at(-2)!.id, getThreadIds(remoteId)) }
-                : {}),
+              user_message_id: userMessageId,
+              agent_message_id: agentMessageId,
+              ...(parentMessageId ? { parent_message_id: parentMessageId } : {}),
               agent: current.agent, effort: current.effort, selected_tool_names: current.selectedToolNames,
               tool_profile_id: current.toolProfileId, snapshot_id: current.snapshotId, briefing_id: current.briefingId ?? undefined,
             }),
@@ -730,8 +792,7 @@ export function ApexAssistantThread({ disabled = false, renderAgent, composer }:
 function ApexConversationRailItem(): ReactNode {
   const aui = useAui()
   const context = useContext(ApexAssistantComposerContext)
-  const threadLoading = useAuiState((state) => state.thread.isLoading)
-  const disabled = threadLoading || Boolean(context?.isTurnLocked)
+  const disabled = Boolean(context?.isTurnLocked)
   const renameTriggerRef = useRef<HTMLButtonElement>(null)
   const wasRenaming = useRef(false)
   const [renaming, setRenaming] = useState(false)
@@ -786,14 +847,16 @@ function ApexConversationRailItem(): ReactNode {
 export function ApexConversationRail({ className = 'hidden xl:block', disabled = false }: { className?: string; disabled?: boolean }): ReactNode {
   const aui = useAui()
   const [archived, setArchived] = useState(false)
-  const threadLoading = useAuiState((state) => state.thread.isLoading)
   const isLoading = useAuiState((state) => state.threads.isLoading)
   const threadCount = useAuiState((state) => (archived ? state.threads.archivedThreadIds.length : state.threads.threadIds.length))
+  const mainThreadId = useAuiState((state) => state.threads.mainThreadId)
+  const newThreadId = useAuiState((state) => state.threads.newThreadId)
+  const isDraftActive = Boolean(newThreadId && mainThreadId === newThreadId)
   const context = useContext(ApexAssistantComposerContext)
-  const interactionDisabled = disabled || threadLoading || Boolean(context?.isTurnLocked)
+  const interactionDisabled = disabled || Boolean(context?.isTurnLocked)
   const threadListError = context?.threadListError ?? null
   const itemComponents = useMemo(() => ({ ThreadListItem: ApexConversationRailItem }), [])
-  return <aside className={`${className} w-56 shrink-0 border-r border-white/10 bg-black/15 p-3`} aria-label="Conversations"><div className="mb-3 flex items-center justify-between"><p className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">Conversations</p><ApexAssistantNewConversation disabled={interactionDisabled} /></div><div className="mb-2 flex gap-2"><button type="button" disabled={interactionDisabled} onClick={() => setArchived(false)} aria-pressed={!archived} className="text-[10px] text-zinc-400 hover:text-white disabled:opacity-40">Active</button><button type="button" disabled={interactionDisabled} onClick={() => setArchived(true)} aria-pressed={archived} className="text-[10px] text-zinc-400 hover:text-white disabled:opacity-40">Archived</button></div>{isLoading ? <p className="px-2 py-4 text-xs text-zinc-500" role="status">Loading conversations…</p> : threadListError ? <div className="space-y-2 px-2 py-4"><p className="text-xs text-red-300" role="alert">{threadListError}</p><button type="button" disabled={interactionDisabled} onClick={() => void (context?.reloadThreads() ?? aui.threads.reload())} className="text-[10px] text-[#7EB3FF] hover:text-white disabled:opacity-40">Retry</button></div> : threadCount === 0 ? <div className="space-y-2 px-2 py-4"><p className="text-xs text-zinc-500">No {archived ? 'archived' : 'active'} conversations.</p></div> : <ThreadListPrimitive.Root><ThreadListPrimitive.Items archived={archived} components={itemComponents} /></ThreadListPrimitive.Root>}</aside>
+  return <aside className={`${className} w-56 shrink-0 border-r border-white/10 bg-black/15 p-3`} aria-label="Conversations"><div className="mb-3 flex items-center justify-between"><p className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">Conversations</p><ApexAssistantNewConversation disabled={interactionDisabled} /></div><div className="mb-2 flex gap-2"><button type="button" disabled={interactionDisabled} onClick={() => setArchived(false)} aria-pressed={!archived} className="text-[10px] text-zinc-400 hover:text-white disabled:opacity-40">Active</button><button type="button" disabled={interactionDisabled} onClick={() => setArchived(true)} aria-pressed={archived} className="text-[10px] text-zinc-400 hover:text-white disabled:opacity-40">Archived</button></div>{isLoading ? <p className="px-2 py-4 text-xs text-zinc-500" role="status">Loading conversations…</p> : threadListError ? <div className="space-y-2 px-2 py-4"><p className="text-xs text-red-300" role="alert">{threadListError}</p><button type="button" disabled={interactionDisabled} onClick={() => void (context?.reloadThreads() ?? aui.threads.reload())} className="text-[10px] text-[#7EB3FF] hover:text-white disabled:opacity-40">Retry</button></div> : (!archived && isDraftActive) || threadCount > 0 ? <div className="space-y-0.5">{!archived && isDraftActive ? <div data-active="true" className="group relative flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors bg-white/10 border-l-2 border-[#7EB3FF] text-white"><span className="min-w-0 flex-1 truncate text-left font-mono text-xs font-medium text-white">New conversation</span></div> : null}<ThreadListPrimitive.Root><ThreadListPrimitive.Items archived={archived} components={itemComponents} /></ThreadListPrimitive.Root></div> : <div className="space-y-2 px-2 py-4"><p className="text-xs text-zinc-500">No {archived ? 'archived' : 'active'} conversations.</p></div>}</aside>
 }
 
 export function ApexAssistantNewConversation({ disabled = false }: { disabled?: boolean }): ReactNode {
