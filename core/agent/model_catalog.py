@@ -214,6 +214,7 @@ ALL_MODEL_PROFILES: dict[str, ModelProfile] = {
 }
 
 DEFAULT_PANTHERA_MODEL = "gpt-5.6-luna"
+PANTHERA_BRIEFING_MODEL = "deepseek/deepseek-v4-flash-0731"
 DEFAULT_FELIS_MODEL = "gemma-4-E2B-Q4_K_M.gguf"
 DEFAULT_FELIS_RUNTIME: LocalRuntime = "llama_cpp"
 

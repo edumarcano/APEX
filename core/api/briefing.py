@@ -715,7 +715,7 @@ def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
     import os
     from core.agent.model_catalog import (
         DEFAULT_FELIS_MODEL,
-        DEFAULT_PANTHERA_MODEL,
+        PANTHERA_BRIEFING_MODEL,
         get_model_profile,
     )
     from core.agent.catalog import local_model_refs_for_model
@@ -724,13 +724,13 @@ def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
     from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
     from core.api.cortex import _PROFILE_STATUS_REASONS, _model_pricing_metadata
 
-    panthera_profile = get_model_profile(DEFAULT_PANTHERA_MODEL)
-    openai_configured = bool(os.getenv("OPENAI_API_KEY"))
-    panthera_status = "configured" if openai_configured else "disabled"
+    panthera_profile = get_model_profile(PANTHERA_BRIEFING_MODEL)
+    openrouter_configured = bool(os.getenv("OPENROUTER_API_KEY"))
+    panthera_status = "configured" if openrouter_configured else "disabled"
     panthera_reason = (
         None
-        if openai_configured
-        else "OpenAI API key is not configured (OPENAI_API_KEY)"
+        if openrouter_configured
+        else "OpenRouter API key is not configured (OPENROUTER_API_KEY)"
     )
     panthera_pricing = (
         _model_pricing_metadata(panthera_profile) if panthera_profile else None
@@ -784,10 +784,10 @@ def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
         BriefingTargetStatus(
             mode="panthera",
             label="Apex Panthera",
-            description=f"Full briefing · {panthera_profile.display_name if panthera_profile else 'GPT-5.6 Luna'}",
-            model_id=panthera_profile.model_id if panthera_profile else DEFAULT_PANTHERA_MODEL,
-            model_display_name=panthera_profile.display_name if panthera_profile else "GPT-5.6 Luna",
-            provider="openai",
+            description=f"Full briefing · {panthera_profile.display_name if panthera_profile else 'DeepSeek V4 Flash 0731'}",
+            model_id=panthera_profile.model_id if panthera_profile else PANTHERA_BRIEFING_MODEL,
+            model_display_name=panthera_profile.display_name if panthera_profile else "DeepSeek V4 Flash 0731",
+            provider="openrouter",
             runtime="cloud",
             status=panthera_status,
             reason=panthera_reason,

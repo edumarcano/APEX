@@ -457,22 +457,26 @@ def check_default_briefing_provider(
     """Keep README briefing paths aligned with the current synthesis contract."""
     import json
 
-    from core.agent.catalog import AGENT_SPECS
-    from core.agent.model_catalog import get_model_profile
+    from core.agent.model_catalog import (
+        DEFAULT_FELIS_MODEL,
+        PANTHERA_BRIEFING_MODEL,
+        get_model_profile,
+    )
     from core.synthesis.models import VALID_BRIEFING_MODES
 
-    config = json.loads((root / "config.json").read_text(encoding="utf-8"))
-    agent_settings = config.get("ask_apex", {})
-
     def provider_for_mode(mode: str) -> str:
-        model_id = agent_settings.get(mode, {}).get("model")
-        profile = get_model_profile(model_id) if isinstance(model_id, str) else None
+        model_id = {
+            "panthera": PANTHERA_BRIEFING_MODEL,
+            "felis": DEFAULT_FELIS_MODEL,
+        }.get(mode)
+        profile = get_model_profile(model_id) if model_id is not None else None
         if profile is None:
-            raise ValueError(f"Tracked config selects an unknown {mode} model: {model_id!r}")
+            raise ValueError(f"Fixed briefing route selects an unknown {mode} model: {model_id!r}")
         return profile.provider
 
+    config = json.loads((root / "config.json").read_text(encoding="utf-8"))
     default_mode = config.get("briefing", {}).get("default_mode", "panthera")
-    if default_mode in AGENT_SPECS:
+    if default_mode in {"panthera", "felis"}:
         provider = provider_for_mode(default_mode)
         expected = PROVIDER_DISPLAY_NAMES[provider]
     else:

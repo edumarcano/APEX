@@ -4,7 +4,7 @@ import sqlite3
 import unittest
 from unittest.mock import MagicMock, patch
 
-from core.agent.model_catalog import DEFAULT_PANTHERA_MODEL, get_model_profile
+from core.agent.model_catalog import get_model_profile
 from core.agent.catalog import resolve_effort
 from core.agent.local_runtime.contract import LocalModelRef
 from core.agent.providers.contract import ProviderTurnResult
@@ -49,25 +49,25 @@ class RoutingTests(unittest.TestCase):
 
     def test_panthera_success(self) -> None:
         router = SynthesisRouter()
-        expected = SynthesisResult(briefing="Ready.", provider="openai", agent="panthera")
+        expected = SynthesisResult(briefing="Ready.", provider="openrouter", agent="panthera")
         with patch.object(router, "_panthera", return_value=expected), patch(
             "core.synthesis.router.resident_agent_key", return_value=None
         ):
             result = router.synthesize(sample_input(), "cloud")
         self.assertEqual(result, expected)
 
-    def test_panthera_uses_openai_at_fixed_none_effort_without_tools(self) -> None:
+    def test_panthera_uses_openrouter_at_fixed_none_effort_without_tools(self) -> None:
         router = SynthesisRouter()
         turn = ProviderTurnResult(
             message=AgentMessage(
                 role="agent",
                 content="===SPEECH===\nReady.\n===INSIGHTS===\n- Clear",
             ),
-            resolved_model="gpt-5.6-luna",
+            resolved_model="deepseek/deepseek-v4-flash-0731",
             provider_ms=123.4,
         )
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}, clear=False), patch(
-            "core.synthesis.router.OpenAIProvider.generate_turn", return_value=turn
+        with patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key"}, clear=False), patch(
+            "core.synthesis.router.OpenRouterProvider.generate_turn", return_value=turn
         ) as generate:
             result = router._panthera(sample_input())
         messages, tools, profile = generate.call_args.args
@@ -79,55 +79,63 @@ class RoutingTests(unittest.TestCase):
                 "You are Apex Panthera"
             )
         )
-        self.assertEqual(result.provider, "openai")
-        self.assertEqual(result.resolved_model, "gpt-5.6-luna")
+        self.assertEqual(profile.api_model, "deepseek/deepseek-v4-flash-0731")
+        self.assertEqual(result.provider, "openrouter")
+        self.assertEqual(result.resolved_model, "deepseek/deepseek-v4-flash-0731")
         self.assertEqual(result.provider_ms, 123.4)
 
-    def test_panthera_briefing_ignores_non_openai_selected_model(self) -> None:
+    def test_panthera_briefing_ignores_selected_interactive_model(self) -> None:
         router = SynthesisRouter()
         turn = ProviderTurnResult(
             message=AgentMessage(
                 role="agent",
                 content="===SPEECH===\nReady.\n===INSIGHTS===\n- Clear",
             ),
-            resolved_model=DEFAULT_PANTHERA_MODEL,
+            resolved_model="deepseek/deepseek-v4-flash-0731",
         )
         for selected_model in (
+            "gpt-5.6-luna",
             "gemini-3.6-flash",
             "grok-4.3",
             "deepseek/deepseek-v4-flash-0731",
         ):
             with self.subTest(selected_model=selected_model), patch.dict(
-                "os.environ", {"OPENAI_API_KEY": "test-key"}, clear=False
+                "os.environ", {"OPENROUTER_API_KEY": "test-key"}, clear=False
             ), patch(
                 "core.agent.catalog.resolve_selected_model_profile",
                 return_value=get_model_profile(selected_model),
             ), patch(
-                "core.synthesis.router.OpenAIProvider.generate_turn",
+                "core.synthesis.router.OpenRouterProvider.generate_turn",
                 return_value=turn,
             ) as generate:
                 result = router._panthera(sample_input())
 
             _messages, _tools, profile = generate.call_args.args
-            self.assertEqual(profile.api_model, DEFAULT_PANTHERA_MODEL)
-            self.assertEqual(profile.provider, "openai")
-            self.assertEqual(result.provider, "openai")
-            self.assertEqual(result.resolved_model, DEFAULT_PANTHERA_MODEL)
+            self.assertEqual(profile.api_model, "deepseek/deepseek-v4-flash-0731")
+            self.assertEqual(profile.provider, "openrouter")
+            self.assertEqual(result.provider, "openrouter")
+            self.assertEqual(result.resolved_model, "deepseek/deepseek-v4-flash-0731")
+
+    def test_panthera_briefing_requires_openrouter_key(self) -> None:
+        router = SynthesisRouter()
+        with patch.dict("os.environ", {}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "openrouter_unavailable"):
+                router._panthera(sample_input())
 
     def test_panthera_falls_back_to_felis(self) -> None:
         router = SynthesisRouter()
         expected = SynthesisResult(briefing="Local.", provider="llama_cpp", agent="felis")
-        with patch.object(router, "_panthera", side_effect=RuntimeError("openai_error")), patch.object(
+        with patch.object(router, "_panthera", side_effect=RuntimeError("openrouter_error")), patch.object(
             router, "_try_panthera_local_fallback", return_value=(expected, "")
         ) as local_fallback:
             result = router.synthesize(sample_input(), "cloud")
         self.assertEqual(result.agent, "felis")
-        self.assertEqual(result.fallback_reason, "openai_error")
+        self.assertEqual(result.fallback_reason, "openrouter_error")
         local_fallback.assert_called_once_with(unittest.mock.ANY, "felis")
 
     def test_panthera_falls_back_to_structured_digest_after_felis(self) -> None:
         router = SynthesisRouter()
-        with patch.object(router, "_panthera", side_effect=RuntimeError("openai_unavailable")), patch.object(
+        with patch.object(router, "_panthera", side_effect=RuntimeError("openrouter_unavailable")), patch.object(
             router,
             "_try_panthera_local_fallback",
             return_value=(None, "local_insufficient_ram"),
@@ -138,7 +146,7 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(
             result.fallback_steps,
             [
-                "panthera:openai_unavailable",
+                "panthera:openrouter_unavailable",
                 "felis:local_insufficient_ram",
                 "structured_digest:resolved",
             ],

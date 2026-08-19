@@ -262,7 +262,7 @@ Legacy `ask_apex.local_context_windows`, `ask_apex.local_reasoning_modes`, and p
 
 Structured Digest requires no model and is the terminal fallback for every briefing mode.
 
-Panthera is the default cloud briefing engine and always uses `none` reasoning, independently of the selected interactive Agent or reasoning option. On Panthera failure, APEX tries Felis once before returning Structured Digest. Felis briefing synthesis is fixed to `gemma-4-E2B-Q4_K_M.gguf` through llama.cpp with no reasoning, independently of the interactive Felis model, runtime, context, or reasoning settings. An explicit Felis briefing request falls directly to Structured Digest on failure; it never silently substitutes another local model. Felis cold-load briefing synthesis uses the dedicated 16K context, while an already-resident compatible Gemma E2B llama.cpp alias can be reused.
+Panthera is the default cloud briefing engine and always uses OpenRouter `deepseek/deepseek-v4-flash-0731` with `none` reasoning, independently of the selected interactive Agent or reasoning option. It requires `OPENROUTER_API_KEY`. On Panthera failure, APEX tries Felis once before returning Structured Digest. Felis briefing synthesis is fixed to `gemma-4-E2B-Q4_K_M.gguf` through llama.cpp with no reasoning, independently of the interactive Felis model, runtime, context, or reasoning settings. An explicit Felis briefing request falls directly to Structured Digest on failure; it never silently substitutes another local model. Felis cold-load briefing synthesis uses the dedicated 16K context, while an already-resident compatible Gemma E2B llama.cpp alias can be reused.
 
 ## Voice
 

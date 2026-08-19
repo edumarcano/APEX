@@ -33,7 +33,7 @@ flowchart TB
     Browser --> Voice["Voice delivery"]
 
     Telemetry --> Connectors["Local + external connectors"]
-    Briefing --> Models["OpenAI · llama.cpp · Structured Digest"]
+    Briefing --> Models["OpenRouter · llama.cpp · Structured Digest"]
     Cortex --> Capabilities["Native + approved MCP capabilities"]
     API --> SQLite["SQLite briefing, conversations, retrieval, reminder-cache, and action state"]
 ```
@@ -42,7 +42,7 @@ flowchart TB
 |---|---|---|---|---|
 | Activation | Start APEX | Browser `useAppActivation` | None | Advisory preflight; telemetry refresh follows |
 | Telemetry | Refresh all or selected connectors | Process-local telemetry service | Current snapshot is memory-only | Enabled connectors |
-| Briefing | Current snapshot or full trigger | Briefing orchestration | Normal-mode briefing ledger | Panthera/OpenAI, Felis/llama.cpp, or Structured Digest |
+| Briefing | Current snapshot or full trigger | Briefing orchestration | Normal-mode briefing ledger | Panthera/OpenRouter, Felis/llama.cpp, or Structured Digest |
 | Cortex query | User prompt | `ApexAssistantRuntime` bridge plus backend turn execution | SQLite conversation tree and response metadata | Selected Agent and approved capabilities |
 | Retrieval | Explicit status/prepare or completed conversation turn | Retrieval service | SQLite retrieval items, FTS mirror, and optional vectors | None during normal search; explicit local model preparation only |
 | Voice | Manual or automatic delivery | Voice hook and backend speaker | None | Selected TTS engine |
@@ -142,13 +142,13 @@ Connector statuses feed equal-weight Sync Health scoring. Disabled connectors ar
 
 `POST /api/v1/briefings/generate` generates a briefing from the current process snapshot without calling connectors. The caller supplies both `snapshot_id` and briefing mode.
 
-Briefing orchestration converts structured module data into a bounded `SynthesisInput`. Panthera/OpenAI and Felis/llama.cpp receive the same selected facts wrapped in `<untrusted_connector_data>` markers. Display strings, Agent history, and Agent tools are not forwarded to the briefing model.
+Briefing orchestration converts structured module data into a bounded `SynthesisInput`. Panthera/OpenRouter and Felis/llama.cpp receive the same selected facts wrapped in `<untrusted_connector_data>` markers. Display strings, Agent history, and Agent tools are not forwarded to the briefing model.
 
 The current briefing modes are:
 
 | Mode | Provider | Current model or behavior |
 |---|---|---|
-| Panthera | OpenAI | `gpt-5.6-luna` at fixed `none` reasoning |
+| Panthera | OpenRouter | `deepseek/deepseek-v4-flash-0731` at fixed `none` reasoning |
 | Felis | llama.cpp | `gemma-4-E2B-Q4_K_M.gguf`, cold-load synthesis at 16K |
 | Structured Digest | None | Deterministic synthesis from typed facts |
 

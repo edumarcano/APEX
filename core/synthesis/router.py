@@ -17,11 +17,11 @@ from core.agent.catalog import (
 )
 from core.agent.model_catalog import (
     DEFAULT_FELIS_MODEL,
-    DEFAULT_PANTHERA_MODEL,
+    PANTHERA_BRIEFING_MODEL,
     get_model_profile,
 )
 from core.agent.providers.ollama import OllamaProvider
-from core.agent.providers.openai_provider import OpenAIProvider
+from core.agent.providers.openrouter import OpenRouterProvider
 from core.agent.local_runtime.contract import LocalModelRef
 from core.agent.local_runtime.coordinator import (
     check_resource_gate,
@@ -65,7 +65,7 @@ _LOGGER = logging.getLogger(__name__)
 
 _LOCAL_SYNTHESIS_FINAL_ANSWER_MAX_TOKENS = 512
 _FELIS_BRIEFING_MODEL = DEFAULT_FELIS_MODEL
-_PANTHERA_BRIEFING_MODEL = DEFAULT_PANTHERA_MODEL
+_PANTHERA_BRIEFING_MODEL = PANTHERA_BRIEFING_MODEL
 
 
 StateCallback = Callable[[str, str | None, str | None, str | None], None]
@@ -292,16 +292,16 @@ class SynthesisRouter:
         """Synthesize with the fixed-None Panthera briefing agent."""
         import os
 
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = os.getenv("OPENROUTER_API_KEY")
         if not api_key:
-            raise RuntimeError("openai_unavailable")
+            raise RuntimeError("openrouter_unavailable")
         agent = build_concrete_agent(
             "panthera",
             native_effort="none",
             model_id=_PANTHERA_BRIEFING_MODEL,
         )
-        self._state("generating", "openai", "panthera", None)
-        turn = OpenAIProvider(api_key).generate_turn(
+        self._state("generating", "openrouter", "panthera", None)
+        turn = OpenRouterProvider(api_key).generate_turn(
             [AgentMessage(role="user", content=wrap_untrusted_payload(source))],
             [],
             agent,
@@ -315,7 +315,7 @@ class SynthesisRouter:
         return SynthesisResult(
             briefing=briefing,
             insights=insights,
-            provider="openai",
+            provider="openrouter",
             agent="panthera",
             generation_ms=round(turn.provider_ms) if turn.provider_ms is not None else None,
             provider_ms=turn.provider_ms,
@@ -324,7 +324,7 @@ class SynthesisRouter:
             cost_estimate=estimate_inference_cost(
                 model=turn.resolved_model,
                 configured_model=agent.api_model,
-                provider="openai",
+                provider="openrouter",
                 usage=turn.usage,
                 hosted_tool_events=turn.provider_tool_events,
             ),
@@ -491,7 +491,11 @@ class SynthesisRouter:
                 "error_type=%s",
                 type(exc).__name__,
             )
-            reason = str(exc) if str(exc).startswith("openai_") else "openai_error"
+            reason = (
+                str(exc)
+                if str(exc).startswith("openrouter_")
+                else "openrouter_error"
+            )
             fallback_steps.append(f"panthera:{reason}")
 
         for agent_key in ("felis",):
