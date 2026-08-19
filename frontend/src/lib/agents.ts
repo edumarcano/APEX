@@ -6,6 +6,7 @@ import type {
   AgentStability,
   AgentStatus,
   BriefingTargetStatus,
+  CloudEffort,
   HostedTool,
   LocalRuntime,
   ModelCatalogEntry,
@@ -187,4 +188,76 @@ export function resolveBriefingModeAvailability(
     }
   }
   return { status: 'unknown', reason: 'Mode status unavailable' }
+}
+
+const REASONING_RANK: readonly CloudEffort[] = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+]
+
+export function resolveLowestReasoningEffort(
+  options: readonly CloudEffort[] | null | undefined,
+): CloudEffort | null {
+  if (!options || options.length === 0) return null
+  for (const candidate of REASONING_RANK) {
+    if (options.includes(candidate)) return candidate
+  }
+  return options[0] ?? null
+}
+
+export interface HomeQueryOverrides {
+  agent: AgentKey
+  modelId: string
+  effort: CloudEffort | null
+  contextWindow: number | null
+  localReasoningMode: 'none' | null
+}
+
+export function resolveHomeQueryOverrides(
+  modelEntry: ModelCatalogEntry | null | undefined,
+): HomeQueryOverrides {
+  if (!modelEntry || modelEntry.runtime === 'local') {
+    const modelId = modelEntry?.model_id ?? 'gemma-4-E2B-Q4_K_M.gguf'
+    const contextWindow = modelEntry?.provider === 'ollama' ? 4096 : 16384
+    return {
+      agent: 'felis',
+      modelId,
+      effort: null,
+      contextWindow,
+      localReasoningMode: 'none',
+    }
+  }
+
+  const effort = resolveLowestReasoningEffort(modelEntry.reasoning_options)
+  return {
+    agent: 'panthera',
+    modelId: modelEntry.model_id,
+    effort,
+    contextWindow: null,
+    localReasoningMode: null,
+  }
+}
+
+export function formatHomeModelSecondaryMetadata(
+  modelEntry: ModelCatalogEntry | null | undefined,
+): string {
+  if (!modelEntry) return 'Panthera'
+  if (modelEntry.runtime === 'local') {
+    const runtimeName = runtimeDisplayName(modelEntry.provider as LocalRuntime)
+    const contextLabel = modelEntry.provider === 'ollama' ? '4K' : '16K'
+    return `Felis · ${runtimeName} · ${contextLabel} · Reasoning off`
+  }
+
+  const provider = providerDisplayName(modelEntry.provider)
+  const lowest = resolveLowestReasoningEffort(modelEntry.reasoning_options)
+  const reasoningPart = lowest && lowest !== 'none'
+    ? `${formatReasoningLabel(lowest)} reasoning`
+    : 'Reasoning off'
+
+  return `Panthera · ${provider} · ${reasoningPart}`
 }

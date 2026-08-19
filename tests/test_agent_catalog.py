@@ -358,7 +358,79 @@ class ModelNativeReasoningTests(unittest.TestCase):
                 hasattr(concrete, "provider"),
                 f"Concrete profile for {model_id} is missing 'provider'",
             )
-            self.assertEqual(concrete.provider, model_profile.provider)
+    def test_concrete_agent_profiles_honor_ephemeral_overrides(self) -> None:
+        from core.agent.catalog import build_concrete_agent
+
+        # Local llama_cpp model with 16K context window override and none reasoning mode
+        local_concrete = build_concrete_agent(
+            "felis",
+            native_effort=None,
+            local_context_window=16384,
+            local_reasoning_mode="none",
+            model_id="gemma-4-E2B-Q4_K_M.gguf",
+        )
+        self.assertEqual(local_concrete.context_window, 16384)
+        self.assertEqual(local_concrete.reasoning_mode, "none")
+        self.assertEqual(local_concrete.api_model, "gemma-4-E2B-Q4_K_M.gguf")
+
+        # Local Ollama model retains fixed 4K context window
+        ollama_concrete = build_concrete_agent(
+            "felis",
+            native_effort=None,
+            local_context_window=16384,
+            model_id="qwen3:1.7b",
+        )
+        self.assertEqual(ollama_concrete.context_window, 4096)
+        self.assertEqual(ollama_concrete.api_model, "qwen3:1.7b")
+
+        # Cloud model with lowest reasoning effort override
+        cloud_concrete = build_concrete_agent(
+            "panthera",
+            native_effort="low",
+            model_id="deepseek/deepseek-v4-flash-0731",
+        )
+        self.assertEqual(cloud_concrete.reasoning_effort, "low")
+        self.assertEqual(cloud_concrete.api_model, "deepseek/deepseek-v4-flash-0731")
+
+    def test_missing_credential_message_and_error_with_model_profile(self) -> None:
+        from core.agent.catalog import credential_missing_error, credential_missing_message
+        from core.agent.model_catalog import get_model_profile
+
+        deepseek = get_model_profile("deepseek/deepseek-v4-flash-0731")
+        assert deepseek is not None
+        self.assertIn("OpenRouter API key", credential_missing_message("panthera", deepseek))
+        self.assertIn("OPENROUTER_API_KEY", credential_missing_error("panthera", deepseek))
+
+    def test_query_agent_validates_model_id_and_runtime_compatibility(self) -> None:
+        from core.api.cortex import query_agent
+
+        # Unknown model
+        with self.assertRaises(HTTPException) as ctx:
+            query_agent(AgentQueryRequest(prompt="hi", agent="panthera", model_id="nonexistent-model"))
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("Unknown model", str(ctx.exception.detail))
+
+        # Incompatible runtime (local model with cloud agent panthera)
+        with self.assertRaises(HTTPException) as ctx:
+            query_agent(AgentQueryRequest(prompt="hi", agent="panthera", model_id="gemma-4-E2B-Q4_K_M.gguf"))
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("is incompatible with Agent", str(ctx.exception.detail))
+
+    def test_query_and_preflight_rejects_dev_only_model_outside_dev_mode(self) -> None:
+        from core.api.cortex import build_tool_preflight, query_agent
+        from core.api.models import ToolPreflightRequest
+
+        with mock.patch("core.api.cortex.is_dev_mode", return_value=False):
+            # grok-4.5 is dev_only
+            with self.assertRaises(HTTPException) as ctx:
+                query_agent(AgentQueryRequest(prompt="hi", agent="panthera", model_id="grok-4.5"))
+            self.assertEqual(ctx.exception.status_code, 400)
+            self.assertIn("only available in development mode", str(ctx.exception.detail))
+
+            with self.assertRaises(HTTPException) as ctx:
+                build_tool_preflight(ToolPreflightRequest(agent="panthera", model_id="grok-4.5"))
+            self.assertEqual(ctx.exception.status_code, 400)
+            self.assertIn("only available in development mode", str(ctx.exception.detail))
 
 
 if __name__ == "__main__":

@@ -156,6 +156,7 @@ LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_encrypted_reasoning=False,
         hosted_capabilities=frozenset(),
         dev_only=True,
+        maximum_context_window=4096,
     ),
     "qwen3:4b-instruct": ModelProfile(
         model_id="qwen3:4b-instruct",
@@ -169,6 +170,7 @@ LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_encrypted_reasoning=False,
         hosted_capabilities=frozenset(),
         dev_only=True,
+        maximum_context_window=4096,
     ),
     "gemma-4-E2B-Q4_K_M.gguf": ModelProfile(
         model_id="gemma-4-E2B-Q4_K_M.gguf",

@@ -58,7 +58,11 @@ type ConversationDetail = ConversationSummary & {
 export type ApexAssistantConversationPreferences = Pick<ConversationSummary, 'agent' | 'selected_tool_names' | 'tool_profile_id'>
 
 export type ApexAssistantRuntimeHandle = {
-  submitPrompt: (prompt: string) => Promise<boolean>
+  submitPrompt: (
+    prompt: string,
+    overrides?: Partial<Pick<ApexAssistantRunConfig, 'agent' | 'effort' | 'modelId' | 'contextWindow' | 'localReasoningMode' | 'selectedToolNames' | 'toolProfileId'>>,
+    options?: { startNewThread?: boolean },
+  ) => Promise<boolean>
   patchPreferences: (updates: { agent?: AgentKey; selectedToolNames?: string[] | null; toolProfileId?: string | null }) => Promise<ApexAssistantPatchedPreferences | null>
 }
 
@@ -69,6 +73,9 @@ export type ApexAssistantPatchedPreferences = ApexAssistantConversationPreferenc
 export type ApexAssistantRunConfig = {
   agent: AgentKey
   effort: CloudEffort | null
+  modelId?: string | null
+  contextWindow?: number | null
+  localReasoningMode?: 'none' | 'focused' | null
   selectedToolNames: string[]
   toolProfileId: string | null
   snapshotId: string | null
@@ -246,6 +253,7 @@ function ThreadHistory({ children, getThreadIds, onConversationChangeRef, onPend
 type ApexAssistantComposerContextValue = {
   configRef: React.MutableRefObject<ApexAssistantRunConfig>
   setPendingPrompt: (text: string) => void
+  setTurnOverrides?: (overrides: Partial<ApexAssistantRunConfig> | null) => void
   beforeRun?: (config: ApexAssistantRunConfig) => Promise<boolean>
   markPreflightPassed: () => void
   persistActiveLeaf: (messageId: string) => Promise<void>
@@ -276,7 +284,7 @@ type ApexThreadListResult = {
 }
 
 export function useApexAssistantComposer(composerOverride?: ApexComposerSubmitRuntime): {
-  submit: () => Promise<boolean>
+  submit: (overrides?: Partial<ApexAssistantRunConfig>, promptOverride?: string) => Promise<boolean>
   isRunning: boolean
 } {
   const aui = useAui()
@@ -284,24 +292,30 @@ export function useApexAssistantComposer(composerOverride?: ApexComposerSubmitRu
   const beforeRun = context?.beforeRun
   const configRef = context?.configRef
   const setPendingPrompt = context?.setPendingPrompt
+  const setTurnOverrides = context?.setTurnOverrides
   const markPreflightPassed = context?.markPreflightPassed
   const beginTurn = context?.beginTurn
   const finishTurn = context?.finishTurn
   const isRunning = useAuiState((state) => state.thread.isRunning)
-  const isLoading = useAuiState((state) => state.thread.isLoading)
   if (!context) throw new Error('useApexAssistantComposer must be used inside ApexAssistantRuntime.')
   const composer = composerOverride ?? aui.composer
-  const submit = useCallback(async (): Promise<boolean> => {
-    const text = composer.getState().text.trim()
-    if (!text || isRunning || isLoading || !configRef || !beginTurn || !finishTurn) return false
-    if (!beginTurn(configRef.current.agent)) return false
+  const submit = useCallback(async (overrides?: Partial<ApexAssistantRunConfig>, promptOverride?: string): Promise<boolean> => {
+    const threadState = aui.thread().getState()
+    if (threadState.isRunning || threadState.isLoading) return false
+    const text = (promptOverride ?? composer.getState().text).trim()
+    if (!text || !configRef || !beginTurn || !finishTurn) return false
+    const effectiveConfig = { ...configRef.current, ...(overrides ?? {}) }
+    if (!beginTurn(effectiveConfig.agent)) return false
+    setTurnOverrides?.(overrides ?? null)
     setPendingPrompt?.(text)
     try {
-      if (beforeRun && !await beforeRun(configRef.current)) {
+      if (beforeRun && !await beforeRun(effectiveConfig)) {
+        setTurnOverrides?.(null)
         finishTurn()
         return false
       }
     } catch {
+      setTurnOverrides?.(null)
       finishTurn()
       return false
     }
@@ -309,11 +323,13 @@ export function useApexAssistantComposer(composerOverride?: ApexComposerSubmitRu
       try {
         await aui.threadListItem.initialize()
       } catch {
+        setTurnOverrides?.(null)
         finishTurn()
         return false
       }
     }
     markPreflightPassed?.()
+    aui.thread.composer().setText(text)
     composer.send()
     queueMicrotask(() => {
       try {
@@ -323,7 +339,7 @@ export function useApexAssistantComposer(composerOverride?: ApexComposerSubmitRu
       }
     })
     return true
-  }, [aui, beforeRun, beginTurn, composer, configRef, finishTurn, isLoading, isRunning, markPreflightPassed, setPendingPrompt])
+  }, [aui, beforeRun, beginTurn, composer, configRef, finishTurn, markPreflightPassed, setPendingPrompt, setTurnOverrides])
   return { submit, isRunning }
 }
 
@@ -352,12 +368,22 @@ function ApexAssistantController({ runtimeRef, branchPersistRef, getActiveRemote
     branchPersistRef.current = persistBranch
     if (!runtimeRef) return
     runtimeRef.current = {
-      submitPrompt: async (prompt: string): Promise<boolean> => {
+      submitPrompt: async (
+        prompt: string,
+        overrides?: Partial<ApexAssistantRunConfig>,
+        options?: { startNewThread?: boolean },
+      ): Promise<boolean> => {
         const text = prompt.trim()
         if (!text) return false
+        if (options?.startNewThread) {
+          try {
+            await aui.threads.switchToNewThread()
+          } catch {
+            // If already on new thread or switching fails gracefully, proceed
+          }
+        }
         if (aui.thread().getState().isLoading) return false
-        aui.thread.composer().setText(text)
-        return submit()
+        return submit(overrides, text)
       },
       patchPreferences: async (updates): Promise<ApexAssistantPatchedPreferences | null> => {
         const remoteId = getActiveRemoteId() ?? aui.threadListItem.getState().remoteId
@@ -422,9 +448,13 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
   const remoteByLocal = useRef(new Map<string, string>())
   const titleByRemote = useRef(new Map<string, string>())
   const preflightPassedRef = useRef(false)
+  const turnOverridesRef = useRef<Partial<ApexAssistantRunConfig> | null>(null)
   const branchPersistRef = useRef<(messageId: string) => Promise<void>>(async () => {})
   const [threadListError, setThreadListError] = useState<string | null>(null)
   const [branchPersistenceError, setBranchPersistenceError] = useState<string | null>(null)
+  const setTurnOverrides = useCallback((overrides: Partial<ApexAssistantRunConfig> | null) => {
+    turnOverridesRef.current = overrides
+  }, [])
   const activeRemoteIdRef = useRef<string | undefined>(undefined)
   const getActiveRemoteId = useCallback(() => activeRemoteIdRef.current, [])
   const forceListReloadRef = useRef(false)
@@ -515,7 +545,8 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
       return listPromise
     },
     async initialize(localId) {
-      const current = configRef.current
+      const overrides = turnOverridesRef.current
+      const current = { ...configRef.current, ...(overrides ?? {}) }
       const promptText = pendingPromptRef.current?.split('\n')[0].trim()
       const title = promptText ? (promptText.length > 40 ? `${promptText.slice(0, 37)}…` : promptText) : undefined
       const item = await requestJson<ConversationSummary>(API_ENDPOINTS.cortexConversations, {
@@ -580,7 +611,9 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
           ?? activeRemoteIdRef.current
         const user = options.messages.at(-1)
         if (!remoteId || !user || user.role !== 'user' || !options.unstable_assistantMessageId) throw new Error('Conversation is not ready.')
-        const current = configRef.current
+        const overrides = turnOverridesRef.current
+        turnOverridesRef.current = null
+        const current = { ...configRef.current, ...(overrides ?? {}) }
         if (beforeRunRef.current && !preflightPassedRef.current) {
           try {
             if (!await beforeRunRef.current(current)) {
@@ -611,8 +644,15 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
               user_message_id: userMessageId,
               agent_message_id: agentMessageId,
               ...(parentMessageId ? { parent_message_id: parentMessageId } : {}),
-              agent: current.agent, effort: current.effort, selected_tool_names: current.selectedToolNames,
-              tool_profile_id: current.toolProfileId, snapshot_id: current.snapshotId, briefing_id: current.briefingId ?? undefined,
+              agent: current.agent,
+              effort: current.effort,
+              ...(current.modelId ? { model_id: current.modelId } : {}),
+              ...(current.contextWindow ? { context_window: current.contextWindow } : {}),
+              ...(current.localReasoningMode ? { local_reasoning_mode: current.localReasoningMode } : {}),
+              selected_tool_names: current.selectedToolNames,
+              tool_profile_id: current.toolProfileId,
+              snapshot_id: current.snapshotId,
+              briefing_id: current.briefingId ?? undefined,
             }),
           })
           const responseError = typeof response.error === 'string' ? response.error : null
@@ -673,7 +713,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
   const runBefore = useCallback(async (runConfig: ApexAssistantRunConfig): Promise<boolean> => {
     return beforeRunRef.current ? beforeRunRef.current(runConfig) : true
   }, [])
-  const composerContext = useMemo(() => ({ configRef, setPendingPrompt, beforeRun: runBefore, markPreflightPassed, isTurnLocked, beginTurn, finishTurn }), [beginTurn, finishTurn, isTurnLocked, markPreflightPassed, runBefore, setPendingPrompt])
+  const composerContext = useMemo(() => ({ configRef, setPendingPrompt, setTurnOverrides, beforeRun: runBefore, markPreflightPassed, isTurnLocked, beginTurn, finishTurn }), [beginTurn, finishTurn, isTurnLocked, markPreflightPassed, runBefore, setPendingPrompt, setTurnOverrides])
   const runtimeContext = useMemo(() => ({
     ...composerContext,
     persistActiveLeaf: (messageId: string) => branchPersistRef.current(messageId),

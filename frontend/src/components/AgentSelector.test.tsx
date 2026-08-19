@@ -120,32 +120,6 @@ describe('AgentSelector', () => {
     expect(felisRadio).toHaveAttribute('aria-checked', 'true')
   })
 
-  it('renders a compact trigger on home presentation and opens simplified popover', async () => {
-    const user = userEvent.setup()
-    const onChange = vi.fn()
-    render(
-      <AgentSelector
-        activeAgent="panthera"
-        onChange={onChange}
-        agentsStatus={[agent(), felis]}
-        agentsStatusHydrated
-        isQuerying={false}
-        presentation="home"
-      />,
-    )
-
-    const trigger = screen.getByRole('button', { name: /Agent Panthera/i })
-    expect(trigger).toBeVisible()
-
-    await user.click(trigger)
-    expect(screen.getByRole('dialog', { name: 'Select Agent' })).toBeVisible()
-    expect(screen.getByRole('option', { name: 'Use Apex Panthera' })).toBeVisible()
-    expect(screen.getByRole('option', { name: 'Use Apex Felis' })).toBeVisible()
-
-    await user.click(screen.getByRole('option', { name: 'Use Apex Felis' }))
-    expect(onChange).toHaveBeenCalledWith('felis')
-  })
-
   it('disables switching while an agent query is in flight', () => {
     render(
       <AgentSelector

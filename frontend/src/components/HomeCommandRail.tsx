@@ -7,28 +7,26 @@ import type {
   ToolCatalog,
   ToolPreflightEstimate,
   BriefingTargetStatus,
+  ModelCatalogEntry,
 } from '../types/telemetry'
 
 import { AgentQueryBar } from './AgentQueryBar'
 import { BriefingGenerateControl, BriefingModeSelector } from './BriefingControls'
 import { LocalModelControl } from './LocalModelControl'
-import { AgentSelector } from './AgentSelector'
+import { HomeModelSelector } from './HomeModelSelector'
 import { StandbyActions } from './StandbyActions'
 
 interface HomeCommandRailProps {
   activated: boolean
   agentQueriesEnabled: boolean
-  activeAgent: AgentKey
+  selectedModelId: string
+  onModelChange: (modelId: string) => void
+  modelCatalog: ModelCatalogEntry[]
   agentsStatus: AgentStatus[]
-  agentsStatusHydrated: boolean
   briefingTargets?: BriefingTargetStatus[]
   isCortexQuerying: boolean
-  verifyingCloudAgent: AgentKey | null
-  onAgentChange: (agent: AgentKey) => void
-  onVerifyCloudAgent: (agent: 'panthera') => Promise<boolean>
   onAgentSubmit: (
     query: string,
-    agent: AgentKey,
     selectedToolNames: string[],
     toolProfileId: string | null,
   ) => Promise<boolean>
@@ -74,14 +72,12 @@ interface HomeCommandRailProps {
 export function HomeCommandRail({
   activated,
   agentQueriesEnabled,
-  activeAgent,
+  selectedModelId,
+  onModelChange,
+  modelCatalog,
   agentsStatus,
-  agentsStatusHydrated,
   briefingTargets,
   isCortexQuerying,
-  verifyingCloudAgent,
-  onAgentChange,
-  onVerifyCloudAgent,
   onAgentSubmit,
   toolCatalog = null,
   selectedToolNames = [],
@@ -122,6 +118,9 @@ export function HomeCommandRail({
   onUnloadLocalModel,
 }: HomeCommandRailProps): ReactElement {
   const showAgentControls = activated && agentQueriesEnabled
+  const selectedModel = modelCatalog.find((entry) => entry.model_id === selectedModelId)
+  const inferredAgent: AgentKey = selectedModel?.runtime === 'local' ? 'felis' : 'panthera'
+
   return (
     <section
       aria-label="Home command rail"
@@ -150,22 +149,20 @@ export function HomeCommandRail({
           {showAgentControls ? <>
             <div className="home-command-grid__agent-row" data-slot="home-agent-row">
               <div className="home-command-grid__agent-selector min-w-0" data-slot="home-agent-selector">
-                <AgentSelector
-                  presentation="home"
-                  activeAgent={activeAgent}
-                  onChange={onAgentChange}
+                <HomeModelSelector
+                  selectedModelId={selectedModelId}
+                  onModelChange={onModelChange}
+                  catalog={modelCatalog}
                   agentsStatus={agentsStatus}
-                  agentsStatusHydrated={agentsStatusHydrated}
+                  disabled={isCortexQuerying || submissionPending}
                   isQuerying={isCortexQuerying || submissionPending}
-                  verifyingAgent={verifyingCloudAgent}
-                  onVerify={onVerifyCloudAgent}
                 />
               </div>
               <div className="home-command-grid__agent-composer min-w-0" data-slot="home-agent-composer">
                 <AgentQueryBar
                   presentation="home"
-                  activeAgent={activeAgent}
-                  onSubmit={onAgentSubmit}
+                  activeAgent={inferredAgent}
+                  onSubmit={(query, _agent, tools, profileId) => onAgentSubmit(query, tools, profileId)}
                   agentsStatus={agentsStatus}
                   catalog={toolCatalog}
                   selectedToolNames={selectedToolNames}

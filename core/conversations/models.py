@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from core.agent.types import AgentKey, ApexEffort
+from core.agent.types import AgentKey, ApexEffort, LocalReasoningMode
 
 ConversationPartition = Literal["production", "sandbox"]
 ConversationOrigin = Literal["hud", "cli"]
@@ -67,6 +67,9 @@ class ConversationTurnRequest(BaseModel):
     effort: ApexEffort | None = None
     selected_tool_names: list[str] | None = None
     tool_profile_id: str | None = None
+    model_id: str | None = None
+    context_window: int | None = Field(default=None, ge=1)
+    local_reasoning_mode: LocalReasoningMode | None = None
     snapshot_id: str | None = None
     briefing_id: int | None = Field(default=None, ge=1)
 

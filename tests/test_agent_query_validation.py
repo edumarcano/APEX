@@ -87,6 +87,10 @@ class SandboxPolicyTests(unittest.TestCase):
                 "core.agent.catalog.resolve_selected_model_profile",
                 return_value=selected_model,
             ),
+            mock.patch(
+                "core.api.cortex.resolve_selected_tools",
+                return_value=mock.Mock(failures=[], descriptors=[], diagnostics=mock.Mock()),
+            ),
             mock.patch("core.api.cortex.agent_has_credentials", return_value=True),
         ):
             store_mock.return_value.get_snapshot.return_value.ask_apex = ask_apex
@@ -133,6 +137,10 @@ class SandboxPolicyTests(unittest.TestCase):
             mock.patch("core.api.cortex._ensure_local_alias_configured"),
             mock.patch("core.api.cortex.switch_local_model", return_value=True),
             mock.patch("core.api.cortex.is_local_model_ready", return_value=True),
+            mock.patch(
+                "core.api.cortex.resolve_selected_tools",
+                return_value=mock.Mock(failures=[], descriptors=[], diagnostics=mock.Mock()),
+            ),
             mock.patch(
                 "core.api.cortex._execute_agent_turn", side_effect=capture_execution
             ),

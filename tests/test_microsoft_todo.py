@@ -416,7 +416,8 @@ class MicrosoftTodoAuthenticationTests(unittest.IsolatedAsyncioTestCase):
         service = self._service_for(app)
 
         result = await service.begin_device_authorization()
-        await asyncio.sleep(0)
+        if service._poll_task:
+            await service._poll_task
         await service.shutdown()
 
         self.assertEqual(set(result.to_dict()), {"state", "verification_uri", "user_code", "expires_at"})
@@ -460,7 +461,8 @@ class MicrosoftTodoAuthenticationTests(unittest.IsolatedAsyncioTestCase):
         service = self._service_for(app)
 
         await service.begin_device_authorization()
-        await asyncio.sleep(0)
+        if service._poll_task:
+            await service._poll_task
         snapshot = service.status_snapshot()
         await service.shutdown()
 

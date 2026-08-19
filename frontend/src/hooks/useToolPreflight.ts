@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { API_ENDPOINTS } from '../lib/api'
-import type { AgentKey, ToolPreflightEstimate } from '../types/telemetry'
+import type { AgentKey, CloudEffort, ToolPreflightEstimate } from '../types/telemetry'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -98,6 +98,10 @@ interface UseToolPreflightOptions {
   agent: AgentKey
   selectedToolNames: string[]
   toolProfileId: string | null
+  modelId?: string | null
+  effort?: CloudEffort | null
+  contextWindow?: number | null
+  localReasoningMode?: 'none' | 'focused' | null
   prompt?: string
   conversationId?: string | null
   snapshotId?: string | null
@@ -109,6 +113,10 @@ export function useToolPreflight({
   agent,
   selectedToolNames,
   toolProfileId,
+  modelId = null,
+  effort = null,
+  contextWindow = null,
+  localReasoningMode = null,
   prompt = '',
   conversationId = null,
   snapshotId = null,
@@ -142,6 +150,10 @@ export function useToolPreflight({
         signal: controller.signal,
         body: JSON.stringify({
           agent,
+          ...(modelId ? { model_id: modelId } : {}),
+          ...(effort ? { effort } : {}),
+          ...(contextWindow ? { context_window: contextWindow } : {}),
+          ...(localReasoningMode ? { local_reasoning_mode: localReasoningMode } : {}),
           selected_tool_names: selectedToolNames,
           ...(toolProfileId ? { tool_profile_id: toolProfileId } : {}),
           prompt,
@@ -192,8 +204,12 @@ export function useToolPreflight({
   }, [
     agent,
     briefingId,
-    enabled,
+    contextWindow,
     conversationId,
+    effort,
+    enabled,
+    localReasoningMode,
+    modelId,
     prompt,
     selectedToolNames,
     snapshotId,

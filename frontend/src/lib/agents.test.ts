@@ -4,15 +4,18 @@ import {
   AGENT_KEYS,
   canVerifyCloudProvider,
   formatContextWindowLabel,
+  formatHomeModelSecondaryMetadata,
   formatReasoningLabel,
   isAgentKey,
   isFelisKey,
   isPantheraKey,
   providerDisplayName,
   resolveBriefingModeAvailability,
+  resolveHomeQueryOverrides,
+  resolveLowestReasoningEffort,
   usesSandboxHistory,
 } from './agents'
-import type { BriefingTargetStatus } from '../types/telemetry'
+import type { BriefingTargetStatus, ModelCatalogEntry } from '../types/telemetry'
 
 describe('agents helpers', () => {
   it('exposes only Panthera and Felis agent keys', () => {
@@ -108,5 +111,81 @@ describe('agents helpers', () => {
       status: 'unknown',
       reason: 'Mode status unavailable',
     })
+  })
+
+  it('resolves lowest reasoning effort preference correctly', () => {
+    expect(resolveLowestReasoningEffort(['none', 'low', 'high', 'max'])).toBe('none')
+    expect(resolveLowestReasoningEffort(['minimal', 'low', 'medium', 'high'])).toBe('minimal')
+    expect(resolveLowestReasoningEffort(['low', 'medium', 'high'])).toBe('low')
+    expect(resolveLowestReasoningEffort(['medium', 'high'])).toBe('medium')
+    expect(resolveLowestReasoningEffort(['high', 'max'])).toBe('high')
+    expect(resolveLowestReasoningEffort(null)).toBeNull()
+    expect(resolveLowestReasoningEffort([])).toBeNull()
+  })
+
+  it('resolves home query overrides for cloud and local models', () => {
+    const cloudEntry: ModelCatalogEntry = {
+      model_id: 'deepseek/deepseek-v4-flash-0731',
+      display_name: 'DeepSeek V4 Flash',
+      provider: 'openrouter',
+      runtime: 'cloud',
+      stability: 'stable',
+      reasoning_options: ['none', 'low', 'high', 'max'],
+      default_reasoning: 'high',
+      hosted_capabilities: [],
+    }
+    expect(resolveHomeQueryOverrides(cloudEntry)).toEqual({
+      agent: 'panthera',
+      modelId: 'deepseek/deepseek-v4-flash-0731',
+      effort: 'none',
+      contextWindow: null,
+      localReasoningMode: null,
+    })
+
+    const localEntry: ModelCatalogEntry = {
+      model_id: 'gemma-4-E2B-Q4_K_M.gguf',
+      display_name: 'Gemma 4 E2B',
+      provider: 'llama_cpp',
+      runtime: 'local',
+      stability: 'stable',
+      reasoning_options: null,
+      default_reasoning: null,
+      maximum_context_window: 131072,
+      hosted_capabilities: [],
+    }
+    expect(resolveHomeQueryOverrides(localEntry)).toEqual({
+      agent: 'felis',
+      modelId: 'gemma-4-E2B-Q4_K_M.gguf',
+      effort: null,
+      contextWindow: 16384,
+      localReasoningMode: 'none',
+    })
+  })
+
+  it('formats home model secondary metadata strings', () => {
+    const cloudEntry: ModelCatalogEntry = {
+      model_id: 'deepseek/deepseek-v4-flash-0731',
+      display_name: 'DeepSeek V4 Flash',
+      provider: 'openrouter',
+      runtime: 'cloud',
+      stability: 'stable',
+      reasoning_options: ['low', 'high', 'max'],
+      default_reasoning: 'high',
+      hosted_capabilities: [],
+    }
+    expect(formatHomeModelSecondaryMetadata(cloudEntry)).toBe('Panthera · OpenRouter · Low reasoning')
+
+    const localEntry: ModelCatalogEntry = {
+      model_id: 'gemma-4-E2B-Q4_K_M.gguf',
+      display_name: 'Gemma 4 E2B',
+      provider: 'llama_cpp',
+      runtime: 'local',
+      stability: 'stable',
+      reasoning_options: null,
+      default_reasoning: null,
+      maximum_context_window: 131072,
+      hosted_capabilities: [],
+    }
+    expect(formatHomeModelSecondaryMetadata(localEntry)).toBe('Felis · llama.cpp · 16K · Reasoning off')
   })
 })
