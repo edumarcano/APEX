@@ -190,7 +190,7 @@ class ConversationStore:
         summary = self.get_summary(conversation_id, partition)
         with self._connection() as conn:
             rows = conn.execute(
-                "SELECT id,conversation_id,parent_message_id,role,content,status,agent,request_metadata_json,response_metadata_json,created_at,updated_at FROM conversation_messages WHERE conversation_id = ? ORDER BY created_at, id",
+                "SELECT id,conversation_id,parent_message_id,role,content,status,agent,request_metadata_json,response_metadata_json,created_at,updated_at FROM conversation_messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC",
                 (str(conversation_id),),
             ).fetchall()
         return ConversationDetail(**summary.model_dump(), messages=[self._message(row) for row in rows])
@@ -207,7 +207,7 @@ class ConversationStore:
                     FROM conversation_messages m
                     JOIN conversations c ON c.id = m.conversation_id
                     WHERE m.status = 'completed'
-                    ORDER BY m.created_at, m.id
+                    ORDER BY m.created_at ASC, m.rowid ASC
                     """
                 ).fetchall()
             else:
@@ -219,7 +219,7 @@ class ConversationStore:
                     FROM conversation_messages m
                     JOIN conversations c ON c.id = m.conversation_id
                     WHERE m.status = 'completed' AND c.partition = ?
-                    ORDER BY m.created_at, m.id
+                    ORDER BY m.created_at ASC, m.rowid ASC
                     """,
                     (partition,),
                 ).fetchall()
@@ -236,7 +236,7 @@ class ConversationStore:
                 FROM conversation_messages m
                 JOIN conversations c ON c.id = m.conversation_id
                 WHERE m.status = 'completed'
-                ORDER BY m.created_at, m.id
+                ORDER BY m.created_at ASC, m.rowid ASC
                 """
             ).fetchall()
         return [(self._message(row), str(row[11])) for row in rows]

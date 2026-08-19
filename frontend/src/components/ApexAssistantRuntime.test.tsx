@@ -455,4 +455,282 @@ describe('ApexAssistantRuntime', () => {
     expect(calls).toBe(initialCalls + 2)
     expect(fetchMock).toHaveBeenCalled()
   })
+
+  it('switches between past conversations and applies active styling to the selected rail item', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const conv1Id = '00000000-0000-4000-8000-000000000001'
+    const conv2Id = '00000000-0000-4000-8000-000000000002'
+    const conv1 = { ...summary, id: conv1Id, title: 'First Conversation' }
+    const conv2 = { ...summary, id: conv2Id, title: 'Second Conversation' }
+    const user1Id = '00000000-0000-4000-8000-000000000071'
+    const agent1Id = '00000000-0000-4000-8000-000000000072'
+    const user2Id = '00000000-0000-4000-8000-000000000081'
+    const agent2Id = '00000000-0000-4000-8000-000000000082'
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([conv1, conv2])
+      if (url.endsWith(`/api/v1/cortex/conversations/${conv1Id}`)) {
+        return response({
+          ...conv1,
+          active_leaf_message_id: agent1Id,
+          messages: [
+            { id: user1Id, parent_message_id: null, role: 'user', content: 'Turn 1 in First', status: 'completed', created_at: '2026-08-17T12:00:00Z', response_metadata: null },
+            { id: agent1Id, parent_message_id: user1Id, role: 'agent', content: 'Answer 1 in First', status: 'completed', created_at: '2026-08-17T12:00:01Z', response_metadata: {} },
+          ],
+        })
+      }
+      if (url.endsWith(`/api/v1/cortex/conversations/${conv2Id}`)) {
+        return response({
+          ...conv2,
+          active_leaf_message_id: agent2Id,
+          messages: [
+            { id: user2Id, parent_message_id: null, role: 'user', content: 'Turn 1 in Second', status: 'completed', created_at: '2026-08-17T12:00:00Z', response_metadata: null },
+            { id: agent2Id, parent_message_id: user2Id, role: 'agent', content: 'Answer 1 in Second', status: 'completed', created_at: '2026-08-17T12:00:01Z', response_metadata: {} },
+          ],
+        })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    const user = userEvent.setup()
+    render(
+      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+        <ApexConversationRail className="block" />
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'First Conversation' })).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'Second Conversation' })).toBeInTheDocument()
+
+    // Click second conversation
+    await user.click(screen.getByRole('button', { name: 'Second Conversation' }))
+    await waitFor(() => expect(screen.getByText('Turn 1 in Second')).toBeInTheDocument())
+    expect(screen.getByText('Answer 1 in Second')).toBeInTheDocument()
+
+    // Check active styling on the item container
+    const secondButton = screen.getByRole('button', { name: 'Second Conversation' })
+    const secondItemRoot = secondButton.closest('[data-active]')
+    expect(secondItemRoot).toHaveAttribute('data-active', 'true')
+  })
+
+  it('auto-titles new conversations derived from prompt text on creation', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const createdId = '00000000-0000-4000-8000-000000000099'
+    let sentTitle: string | undefined
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as { title?: string }
+        sentTitle = body.title
+        return response({ ...summary, id: createdId, title: body.title ?? 'New conversation' })
+      }
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([])
+      if (url.endsWith(`/api/v1/cortex/conversations/${createdId}`)) return response({ ...summary, id: createdId, active_leaf_message_id: null, messages: [] })
+      if (url.endsWith(`/api/v1/cortex/conversations/${createdId}/turns`)) return response({ answer: 'Title tested.', tool_trace: [], tool_outputs: [], citations: [] })
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    const user = userEvent.setup()
+    render(
+      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+
+    await waitFor(() => expect(screen.getByText('APEX is ready. Start a session with a focused question.')).toBeInTheDocument())
+    await user.type(screen.getByPlaceholderText('Ask APEX…'), 'What is the system diagnostics status?')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => expect(sentTitle).toBe('What is the system diagnostics status?'))
+  })
+
+  it('preserves conversation messages when active_leaf_message_id is null on load', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const convId = '00000000-0000-4000-8000-000000000088'
+    const userMsgId = '00000000-0000-4000-8000-000000000081'
+    const agentMsgId = '00000000-0000-4000-8000-000000000082'
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) {
+        return response([{ ...summary, id: convId, title: 'Preserved Conversation', active_leaf_message_id: null }])
+      }
+      if (url.endsWith(`/api/v1/cortex/conversations/${convId}`)) {
+        return response({
+          ...summary,
+          id: convId,
+          title: 'Preserved Conversation',
+          active_leaf_message_id: null,
+          messages: [
+            { id: userMsgId, parent_message_id: null, role: 'user', content: 'What was the diagnostic result?', status: 'completed', agent: null, created_at: '2026-08-18T12:00:00Z', updated_at: '2026-08-18T12:00:00Z' },
+            { id: agentMsgId, parent_message_id: userMsgId, role: 'agent', content: 'All checks normal.', status: 'completed', agent: 'panthera', created_at: '2026-08-18T12:00:01Z', updated_at: '2026-08-18T12:00:01Z' },
+          ],
+        })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    render(
+      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+        <ApexConversationRail className="block" />
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+
+    await waitFor(() => expect(screen.getByText('What was the diagnostic result?')).toBeInTheDocument())
+    expect(screen.getByText('All checks normal.')).toBeInTheDocument()
+  })
+
+  it('switches back to a conversation and sends follow-up turn with correct parent ID', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const conv1 = '00000000-0000-4000-8000-000000000011'
+    const conv2 = '00000000-0000-4000-8000-000000000022'
+    const msg1User = '00000000-0000-4000-8000-00000000001a'
+    const msg1Agent = '00000000-0000-4000-8000-00000000001b'
+    let sentParentId: string | undefined
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) {
+        return response([
+          { ...summary, id: conv1, title: 'Chat Alpha', active_leaf_message_id: msg1Agent },
+          { ...summary, id: conv2, title: 'Chat Beta', active_leaf_message_id: null },
+        ])
+      }
+      if (url.endsWith(`/api/v1/cortex/conversations/${conv1}`)) {
+        return response({
+          ...summary,
+          id: conv1,
+          title: 'Chat Alpha',
+          active_leaf_message_id: msg1Agent,
+          messages: [
+            { id: msg1User, parent_message_id: null, role: 'user', content: 'Turn 1 in Alpha', status: 'completed', agent: null, created_at: '2026-08-18T12:00:00Z', updated_at: '2026-08-18T12:00:00Z' },
+            { id: msg1Agent, parent_message_id: msg1User, role: 'agent', content: 'Reply 1 in Alpha', status: 'completed', agent: 'panthera', created_at: '2026-08-18T12:00:01Z', updated_at: '2026-08-18T12:00:01Z' },
+          ],
+        })
+      }
+      if (url.endsWith(`/api/v1/cortex/conversations/${conv2}`)) {
+        return response({
+          ...summary,
+          id: conv2,
+          title: 'Chat Beta',
+          active_leaf_message_id: null,
+          messages: [],
+        })
+      }
+      if (url.endsWith(`/api/v1/cortex/conversations/${conv1}/turns`) && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as { parent_message_id?: string }
+        sentParentId = body.parent_message_id
+        return response({ answer: 'Follow up in Alpha complete.', tool_trace: [], tool_outputs: [], citations: [] })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    const user = userEvent.setup()
+    render(
+      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+        <ApexConversationRail className="block" />
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+
+    await waitFor(() => expect(screen.getByText('Turn 1 in Alpha')).toBeInTheDocument())
+
+    // Switch to Chat Beta
+    await user.click(screen.getByRole('button', { name: 'Chat Beta' }))
+    await waitFor(() => expect(screen.queryByText('Turn 1 in Alpha')).not.toBeInTheDocument())
+
+    // Switch back to Chat Alpha
+    await user.click(screen.getByRole('button', { name: 'Chat Alpha' }))
+    await waitFor(() => expect(screen.getByText('Turn 1 in Alpha')).toBeInTheDocument())
+
+    // Send follow-up turn in Chat Alpha
+    await user.type(screen.getByPlaceholderText('Ask APEX…'), 'Follow up question')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => expect(sentParentId).toBe(msg1Agent))
+  })
+
+  it('topologically sorts messages so child messages appearing first do not fail history load', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const convId = '00000000-0000-4000-8000-000000000077'
+    const userMsgId = '00000000-0000-4000-8000-00000000007b'
+    const agentMsgId = '00000000-0000-4000-8000-00000000007a' // Lexicographically before userMsgId
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) {
+        return response([{ ...summary, id: convId, title: 'Inverted Message Order Conversation', active_leaf_message_id: agentMsgId }])
+      }
+      if (url.endsWith(`/api/v1/cortex/conversations/${convId}`)) {
+        return response({
+          ...summary,
+          id: convId,
+          title: 'Inverted Message Order Conversation',
+          active_leaf_message_id: agentMsgId,
+          // Intentionally return child agent message BEFORE parent user message to test topological sort
+          messages: [
+            { id: agentMsgId, parent_message_id: userMsgId, role: 'agent', content: 'Agent reply arrived.', status: 'completed', agent: 'panthera', created_at: '2026-08-18T12:00:00Z', updated_at: '2026-08-18T12:00:00Z' },
+            { id: userMsgId, parent_message_id: null, role: 'user', content: 'User prompt arrived.', status: 'completed', agent: null, created_at: '2026-08-18T12:00:00Z', updated_at: '2026-08-18T12:00:00Z' },
+          ],
+        })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    render(
+      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+        <ApexConversationRail className="block" />
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+
+    await waitFor(() => expect(screen.getByText('User prompt arrived.')).toBeInTheDocument())
+    expect(screen.getByText('Agent reply arrived.')).toBeInTheDocument()
+  })
+
+  it('renders transient New conversation draft item in the rail when on a new thread', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const convId = '00000000-0000-4000-8000-000000000066'
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) {
+        return response([{ ...summary, id: convId, title: 'Existing Chat', active_leaf_message_id: null }])
+      }
+      if (url.endsWith(`/api/v1/cortex/conversations/${convId}`)) {
+        return response({ ...summary, id: convId, title: 'Existing Chat', active_leaf_message_id: null, messages: [] })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    const user = userEvent.setup()
+    render(
+      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+        <ApexConversationRail className="block" />
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Existing Chat' })).toBeInTheDocument())
+
+    // Click New conversation button
+    await user.click(screen.getByRole('button', { name: 'New conversation' }))
+
+    // Verify transient draft item is rendered at top of rail with active state
+    await waitFor(() => {
+      const draftItem = screen.getByText('New conversation', { selector: 'span' })
+      expect(draftItem).toBeInTheDocument()
+      expect(draftItem.closest('[data-active]')).toHaveAttribute('data-active', 'true')
+    })
+  })
 })
