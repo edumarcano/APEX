@@ -9,7 +9,9 @@ from core.agent.types import CostEstimate, TokenUsage
 FELIS_BRIEFING_CONTEXT_WINDOW = 16_384
 APODEMUS_BRIEFING_CONTEXT_WINDOW = FELIS_BRIEFING_CONTEXT_WINDOW
 
-SynthesisProvider = Literal["gemini", "ollama", "llama_cpp", "raw", "demo", "openai"]
+SynthesisProvider = Literal[
+    "gemini", "ollama", "llama_cpp", "raw", "demo", "openai", "openrouter"
+]
 SynthesisAgent = Literal["panthera", "felis"]
 BriefingMode = Literal["panthera", "felis", "structured_digest"]
 SynthesisPhase = Literal["idle", "loading", "ready", "generating", "fallback", "complete"]

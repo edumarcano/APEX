@@ -80,7 +80,7 @@ flowchart LR
     HUD --> A["Agent queries"]
     HUD --> V["Voice delivery"]
     T --> C["Local and external connectors"]
-    B --> M["Panthera/OpenAI · Felis/llama.cpp · Structured Digest"]
+    B --> M["Panthera/OpenRouter · Felis/llama.cpp · Structured Digest"]
     A --> P["Native and approved MCP capabilities"]
     API --> DB["SQLite"]
 ```

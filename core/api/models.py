@@ -45,7 +45,10 @@ class RuntimeMetadata(BaseModel):
     )
     # Gemini remains accepted here so historical briefing ledger rows parse.
     synthesis_provider: (
-        Literal["gemini", "ollama", "llama_cpp", "raw", "demo", "openai"] | None
+        Literal[
+            "gemini", "ollama", "llama_cpp", "raw", "demo", "openai", "openrouter"
+        ]
+        | None
     ) = None
     synthesis_agent: Literal["panthera", "felis"] | None = None
     synthesis_resolved_model: str | None = None
@@ -981,7 +984,9 @@ class BriefingHistoryRecord(BaseModel):
 
 class PipelineSynthesisState(BaseModel):
     phase: Literal["idle", "loading", "ready", "generating", "fallback", "complete"] = "idle"
-    provider: Literal["ollama", "llama_cpp", "raw", "demo", "openai"] | None = None
+    provider: Literal[
+        "ollama", "llama_cpp", "raw", "demo", "openai", "openrouter"
+    ] | None = None
     agent: Literal["panthera", "felis"] | None = None
     loading: bool = False
     fallback_reason: str | None = None

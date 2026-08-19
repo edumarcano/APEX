@@ -169,10 +169,10 @@ class BriefingDeliveryTests(unittest.TestCase):
         synthesis = SynthesisResult(
             briefing="Panthera briefing.",
             insights=["One"],
-            provider="openai",
+            provider="openrouter",
             agent="panthera",
-            resolved_model="gpt-5.6-luna",
-            fallback_steps=["panthera:openai_timeout", "felis:local_model_missing"],
+            resolved_model="deepseek/deepseek-v4-flash-0731",
+            fallback_steps=["panthera:openrouter_timeout", "felis:local_model_missing"],
             provider_ms=321.5,
             usage=TokenUsage(input_tokens=100, output_tokens=20, total_tokens=120),
             cost_estimate=CostEstimate(
@@ -192,7 +192,7 @@ class BriefingDeliveryTests(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 200)
         metadata = response.json()["metadata"]
-        self.assertEqual(metadata["synthesis_resolved_model"], "gpt-5.6-luna")
+        self.assertEqual(metadata["synthesis_resolved_model"], "deepseek/deepseek-v4-flash-0731")
         self.assertEqual(metadata["synthesis_fallback_steps"], synthesis.fallback_steps)
         self.assertEqual(metadata["synthesis_usage"]["total_tokens"], 120)
         self.assertEqual(metadata["synthesis_provider_ms"], 321.5)
@@ -345,8 +345,8 @@ class BriefingDeliveryTests(unittest.TestCase):
         targets = response.json()
         self.assertEqual([t["mode"] for t in targets], ["panthera", "felis", "structured_digest"])
         panthera = next(t for t in targets if t["mode"] == "panthera")
-        self.assertEqual(panthera["model_id"], "gpt-5.6-luna")
-        self.assertEqual(panthera["provider"], "openai")
+        self.assertEqual(panthera["model_id"], "deepseek/deepseek-v4-flash-0731")
+        self.assertEqual(panthera["provider"], "openrouter")
         self.assertEqual(panthera["runtime"], "cloud")
         self.assertIsNotNone(panthera["pricing"])
         felis = next(t for t in targets if t["mode"] == "felis")
