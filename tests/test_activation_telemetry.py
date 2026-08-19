@@ -159,10 +159,12 @@ class TelemetryApiTests(unittest.TestCase):
         )
         reset_settings_store_for_tests()
         reset_telemetry_service_for_tests()
-        self.store = RuntimeSettingsStore(
-            config_path=self.config_path,
-            local_config_path=self.local_path,
-        )
+        # The fixture selects a DEV_MODE-only Ollama model.
+        with mock.patch("core.settings.normalize.is_dev_mode", return_value=True):
+            self.store = RuntimeSettingsStore(
+                config_path=self.config_path,
+                local_config_path=self.local_path,
+            )
         self._patches = [
             mock.patch(
                 "core.api.routers.system.get_settings_store", return_value=self.store
