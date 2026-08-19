@@ -24,7 +24,7 @@ class FakeEmbeddingAdapter:
     def __init__(self) -> None:
         self.embed_calls = 0
 
-    def prepare(self) -> str:
+    def prepare(self, *, allow_download: bool = True) -> str:
         return self.fingerprint
 
     def embed(self, texts, *, allow_download: bool = False):

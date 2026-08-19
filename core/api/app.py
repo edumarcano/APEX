@@ -82,6 +82,14 @@ async def _app_lifespan(_app: FastAPI):
         # Retrieval is optional and repairable; it must never block Cortex readiness.
         pass
     set_retrieval_service(retrieval_service)
+    if not DEMO_MODE:
+        async def _warm_retrieval() -> None:
+            try:
+                await asyncio.to_thread(lambda: retrieval_service.prepare(allow_download=False))
+            except Exception:
+                pass
+
+        asyncio.create_task(_warm_retrieval())
     knowledge_store = KnowledgeStore(None if DEMO_MODE else database.DB_NAME)
     knowledge_store.initialize()
     set_knowledge_service(KnowledgeService(knowledge_store))

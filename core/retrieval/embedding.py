@@ -15,7 +15,7 @@ class EmbeddingAdapter(Protocol):
     dimension: int
     version: str
 
-    def prepare(self) -> str: ...
+    def prepare(self, *, allow_download: bool = True) -> str: ...
 
     def embed(self, texts: Iterable[str], *, allow_download: bool = False) -> list[list[float]]: ...
 
@@ -61,8 +61,8 @@ class FastEmbedAdapter:
             raise EmbeddingError(category) from exc
         return self._model
 
-    def prepare(self) -> str:
-        self._load(allow_download=True)
+    def prepare(self, *, allow_download: bool = True) -> str:
+        self._load(allow_download=allow_download)
         return self.fingerprint
 
     def embed(self, texts: Iterable[str], *, allow_download: bool = False) -> list[list[float]]:

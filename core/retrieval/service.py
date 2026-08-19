@@ -179,7 +179,7 @@ class RetrievalService:
         if norm <= 0:
             raise EmbeddingError("invalid_vector")
 
-    def prepare(self) -> RetrievalStatus:
+    def prepare(self, *, allow_download: bool = True) -> RetrievalStatus:
         if not self.enabled:
             return self.status()
         if not self._prepare_lock.acquire(blocking=False):
@@ -188,7 +188,7 @@ class RetrievalService:
             with self._sync_lock:
                 self.store.set_model_state(state="preparing", error_category=None)
                 self.reconcile()
-                fingerprint = self.adapter.prepare()
+                fingerprint = self.adapter.prepare(allow_download=allow_download)
                 self._backfill_embeddings(fingerprint)
                 self.store.set_model_state(state="ready", fingerprint=fingerprint, prepared_at=utc_now_iso(), error_category=None)
                 return self.status()
