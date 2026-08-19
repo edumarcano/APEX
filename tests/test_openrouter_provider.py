@@ -51,8 +51,11 @@ class OpenRouterProviderTests(unittest.TestCase):
         )
         request = client_cls.return_value.chat.completions.create.call_args.kwargs
         self.assertEqual(request["model"], "deepseek/deepseek-v4-flash-0731")
-        self.assertEqual(request["reasoning"], {"effort": "none"})
-        self.assertEqual(request["extra_body"], OPENROUTER_PRIVACY_POLICY)
+        self.assertEqual(
+            request["extra_body"],
+            {**OPENROUTER_PRIVACY_POLICY, "reasoning": {"effort": "none"}},
+        )
+        self.assertNotIn("reasoning", request)
         self.assertIn("SECURITY BOUNDARY", request["messages"][0]["content"])
         self.assertEqual(result.message.content, "done")
         self.assertEqual(result.usage.input_tokens, 20)

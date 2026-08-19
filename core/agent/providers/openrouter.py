@@ -88,12 +88,16 @@ class OpenRouterProvider:
         request: dict[str, Any] = {
             "model": profile.api_model,
             "messages": _messages_to_chat(messages, system_instruction_override or profile.system_instruction),
-            "extra_body": OPENROUTER_PRIVACY_POLICY,
+            # OpenRouter extends the Chat Completions JSON body with
+            # ``reasoning``.  The OpenAI SDK rejects that extension as a
+            # top-level keyword, so keep it inside its supported extra_body
+            # escape hatch alongside the immutable privacy routing policy.
+            "extra_body": dict(OPENROUTER_PRIVACY_POLICY),
         }
         if tools:
             request["tools"] = [descriptor_to_openai_schema(tool) for tool in tools]
         if profile.reasoning_effort is not None:
-            request["reasoning"] = {"effort": profile.reasoning_effort}
+            request["extra_body"]["reasoning"] = {"effort": profile.reasoning_effort}
 
         def _create() -> Any:
             return self.client.chat.completions.create(**request)
