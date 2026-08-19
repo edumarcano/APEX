@@ -10,7 +10,7 @@ For the meanings and design rationale behind these terms, see [Identity and Nami
 - **Apex Agents** are named workers: Apex Panthera for cloud work and Apex Felis for local work.
 - **Cortex Engine** is the backend that runs Agent requests, coordinates context and tools, calls providers, and manages local-model lifecycle.
 - **Cortex workspace** is the interface for operating and configuring Apex Agents.
-- **Home workspace** presents telemetry, briefings, connector health, reminders, and compact Agent access.
+- **Home workspace** presents telemetry, briefings, connector health, reminders, and compact Agent access. Home includes a model selector; selecting a model implicitly determines the Agent (cloud models use Panthera, local models use Felis). The Agent identity is shown as secondary metadata.
 
 Switching between Home and Cortex changes only what is visible. It does not cancel active Agent turns, polling, speech, briefings, or local-model work.
 
@@ -197,7 +197,9 @@ Panthera can receive the general APEX capability registry. Brave MCP is the only
 
 `GET /api/v1/agents` is the backend-owned Agent catalog. It publishes Panthera and Felis, their selected models and provider/runtime, each model catalog, model-native reasoning metadata, selectable local context and reasoning metadata, grounding state, pricing metadata, and safe availability information. Cortex owns presentation and interaction. Agent polling never performs a provider probe; cloud availability becomes stronger only after an explicit check or real inference.
 
-The Home command rail owns the visible briefing-mode selector. It saves `briefing.default_mode` immediately so the last selected mode is restored after restart; Settings keeps the field for compatibility but does not render a duplicate control.
+The Home command rail owns the visible briefing-mode selector and the model selector. It saves `briefing.default_mode` immediately so the last selected mode is restored after restart; Settings keeps the field for compatibility but does not render a duplicate control.
+
+The Home model selector replaces the earlier Agent radio. Selecting a cloud model routes through Panthera; selecting a local model routes through Felis. The Agent name appears as secondary metadata alongside the selected model. For every Home query, APEX applies ephemeral per-turn overrides: cloud models receive the lowest reasoning effort the model supports, and local models receive a fixed 16K context window with reasoning disabled. These overrides are passed as `model_id`, `context_window`, and `local_reasoning_mode` on each turn request and preflight call. They are never written back to Cortex's saved Panthera or Felis presets.
 
 ### Explicit tool selection
 

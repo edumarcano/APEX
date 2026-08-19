@@ -94,7 +94,7 @@ Optional external services are deliberately excluded.
 
 ### GET `/api/v1/config`
 
-Returns boot-time HUD values such as Agent query enablement, the effective Agent/model and reasoning selection, briefing and voice defaults, market enablement, message limits, runtime modes, and initial synthesis hints. `agent_initial_selection` is the effective Panthera or Felis selection from saved settings.
+Returns boot-time HUD values such as Agent query enablement, the effective model selection, briefing and voice defaults, market enablement, message limits, runtime modes, and initial synthesis hints. `agent_initial_selection` reflects the Agent (Panthera or Felis) implied by the saved model selection.
 
 ### GET `/api/v1/settings`
 
@@ -325,8 +325,7 @@ policy when `DEV_MODE` and `ask_apex.sandbox_mode` are active.
 
 ### POST `/api/v1/cortex/tool-preflight`
 
-Accepts an Agent, selected stable names, optional profile, prompt, optional
-conversation ID, and explicit snapshot/briefing attachment IDs. The backend reconstructs
+Accepts an Agent, optional model override, optional context window, optional local reasoning mode, selected stable names, optional profile, prompt, optional conversation ID, and explicit snapshot/briefing attachment IDs. The backend reconstructs
 the bounded active branch when a conversation ID is present. It returns estimates for
 system instructions, conversation history, HUD context, reserved retrieved context, selected schemas,
 prompt, total, configured context, reserved response capacity, and remaining
@@ -337,6 +336,8 @@ generic HTTP error. Local context totals are generic UI warnings only. The
 provider serializes the actual request, applies its template allowance and
 safety margin, trims complete older interactions, and is authoritative for
 whether the current interaction fits.
+
+`model_id`, `context_window`, and `local_reasoning_mode` are all optional. When supplied, the estimate uses those values instead of the Agent's saved Cortex presets. The Home workspace uses these fields to estimate token use against the selected model and its ephemeral overrides without touching saved Cortex settings.
 
 ### GET `/api/v1/cortex/tool-profiles`
 
@@ -445,6 +446,9 @@ APEX owns Cortex conversation history in `apex_memory.db`. Conversations contain
   "prompt": "What should I prioritize this afternoon?",
   "agent": "panthera",
   "effort": "medium",
+  "model_id": null,
+  "context_window": null,
+  "local_reasoning_mode": null,
   "user_message_id": "6dce6f5e-9f1e-4b2f-9930-0ca2668bd248",
   "agent_message_id": "d0b972df-2af6-42d3-9371-0433ccf9bd0a",
   "snapshot_id": "optional-current-snapshot-id",
@@ -453,6 +457,8 @@ APEX owns Cortex conversation history in `apex_memory.db`. Conversations contain
   "tool_profile_id": null
 }
 ```
+
+`model_id`, `context_window`, and `local_reasoning_mode` are optional per-turn overrides. When supplied, the turn uses those values instead of the saved Cortex presets for Panthera or Felis; the saved presets are unchanged. The Home workspace sends these fields for every query: cloud models receive the lowest supported reasoning effort, and local models receive `context_window: 16384` with reasoning disabled. These overrides are ephemeral and never written back to settings.
 
 `snapshot_id` and `briefing_id` are optional explicit context. When absent, APEX injects no HUD context. Unknown briefing IDs and stale snapshot IDs are omitted rather than replaced with the latest data. The server derives `sandbox` only when both `DEV_MODE` and the saved sandbox setting are active; clients cannot select or cross partitions. Sandbox turns reject saved `briefing_id` attachments and accept only the process-current masked development briefing identified by its matching `snapshot_id`.
 
