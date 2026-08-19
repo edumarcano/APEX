@@ -98,11 +98,11 @@ Returns boot-time HUD values such as Agent query enablement, the effective Agent
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `17`.
+Returns the resolved settings envelope. The current contract version is `18`.
 
 ```json
 {
-  "schema_version": 17,
+  "schema_version": 18,
   "settings": {
     "user_designation": "",
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": false },
@@ -375,11 +375,11 @@ Development-only models appear in each Agent's `model_catalog` list only when `D
 
 Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Provider account tier remains null unless a provider explicitly reports it. Local availability distinguishes an unreachable local runtime, missing model, loading model, busy execution slot, and active model reported by the local provider. Unreachable local backends use the generic provider-unreachable path with a sanitized reason. The `active` flag reflects provider residency rather than APEX's in-process lifecycle tracker. Felis publishes its selected context and reasoning values, options, and defaults when the selected model supports them. Loaded-model payloads may include provider, runtime alias, state, and selected or reported context when available.
 
-Registered cloud models under Panthera include `gpt-5.6-luna`, and development-only `gemini-3.6-flash`, `gemini-3.5-flash-lite`, `grok-4.3`, and `grok-4.5`. Registered local models under Felis include `gemma-4-E2B-Q4_K_M.gguf`, `gemma-4-E4B-Q4_K_M.gguf`, `Qwen3.5-4B-Q4_K_M.gguf`, and development-only `qwen3:1.7b` and `qwen3:4b-instruct`.
+Registered cloud models under Panthera include `gpt-5.6-luna`, `deepseek/deepseek-v4-flash-0731`, and development-only `gemini-3.6-flash`, `gemini-3.5-flash-lite`, `grok-4.3`, and `grok-4.5`. Registered local models under Felis include `gemma-4-E2B-Q4_K_M.gguf`, `gemma-4-E4B-Q4_K_M.gguf`, `Qwen3.5-4B-Q4_K_M.gguf`, and development-only `qwen3:1.7b` and `qwen3:4b-instruct`.
 
 ### POST `/api/v1/agents/{agent_key}/verify`
 
-Runs one user-triggered, non-generative metadata check for a visible credential-backed cloud Agent. Google uses the Gemini API model metadata endpoint, while OpenAI uses the OpenAI API and SpaceXAI uses the xAI API with `GET /v1/models/{model}`. The five-second probe sends no prompt, context, or provider tool call. Results are sanitized and cached; polling never triggers a probe.
+Runs one user-triggered, non-generative metadata check for a visible credential-backed cloud Agent. Google uses the Gemini API model metadata endpoint, OpenAI uses the OpenAI API, and SpaceXAI uses the xAI API with `GET /v1/models/{model}`. OpenRouter uses authenticated `GET /api/v1/endpoints/zdr` and verifies that the selected model has a ZDR route. The five-second probe sends no prompt, context, or provider tool call. Results are sanitized and cached; polling never triggers a probe.
 
 - `400` — the Agent is local or has no supported verification path.
 - `403` — demo mode disallows provider contact.

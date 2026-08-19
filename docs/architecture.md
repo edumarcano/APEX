@@ -184,7 +184,7 @@ APEX runs two Agent roles. Panthera selects from registered cloud models, while 
 
 | Agent | Default model | Reasoning | Maximum tool loop |
 |---|---|---|---|
-| Panthera | OpenAI `gpt-5.6-luna` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh` when supported | Up to 6 turns / 10 calls on the default model |
+| Panthera | OpenAI `gpt-5.6-luna` or OpenRouter `deepseek/deepseek-v4-flash-0731` | Model-native options, including DeepSeek None/Low/High/Max | Up to 6 turns / 10 calls on stable cloud models |
 | Felis | llama.cpp `gemma-4-E2B-Q4_K_M.gguf` | Model-supported local reasoning modes | Up to 4 turns / 4 calls on default llama.cpp models |
 
 Other registered cloud and local models keep their own loop limits and optional hosted-tool support. Development-only models appear in each Agent's model catalog only when `DEV_MODE` is active.

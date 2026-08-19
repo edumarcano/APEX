@@ -451,6 +451,11 @@ class PricingRegistryTests(unittest.TestCase):
         self.assertEqual(standard.output_per_million, 1.20)
         self.assertEqual(standard.cached_input_per_million, 0.02)
 
+        deepseek = _MODEL_RATES["deepseek/deepseek-v4-flash-0731"]
+        self.assertEqual(deepseek.input_per_million, 0.14)
+        self.assertEqual(deepseek.output_per_million, 0.28)
+        self.assertEqual(deepseek.cached_input_per_million, 0.028)
+
         standard_estimate = estimate_inference_cost(
             model="gpt-5.6-luna",
             usage=TokenUsage(input_tokens=1_000, output_tokens=1_000),

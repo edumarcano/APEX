@@ -123,6 +123,23 @@ class CloudAgentVerificationTests(unittest.TestCase):
             timeout=5,
         )
 
+    def test_openrouter_probe_requires_a_zdr_route_for_the_selected_model(self) -> None:
+        response = mock.Mock(ok=True)
+        response.json.return_value = {
+            "data": [{"model_id": "deepseek/deepseek-v4-flash-0731"}]
+        }
+        with mock.patch("core.agent.providers.cloud_verification.requests.get", return_value=response) as get:
+            from core.agent.providers.cloud_verification import _probe_model
+
+            status, reason = _probe_model("openrouter", "deepseek/deepseek-v4-flash-0731", "secret")
+
+        self.assertEqual((status, reason), ("verified", None))
+        get.assert_called_once_with(
+            "https://openrouter.ai/api/v1/endpoints/zdr",
+            headers={"Authorization": "Bearer secret"},
+            timeout=5,
+        )
+
     def test_metadata_probe_does_not_clear_recent_account_failure(self) -> None:
         openai_profile = get_model_profile("gpt-5.6-luna")
         record_cloud_request_failure(

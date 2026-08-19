@@ -60,6 +60,9 @@ export function providerDisplayName(provider: string | null | undefined): string
   if (provider === 'openai') {
     return 'OpenAI'
   }
+  if (provider === 'openrouter') {
+    return 'OpenRouter'
+  }
   if (provider === 'xai') {
     return 'SpaceXAI'
   }
@@ -120,6 +123,8 @@ export function formatReasoningLabel(option: string | null | undefined): string 
     case 'extra_high':
     case 'extra high':
       return 'Extra High'
+    case 'max':
+      return 'Max'
     default:
       return option.charAt(0).toUpperCase() + option.slice(1)
   }

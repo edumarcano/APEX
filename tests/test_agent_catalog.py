@@ -53,6 +53,7 @@ class CredentialIsolationTests(unittest.TestCase):
 
         env_keys = {
             get_model_profile("gpt-5.6-luna").credential_env,
+            get_model_profile("deepseek/deepseek-v4-flash-0731").credential_env,
             get_model_profile("gemini-3.6-flash").credential_env,
             get_model_profile("grok-4.3").credential_env,
             get_model_profile("gemini-3.5-flash-lite").credential_env,
@@ -61,6 +62,7 @@ class CredentialIsolationTests(unittest.TestCase):
             env_keys,
             {
                 "OPENAI_API_KEY",
+                "OPENROUTER_API_KEY",
                 "GEMINI_API_KEY",
                 "XAI_API_KEY",
                 "GEMINI_SANDBOX_API_KEY",
@@ -122,6 +124,8 @@ class CredentialIsolationTests(unittest.TestCase):
             self.assertIn("Google API key", credential_missing_message("panthera"))
             resolve_profile.side_effect = lambda *_args: get_model_profile("grok-4.5")
             self.assertIn("SpaceXAI API key", credential_missing_message("panthera"))
+            resolve_profile.side_effect = lambda *_args: get_model_profile("deepseek/deepseek-v4-flash-0731")
+            self.assertIn("OpenRouter API key", credential_missing_message("panthera"))
 
 
 class DemoRosterTests(unittest.TestCase):
@@ -244,6 +248,14 @@ class ProfileStatusMetadataTests(unittest.TestCase):
 
 
 class ModelNativeReasoningTests(unittest.TestCase):
+    def test_normal_cloud_catalog_includes_luna_and_deepseek_only(self) -> None:
+        from core.agent.model_catalog import visible_cloud_models
+
+        self.assertEqual(
+            [profile.model_id for profile in visible_cloud_models()],
+            ["gpt-5.6-luna", "deepseek/deepseek-v4-flash-0731"],
+        )
+
     def test_model_profiles_define_native_reasoning_options(self) -> None:
         from core.agent.model_catalog import get_model_profile
 
@@ -254,6 +266,13 @@ class ModelNativeReasoningTests(unittest.TestCase):
             ("none", "minimal", "low", "medium", "high", "xhigh"),
         )
         self.assertEqual(luna.default_reasoning, "medium")
+
+        deepseek = get_model_profile("deepseek/deepseek-v4-flash-0731")
+        assert deepseek is not None
+        self.assertEqual(deepseek.provider, "openrouter")
+        self.assertEqual(deepseek.reasoning_options, ("none", "low", "high", "max"))
+        self.assertEqual(deepseek.default_reasoning, "high")
+        self.assertEqual(deepseek.maximum_context_window, 1_310_720)
 
         gemini_flash = get_model_profile("gemini-3.6-flash")
         assert gemini_flash is not None
@@ -301,6 +320,12 @@ class ModelNativeReasoningTests(unittest.TestCase):
         for option in ("none", "minimal", "low", "medium", "high", "xhigh"):
             native = resolve_effort(luna, option)
             self.assertEqual(native, option)
+
+        deepseek = get_model_profile("deepseek/deepseek-v4-flash-0731")
+        assert deepseek is not None
+        for option in ("none", "low", "high", "max"):
+            self.assertEqual(resolve_effort(deepseek, option), option)
+        self.assertEqual(resolve_effort(deepseek, "medium"), "high")
 
         # Unsupported option for Grok falls back to model default
         grok = get_model_profile("grok-4.3")

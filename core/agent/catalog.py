@@ -31,6 +31,7 @@ from core.agent.providers.ollama_models import (
     OllamaModelProfile,
 )
 from core.agent.providers.responses_api import ResponsesModelProfile
+from core.agent.providers.openrouter import OpenRouterModelProfile
 from core.agent.tool_policies import hosted_tools_for_model
 from core.agent.types import LocalReasoningMode
 from core.config import (
@@ -41,8 +42,8 @@ from core.config import (
 
 AgentKey: TypeAlias = Literal["panthera", "felis"]
 AgentRuntime: TypeAlias = Literal["cloud", "local"]
-NativeEffort: TypeAlias = Literal["none", "minimal", "low", "medium", "high", "xhigh"]
-CloudProvider: TypeAlias = Literal["openai", "gemini", "xai"]
+NativeEffort: TypeAlias = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
+CloudProvider: TypeAlias = Literal["openai", "openrouter", "gemini", "xai"]
 LocalRuntime: TypeAlias = Literal["ollama", "llama_cpp"]
 
 VALID_AGENT_KEYS: frozenset[str] = frozenset({"panthera", "felis"})
@@ -52,6 +53,7 @@ _PROVIDER_DISPLAY_NAMES: dict[InferenceProvider, str] = {
     "ollama": "Ollama",
     "llama_cpp": "llama.cpp",
     "openai": "OpenAI",
+    "openrouter": "OpenRouter",
     "xai": "SpaceXAI",
 }
 
@@ -60,6 +62,7 @@ AgentModelProfile = (
     | OllamaModelProfile
     | LlamaCppModelProfile
     | ResponsesModelProfile
+    | OpenRouterModelProfile
 )
 
 
@@ -298,6 +301,20 @@ def build_concrete_agent(
             system_instruction=system_instruction,
             context_window=local_context_window,
             reasoning_mode=resolved_reasoning_mode,
+        )
+    if model_profile.provider == "openrouter":
+        effective_effort = (
+            native_effort
+            if native_effort is not None
+            else model_profile.default_reasoning
+        )
+        return OpenRouterModelProfile(
+            display_name=spec.display_name,
+            api_model=model_profile.model_id,
+            max_tool_turns=model_profile.max_tool_turns,
+            max_tool_calls=model_profile.max_tool_calls,
+            system_instruction=system_instruction,
+            reasoning_effort=effective_effort,
         )
     effective_effort = (
         native_effort

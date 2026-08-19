@@ -14,7 +14,7 @@ from core.config import (
 )
 
 ModelStability = Literal["stable", "preview", "experimental"]
-CloudProvider = Literal["openai", "gemini", "xai"]
+CloudProvider = Literal["openai", "openrouter", "gemini", "xai"]
 LocalRuntime = Literal["ollama", "llama_cpp"]
 HostedTool = Literal["google_search", "google_maps", "x_search"]
 
@@ -60,6 +60,21 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         default_reasoning="medium",
         supports_encrypted_reasoning=True,
         hosted_capabilities=frozenset(),
+    ),
+    "deepseek/deepseek-v4-flash-0731": ModelProfile(
+        model_id="deepseek/deepseek-v4-flash-0731",
+        display_name="DeepSeek V4 Flash 0731",
+        provider="openrouter",
+        runtime="cloud",
+        stability="stable",
+        credential_env="OPENROUTER_API_KEY",
+        max_tool_turns=min(6, GEMINI_AGENT_MAX_TURNS),
+        max_tool_calls=min(10, GEMINI_AGENT_MAX_TOOL_CALLS),
+        reasoning_options=("none", "low", "high", "max"),
+        default_reasoning="high",
+        supports_encrypted_reasoning=False,
+        hosted_capabilities=frozenset(),
+        maximum_context_window=1_310_720,
     ),
     "gemini-3.6-flash": ModelProfile(
         model_id="gemini-3.6-flash",

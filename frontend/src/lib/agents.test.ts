@@ -30,6 +30,7 @@ describe('agents helpers', () => {
     expect(providerDisplayName('llama_cpp')).toBe('llama.cpp')
     expect(providerDisplayName('ollama')).toBe('Ollama')
     expect(providerDisplayName('gemini')).toBe('Google')
+    expect(providerDisplayName('openrouter')).toBe('OpenRouter')
     expect(providerDisplayName('xai')).toBe('SpaceXAI')
   })
 
@@ -47,6 +48,7 @@ describe('agents helpers', () => {
     expect(formatReasoningLabel('medium')).toBe('Medium')
     expect(formatReasoningLabel('high')).toBe('High')
     expect(formatReasoningLabel('xhigh')).toBe('Extra High')
+    expect(formatReasoningLabel('max')).toBe('Max')
     expect(formatReasoningLabel(null)).toBe('')
   })
 

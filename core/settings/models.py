@@ -22,21 +22,21 @@ from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
 from core.agent.types import LocalReasoningMode
 
 AgentKey = Literal["panthera", "felis"]
-CloudProvider = Literal["openai", "gemini", "xai"]
+CloudProvider = Literal["openai", "openrouter", "gemini", "xai"]
 LocalRuntime = Literal["ollama", "llama_cpp"]
 AgentRuntime = Literal["cloud", "local"]
-CloudEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh"]
+CloudEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
 BriefingMode = Literal["panthera", "felis", "structured_digest"]
 VoiceEngine = Literal["google", "pyttsx3", "kokoro"]
 VoiceGender = Literal["male", "female"]
 VoiceMode = Literal["off", "manual", "automatic"]
 
 VALID_AGENT_KEYS: frozenset[str] = frozenset({"panthera", "felis"})
-VALID_CLOUD_PROVIDERS: frozenset[str] = frozenset({"openai", "gemini", "xai"})
+VALID_CLOUD_PROVIDERS: frozenset[str] = frozenset({"openai", "openrouter", "gemini", "xai"})
 VALID_LOCAL_RUNTIMES: frozenset[str] = frozenset({"ollama", "llama_cpp"})
 VALID_LOCAL_REASONING_MODES: frozenset[str] = frozenset({"none", "focused"})
 VALID_CLOUD_EFFORTS: frozenset[str] = frozenset(
-    {"none", "minimal", "low", "medium", "high", "xhigh"}
+    {"none", "minimal", "low", "medium", "high", "xhigh", "max"}
 )
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
     {"panthera", "felis", "structured_digest"}
@@ -45,7 +45,7 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 17
+SETTINGS_SCHEMA_VERSION: int = 18
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 LlamaCppServerState = Literal[

@@ -23,7 +23,7 @@ ToolCatalogGroupKind: TypeAlias = Literal["apex_family", "mcp_server"]
 AgentKey: TypeAlias = Literal["panthera", "felis"]
 LocalReasoningMode: TypeAlias = Literal["none", "focused"]
 ApexEffort: TypeAlias = Literal[
-    "none", "minimal", "low", "medium", "high", "xhigh"
+    "none", "minimal", "low", "medium", "high", "xhigh", "max"
 ]
 
 CostCompleteness = Literal["complete", "partial", "unavailable"]
@@ -281,6 +281,11 @@ class AgentMessage(BaseModel):
     provider_output_items: Optional[List[Dict[str, Any]]] = Field(
         default=None, exclude=True
     )
+    # Opaque OpenRouter reasoning state required for Chat Completions tool
+    # continuations. Never serialized to clients or durable history.
+    provider_reasoning_details: Optional[List[Dict[str, Any]]] = Field(
+        default=None, exclude=True
+    )
 
 
 class AgentQueryRequest(BaseModel):
@@ -294,7 +299,7 @@ class AgentQueryRequest(BaseModel):
     effort: ApexEffort | None = Field(
         default=None,
         description=(
-            "Optional cloud reasoning effort override (none, minimal, low, medium, high, xhigh). "
+            "Optional cloud reasoning effort override (none, minimal, low, medium, high, xhigh, max). "
             "Rejected for local Agents."
         ),
     )

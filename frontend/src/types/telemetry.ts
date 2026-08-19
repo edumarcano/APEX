@@ -89,7 +89,8 @@ export type CloudEffort =
   | 'medium'
   | 'high'
   | 'xhigh'
-export type CloudProvider = 'openai' | 'gemini' | 'xai'
+  | 'max'
+export type CloudProvider = 'openai' | 'openrouter' | 'gemini' | 'xai'
 export type LocalRuntime = 'ollama' | 'llama_cpp'
 export type HostedTool = 'google_search' | 'google_maps' | 'x_search'
 
