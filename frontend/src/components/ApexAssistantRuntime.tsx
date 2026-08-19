@@ -204,6 +204,7 @@ function ThreadHistory({ children, getThreadIds, onConversationChangeRef, onPend
 
 type ApexAssistantComposerContextValue = {
   configRef: React.MutableRefObject<ApexAssistantRunConfig>
+  setPendingPrompt: (text: string) => void
   beforeRun?: (config: ApexAssistantRunConfig) => Promise<boolean>
   markPreflightPassed: () => void
   persistActiveLeaf: (messageId: string) => Promise<void>
@@ -241,6 +242,7 @@ export function useApexAssistantComposer(composerOverride?: ApexComposerSubmitRu
   const context = useContext(ApexAssistantComposerContext)
   const beforeRun = context?.beforeRun
   const configRef = context?.configRef
+  const setPendingPrompt = context?.setPendingPrompt
   const markPreflightPassed = context?.markPreflightPassed
   const beginTurn = context?.beginTurn
   const finishTurn = context?.finishTurn
@@ -252,6 +254,7 @@ export function useApexAssistantComposer(composerOverride?: ApexComposerSubmitRu
     const text = composer.getState().text.trim()
     if (!text || isRunning || isLoading || !configRef || !beginTurn || !finishTurn) return false
     if (!beginTurn(configRef.current.agent)) return false
+    setPendingPrompt?.(text)
     try {
       if (beforeRun && !await beforeRun(configRef.current)) {
         finishTurn()
@@ -272,7 +275,7 @@ export function useApexAssistantComposer(composerOverride?: ApexComposerSubmitRu
     markPreflightPassed?.()
     composer.send()
     return true
-  }, [aui, beforeRun, beginTurn, composer, configRef, finishTurn, isLoading, isRunning, markPreflightPassed])
+  }, [aui, beforeRun, beginTurn, composer, configRef, finishTurn, isLoading, isRunning, markPreflightPassed, setPendingPrompt])
   return { submit, isRunning }
 }
 
@@ -339,6 +342,7 @@ function ApexAssistantController({ runtimeRef, branchPersistRef, getActiveRemote
 
 export function ApexAssistantRuntime({ config, children, beforeRun, onConversationChange, onRunningChange, onResponseChange, runtimeRef }: Props): ReactNode {
   const configRef = useRef(config)
+  const pendingPromptRef = useRef<string | null>(null)
   const beforeRunRef = useRef(beforeRun)
   const onConversationChangeRef = useRef(onConversationChange)
   const onRunningChangeRef = useRef(onRunningChange)
@@ -372,14 +376,8 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
   const branchPersistRef = useRef<(messageId: string) => Promise<void>>(async () => {})
   const [threadListError, setThreadListError] = useState<string | null>(null)
   const [branchPersistenceError, setBranchPersistenceError] = useState<string | null>(null)
-  const [threadId, setThreadId] = useState<string | undefined>()
-  const threadIdRef = useRef(threadId)
-  const activeRemoteIdRef = useRef<string | undefined>(threadId)
+  const activeRemoteIdRef = useRef<string | undefined>(undefined)
   const getActiveRemoteId = useCallback(() => activeRemoteIdRef.current, [])
-  useEffect(() => {
-    threadIdRef.current = threadId
-    activeRemoteIdRef.current = threadId
-  }, [threadId])
   const forceListReloadRef = useRef(false)
   // The remote runtime treats adapter identity changes as a reload signal.
   // Keep request state outside the adapter closure so transient failures cannot
@@ -415,6 +413,8 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
   const onPendingChangeRef = useRef(handlePendingChange)
   useEffect(() => { onPendingChangeRef.current = handlePendingChange }, [handlePendingChange])
 
+  const runtimeRefInternal = useRef<ReturnType<typeof useRemoteThreadListRuntime> | null>(null)
+  const initialSelectedRef = useRef(false)
   const adapter = useMemo<RemoteThreadListAdapter>(() => ({
     async list(): Promise<ApexThreadListResult> {
       const existing = listRequestRef.current
@@ -432,8 +432,20 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
             requestJson<ConversationSummary[]>(API_ENDPOINTS.cortexConversations),
             requestJson<ConversationSummary[]>(`${API_ENDPOINTS.cortexConversations}?archived=true`),
           ])
-          if (initialRegular[0]) setThreadId((current) => current ?? initialRegular[0].id)
-          const result: ApexThreadListResult = { threads: [...initialRegular, ...archived].map((item) => ({
+          const regularList = Array.isArray(initialRegular) ? initialRegular : []
+          const archivedList = Array.isArray(archived) ? archived : []
+          if (!initialSelectedRef.current && regularList[0]) {
+            initialSelectedRef.current = true
+            const firstId = regularList[0].id
+            if (activeRemoteIdRef.current !== firstId) {
+              queueMicrotask(() => {
+                if (activeRemoteIdRef.current !== firstId) {
+                  void runtimeRefInternal.current?.threads.switchToThread(firstId)
+                }
+              })
+            }
+          }
+          const result: ApexThreadListResult = { threads: [...regularList, ...archivedList].map((item) => ({
             remoteId: item.id, status: item.archived_at ? 'archived' : 'regular', title: item.title,
             lastMessageAt: new Date(item.updated_at), custom: item,
           })) }
@@ -455,13 +467,14 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
     },
     async initialize(localId) {
       const current = configRef.current
+      const promptText = pendingPromptRef.current?.split('\n')[0].trim()
+      const title = promptText ? (promptText.length > 40 ? `${promptText.slice(0, 37)}…` : promptText) : undefined
       const item = await requestJson<ConversationSummary>(API_ENDPOINTS.cortexConversations, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ origin: 'hud', agent: current.agent, selected_tool_names: current.selectedToolNames, tool_profile_id: current.toolProfileId }),
+        body: JSON.stringify({ origin: 'hud', agent: current.agent, title, selected_tool_names: current.selectedToolNames, tool_profile_id: current.toolProfileId }),
       })
       remoteByLocal.current.set(localId, item.id)
       activeRemoteIdRef.current = item.id
-      setThreadId(item.id)
       listCacheRef.current = null
       listFailureRef.current = null
       forceListReloadRef.current = true
@@ -488,12 +501,16 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
       listCacheRef.current = null
       forceListReloadRef.current = true
     },
-    // assistant-ui may request title generation after a run. APEX titles are
-    // operator-controlled, so this intentionally remains a no-op rather than
-    // surfacing an unsupported automatic-title failure.
-    async generateTitle() { return createAssistantStream(() => {}) },
+    async generateTitle(_remoteId, messages) {
+      const firstUserText = messages.find((m) => m.role === 'user')?.content.filter((c) => c.type === 'text').map((c) => c.text).join(' ').trim()
+      const title = firstUserText ? (firstUserText.length > 40 ? `${firstUserText.slice(0, 37)}…` : firstUserText) : 'New conversation'
+      return createAssistantStream((controller) => {
+        controller.appendText(title)
+      })
+    },
     async fetch(remoteId) {
-      const item = await requestJson<ConversationSummary>(API_ENDPOINTS.cortexConversation(remoteId))
+      const cached = listCacheRef.current?.threads.find((thread) => thread.remoteId === remoteId)?.custom
+      const item = cached ?? await requestJson<ConversationSummary>(API_ENDPOINTS.cortexConversation(remoteId))
       onConversationChangeRef.current?.(item)
       return { remoteId: item.id, status: item.archived_at ? 'archived' : 'regular', title: item.title, lastMessageAt: new Date(item.updated_at), custom: item }
     },
@@ -504,7 +521,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
     const model: ChatModelAdapter = {
       async run(options) {
         const localThreadId = options.unstable_threadId
-        const remoteId = (localThreadId ? remoteByLocal.current.get(localThreadId) : undefined) ?? threadIdRef.current ?? activeRemoteIdRef.current
+        const remoteId = (localThreadId ? remoteByLocal.current.get(localThreadId) : undefined) ?? activeRemoteIdRef.current
         const user = options.messages.at(-1)
         if (!remoteId || !user || user.role !== 'user' || !options.unstable_assistantMessageId) throw new Error('Conversation is not ready.')
         const current = configRef.current
@@ -559,12 +576,14 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
   }, [finishTurn, getThreadIds, syncTurnLock])
 
   const handleThreadIdChange = useCallback((nextThreadId: string | undefined): void => {
-    setThreadId(nextThreadId)
     activeRemoteIdRef.current = nextThreadId
     setBranchPersistenceError(null)
     if (!nextThreadId) onConversationChangeRef.current?.(null)
   }, [onConversationChangeRef])
-  const runtime = useRemoteThreadListRuntime({ runtimeHook, adapter, threadId, onThreadIdChange: handleThreadIdChange })
+  const runtime = useRemoteThreadListRuntime({ runtimeHook, adapter, onThreadIdChange: handleThreadIdChange })
+  useEffect(() => {
+    runtimeRefInternal.current = runtime
+  }, [runtime])
   useEffect(() => {
     const pending = pendingTurnRef.current
     if (!pending) return
@@ -586,10 +605,13 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
     await runtime.threads.reload()
   }, [runtime])
   const markPreflightPassed = useCallback(() => { preflightPassedRef.current = true }, [])
+  const setPendingPrompt = useCallback((text: string) => {
+    pendingPromptRef.current = text
+  }, [])
   const runBefore = useCallback(async (runConfig: ApexAssistantRunConfig): Promise<boolean> => {
     return beforeRunRef.current ? beforeRunRef.current(runConfig) : true
   }, [])
-  const composerContext = useMemo(() => ({ configRef, beforeRun: runBefore, markPreflightPassed, isTurnLocked, beginTurn, finishTurn }), [beginTurn, finishTurn, isTurnLocked, markPreflightPassed, runBefore])
+  const composerContext = useMemo(() => ({ configRef, setPendingPrompt, beforeRun: runBefore, markPreflightPassed, isTurnLocked, beginTurn, finishTurn }), [beginTurn, finishTurn, isTurnLocked, markPreflightPassed, runBefore, setPendingPrompt])
   const runtimeContext = useMemo(() => ({
     ...composerContext,
     persistActiveLeaf: (messageId: string) => branchPersistRef.current(messageId),
@@ -729,9 +751,6 @@ function ApexConversationRailItem(): ReactNode {
         return
       }
       await aui.threadListItem.archive()
-      await aui.threads.reload()
-      const newestRemaining = aui.threads.getState().threadIds[0]
-      if (newestRemaining) await aui.threads.switchToThread(newestRemaining)
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Conversation update failed.')
     }
@@ -741,11 +760,6 @@ function ApexConversationRailItem(): ReactNode {
     setActionError(null)
     try {
       await aui.threadListItem.delete()
-      await aui.threads.reload()
-      const active = aui.threads.getState().threadIds[0]
-      if (active) await aui.threads.switchToThread(active)
-      else await aui.threads.switchToNewThread()
-      requestAnimationFrame(() => document.querySelector<HTMLElement>('[aria-label="Conversations"] button[aria-pressed="true"]')?.focus())
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Conversation deletion failed.')
     }
@@ -760,11 +774,11 @@ function ApexConversationRailItem(): ReactNode {
       setActionError(error instanceof Error ? error.message : 'Conversation rename failed.')
     }
   }
-  return <ThreadListItemPrimitive.Root className="group flex items-center gap-1 rounded-md px-2 py-1 hover:bg-white/5">
-    {renaming ? <input autoFocus disabled={disabled} value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setRenaming(false); if (event.key === 'Enter') void rename() }} className="min-w-0 flex-1 bg-transparent text-xs text-white outline-none" /> : <button type="button" disabled={disabled} onClick={() => aui.threadListItem.switchTo({ unarchive: false })} className="min-w-0 flex-1 truncate text-left text-xs text-zinc-300 disabled:cursor-not-allowed disabled:opacity-40"><ThreadListItemPrimitive.Title /></button>}
-    {!renaming ? <button ref={renameTriggerRef} type="button" disabled={disabled} aria-label={`Rename ${currentTitle}`} onClick={() => { setTitle(currentTitle); setRenaming(true) }} className="text-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">✎</button> : null}
-    <button type="button" disabled={disabled} onClick={() => void archive()} className="text-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">{archived ? 'Restore' : 'Archive'}</button>
-    {archived ? <button type="button" disabled={disabled} onClick={() => void deleteConversation()} className="rounded p-1 text-zinc-500 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-40" aria-label={`Delete ${currentTitle} permanently`} title="Delete permanently"><Trash2 className="size-3.5" aria-hidden /></button> : null}
+  return <ThreadListItemPrimitive.Root className="group relative flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors hover:bg-white/5 data-[active=true]:bg-white/10 data-[active=true]:border-l-2 data-[active=true]:border-[#7EB3FF] data-[active=true]:text-white">
+    {renaming ? <input autoFocus disabled={disabled} value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setRenaming(false); if (event.key === 'Enter') void rename() }} className="min-w-0 flex-1 bg-transparent text-xs text-white outline-none" /> : <button type="button" disabled={disabled} onClick={() => aui.threadListItem.switchTo({ unarchive: false })} className="min-w-0 flex-1 truncate text-left font-mono text-xs text-zinc-300 group-data-[active=true]:font-medium group-data-[active=true]:text-white disabled:cursor-not-allowed disabled:opacity-40"><ThreadListItemPrimitive.Title /></button>}
+    {!renaming ? <button ref={renameTriggerRef} type="button" disabled={disabled} aria-label={`Rename ${currentTitle}`} onClick={() => { setTitle(currentTitle); setRenaming(true) }} className="text-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 group-data-[active=true]:opacity-70 group-data-[active=true]:hover:opacity-100 transition-opacity">✎</button> : null}
+    <button type="button" disabled={disabled} onClick={() => void archive()} className="text-[10px] text-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 group-data-[active=true]:opacity-70 group-data-[active=true]:hover:opacity-100 transition-opacity">{archived ? 'Restore' : 'Archive'}</button>
+    {archived ? <button type="button" disabled={disabled} onClick={() => void deleteConversation()} className="rounded p-0.5 text-zinc-500 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 group-data-[active=true]:opacity-70 group-data-[active=true]:hover:opacity-100 transition-opacity" aria-label={`Delete ${currentTitle} permanently`} title="Delete permanently"><Trash2 className="size-3" aria-hidden /></button> : null}
     {actionError ? <span role="alert" className="max-w-28 truncate text-[10px] text-red-300" title={actionError}>{actionError}</span> : null}
   </ThreadListItemPrimitive.Root>
 }
@@ -798,7 +812,7 @@ export function ApexAssistantNewConversation({ disabled = false }: { disabled?: 
       setCreating(false)
     }
   }
-  return <span className="inline-flex items-center gap-2"><button type="button" disabled={disabled || creating} aria-busy={creating} onClick={() => void create()} className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 hover:border-[#7EB3FF]/50 hover:text-white disabled:opacity-40">
+  return <span className="inline-flex items-center gap-2"><button type="button" disabled={disabled || creating} aria-busy={creating} onClick={() => void create()} className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 hover:border-[#7EB3FF]/50 hover:bg-[#0F4DB8]/15 hover:text-white disabled:opacity-40">
     {creating ? 'Creating…' : 'New conversation'}
   </button>{createError ? <span role="alert" className="max-w-32 truncate text-[10px] text-red-300" title={createError}>{createError}</span> : null}</span>
 }

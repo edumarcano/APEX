@@ -397,14 +397,16 @@ export default function App(): ReactElement {
     queueMicrotask(() => {
       if (conversationHydrationRef.current === assistantConversationId) setConversationHydrating(false)
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Granular properties of toolCatalogState are tracked individually to prevent re-render thrashing.
   }, [
     activeAgent,
     assistantConversationPreferences,
     assistantConversationId,
+    toolCatalogState.activeToolProfileId,
     toolCatalogState.catalog?.agent,
+    toolCatalogState.selectedToolNames,
     toolCatalogState.selectionReady,
     toolCatalogState.setToolSelection,
-    toolCatalogState,
   ])
 
   useEffect(() => {
