@@ -27,8 +27,8 @@ class KnowledgeService:
     def get_record(self, record_id, *, partition: str):
         return self.store.get_record(record_id, partition=partition)
 
-    def list_records(self, *, partition: str, statuses=("active",), kind: str | None = None, entity_id=None):
-        return self.store.list_records(partition=partition, statuses=statuses, kind=kind, entity_id=entity_id)
+    def list_records(self, *, partition: str, statuses=("active",), kind: str | None = None, entity_id=None, query: str = "", limit: int = 100):
+        return self.store.list_records(partition=partition, statuses=statuses, kind=kind, entity_id=entity_id, query=query, limit=limit)
 
     def resolve_entity(self, alias: str):
         return self.store.resolve_entity(alias)
@@ -38,3 +38,12 @@ class KnowledgeService:
 
     def one_hop_relationships(self, entity_id, *, partition: str):
         return self.store.one_hop_relationships(entity_id, partition=partition)
+
+    def get_entity(self, entity_id, *, include_merged: bool = False):
+        return self.store.get_entity(entity_id, include_merged=include_merged)
+
+    def list_entities(self, *, query: str = "", limit: int = 50):
+        return self.store.list_entities(query=query, limit=limit)
+
+    def aliases_for_entity(self, entity_id):
+        return self.store.aliases_for_entity(entity_id)

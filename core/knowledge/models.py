@@ -31,6 +31,7 @@ class Entity:
     name: str
     normalized_name: str
     created_at: str
+    merged_into_entity_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)

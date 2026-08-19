@@ -8,7 +8,7 @@ import sqlite3
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, Sequence
+from typing import Any, Iterator, Sequence
 from uuid import UUID, uuid4
 
 from core.connectors.models import utc_now_iso
@@ -90,7 +90,7 @@ class KnowledgeStore:
                 "domain TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL CHECK(version >= 1))"
             )
             row = conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()
-            if row is not None and int(row[0]) > 2:
+            if row is not None and int(row[0]) > 3:
                 raise KnowledgeStoreError("Knowledge schema is newer than this APEX build.")
             conn.executescript(
                 """
@@ -157,10 +157,23 @@ class KnowledgeStore:
                     ON knowledge_records(partition, object_entity_id, status);
                 CREATE INDEX IF NOT EXISTS idx_knowledge_record_sources_source
                     ON knowledge_record_sources(source_id);
+                CREATE TABLE IF NOT EXISTS knowledge_reconciliation_effects (
+                    action_id TEXT PRIMARY KEY NOT NULL,
+                    operation TEXT NOT NULL,
+                    target_id TEXT NOT NULL,
+                    outcome TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
+            if "merged_into_entity_id" not in {
+                str(column[1]) for column in conn.execute("PRAGMA table_info(entities)")
+            }:
+                conn.execute(
+                    "ALTER TABLE entities ADD COLUMN merged_into_entity_id TEXT REFERENCES entities(id)"
+                )
             conn.execute(
-                "INSERT INTO schema_versions(domain, version) VALUES ('knowledge', 2) "
+                "INSERT INTO schema_versions(domain, version) VALUES ('knowledge', 3) "
                 "ON CONFLICT(domain) DO UPDATE SET version = excluded.version"
             )
 
@@ -173,7 +186,11 @@ class KnowledgeStore:
 
     @staticmethod
     def _entity(row: Sequence[object]) -> Entity:
-        return Entity(id=UUID(str(row[0])), name=str(row[1]), normalized_name=str(row[2]), created_at=str(row[3]))
+        return Entity(
+            id=UUID(str(row[0])), name=str(row[1]), normalized_name=str(row[2]),
+            created_at=str(row[3]),
+            merged_into_entity_id=UUID(str(row[4])) if len(row) > 4 and row[4] else None,
+        )
 
     @staticmethod
     def _record(row: Sequence[object]) -> KnowledgeRecord:
@@ -218,11 +235,11 @@ class KnowledgeStore:
             raise KnowledgeStoreError("name_invalid")
         identifier, now = entity_id or uuid4(), utc_now_iso()
         with self._connection() as conn, conn:
-            row = conn.execute("SELECT id,name,normalized_name,created_at FROM entities WHERE normalized_name = ?", (normalized,)).fetchone()
+            row = conn.execute("SELECT id,name,normalized_name,created_at,merged_into_entity_id FROM entities WHERE normalized_name = ?", (normalized,)).fetchone()
             if row is not None:
                 return self._entity(row)
             try:
-                conn.execute("INSERT INTO entities VALUES (?, ?, ?, ?)", (str(identifier), name, normalized, now))
+                conn.execute("INSERT INTO entities(id,name,normalized_name,created_at) VALUES (?, ?, ?, ?)", (str(identifier), name, normalized, now))
                 conn.execute("INSERT INTO entity_aliases VALUES (?, ?, ?, ?)", (normalized, str(identifier), name, now))
             except sqlite3.IntegrityError as exc:
                 raise KnowledgeConflictError("entity_conflict") from exc
@@ -233,7 +250,7 @@ class KnowledgeStore:
         normalized = normalize_alias(alias)
         now = utc_now_iso()
         with self._connection() as conn, conn:
-            entity = conn.execute("SELECT id,name,normalized_name,created_at FROM entities WHERE id = ?", (str(entity_id),)).fetchone()
+            entity = conn.execute("SELECT id,name,normalized_name,created_at,merged_into_entity_id FROM entities WHERE id = ?", (str(entity_id),)).fetchone()
             if entity is None:
                 raise KnowledgeNotFoundError("entity_not_found")
             existing = conn.execute("SELECT entity_id FROM entity_aliases WHERE normalized_alias = ?", (normalized,)).fetchone()
@@ -251,11 +268,53 @@ class KnowledgeStore:
             return None
         with self._connection() as conn:
             row = conn.execute(
-                "SELECT e.id,e.name,e.normalized_name,e.created_at FROM entity_aliases a "
+                "SELECT e.id,e.name,e.normalized_name,e.created_at,e.merged_into_entity_id FROM entity_aliases a "
                 "JOIN entities e ON e.id = a.entity_id WHERE a.normalized_alias = ?",
                 (normalized,),
             ).fetchone()
         return self._entity(row) if row is not None else None
+
+    def get_entity(self, entity_id: UUID, *, include_merged: bool = False) -> Entity:
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT id,name,normalized_name,created_at,merged_into_entity_id FROM entities WHERE id = ?",
+                (str(entity_id),),
+            ).fetchone()
+        if row is None:
+            raise KnowledgeNotFoundError("entity_not_found")
+        entity = self._entity(row)
+        if entity.merged_into_entity_id is not None and not include_merged:
+            raise KnowledgeNotFoundError("entity_not_found")
+        return entity
+
+    def list_entities(self, *, query: str = "", limit: int = 50) -> list[Entity]:
+        limit = max(1, min(int(limit), 100))
+        normalized = normalize_alias(query)
+        with self._connection() as conn:
+            if normalized:
+                rows = conn.execute(
+                    "SELECT DISTINCT e.id,e.name,e.normalized_name,e.created_at,e.merged_into_entity_id "
+                    "FROM entities e LEFT JOIN entity_aliases a ON a.entity_id=e.id "
+                    "WHERE e.merged_into_entity_id IS NULL AND "
+                    "(instr(e.normalized_name, ?) > 0 OR instr(a.normalized_alias, ?) > 0) "
+                    "ORDER BY e.name COLLATE NOCASE,e.id LIMIT ?",
+                    (normalized, normalized, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT id,name,normalized_name,created_at,merged_into_entity_id FROM entities "
+                    "WHERE merged_into_entity_id IS NULL ORDER BY name COLLATE NOCASE,id LIMIT ?",
+                    (limit,),
+                ).fetchall()
+        return [self._entity(row) for row in rows]
+
+    def aliases_for_entity(self, entity_id: UUID) -> list[str]:
+        with self._connection() as conn:
+            rows = conn.execute(
+                "SELECT alias FROM entity_aliases WHERE entity_id = ? ORDER BY normalized_alias",
+                (str(entity_id),),
+            ).fetchall()
+        return [str(row[0]) for row in rows]
 
     def entities_mentioned_in(self, text: str, *, limit: int = 8) -> list[Entity]:
         """Return exact saved aliases that occur in normalized operator text."""
@@ -264,9 +323,9 @@ class KnowledgeStore:
             return []
         with self._connection() as conn:
             rows = conn.execute(
-                "SELECT e.id,e.name,e.normalized_name,e.created_at FROM entity_aliases a "
-                "JOIN entities e ON e.id=a.entity_id WHERE instr(?, a.normalized_alias) > 0 "
-                "GROUP BY e.id,e.name,e.normalized_name,e.created_at "
+                "SELECT e.id,e.name,e.normalized_name,e.created_at,e.merged_into_entity_id FROM entity_aliases a "
+                "JOIN entities e ON e.id=a.entity_id WHERE instr(?, a.normalized_alias) > 0 AND e.merged_into_entity_id IS NULL "
+                "GROUP BY e.id,e.name,e.normalized_name,e.created_at,e.merged_into_entity_id "
                 "ORDER BY max(length(a.normalized_alias)) DESC, e.id LIMIT ?",
                 (normalized, max(1, min(limit, 32))),
             ).fetchall()
@@ -373,24 +432,205 @@ class KnowledgeStore:
             children = conn.execute("SELECT id FROM knowledge_records WHERE supersedes_record_id = ? ORDER BY created_at, id", (str(record_id),)).fetchall()
         return KnowledgeRecordDetail(self._record(row), tuple(self._source(source) for source in sources), tuple(UUID(str(child[0])) for child in children))
 
-    def list_records(self, *, partition: str, statuses: Sequence[str] = ("active",), kind: str | None = None, entity_id: UUID | None = None) -> list[KnowledgeRecord]:
+    def list_records(
+        self, *, partition: str, statuses: Sequence[str] = ("active",),
+        kind: str | None = None, entity_id: UUID | None = None, query: str = "",
+        limit: int = 100,
+    ) -> list[KnowledgeRecord]:
         if partition not in _PARTITIONS or not statuses or any(status not in _STATUSES for status in statuses):
             raise KnowledgeStoreError("record_filter_invalid")
-        clauses, params = ["partition = ?", "status IN (%s)" % ",".join("?" for _ in statuses)], [partition, *statuses]
+        limit = max(1, min(int(limit), 100))
+        clauses, params = ["r.partition = ?", "r.status IN (%s)" % ",".join("?" for _ in statuses)], [partition, *statuses]
         if kind is not None:
             if kind not in _KINDS:
                 raise KnowledgeStoreError("record_filter_invalid")
-            clauses.append("kind = ?")
+            clauses.append("r.kind = ?")
             params.append(kind)
         if entity_id is not None:
-            clauses.append("(subject_entity_id = ? OR object_entity_id = ?)")
+            clauses.append("(r.subject_entity_id = ? OR r.object_entity_id = ?)")
             params.extend((str(entity_id), str(entity_id)))
+        normalized_query = normalize_alias(query)
+        if normalized_query:
+            clauses.append(
+                "(instr(lower(r.text), ?) > 0 OR instr(lower(coalesce(subject.name, '')), ?) > 0 "
+                "OR instr(lower(coalesce(object_entity.name, '')), ?) > 0 OR instr(lower(coalesce(r.predicate, '')), ?) > 0 "
+                "OR instr(lower(coalesce(r.object_value, '')), ?) > 0)"
+            )
+            params.extend([normalized_query] * 5)
         with self._connection() as conn:
-            rows = conn.execute("SELECT * FROM knowledge_records WHERE " + " AND ".join(clauses) + " ORDER BY updated_at DESC, id", params).fetchall()
+            rows = conn.execute(
+                "SELECT r.* FROM knowledge_records r "
+                "LEFT JOIN entities subject ON subject.id=r.subject_entity_id "
+                "LEFT JOIN entities object_entity ON object_entity.id=r.object_entity_id WHERE "
+                + " AND ".join(clauses) + " ORDER BY r.updated_at DESC,r.id LIMIT ?",
+                [*params, limit],
+            ).fetchall()
         return [self._record(row) for row in rows]
 
     def one_hop_relationships(self, entity_id: UUID, *, partition: str) -> list[KnowledgeRecord]:
         return self.list_records(partition=partition, statuses=("active", "conflicting"), entity_id=entity_id)
+
+    def reconcile(
+        self,
+        *, action_id: str, operation: str, partition: str, arguments: dict[str, Any],
+    ) -> dict[str, str]:
+        """Apply one approval-gated context mutation exactly once."""
+        if partition not in _PARTITIONS:
+            raise KnowledgeStoreError("reconciliation_invalid")
+        now = utc_now_iso()
+        with self._connection() as conn, conn:
+            prior = conn.execute(
+                "SELECT operation,target_id,outcome FROM knowledge_reconciliation_effects WHERE action_id=?",
+                (action_id,),
+            ).fetchone()
+            if prior is not None:
+                return {"operation": str(prior[0]), "target_id": str(prior[1]), "outcome": str(prior[2])}
+
+            def record(identifier: str) -> sqlite3.Row | tuple[object, ...]:
+                row = conn.execute(
+                    "SELECT * FROM knowledge_records WHERE id=? AND partition=?", (identifier, partition)
+                ).fetchone()
+                if row is None:
+                    raise KnowledgeNotFoundError("record_not_found")
+                expected = str(arguments.get("expected_updated_at", ""))
+                if expected and str(row[12]) != expected:
+                    raise KnowledgeConflictError("record_changed")
+                return row
+
+            target_id = str(arguments.get("record_id") or arguments.get("entity_id") or arguments.get("source_entity_id") or "")
+            if operation == "retract":
+                row = record(target_id)
+                if str(row[4]) not in {"active", "conflicting"}:
+                    raise KnowledgeConflictError("retraction_invalid")
+                conn.execute("UPDATE knowledge_records SET status='retracted',updated_at=? WHERE id=?", (now, target_id))
+                outcome = "retracted"
+                self._sync_retrieval(conn)
+            elif operation == "restore":
+                row = record(target_id)
+                if str(row[4]) != "retracted":
+                    raise KnowledgeConflictError("restore_invalid")
+                restored_status = "active"
+                if row[5] and row[6]:
+                    sibling = conn.execute(
+                        "SELECT 1 FROM knowledge_records WHERE partition=? AND subject_entity_id=? AND predicate=? "
+                        "AND status IN ('active','conflicting') LIMIT 1",
+                        (partition, str(row[5]), str(row[6])),
+                    ).fetchone()
+                    if sibling is not None:
+                        restored_status = "conflicting"
+                conn.execute("UPDATE knowledge_records SET status=?,updated_at=? WHERE id=?", (restored_status, now, target_id))
+                outcome = restored_status
+                self._sync_retrieval(conn)
+            elif operation == "set_current":
+                row = record(target_id)
+                if str(row[4]) != "conflicting" or not row[5] or not row[6]:
+                    raise KnowledgeConflictError("conflict_resolution_invalid")
+                rows = conn.execute(
+                    "SELECT id FROM knowledge_records WHERE partition=? AND subject_entity_id=? AND predicate=? "
+                    "AND status IN ('active','conflicting')",
+                    (partition, str(row[5]), str(row[6])),
+                ).fetchall()
+                conn.execute("UPDATE knowledge_records SET status='active',updated_at=? WHERE id=?", (now, target_id))
+                others = [str(item[0]) for item in rows if str(item[0]) != target_id]
+                if others:
+                    conn.execute(
+                        "UPDATE knowledge_records SET status='superseded',supersedes_record_id=?,updated_at=? "
+                        "WHERE id IN (%s)" % ",".join("?" for _ in others),
+                        (target_id, now, *others),
+                    )
+                outcome = "current"
+                self._sync_retrieval(conn)
+            elif operation == "add_alias":
+                entity_id = str(arguments.get("entity_id", ""))
+                alias = _required_text(str(arguments.get("alias", "")), "name", limit=240)
+                entity = conn.execute(
+                    "SELECT merged_into_entity_id FROM entities WHERE id=?", (entity_id,)
+                ).fetchone()
+                if entity is None or entity[0] is not None:
+                    raise KnowledgeNotFoundError("entity_not_found")
+                normalized = normalize_alias(alias)
+                existing = conn.execute(
+                    "SELECT entity_id FROM entity_aliases WHERE normalized_alias=?", (normalized,)
+                ).fetchone()
+                if existing is not None and str(existing[0]) != entity_id:
+                    raise KnowledgeConflictError("alias_conflict")
+                conn.execute(
+                    "INSERT INTO entity_aliases VALUES (?, ?, ?, ?) ON CONFLICT(normalized_alias) DO NOTHING",
+                    (normalized, entity_id, alias, now),
+                )
+                target_id, outcome = entity_id, "alias_added"
+            elif operation == "merge_entities":
+                source_id = str(arguments.get("source_entity_id", ""))
+                target_entity_id = str(arguments.get("target_entity_id", ""))
+                if not source_id or source_id == target_entity_id:
+                    raise KnowledgeConflictError("entity_merge_invalid")
+                source = conn.execute("SELECT merged_into_entity_id FROM entities WHERE id=?", (source_id,)).fetchone()
+                target = conn.execute("SELECT merged_into_entity_id FROM entities WHERE id=?", (target_entity_id,)).fetchone()
+                if source is None or target is None or source[0] is not None or target[0] is not None:
+                    raise KnowledgeConflictError("entity_merge_invalid")
+                conn.execute("UPDATE knowledge_records SET subject_entity_id=? WHERE subject_entity_id=?", (target_entity_id, source_id))
+                conn.execute("UPDATE knowledge_records SET object_entity_id=? WHERE object_entity_id=?", (target_entity_id, source_id))
+                conn.execute("UPDATE entity_aliases SET entity_id=? WHERE entity_id=?", (target_entity_id, source_id))
+                conn.execute("UPDATE entities SET merged_into_entity_id=? WHERE id=?", (target_entity_id, source_id))
+                target_id, outcome = source_id, "merged"
+                self._sync_retrieval(conn)
+            elif operation == "correct":
+                row = record(target_id)
+                if str(row[4]) != "active":
+                    raise KnowledgeConflictError("correction_invalid")
+                capture = arguments.get("capture")
+                if not isinstance(capture, dict):
+                    raise KnowledgeStoreError("correction_invalid")
+                kind = str(capture.get("kind", ""))
+                text = _required_text(str(capture.get("text", "")), "text")
+                if kind not in _KINDS:
+                    raise KnowledgeStoreError("record_invalid")
+                subject = capture.get("subject")
+                predicate = capture.get("predicate")
+                object_entity = capture.get("object_entity")
+                object_value = capture.get("object_value")
+                structured = any(value is not None for value in (subject, predicate, object_entity, object_value))
+                if structured and (not subject or not predicate or bool(object_entity) == bool(object_value)):
+                    raise KnowledgeStoreError("record_structure_invalid")
+                source_id = uuid4()
+                locator = f"manual/action/{action_id}"
+                digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+                conn.execute("INSERT INTO knowledge_sources VALUES (?, 'manual', ?, ?, ?, ?, ?)", (str(source_id), partition, locator, text, digest, now))
+                subject_id = object_id = None
+                if structured:
+                    subject_id = self._resolve_or_create_entity_in_transaction(conn, str(subject), now)
+                    if object_entity:
+                        object_id = self._resolve_or_create_entity_in_transaction(conn, str(object_entity), now)
+                    predicate = _required_text(str(predicate), "predicate", limit=240)
+                    if object_value:
+                        object_value = _required_text(str(object_value), "object_value", limit=1_000)
+                conn.execute("UPDATE knowledge_records SET status='superseded',updated_at=? WHERE id=?", (now, target_id))
+                created = self._insert_record_in_transaction(
+                    conn, partition=partition, kind=kind, text=text, status="active", now=now,
+                    subject_entity_id=subject_id, predicate=predicate, object_entity_id=object_id,
+                    object_value=object_value, effective_at=capture.get("effective_at"),
+                )
+                conn.execute("UPDATE knowledge_records SET supersedes_record_id=? WHERE id=?", (target_id, str(created.id)))
+                conn.execute("INSERT INTO knowledge_record_sources VALUES (?, ?, ?, ?)", (str(created.id), str(source_id), action_id, now))
+                target_id, outcome = str(created.id), "corrected"
+                self._sync_retrieval(conn)
+            else:
+                raise KnowledgeStoreError("reconciliation_invalid")
+            conn.execute(
+                "INSERT INTO knowledge_reconciliation_effects VALUES (?, ?, ?, ?, ?)",
+                (action_id, operation, target_id, outcome, now),
+            )
+        return {"operation": operation, "target_id": target_id, "outcome": outcome}
+
+    def reconciliation_effect(self, action_id: str) -> dict[str, str] | None:
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT operation,target_id,outcome FROM knowledge_reconciliation_effects WHERE action_id=?",
+                (action_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return {"operation": str(row[0]), "target_id": str(row[1]), "outcome": str(row[2])}
 
     def apply_capture(
         self, *, action_id: str, partition: str, source_kind: str, locator: str,
@@ -477,7 +717,10 @@ class KnowledgeStore:
         if row is not None:
             return UUID(str(row[0]))
         identifier = uuid4()
-        conn.execute("INSERT INTO entities VALUES (?, ?, ?, ?)", (str(identifier), name, normalized, now))
+        conn.execute(
+            "INSERT INTO entities(id,name,normalized_name,created_at) VALUES (?, ?, ?, ?)",
+            (str(identifier), name, normalized, now),
+        )
         conn.execute("INSERT INTO entity_aliases VALUES (?, ?, ?, ?)", (normalized, str(identifier), name, now))
         return identifier
 

@@ -450,6 +450,89 @@ class ContextCaptureRequest(BaseModel):
         return self
 
 
+class ContextEntityResponse(BaseModel):
+    id: str
+    name: str
+    aliases: list[str] = Field(default_factory=list)
+    merged_into_entity_id: str | None = None
+
+
+class ContextRecordResponse(BaseModel):
+    id: str
+    partition: Literal["production", "sandbox"]
+    kind: Literal["idea", "preference", "decision", "goal", "fact", "constraint", "note", "observation"]
+    text: str
+    status: Literal["active", "conflicting", "superseded", "retracted"]
+    subject: ContextEntityResponse | None = None
+    predicate: str | None = None
+    object_entity: ContextEntityResponse | None = None
+    object_value: str | None = None
+    effective_at: str | None = None
+    supersedes_record_id: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class ContextSourceResponse(BaseModel):
+    id: str
+    kind: Literal["conversation_message", "manual"]
+    locator: str
+    original_text: str
+    created_at: str
+
+
+class ContextRecordDetailResponse(ContextRecordResponse):
+    sources: list[ContextSourceResponse] = Field(default_factory=list)
+    superseded_by: list[str] = Field(default_factory=list)
+    related_records: list[ContextRecordResponse] = Field(default_factory=list)
+
+
+class ContextRetractActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    operation: Literal["retract"]
+    record_id: str
+
+
+class ContextRestoreActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    operation: Literal["restore"]
+    record_id: str
+
+
+class ContextSetCurrentActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    operation: Literal["set_current"]
+    record_id: str
+
+
+class ContextCorrectActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    operation: Literal["correct"]
+    record_id: str
+    capture: ContextCaptureRequest
+
+
+class ContextAddAliasActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    operation: Literal["add_alias"]
+    entity_id: str
+    alias: str = Field(min_length=1, max_length=240)
+
+
+class ContextMergeEntitiesActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    operation: Literal["merge_entities"]
+    source_entity_id: str
+    target_entity_id: str
+
+
+ContextActionRequest = Annotated[
+    ContextRetractActionRequest | ContextRestoreActionRequest | ContextSetCurrentActionRequest
+    | ContextCorrectActionRequest | ContextAddAliasActionRequest | ContextMergeEntitiesActionRequest,
+    Field(discriminator="operation"),
+]
+
+
 MicrosoftTodoState = Literal[
     "not-configured",
     "disconnected",
