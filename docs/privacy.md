@@ -105,10 +105,12 @@ response metadata, secrets, or tool payloads. `search_apex_docs` adds only
 README and Markdown files under `docs/` to a separate shared namespace when an
 Agent calls it; it never scans `.env`, local plans, configuration overrides, or
 arbitrary files. SQLite FTS is immediately
-available. Optional FastEmbed vectors are prepared only by the explicit local
-`context prepare` command or its API equivalent, remain under the ignored
-`weights/fastembed/` cache, and are never sent to a provider. Missing or broken
-model files leave FTS-only retrieval available.
+available. APEX attempts a no-download retrieval warm-up at startup when cached
+model files are present. The explicit local `context prepare` command or its
+API equivalent remains available for first-time setup and repair. FastEmbed
+vectors remain under the ignored `weights/fastembed/` cache and are never sent
+to a provider. Missing or broken model files leave FTS-only retrieval
+available.
 
 The optional embedding dependency is FastEmbed `0.8.0`; its pinned
 `BAAI/bge-small-en-v1.5` model is distributed under the MIT license. APEX uses

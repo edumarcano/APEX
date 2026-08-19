@@ -504,6 +504,10 @@ the server-derived `production` or `sandbox` partition.
 Repository documentation uses a separate shared `apex_docs` namespace. It
 cannot return conversation records.
 
+APEX attempts a no-download retrieval warm-up at startup when cached model
+files are present. The explicit Prepare action remains available for
+first-time setup and repair.
+
 `POST /api/v1/cortex/retrieval/prepare` is the only operation that may download
 the optional FastEmbed model into the ignored `weights/fastembed/` cache. It
 repairs missing indexed items and backfills embeddings. Preparation is

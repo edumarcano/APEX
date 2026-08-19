@@ -291,12 +291,13 @@ FastAPI owns one normal-mode `ActionService`, recovers interrupted records befor
 
 The database is not encrypted by APEX. Filesystem and operating-system account protections are the at-rest boundary.
 
-Retrieval preparation is an explicit operator action. APEX keeps conversation
-text local, does not download embedding weights during startup or normal search,
-and falls back to SQLite FTS when the ignored `weights/fastembed/` cache is
-missing or unusable. Retrieval status exposes only stable categories; it never
-returns request metadata, response metadata, tool payloads, vectors, or raw
-model exceptions.
+APEX attempts a no-download retrieval warm-up at startup when cached model
+files are present. The explicit Prepare action remains available for
+first-time setup and repair. APEX keeps conversation text local, does not
+download embedding weights during startup or normal search, and falls back to
+SQLite FTS when the ignored `weights/fastembed/` cache is missing or unusable.
+Retrieval status exposes only stable categories; it never returns request
+metadata, response metadata, tool payloads, vectors, or raw model exceptions.
 
 ## Concurrency and failure model
 
