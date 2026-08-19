@@ -430,6 +430,10 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             mock.patch("core.api.cortex.get_provider_snapshot", return_value=missing),
             mock.patch("core.api.cortex.switch_local_model") as switch,
             mock.patch(
+                "core.api.cortex.resolve_selected_tools",
+                return_value=mock.Mock(failures=[], descriptors=[], diagnostics=mock.Mock()),
+            ),
+            mock.patch(
                 "core.settings.get_settings_store",
                 return_value=mock.Mock(get_snapshot=mock.Mock(return_value=settings)),
             ),

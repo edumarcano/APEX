@@ -34,15 +34,15 @@ interface BriefingOption {
 }
 
 const CLOUD_OPTIONS: readonly BriefingOption[] = [
-  { key: 'panthera', label: 'Apex Panthera', description: 'Full briefing · GPT-5.6 Luna' },
+  { key: 'panthera', label: 'Full Briefing', description: 'Panthera · DeepSeek V4 Flash' },
 ]
 
 const LOCAL_OPTIONS: readonly BriefingOption[] = [
-  { key: 'felis', label: 'Apex Felis', description: 'Full briefing · Gemma 4 E2B' },
+  { key: 'felis', label: 'Quick Briefing', description: 'Felis · Local model' },
   {
     key: 'structured_digest',
     label: 'Structured Digest',
-    description: 'Structured facts · no model or synthesis',
+    description: 'Deterministic · No model',
   },
 ]
 const ALL_OPTIONS = [...CLOUD_OPTIONS, ...LOCAL_OPTIONS] as const
@@ -57,8 +57,8 @@ const SECTIONS: readonly {
 ]
 
 const MODE_LABELS: Record<string, string> = {
-  panthera: 'Apex Panthera',
-  felis: 'Apex Felis',
+  panthera: 'Full Briefing',
+  felis: 'Quick Briefing',
   structured_digest: 'Structured Digest',
 }
 
@@ -239,7 +239,7 @@ export function BriefingModeSelector({
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={`Briefing: ${MODE_LABELS[value]}`}
+        aria-label={`Briefing mode: ${MODE_LABELS[value]}`}
         onClick={() => setOpen((current) => !current)}
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown' && !open) {
@@ -254,7 +254,7 @@ export function BriefingModeSelector({
       >
         <BriefingModeMark mode={value} />
         <span className={`hud-led size-1.5 shrink-0 ${statusLedClass(activeAvailability.status)}`} aria-hidden />
-        <span className="min-w-0 flex-1 text-left"><span className="block truncate uppercase tracking-wider">Briefing: {MODE_LABELS[value]}</span><span className="block truncate text-[8px] normal-case tracking-normal text-zinc-500">{modeDescription(value, targets)}</span></span>
+        <span className="min-w-0 flex-1 text-left"><span className="block truncate uppercase tracking-wider">{MODE_LABELS[value]}</span><span className="block truncate text-[8px] normal-case tracking-normal text-zinc-500">{modeDescription(value, targets)}</span></span>
         <ChevronDown className={`ml-auto size-3.5 shrink-0 text-[#6EA8FF] transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
 
@@ -268,10 +268,10 @@ export function BriefingModeSelector({
           <span className="hud-corner-br" aria-hidden />
           <div className="border-b border-white/10 px-2 pb-2 pt-1">
             <p className="font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200">
-              Briefing Synthesis
+              Briefing Mode
             </p>
             <p className="mt-1 text-[10px] text-zinc-500">
-              Select a mode for the next briefing.
+              Select a briefing type for the next briefing.
             </p>
           </div>
           <ul role="listbox" aria-label="Select briefing mode">

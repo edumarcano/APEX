@@ -337,6 +337,19 @@ class AgentQueryRequest(BaseModel):
             "HUD context. Absent or mismatched IDs inject no snapshot context."
         ),
     )
+    model_id: Optional[str] = Field(
+        default=None,
+        description="Optional turn-specific model identifier override.",
+    )
+    context_window: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Optional turn-specific context window override for local agents.",
+    )
+    local_reasoning_mode: Optional[LocalReasoningMode] = Field(
+        default=None,
+        description="Optional turn-specific reasoning mode override for local agents.",
+    )
     briefing_id: Optional[int] = Field(
         default=None,
         ge=1,

@@ -68,6 +68,7 @@ import {
   isFelisKey,
   isPantheraKey,
   resolveBriefingModeAvailability,
+  resolveHomeQueryOverrides,
 } from './lib/agents'
 import type {
   AgentKey,
@@ -1307,15 +1308,50 @@ export default function App(): ReactElement {
     setSnapshotAttached(false)
   }, [])
 
+  const fullModelCatalog = useMemo(() => {
+    const cloud = agentsStatus.find((a) => a.key === 'panthera')?.model_catalog ?? []
+    const local = agentsStatus.find((a) => a.key === 'felis')?.model_catalog ?? []
+    return [...cloud, ...local]
+  }, [agentsStatus])
+
+  const [homeSelectedModelId, setHomeSelectedModelId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = window.localStorage.getItem('apex_home_selected_model_id')
+      if (saved) return saved
+    }
+    return 'deepseek/deepseek-v4-flash-0731'
+  })
+
+  const handleHomeModelChange = useCallback((modelId: string) => {
+    setHomeSelectedModelId(modelId)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('apex_home_selected_model_id', modelId)
+    }
+  }, [])
+
   const handleHomeSubmit = useCallback(async (
     query: string,
+    _agent: AgentKey,
+    selectedToolNames: string[],
+    toolProfileId: string | null,
   ): Promise<boolean> => {
-    const accepted = await assistantRuntimeRef.current?.submitPrompt(query) ?? false
+    const selectedEntry = fullModelCatalog.find((entry) => entry.model_id === homeSelectedModelId)
+      ?? fullModelCatalog[0]
+    const overrides = resolveHomeQueryOverrides(selectedEntry)
+    const accepted = await assistantRuntimeRef.current?.submitPrompt(query, {
+      agent: overrides.agent,
+      modelId: overrides.modelId,
+      effort: overrides.effort,
+      contextWindow: overrides.contextWindow,
+      localReasoningMode: overrides.localReasoningMode,
+      selectedToolNames,
+      toolProfileId,
+    }) ?? false
     if (accepted) {
       setWorkspace('cortex')
     }
     return accepted
-  }, [])
+  }, [fullModelCatalog, homeSelectedModelId])
 
   const handleAssistantConversationChange = useCallback((summary: {
     id: string
@@ -1611,13 +1647,11 @@ export default function App(): ReactElement {
                 <HomeCommandRail
                   activated={activated}
                   agentQueriesEnabled={Boolean(agentQueriesEnabled)}
-                  activeAgent={activeAgent}
+                  selectedModelId={homeSelectedModelId}
+                  onModelChange={handleHomeModelChange}
+                  modelCatalog={fullModelCatalog}
                   agentsStatus={agentsStatus}
-                  agentsStatusHydrated={agentsStatusHydrated}
                   isCortexQuerying={isCortexQuerying}
-                  verifyingCloudAgent={verifyingCloudAgent}
-                  onAgentChange={handleAgentChange}
-                  onVerifyCloudAgent={verifyCloudAgent}
                   onAgentSubmit={handleHomeSubmit}
                   toolCatalog={toolCatalogState.catalog}
                   selectedToolNames={toolCatalogState.selectedToolNames}

@@ -63,11 +63,11 @@ describe('BriefingModeSelector', () => {
     const user = userEvent.setup()
     renderSelector()
 
-    await user.click(screen.getByRole('button', { name: /briefing: apex panthera/i }))
+    await user.click(screen.getByRole('button', { name: /briefing mode: full briefing/i }))
     const listbox = screen.getByRole('listbox', { name: /select briefing mode/i })
 
-    expect(screen.getByText('Briefing Synthesis')).toBeVisible()
-    expect(screen.getByText('Select a mode for the next briefing.')).toBeVisible()
+    expect(screen.getByText('Briefing Mode')).toBeVisible()
+    expect(screen.getByText('Select a briefing type for the next briefing.')).toBeVisible()
     expect(screen.getAllByLabelText('Panthera agent mark')).toHaveLength(2)
     expect(screen.getByLabelText('Structured Digest mark')).toBeVisible()
     expect(screen.getAllByText('No provider token charge')).toHaveLength(1)
@@ -93,7 +93,7 @@ describe('BriefingModeSelector', () => {
       ],
     })
 
-    await user.click(screen.getByRole('button', { name: /briefing: apex panthera/i }))
+    await user.click(screen.getByRole('button', { name: /briefing mode: full briefing/i }))
     expect(screen.getByRole('option', { name: /felis/i })).toBeDisabled()
 
     await user.click(screen.getByRole('option', { name: /structured digest/i }))
@@ -104,7 +104,7 @@ describe('BriefingModeSelector', () => {
   it('closes on Escape and restores focus to the selector', async () => {
     const user = userEvent.setup()
     renderSelector()
-    const trigger = screen.getByRole('button', { name: /briefing: apex panthera/i })
+    const trigger = screen.getByRole('button', { name: /briefing mode: full briefing/i })
 
     await user.click(trigger)
     expect(screen.getByRole('listbox')).toBeInTheDocument()
@@ -117,15 +117,15 @@ describe('BriefingModeSelector', () => {
   it('shows the selected mode description rather than pricing while closed', () => {
     renderSelector()
 
-    expect(screen.getByRole('button', { name: /briefing: apex panthera/i })).toHaveTextContent(/Full briefing/)
-    expect(screen.getByRole('button', { name: /briefing: apex panthera/i })).not.toHaveTextContent(/In \$/)
+    expect(screen.getByRole('button', { name: /briefing mode: full briefing/i })).toHaveTextContent(/Full briefing/)
+    expect(screen.getByRole('button', { name: /briefing mode: full briefing/i })).not.toHaveTextContent(/In \$/)
   })
 
   it('does not use interactive Agent pricing when a briefing target is missing', async () => {
     const user = userEvent.setup()
     renderSelector({ targets: [target('structured_digest')] })
 
-    await user.click(screen.getByRole('button', { name: /briefing: apex panthera/i }))
+    await user.click(screen.getByRole('button', { name: /briefing mode: full briefing/i }))
 
     expect(screen.getAllByText('Pricing unavailable')).toHaveLength(2)
   })

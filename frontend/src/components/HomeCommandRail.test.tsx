@@ -3,9 +3,33 @@ import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { AgentStatus, AgentKey, ToolCatalog } from '../types/telemetry'
+import type { AgentStatus, AgentKey, ToolCatalog, ModelCatalogEntry } from '../types/telemetry'
 
 import { HomeCommandRail } from './HomeCommandRail'
+
+const mockCatalog: ModelCatalogEntry[] = [
+  {
+    model_id: 'gpt-5.6-luna',
+    display_name: 'GPT-5.6 Luna',
+    provider: 'openai',
+    runtime: 'cloud',
+    stability: 'stable',
+    reasoning_options: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'],
+    default_reasoning: 'medium',
+    hosted_capabilities: [],
+  },
+  {
+    model_id: 'gemma-4-E2B-Q4_K_M.gguf',
+    display_name: 'Gemma 4 E2B',
+    provider: 'llama_cpp',
+    runtime: 'local',
+    stability: 'stable',
+    reasoning_options: null,
+    default_reasoning: null,
+    maximum_context_window: 131072,
+    hosted_capabilities: [],
+  },
+]
 
 function profile(key: AgentKey, status: AgentStatus['status'] = 'available'): AgentStatus {
   const local = key === 'felis'
@@ -41,7 +65,7 @@ function profile(key: AgentKey, status: AgentStatus['status'] = 'available'): Ag
       long_context_cached_input_per_million: null,
     },
     active: false, loading: false, reason: null, idle_unload_remaining_seconds: null, loaded_model: null,
-    model_catalog: [],
+    model_catalog: mockCatalog,
   }
 }
 
@@ -61,13 +85,11 @@ function renderRail(overrides: Partial<ComponentProps<typeof HomeCommandRail>> =
   const props: ComponentProps<typeof HomeCommandRail> = {
     activated: true,
     agentQueriesEnabled: true,
-    activeAgent: 'panthera',
+    selectedModelId: 'gpt-5.6-luna',
+    onModelChange: vi.fn(),
+    modelCatalog: mockCatalog,
     agentsStatus: [profile('panthera'), profile('felis')],
-    agentsStatusHydrated: true,
     isCortexQuerying: false,
-    verifyingCloudAgent: null,
-    onAgentChange: vi.fn(),
-    onVerifyCloudAgent: vi.fn(async () => true),
     onAgentSubmit: vi.fn().mockResolvedValue(true),
     toolCatalog,
     selectedToolNames: [],
@@ -100,28 +122,26 @@ describe('HomeCommandRail', () => {
 
     expect(screen.getByRole('button', { name: 'Start APEX' })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Start APEX with briefing' })).toBeVisible()
-    expect(screen.getByRole('button', { name: /briefing: apex panthera/i })).toBeVisible()
+    expect(screen.getByRole('button', { name: /briefing mode: full briefing/i })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).toBeNull()
     expect(screen.queryByRole('button', { name: /synthesize briefing/i })).toBeNull()
   })
 
-  it('uses a compact assistant menu without changing briefing selection', async () => {
-    const onAgentChange = vi.fn()
+  it('uses a compact model selector menu without changing briefing selection', async () => {
+    const onModelChange = vi.fn()
     const onBriefingModeChange = vi.fn()
     const user = userEvent.setup()
-    renderRail({ onAgentChange, onBriefingModeChange })
+    renderRail({ onModelChange, onBriefingModeChange })
 
-    const trigger = screen.getByRole('button', { name: /panthera.*available/i })
-    expect(document.querySelector('[data-slot="home-agent-status-dot"]')).toHaveAttribute('data-status', 'available')
+    const trigger = screen.getByRole('combobox', { name: /model: gpt-5\.6 luna/i })
+    expect(screen.getByText('GPT-5.6 Luna')).toBeVisible()
+    expect(screen.getByText(/Panthera · OpenAI · Reasoning off/i)).toBeVisible()
     await user.click(trigger)
-    expect(screen.getByText('Agent')).toBeVisible()
-    const selector = screen.getByRole('dialog', { name: 'Select Agent' })
-    expect(selector).toHaveAttribute('id', 'home-agent-popover')
-    expect(screen.queryByText(/powered by/i)).toBeNull()
-    expect(screen.queryByRole('button', { name: /verify access/i })).toBeNull()
-    await user.click(within(screen.getByRole('listbox', { name: 'Agents' })).getByRole('option', { name: 'Use Apex Felis' }))
+    const listbox = screen.getByRole('listbox', { name: /available models/i })
+    expect(listbox).toBeVisible()
+    await user.click(within(listbox).getByRole('option', { name: /gemma 4 e2b/i }))
 
-    expect(onAgentChange).toHaveBeenCalledWith('felis')
+    expect(onModelChange).toHaveBeenCalledWith('gemma-4-E2B-Q4_K_M.gguf')
     expect(onBriefingModeChange).not.toHaveBeenCalled()
   })
 
@@ -129,21 +149,32 @@ describe('HomeCommandRail', () => {
     renderRail({ agentQueriesEnabled: false })
 
     expect(screen.queryByLabelText('Agent query bar')).toBeNull()
-    expect(screen.getByRole('button', { name: /briefing: apex panthera/i })).toBeVisible()
+    expect(screen.getByRole('button', { name: /briefing mode: full briefing/i })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Synthesize briefing from current telemetry' })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).not.toBeInTheDocument()
   })
 
-  it('submits with the active Agent while keeping the composer free of a second selector', async () => {
+  it('submits with the inferred Agent while keeping the composer free of a second selector', async () => {
     const onAgentSubmit = vi.fn().mockResolvedValue(true)
     const user = userEvent.setup()
-    renderRail({ onAgentSubmit })
+    renderRail({ onAgentSubmit, selectedModelId: 'gpt-5.6-luna' })
 
     expect(screen.queryByLabelText('Active profile Panthera')).toBeNull()
     await user.type(screen.getByLabelText('Agent query'), 'Summarize my day')
     await user.click(screen.getByRole('button', { name: 'Send query' }))
 
     expect(onAgentSubmit).toHaveBeenCalledWith('Summarize my day', 'panthera', [], null)
+  })
+
+  it('submits with Felis when local model is selected', async () => {
+    const onAgentSubmit = vi.fn().mockResolvedValue(true)
+    const user = userEvent.setup()
+    renderRail({ onAgentSubmit, selectedModelId: 'gemma-4-E2B-Q4_K_M.gguf' })
+
+    await user.type(screen.getByLabelText('Agent query'), 'Check local status')
+    await user.click(screen.getByRole('button', { name: 'Send query' }))
+
+    expect(onAgentSubmit).toHaveBeenCalledWith('Check local status', 'felis', [], null)
   })
 
   it('shows the resident local runtime beneath command rows and keeps its unload action separate from synthesis', async () => {

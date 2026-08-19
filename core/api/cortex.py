@@ -36,12 +36,14 @@ from core.agent.catalog import (
     local_context_window_for_agent,
     local_reasoning_mode_for_agent,
     local_reasoning_modes_for_model,
+    resolve_effort,
     resolve_effort_for_agent,
     resolve_selected_model_profile,
     runtime_agent_order,
 )
 from core.agent.model_catalog import (
     ModelProfile,
+    get_model_profile,
     model_has_credentials,
     visible_cloud_models,
     visible_local_models,
@@ -1127,17 +1129,43 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_key!r} is not available.",
         )
-    settings = get_settings_store().get_snapshot()
+    spec = AGENT_SPECS[agent_key]
+    if payload.model_id is not None:
+        model_profile = get_model_profile(payload.model_id)
+        if model_profile is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown model: {payload.model_id!r}",
+            )
+        if model_profile.runtime != spec.runtime:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Model {payload.model_id!r} ({model_profile.runtime}) is incompatible with Agent {agent_key!r} ({spec.runtime}).",
+            )
+    else:
+        model_profile = resolve_selected_model_profile(agent_key)
+
     google_search, google_maps, x_search = _panthera_hosted_tool_settings()
-    resolved_effort = resolve_effort_for_agent(agent_key, None)
+    resolved_effort = resolve_effort(model_profile, None) if spec.runtime == "cloud" else None
+    local_context = (
+        payload.context_window
+        if payload.context_window is not None
+        else local_context_window_for_agent(agent_key)
+    )
+    local_reasoning = (
+        payload.local_reasoning_mode
+        if payload.local_reasoning_mode is not None
+        else local_reasoning_mode_for_agent(agent_key)
+    )
     profile = build_concrete_agent(
         agent_key,
         native_effort=resolved_effort,
-        local_context_window=local_context_window_for_agent(agent_key),
-        local_reasoning_mode=local_reasoning_mode_for_agent(agent_key),
+        local_context_window=local_context,
+        local_reasoning_mode=local_reasoning,
         google_search_enabled=google_search,
         google_maps_enabled=google_maps,
         x_search_enabled=x_search,
+        model_id=payload.model_id,
     )
     history: list[AgentMessage] = []
     history_partition = "production"
@@ -1155,6 +1183,9 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
     query_payload_kwargs: dict[str, Any] = {
         "prompt": payload.prompt,
         "agent": agent_key,
+        "model_id": payload.model_id,
+        "context_window": payload.context_window,
+        "local_reasoning_mode": payload.local_reasoning_mode,
         "tool_profile_id": payload.tool_profile_id,
         "history": history,
         "history_partition": history_partition,
@@ -1199,7 +1230,8 @@ def query_agent(
     switch (503 on load failure). Already-loaded target models bypass the
     resource gate because their memory footprint is already present.
     """
-    if not get_settings_store().get_snapshot().ask_apex.enabled:
+    settings = get_settings_store().get_snapshot()
+    if not settings.ask_apex.enabled:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Agent queries are currently disabled in Settings.",
@@ -1219,18 +1251,46 @@ def query_agent(
             detail="Effort cannot be set for local Agents.",
         )
 
-    resolved_effort = resolve_effort_for_agent(agent_key, payload.effort)
-    settings = get_settings_store().get_snapshot()
+    if payload.model_id is not None:
+        model_profile = get_model_profile(payload.model_id)
+        if model_profile is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown model: {payload.model_id!r}",
+            )
+        if model_profile.runtime != spec.runtime:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Model {payload.model_id!r} ({model_profile.runtime}) is incompatible with Agent {agent_key!r} ({spec.runtime}).",
+            )
+    else:
+        model_profile = resolve_selected_model_profile(agent_key)
+
+    resolved_effort = (
+        resolve_effort(model_profile, payload.effort)
+        if spec.runtime == "cloud"
+        else None
+    )
     google_search, google_maps, x_search = _panthera_hosted_tool_settings()
-    model_profile = resolve_selected_model_profile(agent_key)
+    local_context = (
+        payload.context_window
+        if payload.context_window is not None
+        else local_context_window_for_agent(agent_key)
+    )
+    local_reasoning = (
+        payload.local_reasoning_mode
+        if payload.local_reasoning_mode is not None
+        else local_reasoning_mode_for_agent(agent_key)
+    )
     profile = build_concrete_agent(
         agent_key,
         native_effort=resolved_effort,
-        local_context_window=local_context_window_for_agent(agent_key),
-        local_reasoning_mode=local_reasoning_mode_for_agent(agent_key),
+        local_context_window=local_context,
+        local_reasoning_mode=local_reasoning,
         google_search_enabled=google_search,
         google_maps_enabled=google_maps,
         x_search_enabled=x_search,
+        model_id=payload.model_id,
     )
     selection = resolve_selected_tools(
         agent_key,
@@ -1246,7 +1306,7 @@ def query_agent(
     if DEMO_MODE:
         return run_demo_agent_query(payload, tool_selection=selection.diagnostics)
 
-    if model_profile.credential_env and not agent_has_credentials(agent_key):
+    if model_profile.credential_env and not model_has_credentials(model_profile):
         return AgentQueryResponse(
             answer=credential_missing_message(agent_key),
             agent_used=build_agent_used_metadata(

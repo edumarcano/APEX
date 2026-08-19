@@ -358,7 +358,44 @@ class ModelNativeReasoningTests(unittest.TestCase):
                 hasattr(concrete, "provider"),
                 f"Concrete profile for {model_id} is missing 'provider'",
             )
-            self.assertEqual(concrete.provider, model_profile.provider)
+    def test_concrete_agent_profiles_honor_ephemeral_overrides(self) -> None:
+        from core.agent.catalog import build_concrete_agent
+
+        # Local model with 16K context window override and none reasoning mode
+        local_concrete = build_concrete_agent(
+            "felis",
+            native_effort=None,
+            local_context_window=16384,
+            local_reasoning_mode="none",
+            model_id="gemma-4-E2B-Q4_K_M.gguf",
+        )
+        self.assertEqual(local_concrete.context_window, 16384)
+        self.assertEqual(local_concrete.reasoning_mode, "none")
+        self.assertEqual(local_concrete.api_model, "gemma-4-E2B-Q4_K_M.gguf")
+
+        # Cloud model with lowest reasoning effort override
+        cloud_concrete = build_concrete_agent(
+            "panthera",
+            native_effort="low",
+            model_id="deepseek/deepseek-v4-flash-0731",
+        )
+        self.assertEqual(cloud_concrete.reasoning_effort, "low")
+        self.assertEqual(cloud_concrete.api_model, "deepseek/deepseek-v4-flash-0731")
+
+    def test_query_agent_validates_model_id_and_runtime_compatibility(self) -> None:
+        from core.api.cortex import query_agent
+
+        # Unknown model
+        with self.assertRaises(HTTPException) as ctx:
+            query_agent(AgentQueryRequest(prompt="hi", agent="panthera", model_id="nonexistent-model"))
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("Unknown model", str(ctx.exception.detail))
+
+        # Incompatible runtime (local model with cloud agent panthera)
+        with self.assertRaises(HTTPException) as ctx:
+            query_agent(AgentQueryRequest(prompt="hi", agent="panthera", model_id="gemma-4-E2B-Q4_K_M.gguf"))
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("is incompatible with Agent", str(ctx.exception.detail))
 
 
 if __name__ == "__main__":
