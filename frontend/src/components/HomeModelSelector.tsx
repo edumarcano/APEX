@@ -121,9 +121,13 @@ export function HomeModelSelector({
   const selectedStatus: AgentAvailabilityStatus = useMemo(() => {
     if (!selectedModel) return 'unknown'
     if (selectedModel.runtime === 'cloud') {
-      return pantheraStatus?.status ?? 'configured'
+      if (selectedModel.credentials_configured === false) return 'unauthorized'
+      if (pantheraStatus?.status === 'disabled') return 'disabled'
+      if (pantheraStatus?.status === 'verified' && pantheraStatus.configured_model === selectedModel.model_id) return 'verified'
+      return 'configured'
     }
-    return felisStatus?.status ?? 'available'
+    if (felisStatus?.status === 'disabled') return 'disabled'
+    return 'available'
   }, [selectedModel, pantheraStatus, felisStatus])
 
   const close = useCallback((focusTrigger = false): void => {
@@ -273,8 +277,9 @@ export function HomeModelSelector({
                       const index = allOrderedModels.findIndex((item) => item.model_id === entry.model_id)
                       const isSelected = selectedModel?.model_id === entry.model_id
                       const provider = providerDisplayName(entry.provider)
-                      const status = pantheraStatus?.status ?? 'configured'
-                      const isModelDisabled = status === 'disabled' || status === 'unauthorized'
+                      const isUnauthorized = entry.credentials_configured === false
+                      const isGloballyDisabled = pantheraStatus?.status === 'disabled'
+                      const isModelDisabled = isUnauthorized || isGloballyDisabled
                       const lowestEffort = resolveLowestReasoningEffort(entry.reasoning_options)
                       const reasoningLabel = lowestEffort && lowestEffort !== 'none'
                         ? `${formatReasoningLabel(lowestEffort)} reasoning`
@@ -311,7 +316,7 @@ export function HomeModelSelector({
                                 <StabilityBadge stability={entry.stability} />
                               </span>
                               <span className="mt-0.5 block truncate text-[10px] text-zinc-500">
-                                Panthera · {provider} · {reasoningLabel}
+                                Panthera · {provider} · {isUnauthorized ? 'Missing API key' : reasoningLabel}
                               </span>
                               <span className="mt-1 block font-mono text-[9px] text-zinc-400">
                                 {modelCost(entry)}
@@ -340,8 +345,7 @@ export function HomeModelSelector({
                       const index = allOrderedModels.findIndex((item) => item.model_id === entry.model_id)
                       const isSelected = selectedModel?.model_id === entry.model_id
                       const runtimeName = runtimeDisplayName(entry.provider as LocalRuntime)
-                      const status = felisStatus?.status ?? 'available'
-                      const isModelDisabled = status === 'disabled' || status === 'model_not_installed' || status === 'ollama_unreachable'
+                      const isModelDisabled = felisStatus?.status === 'disabled'
                       return (
                         <li key={entry.model_id} role="presentation" className="group/model-option relative">
                           <button
@@ -374,7 +378,7 @@ export function HomeModelSelector({
                                 <StabilityBadge stability={entry.stability} />
                               </span>
                               <span className="mt-0.5 block truncate text-[10px] text-zinc-500">
-                                Felis · {runtimeName} · 16K context
+                                Felis · {runtimeName} · {entry.provider === 'ollama' ? '4K context' : '16K context'}
                               </span>
                               <span className="mt-1 block font-mono text-[9px] text-zinc-400">
                                 {modelCost(entry)}

@@ -1121,32 +1121,55 @@ def _estimate_agent_request(
     )
 
 
-def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse:
-    """Build an Agent-specific estimate without making a provider call."""
-    agent_key = payload.agent
+def _resolve_and_validate_model_profile(
+    agent_key: str,
+    model_id: str | None,
+) -> tuple[AgentSpec, ModelProfile]:
     if agent_key not in AGENT_SPECS:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Agent {agent_key!r} is not available.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown Agent: {agent_key!r}",
         )
     spec = AGENT_SPECS[agent_key]
-    if payload.model_id is not None:
-        model_profile = get_model_profile(payload.model_id)
+    if model_id is not None:
+        model_profile = get_model_profile(model_id)
         if model_profile is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unknown model: {payload.model_id!r}",
+                detail=f"Unknown model: {model_id!r}",
             )
         if model_profile.runtime != spec.runtime:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Model {payload.model_id!r} ({model_profile.runtime}) is incompatible with Agent {agent_key!r} ({spec.runtime}).",
+                detail=f"Model {model_id!r} ({model_profile.runtime}) is incompatible with Agent {agent_key!r} ({spec.runtime}).",
+            )
+        if model_profile.dev_only and not is_dev_mode():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Model {model_id!r} is only available in development mode.",
             )
     else:
         model_profile = resolve_selected_model_profile(agent_key)
+    return spec, model_profile
 
-    google_search, google_maps, x_search = _panthera_hosted_tool_settings()
-    resolved_effort = resolve_effort(model_profile, None) if spec.runtime == "cloud" else None
+
+def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse:
+    """Build an Agent-specific estimate without making a provider call."""
+    agent_key = payload.agent
+    spec, model_profile = _resolve_and_validate_model_profile(
+        agent_key, payload.model_id
+    )
+
+    google_search, google_maps, x_search = (
+        _panthera_hosted_tool_settings()
+        if spec.runtime == "cloud"
+        else (False, False, False)
+    )
+    resolved_effort = (
+        resolve_effort(model_profile, payload.effort)
+        if spec.runtime == "cloud"
+        else None
+    )
     local_context = (
         payload.context_window
         if payload.context_window is not None
@@ -1184,6 +1207,7 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
         "prompt": payload.prompt,
         "agent": agent_key,
         "model_id": payload.model_id,
+        "effort": payload.effort,
         "context_window": payload.context_window,
         "local_reasoning_mode": payload.local_reasoning_mode,
         "tool_profile_id": payload.tool_profile_id,
@@ -1238,33 +1262,15 @@ def query_agent(
         )
 
     agent_key = payload.agent
-    if agent_key not in AGENT_SPECS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unknown Agent: {agent_key!r}",
-        )
+    spec, model_profile = _resolve_and_validate_model_profile(
+        agent_key, payload.model_id
+    )
 
-    spec = AGENT_SPECS[agent_key]
     if spec.runtime == "local" and payload.effort is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Effort cannot be set for local Agents.",
         )
-
-    if payload.model_id is not None:
-        model_profile = get_model_profile(payload.model_id)
-        if model_profile is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unknown model: {payload.model_id!r}",
-            )
-        if model_profile.runtime != spec.runtime:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Model {payload.model_id!r} ({model_profile.runtime}) is incompatible with Agent {agent_key!r} ({spec.runtime}).",
-            )
-    else:
-        model_profile = resolve_selected_model_profile(agent_key)
 
     resolved_effort = (
         resolve_effort(model_profile, payload.effort)
@@ -1312,7 +1318,7 @@ def query_agent(
 
     if model_profile.credential_env and not model_has_credentials(model_profile):
         return AgentQueryResponse(
-            answer=credential_missing_message(agent_key),
+            answer=credential_missing_message(agent_key, model_profile),
             agent_used=build_agent_used_metadata(
                 agent_key,
                 provider=profile.provider,
@@ -1324,7 +1330,7 @@ def query_agent(
                 hosted_tools=getattr(profile, "hosted_tools", None),
             ),
             session_id=payload.session_id,
-            error=credential_missing_error(agent_key),
+            error=credential_missing_error(agent_key, model_profile),
             **selection_as_response_fields(selection),
         )
 

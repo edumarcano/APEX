@@ -1,4 +1,4 @@
-﻿import type { ReactElement } from 'react'
+import type { ReactElement } from 'react'
 import type { AgentStability } from '../types/telemetry'
 
 export interface StabilityBadgeProps {

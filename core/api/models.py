@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from core.agent.types import (
     AgentKey,
+    ApexEffort,
     CostEstimate,
     LocalReasoningMode,
     TokenUsage,
@@ -878,6 +879,7 @@ class ToolPreflightRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     agent: AgentKey = "panthera"
+    effort: ApexEffort | None = None
     model_id: str | None = None
     context_window: int | None = Field(default=None, ge=1)
     local_reasoning_mode: LocalReasoningMode | None = None

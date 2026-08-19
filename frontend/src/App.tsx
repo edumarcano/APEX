@@ -356,6 +356,7 @@ export default function App(): ReactElement {
   const toolPreflightState = useToolPreflight({
     agent: effectiveWorkspaceAgent,
     modelId: workspace === 'home' ? homeOverrides.modelId : null,
+    effort: workspace === 'home' ? homeOverrides.effort : (isCloudAgentKey(activeAgent, agentsStatus) ? cloudEffort : null),
     contextWindow: workspace === 'home' ? homeOverrides.contextWindow : null,
     localReasoningMode: workspace === 'home' ? homeOverrides.localReasoningMode : null,
     selectedToolNames: toolCatalogState.selectedToolNames,
@@ -1045,21 +1046,16 @@ export default function App(): ReactElement {
     submissionPendingRef.current = true
     setSubmissionPending(true)
     try {
-      if (
-        activeAgentRef.current !== config.agent ||
-        !toolCatalogState.selectionReady ||
-        toolCatalogState.catalog?.agent !== config.agent
-      ) return false
       const resolution = await preflight.requestOperation('cortex_query', {
         synthesis_agent: config.agent,
         involves_cloud: isCloudAgentKey(config.agent, agentsStatus),
       })
-      return resolution === 'proceed' && activeAgentRef.current === config.agent && toolCatalogState.selectionReady && toolCatalogState.catalog?.agent === config.agent
+      return resolution === 'proceed'
     } finally {
       submissionPendingRef.current = false
       setSubmissionPending(false)
     }
-  }, [agentsStatus, preflight, toolCatalogState.catalog, toolCatalogState.selectionReady])
+  }, [agentsStatus, preflight])
 
   const refreshToolCatalog = toolCatalogState.refreshCatalog
   const persistAgentSettings = useCallback(
@@ -1359,7 +1355,7 @@ export default function App(): ReactElement {
       localReasoningMode: overrides.localReasoningMode,
       selectedToolNames,
       toolProfileId,
-    }) ?? false
+    }, { startNewThread: true }) ?? false
     if (accepted) {
       setWorkspace('cortex')
     }

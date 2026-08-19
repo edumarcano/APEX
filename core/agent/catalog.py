@@ -169,8 +169,11 @@ def compose_agent_system_instruction(
     return f"{identity}\n\n{body}" if body else identity
 
 
-def credential_missing_message(agent_key: str) -> str:
-    profile = resolve_selected_model_profile(agent_key)
+def credential_missing_message(
+    agent_key: str, profile: ModelProfile | None = None
+) -> str:
+    if profile is None:
+        profile = resolve_selected_model_profile(agent_key)
     env_key = profile.credential_env or "API_KEY"
     provider_label = _PROVIDER_DISPLAY_NAMES[profile.provider]
     return (
@@ -180,8 +183,11 @@ def credential_missing_message(agent_key: str) -> str:
     )
 
 
-def credential_missing_error(agent_key: str) -> str:
-    profile = resolve_selected_model_profile(agent_key)
+def credential_missing_error(
+    agent_key: str, profile: ModelProfile | None = None
+) -> str:
+    if profile is None:
+        profile = resolve_selected_model_profile(agent_key)
     return f"{profile.credential_env} is missing from environment variables."
 
 

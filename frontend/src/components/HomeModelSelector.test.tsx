@@ -147,4 +147,81 @@ describe('HomeModelSelector', () => {
     await user.click(within(popover).getByRole('option', { name: /gemma 4 e2b/i }))
     expect(onModelChange).toHaveBeenCalledWith('gemma-4-E2B-Q4_K_M.gguf')
   })
+
+  it('uses per-model credentials for cloud options and keeps local options selectable independently', async () => {
+    const user = userEvent.setup()
+    const customCatalog: ModelCatalogEntry[] = [
+      {
+        ...mockCatalog[0],
+        credentials_configured: false,
+      },
+      {
+        ...mockCatalog[1],
+        credentials_configured: true,
+      },
+      {
+        ...mockCatalog[2],
+      },
+    ]
+
+    render(
+      <HomeModelSelector
+        selectedModelId="gpt-5.6-luna"
+        onModelChange={vi.fn()}
+        catalog={customCatalog}
+        agentsStatus={[
+          profile('panthera', 'configured', 'gpt-5.6-luna'),
+          profile('felis', 'model_not_installed', 'other-model.gguf'),
+        ]}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /model: gpt-5\.6 luna/i }))
+    const popover = screen.getByRole('listbox', { name: /select model/i })
+
+    // DeepSeek is missing key and disabled
+    const deepseekOption = within(popover).getByRole('option', { name: /deepseek v4 flash/i })
+    expect(deepseekOption).toBeDisabled()
+    expect(within(popover).getByText(/Panthera · OpenRouter · Missing API key/i)).toBeInTheDocument()
+
+    // Luna is configured and enabled
+    const lunaOption = within(popover).getByRole('option', { name: /gpt-5\.6 luna/i })
+    expect(lunaOption).not.toBeDisabled()
+
+    // Gemma is local and enabled despite Felis's loaded model status in Cortex being model_not_installed
+    const gemmaOption = within(popover).getByRole('option', { name: /gemma 4 e2b/i })
+    expect(gemmaOption).not.toBeDisabled()
+  })
+
+  it('renders 4K context for Ollama models in trigger and dropdown descriptions', async () => {
+    const user = userEvent.setup()
+    const ollamaCatalog: ModelCatalogEntry[] = [
+      {
+        model_id: 'qwen3:1.7b',
+        display_name: 'Qwen 3 1.7B',
+        provider: 'ollama',
+        runtime: 'local',
+        stability: 'stable',
+        hosted_capabilities: [],
+      },
+      ...mockCatalog,
+    ]
+
+    render(
+      <HomeModelSelector
+        selectedModelId="qwen3:1.7b"
+        onModelChange={vi.fn()}
+        catalog={ollamaCatalog}
+        agentsStatus={mockAgentsStatus}
+      />,
+    )
+
+    expect(screen.getByText('Qwen 3 1.7B')).toBeInTheDocument()
+    expect(screen.getByText(/Felis · Ollama · 4K · Reasoning off/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /model: qwen 3 1\.7b/i }))
+    const popover = screen.getByRole('listbox', { name: /select model/i })
+    expect(within(popover).getByText(/Felis · Ollama · 4K context/i)).toBeInTheDocument()
+    expect(within(popover).getByText(/Felis · llama\.cpp · 16K context/i)).toBeInTheDocument()
+  })
 })

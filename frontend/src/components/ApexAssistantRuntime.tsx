@@ -61,6 +61,7 @@ export type ApexAssistantRuntimeHandle = {
   submitPrompt: (
     prompt: string,
     overrides?: Partial<Pick<ApexAssistantRunConfig, 'agent' | 'effort' | 'modelId' | 'contextWindow' | 'localReasoningMode' | 'selectedToolNames' | 'toolProfileId'>>,
+    options?: { startNewThread?: boolean },
   ) => Promise<boolean>
   patchPreferences: (updates: { agent?: AgentKey; selectedToolNames?: string[] | null; toolProfileId?: string | null }) => Promise<ApexAssistantPatchedPreferences | null>
 }
@@ -283,7 +284,7 @@ type ApexThreadListResult = {
 }
 
 export function useApexAssistantComposer(composerOverride?: ApexComposerSubmitRuntime): {
-  submit: (overrides?: Partial<ApexAssistantRunConfig>) => Promise<boolean>
+  submit: (overrides?: Partial<ApexAssistantRunConfig>, promptOverride?: string) => Promise<boolean>
   isRunning: boolean
 } {
   const aui = useAui()
@@ -296,12 +297,13 @@ export function useApexAssistantComposer(composerOverride?: ApexComposerSubmitRu
   const beginTurn = context?.beginTurn
   const finishTurn = context?.finishTurn
   const isRunning = useAuiState((state) => state.thread.isRunning)
-  const isLoading = useAuiState((state) => state.thread.isLoading)
   if (!context) throw new Error('useApexAssistantComposer must be used inside ApexAssistantRuntime.')
   const composer = composerOverride ?? aui.composer
-  const submit = useCallback(async (overrides?: Partial<ApexAssistantRunConfig>): Promise<boolean> => {
-    const text = composer.getState().text.trim()
-    if (!text || isRunning || isLoading || !configRef || !beginTurn || !finishTurn) return false
+  const submit = useCallback(async (overrides?: Partial<ApexAssistantRunConfig>, promptOverride?: string): Promise<boolean> => {
+    const threadState = aui.thread().getState()
+    if (threadState.isRunning || threadState.isLoading) return false
+    const text = (promptOverride ?? composer.getState().text).trim()
+    if (!text || !configRef || !beginTurn || !finishTurn) return false
     const effectiveConfig = { ...configRef.current, ...(overrides ?? {}) }
     if (!beginTurn(effectiveConfig.agent)) return false
     setTurnOverrides?.(overrides ?? null)
@@ -327,6 +329,7 @@ export function useApexAssistantComposer(composerOverride?: ApexComposerSubmitRu
       }
     }
     markPreflightPassed?.()
+    aui.thread.composer().setText(text)
     composer.send()
     queueMicrotask(() => {
       try {
@@ -336,7 +339,7 @@ export function useApexAssistantComposer(composerOverride?: ApexComposerSubmitRu
       }
     })
     return true
-  }, [aui, beforeRun, beginTurn, composer, configRef, finishTurn, isLoading, isRunning, markPreflightPassed, setPendingPrompt, setTurnOverrides])
+  }, [aui, beforeRun, beginTurn, composer, configRef, finishTurn, markPreflightPassed, setPendingPrompt, setTurnOverrides])
   return { submit, isRunning }
 }
 
@@ -365,12 +368,22 @@ function ApexAssistantController({ runtimeRef, branchPersistRef, getActiveRemote
     branchPersistRef.current = persistBranch
     if (!runtimeRef) return
     runtimeRef.current = {
-      submitPrompt: async (prompt: string, overrides?: Partial<ApexAssistantRunConfig>): Promise<boolean> => {
+      submitPrompt: async (
+        prompt: string,
+        overrides?: Partial<ApexAssistantRunConfig>,
+        options?: { startNewThread?: boolean },
+      ): Promise<boolean> => {
         const text = prompt.trim()
         if (!text) return false
+        if (options?.startNewThread) {
+          try {
+            await aui.threads.switchToNewThread()
+          } catch {
+            // If already on new thread or switching fails gracefully, proceed
+          }
+        }
         if (aui.thread().getState().isLoading) return false
-        aui.thread.composer().setText(text)
-        return submit(overrides)
+        return submit(overrides, text)
       },
       patchPreferences: async (updates): Promise<ApexAssistantPatchedPreferences | null> => {
         const remoteId = getActiveRemoteId() ?? aui.threadListItem.getState().remoteId
@@ -532,7 +545,8 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
       return listPromise
     },
     async initialize(localId) {
-      const current = configRef.current
+      const overrides = turnOverridesRef.current
+      const current = { ...configRef.current, ...(overrides ?? {}) }
       const promptText = pendingPromptRef.current?.split('\n')[0].trim()
       const title = promptText ? (promptText.length > 40 ? `${promptText.slice(0, 37)}…` : promptText) : undefined
       const item = await requestJson<ConversationSummary>(API_ENDPOINTS.cortexConversations, {

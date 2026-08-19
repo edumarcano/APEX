@@ -223,8 +223,7 @@ export function resolveHomeQueryOverrides(
 ): HomeQueryOverrides {
   if (!modelEntry || modelEntry.runtime === 'local') {
     const modelId = modelEntry?.model_id ?? 'gemma-4-E2B-Q4_K_M.gguf'
-    const maxContext = modelEntry?.maximum_context_window ?? 16384
-    const contextWindow = Math.min(16384, maxContext > 0 ? maxContext : 16384)
+    const contextWindow = modelEntry?.provider === 'ollama' ? 4096 : 16384
     return {
       agent: 'felis',
       modelId,
@@ -250,9 +249,7 @@ export function formatHomeModelSecondaryMetadata(
   if (!modelEntry) return 'Panthera'
   if (modelEntry.runtime === 'local') {
     const runtimeName = runtimeDisplayName(modelEntry.provider as LocalRuntime)
-    const maxContext = modelEntry.maximum_context_window ?? 16384
-    const contextTokens = Math.min(16384, maxContext > 0 ? maxContext : 16384)
-    const contextLabel = formatContextWindowLabel(contextTokens) ?? '16K'
+    const contextLabel = modelEntry.provider === 'ollama' ? '4K' : '16K'
     return `Felis · ${runtimeName} · ${contextLabel} · Reasoning off`
   }
 

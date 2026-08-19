@@ -733,4 +733,74 @@ describe('ApexAssistantRuntime', () => {
       expect(draftItem.closest('[data-active]')).toHaveAttribute('data-active', 'true')
     })
   })
+
+  it('creates a new conversation with overrides when submitPrompt uses startNewThread', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const existingId = '00000000-0000-4000-8000-000000000070'
+    const newConvId = '00000000-0000-4000-8000-000000000071'
+    const runtimeRef: { current: ApexAssistantRuntimeHandle | null } = { current: null }
+    let conversationCreatePayload: Record<string, unknown> | null = null
+    let turnPayload: Record<string, unknown> | null = null
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations') && init?.method === 'POST') {
+        conversationCreatePayload = JSON.parse(String(init.body))
+        return response({
+          ...summary,
+          id: newConvId,
+          agent: conversationCreatePayload?.agent,
+          title: 'Home prompt',
+          active_leaf_message_id: null,
+        })
+      }
+      if (url.endsWith('/api/v1/cortex/conversations')) {
+        return response([{ ...summary, id: existingId, title: 'Existing Chat', active_leaf_message_id: null }])
+      }
+      if (url.endsWith(`/api/v1/cortex/conversations/${existingId}`)) {
+        return response({ ...summary, id: existingId, title: 'Existing Chat', active_leaf_message_id: null, messages: [] })
+      }
+      if (url.endsWith(`/api/v1/cortex/conversations/${newConvId}/turns`) && init?.method === 'POST') {
+        turnPayload = JSON.parse(String(init.body))
+        return response({ answer: 'Felis answer.', tool_trace: [], tool_outputs: [], citations: [] })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    render(
+      <ApexAssistantRuntime
+        config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+        runtimeRef={runtimeRef}
+      >
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+
+    await waitFor(() => expect(screen.getByText('APEX is ready. Start a session with a focused question.')).toBeInTheDocument())
+
+    const accepted = await runtimeRef.current?.submitPrompt('Home prompt', {
+      agent: 'felis',
+      modelId: 'gemma-4-E2B-Q4_K_M.gguf',
+      contextWindow: 16384,
+      localReasoningMode: 'none',
+      selectedToolNames: ['reminders'],
+      toolProfileId: null,
+    }, { startNewThread: true })
+
+    expect(accepted).toBe(true)
+    await waitFor(() => expect(conversationCreatePayload).not.toBeNull())
+    expect(conversationCreatePayload).toMatchObject({
+      agent: 'felis',
+      selected_tool_names: ['reminders'],
+    })
+    await waitFor(() => expect(turnPayload).not.toBeNull())
+    expect(turnPayload).toMatchObject({
+      prompt: 'Home prompt',
+      agent: 'felis',
+      model_id: 'gemma-4-E2B-Q4_K_M.gguf',
+      context_window: 16384,
+      local_reasoning_mode: 'none',
+    })
+  })
 })

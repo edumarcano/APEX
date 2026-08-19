@@ -631,14 +631,14 @@ class TelemetryApiTests(unittest.TestCase):
 
     def test_preflight_loaded_local_model_skips_cold_load_checks(self) -> None:
         local_snapshot = {
-            "provider": "llama_cpp",
+            "provider": "ollama",
             "reachable": True,
-            "installed_models": ["gemma-4-E2B-Q4_K_M.gguf", "gemma-4-e2b-16k"],
+            "installed_models": ["qwen3:1.7b"],
             "loaded_models": [
                 {
-                    "provider": "llama_cpp",
-                    "name": "gemma-4-e2b-16k",
-                    "model": "gemma-4-e2b-16k",
+                    "provider": "ollama",
+                    "name": "qwen3:1.7b",
+                    "model": "qwen3:1.7b",
                     "state": "loaded",
                     "size_bytes": None,
                     "size_vram_bytes": None,
