@@ -92,7 +92,11 @@ class RoutingTests(unittest.TestCase):
             ),
             resolved_model=DEFAULT_PANTHERA_MODEL,
         )
-        for selected_model in ("gemini-3.6-flash", "grok-4.3"):
+        for selected_model in (
+            "gemini-3.6-flash",
+            "grok-4.3",
+            "deepseek/deepseek-v4-flash-0731",
+        ):
             with self.subTest(selected_model=selected_model), patch.dict(
                 "os.environ", {"OPENAI_API_KEY": "test-key"}, clear=False
             ), patch(

@@ -197,6 +197,8 @@ def _probe_model(provider: str, model: str, api_key: str) -> tuple[CloudStatus, 
     elif provider == "xai":
         url = f"https://api.x.ai/v1/models/{model}"
         headers = {"Authorization": f"Bearer {api_key}"}
+    elif provider == "openrouter":
+        return _probe_openrouter_zdr_model(model, api_key)
     else:
         return "provider_error", "Agent has no supported cloud verification probe."
 
@@ -210,6 +212,49 @@ def _probe_model(provider: str, model: str, api_key: str) -> tuple[CloudStatus, 
     if response.ok:
         return "verified", None
     return _classify_http_failure(response.status_code, _response_code(response))
+
+
+def _probe_openrouter_zdr_model(model: str, api_key: str) -> tuple[CloudStatus, str | None]:
+    """Verify that the selected model currently has an authenticated ZDR route."""
+    try:
+        response = requests.get(
+            "https://openrouter.ai/api/v1/endpoints/zdr",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=5,
+        )
+    except (requests.ConnectionError, requests.Timeout):
+        return "provider_unreachable", "Provider could not be reached."
+    except requests.RequestException:
+        return "provider_error", "Provider verification request failed."
+    if not response.ok:
+        return _classify_http_failure(response.status_code, _response_code(response))
+    try:
+        payload = response.json()
+    except ValueError:
+        return "provider_error", "Provider returned an invalid ZDR endpoint response."
+    rows = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return "provider_error", "Provider returned an invalid ZDR endpoint response."
+    if _zdr_payload_contains_model(payload, model):
+        return "verified", None
+    return "model_unavailable", "Configured model has no currently available ZDR route."
+
+
+def _zdr_payload_contains_model(payload: object, model: str) -> bool:
+    """Return true only for an exact model id reported by the ZDR endpoint."""
+    rows = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return False
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        for key in ("model", "model_id", "id", "slug"):
+            if row.get(key) == model:
+                return True
+        models = row.get("models")
+        if isinstance(models, list) and model in models:
+            return True
+    return False
 
 
 def _classify_http_failure(status_code: int, code: str | None) -> tuple[CloudStatus, str]:

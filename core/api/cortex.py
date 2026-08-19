@@ -79,6 +79,7 @@ from core.agent.local_runtime.registry import (
     iter_local_runtime_backends,
 )
 from core.agent.providers.openai_provider import OpenAIProvider
+from core.agent.providers.openrouter import OpenRouterProvider
 from core.agent.providers.xai_provider import XAIProvider
 from core.agent.pricing import PRICING_VERSION, agent_pricing
 from core.agent.types import (
@@ -128,6 +129,7 @@ _PROVIDER_DISPLAY_NAMES: dict[str, str] = {
     "ollama": "Ollama",
     "llama_cpp": "llama.cpp",
     "openai": "OpenAI",
+    "openrouter": "OpenRouter",
     "xai": "SpaceXAI",
 }
 
@@ -868,6 +870,8 @@ def _create_provider(profile: AgentModelProfile, api_key: str):
         return GeminiProvider(api_key=api_key)
     if profile.provider == "openai":
         return OpenAIProvider(api_key=api_key)
+    if profile.provider == "openrouter":
+        return OpenRouterProvider(api_key=api_key)
     if profile.provider == "xai":
         return XAIProvider(api_key=api_key)
     if profile.provider == "ollama":

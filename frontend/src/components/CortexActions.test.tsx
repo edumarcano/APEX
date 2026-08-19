@@ -51,16 +51,22 @@ describe('CortexActions', () => {
   })
 
   it('renders expanded audit details inline directly with the selected action row', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-18T12:30:00Z'))
     const actions = actionState({
       actions: [destructiveAction, verifiedRecentAction],
       selectedActionId: 'delete-1',
     })
-    render(<CortexActions actions={actions} demoModeActive={false} />)
+    try {
+      render(<CortexActions actions={actions} demoModeActive={false} />)
 
-    expect(screen.getByText('Approve Delete Microsoft To Do Task')).toBeInTheDocument()
-    expect(screen.getByText('Approve Create Microsoft To Do Task')).toBeInTheDocument()
-    expect(screen.getByText('Frozen arguments')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument()
+      expect(screen.getByText('Approve Delete Microsoft To Do Task')).toBeInTheDocument()
+      expect(screen.getByText('Approve Create Microsoft To Do Task')).toBeInTheDocument()
+      expect(screen.getByText('Frozen arguments')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('keeps demo mode read-only without rendering action controls', () => {

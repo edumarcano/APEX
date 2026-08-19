@@ -16,7 +16,7 @@ from core.agent.providers.contract import (
 )
 from core.agent.types import CostCompleteness, CostEstimate, TokenUsage
 
-PRICING_VERSION = "2026.08.02"
+PRICING_VERSION = "2026.08.19"
 _CURRENCY = "USD"
 
 
@@ -62,6 +62,7 @@ _MODEL_RATES: dict[str, ModelTokenRates] = {
         long_context_output_per_million=1.80,
         long_context_cached_input_per_million=0.04,
     ),
+    "deepseek/deepseek-v4-flash-0731": ModelTokenRates(0.14, 0.28, 0.028),
     "grok-4.3": ModelTokenRates(
         1.25,
         2.50,

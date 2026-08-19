@@ -441,6 +441,7 @@ def check_frontend_owner_names(root: Path) -> list[DocumentationIssue]:
 
 PROVIDER_DISPLAY_NAMES: dict[str, str] = {
     "openai": "OpenAI",
+    "openrouter": "OpenRouter",
     "gemini": "Google",
     "xai": "SpaceXAI",
     "ollama": "Ollama",

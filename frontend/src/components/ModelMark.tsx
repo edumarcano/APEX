@@ -1,4 +1,5 @@
 import GeminiColor from '@lobehub/icons/es/Gemini/components/Color'
+import DeepSeekColor from '@lobehub/icons/es/DeepSeek/components/Color'
 import GemmaColor from '@lobehub/icons/es/Gemma/components/Color'
 import GrokMono from '@lobehub/icons/es/Grok/components/Mono'
 import OllamaMono from '@lobehub/icons/es/Ollama/components/Mono'
@@ -28,6 +29,14 @@ export function ModelMark({
     return (
       <span className={`inline-flex shrink-0 items-center justify-center ${className}`} aria-hidden>
         <GeminiColor size={size} />
+      </span>
+    )
+  }
+
+  if (normalizedModel.startsWith('deepseek') || normalizedProvider === 'openrouter') {
+    return (
+      <span className={`inline-flex shrink-0 items-center justify-center ${className}`} aria-hidden>
+        <DeepSeekColor size={size} />
       </span>
     )
   }

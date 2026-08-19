@@ -43,7 +43,7 @@ loopback by default"]
 
     subgraph EXTERNAL["External services when enabled"]
         CONNECTORS["Weather, news, mail,<br/>calendar, markets, tasks"]
-        CLOUD_PROVIDERS["Cloud model providers<br/>OpenAI · Google · SpaceXAI"]
+        CLOUD_PROVIDERS["Interactive cloud model providers<br/>OpenAI · OpenRouter · Google · SpaceXAI"]
         CLOUD_TTS["Google Cloud TTS"]
         MCP["MCP providers"]
     end
@@ -72,13 +72,13 @@ The backend child receives connector and provider credentials. The static server
 
 Enabled connectors return typed results. Briefing generation picks the weather, email, news, calendar, reminder, Formula 1, football, and connector-health facts that may be sent to a model. Text is cleaned, limited in size, and wrapped in `<untrusted_connector_data>` markers.
 
-Panthera through the selected cloud provider and Felis through its fixed Gemma E2B llama.cpp briefing path receive the same selected facts. The interactive Felis model and runtime selection in Cortex do not change briefing synthesis; Ollama remains available for interactive Felis requests but is not used for briefings. Display text, Agent tools, and conversation history are not sent as briefing input. Generated output is checked before use; invalid model output falls back to Structured Digest built from the same facts.
+Panthera briefings always use OpenAI GPT-5.6 Luna with None reasoning, while Felis uses its fixed Gemma E2B llama.cpp briefing path. Interactive Panthera model selection, including OpenRouter DeepSeek, does not change briefing synthesis. The interactive Felis model and runtime selection in Cortex do not change briefing synthesis; Ollama remains available for interactive Felis requests but is not used for briefings. Display text, Agent tools, and conversation history are not sent as briefing input. Generated output is checked before use; invalid model output falls back to Structured Digest built from the same facts.
 
 These boundaries reduce prompt-injection risk. They do not authorize actions, and model text is never treated as approval for a write.
 
 ### Panthera briefing policy boundary
 
-The Panthera briefing path sends briefing input to the selected cloud provider. With the default OpenAI model, that input goes to the OpenAI Responses API and can include personal facts such as calendar events, reminders, and limited email subjects.
+The Panthera briefing path always sends briefing input to OpenAI GPT-5.6 Luna through the OpenAI Responses API and can include personal facts such as calendar events, reminders, and limited email subjects. The interactive Panthera model selection does not alter this fixed briefing route.
 
 OpenAI states that API inputs and outputs are not used to train or improve its models by default. Abuse-monitoring and endpoint-specific retention still apply, and eligible accounts may have more restrictive retention controls. See OpenAI's [API data controls](https://platform.openai.com/docs/models/default-usage-policies-by-endpoint).
 
@@ -142,6 +142,7 @@ APEX is a personal, non-commercial application. A public source repository does 
 
 - Gemini Search returns Google-provided Search Suggestions that APEX displays with the grounded response. Gemini Maps sources display immediately after the supported response, identify Google Maps without translation, retain the provider name, and link to the returned Maps URL. See the [Gemini API terms](https://ai.google.dev/gemini-api/terms) and [Maps grounding requirements](https://ai.google.dev/gemini-api/docs/maps-grounding).
 - SpaceXAI personal data requires a Zero Data Retention-enabled xAI API. ZDR is configured for the xAI team rather than per request; APEX users must keep it enabled for the team owning their key. HIPAA Protected Health Information requires both ZDR and an xAI Business Associate Agreement. See the [xAI Enterprise terms](https://x.ai/legal/terms-of-service-enterprise) and [ZDR guidance](https://docs.x.ai/developers/faq/security).
+- OpenRouter DeepSeek V4 Flash interactive requests always require `provider.zdr=true`, `provider.data_collection="deny"`, and `provider.require_parameters=true`; a route without those guarantees is unavailable rather than used. This controls downstream routing, not OpenRouter account-level prompt logging or data-use opt-ins, which operators must leave disabled before sending personal data. OpenRouter's ZDR definition can still permit in-memory caching. Briefings do not use OpenRouter in this checkpoint. See [OpenRouter ZDR](https://openrouter.ai/docs/guides/features/zdr) and [data collection](https://openrouter.ai/docs/guides/privacy/data-collection).
 - Brave Search results remain transient: they are not part of scheduled briefing telemetry and must not be copied into persistent memory, datasets, or model evaluation/benchmark material. See the [Brave Search API terms](https://api-dashboard.search.brave.com/documentation/resources/terms-of-service).
 - Open-Meteo's free hosted API is limited to non-commercial use and its documented request limits. APEX sends the requested location or configured default location to Open-Meteo geocoding, then adapts returned temperatures and WMO weather codes into display summaries. The weather HUD and Cortex forecast cards visibly credit Open-Meteo and GeoNames, link to [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), and state that APEX adapted the data. See the [Open-Meteo terms](https://open-meteo.com/en/terms), [licence](https://open-meteo.com/en/license), [forecast API](https://open-meteo.com/en/docs), and [geocoding API](https://open-meteo.com/en/docs/geocoding-api). Football fixtures visibly credit the Football-Data.org API. Formula 1 schedule data visibly credits Jolpica and its [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) data license. See the [Football-Data terms](https://www.football-data.org/about) and [Jolpica terms](https://github.com/jolpica/jolpica-f1/blob/main/TERMS.md).
 - GNews Free and Alpha Vantage are for personal or non-commercial use. Do not use their free/personal credentials for commercial activity without the provider's appropriate plan or written agreement. See [GNews pricing](https://gnews.io/pricing) and [Alpha Vantage terms](https://www.alphavantage.co/terms_of_service/).

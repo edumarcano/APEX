@@ -107,6 +107,7 @@ const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = [
   'medium',
   'high',
   'xhigh',
+  'max',
 ]
 const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
   'panthera',
