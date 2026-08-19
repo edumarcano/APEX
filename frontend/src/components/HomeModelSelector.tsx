@@ -297,7 +297,7 @@ export function HomeModelSelector({
                               'flex min-h-14 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors focus-visible:outline-none',
                               isModelDisabled
                                 ? 'pointer-events-none cursor-not-allowed text-zinc-600 opacity-45'
-                                : `hover:bg-purple-600/15 focus-visible:bg-purple-600/15 ${isSelected ? 'bg-purple-600/15 ring-1 ring-purple-400/30' : ''}`,
+                                : `hover:bg-[#0F4DB8]/15 focus-visible:bg-[#0F4DB8]/15 ${isSelected ? 'bg-[#0F4DB8]/12 ring-1 ring-[#0F4DB8]/25' : ''}`,
                             ].join(' ')}
                           >
                             <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03]">
@@ -318,7 +318,7 @@ export function HomeModelSelector({
                               </span>
                             </span>
                             {isSelected ? (
-                              <Check className="size-3.5 shrink-0 text-purple-400" strokeWidth={2.25} aria-hidden />
+                              <Check className="size-3.5 shrink-0 text-[#39FF88]" strokeWidth={2.25} aria-hidden />
                             ) : null}
                           </button>
                         </li>
@@ -360,7 +360,7 @@ export function HomeModelSelector({
                               'flex min-h-14 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors focus-visible:outline-none',
                               isModelDisabled
                                 ? 'pointer-events-none cursor-not-allowed text-zinc-600 opacity-45'
-                                : `hover:bg-amber-400/15 focus-visible:bg-amber-400/15 ${isSelected ? 'bg-amber-400/15 ring-1 ring-amber-400/30 text-amber-100' : ''}`,
+                                : `hover:bg-[#0F4DB8]/15 focus-visible:bg-[#0F4DB8]/15 ${isSelected ? 'bg-[#0F4DB8]/12 ring-1 ring-[#0F4DB8]/25' : ''}`,
                             ].join(' ')}
                           >
                             <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03]">
@@ -381,7 +381,7 @@ export function HomeModelSelector({
                               </span>
                             </span>
                             {isSelected ? (
-                              <Check className="size-3.5 shrink-0 text-amber-400" strokeWidth={2.25} aria-hidden />
+                              <Check className="size-3.5 shrink-0 text-[#39FF88]" strokeWidth={2.25} aria-hidden />
                             ) : null}
                           </button>
                         </li>
