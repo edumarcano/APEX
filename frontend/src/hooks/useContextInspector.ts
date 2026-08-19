@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type SetStateAction } from 'react'
 
 import { API_ENDPOINTS } from '../lib/api'
 import type { ActionRecord } from '../types/actions'
@@ -45,6 +45,10 @@ export interface ContextFilters {
   statuses: ContextStatus[]
 }
 
+function matchesContextCategory(record: ContextRecord, filters: ContextFilters): boolean {
+  return !filters.kind || record.kind === filters.kind
+}
+
 export function useContextInspector(enabled: boolean, onActionProposed: (action: ActionRecord) => void) {
   const [records, setRecords] = useState<ContextRecord[]>([])
   const [detail, setDetail] = useState<ContextRecordDetail | null>(null)
@@ -57,6 +61,19 @@ export function useContextInspector(enabled: boolean, onActionProposed: (action:
   const [isPreparing, setIsPreparing] = useState(false)
   const [lastCreatedRecordId, setLastCreatedRecordId] = useState<string | null>(null)
   const [entities, setEntities] = useState<ContextEntity[]>([])
+
+  const updateFilters = useCallback((update: SetStateAction<ContextFilters>): void => {
+    setFilters(update)
+  }, [])
+
+  useEffect(() => {
+    const selected = detail ?? records.find((record) => record.id === selectedRecordId)
+    if (selected && !matchesContextCategory(selected, filters)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Clear detail when its record is excluded by the active kind category.
+      setSelectedRecordId(null)
+      setDetail(null)
+    }
+  }, [detail, filters, records, selectedRecordId])
 
   const refresh = useCallback(async (): Promise<void> => {
     if (!enabled) return
@@ -84,6 +101,11 @@ export function useContextInspector(enabled: boolean, onActionProposed: (action:
   }, [enabled, filters])
 
   const selectRecord = useCallback(async (recordId: string | null): Promise<void> => {
+    if (recordId && recordId === selectedRecordId) {
+      setSelectedRecordId(null)
+      setDetail(null)
+      return
+    }
     setSelectedRecordId(recordId)
     setDetail(null)
     if (!recordId || !enabled) return
@@ -98,7 +120,7 @@ export function useContextInspector(enabled: boolean, onActionProposed: (action:
     } finally {
       setIsDetailLoading(false)
     }
-  }, [enabled])
+  }, [enabled, selectedRecordId])
 
   useEffect(() => {
     queueMicrotask(() => void refresh())
@@ -150,10 +172,10 @@ export function useContextInspector(enabled: boolean, onActionProposed: (action:
   }, [])
 
   return useMemo(() => ({
-    records, detail, selectedRecordId, filters, setFilters, isLoading, isDetailLoading, error,
+    records, detail, selectedRecordId, filters, setFilters: updateFilters, isLoading, isDetailLoading, error,
     retrieval, isPreparing, lastCreatedRecordId, entities, refresh, selectRecord, prepare, searchEntities,
     capture: (payload: ContextCaptureInput) => propose(API_ENDPOINTS.cortexContextCapture, payload),
     reconcile: (payload: ContextAction) => propose(API_ENDPOINTS.cortexContextActions, payload),
     rememberVerifiedRecord,
-  }), [detail, entities, error, filters, isDetailLoading, isLoading, isPreparing, lastCreatedRecordId, prepare, propose, records, refresh, retrieval, selectRecord, selectedRecordId, rememberVerifiedRecord, searchEntities])
+  }), [detail, entities, error, filters, isDetailLoading, isLoading, isPreparing, lastCreatedRecordId, prepare, propose, records, refresh, retrieval, selectRecord, selectedRecordId, rememberVerifiedRecord, searchEntities, updateFilters])
 }
