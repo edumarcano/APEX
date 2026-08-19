@@ -1,10 +1,12 @@
 import {
+  ChartNoAxesCombined,
   Check,
   ChevronDown,
   Cloud,
   Cpu,
   FileText,
   RefreshCw,
+  Zap,
   type LucideIcon,
 } from 'lucide-react'
 import {
@@ -24,8 +26,6 @@ import type {
   AgentAvailabilityStatus,
   BriefingTargetStatus,
 } from '../types/telemetry'
-
-import { AgentMark } from './AgentMark'
 
 interface BriefingOption {
   key: BriefingMode
@@ -121,10 +121,34 @@ function modeCost(mode: BriefingMode, targets?: BriefingTargetStatus[]): string 
 }
 
 function BriefingModeMark({ mode }: { mode: BriefingMode }): ReactElement {
-  if (mode === 'structured_digest') {
-    return <span aria-label="Structured Digest mark" className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-slate-300/20 bg-slate-400/10 text-slate-200"><FileText className="size-3.5" aria-hidden /></span>
+  if (mode === 'panthera') {
+    return (
+      <span
+        aria-label="Full Briefing mark"
+        className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-purple-300/25 bg-purple-400/10 text-purple-200"
+      >
+        <ChartNoAxesCombined className="size-3.5" aria-hidden />
+      </span>
+    )
   }
-  return <AgentMark agent={mode} />
+  if (mode === 'felis') {
+    return (
+      <span
+        aria-label="Quick Briefing mark"
+        className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-amber-300/25 bg-amber-400/10 text-amber-200"
+      >
+        <Zap className="size-3.5" aria-hidden />
+      </span>
+    )
+  }
+  return (
+    <span
+      aria-label="Structured Digest mark"
+      className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-slate-300/20 bg-slate-400/10 text-slate-200"
+    >
+      <FileText className="size-3.5" aria-hidden />
+    </span>
+  )
 }
 
 function dropdownPosition(trigger: HTMLButtonElement): CSSProperties {

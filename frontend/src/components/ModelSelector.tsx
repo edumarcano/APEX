@@ -10,7 +10,6 @@ import {
 import type {
   AgentAvailabilityStatus,
   AgentKey,
-  AgentStability,
   AgentStatus,
   ModelCatalogEntry,
 } from '../types/telemetry'
@@ -21,6 +20,7 @@ import {
 } from '../lib/agents'
 
 import { ModelMark } from './ModelMark'
+import { StabilityBadge } from './StabilityBadge'
 
 interface ModelSelectorProps {
   activeAgent: AgentKey
@@ -69,22 +69,6 @@ function statusDotClass(status: AgentAvailabilityStatus): string {
     return 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.7)]'
   }
   return 'bg-[#DC2626] shadow-[0_0_6px_rgba(220,38,38,0.8)]'
-}
-
-function stabilityBadge(stability: AgentStability | null | undefined, className = ''): ReactElement | null {
-  if (!stability || stability === 'stable') return null
-  const experimental = stability === 'experimental'
-  return (
-    <span
-      className={`rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider ${
-        experimental
-          ? 'border-cyan-300/30 bg-cyan-400/10 text-cyan-200'
-          : 'border-amber-300/30 bg-amber-400/10 text-amber-200'
-      }${className ? ` ${className}` : ''}`}
-    >
-      {experimental ? 'Experimental' : 'Preview'}
-    </span>
-  )
 }
 
 function formatPricing(entry: ModelCatalogEntry | null | undefined): string {
@@ -247,7 +231,7 @@ export function ModelSelector({
                 <span className="truncate font-orbitron text-xs font-semibold text-white">
                   {selectedModel?.display_name ?? selectedModelId}
                 </span>
-                {selectedModel ? stabilityBadge(selectedModel.stability) : null}
+                {selectedModel ? <StabilityBadge stability={selectedModel.stability} /> : null}
               </div>
               <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] text-zinc-400">
                 <span>{providerLabel}</span>
@@ -366,7 +350,7 @@ export function ModelSelector({
                         <span className="font-orbitron text-xs font-semibold text-white">
                           {model.display_name}
                         </span>
-                        {stabilityBadge(model.stability)}
+                        <StabilityBadge stability={model.stability} />
                         {model.dev_only ? (
                           <span className="rounded border border-purple-400/30 bg-purple-500/10 px-1 py-0 font-mono text-[8px] uppercase tracking-wider text-purple-200">
                             DEV

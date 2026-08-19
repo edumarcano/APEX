@@ -21,7 +21,7 @@ const mockCatalog: ModelCatalogEntry[] = [
     display_name: 'GPT-5.6 Luna',
     provider: 'openai',
     runtime: 'cloud',
-    stability: 'stable',
+    stability: 'preview',
     reasoning_options: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'],
     default_reasoning: 'medium',
     hosted_capabilities: [],
@@ -31,7 +31,7 @@ const mockCatalog: ModelCatalogEntry[] = [
     display_name: 'Gemma 4 E2B',
     provider: 'llama_cpp',
     runtime: 'local',
-    stability: 'stable',
+    stability: 'experimental',
     reasoning_options: null,
     default_reasoning: null,
     maximum_context_window: 131072,
@@ -101,7 +101,8 @@ describe('HomeModelSelector', () => {
     expect(screen.getByText(/Panthera · OpenRouter · Reasoning off/i)).toBeInTheDocument()
   })
 
-  it('renders selected local model with secondary Felis metadata', () => {
+  it('renders selected local model with secondary Felis metadata, and experimental badge in dropdown', async () => {
+    const user = userEvent.setup()
     render(
       <HomeModelSelector
         selectedModelId="gemma-4-E2B-Q4_K_M.gguf"
@@ -113,9 +114,15 @@ describe('HomeModelSelector', () => {
 
     expect(screen.getByText('Gemma 4 E2B')).toBeInTheDocument()
     expect(screen.getByText(/Felis · llama\.cpp · 16K · Reasoning off/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /model: gemma 4 e2b/i }))
+    const listbox = screen.getByRole('listbox', { name: /select model/i })
+    expect(listbox).toBeInTheDocument()
+    expect(within(listbox).getByText(/experimental/i)).toBeInTheDocument()
+    expect(within(listbox).getByText(/preview/i)).toBeInTheDocument()
   })
 
-  it('opens popover grouped by Cloud (Panthera) and Local (Felis) and selects a model', async () => {
+  it('opens popover grouped by Cloud (Apex Panthera) and Local (Apex Felis) and selects a model', async () => {
     const onModelChange = vi.fn()
     const user = userEvent.setup()
 
@@ -128,12 +135,14 @@ describe('HomeModelSelector', () => {
       />,
     )
 
-    await user.click(screen.getByRole('combobox', { name: /model: deepseek v4 flash/i }))
-    const popover = screen.getByRole('listbox', { name: /available models/i })
+    await user.click(screen.getByRole('button', { name: /model: deepseek v4 flash/i }))
+    const popover = screen.getByRole('listbox', { name: /select model/i })
     expect(popover).toBeInTheDocument()
 
-    expect(within(popover).getByText(/Cloud · Panthera/i)).toBeInTheDocument()
-    expect(within(popover).getByText(/Local · Felis/i)).toBeInTheDocument()
+    expect(screen.getByText('Model Selection')).toBeVisible()
+    expect(screen.getByText('Select an operational model for Home queries.')).toBeVisible()
+    expect(within(popover).getByText(/Cloud · Apex Panthera/i)).toBeInTheDocument()
+    expect(within(popover).getByText(/Local · Apex Felis/i)).toBeInTheDocument()
 
     await user.click(within(popover).getByRole('option', { name: /gemma 4 e2b/i }))
     expect(onModelChange).toHaveBeenCalledWith('gemma-4-E2B-Q4_K_M.gguf')

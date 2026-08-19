@@ -68,7 +68,7 @@ describe('BriefingModeSelector', () => {
 
     expect(screen.getByText('Briefing Mode')).toBeVisible()
     expect(screen.getByText('Select a briefing type for the next briefing.')).toBeVisible()
-    expect(screen.getAllByLabelText('Panthera agent mark')).toHaveLength(2)
+    expect(screen.getAllByLabelText('Full Briefing mark')).toHaveLength(2)
     expect(screen.getByLabelText('Structured Digest mark')).toBeVisible()
     expect(screen.getAllByText('No provider token charge')).toHaveLength(1)
     expect(screen.getByText('No model cost')).toBeVisible()
@@ -94,7 +94,7 @@ describe('BriefingModeSelector', () => {
     })
 
     await user.click(screen.getByRole('button', { name: /briefing mode: full briefing/i }))
-    expect(screen.getByRole('option', { name: /felis/i })).toBeDisabled()
+    expect(screen.getByRole('option', { name: /quick briefing/i })).toBeDisabled()
 
     await user.click(screen.getByRole('option', { name: /structured digest/i }))
     expect(onModeChange).toHaveBeenCalledWith('structured_digest')
