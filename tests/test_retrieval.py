@@ -30,7 +30,7 @@ class FakeEmbeddingAdapter:
             self.fingerprint = "invalid:2:test"
         self.prepare_calls = 0
 
-    def prepare(self) -> str:
+    def prepare(self, *, allow_download: bool = True) -> str:
         self.prepare_calls += 1
         return self.fingerprint
 
@@ -74,6 +74,24 @@ class RetrievalTests(unittest.TestCase):
         self.store.upsert_item(self._item("m1", "changed text"))
         self.assertEqual(self.store.search_fts("alpha", namespace="conversation", source_type="message", partition="production", limit=10), [])
         self.assertEqual([hit.source_id for hit in self.store.search_fts("changed", namespace="conversation", source_type="message", partition="production", limit=10)], ["m1"])
+
+    def test_fts_sanitizes_punctuation_and_conversational_stopwords(self) -> None:
+        self.store.upsert_item(self._item("m1", "The operator's favorite driver is Charles Leclerc."))
+        self.store.upsert_item(self._item("m2", "The operator's favorite F1 team is Ferrari."))
+
+        # Punctuation and conversational stop words stripped; m1 ranks top for driver query
+        hits = self.store.search_fts("Do you remember my favorite driver?", namespace="conversation", source_type="message", partition="production", limit=10)
+        self.assertTrue(hits)
+        self.assertEqual(hits[0].source_id, "m1")
+
+        # Punctuation and conversational question words stripped; m2 ranks top for team query
+        hits_team = self.store.search_fts("What is my favorite F1 team?!", namespace="conversation", source_type="message", partition="production", limit=10)
+        self.assertTrue(hits_team)
+        self.assertEqual(hits_team[0].source_id, "m2")
+
+        # All-stopwords query fallback does not error
+        empty = self.store.search_fts("???", namespace="conversation", source_type="message", partition="production", limit=10)
+        self.assertEqual(empty, [])
 
     def test_startup_backfill_and_archived_delete_trigger(self) -> None:
         conversation_id = uuid4()

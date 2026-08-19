@@ -245,7 +245,7 @@ class ContextAssemblyTests(unittest.TestCase):
         record = self.knowledge_store.create_record(
             partition="production",
             kind="fact",
-            text="Apex Core runs SQLite in loopback mode.",
+            text="Configured storage layer operates in loopback mode.",
             source_ids=[source.id],
             subject_entity_id=entity.id,
             predicate="runs_mode",
@@ -267,7 +267,7 @@ class ContextAssemblyTests(unittest.TestCase):
         )
 
         self.assertIn("Related personal context", bundle.rendered)
-        self.assertIn("Apex Core runs SQLite in loopback mode.", bundle.rendered)
+        self.assertIn("Configured storage layer operates in loopback mode.", bundle.rendered)
         self.assertIn(str(record.id), [r.source_id for r in bundle.references])
 
     def test_tool_preflight_retrieved_context_tokens(self) -> None:
