@@ -45,7 +45,7 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 16
+SETTINGS_SCHEMA_VERSION: int = 17
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 LlamaCppServerState = Literal[
@@ -105,6 +105,7 @@ class PantheraSettings(BaseModel):
 
     model: str = DEFAULT_PANTHERA_MODEL
     effort: CloudEffort = "medium"
+    personal_context_enabled: bool = False
     hosted_tools: PantheraHostedToolsSettings = Field(
         default_factory=PantheraHostedToolsSettings
     )
@@ -133,6 +134,7 @@ class FelisSettings(BaseModel):
     model: str = DEFAULT_FELIS_MODEL
     context_window: StrictInt = Field(default_factory=_default_felis_context_window)
     reasoning_mode: LocalReasoningMode = "none"
+    personal_context_enabled: bool = False
 
     @field_validator("model")
     @classmethod
@@ -413,6 +415,7 @@ class PantheraSettingsPatch(BaseModel):
 
     model: str | None = None
     effort: CloudEffort | None = None
+    personal_context_enabled: bool | None = None
     hosted_tools: PantheraHostedToolsPatch | None = None
 
 
@@ -422,6 +425,7 @@ class FelisSettingsPatch(BaseModel):
     model: str | None = None
     context_window: StrictInt | None = None
     reasoning_mode: LocalReasoningMode | None = None
+    personal_context_enabled: bool | None = None
 
 
 class AgentSettingsPatch(BaseModel):

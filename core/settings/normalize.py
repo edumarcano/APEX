@@ -664,7 +664,7 @@ def _normalize_agent_settings(
     if isinstance(panthera_raw, dict):
         _record_unsupported_agent_fields(
             panthera_raw,
-            allowed={"model", "effort", "hosted_tools"},
+            allowed={"model", "effort", "personal_context_enabled", "hosted_tools"},
             path="ask_apex.panthera",
             layer_name=layer_name,
             errors=errors,
@@ -692,6 +692,11 @@ def _normalize_agent_settings(
                 _record_error(errors, "ask_apex.panthera.effort is not valid")
         elif effort is not None:
             _record_error(errors, "ask_apex.panthera.effort is not valid")
+        if "personal_context_enabled" in panthera_raw:
+            if isinstance(panthera_raw["personal_context_enabled"], bool):
+                panthera["personal_context_enabled"] = panthera_raw["personal_context_enabled"]
+            else:
+                _record_error(errors, "ask_apex.panthera.personal_context_enabled must be a boolean")
         if "model" in panthera:
             reconciled_effort = reconcile_panthera_reasoning(
                 panthera["model"], panthera.get("effort")
@@ -724,7 +729,7 @@ def _normalize_agent_settings(
     if isinstance(felis_raw, dict):
         _record_unsupported_agent_fields(
             felis_raw,
-            allowed={"model", "context_window", "reasoning_mode"},
+            allowed={"model", "context_window", "reasoning_mode", "personal_context_enabled"},
             path="ask_apex.felis",
             layer_name=layer_name,
             errors=errors,
@@ -753,6 +758,11 @@ def _normalize_agent_settings(
             felis["reasoning_mode"] = reasoning_mode
         elif reasoning_mode is not None:
             _record_error(errors, "ask_apex.felis.reasoning_mode is not valid")
+        if "personal_context_enabled" in felis_raw:
+            if isinstance(felis_raw["personal_context_enabled"], bool):
+                felis["personal_context_enabled"] = felis_raw["personal_context_enabled"]
+            else:
+                _record_error(errors, "ask_apex.felis.personal_context_enabled must be a boolean")
         if felis:
             result["felis"] = felis
     elif felis_raw is not None:

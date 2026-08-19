@@ -136,4 +136,6 @@ class ConversationTurnResult(BaseModel):
     usage: dict[str, Any] | None = None
     timing: dict[str, Any] | None = None
     cost_estimate: dict[str, Any] | None = None
+    context_usage: dict[str, Any] | None = None
+    context_references: list[dict[str, Any]] = Field(default_factory=list)
     metadata: dict[str, Any] | None = None

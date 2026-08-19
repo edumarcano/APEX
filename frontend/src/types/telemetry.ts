@@ -162,6 +162,7 @@ export interface ToolTokenBreakdown {
   system_instructions: number
   conversation_history: number
   hud_context: number
+  retrieved_context?: number
   selected_tool_schemas: number
   current_prompt: number
   total: number

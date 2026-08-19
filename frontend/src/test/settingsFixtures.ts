@@ -31,6 +31,7 @@ export const BASE_SETTINGS: RuntimeSettings = {
     panthera: {
       model: 'gpt-5.6-luna',
       effort: 'medium',
+      personal_context_enabled: false,
       hosted_tools: {
         google_search: true,
         google_maps: true,
@@ -41,6 +42,7 @@ export const BASE_SETTINGS: RuntimeSettings = {
       model: 'gemma-4-E2B-Q4_K_M.gguf',
       context_window: 16384,
       reasoning_mode: 'none',
+      personal_context_enabled: false,
     },
   },
   briefing: {

@@ -47,6 +47,8 @@ from core.conversations.store import (
 from core.retrieval import RetrievalBusyError, get_retrieval_service
 from core.actions.runtime import get_action_service
 from core.knowledge.capture import CAPABILITY_NAME, ContextCaptureError, reject_secret_text
+from core.context import ContextAssembler, ContextPolicy
+from core.knowledge import get_knowledge_service
 from core.api.models import (
     AgentStatus,
     ActionResponse,
@@ -327,6 +329,18 @@ def conversation_turn(conversation_id: str, payload: ConversationTurnRequest) ->
     execution_payload = AgentQueryRequest(
         **execution_kwargs,
     )
+    context_policy = ContextPolicy.from_settings(
+        agent=agent_key,
+        partition=service.partition(),
+        settings=get_settings_store().get_snapshot(),
+    )
+    context_bundle = ContextAssembler(
+        get_retrieval_service(), get_knowledge_service()
+    ).assemble(
+        prompt=payload.prompt,
+        conversation_id=parsed_id,
+        policy=context_policy,
+    )
     try:
         response = query_agent(
             execution_payload,
@@ -336,6 +350,7 @@ def conversation_turn(conversation_id: str, payload: ConversationTurnRequest) ->
                 "message_id": str(user.id),
                 "partition": service.partition(),
             },
+            context_bundle=context_bundle,
         )
     except HTTPException as exc:
         failed = service.finalize(

@@ -200,9 +200,11 @@ class SettingsStoreLoadTests(unittest.TestCase):
                         panthera=PantheraSettingsPatch(
                             model="grok-4.5",
                             effort="high",
+                            personal_context_enabled=True,
                         ),
                         felis=FelisSettingsPatch(
                             model="qwen3:1.7b",
+                            personal_context_enabled=True,
                         ),
                     )
                 )
@@ -214,7 +216,12 @@ class SettingsStoreLoadTests(unittest.TestCase):
             self.assertFalse(agent_settings.enabled)
             self.assertEqual(agent_settings.panthera.model, "grok-4.5")
             self.assertEqual(agent_settings.panthera.effort, "high")
+            self.assertTrue(agent_settings.panthera.personal_context_enabled)
             self.assertEqual(agent_settings.felis.model, "qwen3:1.7b")
+            self.assertTrue(agent_settings.felis.personal_context_enabled)
+            persisted = json.loads(self.local_path.read_text(encoding="utf-8"))
+            self.assertTrue(persisted["ask_apex"]["panthera"]["personal_context_enabled"])
+            self.assertTrue(persisted["ask_apex"]["felis"]["personal_context_enabled"])
 
     def test_felis_briefing_mode_survives_reload(self) -> None:
         store = self._store()

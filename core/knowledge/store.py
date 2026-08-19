@@ -257,6 +257,21 @@ class KnowledgeStore:
             ).fetchone()
         return self._entity(row) if row is not None else None
 
+    def entities_mentioned_in(self, text: str, *, limit: int = 8) -> list[Entity]:
+        """Return exact saved aliases that occur in normalized operator text."""
+        normalized = normalize_alias(text)
+        if not normalized:
+            return []
+        with self._connection() as conn:
+            rows = conn.execute(
+                "SELECT e.id,e.name,e.normalized_name,e.created_at FROM entity_aliases a "
+                "JOIN entities e ON e.id=a.entity_id WHERE instr(?, a.normalized_alias) > 0 "
+                "GROUP BY e.id,e.name,e.normalized_name,e.created_at "
+                "ORDER BY max(length(a.normalized_alias)) DESC, e.id LIMIT ?",
+                (normalized, max(1, min(limit, 32))),
+            ).fetchall()
+        return [self._entity(row) for row in rows]
+
     def create_record(
         self,
         *,
@@ -375,7 +390,7 @@ class KnowledgeStore:
         return [self._record(row) for row in rows]
 
     def one_hop_relationships(self, entity_id: UUID, *, partition: str) -> list[KnowledgeRecord]:
-        return self.list_records(partition=partition, entity_id=entity_id)
+        return self.list_records(partition=partition, statuses=("active", "conflicting"), entity_id=entity_id)
 
     def apply_capture(
         self, *, action_id: str, partition: str, source_kind: str, locator: str,

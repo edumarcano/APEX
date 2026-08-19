@@ -104,6 +104,7 @@ from core.api.models import (
 )
 from core.config import DEMO_MODE, is_dev_mode
 from core.settings import get_settings_store
+from core.context import ContextBundle, ContextPolicy
 from core.synthesis.formatting import sanitize_fact
 
 _LOGGER = logging.getLogger(__name__)
@@ -888,6 +889,7 @@ def _execute_agent_turn(
     disable_hud_context: bool = False,
     user_designation: str = "",
     action_provenance: Mapping[str, object] | None = None,
+    context_bundle: ContextBundle | None = None,
 ) -> AgentQueryResponse:
     """Build HUD context, select the provider, and run the bounded agent loop."""
     try:
@@ -918,6 +920,7 @@ def _execute_agent_turn(
                 user_designation=user_designation,
             )
             + hud_context
+            + (context_bundle.rendered if context_bundle is not None else "")
             + build_tool_access_instruction(
                 [descriptor.name for descriptor in selected_tools or []],
                 hosted_tool_names=tuple(
@@ -952,6 +955,12 @@ def _execute_agent_turn(
             model_stability=getattr(profile, "stability", None),
             hosted_tools=getattr(profile, "hosted_tools", None),
         )
+        if context_bundle is not None:
+            response.context_usage = {
+                "estimated_tokens": context_bundle.estimated_tokens,
+                "truncated": context_bundle.truncated,
+            }
+            response.context_references = [reference.as_dict() for reference in context_bundle.references]
         return response
     except Exception as exc:
         if not is_local_profile(profile):
@@ -1021,6 +1030,12 @@ def _estimate_agent_request(
 ) -> ToolPreflightResponse:
     """Estimate the model-facing request from the canonical execution inputs."""
     hud_context = _build_hud_context(payload, agent_key=agent_key)
+    policy = ContextPolicy.from_settings(
+        agent=agent_key,
+        partition=payload.history_partition,
+        settings=get_settings_store().get_snapshot(),
+    )
+    retrieved_tokens = 1_500 if policy.permits_retrieval else 0
     if is_local_profile(profile):
         base_prompt = config.LOCAL_AGENT_SYSTEM_PROMPT
     else:
@@ -1053,7 +1068,7 @@ def _estimate_agent_request(
         else 0
     )
     prompt_tokens = estimate_json_tokens(payload.prompt)
-    total = system_tokens + history_tokens + hud_tokens + schema_tokens + prompt_tokens
+    total = system_tokens + history_tokens + hud_tokens + retrieved_tokens + schema_tokens + prompt_tokens
     context_window = getattr(profile, "context_window", None)
     reserved_response_tokens = (
         getattr(profile, "final_answer_max_tokens", None)
@@ -1087,6 +1102,7 @@ def _estimate_agent_request(
             system_instructions=system_tokens,
             conversation_history=history_tokens,
             hud_context=hud_tokens,
+            retrieved_context=retrieved_tokens,
             selected_tool_schemas=schema_tokens,
             current_prompt=prompt_tokens,
             total=total,
@@ -1167,6 +1183,7 @@ def query_agent(
     payload: AgentQueryRequest,
     *,
     action_provenance: Mapping[str, object] | None = None,
+    context_bundle: ContextBundle | None = None,
 ) -> AgentQueryResponse:
     """
     Execute one Cortex Engine Agent turn with optional tool calling.
@@ -1304,6 +1321,7 @@ def query_agent(
                 disable_hud_context=False,
                 user_designation=settings.user_designation,
                 action_provenance=action_provenance,
+                context_bundle=context_bundle,
             )
         finally:
             end_local_execution()
@@ -1325,4 +1343,5 @@ def query_agent(
         disable_hud_context=False,
         user_designation=settings.user_designation,
         action_provenance=action_provenance,
+        context_bundle=context_bundle,
     )

@@ -94,6 +94,8 @@ FastAPI's lifespan initializes the database, Microsoft To Do client, action serv
 
 The HUD and `uv run apex` CLI are separate clients of the same loopback API. The CLI owns no connector, Agent, reminder, action, or database logic; it never starts the backend or reaches a remote URL. Its action commands read the current action version and submit it back to the action API, preserving the same conflict checks and no-replay behavior as the HUD.
 
+For a durable Cortex turn, the backend keeps active-branch history separate from retrieved context. Production retrieval is opt-in per Agent and can add bounded older-conversation excerpts and active personal records; sandbox never receives either. The assembler wraps this material in an untrusted context boundary, records only safe source references and token use with the Agent message, and falls back to FTS when local embeddings are unavailable.
+
 ## Frontend state ownership
 
 `App.tsx` composes focused hooks instead of using the historical single-pipeline state model:

@@ -94,11 +94,11 @@ Returns boot-time HUD values such as Agent query enablement, the effective Agent
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `16`.
+Returns the resolved settings envelope. The current contract version is `17`.
 
 ```json
 {
-  "schema_version": 16,
+  "schema_version": 17,
   "settings": {
     "user_designation": "",
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": false },
@@ -324,7 +324,7 @@ policy when `DEV_MODE` and `ask_apex.sandbox_mode` are active.
 Accepts an Agent, selected stable names, optional profile, prompt, optional
 conversation ID, and explicit snapshot/briefing attachment IDs. The backend reconstructs
 the bounded active branch when a conversation ID is present. It returns estimates for
-system instructions, conversation history, HUD context, selected schemas,
+system instructions, conversation history, HUD context, reserved retrieved context, selected schemas,
 prompt, total, configured context, reserved response capacity, and remaining
 capacity. Every value is marked as an estimate by the response contract.
 Rejected selections remain in the response as structured diagnostics with

@@ -176,6 +176,7 @@ function applyAskApexSettings(
     setFelisModel: (model: string) => void
     setSandboxMode: (enabled: boolean) => void
     setPantheraHostedTools: (tools: PantheraHostedToolsSettings) => void
+    setPersonalContextEnabled: (agent: AgentKey, enabled: boolean) => void
   },
 ): void {
   setters.setCloudEffort(askApex.panthera.effort)
@@ -183,6 +184,8 @@ function applyAskApexSettings(
   setters.setFelisModel(askApex.felis?.model ?? 'gemma-4-E2B-Q4_K_M.gguf')
   setters.setSandboxMode(askApex.sandbox_mode)
   setters.setPantheraHostedTools({ ...askApex.panthera.hosted_tools })
+  setters.setPersonalContextEnabled('panthera', askApex.panthera.personal_context_enabled)
+  setters.setPersonalContextEnabled('felis', askApex.felis.personal_context_enabled)
 }
 
 interface PersistAgentSettingsOptions {
@@ -206,6 +209,7 @@ export default function App(): ReactElement {
     x_search: true,
   })
   const [snapshotAttached, setSnapshotAttached] = useState(true)
+  const [personalContextEnabled, setPersonalContextEnabled] = useState<Record<AgentKey, boolean>>({ panthera: false, felis: false })
   const [draftPrompt, setDraftPrompt] = useState('')
   const [submissionPending, setSubmissionPending] = useState(false)
   const submissionPendingRef = useRef(false)
@@ -507,6 +511,7 @@ export default function App(): ReactElement {
         setFelisModel,
         setSandboxMode,
         setPantheraHostedTools,
+        setPersonalContextEnabled: (agent, enabled) => setPersonalContextEnabled((previous) => ({ ...previous, [agent]: enabled })),
       })
       if (!briefingModeSelectionTouchedRef.current) {
         setBriefingMode(response.settings.briefing.default_mode)
@@ -555,6 +560,7 @@ export default function App(): ReactElement {
               setFelisModel,
               setSandboxMode,
               setPantheraHostedTools,
+              setPersonalContextEnabled: (agent, enabled) => setPersonalContextEnabled((previous) => ({ ...previous, [agent]: enabled })),
             })
           }
         }
@@ -1888,6 +1894,8 @@ export default function App(): ReactElement {
             snapshotAttached={snapshotAttached}
             snapshotAvailable={telemetry.snapshot !== null}
             onSnapshotAttachedChange={setSnapshotAttached}
+            personalContextEnabled={personalContextEnabled[activeAgent]}
+            onPersonalContextEnabledChange={(enabled) => persistAgentSettings({ [activeAgent]: { personal_context_enabled: enabled } })}
             onAgentChange={handleAgentChange}
             onPantheraModelChange={handlePantheraModelChange}
             onFelisModelChange={handleFelisModelChange}

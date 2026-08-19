@@ -72,6 +72,7 @@ function parsePreflight(value: unknown): ToolPreflightEstimate | null {
       system_instructions: breakdown.system_instructions,
       conversation_history: breakdown.conversation_history,
       hud_context: breakdown.hud_context,
+      ...(typeof breakdown.retrieved_context === 'number' ? { retrieved_context: breakdown.retrieved_context } : {}),
       selected_tool_schemas: breakdown.selected_tool_schemas,
       current_prompt: breakdown.current_prompt,
       total: breakdown.total,
