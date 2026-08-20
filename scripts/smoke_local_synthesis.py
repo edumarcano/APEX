@@ -33,7 +33,7 @@ def main() -> int:
         next_calendar_event=CalendarFact(title="Operations review", start="Friday at 2 PM"),
         pending_reminder_count=1,
         first_pending_reminder="Charge the backup laptop",
-        f1_this_week=F1Fact(race_name="British Grand Prix", start="Sunday at 10 AM"),
+        f1_upcoming=F1Fact(race_name="British Grand Prix", start="Sunday at 10 AM"),
         generated_at=datetime.now(timezone.utc).isoformat(),
     )
     installed = set(snapshot["installed_models"])

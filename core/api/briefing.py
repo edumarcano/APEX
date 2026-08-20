@@ -425,7 +425,7 @@ def _build_synthesis_input(
         overdue_reminder_count=overdue_count,
         due_today_reminder_count=due_today_count,
         reminders_truncated=bool(isinstance(reminder_records, list) and len(reminder_records) > 50),
-        f1_this_week=f1_fact,
+        f1_upcoming=f1_fact,
         football_next_fixture=football_fact,
         sports_events=sports_events,
         sports_truncated=False,

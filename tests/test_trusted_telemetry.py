@@ -53,7 +53,7 @@ def sample_input(**overrides: object) -> SynthesisInput:
         "next_calendar_event": CalendarFact(title="Review", start="Friday at 2 PM"),
         "pending_reminder_count": 1,
         "first_pending_reminder": "Charge laptop",
-        "f1_this_week": F1Fact(race_name="British Grand Prix", start="Sunday at 10 AM"),
+        "f1_upcoming": F1Fact(race_name="British Grand Prix", start="Sunday at 10 AM"),
         "football_next_fixture": FootballFact(
             team="Barcelona",
             opponent="Real Madrid",
@@ -197,7 +197,7 @@ class AdversarialSynthesisTests(unittest.TestCase):
             ],
             next_calendar_event=CalendarFact(title="A" * 1000, start="S" * 1000),
             first_pending_reminder="R" * 1000,
-            f1_this_week=F1Fact(race_name="F" * 1000, start="D" * 1000),
+            f1_upcoming=F1Fact(race_name="F" * 1000, start="D" * 1000),
             football_next_fixture=FootballFact(
                 team="T" * 1000,
                 opponent="O" * 1000,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
@@ -19,6 +19,9 @@ from core.synthesis.models import (
     WeatherHourFact,
 )
 from core.synthesis.router import SynthesisRouter
+from core.synthesis.models import SynthesisResult
+from core.agent.providers.contract import ProviderTurnResult
+from core.agent.types import AgentMessage
 from core.connectors.models import ConnectorResult
 from clients.weather_client import _hourly_window
 from core.connectors.collect import _calendar_data
@@ -168,3 +171,52 @@ class BriefingProjectionRegressionTests(unittest.TestCase):
         self.assertGreaterEqual(len(payload["emails"]), 2)
         self.assertGreaterEqual(len(payload["sports_events"]), 1)
         self.assertIn("payload", payload["truncated"])
+
+
+class BriefingRouterContractTests(unittest.TestCase):
+    def test_focused_falls_back_through_flash_then_structured(self) -> None:
+        router = SynthesisRouter()
+        local = SynthesisResult(briefing="Local orientation.", provider="llama_cpp", agent="felis")
+        with patch.object(router, "_panthera", side_effect=RuntimeError("openrouter_unavailable")), patch.object(
+            router, "_try_panthera_local_fallback", return_value=(local, "")
+        ) as fallback:
+            result = router.synthesize_mode(rich_facts(), "focused")
+        self.assertEqual(result.agent, "felis")
+        self.assertEqual(result.fallback_reason, "openrouter_unavailable")
+        self.assertEqual(len(fallback.call_args.args[0].calendar_events), 2)
+
+    def test_focused_provider_uses_fixed_model_high_effort_and_no_tools(self) -> None:
+        router = SynthesisRouter()
+        turn = ProviderTurnResult(
+            message=AgentMessage(role="agent", content="===SPEECH===\nReady.\n===INSIGHTS===\n- Clear"),
+            resolved_model="deepseek/deepseek-v4-flash-0731",
+        )
+        with patch.dict("os.environ", {"OPENROUTER_API_KEY": "test"}, clear=False), patch(
+            "core.synthesis.router.OpenRouterProvider.generate_turn", return_value=turn
+        ) as generate:
+            result = router._panthera(rich_facts().focused_view())
+        _messages, tools, profile = generate.call_args.args
+        self.assertEqual(tools, [])
+        self.assertEqual(profile.reasoning_effort, "high")
+        self.assertEqual(profile.api_model, "deepseek/deepseek-v4-flash-0731")
+        self.assertEqual(result.resolved_model, "deepseek/deepseek-v4-flash-0731")
+
+    def test_structured_bypasses_model_and_warmup(self) -> None:
+        router = SynthesisRouter()
+        with patch.object(router, "_panthera") as panthera, patch.object(router, "_local") as local:
+            result = router.synthesize_mode(rich_facts(), "structured")
+        self.assertEqual(result.provider, "raw")
+        panthera.assert_not_called()
+        local.assert_not_called()
+
+    def test_f1_upcoming_uses_an_iso_timestamp_inside_focused_horizon(self) -> None:
+        from core.api.briefing import _build_synthesis_input
+
+        f1 = ConnectorResult(
+            name="f1", status="healthy", freshness="live", reason_code="ok", display_text="",
+            data={"f1_map": {"raceName": "Grand Prix", "raceStart": (datetime.now(timezone.utc).replace(microsecond=0) + timedelta(days=7)).isoformat(), "sprintScheduled": True}},
+        )
+        source = _build_synthesis_input(results={"f1": f1}, failed_connectors=[])
+        self.assertIsNotNone(source.f1_upcoming)
+        self.assertEqual(source.f1_upcoming.race_name, "Grand Prix")
+        self.assertEqual(source.focused_view().sports_events[0].kind, "f1")

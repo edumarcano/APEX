@@ -99,7 +99,7 @@ def _drop_optional_payload_item(
         "weather_precip_probability",
         "weather_condition",
         "next_calendar_event",
-        "f1_this_week",
+        "f1_upcoming",
         "football_next_fixture",
     ):
         if data.get(key) not in (None, ""):
@@ -137,7 +137,7 @@ def compact_payload(source: SynthesisInput, max_chars: int = _DEFAULT_MAX_CHARS)
         "next_calendar_event": None,
         "pending_reminder_count": source.pending_reminder_count,
         "first_pending_reminder": sanitize_fact(source.first_pending_reminder),
-        "f1_this_week": None,
+        "f1_upcoming": None,
         "football_next_fixture": None,
         "connector_health": [
             {
@@ -188,11 +188,11 @@ def compact_payload(source: SynthesisInput, max_chars: int = _DEFAULT_MAX_CHARS)
             "start": sanitize_fact(source.next_calendar_event.start, 96),
             "all_day": source.next_calendar_event.all_day,
         }
-    if source.f1_this_week:
-        data["f1_this_week"] = {
-            "race_name": sanitize_fact(source.f1_this_week.race_name),
-            "start": sanitize_fact(source.f1_this_week.start, 96),
-            "sprint_scheduled": source.f1_this_week.sprint_scheduled,
+    if source.f1_upcoming:
+        data["f1_upcoming"] = {
+            "race_name": sanitize_fact(source.f1_upcoming.race_name),
+            "start": sanitize_fact(source.f1_upcoming.start, 96),
+            "sprint_scheduled": source.f1_upcoming.sprint_scheduled,
         }
     if source.football_next_fixture:
         data["football_next_fixture"] = {
@@ -331,8 +331,8 @@ def deterministic_fallback(source: SynthesisInput) -> tuple[str, list[str]]:
         )
     else:
         parts.append(f"Reminders: {source.pending_reminder_count} pending.")
-    if source.f1_this_week:
-        race = source.f1_this_week
+    if source.f1_upcoming:
+        race = source.f1_upcoming
         sprint = " with a sprint" if race.sprint_scheduled else ""
         parts.append(
             f"F1: {sanitize_fact(race.race_name, 100)} is this week at "

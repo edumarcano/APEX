@@ -138,7 +138,7 @@ class BriefingFacts(BaseModel):
     overdue_reminder_count: int = Field(default=0, ge=0)
     due_today_reminder_count: int = Field(default=0, ge=0)
     reminders_truncated: bool = False
-    f1_this_week: F1Fact | None = None
+    f1_upcoming: F1Fact | None = None
     football_next_fixture: FootballFact | None = None
     sports_events: list[SportEventFact] = Field(default_factory=list)
     sports_truncated: bool = False
