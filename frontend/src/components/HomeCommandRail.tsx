@@ -130,17 +130,25 @@ export function HomeCommandRail({
       {!activated ? (
         <div className="grid grid-cols-2 items-center gap-2" data-slot="home-standby-controls">
           <div className="col-span-2 flex min-h-10 justify-center" data-slot="home-standby-actions">
-          <StandbyActions
-            onStartApex={onStartApex}
-            onStartWithBriefing={onStartWithBriefing}
-            disabled={startDisabled}
-          />
-        </div>
+            <StandbyActions
+              onStartApex={onStartApex}
+              onStartWithBriefing={onStartWithBriefing}
+              disabled={startDisabled}
+            />
+          </div>
           <BriefingModeSelector
             value={briefingMode}
             onChange={onBriefingModeChange}
             targets={briefingTargets}
             disabled={briefingControlsBusy}
+            className="col-span-2 justify-self-center w-full max-w-[20rem]"
+          />
+          <LocalModelControl
+            agent={activeLocalModel}
+            loadingAgent={loadingLocalAgent}
+            busy={localLifecycleBusy}
+            onUnload={onUnloadLocalModel}
+            presentation="rail"
             className="col-span-2 justify-self-center w-full max-w-[20rem]"
           />
         </div>

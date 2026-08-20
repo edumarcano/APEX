@@ -188,13 +188,13 @@ describe('HomeCommandRail', () => {
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).not.toBeInTheDocument()
     const actions = document.querySelector<HTMLElement>('[data-slot="home-briefing-actions"]')
     const runtime = document.querySelector<HTMLElement>('[data-slot="home-local-runtime"]')
-    expect(runtime).toHaveTextContent('Felis · llama.cpp · Loaded')
+    expect(runtime).toHaveTextContent('gemma-4-E2B-Q4_K_M.gguf · llama.cpp · Loaded')
     expect(actions).not.toContainElement(runtime)
-    await user.click(screen.getByRole('button', { name: 'Unload Apex Felis' }))
+    await user.click(screen.getByRole('button', { name: 'Unload gemma-4-E2B-Q4_K_M.gguf' }))
     expect(onUnloadLocalModel).toHaveBeenCalledTimes(1)
   })
 
-  it('includes known Felis context in the local runtime strip', () => {
+  it('includes active local model in the local runtime strip', () => {
     const activeFelis = {
       ...profile('felis'),
       active: true,
@@ -214,14 +214,44 @@ describe('HomeCommandRail', () => {
     }
     renderRail({ activeLocalModel: activeFelis })
 
-    expect(screen.getByText('Felis · llama.cpp · 16K · Loaded')).toBeVisible()
+    expect(screen.getByText('felis-16k · llama.cpp · Loaded')).toBeVisible()
   })
 
   it('keeps the local runtime strip visible and disables unloading while a model is loading', () => {
     renderRail({ activeLocalModel: null, loadingLocalAgent: profile('felis') })
 
-    expect(screen.getByText('Felis · llama.cpp · Loading')).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Unload Apex Felis' })).toBeDisabled()
+    expect(screen.getByText('gemma-4-E2B-Q4_K_M.gguf · llama.cpp · Loading')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Unload gemma-4-E2B-Q4_K_M.gguf' })).toBeDisabled()
+  })
+
+  it('renders local model control during standby below briefing mode selector when a model is active', async () => {
+    const onUnloadLocalModel = vi.fn(async () => true)
+    const activeFelis = {
+      ...profile('felis'),
+      active: true,
+      display_name: 'Apex Felis',
+      loaded_model: {
+        provider: 'llama_cpp' as const,
+        name: 'gemma-4-E2B-Q4_K_M.gguf',
+        model: 'gemma-4-E2B-Q4_K_M.gguf',
+        state: 'loaded' as const,
+        context_window: 16384,
+        size_bytes: null,
+        size_vram_bytes: null,
+        processor: null,
+        context: null,
+        expires_at: null,
+      },
+    }
+    const user = userEvent.setup()
+    renderRail({ activated: false, activeLocalModel: activeFelis, onUnloadLocalModel })
+
+    expect(document.querySelector('[data-slot="home-standby-controls"]')).toBeVisible()
+    const runtime = document.querySelector<HTMLElement>('[data-slot="home-local-runtime"]')
+    expect(runtime).toBeVisible()
+    expect(runtime).toHaveTextContent('gemma-4-E2B-Q4_K_M.gguf · llama.cpp · Loaded')
+    await user.click(screen.getByRole('button', { name: 'Unload gemma-4-E2B-Q4_K_M.gguf' }))
+    expect(onUnloadLocalModel).toHaveBeenCalledTimes(1)
   })
 
   it('renders active command panel with 42rem max width and distinct query/briefing rows', () => {
