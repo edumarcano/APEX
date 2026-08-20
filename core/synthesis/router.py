@@ -55,10 +55,9 @@ from core.synthesis.formatting import (
 from core.synthesis.models import (
     FELIS_BRIEFING_CONTEXT_WINDOW,
     LOCAL_BRIEFING_AGENTS,
+    BriefingFacts,
     BriefingMode,
-    SynthesisInput,
     SynthesisResult,
-    strategy_to_briefing_mode,
 )
 from core.settings import get_settings_store
 
@@ -239,10 +238,6 @@ class SynthesisRouter:
         threading.Thread(target=worker, daemon=True, name="apex-synthesis-warmup").start()
         return handle
 
-    def prepare(self, strategy: str) -> WarmupHandle | None:
-        mode = strategy_to_briefing_mode(strategy)
-        return self.prepare_mode(mode)
-
     def prepare_mode(self, mode: BriefingMode) -> WarmupHandle | None:
         if mode in {"structured", "focused"}:
             return None
@@ -264,7 +259,7 @@ class SynthesisRouter:
         )
 
     def _raw(
-        self, source: SynthesisInput, reason: str | None, warmup_ms: int | None = None
+        self, source: BriefingFacts, reason: str | None, warmup_ms: int | None = None
     ) -> SynthesisResult:
         self._state("fallback", "raw", None, reason)
         briefing, insights = render_structured_briefing(source.structured_view())
@@ -278,7 +273,7 @@ class SynthesisRouter:
 
     def _structured_fallback(
         self,
-        source: SynthesisInput,
+        source: BriefingFacts,
         reason: str,
         warmup_ms: int | None = None,
     ) -> SynthesisResult:
@@ -286,7 +281,7 @@ class SynthesisRouter:
         result.fallback_steps = ["structured:resolved"]
         return result
 
-    def _panthera(self, source: SynthesisInput) -> SynthesisResult:
+    def _panthera(self, source: BriefingFacts) -> SynthesisResult:
         """Generate the Focused briefing with the fixed Panthera route."""
         import os
 
@@ -373,7 +368,7 @@ class SynthesisRouter:
 
     def _local(
         self,
-        source: SynthesisInput,
+        source: BriefingFacts,
         agent_key: str,
         warmup_ms: int | None,
         *,
@@ -423,7 +418,7 @@ class SynthesisRouter:
 
     def _synthesize_explicit_local(
         self,
-        source: SynthesisInput,
+        source: BriefingFacts,
         agent_key: str,
         warmup: WarmupHandle | None,
     ) -> SynthesisResult:
@@ -479,7 +474,7 @@ class SynthesisRouter:
             return self._structured_fallback(source, reason, warmup.elapsed_ms)
 
     def _synthesize_focused(
-        self, source: SynthesisInput, flash_source: SynthesisInput
+        self, source: BriefingFacts, flash_source: BriefingFacts
     ) -> SynthesisResult:
         """Route Focused failure through Flash, then Structured."""
         fallback_steps: list[str] = []
@@ -520,7 +515,7 @@ class SynthesisRouter:
         return result
 
     def _try_panthera_local_fallback(
-        self, source: SynthesisInput, agent_key: str
+        self, source: BriefingFacts, agent_key: str
     ) -> tuple[SynthesisResult | None, str]:
         """Attempt one ordered local fallback without substituting agents."""
         resident_ref = (
@@ -574,7 +569,7 @@ class SynthesisRouter:
 
     def synthesize_mode(
         self,
-        source: SynthesisInput,
+        source: BriefingFacts,
         mode: BriefingMode,
         warmup: WarmupHandle | None = None,
     ) -> SynthesisResult:
@@ -590,16 +585,3 @@ class SynthesisRouter:
             return self._synthesize_explicit_local(source.flash_view(), "felis", warmup)
 
         return self._raw(source, "invalid_briefing_mode")
-
-    def synthesize(
-        self,
-        source: SynthesisInput,
-        strategy: str,
-        warmup: WarmupHandle | None = None,
-        *,
-        full_telemetry: str | None = None,
-    ) -> SynthesisResult:
-        # full_telemetry is retained only as an unused compatibility keyword.
-        _ = full_telemetry
-        mode = strategy_to_briefing_mode(strategy)
-        return self.synthesize_mode(source, mode, warmup)

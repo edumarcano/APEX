@@ -6,7 +6,7 @@ import re
 import unicodedata
 from typing import Any
 
-from core.synthesis.models import BriefingMode, SynthesisInput
+from core.synthesis.models import BriefingFacts, BriefingMode
 
 _SPEECH = "===SPEECH==="
 _INSIGHTS = "===INSIGHTS==="
@@ -108,7 +108,7 @@ def _drop_optional_payload_item(
     return None
 
 
-def compact_payload(source: SynthesisInput, max_chars: int = _DEFAULT_MAX_CHARS) -> str:
+def compact_payload(source: BriefingFacts, max_chars: int = _DEFAULT_MAX_CHARS) -> str:
     data: dict[str, Any] = {
         "generated_at": sanitize_fact(source.generated_at, 64),
         "timezone": sanitize_fact(source.timezone, 64),
@@ -242,7 +242,7 @@ def compact_payload(source: SynthesisInput, max_chars: int = _DEFAULT_MAX_CHARS)
 
 
 def wrap_untrusted_payload(
-    source: SynthesisInput,
+    source: BriefingFacts,
     max_chars: int | None = None,
     *,
     mode: BriefingMode | None = None,
@@ -293,65 +293,7 @@ def parse_model_output(
     return speech, insights
 
 
-def deterministic_fallback(source: SynthesisInput) -> tuple[str, list[str]]:
-    parts: list[str] = []
-    failures = [
-        sanitize_fact(item, 48) for item in source.failed_connectors if sanitize_fact(item, 48)
-    ]
-    if failures:
-        parts.append(f"Unavailable telemetry: {', '.join(failures)}.")
-    weather = sanitize_fact(source.weather_summary, 160)
-    if weather:
-        parts.append(weather.rstrip(".") + ".")
-    if source.email_unread_count:
-        parts.append(f"Email: {source.email_unread_count} unread.")
-    if source.news_headlines:
-        first = source.news_headlines[0]
-        parts.append(
-            f"News: {sanitize_fact(first.topic, 40)} — {sanitize_fact(first.headline, 80)}."
-        )
-    if source.next_calendar_event:
-        event = source.next_calendar_event
-        when = (
-            "All day " + sanitize_fact(event.start, 72)
-            if event.all_day
-            else sanitize_fact(event.start, 72)
-        )
-        parts.append(
-            f"Calendar: {source.calendar_event_count} event"
-            f"{'s' if source.calendar_event_count != 1 else ''}; "
-            f"next is {sanitize_fact(event.title, 100)} at {when}."
-        )
-    else:
-        parts.append(f"Calendar: {source.calendar_event_count} upcoming events.")
-    if source.first_pending_reminder:
-        parts.append(
-            f"Reminders: {source.pending_reminder_count} pending; first is "
-            f"{sanitize_fact(source.first_pending_reminder, 120)}."
-        )
-    else:
-        parts.append(f"Reminders: {source.pending_reminder_count} pending.")
-    if source.f1_upcoming:
-        race = source.f1_upcoming
-        sprint = " with a sprint" if race.sprint_scheduled else ""
-        parts.append(
-            f"F1: {sanitize_fact(race.race_name, 100)} is this week at "
-            f"{sanitize_fact(race.start, 72)}{sprint}."
-        )
-    if source.football_next_fixture:
-        fixture = source.football_next_fixture
-        venue = "Home" if fixture.home_or_away == "home" else "Away"
-        parts.append(
-            f"Football: {sanitize_fact(fixture.team, 80)} is {venue} vs "
-            f"{sanitize_fact(fixture.opponent, 80)} in {sanitize_fact(fixture.competition, 80)} at "
-            f"{sanitize_fact(fixture.kickoff, 72)}."
-        )
-    briefing = _clamp_words(" ".join(parts), 75)
-    insights = ["Deterministic privacy-safe briefing fallback active."]
-    return briefing or "No briefing telemetry is currently available.", insights
-
-
-def render_structured_briefing(source: SynthesisInput) -> tuple[str, list[str]]:
+def render_structured_briefing(source: BriefingFacts) -> tuple[str, list[str]]:
     """Render the authoritative collected facts without model interpretation."""
     lines: list[str] = []
     insights: list[str] = []

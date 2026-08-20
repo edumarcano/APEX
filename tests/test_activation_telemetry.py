@@ -862,20 +862,20 @@ class TriggerWithoutGateTests(unittest.TestCase):
 
         with mock.patch("core.api.briefing.DEMO_MODE", False), mock.patch(
             "core.api.briefing.is_dev_mode", return_value=True
-        ), mock.patch("core.api.briefing.DEV_AI_SYNTHESIS", "raw"), mock.patch(
+        ), mock.patch("core.api.briefing.DEV_AI_SYNTHESIS", "structured"), mock.patch(
             "core.api.briefing.DEV_TTS_PLAYBACK", "pyttsx3"
         ), mock.patch(
             "core.telemetry.collector.collect_reminders",
             return_value=_result("reminders", "healthy"),
         ), mock.patch(
-            "core.api.briefing.brain.process_telemetry",
-            return_value=synthesis.model_dump(),
+            "core.api.briefing.SynthesisRouter.synthesize_mode",
+            return_value=synthesis,
         ), mock.patch("core.api.briefing.speaker.speak"), mock.patch(
             "core.api.state.speaker.speak"
         ), mock.patch(
             "core.api.briefing.threading.Thread", side_effect=_immediate_thread
         ), mock.patch(
-            "core.api.briefing.SynthesisRouter.prepare", return_value=None
+            "core.api.briefing.SynthesisRouter.prepare_mode", return_value=None
         ), mock.patch(
             "core.api.tts.scanner.is_system_throttled", return_value=False
         ):

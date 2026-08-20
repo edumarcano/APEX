@@ -32,6 +32,8 @@ class ConfigEnvParsingTests(unittest.TestCase):
     def test_dev_ai_synthesis_accepts_only_canonical_modes(self) -> None:
         from core import config
 
+        from core import config
+
         self.assertEqual(config._parse_dev_ai_synthesis(None), "structured")
         self.assertEqual(config._parse_dev_ai_synthesis("flash"), "flash")
         self.assertEqual(config._parse_dev_ai_synthesis("focused"), "focused")
@@ -44,46 +46,6 @@ class ConfigEnvParsingTests(unittest.TestCase):
         self.assertEqual(config._parse_dev_tts_playback(None), "pyttsx3")
         self.assertEqual(config._parse_dev_tts_playback("google"), "google")
         self.assertEqual(config._parse_dev_tts_playback("bad"), "pyttsx3")
-
-
-class BrainFallbackShapeTests(unittest.TestCase):
-    def test_process_telemetry_returns_synthesis_dict_shape(self) -> None:
-        from core import brain
-
-        expected = SynthesisResult(
-            briefing="Fallback briefing.",
-            insights=["Deterministic privacy-safe briefing fallback active."],
-            provider="raw",
-            fallback_reason="configured_raw",
-        )
-        router = mock.Mock()
-        router.synthesize_mode.return_value = expected
-
-        with mock.patch.object(brain, "is_dev_mode", return_value=True), mock.patch.object(
-            brain, "DEV_AI_SYNTHESIS", "structured"
-        ):
-            result = brain.process_telemetry("weather clear", router=router)
-
-        self.assertEqual(result["briefing"], "Fallback briefing.")
-        self.assertEqual(result["provider"], "raw")
-        self.assertEqual(result["fallback_reason"], "configured_raw")
-        self.assertIn("insights", result)
-        self.assertIsInstance(result["insights"], list)
-        router.synthesize_mode.assert_called_once()
-        self.assertEqual(router.synthesize_mode.call_args.args[1], "structured")
-
-    def test_process_telemetry_defaults_to_flash_outside_dev_mode(self) -> None:
-        from core import brain
-
-        expected = SynthesisResult(briefing="Cloud.", provider="gemini", agent="panthera")
-        router = mock.Mock()
-        router.synthesize_mode.return_value = expected
-
-        with mock.patch.object(brain, "is_dev_mode", return_value=False):
-            result = brain.process_telemetry("weather clear", router=router)
-
-        self.assertEqual(result["provider"], "gemini")
-        self.assertEqual(router.synthesize_mode.call_args.args[1], "flash")
 
 
 class DemoHistoryEndpointTests(unittest.TestCase):

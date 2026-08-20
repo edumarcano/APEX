@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 from core.agent.types import CostEstimate, TokenUsage
 
 FELIS_BRIEFING_CONTEXT_WINDOW = 16_384
-APODEMUS_BRIEFING_CONTEXT_WINDOW = FELIS_BRIEFING_CONTEXT_WINDOW
 
 SynthesisProvider = Literal[
     "gemini", "ollama", "llama_cpp", "raw", "demo", "openai", "openrouter"
@@ -209,8 +208,7 @@ class BriefingFacts(BaseModel):
         )
 
 
-# Kept as a source-level alias while callers move to the explicit facts name.
-SynthesisInput = BriefingFacts
+
 
 
 def _parse_fact_time(value: str) -> datetime | None:

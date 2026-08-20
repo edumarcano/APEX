@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
 
-from core import brain, database, speaker
+from core import database, speaker
 from core.agent.sandbox_context import publish_masked_briefing
 from core.api.demo import build_demo_briefing, load_mock_telemetry
 from core.api.models import (
@@ -48,7 +48,6 @@ from core.synthesis import (
     SportEventFact,
     WeatherDayFact,
     WeatherHourFact,
-    SynthesisInput,
     SynthesisRouter,
     strategy_to_briefing_mode,
 )
@@ -105,21 +104,12 @@ def _maybe_speak(text: str, *, tts_override: str | None = None, voice_gender: st
     speaker.speak(text, tts_override=tts_override, voice_gender=voice_gender)
 
 
-def _compute_confidence_and_failures(
-    *,
-    results: dict[str, ConnectorResult | None],
-) -> tuple[float, list[str]]:
-    """Compatibility wrapper returning sync health score and legacy failures."""
-    report = compute_sync_health(results)
-    return report.sync_health_score, report.failed_connectors
-
-
 def _build_synthesis_input(
     *,
     results: dict[str, ConnectorResult | None],
     failed_connectors: list[str],
     snapshot: TelemetrySnapshot | None = None,
-) -> SynthesisInput:
+) -> BriefingFacts:
     weather = results.get("weather")
     news = results.get("news")
     email = results.get("email")
@@ -695,15 +685,13 @@ def _synthesize_from_snapshot(
             )
             filler_thread.start()
 
-        brain_output = brain.process_telemetry(
-            "",
-            synthesis_input=synthesis_input,
+        synthesis_result = synthesis_router.synthesize_mode(
+            source=synthesis_input,
             mode=mode,
             warmup=warmup,
-            router=synthesis_router,
         )
-        final_briefing = brain_output["briefing"]
-        briefing_insights = brain_output["insights"]
+        final_briefing = synthesis_result.briefing
+        briefing_insights = synthesis_result.insights
 
         if filler_thread is not None:
             filler_thread.join()
@@ -734,16 +722,16 @@ def _synthesize_from_snapshot(
             demo_mode_active=False,
             synthesis_strategy=synthesis_strategy,
             briefing_mode=mode,
-            synthesis_provider=brain_output.get("provider"),
-            synthesis_agent=brain_output.get("agent"),
-            synthesis_resolved_model=brain_output.get("resolved_model"),
-            synthesis_fallback_reason=brain_output.get("fallback_reason"),
-            synthesis_fallback_steps=brain_output.get("fallback_steps", []),
-            synthesis_warmup_ms=brain_output.get("warmup_ms"),
-            synthesis_generation_ms=brain_output.get("generation_ms"),
-            synthesis_provider_ms=brain_output.get("provider_ms"),
-            synthesis_usage=brain_output.get("usage"),
-            synthesis_cost_estimate=brain_output.get("cost_estimate"),
+            synthesis_provider=synthesis_result.provider,
+            synthesis_agent=synthesis_result.agent,
+            synthesis_resolved_model=synthesis_result.resolved_model,
+            synthesis_fallback_reason=synthesis_result.fallback_reason,
+            synthesis_fallback_steps=synthesis_result.fallback_steps,
+            synthesis_warmup_ms=synthesis_result.warmup_ms,
+            synthesis_generation_ms=synthesis_result.generation_ms,
+            synthesis_provider_ms=synthesis_result.provider_ms,
+            synthesis_usage=synthesis_result.usage,
+            synthesis_cost_estimate=synthesis_result.cost_estimate,
             tts_strategy=tts_strategy,
             active_tts_engine=active_tts_engine,
             system_load_throttled=system_load_throttled,

@@ -1,7 +1,6 @@
 """Provider-neutral briefing synthesis."""
 
 from core.synthesis.models import (
-    APODEMUS_BRIEFING_CONTEXT_WINDOW,
     CalendarFact,
     ConnectorHealthFact,
     F1Fact,
@@ -15,14 +14,12 @@ from core.synthesis.models import (
     WeatherHourFact,
     BriefingMode,
     SynthesisAgent,
-    SynthesisInput,
     SynthesisResult,
     strategy_to_briefing_mode,
 )
 from core.synthesis.router import SynthesisRouter, WarmupHandle
 
 __all__ = [
-    "APODEMUS_BRIEFING_CONTEXT_WINDOW",
     "BriefingMode",
     "BriefingFacts",
     "SynthesisAgent",
@@ -36,7 +33,6 @@ __all__ = [
     "SportEventFact",
     "WeatherDayFact",
     "WeatherHourFact",
-    "SynthesisInput",
     "SynthesisResult",
     "SynthesisRouter",
     "WarmupHandle",
