@@ -13,6 +13,8 @@ uv run apex ask "What needs my attention?"
 uv run apex ask "Review my plan" --agent panthera --effort focused --profile daily_planning
 uv run apex briefing
 uv run apex briefing --mode structured
+uv run apex context status
+uv run apex context prepare
 uv run apex actions list
 uv run apex actions show <action-id>
 uv run apex actions approve <action-id>

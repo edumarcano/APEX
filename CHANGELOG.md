@@ -2,44 +2,58 @@
 
 ---
 
-## Unreleased - Agent Family Consolidation (Checkpoint 0)
+## v2.0.0-beta.1 - Cortex: Persistent Context, World Model & Retrieval
 
-**In progress:** August 15, 2026
+**Released:** August 20, 2026
 
-APEX now exposes two Apex Agents: Panthera for cloud work and Felis for local work. Model, context, reasoning, effort, and hosted-tool settings live underneath those identities instead of in separate genus-based Agent names; each model profile determines its provider or local runtime. Panthera and Felis are at version 2.0.
+This milestone adds persistent conversation history, a personal knowledge store, and retrieval to Cortex, and consolidates the Agent roster to Panthera and Felis. Conversations are kept in SQLite across restarts. When the user shares information worth keeping, Cortex can store it as a structured knowledge record; retrieval then pulls relevant records and conversation history into each query automatically. An OpenRouter provider adds DeepSeek V4 Flash as the default cloud briefing model. Briefing modes are simplified to Flash (local), Focused (cloud), and Structured Digest. The Cortex Workspace moves to assistant-ui for thread management, and Home selectors now let you pick a model directly rather than an Agent name.
 
 ---
 
 ### What's New
 
-- Consolidated the product roster to Panthera and Felis. Former Agent identities such as Apodemus, Neotoma, Acinonyx, Neofelis, Delphinus, Orcinus, Sorex, and Mus are retired rather than migrated at runtime; existing local Agent settings must be updated to the Panthera/Felis model-first format.
-- Introduced Felis as the durable local Agent identity.
-- Moved cloud and local model catalogs under Panthera and Felis settings (`ask_apex.panthera`, `ask_apex.felis`) with schema version `16`; persisted route settings contain only the selected model.
-- Renamed llama.cpp router presets from Agent-based aliases such as `apodemus-16k` to model-based aliases such as `gemma-4-e2b-16k`; existing Agent-based aliases must be updated in machine-local presets.
-- Updated briefing modes to `panthera`, `felis`, and `structured_digest`, with Panthera falling back to Felis and then Structured Digest.
-- Replaced the Acinonyx-specific development sandbox with `ask_apex.sandbox_mode` under `DEV_MODE`, using the `sandbox` history partition and a restricted non-personal tool allowlist.
+- Cut the Agent roster to two: **Panthera** for cloud inference and **Felis** for local inference. Model profiles, context windows, effort levels, reasoning modes, and hosted tool settings live under each identity. The former genus-based Agent names (Apodemus, Neotoma, Acinonyx, etc.) are retired.
+- Added an OpenRouter provider. DeepSeek V4 Flash is now the default model for cloud briefing synthesis, replacing the previous OpenAI path.
+- Conversation history is now stored in SQLite and survives restarts and page reloads. Threads and messages are associated with sessions and can be branched.
+- The Cortex Workspace uses assistant-ui for the conversation rail, thread navigation, message branching, and response cards. Response metric cards are collapsible.
+- Added a personal knowledge store. Records carry source references, aliases, relationships, and lifecycle status.
+- When a conversation contains information worth keeping (preferences, decisions, observations, etc.), Cortex can extract it into the knowledge store. Conversation text stays separate from stored knowledge.
+- Added retrieval combining BM25 full-text search and vector embeddings. Relevant knowledge and conversation history are assembled into each Cortex query automatically, within a configurable token budget. A Context Inspector shows what was retrieved.
+- Added `search_apex_docs`, a native tool that searches `README.md` and `docs/**/*.md` using the same retrieval stack. Results are labeled as untrusted references in the UI.
+- Briefing modes are now Flash (local Felis), Focused (cloud Panthera via OpenRouter), and Structured Digest (no model). Automatic voice playback no longer triggers for raw Structured results.
+- Home model and briefing selectors now expose individual model choice, context-window size, reasoning mode, and effort level directly, rather than selecting a named Agent.
+- Added `ask_apex.sandbox_mode` under `DEV_MODE`. Sandbox queries use a separate history partition and a non-personal tool allowlist.
 
 ### Architecture Changes
 
-- Reduced `AGENT_SPECS` to Panthera and Felis in `core/agent/catalog.py`, with replaceable model profiles in `core/agent/model_catalog.py`.
-- Removed legacy Agent-key migration from settings normalization and model-catalog metadata; current settings resolve only through Panthera, Felis, and their selected model profiles.
-- Updated Cortex agent status, tool policy, synthesis routing, and local-model lifecycle to resolve configuration through Panthera and Felis.
+- `AGENT_SPECS` in `core/agent/catalog.py` now contains only Panthera and Felis. Model profiles in `core/agent/model_catalog.py` determine the provider and runtime; Agent-key migrations and legacy aliases are removed.
+- Conversation storage lives in `core/conversations/` and handles thread and message lifecycle, session metadata, and branching.
+- The knowledge store lives in `core/knowledge/` and persists entities, aliases, relations, and claims with UTC timestamps.
+- Retrieval lives in `core/retrieval/` and handles FTS5 + embedding-based search, documentation indexing, and incremental re-indexing on content changes.
+- `core/context/` assembles retrieved knowledge and conversation history into the prompt context for each Cortex request.
+- Added `core/agent/providers/openrouter.py` and `clients/openrouter_client.py` following the existing `InferenceProvider` contract.
+- Settings normalization bumped to schema version `16` with nested `ask_apex.panthera` and `ask_apex.felis` groups.
 
 ### API Changes
 
-- `GET /api/v1/agents` now returns Panthera and Felis with selected-model metadata and each Agent's `model_catalog`.
-- Settings and briefing contracts use schema version `16` with nested `panthera` and `felis` groups; provider/runtime routing is derived from the selected model.
+- `GET /api/v1/agents` returns Panthera and Felis with selected model metadata, availability status, and each Agent's `model_catalog`.
+- Added conversation endpoints under `/api/v1/cortex/conversations`: list, create, get, update, delete, and fork.
+- `POST /api/v1/cortex/query` now accepts `conversation_id`, `parent_message_id`, model overrides, and `history_partition: "sandbox"`.
+- Added `POST /api/v1/cortex/context/inspect` to expose what context was assembled for a request.
 - `POST /api/v1/cortex/local-model/load` accepts only `felis`.
-- `POST /api/v1/cortex/query` uses `history_partition: "sandbox"` for development sandbox queries.
+- Settings schema version is now `16`, with `panthera` and `felis` as top-level groups under `ask_apex`.
 
 ### Frontend Changes
 
-- Updated Agent selection, briefing controls, and Cortex inspector flows for the two-Agent model and per-Agent model catalogs.
+- Adopted `@assistant-ui/react` for the Cortex Workspace. Added `CortexConversationRail.tsx`, `CortexQueryBar.tsx`, `ContextInspector.tsx`, and `DocumentationSearchCard.tsx`.
+- `AgentSelector.tsx`, `ToolsSelector.tsx`, `HomeCommandRail.tsx`, and `SettingsPanel.tsx` updated for the two-Agent model catalog, briefing mode selector, and model override controls.
+- Chat layout refined: responsive logo placement, improved scrolling, and updated agent marks.
 
 ### Documentation Updates
 
-- Rewrote the Agent family guidance in `docs/identity-and-naming.md`, including Felis and Panthera 2.0 / Felis 2.0.
-- Updated `docs/api.md`, `docs/architecture.md`, `docs/configuration.md`, `docs/privacy.md`, `docs/cli.md`, `docs/getting-started.md`, `docs/decisions.md`, `docs/design-system.md`, `benchmarks/README.md`, `docs/examples/llama-cpp-apex-agents.preset.ini`, and `README.md`.
+- Rewrote `docs/identity-and-naming.md` for Panthera and Felis and the three briefing modes.
+- Updated `docs/api.md`, `docs/architecture.md`, `docs/configuration.md`, `docs/privacy.md`, `docs/cli.md`, `docs/getting-started.md`, `docs/decisions.md`, `docs/design-system.md`, and `README.md`.
+- Added assistant-ui MIT license notice to `THIRD_PARTY_NOTICES.md`.
 - Updated `scripts/check_docs.py` for the consolidated Agent and model documentation checks.
 
 ---

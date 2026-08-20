@@ -391,6 +391,10 @@ def check_release_version(root: Path) -> list[DocumentationIssue]:
     project_version = tomllib.loads(
         pyproject_path.read_text(encoding="utf-8")
     )["project"]["version"]
+    # Strip PEP 440 pre/post-release suffix (e.g. "2.0.0b1" -> "2.0.0") so
+    # the comparison works against the X.Y.Z extracted from changelog headings.
+    base_version = re.match(r"(\d+\.\d+\.\d+)", project_version)
+    comparable_version = base_version.group(1) if base_version else project_version
     match = RELEASE_HEADING_PATTERN.search(changelog_path.read_text(encoding="utf-8"))
     if match is None:
         return [
@@ -401,7 +405,7 @@ def check_release_version(root: Path) -> list[DocumentationIssue]:
                 "released changelog version could not be determined",
             )
         ]
-    if project_version == match.group(1):
+    if comparable_version == match.group(1):
         return []
     return [
         DocumentationIssue(
