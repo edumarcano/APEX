@@ -120,6 +120,18 @@ APEX has two Apex Agents: **Panthera** for cloud work and **Felis** for local wo
 
 Current default model mappings used by documentation checks are `panthera -> gpt-5.6-luna`; `felis -> gemma-4-E2B-Q4_K_M.gguf`; legacy Agent settings are not migrated at runtime, so update them to the Panthera/Felis model-first format.
 
+## Model stability
+
+Model stability shows how confident APEX is in a model’s role and behavior. It does not necessarily match the provider’s own label.
+
+- **Stable** - well understood and proven for its intended use in APEX.
+
+- **Preview** - looks useful, but still needs more testing before its role is fully settled.
+
+- **Experimental** - still being tested to see whether it fits APEX at all, or what role it should have.
+
+Stability is separate from availability. A Stable model can still be limited to Dev Mode simply because its intended role is not integrated yet.
+
 ### Panthera
 
 | Setting group | Purpose |
