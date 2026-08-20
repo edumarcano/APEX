@@ -117,7 +117,7 @@ function BriefingModeMark({ mode }: { mode: BriefingMode }): ReactElement {
     return (
       <span
         aria-label="Focused Briefing mark"
-        className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-[#1F6FE5]/35 bg-[#1F6FE5]/15 text-[#1F6FE5]"
+        className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-indigo-400/35 bg-indigo-500/15 text-indigo-300"
       >
         <Orbit className="size-3.5" aria-hidden />
       </span>
@@ -127,7 +127,7 @@ function BriefingModeMark({ mode }: { mode: BriefingMode }): ReactElement {
     return (
       <span
         aria-label="Flash Briefing mark"
-        className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-[#6EA8FF]/35 bg-[#6EA8FF]/15 text-[#6EA8FF]"
+        className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-cyan-400/35 bg-cyan-500/15 text-cyan-300"
       >
         <Zap className="size-3.5" aria-hidden />
       </span>
