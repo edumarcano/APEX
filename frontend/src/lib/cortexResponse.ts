@@ -25,14 +25,6 @@ export interface AgentQueryMetadata {
   toolSelection: ToolSelectionDiagnostics | null
 }
 
-export interface AgentMessage {
-  role: 'user' | 'agent'
-  content: string
-  tool_outputs?: ToolOutputItem[]
-  tool_trace?: ToolTraceItem[]
-  metadata?: AgentQueryMetadata
-}
-
 export interface AgentQueryResponseBody {
   answer?: string
   tool_trace?: ToolTraceItem[]
@@ -87,7 +79,7 @@ export function parseAgentQueryResponse(body: unknown): AgentQueryResponseBody {
     usage: usageRecord ? { inputTokens: nullableNumber(usageRecord.input_tokens), cachedInputTokens: nullableNumber(usageRecord.cached_input_tokens), reasoningTokens: nullableNumber(usageRecord.reasoning_tokens), outputTokens: nullableNumber(usageRecord.output_tokens), totalTokens: nullableNumber(usageRecord.total_tokens) } : null,
     timing: timingRecord ? { totalMs: nullableNumber(timingRecord.total_ms), providerMs: nullableNumber(timingRecord.provider_ms), apexToolMs: nullableNumber(timingRecord.apex_tool_ms) } : null,
     cost: costRecord ? { tokenCost: nullableNumber(costRecord.token_cost), hostedToolCost: nullableNumber(costRecord.hosted_tool_cost), totalCost: nullableNumber(costRecord.total_cost), currency: nullableString(costRecord.currency) ?? 'USD', pricingVersion: nullableString(costRecord.pricing_version), completeness: nullableString(costRecord.completeness) } : null,
-    citations, grounding: groundingRecord ? { searchSuggestionsHtml: nullableString(groundingRecord.search_suggestions_html) } : null,
+    citations, grounding: groundingRecord ? { searchSuggestionsHtml: nullableString(groundingRecord.search_suggestions_html ?? groundingRecord.searchSuggestionsHtml) } : null,
     toolSelection: asRecord(metadataRecord.tool_selection) as ToolSelectionDiagnostics | null,
   } : undefined
   return { ...(typeof record.answer === 'string' ? { answer: record.answer } : {}), tool_trace: trace, tool_outputs: outputs, ...(typeof record.error === 'string' || record.error === null ? { error: record.error as string | null } : {}), local_context_usage, context_usage, context_references, ...(metadata ? { metadata } : {}) }

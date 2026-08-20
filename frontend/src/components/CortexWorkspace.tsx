@@ -1,7 +1,7 @@
-import { BrainCircuit, ExternalLink, Loader2, Plus } from 'lucide-react'
+import { BrainCircuit, ExternalLink, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from 'react'
 
-import { parseAgentQueryResponse, type AgentMessage, type AgentQueryMetadata, type ToolTraceItem } from '../lib/cortexResponse'
+import { parseAgentQueryResponse, type AgentQueryMetadata, type ToolTraceItem } from '../lib/cortexResponse'
 import type { UseActionsResult } from '../hooks/useActions'
 import type {
   AgentStatus,
@@ -12,7 +12,6 @@ import type {
   LocalReasoningMode,
   ToolCatalog,
   ToolPreflightEstimate,
-  ToolOutputItem,
 } from '../types/telemetry'
 import type { PantheraHostedToolsSettings } from '../types/settings'
 import {
@@ -29,11 +28,9 @@ import remarkGfm from 'remark-gfm'
 import { CortexToolCards } from './CortexToolCards'
 import { CortexActions } from './CortexActions'
 import { CortexContext } from './CortexContext'
-import { ApexLogo, type ApexLogoProps } from './ApexLogo'
-import { AgentQueryBar } from './AgentQueryBar'
+import { type ApexLogoProps } from './ApexLogo'
 import { AgentSelector } from './AgentSelector'
 import { ModelSelector } from './ModelSelector'
-import { OPERATION_PROMPT_CHIPS } from '../lib/promptChips'
 import { ApexAssistantThread, ApexConversationRail, type ApexAssistantComposerProps, type ApexAssistantRunConfig } from './ApexAssistantRuntime'
 import { useContextInspector } from '../hooks/useContextInspector'
 
@@ -50,7 +47,6 @@ interface CortexWorkspaceProps {
   agentQueriesEnabled: boolean
   agentsStatus: AgentStatus[]
   agentsStatusHydrated: boolean
-  history: AgentMessage[]
   latestTrace: ToolTraceItem[]
   error: string | null
   contextUsage: LocalContextUsage | null
@@ -74,8 +70,6 @@ interface CortexWorkspaceProps {
   onDeleteToolProfile?: (profileId: string) => void
   onRestoreToolProfile?: (profileId: string) => void
   onSetDefaultToolProfile?: (profileId: string) => void
-  draftPrompt?: string
-  onDraftChange?: (value: string) => void
   isQuerying: boolean
   logoProps: Omit<ApexLogoProps, 'className'>
   lifecycleBusy: boolean
@@ -97,16 +91,9 @@ interface CortexWorkspaceProps {
   onSandboxModeChange: (enabled: boolean) => void
   onLocalContextWindowChange: (contextWindow: number) => Promise<boolean>
   onLocalReasoningModeChange: (reasoningMode: LocalReasoningMode) => Promise<boolean>
-  onSubmit: (
-    query: string,
-    agent: AgentKey,
-    selectedToolNames: string[],
-    toolProfileId: string | null,
-  ) => Promise<boolean>
-  onNewSession: () => void
   actions: UseActionsResult
   demoModeActive: boolean
-  assistantRunConfig?: ApexAssistantRunConfig
+  assistantRunConfig: ApexAssistantRunConfig
   onAssistantPreflight?: (config: ApexAssistantRunConfig) => Promise<boolean>
 }
 
@@ -314,7 +301,15 @@ function ContextUsed({ references, onOpenRecord }: { references: ReturnType<type
   return <details className="mt-3 rounded-lg border border-white/10 bg-black/10"><summary className="cursor-pointer select-none px-3 py-2 font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500 hover:text-zinc-300">Context used</summary><ul className="space-y-1.5 border-t border-white/10 p-3">{references.map((reference) => <li key={`${reference.namespace}-${reference.source_id}`} className="flex flex-wrap items-center gap-2 font-mono text-[10px] text-zinc-400"><span>{reference.namespace}</span><span className="text-zinc-600">{reference.status ?? 'reference'}</span>{reference.namespace === 'personal_context' ? <button type="button" onClick={() => onOpenRecord(reference.source_id)} className="text-[#9AC2FF] hover:text-white">Open record</button> : <span className="break-all text-zinc-600">{reference.locator}</span>}</li>)}</ul></details>
 }
 
-function renderAssistantResponse(text: string, rawMetadata: Record<string, unknown>, onOpenRecord: (recordId: string) => void): ReactElement {
+export function AssistantResponseDisplay({
+  text,
+  rawMetadata,
+  onOpenRecord,
+}: {
+  text: string
+  rawMetadata: Record<string, unknown>
+  onOpenRecord: (recordId: string) => void
+}): ReactElement {
   const response = parseAgentQueryResponse({ ...rawMetadata, answer: text })
   const metadata = response.metadata
   return <>
@@ -343,37 +338,6 @@ function renderAssistantResponse(text: string, rawMetadata: Record<string, unkno
     <TraceList trace={response.tool_trace ?? []} />
     {response.tool_outputs && response.tool_outputs.length > 0 ? <CortexToolCards toolOutputs={response.tool_outputs} /> : null}
   </>
-}
-
-export function Conversation({ history, latestTrace, error, isQuerying, agentsStatus, activeAgent, onPromptSelect, logoProps }: { history: AgentMessage[]; latestTrace: ToolTraceItem[]; error: string | null; isQuerying: boolean; agentsStatus: AgentStatus[]; activeAgent: AgentKey; onPromptSelect: ((query: string) => void) | null; logoProps?: Omit<ApexLogoProps, 'className'> }): ReactElement {
-  const latestMessageRef = useRef<HTMLDivElement>(null)
-  const lastScrolledIndexRef = useRef<number>(-1)
-
-  useEffect(() => {
-    const lastIndex = history.length - 1
-    if (lastIndex >= 0 && lastScrolledIndexRef.current !== lastIndex) {
-      lastScrolledIndexRef.current = lastIndex
-      const target = latestMessageRef.current
-      if (typeof target?.scrollIntoView === 'function') {
-        target.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
-    }
-  }, [history])
-
-  const agentName = agentsStatus.find((agent) => agent.key === activeAgent)?.display_name ?? 'APEX'
-  return <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 scrollbar-thin" aria-live="polite">
-    {history.length === 0 && !isQuerying ? <div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-white/10 px-6 py-8 text-center"><p className="font-mono text-xs uppercase tracking-widest text-zinc-500">APEX is ready. Start a session with a focused question.</p>{onPromptSelect ? <div className="mt-4 flex max-w-xl flex-wrap justify-center gap-2">{OPERATION_PROMPT_CHIPS.map((chip) => <button key={chip.label} type="button" onClick={() => onPromptSelect(chip.query)} className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 transition-colors hover:border-[#0F4DB8]/50 hover:bg-[#0F4DB8]/15 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF]">{chip.label}</button>)}</div> : null}{logoProps ? <div data-slot="cortex-chat-logo" className="mt-6 flex items-center justify-center filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]"><ApexLogo {...logoProps} className="size-40 sm:size-48" /></div> : null}</div> : null}
-    {history.map((message, index) => {
-      const isLatest = index === history.length - 1
-      if (message.role === 'user') return <div key={`user-${index}`} ref={isLatest ? latestMessageRef : null} className="flex justify-end"><p className="max-w-[85%] rounded-2xl rounded-br-md border border-[#0F4DB8]/35 bg-[#0F4DB8]/15 px-4 py-3 text-sm text-white">{message.content}</p></div>
-      if (message.role !== 'agent') return null
-      const toolOutputs: ToolOutputItem[] = message.tool_outputs ?? []
-      return <div key={`agent-${index}`} ref={isLatest ? latestMessageRef : null} className="max-w-5xl"><div className="rounded-2xl rounded-bl-md border border-white/10 bg-zinc-900/80 px-4 py-3"><p className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#C084FC]">{message.metadata?.agent?.key ?? agentName}</p><div className="text-sm leading-relaxed text-zinc-200"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer" translate={typeof children === 'string' && children.startsWith('Google Maps:') ? 'no' : undefined} className="text-[#7EB3FF] hover:underline">{children}</a>, code: ({ className, children, ...props }) => className ? <code className={`${className} block font-mono text-xs text-zinc-200`} {...props}>{children}</code> : <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-xs text-purple-200" {...props}>{children}</code>, pre: ({ children }) => <pre className="my-2 overflow-x-auto rounded-lg border border-white/10 bg-black/40 p-3 font-mono text-xs text-zinc-200">{children}</pre>, p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>, ul: ({ children }) => <ul className="mb-2 list-disc pl-5 space-y-1">{children}</ul>, ol: ({ children }) => <ol className="mb-2 list-decimal pl-5 space-y-1">{children}</ol>, li: ({ children }) => <li className="leading-relaxed">{children}</li>, h1: ({ children }) => <h1 className="mb-2 font-orbitron text-base font-semibold text-white">{children}</h1>, h2: ({ children }) => <h2 className="mb-2 font-orbitron text-sm font-semibold text-white">{children}</h2>, h3: ({ children }) => <h3 className="mb-1 text-sm font-medium text-zinc-100">{children}</h3>, blockquote: ({ children }) => <blockquote className="my-2 border-l-2 border-[#C084FC] pl-3 py-1 italic text-zinc-400">{children}</blockquote>, table: ({ children }) => <div className="my-2 overflow-x-auto"><table className="w-full border-collapse border border-white/10 text-xs text-zinc-200">{children}</table></div>, thead: ({ children }) => <thead className="bg-white/5 font-mono uppercase text-zinc-400">{children}</thead>, th: ({ children }) => <th className="border border-white/10 px-3 py-1.5 text-left font-semibold">{children}</th>, td: ({ children }) => <td className="border border-white/10 px-3 py-1.5">{children}</td> }}>{message.content}</ReactMarkdown></div><ResponseMetrics metadata={message.metadata} /><MapsGroundingSources citations={message.metadata?.citations ?? []} /><GoogleSearchSuggestions grounding={message.metadata?.grounding ?? null} /><TraceList trace={message.tool_trace ?? (index === history.length - 1 ? latestTrace : [])} /></div>{toolOutputs.length > 0 ? <CortexToolCards toolOutputs={toolOutputs} /> : null}</div>
-    })}
-    {error ? <p className="rounded-lg border border-red-500/30 bg-red-950/30 px-3 py-2 text-sm text-red-200" role="alert">{error}</p> : null}
-    {isQuerying ? <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-[#D8B4FE]"><Loader2 className="size-4 animate-spin" aria-hidden />{agentName} working</div> : null}
-    {(history.length > 0 || isQuerying) && logoProps ? <div data-slot="cortex-chat-logo" className="my-8 flex items-center justify-center filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]"><ApexLogo {...logoProps} className="size-40 sm:size-48" /></div> : null}
-  </div>
 }
 
 function useCompactCortexLayout(): boolean {
@@ -501,16 +465,9 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
     isQuerying ||
     Boolean(props.conversationHydrating) ||
     Boolean(activeStatus?.active || activeStatus?.loading)
-  const promptChipsEnabled =
-    props.agentQueriesEnabled &&
-    (props.selectionReady ?? false) &&
-    !props.submissionPending &&
-    props.toolPreflight?.can_proceed !== false
-  const gridClassName = props.assistantRunConfig
-    ? compactLayout
-      ? 'grid min-h-0 flex-1 grid-cols-1'
-      : 'grid min-h-0 flex-1 grid-cols-[14rem_minmax(0,1fr)_22rem]'
-    : 'grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem]'
+  const gridClassName = compactLayout
+    ? 'grid min-h-0 flex-1 grid-cols-1'
+    : 'grid min-h-0 flex-1 grid-cols-[14rem_minmax(0,1fr)_22rem]'
   const assistantComposer: ApexAssistantComposerProps = {
     activeAgent: props.activeAgent,
     activeAgentName: activeStatus?.display_name ?? props.activeAgent,
@@ -537,11 +494,11 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
     },
   }
   return <section className={`relative z-[var(--z-bento-hud)] mx-auto flex min-h-0 w-full flex-1 flex-col ${compactLayout ? 'overflow-visible' : 'overflow-hidden'} rounded-2xl border border-white/10 bg-zinc-950/45 shadow-2xl backdrop-blur-xl`} aria-label="Cortex workspace">
-    <header className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-black/20 px-4 py-3 sm:px-5"><div className="mr-auto flex items-center gap-2"><span className="hud-icon-badge size-8 text-[#C084FC]"><BrainCircuit className="size-4" aria-hidden /></span><div><h1 className="font-orbitron text-sm font-semibold uppercase tracking-[0.16em] text-white">Cortex</h1><p className="font-mono text-[10px] text-zinc-500">Operate and configure Apex Agents</p></div></div>{props.assistantRunConfig ? null : <button type="button" onClick={props.onNewSession} disabled={props.isQuerying || props.submissionPending} className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 hover:border-[#7EB3FF]/50 hover:text-white disabled:opacity-40"><Plus className="size-3.5" aria-hidden />New session</button>}</header>
-    {props.assistantRunConfig ? <div className={`${compactLayout ? 'flex' : 'hidden'} shrink-0 gap-2 border-b border-white/10 bg-black/20 p-2`}><button type="button" disabled={interactionDisabled} aria-expanded={compactPanel === 'conversations'} aria-controls="cortex-conversations-compact" onClick={() => setCompactPanel((panel) => panel === 'conversations' ? null : 'conversations')} className="rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 disabled:opacity-40">Conversations</button><button type="button" disabled={interactionDisabled} aria-expanded={compactPanel === 'inspector'} aria-controls="cortex-inspector-compact" onClick={() => setCompactPanel((panel) => panel === 'inspector' ? null : 'inspector')} className="rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 disabled:opacity-40">Inspector</button></div> : null}
-    {props.assistantRunConfig && compactPanel === 'conversations' ? <div id="cortex-conversations-compact" className={compactLayout ? '' : 'xl:hidden'}><ApexConversationRail disabled={interactionDisabled} className="block w-full border-b border-r-0" /></div> : null}
-    <div className={gridClassName}>{props.assistantRunConfig ? <ApexConversationRail disabled={interactionDisabled} className={compactLayout ? 'hidden' : 'hidden xl:block'} /> : null}<div className="order-1 flex min-h-0 flex-col">{props.assistantRunConfig ? (props.agentQueriesEnabled ? <ApexAssistantThread renderAgent={(text, metadata) => renderAssistantResponse(text, metadata, openContextRecord)} composer={assistantComposer} disabled={interactionDisabled || !props.selectionReady} logoProps={props.logoProps} /> : <footer className="border-t border-white/10 p-4 text-sm text-zinc-500">Agent queries are disabled in Settings.</footer>) : <><Conversation history={props.history} latestTrace={props.latestTrace} error={props.error} isQuerying={props.isQuerying} agentsStatus={props.agentsStatus} activeAgent={props.activeAgent} onPromptSelect={promptChipsEnabled ? (query) => { void props.onSubmit(query, props.activeAgent, props.selectedToolNames ?? [], props.activeToolProfileId ?? null) } : null} logoProps={props.logoProps} />{props.agentQueriesEnabled ? <footer className="border-t border-white/10 bg-black/20 p-3 sm:p-4"><AgentQueryBar presentation="cortex" activeAgent={props.activeAgent} onSubmit={props.onSubmit} agentsStatus={props.agentsStatus} catalog={props.toolCatalog ?? null} selectedToolNames={props.selectedToolNames ?? []} activeToolProfileId={props.activeToolProfileId ?? null} selectionReady={props.selectionReady ?? false} submissionPending={props.submissionPending} onToolSelectionChange={props.onToolSelectionChange} onToolProfileChange={props.onToolProfileChange} toolPreflight={props.toolPreflight} toolPreflightLoading={props.toolPreflightLoading} toolCatalogError={props.toolCatalogError} toolPreflightError={props.toolPreflightError} toolProfileFeedback={props.toolProfileFeedback} toolProfileError={props.toolProfileError} onSaveToolProfile={props.onSaveToolProfile} onDuplicateToolProfile={props.onDuplicateToolProfile} onRenameToolProfile={props.onRenameToolProfile} onDeleteToolProfile={props.onDeleteToolProfile} onRestoreToolProfile={props.onRestoreToolProfile} onSetDefaultToolProfile={props.onSetDefaultToolProfile} draftPrompt={props.draftPrompt} onDraftChange={props.onDraftChange} isSubmitting={props.isQuerying} error={props.error} /></footer> : null}</>}</div>
-      <aside id="cortex-inspector-compact" className={`order-2 space-y-4 border-t border-white/10 bg-black/15 p-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 scrollbar-thin ${props.assistantRunConfig && compactPanel !== 'inspector' ? (compactLayout ? 'hidden' : 'hidden xl:block') : ''}`} aria-label="Cortex inspector"><div role="tablist" aria-label="Cortex inspector sections" className="flex border-b border-white/10">{INSPECTOR_TABS.map((tab) => <button key={tab} id={`cortex-inspector-tab-${tab}`} type="button" role="tab" tabIndex={inspectorTab === tab ? 0 : -1} aria-selected={inspectorTab === tab} aria-controls={`cortex-inspector-${tab}`} onKeyDown={onInspectorTabKeyDown} onClick={() => selectInspectorTab(tab)} className={`px-2 py-2 font-mono text-[10px] uppercase tracking-wide outline-none focus-visible:ring-1 focus-visible:ring-[#7EB3FF] ${inspectorTab === tab ? 'text-[#9AC2FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>{tab}</button>)}</div>{inspectorTab === 'controls' ? <div id="cortex-inspector-controls" role="tabpanel" aria-labelledby="cortex-inspector-tab-controls" className="space-y-4"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Agent</p><AgentSelector activeAgent={props.activeAgent} onChange={props.onAgentChange} agentsStatus={props.agentsStatus} agentsStatusHydrated={props.agentsStatusHydrated} isQuerying={interactionDisabled} verifyingAgent={props.verifyingCloudAgent} onVerify={props.onVerifyCloudAgent} /></section><RuntimeControls {...props} activeStatus={activeStatus ?? null} localContextLocked={localContextLocked} /><ContextControl {...props} /></div> : null}{inspectorTab === 'context' ? <div id="cortex-inspector-context" role="tabpanel" aria-labelledby="cortex-inspector-tab-context"><CortexContext inspector={contextInspector} demoModeActive={props.demoModeActive} /></div> : null}{inspectorTab === 'actions' ? <div id="cortex-inspector-actions" role="tabpanel" aria-labelledby="cortex-inspector-tab-actions"><CortexActions actions={props.actions} demoModeActive={props.demoModeActive} /></div> : null}
+    <header className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-black/20 px-4 py-3 sm:px-5"><div className="mr-auto flex items-center gap-2"><span className="hud-icon-badge size-8 text-[#C084FC]"><BrainCircuit className="size-4" aria-hidden /></span><div><h1 className="font-orbitron text-sm font-semibold uppercase tracking-[0.16em] text-white">Cortex</h1><p className="font-mono text-[10px] text-zinc-500">Operate and configure Apex Agents</p></div></div></header>
+    <div className={`${compactLayout ? 'flex' : 'hidden'} shrink-0 gap-2 border-b border-white/10 bg-black/20 p-2`}><button type="button" disabled={interactionDisabled} aria-expanded={compactPanel === 'conversations'} aria-controls="cortex-conversations-compact" onClick={() => setCompactPanel((panel) => panel === 'conversations' ? null : 'conversations')} className="rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 disabled:opacity-40">Conversations</button><button type="button" disabled={interactionDisabled} aria-expanded={compactPanel === 'inspector'} aria-controls="cortex-inspector-compact" onClick={() => setCompactPanel((panel) => panel === 'inspector' ? null : 'inspector')} className="rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 disabled:opacity-40">Inspector</button></div>
+    {compactPanel === 'conversations' ? <div id="cortex-conversations-compact" className={compactLayout ? '' : 'xl:hidden'}><ApexConversationRail disabled={interactionDisabled} className="block w-full border-b border-r-0" /></div> : null}
+    <div className={gridClassName}><ApexConversationRail disabled={interactionDisabled} className={compactLayout ? 'hidden' : 'hidden xl:block'} /><div className="order-1 flex min-h-0 flex-col">{props.agentQueriesEnabled ? <ApexAssistantThread renderAgent={(text, metadata) => <AssistantResponseDisplay text={text} rawMetadata={metadata} onOpenRecord={openContextRecord} />} composer={assistantComposer} disabled={interactionDisabled || !props.selectionReady} logoProps={props.logoProps} /> : <footer className="border-t border-white/10 p-4 text-sm text-zinc-500">Agent queries are disabled in Settings.</footer>}</div>
+      <aside id="cortex-inspector-compact" className={`order-2 space-y-4 border-t border-white/10 bg-black/15 p-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 scrollbar-thin ${compactPanel !== 'inspector' ? (compactLayout ? 'hidden' : 'hidden xl:block') : ''}`} aria-label="Cortex inspector"><div role="tablist" aria-label="Cortex inspector sections" className="flex border-b border-white/10">{INSPECTOR_TABS.map((tab) => <button key={tab} id={`cortex-inspector-tab-${tab}`} type="button" role="tab" tabIndex={inspectorTab === tab ? 0 : -1} aria-selected={inspectorTab === tab} aria-controls={`cortex-inspector-${tab}`} onKeyDown={onInspectorTabKeyDown} onClick={() => selectInspectorTab(tab)} className={`px-2 py-2 font-mono text-[10px] uppercase tracking-wide outline-none focus-visible:ring-1 focus-visible:ring-[#7EB3FF] ${inspectorTab === tab ? 'text-[#9AC2FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>{tab}</button>)}</div>{inspectorTab === 'controls' ? <div id="cortex-inspector-controls" role="tabpanel" aria-labelledby="cortex-inspector-tab-controls" className="space-y-4"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Agent</p><AgentSelector activeAgent={props.activeAgent} onChange={props.onAgentChange} agentsStatus={props.agentsStatus} agentsStatusHydrated={props.agentsStatusHydrated} isQuerying={interactionDisabled} verifyingAgent={props.verifyingCloudAgent} onVerify={props.onVerifyCloudAgent} /></section><RuntimeControls {...props} activeStatus={activeStatus ?? null} localContextLocked={localContextLocked} /><ContextControl {...props} /></div> : null}{inspectorTab === 'context' ? <div id="cortex-inspector-context" role="tabpanel" aria-labelledby="cortex-inspector-tab-context"><CortexContext inspector={contextInspector} demoModeActive={props.demoModeActive} /></div> : null}{inspectorTab === 'actions' ? <div id="cortex-inspector-actions" role="tabpanel" aria-labelledby="cortex-inspector-tab-actions"><CortexActions actions={props.actions} demoModeActive={props.demoModeActive} /></div> : null}
       </aside>
     </div>
   </section>

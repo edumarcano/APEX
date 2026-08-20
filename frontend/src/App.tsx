@@ -1334,10 +1334,6 @@ export default function App(): ReactElement {
     )
   }, [persistAgentSettings])
 
-  const handleNewCortexSession = useCallback((): void => {
-    setSnapshotAttached(false)
-  }, [])
-
   const handleHomeSubmit = useCallback(async (
     query: string,
     selectedToolNames: string[],
@@ -1360,19 +1356,6 @@ export default function App(): ReactElement {
     }
     return accepted
   }, [fullModelCatalog, homeSelectedModelId])
-
-  const handleCortexSubmit = useCallback(async (
-    query: string,
-    agent: AgentKey,
-    selectedToolNames: string[],
-    toolProfileId: string | null,
-  ): Promise<boolean> => {
-    return assistantRuntimeRef.current?.submitPrompt(query, {
-      agent,
-      selectedToolNames,
-      toolProfileId,
-    }) ?? false
-  }, [])
 
   const handleAssistantConversationChange = useCallback((summary: {
     id: string
@@ -1915,7 +1898,6 @@ export default function App(): ReactElement {
             agentQueriesEnabled={Boolean(agentQueriesEnabled)}
             agentsStatus={agentsStatus}
             agentsStatusHydrated={agentsStatusHydrated}
-            history={[]}
             latestTrace={cortexLatestTrace}
             error={cortexError}
             contextUsage={cortexContextUsage}
@@ -1933,8 +1915,6 @@ export default function App(): ReactElement {
             toolPreflightError={toolPreflightState.error}
             toolProfileFeedback={toolProfileFeedback}
             toolProfileError={toolProfileError}
-            draftPrompt={draftPrompt}
-            onDraftChange={setDraftPrompt}
             onSaveToolProfile={saveToolProfile}
             onDuplicateToolProfile={duplicateToolProfile}
             onRenameToolProfile={renameToolProfile}
@@ -1962,8 +1942,6 @@ export default function App(): ReactElement {
             onSandboxModeChange={handleSandboxModeChange}
             onLocalContextWindowChange={handleLocalContextWindowChange}
             onLocalReasoningModeChange={handleLocalReasoningModeChange}
-            onSubmit={handleCortexSubmit}
-            onNewSession={handleNewCortexSession}
             actions={actions}
             demoModeActive={demoModeActive}
             assistantRunConfig={{
