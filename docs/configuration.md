@@ -130,10 +130,10 @@ Current default model mappings used by documentation checks are `panthera -> gpt
 
 | Model ID | Provider | Stability | Notes |
 |---|---|---|---|
-| `gpt-5.6-luna` | OpenAI | Stable | Default Panthera model |
 | `deepseek/deepseek-v4-flash-0731` | OpenRouter | Stable | ZDR-only interactive routing; None, Low, High, or Max reasoning |
-| `gemini-3.6-flash` | Google | Stable | Optional Google Search and Maps grounding; `DEV_MODE` only |
+| `gpt-5.6-luna` | OpenAI | Stable | Default Panthera model |
 | `gemini-3.5-flash-lite` | Google | Stable | `DEV_MODE` only |
+| `gemini-3.6-flash` | Google | Stable | Optional Google Search and Maps grounding; `DEV_MODE` only |
 | `grok-4.3` | SpaceXAI | Stable | Optional X Search; `DEV_MODE` only |
 | `grok-4.5` | SpaceXAI | Stable | Optional X Search; `DEV_MODE` only |
 
@@ -153,9 +153,9 @@ Brave MCP is the general web-search capability for Panthera when connected. Prov
 |---|---|---|---|
 | `gemma-4-E2B-Q4_K_M.gguf` | llama.cpp | Stable | Default Felis model |
 | `gemma-4-E4B-Q4_K_M.gguf` | llama.cpp | Experimental | Larger local option |
-| `Qwen3.5-4B-Q4_K_M.gguf` | llama.cpp | Experimental | Fast multilingual reasoning option |
 | `qwen3:1.7b` | Ollama | Stable | Lightweight option; `DEV_MODE` only |
 | `qwen3:4b-instruct` | Ollama | Stable | Balanced option; `DEV_MODE` only |
+| `Qwen3.5-4B-Q4_K_M.gguf` | llama.cpp | Experimental | Fast multilingual reasoning option |
 
 `ollama.host` defaults to `http://localhost:11434`. Tracked `llama_cpp.enabled` and `llama_cpp.managed` default to `false`, and `llama_cpp.host` defaults to `http://127.0.0.1:8080`. Enable llama.cpp and set the loopback router URL in Runtime Settings; local overrides persist to `config.local.json`.
 
