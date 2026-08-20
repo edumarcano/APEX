@@ -223,4 +223,14 @@ describe('HomeCommandRail', () => {
     expect(screen.getByText('Felis · llama.cpp · Loading')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Unload Apex Felis' })).toBeDisabled()
   })
+
+  it('renders active command panel with 42rem max width and distinct query/briefing rows', () => {
+    renderRail()
+
+    const rail = screen.getByLabelText('Home command rail')
+    expect(rail).toHaveClass('max-w-[42rem]')
+    expect(document.querySelector('[data-slot="home-agent-row"]')).toBeVisible()
+    expect(document.querySelector('[data-slot="home-briefing-row"]')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Generate briefing from current telemetry' })).toBeVisible()
+  })
 })

@@ -125,7 +125,7 @@ export function HomeCommandRail({
     <section
       aria-label="Home command rail"
       data-slot="home-command-rail"
-      className="relative z-20 mt-3 w-full max-w-[40rem] min-w-0 rounded-xl border border-white/10 bg-zinc-950/55 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl"
+      className="relative z-20 mt-3 w-full max-w-[42rem] min-w-0 rounded-xl border border-white/10 bg-zinc-950/55 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl"
     >
       {!activated ? (
         <div className="grid grid-cols-2 items-center gap-2" data-slot="home-standby-controls">

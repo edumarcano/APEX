@@ -227,7 +227,7 @@ export function HomeModelSelector({
             close()
           }
         }}
-        className="flex h-10 w-full min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-black/25 px-3 font-mono text-[10px] text-zinc-200 transition-colors hover:border-[#0F4DB8]/55 hover:bg-[#0F4DB8]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F4DB8] disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex h-full min-h-[46px] w-full min-w-0 items-center gap-2.5 rounded-lg border border-white/10 bg-black/35 px-3 font-mono text-[10px] text-zinc-200 transition-colors hover:border-[#0F4DB8]/55 hover:bg-[#0F4DB8]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F4DB8] disabled:cursor-not-allowed disabled:opacity-40"
       >
         <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03]">
           <ModelMark modelId={selectedModel?.model_id} provider={selectedModel?.provider} size={14} />

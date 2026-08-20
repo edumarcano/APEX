@@ -176,4 +176,32 @@ describe('BriefingGenerateControl', () => {
     expect(onRefreshAll).toHaveBeenCalledTimes(1)
   })
 
+  it('renders title-case Generate Briefing and switches to Working… when busy', () => {
+    const onGenerate = vi.fn()
+    const { rerender } = render(
+      <BriefingGenerateControl
+        mainDisabled={false}
+        refreshDisabled={false}
+        busy={false}
+        onGenerate={onGenerate}
+        onRefreshAll={vi.fn()}
+        onRefreshAndGenerate={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /generate briefing from current telemetry/i })).toHaveTextContent(/Generate Briefing/i)
+
+    rerender(
+      <BriefingGenerateControl
+        mainDisabled={false}
+        refreshDisabled={false}
+        busy
+        onGenerate={onGenerate}
+        onRefreshAll={vi.fn()}
+        onRefreshAndGenerate={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /generate briefing from current telemetry/i })).toHaveTextContent(/Working…/i)
+  })
 })

@@ -4,6 +4,7 @@ import {
   ChevronDown,
   FileText,
   RefreshCw,
+  Sparkles,
   Zap,
 } from 'lucide-react'
 import {
@@ -23,6 +24,10 @@ import type {
   AgentAvailabilityStatus,
   BriefingTargetStatus,
 } from '../types/telemetry'
+import {
+  resolveBriefingModeAvailability,
+  type BriefingModeAvailability as ModeAvailability,
+} from '../lib/agents'
 
 interface BriefingOption {
   key: BriefingMode
@@ -62,11 +67,6 @@ const STATUS_REASONS: Record<AgentAvailabilityStatus, string> = {
   insufficient_ram: 'Current memory pressure exceeds threshold',
   cpu_overloaded: 'Current CPU utilization exceeds threshold',
 }
-
-import {
-  resolveBriefingModeAvailability,
-  type BriefingModeAvailability as ModeAvailability,
-} from '../lib/agents'
 
 function statusLedClass(status: AgentAvailabilityStatus): string {
   if (status === 'available' || status === 'configured' || status === 'verified') return 'hud-led--live'
@@ -285,38 +285,38 @@ export function BriefingModeSelector({
               const selected = option.key === value
               return (
                 <li key={option.key} role="presentation" className="group/briefing-option relative">
-                        <button
-                          ref={(element) => { optionRefs.current[index] = element }}
-                          type="button"
-                          role="option"
-                          aria-selected={selected}
-                          aria-disabled={unavailable}
-                          disabled={unavailable}
-                          onClick={() => {
-                            onChange(option.key)
-                            close(true)
-                          }}
-                          onKeyDown={(event) => handleOptionKeyDown(event, index)}
-                          className={[
-                            'flex min-h-16 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors focus-visible:outline-none',
-                            unavailable
-                              ? 'pointer-events-none cursor-not-allowed text-zinc-600 opacity-45'
-                              : `hover:bg-[#0F4DB8]/15 focus-visible:bg-[#0F4DB8]/15 ${selected ? 'bg-[#0F4DB8]/12 ring-1 ring-[#0F4DB8]/25' : ''}`,
-                          ].join(' ')}
-                        >
-                          <BriefingModeMark mode={option.key} />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">{option.label}</span>
-                            <span className="mt-0.5 block truncate text-[10px] text-zinc-500">{modeDescription(option.key, targets)}</span>
-                            <span className="mt-1 block font-mono text-[9px] text-zinc-400">{modeCost(option.key, targets)}</span>
-                          </span>
-                          {selected ? <Check className="size-3.5 shrink-0 text-[#39FF88]" strokeWidth={2.25} aria-hidden /> : null}
-                        </button>
-                        {unavailable ? (
-                          <span role="tooltip" className="pointer-events-none absolute left-full top-1/2 z-[110] ml-2 -translate-y-1/2 whitespace-nowrap rounded-lg border border-white/10 bg-zinc-950/95 px-2.5 py-1.5 font-mono text-[10px] text-rose-400 opacity-0 shadow-xl transition-opacity group-hover/briefing-option:opacity-100">
-                            {statusReason(availability)}
-                          </span>
-                        ) : null}
+                  <button
+                    ref={(element) => { optionRefs.current[index] = element }}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    aria-disabled={unavailable}
+                    disabled={unavailable}
+                    onClick={() => {
+                      onChange(option.key)
+                      close(true)
+                    }}
+                    onKeyDown={(event) => handleOptionKeyDown(event, index)}
+                    className={[
+                      'flex min-h-16 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors focus-visible:outline-none',
+                      unavailable
+                        ? 'pointer-events-none cursor-not-allowed text-zinc-600 opacity-45'
+                        : `hover:bg-[#0F4DB8]/15 focus-visible:bg-[#0F4DB8]/15 ${selected ? 'bg-[#0F4DB8]/12 ring-1 ring-[#0F4DB8]/25' : ''}`,
+                    ].join(' ')}
+                  >
+                    <BriefingModeMark mode={option.key} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">{option.label}</span>
+                      <span className="mt-0.5 block truncate text-[10px] text-zinc-500">{modeDescription(option.key, targets)}</span>
+                      <span className="mt-1 block font-mono text-[9px] text-zinc-400">{modeCost(option.key, targets)}</span>
+                    </span>
+                    {selected ? <Check className="size-3.5 shrink-0 text-[#39FF88]" strokeWidth={2.25} aria-hidden /> : null}
+                  </button>
+                  {unavailable ? (
+                    <span role="tooltip" className="pointer-events-none absolute left-full top-1/2 z-[110] ml-2 -translate-y-1/2 whitespace-nowrap rounded-lg border border-white/10 bg-zinc-950/95 px-2.5 py-1.5 font-mono text-[10px] text-rose-400 opacity-0 shadow-xl transition-opacity group-hover/briefing-option:opacity-100">
+                      {statusReason(availability)}
+                    </span>
+                  ) : null}
                 </li>
               )
             })}
@@ -389,20 +389,21 @@ export function BriefingGenerateControl({
   }, [open, updatePosition])
 
   return (
-    <div className={`hud-command-surface inline-flex min-w-0 rounded-md border border-white/10 bg-white/5 text-[#C084FC] transition-colors duration-300 hover:border-white/20 hover:bg-white/10 ${className}`}>
+    <div className={`hud-command-surface inline-flex min-w-0 rounded-lg border border-amber-400/25 bg-amber-950/20 text-amber-200 shadow-[inset_0_1px_0_rgba(251,191,36,0.1)] transition-[border-color,background-color,box-shadow,color] duration-300 hover:border-amber-400/40 hover:bg-amber-400/15 hover:text-amber-100 hover:shadow-[0_0_12px_rgba(251,191,36,0.18)] active:bg-amber-400/25 ${className}`}>
       <button
         type="button"
         disabled={mainDisabled}
         onClick={onGenerate}
-        className="group inline-flex min-w-0 flex-1 items-center justify-center rounded-l-md px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[#C084FC] transition-colors hover:text-[#D8B4FE] focus-visible:z-10 focus-visible:text-[#D8B4FE] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A855F7] disabled:cursor-not-allowed disabled:opacity-40 sm:text-[11px]"
+        className="group inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-l-lg px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-200 transition-colors hover:text-amber-100 focus-visible:z-10 focus-visible:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F59E0B] disabled:cursor-not-allowed disabled:opacity-40 sm:text-[11px]"
         aria-label="Generate briefing from current telemetry"
       >
+        <Sparkles className="size-3.5 shrink-0 text-amber-300 transition-transform group-hover:scale-110" aria-hidden />
         {busy ? (
-          '[ WORKING… ]'
+          <span className="whitespace-nowrap">Working…</span>
         ) : (
           <>
-            <span className="group-hover:hidden group-focus-visible:hidden">[ GENERATE BRIEFING ]</span>
-            <span className="hidden group-hover:inline group-focus-visible:inline">&gt; GENERATE BRIEFING</span>
+            <span className="whitespace-nowrap group-hover:hidden group-focus-visible:hidden">Generate Briefing</span>
+            <span className="hidden whitespace-nowrap group-hover:inline group-focus-visible:inline">&gt; Generate Briefing</span>
           </>
         )}
       </button>
@@ -420,7 +421,7 @@ export function BriefingGenerateControl({
             close()
           }
         }}
-        className="inline-flex w-9 items-center justify-center rounded-r-md border-l border-white/10 text-[#C084FC] transition-colors hover:bg-white/5 hover:text-[#D8B4FE] focus-visible:z-10 focus-visible:text-[#D8B4FE] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A855F7] disabled:cursor-not-allowed disabled:opacity-40 sm:w-10"
+        className="inline-flex w-8 shrink-0 items-center justify-center rounded-r-lg border-l border-amber-400/20 text-amber-300 transition-colors hover:bg-amber-400/10 hover:text-amber-100 focus-visible:z-10 focus-visible:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F59E0B] disabled:cursor-not-allowed disabled:opacity-40 sm:w-9"
       >
         <ChevronDown className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
@@ -442,7 +443,7 @@ export function BriefingGenerateControl({
                 close(true)
               }
             }}
-            className="flex w-full items-start gap-3 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-purple-400/10 focus-visible:bg-purple-400/10 focus-visible:outline-none"
+            className="flex w-full items-start gap-3 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-amber-400/10 focus-visible:bg-amber-400/10 focus-visible:outline-none"
           >
             <RefreshCw className="mt-0.5 size-4 shrink-0 text-emerald-300" strokeWidth={2} aria-hidden />
             <span>
@@ -463,7 +464,7 @@ export function BriefingGenerateControl({
                 close(true)
               }
             }}
-            className="flex w-full items-start gap-3 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-purple-400/10 focus-visible:bg-purple-400/10 focus-visible:outline-none"
+            className="flex w-full items-start gap-3 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-amber-400/10 focus-visible:bg-amber-400/10 focus-visible:outline-none"
           >
             <RefreshCw className="mt-0.5 size-4 shrink-0 text-emerald-300" strokeWidth={2} aria-hidden />
             <span>
