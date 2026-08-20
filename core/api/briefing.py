@@ -57,6 +57,27 @@ from core.telemetry.service import RefreshInProgressError, get_telemetry_service
 
 _DEMO_STAGE_DELAY_SECONDS = 1.5
 _LOGGER = logging.getLogger(__name__)
+_WINDOWS_TIME_ZONES = {"Eastern Standard Time": "America/New_York", "UTC": "UTC"}
+
+
+def _reminder_due_timestamp(
+    value: object, fallback_zone: ZoneInfo
+) -> tuple[str | None, str | None]:
+    """Normalize Microsoft To Do's local due value without losing its timezone."""
+    if not isinstance(value, dict) or not isinstance(value.get("date_time"), str):
+        return None, None
+    time_zone = value.get("time_zone") if isinstance(value.get("time_zone"), str) else None
+    zone_name = _WINDOWS_TIME_ZONES.get(time_zone or "", time_zone)
+    try:
+        due_at = datetime.fromisoformat(value["date_time"].replace("Z", "+00:00"))
+    except ValueError:
+        return None, time_zone
+    if due_at.tzinfo is None:
+        try:
+            due_at = due_at.replace(tzinfo=ZoneInfo(zone_name)) if zone_name else due_at.replace(tzinfo=fallback_zone)
+        except Exception:
+            due_at = due_at.replace(tzinfo=fallback_zone)
+    return due_at.isoformat(), time_zone
 
 
 def _mode_to_strategy(mode: BriefingMode) -> str:
@@ -113,6 +134,16 @@ def _build_synthesis_input(
     reminder_data = reminders.data if reminders else {}
     f1_map = f1.data.get("f1_map") if f1 else None
     football_data = football.data if football else {}
+    timezone_name = (
+        str(weather_data.get("timezone"))
+        if isinstance(weather_data, dict) and isinstance(weather_data.get("timezone"), str)
+        else "America/New_York"
+    )
+    try:
+        local_zone = ZoneInfo(timezone_name)
+    except Exception:
+        timezone_name = "America/New_York"
+        local_zone = ZoneInfo(timezone_name)
 
     next_event: CalendarFact | None = None
     events = calendar_data.get("events") if isinstance(calendar_data, dict) else None
@@ -127,7 +158,22 @@ def _build_synthesis_input(
             )
 
     f1_fact: F1Fact | None = None
-    if isinstance(f1_map, dict) and f1_map.get("relativeWeek") == "This week":
+    now = datetime.now(timezone.utc)
+    if isinstance(f1_map, dict) and isinstance(f1_map.get("raceStart"), str):
+        try:
+            race_start = datetime.fromisoformat(f1_map["raceStart"].replace("Z", "+00:00"))
+            race_start = race_start.replace(tzinfo=timezone.utc) if race_start.tzinfo is None else race_start.astimezone(timezone.utc)
+        except ValueError:
+            race_start = None
+        if race_start is not None and now <= race_start < now + timedelta(days=14):
+            f1_fact = F1Fact(
+                race_name=str(f1_map.get("raceName", "Unknown race")),
+                start=race_start.isoformat(),
+                sprint_scheduled=bool(f1_map.get("sprintScheduled")),
+            )
+    elif isinstance(f1_map, dict) and f1_map.get("relativeWeek") == "This week":
+        # Older cache entries lack raceStart; retain their legacy display fact
+        # until the next connector refresh replaces it with an ISO timestamp.
         f1_fact = F1Fact(
             race_name=str(f1_map.get("raceName", "Unknown race")),
             start=str(f1_map.get("raceDateTimeEST", "Unscheduled")),
@@ -136,7 +182,6 @@ def _build_synthesis_input(
 
     football_fact: FootballFact | None = None
     fixtures = football_data.get("fixtures") if isinstance(football_data, dict) else None
-    now = datetime.now(timezone.utc)
     if football and football.status != "unavailable" and isinstance(fixtures, list):
         eligible: list[tuple[datetime, int, dict[str, object]]] = []
         for index, raw_fixture in enumerate(fixtures):
@@ -251,14 +296,14 @@ def _build_synthesis_input(
             note = raw_reminder.get("note")
             if not isinstance(note, str) or not note.strip():
                 continue
-            due_value = raw_reminder.get("due")
-            due = None
-            if isinstance(due_value, dict) and isinstance(due_value.get("date_time"), str):
-                due = due_value["date_time"]
+            due, due_time_zone = _reminder_due_timestamp(
+                raw_reminder.get("due"), local_zone
+            )
             reminder_facts.append(
                 ReminderFact(
                     note=note,
                     due=due,
+                    due_time_zone=due_time_zone,
                     importance=str(raw_reminder["importance"]) if isinstance(raw_reminder.get("importance"), str) else None,
                     source=str(raw_reminder["source"]) if isinstance(raw_reminder.get("source"), str) else None,
                     sync_state=str(raw_reminder["sync_state"]) if isinstance(raw_reminder.get("sync_state"), str) else None,
@@ -299,16 +344,6 @@ def _build_synthesis_input(
         if isinstance(raw_hour, dict) and isinstance(raw_hour.get("time"), str):
             weather_hourly.append(WeatherHourFact(**raw_hour))
 
-    timezone_name = (
-        str(weather_data.get("timezone"))
-        if isinstance(weather_data, dict) and isinstance(weather_data.get("timezone"), str)
-        else "America/New_York"
-    )
-    try:
-        local_zone = ZoneInfo(timezone_name)
-    except Exception:
-        timezone_name = "America/New_York"
-        local_zone = ZoneInfo(timezone_name)
     now_local = datetime.now(local_zone)
     overdue_count = 0
     due_today_count = 0

@@ -69,7 +69,9 @@ def _candidate_length(entry: tuple[Any, Any, str]) -> int:
     return len(str(container[key]))
 
 
-def _drop_optional_payload_item(data: dict[str, Any]) -> bool:
+def _drop_optional_payload_item(
+    data: dict[str, Any], *, minimums: dict[str, int]
+) -> str | None:
     """Remove one optional value so payload reduction always makes progress."""
     for key in (
         "sports_events",
@@ -84,9 +86,9 @@ def _drop_optional_payload_item(data: dict[str, Any]) -> bool:
         "failed_connectors",
     ):
         values = data.get(key)
-        if isinstance(values, list) and values:
+        if isinstance(values, list) and len(values) > minimums.get(key, 0):
             values.pop()
-            return True
+            return key
 
     for key in (
         "first_pending_reminder",
@@ -102,8 +104,8 @@ def _drop_optional_payload_item(data: dict[str, Any]) -> bool:
     ):
         if data.get(key) not in (None, ""):
             data[key] = None
-            return True
-    return False
+            return key
+    return None
 
 
 def compact_payload(source: SynthesisInput, max_chars: int = _DEFAULT_MAX_CHARS) -> str:
@@ -165,7 +167,7 @@ def compact_payload(source: SynthesisInput, max_chars: int = _DEFAULT_MAX_CHARS)
             for item in source.calendar_events
         ],
         "reminders": [
-            {"note": sanitize_fact(item.note, 160), "due": sanitize_fact(item.due, 64) or None, "importance": sanitize_fact(item.importance, 24) or None, "source": sanitize_fact(item.source, 24) or None, "sync_state": sanitize_fact(item.sync_state, 24) or None}
+            {"note": sanitize_fact(item.note, 160), "due": sanitize_fact(item.due, 64) or None, "due_time_zone": sanitize_fact(item.due_time_zone, 64) or None, "importance": sanitize_fact(item.importance, 24) or None, "source": sanitize_fact(item.source, 24) or None, "sync_state": sanitize_fact(item.sync_state, 24) or None}
             for item in source.reminders
         ],
         "overdue_reminder_count": source.overdue_reminder_count,
@@ -178,7 +180,7 @@ def compact_payload(source: SynthesisInput, max_chars: int = _DEFAULT_MAX_CHARS)
             {"kind": sanitize_fact(item.kind, 32), "title": sanitize_fact(item.title, 160), "start": sanitize_fact(item.start, 64), "detail": sanitize_fact(item.detail, 160) or None}
             for item in source.sports_events
         ],
-        "truncated": {"calendar": source.calendar_truncated, "reminders": source.reminders_truncated, "sports": source.sports_truncated},
+        "truncated": {"calendar": source.calendar_truncated, "reminders": source.reminders_truncated, "sports": source.sports_truncated, "payload": []},
     }
     if source.next_calendar_event:
         data["next_calendar_event"] = {
@@ -217,8 +219,26 @@ def compact_payload(source: SynthesisInput, max_chars: int = _DEFAULT_MAX_CHARS)
             container[key] = sanitize_fact(current, max(32, len(current) - 64))
             continue
 
-        if not _drop_optional_payload_item(data):
+        minimums = (
+            {
+                "calendar_events": 3,
+                "reminders": 2,
+                "emails": 2,
+                "sports_events": 1,
+                "weather_daily": 1,
+                "weather_hourly": 3,
+                "news_headlines": 1,
+                "connector_health": 1,
+            }
+            if max_chars >= 28_000
+            else {}
+        )
+        dropped = _drop_optional_payload_item(data, minimums=minimums)
+        if dropped is None:
             raise ValueError("Compact synthesis payload could not be bounded safely.")
+        payload_truncation = data["truncated"]["payload"]
+        if isinstance(payload_truncation, list) and dropped not in payload_truncation:
+            payload_truncation.append(dropped)
 
 
 def wrap_untrusted_payload(

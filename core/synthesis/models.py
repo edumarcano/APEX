@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -65,6 +66,7 @@ class WeatherHourFact(BaseModel):
 class ReminderFact(BaseModel):
     note: str
     due: str | None = None
+    due_time_zone: str | None = None
     importance: str | None = None
     source: str | None = None
     sync_state: str | None = None
@@ -147,6 +149,12 @@ class BriefingFacts(BaseModel):
 
     def flash_view(self) -> "BriefingFacts":
         """Return the deliberately small immediate-orientation projection."""
+        now = _parse_fact_time(self.generated_at)
+        flash_sports = [
+            event for event in self.sports_events
+            if (start := _parse_fact_time(event.start)) is not None
+            and now <= start <= now + timedelta(hours=72)
+        ]
         return self.model_copy(
             update={
                 "weather_daily": self.weather_daily[:1],
@@ -156,12 +164,18 @@ class BriefingFacts(BaseModel):
                 "news_headlines": self.news_headlines[:1],
                 "calendar_events": self.calendar_events[:2],
                 "reminders": self.reminders[:3],
-                "sports_events": self.sports_events[:2],
+                "sports_events": flash_sports[:2],
             }
         )
 
     def focused_view(self) -> "BriefingFacts":
         """Return the complete bounded planning-horizon projection."""
+        now = _parse_fact_time(self.generated_at)
+        focused_sports = [
+            event for event in self.sports_events
+            if (start := _parse_fact_time(event.start)) is not None
+            and now <= start < now + timedelta(days=14)
+        ]
         return self.model_copy(
             update={
                 "weather_daily": self.weather_daily[:10],
@@ -170,6 +184,7 @@ class BriefingFacts(BaseModel):
                 "news_headlines": self.news_headlines[:5],
                 "calendar_events": self.calendar_events[:100],
                 "reminders": self.reminders[:50],
+                "sports_events": focused_sports,
             }
         )
 
@@ -196,6 +211,14 @@ class BriefingFacts(BaseModel):
 
 # Kept as a source-level alias while callers move to the explicit facts name.
 SynthesisInput = BriefingFacts
+
+
+def _parse_fact_time(value: str) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
 
 
 class SynthesisResult(BaseModel):

@@ -135,6 +135,7 @@ def _build_f1_map_from_race(race: Dict[str, Any]) -> Dict[str, Any]:
             .get("country", "Unknown")
         ),
         "raceDateTimeEST": _format_est_edt(race_dt_utc),
+        "raceStart": race_dt_utc.isoformat() if race_dt_utc is not None else None,
         "relativeWeek": _relative_week_label(race_dt_utc),
         "sprintScheduled": sprint_available,
         "sprintDateTimeEST": _format_est_edt(sprint_dt_utc) if sprint_available else "Unscheduled",

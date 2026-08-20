@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import math
 import os
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
 from dotenv import load_dotenv
@@ -280,6 +282,59 @@ def _get_daily_metric(
     return round(val) if decimals is None else round(val, decimals)
 
 
+def _hourly_window(
+    hourly: dict[str, Any], *, timezone_name: str, now: datetime
+) -> list[dict[str, Any]]:
+    """Return the next forty-eight provider hours, anchored to the current hour."""
+    try:
+        provider_zone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        provider_zone = ZoneInfo("America/New_York")
+    current_hour = now.astimezone(provider_zone).replace(minute=0, second=0, microsecond=0)
+    raw_times = hourly.get("time")
+    if not isinstance(raw_times, list):
+        return []
+    forecasts: list[dict[str, Any]] = []
+    for index, hour in enumerate(raw_times):
+        if not isinstance(hour, str):
+            continue
+        try:
+            parsed = datetime.fromisoformat(hour.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=provider_zone)
+        if parsed.astimezone(provider_zone) < current_hour:
+            continue
+        condition = _weather_condition(
+            hourly.get("weather_code", [None])[index] if isinstance(hourly.get("weather_code"), list) and index < len(hourly.get("weather_code", [])) else None,
+            is_day=hourly.get("is_day", [None])[index] if isinstance(hourly.get("is_day"), list) and index < len(hourly.get("is_day", [])) else None,
+        )
+        forecasts.append({
+            "time": hour,
+            "temp_f": _get_daily_metric(hourly.get("temperature_2m"), index),
+            "precip_probability": _get_daily_metric(hourly.get("precipitation_probability"), index),
+            "wind_speed_mph": _get_daily_metric(hourly.get("wind_speed_10m"), index),
+            "condition": condition[0] if condition else None,
+        })
+        if len(forecasts) == 48:
+            break
+    return forecasts
+
+
+def _provider_current_time(current: object, *, timezone_name: str) -> datetime:
+    """Use the provider's current observation as the forecast-window anchor."""
+    if isinstance(current, dict) and isinstance(current.get("time"), str):
+        try:
+            parsed = datetime.fromisoformat(current["time"].replace("Z", "+00:00"))
+            if parsed.tzinfo is not None:
+                return parsed
+            return parsed.replace(tzinfo=ZoneInfo(timezone_name))
+        except (ValueError, ZoneInfoNotFoundError):
+            pass
+    return datetime.now().astimezone()
+
+
 def collect_weather() -> ConnectorResult:
     """Collect current weather as a typed connector result."""
     location = _configured_location()
@@ -335,11 +390,12 @@ def collect_weather() -> ConnectorResult:
             parts.append(f"Today's high is {temp_max_f}, low {temp_min_f}.")
         display_text = " ".join(parts)
 
+        timezone_name = str(payload.get("timezone") or "America/New_York")
         data: dict[str, Any] = {
             **current_data,
             "location": location,
             "timeline": timeline,
-            "timezone": str(payload.get("timezone") or "America/New_York"),
+            "timezone": timezone_name,
         }
         daily_times = daily.get("time") if isinstance(daily, dict) else None
         daily_codes = daily.get("weather_code") if isinstance(daily, dict) else None
@@ -363,21 +419,12 @@ def collect_weather() -> ConnectorResult:
             data["daily"] = forecasts
 
         raw_hourly = payload.get("hourly") if isinstance(payload, dict) else None
-        if isinstance(raw_hourly, dict) and isinstance(raw_hourly.get("time"), list):
-            forecasts = []
-            for index, hour in enumerate(raw_hourly["time"][:48]):
-                condition = _weather_condition(
-                    raw_hourly.get("weather_code", [None])[index] if isinstance(raw_hourly.get("weather_code"), list) and index < len(raw_hourly.get("weather_code", [])) else None,
-                    is_day=raw_hourly.get("is_day", [None])[index] if isinstance(raw_hourly.get("is_day"), list) and index < len(raw_hourly.get("is_day", [])) else None,
-                )
-                forecasts.append({
-                    "time": str(hour),
-                    "temp_f": _get_daily_metric(raw_hourly.get("temperature_2m"), index),
-                    "precip_probability": _get_daily_metric(raw_hourly.get("precipitation_probability"), index),
-                    "wind_speed_mph": _get_daily_metric(raw_hourly.get("wind_speed_10m"), index),
-                    "condition": condition[0] if condition else None,
-                })
-            data["hourly"] = forecasts
+        if isinstance(raw_hourly, dict):
+            data["hourly"] = _hourly_window(
+                raw_hourly,
+                timezone_name=timezone_name,
+                now=_provider_current_time(payload.get("current"), timezone_name=timezone_name),
+            )
         if temp_max_f is not None:
             data["temp_max_f"] = temp_max_f
         if temp_min_f is not None:

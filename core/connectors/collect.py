@@ -104,11 +104,23 @@ def _calendar_event_start(event: dict[str, Any]) -> datetime | None:
         return None
 
 
+def _calendar_event_timezone(event: dict[str, Any]):
+    time_zone = event.get("time_zone")
+    try:
+        return ZoneInfo(time_zone) if isinstance(time_zone, str) and time_zone else timezone.utc
+    except ZoneInfoNotFoundError:
+        return timezone.utc
+
+
 def _calendar_event_end(event: dict[str, Any]) -> datetime | None:
     raw_end = event.get("end")
-    if not isinstance(raw_end, str) or not raw_end or bool(event.get("all_day")):
+    if not isinstance(raw_end, str) or not raw_end:
         return None
     try:
+        if bool(event.get("all_day")):
+            return datetime.combine(
+                date.fromisoformat(raw_end), datetime.min.time(), _calendar_event_timezone(event)
+            )
         parsed = datetime.fromisoformat(raw_end.replace("Z", "+00:00"))
         return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
     except ValueError:

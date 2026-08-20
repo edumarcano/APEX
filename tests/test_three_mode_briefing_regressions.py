@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import unittest
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from core.synthesis.formatting import compact_payload, parse_model_output, render_structured_briefing
 from core.synthesis.models import (
@@ -18,6 +20,8 @@ from core.synthesis.models import (
 )
 from core.synthesis.router import SynthesisRouter
 from core.connectors.models import ConnectorResult
+from clients.weather_client import _hourly_window
+from core.connectors.collect import _calendar_data
 
 
 def rich_facts() -> BriefingFacts:
@@ -109,3 +113,58 @@ class BriefingProjectionRegressionTests(unittest.TestCase):
         )
         source = _build_synthesis_input(results={"reminders": reminders}, failed_connectors=[])
         self.assertEqual([item.note for item in source.flash_view().reminders], ["Overdue", "High priority", "Low priority"])
+
+    def test_hourly_weather_window_starts_at_current_hour(self) -> None:
+        raw = {
+            "time": [f"2026-08-19T{hour:02d}:00" for hour in range(24)] + [f"2026-08-20T{hour:02d}:00" for hour in range(24)],
+            "temperature_2m": list(range(48)),
+        }
+        forecasts = _hourly_window(
+            raw, timezone_name="America/New_York",
+            now=datetime(2026, 8, 19, 22, 30, tzinfo=ZoneInfo("America/New_York")),
+        )
+        self.assertEqual(forecasts[0]["time"], "2026-08-19T22:00")
+        self.assertEqual(len(forecasts), 26)
+
+    def test_all_day_event_remains_active_until_exclusive_end(self) -> None:
+        data = _calendar_data(
+            [{"summary": "Offsite", "start": "2026-08-19", "end": "2026-08-20", "all_day": True, "time_zone": "America/New_York"}],
+            now=datetime(2026, 8, 19, 15, tzinfo=timezone.utc),
+        )
+        self.assertEqual(data["total_count"], 1)
+
+    def test_reminder_due_time_is_normalized_with_its_provider_timezone(self) -> None:
+        from core.api.briefing import _build_synthesis_input
+
+        reminders = ConnectorResult(
+            name="reminders", status="healthy", freshness="live", reason_code="ok", display_text="",
+            data={"records": [{"note": "Eastern task", "due": {"date_time": "2026-08-20T09:00:00", "time_zone": "Eastern Standard Time"}}]},
+        )
+        source = _build_synthesis_input(results={"reminders": reminders}, failed_connectors=[])
+        self.assertEqual(source.reminders[0].due, "2026-08-20T09:00:00-04:00")
+        self.assertEqual(source.reminders[0].due_time_zone, "Eastern Standard Time")
+
+    def test_sports_projections_use_time_horizons(self) -> None:
+        source = BriefingFacts(
+            generated_at="2026-08-19T12:00:00Z",
+            sports_events=[
+                SportEventFact(kind="football", title="Near", start="2026-08-20T12:00:00Z"),
+                SportEventFact(kind="f1", title="Next week", start="2026-08-27T12:00:00Z"),
+            ],
+        )
+        self.assertEqual([item.title for item in source.flash_view().sports_events], ["Near"])
+        self.assertEqual([item.title for item in source.focused_view().sports_events], ["Near", "Next week"])
+
+    def test_focused_compaction_preserves_cross_source_floors(self) -> None:
+        source = rich_facts().model_copy(update={
+            "calendar_events": [CalendarFact(title="C" * 160, start=f"2026-09-{index % 28 + 1:02d}T09:00:00Z") for index in range(100)],
+            "reminders": [ReminderFact(note="R" * 160) for _ in range(50)],
+            "emails": [EmailFact(subject="E" * 160, snippet="S" * 200) for _ in range(8)],
+            "sports_events": [SportEventFact(kind="football", title="M" * 160, start=f"2026-09-{index % 28 + 1:02d}T12:00:00Z") for index in range(15)],
+        })
+        payload = json.loads(compact_payload(source, max_chars=28_000))
+        self.assertGreaterEqual(len(payload["calendar_events"]), 3)
+        self.assertGreaterEqual(len(payload["reminders"]), 2)
+        self.assertGreaterEqual(len(payload["emails"]), 2)
+        self.assertGreaterEqual(len(payload["sports_events"]), 1)
+        self.assertIn("payload", payload["truncated"])
