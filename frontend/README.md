@@ -54,6 +54,7 @@ Do not expand `useApexData` into another global store. Use the focused owner for
 | `useToolPreflight` | Debounced estimated token breakdown for the next request |
 | `useMarketData` | Independent market polling with stale fallback |
 | `useSystemDiagnostics` | Independent host diagnostics polling |
+| `useContextInspector` | Context assembly preview, reference list, and namespace breakdown for the current request |
 
 `App.tsx` coordinates these owners but should not duplicate their internal state machines.
 

@@ -39,7 +39,7 @@ Arrays replace their tracked counterparts rather than merging item by item. This
 
 ## Runtime-editable settings
 
-The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `16`.
+The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schema version `18`.
 
 | Group | Editable values |
 |---|---|

@@ -116,16 +116,18 @@ Returns the resolved settings envelope. The current contract version is `18`.
       "panthera": {
         "model": "gpt-5.6-luna",
         "effort": "medium",
+        "personal_context_enabled": false,
         "hosted_tools": { "google_search": true, "google_maps": true, "x_search": true }
       },
       "felis": {
         "model": "gemma-4-E2B-Q4_K_M.gguf",
         "context_window": 16384,
-        "reasoning_mode": "none"
+        "reasoning_mode": "none",
+        "personal_context_enabled": false
       }
     },
     "tool_profiles": { "custom_profiles": [], "default_profile_by_agent": {} },
-    "briefing": { "default_mode": "panthera" },
+    "briefing": { "default_mode": "flash" },
     "voice": { "engine": "google", "gender": "female", "mode": "automatic" },
     "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } },
     "llama_cpp": { "enabled": false, "managed": false, "host": "http://127.0.0.1:8080", "executable_path": "", "preset_path": "" },
@@ -150,7 +152,7 @@ Accepts a strict partial patch for the optional user designation, connectors, sp
 ```json
 {
   "user_designation": "Chief",
-  "briefing": { "default_mode": "structured_digest" },
+  "briefing": { "default_mode": "structured" },
   "voice": { "mode": "manual" },
   "mcp": { "servers": { "github": { "enabled": true } } }
 }
@@ -207,7 +209,7 @@ Evaluates warnings and non-overridable blockers for one intended operation witho
 ```json
 {
   "operation": "activate_with_briefing",
-  "briefing_mode": "panthera",
+  "briefing_mode": "flash",
   "connectors": ["weather", "calendar"],
   "force": false,
   "acknowledged_warnings": []
@@ -225,10 +227,10 @@ Calling an operation endpoint directly skips advisory acknowledgement; operation
 Runs the full compatibility workflow: force-refresh telemetry, generate with an optional requested mode or configured default, persist normal-mode briefing history, and apply automatic voice-delivery rules.
 
 ```json
-{ "mode": "panthera" }
+{ "mode": "flash" }
 ```
 
-The body is optional. Valid modes are `panthera`, `felis`, and `structured_digest`. The `felis` briefing mode always uses the fixed `gemma-4-E2B-Q4_K_M.gguf` llama.cpp profile with no reasoning; Cortex's interactive Felis model and runtime settings do not affect it.
+The body is optional. Valid modes are `focused`, `flash`, and `structured`. The `flash` briefing mode always uses the fixed `gemma-4-E2B-Q4_K_M.gguf` llama.cpp profile with no reasoning; Cortex's interactive Felis model and runtime settings do not affect it.
 
 - `200` — transcript, compatibility telemetry strings, typed digest, and runtime metadata.
 - `409` — another full trigger owns execution.
@@ -241,7 +243,7 @@ Runtime metadata includes `run_id`, requested mode, resolved synthesis provider/
 Generates from the current telemetry snapshot without calling connectors.
 
 ```json
-{ "snapshot_id": "current-snapshot-uuid", "mode": "structured_digest" }
+{ "snapshot_id": "current-snapshot-uuid", "mode": "structured" }
 ```
 
 - `200` — the same `BriefingResponse` envelope used by the full trigger.

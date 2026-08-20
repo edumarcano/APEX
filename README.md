@@ -125,7 +125,7 @@ When the backend is already running, the included CLI can inspect APEX, run one 
 ```powershell
 uv run apex status
 uv run apex agents
-uv run apex ask "What needs my attention?" --profile core_apex
+uv run apex ask "What needs my attention?" --profile personal_ops
 uv run apex briefing --mode structured
 uv run apex actions list
 ```

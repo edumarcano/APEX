@@ -144,15 +144,15 @@ Connector statuses feed equal-weight Sync Health scoring. Disabled connectors ar
 
 Briefing orchestration converts one collected snapshot into bounded `BriefingFacts`. Flash and Focused receive their own factual projections wrapped in `<untrusted_connector_data>` markers; Structured renders the complete normalized facts. Display strings, Agent history, and Agent tools are not forwarded to a briefing model.
 
-The current breaking briefing modes are `flash`, `focused`, and `structured`. Flash is the default; historical Agent-named values are not accepted.
+The current breaking briefing modes are `focused`, `flash`, and `structured`. Flash is the default; historical Agent-named values are not accepted.
 
 | Mode | Provider | Current model or behavior |
 |---|---|---|
-| Panthera | OpenRouter | `deepseek/deepseek-v4-flash-0731` at fixed `none` reasoning |
-| Felis | llama.cpp | `gemma-4-E2B-Q4_K_M.gguf`, cold-load synthesis at 16K |
-| Structured Digest | None | Deterministic synthesis from typed facts |
+| Focused | OpenRouter | `deepseek/deepseek-v4-flash-0731` at `native_effort="high"` |
+| Flash | llama.cpp | `gemma-4-E2B-Q4_K_M.gguf`, cold-load synthesis at 16K, no reasoning |
+| Structured | None | Deterministic synthesis from typed facts |
 
-An explicit local mode is not silently replaced by another local model. The Panthera path falls back to Felis once, then Structured Digest; an explicit Felis failure goes directly to Structured Digest. Runtime metadata records the requested mode, resolved provider/Agent/model, fallback steps, usage, timings, and estimated provider cost. Every unsuccessful model path ends in Structured Digest with a stable fallback reason.
+Flash fails directly to Structured; there is no intermediate fallback. Focused tries Flash as a secondary fallback, and falls through to Structured only if both fail. Structured has no fallback. Runtime metadata records the requested mode, resolved provider/Agent/model, ordered fallback steps, usage, timings, and estimated provider cost.
 
 Normal-mode generation persists the transcript, digest, and runtime metadata to the SQLite briefing ledger and keeps the newest 50 rows. Demo mode returns static history and performs no normal-mode write.
 
