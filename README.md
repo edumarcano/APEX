@@ -45,13 +45,13 @@ After a Microsoft To Do list is selected, its incomplete tasks become the Home r
 <p align="center">
   <img
   src="docs/assets/apex-cortex.png"
-  alt="APEX Cortex workspace showing an Agent response, tool trace, structured reminder results, reasoning selection, and context controls"
+  alt="APEX Cortex workspace showing a persistent conversation, briefing-history tool result, Agent and model controls, and personal context settings"
   width="900"
 >
 </p>
 
 <p align="center">
-  <em>The Cortex workspace using an Apex Agent to query approved reminder data and return a structured result.</em>
+  <em>The Cortex workspace using an Apex Agent to review persisted briefing history, with conversation, model, tool, and personal context controls available alongside the chat.</em>
 </p>
 
 ### Keeps runtime control visible
