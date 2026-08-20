@@ -29,14 +29,14 @@ class ConfigEnvParsingTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"DEV_MODE": "false"}, clear=False):
             self.assertFalse(config.is_dev_mode())
 
-    def test_dev_ai_synthesis_aliases_and_fallback(self) -> None:
+    def test_dev_ai_synthesis_accepts_only_canonical_modes(self) -> None:
         from core import config
 
-        self.assertEqual(config._parse_dev_ai_synthesis(None), "raw")
-        self.assertEqual(config._parse_dev_ai_synthesis("cloud"), "cloud")
-        self.assertEqual(config._parse_dev_ai_synthesis("llm"), "cloud")
-        self.assertEqual(config._parse_dev_ai_synthesis("slm"), "local")
-        self.assertEqual(config._parse_dev_ai_synthesis("nope"), "raw")
+        self.assertEqual(config._parse_dev_ai_synthesis(None), "structured")
+        self.assertEqual(config._parse_dev_ai_synthesis("flash"), "flash")
+        self.assertEqual(config._parse_dev_ai_synthesis("focused"), "focused")
+        self.assertEqual(config._parse_dev_ai_synthesis("structured"), "structured")
+        self.assertEqual(config._parse_dev_ai_synthesis("cloud"), "structured")
 
     def test_dev_tts_playback_fallback(self) -> None:
         from core import config
@@ -60,7 +60,7 @@ class BrainFallbackShapeTests(unittest.TestCase):
         router.synthesize_mode.return_value = expected
 
         with mock.patch.object(brain, "is_dev_mode", return_value=True), mock.patch.object(
-            brain, "DEV_AI_SYNTHESIS", "raw"
+            brain, "DEV_AI_SYNTHESIS", "structured"
         ):
             result = brain.process_telemetry("weather clear", router=router)
 
@@ -70,9 +70,9 @@ class BrainFallbackShapeTests(unittest.TestCase):
         self.assertIn("insights", result)
         self.assertIsInstance(result["insights"], list)
         router.synthesize_mode.assert_called_once()
-        self.assertEqual(router.synthesize_mode.call_args.args[1], "structured_digest")
+        self.assertEqual(router.synthesize_mode.call_args.args[1], "structured")
 
-    def test_process_telemetry_defaults_to_cloud_outside_dev_mode(self) -> None:
+    def test_process_telemetry_defaults_to_flash_outside_dev_mode(self) -> None:
         from core import brain
 
         expected = SynthesisResult(briefing="Cloud.", provider="gemini", agent="panthera")
@@ -83,7 +83,7 @@ class BrainFallbackShapeTests(unittest.TestCase):
             result = brain.process_telemetry("weather clear", router=router)
 
         self.assertEqual(result["provider"], "gemini")
-        self.assertEqual(router.synthesize_mode.call_args.args[1], "panthera")
+        self.assertEqual(router.synthesize_mode.call_args.args[1], "flash")
 
 
 class DemoHistoryEndpointTests(unittest.TestCase):

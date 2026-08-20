@@ -84,7 +84,7 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(payload["schema_version"], 18)
         self.assertTrue(payload["settings"]["features"]["market"])
         self.assertTrue(payload["settings"]["features"]["weather"])
-        self.assertEqual(payload["settings"]["briefing"]["default_mode"], "panthera")
+        self.assertEqual(payload["settings"]["briefing"]["default_mode"], "flash")
         self.assertEqual(payload["settings"]["voice"]["mode"], "automatic")
         self.assertTrue(payload["settings"]["modules"]["f1"])
         self.assertEqual(payload["settings"]["ask_apex"]["agent"], "panthera")
@@ -138,24 +138,24 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(boot.status_code, 200)
         self.assertFalse(boot.json()["market_enabled"])
 
-    def test_felis_briefing_default_mode_persists_and_is_restored_on_boot(self) -> None:
+    def test_focused_briefing_default_mode_persists_and_is_restored_on_boot(self) -> None:
         response = self.client.patch(
             "/api/v1/settings",
-            json={"briefing": {"default_mode": "felis"}},
+            json={"briefing": {"default_mode": "focused"}},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["settings"]["briefing"]["default_mode"], "felis")
+        self.assertEqual(response.json()["settings"]["briefing"]["default_mode"], "focused")
 
         boot = self.client.get("/api/v1/config")
         self.assertEqual(boot.status_code, 200)
-        self.assertEqual(boot.json()["briefing_default_mode"], "felis")
+        self.assertEqual(boot.json()["briefing_default_mode"], "focused")
 
         reloaded = self.client.get("/api/v1/settings")
-        self.assertEqual(reloaded.json()["settings"]["briefing"]["default_mode"], "felis")
+        self.assertEqual(reloaded.json()["settings"]["briefing"]["default_mode"], "focused")
 
-    def test_dev_local_synthesis_reports_felis(self) -> None:
+    def test_dev_flash_synthesis_reports_felis(self) -> None:
         with mock.patch("core.api.routers.system.is_dev_mode", return_value=True), mock.patch(
-            "core.api.routers.system.DEV_AI_SYNTHESIS", "local"
+            "core.api.routers.system.DEV_AI_SYNTHESIS", "flash"
         ), mock.patch("core.api.routers.system.DEMO_MODE", False):
             response = self.client.get("/api/v1/config")
 

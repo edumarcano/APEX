@@ -121,13 +121,13 @@ class CliTests(unittest.TestCase):
 
     def test_briefing_and_action_reads_map_to_their_existing_routes(self) -> None:
         briefing_code, briefing_output, _, briefing_session = self._run(
-            ["briefing", "--mode", "structured_digest"],
+            ["briefing", "--mode", "structured"],
             [_Response(200, {"status": "ok", "briefing": "All clear."})],
         )
         self.assertEqual(briefing_code, 0)
         self.assertIn("All clear.", briefing_output)
         self.assertEqual(briefing_session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/trigger")
-        self.assertEqual(briefing_session.calls[0]["json"], {"mode": "structured_digest"})
+        self.assertEqual(briefing_session.calls[0]["json"], {"mode": "structured"})
 
         listed_code, _, _, listed_session = self._run(
             ["actions", "list"],

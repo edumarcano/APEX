@@ -199,7 +199,6 @@ describe('settings cloning and mutations', () => {
           context_window: 32768,
         },
       },
-      briefing: { default_mode: 'felis' },
       voice: { gender: 'male', mode: 'manual' },
       mcp: {
         enabled: true,

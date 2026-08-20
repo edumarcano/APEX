@@ -60,9 +60,9 @@ def collect_news() -> ConnectorResult:
             if not isinstance(articles, list):
                 raise ValueError("News articles must be a list.")
             if articles:
+                if any(not isinstance(article, dict) for article in articles):
+                    raise ValueError("News articles must contain objects.")
                 for article in articles:
-                    if not isinstance(article, dict):
-                        continue
                     headline = str(article.get("title") or "").strip()
                     normalized = headline.casefold()
                     if not headline or normalized in seen_headlines or len(headlines) >= 5:

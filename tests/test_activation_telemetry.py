@@ -493,7 +493,7 @@ class TelemetryApiTests(unittest.TestCase):
         self.assertIn("network_trust_unknown", codes)
         self.assertNotIn("cloud_data_disclosure", codes)
 
-    def test_structured_digest_preflight_never_classifies_as_cloud(self) -> None:
+    def test_structured_preflight_never_classifies_as_cloud(self) -> None:
         with mock.patch(
             "core.telemetry.preflight.is_dev_mode", return_value=True
         ), mock.patch(
@@ -505,7 +505,7 @@ class TelemetryApiTests(unittest.TestCase):
                 "/api/v1/preflight",
                 json={
                     "operation": "generate_briefing",
-                    "briefing_mode": "structured_digest",
+                    "briefing_mode": "structured",
                     "involves_cloud": True,
                 },
             )
@@ -518,19 +518,19 @@ class TelemetryApiTests(unittest.TestCase):
         self.assertNotIn("missing_credentials", blocker_codes)
         self.assertTrue(payload["can_proceed"])
 
-    def test_panthera_briefing_mode_drives_cloud_preflight(self) -> None:
+    def test_focused_briefing_mode_drives_cloud_preflight(self) -> None:
         with mock.patch(
             "core.telemetry.preflight.is_dev_mode", return_value=True
         ), mock.patch(
             "core.telemetry.preflight.config.DEMO_MODE", False
         ), mock.patch.dict(
-            "os.environ", {"OPENAI_API_KEY": ""}, clear=False
+            "os.environ", {"OPENROUTER_API_KEY": ""}, clear=False
         ):
             response = self.client.post(
                 "/api/v1/preflight",
                 json={
                     "operation": "generate_briefing",
-                    "briefing_mode": "panthera",
+                    "briefing_mode": "focused",
                     "involves_cloud": False,
                 },
             )
