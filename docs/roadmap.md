@@ -9,10 +9,10 @@
 ## Current Focus
 
 **Current Phase:** [Phase V: APEX 2.0 Beta](#phase-v-apex-20-beta)
-**Active Milestone:** [v2.0.0-beta.1 - Cortex: Persistent Context, World Model & Retrieval](#v200-beta1---cortex-persistent-context-world-model--retrieval)
+**Active Milestone:** [v2.0.0-beta.2 - Cortex: Bounded Task Execution & Observability](#v200-beta2---cortex-bounded-task-execution--observability)
 **Current Initiative:** [Cortex Initiative - Continued](#cortex-initiative---continued)
 
-**Next Milestone:** [v2.0.0-beta.2 - Cortex: Bounded Task Execution & Observability](#v200-beta2---cortex-bounded-task-execution--observability)
+**Next Milestone:** [v2.0.0-beta.3 - Cortex: Workflow Graphs & Worker Orchestration](#v200-beta3---cortex-workflow-graphs--worker-orchestration)
 
 ### Navigation
 
@@ -21,7 +21,7 @@
 [Phase III: Cognitive Interface](#phase-iii-cognitive-interface) ·
 [Phase IV: Interactive Intelligence](#phase-iv-interactive-intelligence) ·
 [Phase V: APEX 2.0 Beta](#phase-v-apex-20-beta) ·
-[Phase VI: Platform Consolidation & Physical Integration](#phase-vi-platform-consolidation--physical-integration)
+[Phase VI: Native Platform & Physical Integration](#phase-vi-native-platform--physical-integration)
 
 ---
 
@@ -381,7 +381,7 @@ Give Cortex its first safe write path through verified Microsoft To Do actions, 
 **Status:** In Progress
 
 **Core Focus:**
-Building the new APEX 2.0 architecture around persistent personal context, bounded Agent execution, reusable workflows, and proactive operation before the stable 2.0 release.
+Building and stabilizing the new APEX 2.0 architecture around persistent personal context, bounded Agent execution, reusable workflows, and proactive operation before the stable 2.0 release.
 
 APEX should remain the owner of its personal context even when outside models or workers are allowed to use parts of it.
 
@@ -403,28 +403,15 @@ The design should keep software in control of permissions and limits. Evidence s
 
 ## v2.0.0-beta.1 - Cortex: Persistent Context, World Model & Retrieval
 
-**Status:** In Progress
+**Status:** Complete
 
 **Objective:**
-Give APEX durable personal context that Cortex and Apex Agents can build from conversations, direct input, connected data, and other trusted sources, along with a retrieval system that can pull in the right context for the current task.
-
-The milestone should add persistent session history, multiple conversations, conversation forking, editable messages, and per-session metadata while keeping conversation history separate from the world model.
-
-When the operator gives APEX an idea, preference, plan, decision, or other information worth keeping, an Apex Agent should be able to turn it into structured context while preserving the original source. Conversation text should not automatically become trusted knowledge; APEX should keep the original input, Agent interpretation, and stored context distinct.
-
-The world model should record entities, observations, claims, decisions, relationships, sources, and changes over time. It should keep source information, contradictions, superseded facts, and useful history instead of silently overwriting them.
-
-Retrieval should combine structured filters, full-text search, semantic search, and relationship lookup where each is useful. Agents should receive the smallest useful set of personal context for the current request rather than loading the full world model into every conversation.
-
-The Cortex Workspace should adopt assistant-ui for reusable conversation behavior such as threads, messages, the composer, message actions, branching, and session navigation. APEX should remain responsible for conversation storage, Agents, tools, actions, context, and backend behavior, with a thin adapter between assistant-ui and the existing Cortex API.
-
-As an early real use of the context engine, Cortex should be able to search APEX repository documentation, return cited excerpts, keep retrieved instructions isolated from system instructions, and update its index when the docs change.
-
+Establish the stable APEX 2.0 beta baseline with persistent conversations, personal context and retrieval, simplified Agents, and the updated Cortex and briefing experience.
 ---
 
 ## v2.0.0-beta.2 - Cortex: Bounded Task Execution & Observability
 
-**Status:** Planned
+**Status:** In Progress
 
 **Objective:**
 Let Cortex work through a task in repeated, bounded steps: observe, retrieve context, reason, act, verify, and stop when there is enough evidence that the task is complete.
@@ -524,19 +511,6 @@ By this point, persistent context, verified actions, learned procedures, executi
 
 ---
 
-# Phase VI: Platform Consolidation & Physical Integration
-
-**Status:** Planned
-
-**Core Focus:**
-Cleaning up the APEX 2.x foundation, moving the main interface to a native desktop application, and connecting APEX to independent physical sensing systems without making those systems depend on Cortex.
-
-Phase VI is where APEX can stop carrying forward temporary 1.x compatibility choices. The goal is to simplify the platform around the runtime, persistence, Agent, memory, and action systems that proved useful before expanding further into desktop and physical integrations.
-
-[Back to Current Focus](#current-focus)
-
----
-
 ## v2.0.0 - Platform Consolidation
 
 **Status:** Planned
@@ -553,6 +527,17 @@ Useful operator data should be preserved where practical, including Cortex conve
 Fresh installations and systems upgraded through APEX 1.x should end up with the same current schema, configuration shape, and runtime behavior.
 
 Some old internal contracts may be removed when keeping them would make the 2.x code harder to understand or maintain.
+
+---
+
+# Phase VI: Native Platform & Physical Integration
+
+**Status:** Planned
+
+**Core Focus:**
+Extending the stable APEX 2.0 platform, moving the main interface to a native desktop application, and connecting APEX to independent physical sensing systems without making those systems depend on Cortex.
+
+[Back to Current Focus](#current-focus)
 
 ---
 
@@ -624,4 +609,4 @@ The single-user, local-first model remains the default. External access should b
 APEX is currently in **Phase V: APEX 2.0 Beta**.
 
 **Active milestone:**
-[v2.0.0-beta.1 - Cortex: Persistent Context, World Model & Retrieval](#v200-beta1---cortex-persistent-context-world-model--retrieval)
+[v2.0.0-beta.2 - Cortex: Bounded Task Execution & Observability](#v200-beta2---cortex-bounded-task-execution--observability)
