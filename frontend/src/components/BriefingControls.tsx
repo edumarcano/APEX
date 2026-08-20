@@ -1,9 +1,9 @@
 import {
   Check,
   ChevronDown,
-  FileText,
   Orbit,
   RefreshCw,
+  Rows3,
   Sparkles,
   Zap,
 } from 'lucide-react'
@@ -79,6 +79,18 @@ function statusReason(availability: ModeAvailability): string {
   return availability.reason?.trim() || STATUS_REASONS[availability.status] || availability.status
 }
 
+const MODE_SUMMARIES: Record<BriefingMode, string> = {
+  focused: 'A deeper briefing that looks across the next 1–2 weeks to find conflicts, priorities, and useful connections.',
+  flash: 'A quick local briefing for what matters right now and over the next few days.',
+  structured: 'A deterministic readout of APEX telemetry with no model interpretation.',
+}
+
+const MODE_EXPANDED_SUBTEXTS: Record<BriefingMode, string> = {
+  focused: 'Panthera · OpenRouter · DeepSeek V4 Flash · High',
+  flash: 'Felis · llama.cpp · Gemma 4 E4B',
+  structured: 'Deterministic · No model',
+}
+
 function modeDescription(mode: BriefingMode, targets?: BriefingTargetStatus[]): string {
   const target = targets?.find((option) => option.mode === mode)
   if (target?.description) return target.description
@@ -105,7 +117,7 @@ function BriefingModeMark({ mode }: { mode: BriefingMode }): ReactElement {
     return (
       <span
         aria-label="Focused Briefing mark"
-        className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-purple-300/25 bg-purple-400/10 text-purple-200"
+        className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-[#1F6FE5]/35 bg-[#1F6FE5]/15 text-[#1F6FE5]"
       >
         <Orbit className="size-3.5" aria-hidden />
       </span>
@@ -115,7 +127,7 @@ function BriefingModeMark({ mode }: { mode: BriefingMode }): ReactElement {
     return (
       <span
         aria-label="Flash Briefing mark"
-        className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-amber-300/25 bg-amber-400/10 text-amber-200"
+        className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-[#6EA8FF]/35 bg-[#6EA8FF]/15 text-[#6EA8FF]"
       >
         <Zap className="size-3.5" aria-hidden />
       </span>
@@ -124,9 +136,9 @@ function BriefingModeMark({ mode }: { mode: BriefingMode }): ReactElement {
   return (
     <span
       aria-label="Structured Briefing mark"
-      className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-slate-300/20 bg-slate-400/10 text-slate-200"
+      className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-slate-400/20 bg-slate-500/10 text-slate-300"
     >
-      <FileText className="size-3.5" aria-hidden />
+      <Rows3 className="size-3.5" aria-hidden />
     </span>
   )
 }
@@ -310,7 +322,8 @@ export function BriefingModeSelector({
                     <BriefingModeMark mode={option.key} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">{option.label}</span>
-                      <span className="mt-0.5 block truncate text-[10px] text-zinc-500">{modeDescription(option.key, targets)}</span>
+                      <span className="mt-1 block text-[10px] leading-snug text-zinc-400">{MODE_SUMMARIES[option.key]}</span>
+                      <span className="mt-1 block font-mono text-[9px] text-zinc-500">{MODE_EXPANDED_SUBTEXTS[option.key]}</span>
                       <span className="mt-1 block font-mono text-[9px] text-zinc-400">{modeCost(option.key, targets)}</span>
                     </span>
                     {selected ? <Check className="size-3.5 shrink-0 text-[#39FF88]" strokeWidth={2.25} aria-hidden /> : null}
