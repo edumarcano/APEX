@@ -1,8 +1,8 @@
 import {
-  ChartNoAxesCombined,
   Check,
   ChevronDown,
   FileText,
+  Orbit,
   RefreshCw,
   Sparkles,
   Zap,
@@ -107,7 +107,7 @@ function BriefingModeMark({ mode }: { mode: BriefingMode }): ReactElement {
         aria-label="Focused Briefing mark"
         className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-purple-300/25 bg-purple-400/10 text-purple-200"
       >
-        <ChartNoAxesCombined className="size-3.5" aria-hidden />
+        <Orbit className="size-3.5" aria-hidden />
       </span>
     )
   }
