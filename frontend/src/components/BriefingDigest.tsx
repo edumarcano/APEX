@@ -168,17 +168,15 @@ export function BriefingDigest({
               <Volume2 className="size-3.5" strokeWidth={2} aria-hidden />
             </button>
           ) : null}
-          {status === 'success' || (activated && (insights.length > 0 || trimmedBriefing.length > 0)) ? (
-            <button
-              type="button"
-              onClick={() => setIsModalOpen(true)}
-              className="inline-flex size-7 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-[color:var(--hud-text)] transition-colors hover:border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
-              aria-label="Briefing history"
-              title="Briefing history"
-            >
-              <Clock className="size-3.5 text-[color:var(--hud-accent)]" strokeWidth={2} aria-hidden />
-            </button>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => setIsModalOpen(true)}
+            className="inline-flex size-7 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-[color:var(--hud-text)] transition-colors hover:border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
+            aria-label="Briefing history"
+            title="Briefing history"
+          >
+            <Clock className="size-3.5 text-[color:var(--hud-accent)]" strokeWidth={2} aria-hidden />
+          </button>
         </div>
         </div>
         <div className="hud-header-divider mt-3" aria-hidden />
@@ -197,7 +195,7 @@ export function BriefingDigest({
           trimmedBriefing.length === 0 ? (
             <div className="space-y-3">
               <p className="text-sm leading-relaxed text-[color:var(--hud-muted-text)]">
-                No briefing transcript yet. Use the synthesis controls in the system header.
+                No briefing transcript yet. Use the briefing controls below.
               </p>
               {statusMeta}
             </div>

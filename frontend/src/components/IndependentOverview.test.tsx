@@ -267,4 +267,22 @@ describe('BriefingDigest briefing actions', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Last manual delivery: pyttsx3')
   })
 
+  it('renders empty transcript guidance referencing briefing controls below and keeps history button visible', async () => {
+    const user = userEvent.setup()
+    render(
+      <BriefingDigest
+        insights={[]}
+        briefingText=""
+        status="idle"
+        isLoading={false}
+        activated={false}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Briefing history' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Briefing' }))
+    expect(
+      screen.getByText('No briefing transcript yet. Use the briefing controls below.'),
+    ).toBeInTheDocument()
+  })
 })

@@ -254,3 +254,38 @@ class BriefingRouterContractTests(unittest.TestCase):
                 speak_fillers=False,
             )
         self.assertFalse(response.metadata.spoken)
+
+    def test_fallback_to_structured_mode_delivery_policy_is_not_spoken(self) -> None:
+        from core.api.briefing import _synthesize_from_snapshot
+        from core.telemetry.models import TelemetrySnapshot
+
+        snapshot = TelemetrySnapshot(
+            snapshot_id="snap-456",
+            collected_at="2026-08-20T00:00:00Z",
+            modules={},
+            sync_health_score=100.0,
+            connector_health=[],
+            failed_connectors=[],
+        )
+        settings_mock = SimpleNamespace(
+            voice=SimpleNamespace(mode="automatic", engine="google", gender="female"),
+        )
+        raw_result = SynthesisResult(
+            briefing="Fallback briefing",
+            insights=["Insight 1"],
+            provider="raw",
+            fallback_reason="openrouter_unavailable",
+        )
+        with patch("core.api.briefing.get_settings_store", return_value=SimpleNamespace(get_snapshot=lambda: settings_mock)), patch(
+            "core.api.briefing.is_dev_mode", return_value=False
+        ), patch("core.api.briefing.database"), patch(
+            "core.synthesis.router.SynthesisRouter.synthesize_mode", return_value=raw_result
+        ):
+            response = _synthesize_from_snapshot(
+                snapshot=snapshot,
+                mode="focused",
+                run_id="run-fallback-test",
+                speak_fillers=False,
+            )
+        self.assertFalse(response.metadata.spoken)
+        self.assertEqual(response.metadata.synthesis_provider, "raw")

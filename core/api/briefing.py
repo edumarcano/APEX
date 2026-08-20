@@ -599,7 +599,7 @@ def _run_demo_briefing(
         )
 
         spoken = False
-        if _voice_is_automatic():
+        if _voice_is_automatic() and mode != "structured":
             voice_thread = threading.Thread(
                 target=bind_run_id_context(_speak_and_cleanup),
                 kwargs={
@@ -715,7 +715,11 @@ def _synthesize_from_snapshot(
             system_load_throttled=system_load_throttled,
         )
         digest_payload = _build_digest(results=results, insights=briefing_insights)
-        spoken = _voice_is_automatic() and mode != "structured"
+        spoken = (
+            _voice_is_automatic()
+            and mode != "structured"
+            and synthesis_result.provider != "raw"
+        )
         runtime_metadata = RuntimeMetadata(
             run_id=run_id,
             dev_mode_active=dev_mode,
