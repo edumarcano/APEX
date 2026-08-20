@@ -36,8 +36,8 @@ interface BriefingOption {
 }
 
 const ALL_OPTIONS: readonly BriefingOption[] = [
-  { key: 'flash', label: 'Flash', description: 'Felis · local model' },
   { key: 'focused', label: 'Focused', description: 'Panthera · DeepSeek V4 Flash' },
+  { key: 'flash', label: 'Flash', description: 'Felis · Gemma 4 E2B' },
   { key: 'structured', label: 'Structured', description: 'Deterministic · no model' },
 ]
 

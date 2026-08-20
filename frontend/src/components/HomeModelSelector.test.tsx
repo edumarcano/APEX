@@ -197,9 +197,9 @@ describe('HomeModelSelector', () => {
     const lunaOption = within(popover).getByRole('option', { name: /gpt-5\.6 luna/i })
     expect(lunaOption).not.toBeDisabled()
 
-    // Gemma is local and enabled despite Felis's loaded model status in Cortex being model_not_installed
+    // Gemma is local and disabled when Felis availability status is not ready (e.g., model_not_installed)
     const gemmaOption = within(popover).getByRole('option', { name: /gemma 4 e2b/i })
-    expect(gemmaOption).not.toBeDisabled()
+    expect(gemmaOption).toBeDisabled()
   })
 
   it('renders 4K context for Ollama models in dropdown descriptions', async () => {

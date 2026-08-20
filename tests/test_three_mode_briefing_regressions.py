@@ -220,3 +220,38 @@ class BriefingRouterContractTests(unittest.TestCase):
         self.assertIsNotNone(source.f1_upcoming)
         self.assertEqual(source.f1_upcoming.race_name, "Grand Prix")
         self.assertEqual(source.focused_view().sports_events[0].kind, "f1")
+
+    def test_build_briefing_target_statuses_orders_focused_first_and_names_gemma(self) -> None:
+        from core.api.briefing import build_briefing_target_statuses
+
+        targets = build_briefing_target_statuses()
+        self.assertEqual([t.mode for t in targets], ["focused", "flash", "structured"])
+        flash_target = next(t for t in targets if t.mode == "flash")
+        self.assertTrue(flash_target.description.startswith("Felis · Gemma"))
+
+    def test_structured_mode_delivery_policy_is_visual_first(self) -> None:
+        from core.api.briefing import _synthesize_from_snapshot
+        from core.telemetry.models import TelemetrySnapshot
+
+        snapshot = TelemetrySnapshot(
+            snapshot_id="snap-123",
+            collected_at="2026-08-20T00:00:00Z",
+            modules={},
+            sync_health_score=100.0,
+            connector_health=[],
+            failed_connectors=[],
+        )
+        settings_mock = SimpleNamespace(
+            voice=SimpleNamespace(mode="automatic", engine="google", gender="female"),
+        )
+        with patch("core.api.briefing.get_settings_store", return_value=SimpleNamespace(get_snapshot=lambda: settings_mock)), patch(
+            "core.api.briefing.is_dev_mode", return_value=False
+        ), patch("core.api.briefing.database"):
+            response = _synthesize_from_snapshot(
+                snapshot=snapshot,
+                mode="structured",
+                run_id="run-test",
+                speak_fillers=False,
+            )
+        self.assertFalse(response.metadata.spoken)
+

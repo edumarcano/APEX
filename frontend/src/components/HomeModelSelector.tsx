@@ -125,7 +125,7 @@ export function HomeModelSelector({
       if (pantheraStatus?.status === 'verified' && pantheraStatus.configured_model === selectedModel.model_id) return 'verified'
       return 'configured'
     }
-    if (felisStatus?.status === 'disabled') return 'disabled'
+    if (felisStatus?.status) return felisStatus.status
     return 'available'
   }, [selectedModel, pantheraStatus, felisStatus])
 
@@ -335,7 +335,7 @@ export function HomeModelSelector({
                       const index = allOrderedModels.findIndex((item) => item.model_id === entry.model_id)
                       const isSelected = selectedModel?.model_id === entry.model_id
                       const runtimeName = runtimeDisplayName(entry.provider as LocalRuntime)
-                      const isModelDisabled = felisStatus?.status === 'disabled'
+                      const isModelDisabled = !felisStatus?.status || !['available', 'configured', 'verified'].includes(felisStatus.status)
                       return (
                         <li key={entry.model_id} role="presentation" className="group/model-option relative">
                           <button

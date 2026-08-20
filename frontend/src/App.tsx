@@ -1660,6 +1660,7 @@ export default function App(): ReactElement {
                       isCortexQuerying={isCortexQuerying}
                       isLocalModelLoading={isLocalModelLoading}
                       loadingDisplayName={loadingDisplayName}
+                      isTelemetryCollecting={isTelemetryCollecting}
                     />
                   </div>
                 </div>

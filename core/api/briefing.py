@@ -727,7 +727,7 @@ def _synthesize_from_snapshot(
             system_load_throttled=system_load_throttled,
         )
         digest_payload = _build_digest(results=results, insights=briefing_insights)
-        spoken = _voice_is_automatic()
+        spoken = _voice_is_automatic() and mode != "structured"
         runtime_metadata = RuntimeMetadata(
             run_id=run_id,
             dev_mode_active=dev_mode,
@@ -960,18 +960,6 @@ def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
 
     return [
         BriefingTargetStatus(
-            mode="flash",
-            label="Flash",
-            description="Felis · local model",
-            model_id=felis_profile.model_id if felis_profile else DEFAULT_FELIS_MODEL,
-            model_display_name=felis_profile.display_name if felis_profile else "Gemma 4 E2B",
-            provider="llama_cpp",
-            runtime="local",
-            status=felis_status,
-            reason=felis_reason,
-            pricing=felis_pricing,
-        ),
-        BriefingTargetStatus(
             mode="focused",
             label="Focused",
             description=f"Panthera · {panthera_profile.display_name if panthera_profile else 'DeepSeek V4 Flash 0731'}",
@@ -982,6 +970,18 @@ def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
             status=panthera_status,
             reason=panthera_reason,
             pricing=panthera_pricing,
+        ),
+        BriefingTargetStatus(
+            mode="flash",
+            label="Flash",
+            description=f"Felis · {felis_profile.display_name if felis_profile else 'Gemma 4 E2B'}",
+            model_id=felis_profile.model_id if felis_profile else DEFAULT_FELIS_MODEL,
+            model_display_name=felis_profile.display_name if felis_profile else "Gemma 4 E2B",
+            provider="llama_cpp",
+            runtime="local",
+            status=felis_status,
+            reason=felis_reason,
+            pricing=felis_pricing,
         ),
         BriefingTargetStatus(
             mode="structured",

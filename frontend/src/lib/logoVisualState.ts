@@ -59,6 +59,7 @@ function resolveColor(input: LogoVisualStateInput): string {
   if (input.activeStep === 3) return COLORS.purple
   if (
     input.isBriefingRunning ||
+    input.isTelemetryCollecting ||
     input.activeStep === 1 ||
     input.activeStep === 2
   ) {

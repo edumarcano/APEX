@@ -11,6 +11,7 @@ export interface VoiceSignalGlyphProps {
   isCortexQuerying?: boolean
   isLocalModelLoading?: boolean
   loadingDisplayName?: string | null
+  isTelemetryCollecting?: boolean
   className?: string
 }
 
@@ -53,6 +54,7 @@ function resolveSignalState(
   isLocalModelLoading: boolean,
   loadingDisplayName: string | null,
   isCortexQuerying: boolean,
+  isTelemetryCollecting: boolean = false,
 ): SignalState {
   if (isLocalModelLoading) {
     const name = loadingDisplayName?.trim() || 'model'
@@ -75,7 +77,7 @@ function resolveSignalState(
     return { label: 'Synthesizing', tone: 'purple', isActive: true }
   }
 
-  if (status === 'loading' && step === 2) {
+  if ((status === 'loading' && step === 2) || isTelemetryCollecting) {
     return { label: 'Collecting Data', tone: 'emerald', isActive: true }
   }
 
@@ -151,6 +153,7 @@ export function VoiceSignalGlyph({
   isCortexQuerying = false,
   isLocalModelLoading = false,
   loadingDisplayName = null,
+  isTelemetryCollecting = false,
   className = '',
 }: VoiceSignalGlyphProps): ReactElement {
   const filterId = useId().replace(/:/g, '')
@@ -161,6 +164,7 @@ export function VoiceSignalGlyph({
     isLocalModelLoading,
     loadingDisplayName,
     isCortexQuerying,
+    isTelemetryCollecting,
   )
   const toneClasses = resolveToneClasses(signalState.tone)
   const showFlow = signalState.isActive

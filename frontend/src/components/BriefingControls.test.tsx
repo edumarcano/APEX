@@ -19,7 +19,7 @@ function target(
   return {
     mode,
     label: mode === 'focused' ? 'Focused' : mode === 'flash' ? 'Flash' : 'Structured',
-    description: mode === 'focused' ? 'Panthera · DeepSeek V4 Flash' : mode === 'flash' ? 'Felis · local model' : 'Deterministic · no model',
+    description: mode === 'focused' ? 'Panthera · DeepSeek V4 Flash' : mode === 'flash' ? 'Felis · Gemma 4 E2B' : 'Deterministic · no model',
     model_id: mode === 'structured' ? null : mode,
     model_display_name: mode === 'structured' ? null : mode,
     provider: mode === 'focused' ? 'openrouter' : local ? 'llama_cpp' : null,
@@ -42,8 +42,8 @@ function target(
 }
 
 const AVAILABLE_TARGETS = [
-  target('flash'),
   target('focused'),
+  target('flash'),
   target('structured'),
 ]
 
@@ -59,7 +59,7 @@ function renderSelector(overrides: Partial<ComponentProps<typeof BriefingModeSel
 }
 
 describe('BriefingModeSelector', () => {
-  it('orders and describes Flash, Focused, and Structured modes', async () => {
+  it('orders and describes Focused, Flash, and Structured modes', async () => {
     const user = userEvent.setup()
     renderSelector()
 
@@ -74,7 +74,7 @@ describe('BriefingModeSelector', () => {
     expect(screen.getAllByText('No provider token charge')).toHaveLength(1)
     expect(screen.getByText('No model cost')).toBeVisible()
     expect(within(listbox).getAllByRole('option')).toHaveLength(3)
-    expect(within(listbox).getByText('Felis · local model')).toBeVisible()
+    expect(within(listbox).getByText('Felis · Gemma 4 E2B')).toBeVisible()
     expect(within(listbox).getByText('Panthera · DeepSeek V4 Flash')).toBeVisible()
     expect(within(listbox).getByText('Deterministic · no model')).toBeVisible()
     expect(within(listbox).queryByRole('option', { name: /^Mus\b/i })).not.toBeInTheDocument()
@@ -87,14 +87,14 @@ describe('BriefingModeSelector', () => {
     renderSelector({
       onChange: onModeChange,
       targets: [
-        target('flash', 'insufficient_ram', 'Current memory pressure exceeds threshold'),
         target('focused'),
+        target('flash', 'insufficient_ram', 'Current memory pressure exceeds threshold'),
         target('structured'),
       ],
     })
 
     await user.click(screen.getByRole('button', { name: /briefing mode: flash/i }))
-    expect(screen.getAllByRole('option')[0]).toBeDisabled()
+    expect(screen.getAllByRole('option')[1]).toBeDisabled()
 
     await user.click(screen.getByRole('option', { name: /structured/i }))
     expect(onModeChange).toHaveBeenCalledWith('structured')
