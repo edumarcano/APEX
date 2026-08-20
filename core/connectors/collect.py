@@ -152,13 +152,14 @@ def _calendar_data(
         )
 
     events.sort(key=lambda event: str(event["start"]))
-    truncated = len(events) > _CALENDAR_EVENT_CAP
+    total_count = len(events)
+    truncated = total_count > _CALENDAR_EVENT_CAP
     events = events[:_CALENDAR_EVENT_CAP]
 
     return {
         "window_days": _CALENDAR_WINDOW_DAYS,
         "events": events,
-        "total_count": len(events),
+        "total_count": total_count,
         "truncated": truncated,
     }
 

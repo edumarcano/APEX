@@ -8,6 +8,7 @@ import threading
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
 
@@ -283,7 +284,7 @@ def _build_synthesis_input(
     if f1_fact is not None:
         sports_events.append(SportEventFact(kind="f1", title=f1_fact.race_name, start=f1_fact.start, detail="Sprint scheduled" if f1_fact.sprint_scheduled else None))
     if isinstance(fixtures, list):
-        for fixture in fixtures[:15]:
+        for fixture in fixtures:
             if isinstance(fixture, dict) and isinstance(fixture.get("kickoff_at"), str):
                 team, opponent = fixture.get("team"), fixture.get("opponent")
                 if isinstance(team, str) and isinstance(opponent, str):
@@ -298,7 +299,17 @@ def _build_synthesis_input(
         if isinstance(raw_hour, dict) and isinstance(raw_hour.get("time"), str):
             weather_hourly.append(WeatherHourFact(**raw_hour))
 
-    now_local = datetime.now().astimezone()
+    timezone_name = (
+        str(weather_data.get("timezone"))
+        if isinstance(weather_data, dict) and isinstance(weather_data.get("timezone"), str)
+        else "America/New_York"
+    )
+    try:
+        local_zone = ZoneInfo(timezone_name)
+    except Exception:
+        timezone_name = "America/New_York"
+        local_zone = ZoneInfo(timezone_name)
+    now_local = datetime.now(local_zone)
     overdue_count = 0
     due_today_count = 0
     for reminder in reminder_facts:
@@ -312,6 +323,22 @@ def _build_synthesis_input(
             overdue_count += 1
         elif due_at.date() == now_local.date():
             due_today_count += 1
+
+    importance_order = {"high": 0, "normal": 1, "low": 2}
+
+    def reminder_sort_key(reminder: ReminderFact) -> tuple[int, int, datetime, str]:
+        due_at: datetime | None = None
+        if reminder.due:
+            try:
+                due_at = datetime.fromisoformat(reminder.due.replace("Z", "+00:00")).astimezone(local_zone)
+            except ValueError:
+                pass
+        urgency = 3
+        if due_at is not None:
+            urgency = 0 if due_at.date() < now_local.date() else 1 if due_at.date() == now_local.date() else 2
+        return (urgency, importance_order.get(reminder.importance or "normal", 1), due_at or datetime.max.replace(tzinfo=local_zone), reminder.note.casefold())
+
+    reminder_facts.sort(key=reminder_sort_key)
 
     return BriefingFacts(
         weather_summary=weather_summary,
@@ -366,11 +393,12 @@ def _build_synthesis_input(
         f1_this_week=f1_fact,
         football_next_fixture=football_fact,
         sports_events=sports_events,
-        sports_truncated=bool(isinstance(fixtures, list) and len(fixtures) > 15),
+        sports_truncated=False,
         connector_health=connector_health,
         failed_connectors=failed_connectors,
         generated_at=datetime.now(timezone.utc).isoformat(),
         local_time=now_local.isoformat(),
+        timezone=timezone_name,
         snapshot_id=snapshot.snapshot_id if snapshot is not None else None,
         snapshot_collected_at=snapshot.collected_at if snapshot is not None else None,
     )

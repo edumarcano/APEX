@@ -65,6 +65,21 @@ class FootballCollectionTests(unittest.TestCase):
         self.assertEqual([fixture["team"] for fixture in result.data["fixtures"]], ["Second", "First"])
         self.assertEqual(result.data["fixtures"][0]["home_or_away"], "home")
 
+    def test_collects_up_to_five_fixtures_per_team_within_fourteen_days(self) -> None:
+        self.store.get_snapshot.return_value = _settings((1, "First"))
+        matches = [
+            _match(1, 10 + day, f"Opponent {day}", self.now + timedelta(days=day))
+            for day in range(1, 7)
+        ]
+        matches.append(_match(1, 99, "Outside horizon", self.now + timedelta(days=15)))
+        with mock.patch("clients.sports_client.requests.get", return_value=_Response({"matches": matches})):
+            result = sports_client.collect_football()
+        self.assertEqual(len(result.data["fixtures"]), 5)
+        self.assertEqual(
+            [fixture["opponent"] for fixture in result.data["fixtures"]],
+            [f"Opponent {day}" for day in range(1, 6)],
+        )
+
     def test_fresh_cache_is_reused_unless_forced(self) -> None:
         self.store.get_snapshot.return_value = _settings((1, "First"))
         fixture = _match(1, 11, "Opponent", self.now + timedelta(days=2))

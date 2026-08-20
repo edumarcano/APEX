@@ -267,7 +267,7 @@ class SynthesisRouter:
         self, source: SynthesisInput, reason: str | None, warmup_ms: int | None = None
     ) -> SynthesisResult:
         self._state("fallback", "raw", None, reason)
-        briefing, insights = render_structured_briefing(source)
+        briefing, insights = render_structured_briefing(source.structured_view())
         return SynthesisResult(
             briefing=briefing,
             insights=insights,
@@ -584,10 +584,10 @@ class SynthesisRouter:
             return result
 
         if mode == "focused":
-            return self._synthesize_focused(source, source.flash_view())
+            return self._synthesize_focused(source.focused_view(), source.flash_view())
 
         if mode == "flash":
-            return self._synthesize_explicit_local(source, "felis", warmup)
+            return self._synthesize_explicit_local(source.flash_view(), "felis", warmup)
 
         return self._raw(source, "invalid_briefing_mode")
 

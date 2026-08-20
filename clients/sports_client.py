@@ -23,6 +23,8 @@ F1_CACHE_FILENAME = ".f1_cache.json"
 F1_CACHE_TTL = timedelta(hours=24)
 FOOTBALL_CACHE_FILENAME = ".football_cache.json"
 FOOTBALL_CACHE_TTL = timedelta(hours=6)
+FOOTBALL_HORIZON = timedelta(days=14)
+FOOTBALL_FIXTURE_CAP_PER_TEAM = 5
 try:
     EASTERN_TZ = ZoneInfo("America/New_York")
 except Exception:
@@ -241,10 +243,10 @@ def _is_valid_football_fixture(value: object, *, now: datetime) -> bool:
     if isinstance(value.get("competition_id"), bool) or not isinstance(value.get("competition_id"), int):
         return False
     kickoff = _parse_utc_datetime(value.get("kickoff_at"))
-    return kickoff is not None and kickoff > now
+    return kickoff is not None and now < kickoff < now + FOOTBALL_HORIZON
 
 
-def _read_football_cache(*, now: datetime) -> dict[int, tuple[datetime, dict[str, Any]]]:
+def _read_football_cache(*, now: datetime) -> dict[int, tuple[datetime, list[dict[str, Any]]]]:
     try:
         with open(_get_football_cache_path(), "r", encoding="utf-8") as cache_file:
             payload = json.load(cache_file)
@@ -253,7 +255,7 @@ def _read_football_cache(*, now: datetime) -> dict[int, tuple[datetime, dict[str
     entries = payload.get("teams") if isinstance(payload, dict) else None
     if not isinstance(entries, dict):
         return {}
-    valid: dict[int, tuple[datetime, dict[str, Any]]] = {}
+    valid: dict[int, tuple[datetime, list[dict[str, Any]]]] = {}
     for raw_id, entry in entries.items():
         try:
             team_id = int(raw_id)
@@ -262,18 +264,25 @@ def _read_football_cache(*, now: datetime) -> dict[int, tuple[datetime, dict[str
         if not isinstance(entry, dict):
             continue
         cached_at = _parse_utc_datetime(entry.get("cached_at"))
-        fixture = entry.get("fixture")
-        if cached_at is not None and _is_valid_football_fixture(fixture, now=now):
-            valid[team_id] = (cached_at, fixture)
+        raw_fixtures = entry.get("fixtures")
+        # Accept the previous one-fixture cache shape during its natural TTL.
+        if not isinstance(raw_fixtures, list):
+            raw_fixtures = [entry.get("fixture")]
+        fixtures = [
+            fixture for fixture in raw_fixtures
+            if _is_valid_football_fixture(fixture, now=now)
+        ]
+        if cached_at is not None and fixtures:
+            valid[team_id] = (cached_at, fixtures[:FOOTBALL_FIXTURE_CAP_PER_TEAM])
     return valid
 
 
-def _write_football_cache(entries: dict[int, dict[str, Any]]) -> None:
+def _write_football_cache(entries: dict[int, list[dict[str, Any]]]) -> None:
     try:
         payload = {
             "teams": {
-                str(team_id): {"cached_at": utc_now_iso(), "fixture": fixture}
-                for team_id, fixture in entries.items()
+                str(team_id): {"cached_at": utc_now_iso(), "fixtures": fixtures}
+                for team_id, fixtures in entries.items()
             }
         }
         with open(_get_football_cache_path(), "w", encoding="utf-8") as cache_file:
@@ -328,7 +337,7 @@ def _football_display_text(fixtures: list[dict[str, Any]]) -> str:
 
 
 def collect_football(*, force: bool = False) -> ConnectorResult:
-    """Collect the next scheduled fixture for each configured followed team."""
+    """Collect each followed team's scheduled fixtures in the next fourteen days."""
     observed_at = utc_now_iso()
     now = datetime.now(timezone.utc)
     teams = get_settings_store().get_snapshot().football.teams
@@ -341,20 +350,20 @@ def collect_football(*, force: bool = False) -> ConnectorResult:
     cache = _read_football_cache(now=now)
     fixtures: list[dict[str, Any]] = []
     failures: list[str] = []
-    live_entries: dict[int, dict[str, Any]] = {}
+    live_entries: dict[int, list[dict[str, Any]]] = {}
     fresh_cache_used = False
     headers = {"X-Auth-Token": football_api_key}
     for team in teams:
         cached = cache.get(team.id)
         cache_is_fresh = cached is not None and now - cached[0] <= FOOTBALL_CACHE_TTL
         if cached is not None and cache_is_fresh and not force:
-            fixtures.append(cached[1])
+            fixtures.extend(cached[1])
             fresh_cache_used = True
             continue
         try:
             url = (
                 "https://api.football-data.org/v4/teams/"
-                f"{team.id}/matches?status=SCHEDULED&limit=1"
+                f"{team.id}/matches?status=SCHEDULED&limit={FOOTBALL_FIXTURE_CAP_PER_TEAM}"
             )
             session = get_connector_http_session("sports")
             response = (
@@ -370,20 +379,26 @@ def collect_football(*, force: bool = False) -> ConnectorResult:
             matches = payload.get("matches") if isinstance(payload, dict) else None
             if not isinstance(matches, list):
                 raise RuntimeError("malformed_payload")
-            if matches:
-                fixture = _normalize_football_match(matches[0], team_id=team.id, team_name=team.name, now=now)
-                if fixture is None:
-                    raise RuntimeError("malformed_payload")
-                fixtures.append(fixture)
-                live_entries[team.id] = fixture
+            team_fixtures = [
+                fixture
+                for match in matches
+                if (fixture := _normalize_football_match(match, team_id=team.id, team_name=team.name, now=now)) is not None
+            ]
+            if matches and not team_fixtures:
+                raise RuntimeError("malformed_payload")
+            if team_fixtures:
+                team_fixtures.sort(key=lambda fixture: fixture["kickoff_at"])
+                selected = team_fixtures[:FOOTBALL_FIXTURE_CAP_PER_TEAM]
+                fixtures.extend(selected)
+                live_entries[team.id] = selected
         except (requests.RequestException, ValueError, RuntimeError) as exc:
             reason = str(exc) if str(exc) in {"throttled", "provider_error", "malformed_payload"} else "network_error"
             failures.append(reason)
             if cached is not None:
-                fixtures.append(cached[1])
+                fixtures.extend(cached[1])
 
     if live_entries:
-        _write_football_cache({**{team_id: fixture for team_id, (_, fixture) in cache.items()}, **live_entries})
+        _write_football_cache({**{team_id: fixtures for team_id, (_, fixtures) in cache.items()}, **live_entries})
     fixtures.sort(key=lambda fixture: fixture["kickoff_at"])
     data = {"fixtures": fixtures, "configured_team_count": len(teams)}
     if failures:

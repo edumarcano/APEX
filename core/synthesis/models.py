@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -170,6 +170,26 @@ class BriefingFacts(BaseModel):
                 "news_headlines": self.news_headlines[:5],
                 "calendar_events": self.calendar_events[:100],
                 "reminders": self.reminders[:50],
+            }
+        )
+
+    def structured_view(self) -> "BriefingFacts":
+        """Bound deterministic display while retaining totals and truncation facts."""
+        calendar_limit = 20
+        reminder_limit = 20
+        sports_limit = 15
+        return self.model_copy(
+            update={
+                "weather_daily": self.weather_daily[:10],
+                "weather_hourly": self.weather_hourly[:48],
+                "emails": self.emails[:8],
+                "news_headlines": self.news_headlines[:5],
+                "calendar_events": self.calendar_events[:calendar_limit],
+                "calendar_truncated": self.calendar_truncated or len(self.calendar_events) > calendar_limit,
+                "reminders": self.reminders[:reminder_limit],
+                "reminders_truncated": self.reminders_truncated or len(self.reminders) > reminder_limit,
+                "sports_events": self.sports_events[:sports_limit],
+                "sports_truncated": self.sports_truncated or len(self.sports_events) > sports_limit,
             }
         )
 

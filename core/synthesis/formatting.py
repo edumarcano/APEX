@@ -125,6 +125,9 @@ def compact_payload(source: SynthesisInput, max_chars: int = _DEFAULT_MAX_CHARS)
             {
                 "topic": sanitize_fact(item.topic, 64),
                 "headline": sanitize_fact(item.headline, 160),
+                "source": sanitize_fact(item.source, 96) or None,
+                "published_at": sanitize_fact(item.published_at, 64) or None,
+                "synopsis": sanitize_fact(item.synopsis, 360) or None,
             }
             for item in source.news_headlines
         ],
@@ -249,7 +252,12 @@ def parse_model_output(
     insights_index = text.index(_INSIGHTS)
     if speech_index > insights_index:
         raise ValueError("Synthesis section markers are reversed.")
-    speech = sanitize_fact(text[speech_index + len(_SPEECH) : insights_index], 1200)
+    # Preserve enough source text for the requested word ceiling before applying
+    # the semantic word clamp. A fixed 1,200-character limit cut Focused output
+    # short well before its 450-word contract.
+    speech = sanitize_fact(
+        text[speech_index + len(_SPEECH) : insights_index], max(1200, max_words * 8)
+    )
     speech = _clamp_words(speech, max_words)
     if not speech:
         raise ValueError("Synthesis speech section is empty.")
@@ -350,7 +358,7 @@ def render_structured_briefing(source: SynthesisInput) -> tuple[str, list[str]]:
         lines.append("FORECAST: " + days)
     if source.calendar_events:
         entries = []
-        for event in source.calendar_events:
+        for event in sorted(source.calendar_events, key=lambda item: item.start):
             location = f" @ {sanitize_fact(event.location, 80)}" if event.location else ""
             entries.append(f"{sanitize_fact(event.start, 64)} — {sanitize_fact(event.title, 160)}{location}")
         suffix = " [TRUNCATED]" if source.calendar_truncated else ""
@@ -366,7 +374,8 @@ def render_structured_briefing(source: SynthesisInput) -> tuple[str, list[str]]:
             insights.append(f"OVERDUE: {source.overdue_reminder_count} reminders")
         if source.due_today_reminder_count:
             prefix += f"; due today {source.due_today_reminder_count}"
-        lines.append(prefix + (" — " + " | ".join(reminder_entries) if reminder_entries else ""))
+        suffix = " [TRUNCATED]" if source.reminders_truncated else ""
+        lines.append(prefix + suffix + (" — " + " | ".join(reminder_entries) if reminder_entries else ""))
     if source.emails or source.email_unread_count:
         entries = [
             f"{sanitize_fact(item.sender, 80) + ': ' if item.sender else ''}{sanitize_fact(item.subject, 160)}"
@@ -376,5 +385,6 @@ def render_structured_briefing(source: SynthesisInput) -> tuple[str, list[str]]:
     if source.news_headlines:
         lines.append("NEWS: " + " | ".join(f"{sanitize_fact(item.topic, 48)} — {sanitize_fact(item.headline, 160)}" for item in source.news_headlines))
     if source.sports_events:
-        lines.append("SPORTS: " + " | ".join(f"{sanitize_fact(item.start, 64)} — {sanitize_fact(item.title, 160)}" for item in source.sports_events))
+        suffix = " [TRUNCATED]" if source.sports_truncated else ""
+        lines.append("SPORTS" + suffix + ": " + " | ".join(f"{sanitize_fact(item.start, 64)} — {sanitize_fact(item.title, 160)}" for item in sorted(source.sports_events, key=lambda item: item.start)))
     return "\n".join(lines) or "No briefing telemetry is currently available.", insights[:5]

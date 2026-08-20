@@ -77,7 +77,11 @@ def collect_news() -> ConnectorResult:
                         "published_at": str(article.get("publishedAt") or "")[:64],
                         "synopsis": str(article.get("description") or "")[:360],
                     })
-                formatted_headlines.extend(f"[{item['topic']}] {item['headline']}" for item in headlines[-3:])
+                formatted_headlines.extend(
+                    f"[{item['topic']}] {item['headline']}"
+                    for item in headlines
+                    if item["topic"] == topic
+                )
                 successes += 1
             else:
                 formatted_headlines.append(f"[{topic}] No major headlines found.")

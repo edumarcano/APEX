@@ -84,6 +84,18 @@ def get_global_config() -> dict[str, Any]:
     """Expose global system configurations to the frontend HUD on boot."""
     snapshot = get_settings_store().get_snapshot()
     runtime, agent, effort = resolve_agent_selection(snapshot.ask_apex)
+    effective_briefing_mode = (
+        "structured"
+        if DEMO_MODE
+        else DEV_AI_SYNTHESIS
+        if is_dev_mode()
+        else snapshot.briefing.default_mode
+    )
+    briefing_runtime = {
+        "flash": ("local", "felis"),
+        "focused": ("cloud", "panthera"),
+        "structured": ("raw", None),
+    }[effective_briefing_mode]
     return {
         "default_agent": agent,
         "ask_apex_enabled": snapshot.ask_apex.enabled,
@@ -91,26 +103,8 @@ def get_global_config() -> dict[str, Any]:
         "max_recent_conversation_messages": config.MAX_RECENT_CONVERSATION_MESSAGES,
         "dev_mode_active": is_dev_mode(),
         "demo_mode_active": DEMO_MODE,
-        "synthesis_strategy": (
-            "demo"
-            if DEMO_MODE
-            else (
-                "raw"
-                if DEV_AI_SYNTHESIS == "structured"
-                else "local"
-                if DEV_AI_SYNTHESIS == "flash"
-                else "cloud"
-            )
-            if is_dev_mode()
-            else "local"
-        ),
-        "synthesis_agent": (
-            None
-            if DEMO_MODE or (is_dev_mode() and DEV_AI_SYNTHESIS == "structured")
-            else "felis"
-            if is_dev_mode() and DEV_AI_SYNTHESIS == "flash"
-            else "panthera"
-        ),
+        "synthesis_strategy": "demo" if DEMO_MODE else briefing_runtime[0],
+        "synthesis_agent": briefing_runtime[1],
         "briefing_default_mode": snapshot.briefing.default_mode,
         "voice_mode": snapshot.voice.mode,
         "agent_initial_selection": {

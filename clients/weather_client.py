@@ -339,6 +339,7 @@ def collect_weather() -> ConnectorResult:
             **current_data,
             "location": location,
             "timeline": timeline,
+            "timezone": str(payload.get("timezone") or "America/New_York"),
         }
         daily_times = daily.get("time") if isinstance(daily, dict) else None
         daily_codes = daily.get("weather_code") if isinstance(daily, dict) else None
