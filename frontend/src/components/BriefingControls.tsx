@@ -258,7 +258,10 @@ export function BriefingModeSelector({
       >
         <BriefingModeMark mode={value} />
         <span className={`hud-led size-1.5 shrink-0 ${statusLedClass(activeAvailability.status)}`} aria-hidden />
-        <span className="min-w-0 flex-1 text-left"><span className="block truncate uppercase tracking-wider">{MODE_LABELS[value]}</span><span className="block truncate text-[8px] normal-case tracking-normal text-zinc-500">{modeDescription(value, targets)}</span></span>
+        <span className="min-w-0 flex-1 text-left">
+          <span className="block truncate uppercase tracking-wider">{MODE_LABELS[value]}</span>
+          <span className="block truncate text-[8px] normal-case tracking-normal text-zinc-500">{modeDescription(value, targets)}</span>
+        </span>
         <ChevronDown className={`ml-auto size-3.5 shrink-0 text-[#6EA8FF] transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
 

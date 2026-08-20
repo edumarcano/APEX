@@ -24,7 +24,6 @@ import type {
   ModelCatalogEntry,
 } from '../types/telemetry'
 import {
-  formatHomeModelSecondaryMetadata,
   formatReasoningLabel,
   providerDisplayName,
   resolveLowestReasoningEffort,
@@ -206,10 +205,8 @@ export function HomeModelSelector({
     }
   }, [allOrderedModels, focusOption, open, selectedModel, updatePosition])
 
-  const secondaryMetadata = formatHomeModelSecondaryMetadata(selectedModel)
-
   return (
-    <div className={`relative min-w-0 ${className}`} data-slot="home-model-selector-container">
+    <div className={`relative shrink-0 ${className}`} data-slot="home-model-selector-container">
       <button
         ref={triggerRef}
         type="button"
@@ -217,6 +214,7 @@ export function HomeModelSelector({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={`Model: ${selectedModel?.display_name ?? 'Select model'}`}
+        title={`Model: ${selectedModel?.display_name ?? 'Select model'}`}
         onClick={() => setOpen((current) => !current)}
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown' && !open) {
@@ -227,22 +225,14 @@ export function HomeModelSelector({
             close()
           }
         }}
-        className="flex h-full min-h-[46px] w-full min-w-0 items-center gap-2.5 rounded-lg border border-white/10 bg-black/35 px-3 font-mono text-[10px] text-zinc-200 transition-colors hover:border-[#0F4DB8]/55 hover:bg-[#0F4DB8]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F4DB8] disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex h-full min-h-[46px] items-center gap-1.5 rounded-lg border border-white/10 bg-black/35 px-2.5 font-mono text-[10px] text-zinc-200 transition-colors hover:border-[#0F4DB8]/55 hover:bg-[#0F4DB8]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F4DB8] disabled:cursor-not-allowed disabled:opacity-40"
       >
-        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03]">
+        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.03]">
           <ModelMark modelId={selectedModel?.model_id} provider={selectedModel?.provider} size={14} />
         </span>
         <span className={`hud-led size-1.5 shrink-0 ${statusLedClass(selectedStatus)}`} aria-hidden />
-        <span className="min-w-0 flex-1 text-left">
-          <span className="block truncate uppercase tracking-wider font-semibold text-zinc-200">
-            {selectedModel?.display_name ?? 'Select Model'}
-          </span>
-          <span className="block truncate text-[8px] normal-case tracking-normal text-zinc-500">
-            {secondaryMetadata}
-          </span>
-        </span>
         <ChevronDown
-          className={`ml-auto size-3.5 shrink-0 text-[#6EA8FF] transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`size-3 shrink-0 text-[#6EA8FF] transition-transform ${open ? 'rotate-180' : ''}`}
           aria-hidden
         />
       </button>

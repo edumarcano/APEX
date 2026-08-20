@@ -87,7 +87,8 @@ const mockAgentsStatus: AgentStatus[] = [
 ]
 
 describe('HomeModelSelector', () => {
-  it('renders selected cloud model with secondary Panthera metadata', () => {
+  it('renders compact icon trigger and exposes full Panthera metadata in dropdown', async () => {
+    const user = userEvent.setup()
     render(
       <HomeModelSelector
         selectedModelId="deepseek/deepseek-v4-flash-0731"
@@ -97,11 +98,17 @@ describe('HomeModelSelector', () => {
       />,
     )
 
-    expect(screen.getByText('DeepSeek V4 Flash')).toBeInTheDocument()
-    expect(screen.getByText(/Panthera · OpenRouter · Reasoning off/i)).toBeInTheDocument()
+    const trigger = screen.getByRole('button', { name: 'Model: DeepSeek V4 Flash' })
+    expect(trigger).toBeInTheDocument()
+
+    await user.click(trigger)
+    const listbox = screen.getByRole('listbox', { name: /select model/i })
+    expect(listbox).toBeInTheDocument()
+    expect(within(listbox).getByText('DeepSeek V4 Flash')).toBeInTheDocument()
+    expect(within(listbox).getByText(/Panthera · OpenRouter · Reasoning off/i)).toBeInTheDocument()
   })
 
-  it('renders selected local model with secondary Felis metadata, and experimental badge in dropdown', async () => {
+  it('renders selected local model with experimental badge and full Felis metadata in dropdown', async () => {
     const user = userEvent.setup()
     render(
       <HomeModelSelector
@@ -112,12 +119,14 @@ describe('HomeModelSelector', () => {
       />,
     )
 
-    expect(screen.getByText('Gemma 4 E2B')).toBeInTheDocument()
-    expect(screen.getByText(/Felis · llama\.cpp · 16K · Reasoning off/i)).toBeInTheDocument()
+    const trigger = screen.getByRole('button', { name: 'Model: Gemma 4 E2B' })
+    expect(trigger).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /model: gemma 4 e2b/i }))
+    await user.click(trigger)
     const listbox = screen.getByRole('listbox', { name: /select model/i })
     expect(listbox).toBeInTheDocument()
+    expect(within(listbox).getByText('Gemma 4 E2B')).toBeInTheDocument()
+    expect(within(listbox).getByText(/Felis · llama\.cpp · 16K context/i)).toBeInTheDocument()
     expect(within(listbox).getByText(/experimental/i)).toBeInTheDocument()
     expect(within(listbox).getByText(/preview/i)).toBeInTheDocument()
   })
@@ -193,7 +202,7 @@ describe('HomeModelSelector', () => {
     expect(gemmaOption).not.toBeDisabled()
   })
 
-  it('renders 4K context for Ollama models in trigger and dropdown descriptions', async () => {
+  it('renders 4K context for Ollama models in dropdown descriptions', async () => {
     const user = userEvent.setup()
     const ollamaCatalog: ModelCatalogEntry[] = [
       {
@@ -216,11 +225,12 @@ describe('HomeModelSelector', () => {
       />,
     )
 
-    expect(screen.getByText('Qwen 3 1.7B')).toBeInTheDocument()
-    expect(screen.getByText(/Felis · Ollama · 4K · Reasoning off/i)).toBeInTheDocument()
+    const trigger = screen.getByRole('button', { name: 'Model: Qwen 3 1.7B' })
+    expect(trigger).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /model: qwen 3 1\.7b/i }))
+    await user.click(trigger)
     const popover = screen.getByRole('listbox', { name: /select model/i })
+    expect(within(popover).getByText('Qwen 3 1.7B')).toBeInTheDocument()
     expect(within(popover).getByText(/Felis · Ollama · 4K context/i)).toBeInTheDocument()
     expect(within(popover).getByText(/Felis · llama\.cpp · 16K context/i)).toBeInTheDocument()
   })

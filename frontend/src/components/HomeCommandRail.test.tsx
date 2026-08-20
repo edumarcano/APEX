@@ -134,11 +134,11 @@ describe('HomeCommandRail', () => {
     renderRail({ onModelChange, onBriefingModeChange })
 
     const trigger = screen.getByRole('button', { name: /model: gpt-5\.6 luna/i })
-    expect(screen.getByText('GPT-5.6 Luna')).toBeVisible()
-    expect(screen.getByText(/Panthera · OpenAI · Reasoning off/i)).toBeVisible()
+    expect(trigger).toBeVisible()
     await user.click(trigger)
     const listbox = screen.getByRole('listbox', { name: /select model/i })
     expect(listbox).toBeVisible()
+    expect(within(listbox).getByText('GPT-5.6 Luna')).toBeVisible()
     await user.click(within(listbox).getByRole('option', { name: /gemma 4 e2b/i }))
 
     expect(onModelChange).toHaveBeenCalledWith('gemma-4-E2B-Q4_K_M.gguf')
