@@ -27,13 +27,16 @@ def collect_email() -> ConnectorResult:
             items = []
 
         recent: list[dict[str, str]] = []
-        for email in items[:3]:
+        for email in items[:8]:
             if not isinstance(email, dict):
                 continue
             recent.append(
                 {
                     "subject": str(email.get("subject", "")),
                     "time": str(email.get("time", "")),
+                    "sender": str(email.get("sender", "")),
+                    "received_at": str(email.get("received_at", "")),
+                    "snippet": str(email.get("snippet", ""))[:500],
                 }
             )
 
@@ -71,14 +74,14 @@ def collect_email() -> ConnectorResult:
         )
 
 
-_CALENDAR_WINDOW_DAYS = 7
+_CALENDAR_WINDOW_DAYS = 14
+_CALENDAR_EVENT_CAP = 100
 
 
 def _calendar_event_start(event: dict[str, Any]) -> datetime | None:
     raw_start = event.get("start")
     if not isinstance(raw_start, str) or not raw_start:
         return None
-
     try:
         if bool(event.get("all_day")):
             parsed_date = date.fromisoformat(raw_start)
@@ -101,6 +104,17 @@ def _calendar_event_start(event: dict[str, Any]) -> datetime | None:
         return None
 
 
+def _calendar_event_end(event: dict[str, Any]) -> datetime | None:
+    raw_end = event.get("end")
+    if not isinstance(raw_end, str) or not raw_end or bool(event.get("all_day")):
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw_end.replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
 def _calendar_data(
     calendar_data: list[dict[str, Any]],
     *,
@@ -115,11 +129,8 @@ def _calendar_data(
         if not isinstance(event, dict):
             continue
         event_start = _calendar_event_start(event)
-        if (
-            event_start is None
-            or event_start < now
-            or event_start >= window_end
-        ):
+        event_end = _calendar_event_end(event)
+        if event_start is None or event_start >= window_end or (event_start < now and (event_end is None or event_end <= now)):
             continue
         events.append(
             {
@@ -136,13 +147,19 @@ def _calendar_data(
                     if isinstance(event.get("time_zone"), str)
                     else None
                 ),
+                "location": str(event.get("location")) if event.get("location") else None,
             }
         )
+
+    events.sort(key=lambda event: str(event["start"]))
+    truncated = len(events) > _CALENDAR_EVENT_CAP
+    events = events[:_CALENDAR_EVENT_CAP]
 
     return {
         "window_days": _CALENDAR_WINDOW_DAYS,
         "events": events,
         "total_count": len(events),
+        "truncated": truncated,
     }
 
 
@@ -169,9 +186,9 @@ def collect_calendar(*, now: datetime | None = None) -> ConnectorResult:
                 f"'{event['summary']}' at {event['start']}"
                 for event in events
             ]
-            display = "Calendar Telemetry (7d): " + " | ".join(calendar_entries)
+            display = "Calendar Telemetry (14d): " + " | ".join(calendar_entries)
         else:
-            display = "Calendar Telemetry (7d): No upcoming events"
+            display = "Calendar Telemetry (14d): No upcoming events"
 
         return ConnectorResult(
             name="calendar",
@@ -195,6 +212,7 @@ def collect_calendar(*, now: datetime | None = None) -> ConnectorResult:
                 "window_days": _CALENDAR_WINDOW_DAYS,
                 "events": [],
                 "total_count": 0,
+                "truncated": False,
             },
         )
 

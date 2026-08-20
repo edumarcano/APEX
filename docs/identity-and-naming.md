@@ -51,6 +51,8 @@ APEX
 
 **Home** is the main day-to-day workspace. It shows things such as telemetry, briefings, connector health, reminders, and system status.
 
+Briefing modes are product behaviors, not Agent identities: **Flash**, **Focused**, and **Structured** are the only canonical mode names. Panthera and Felis remain Agent names used as resolved runtime metadata.
+
 ### Cortex
 
 **Cortex** is where the operator interacts with the Agents in more detail.

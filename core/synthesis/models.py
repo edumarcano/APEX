@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -13,37 +13,30 @@ SynthesisProvider = Literal[
     "gemini", "ollama", "llama_cpp", "raw", "demo", "openai", "openrouter"
 ]
 SynthesisAgent = Literal["panthera", "felis"]
-BriefingMode = Literal["panthera", "felis", "structured_digest"]
+BriefingMode = Literal["flash", "focused", "structured"]
 SynthesisPhase = Literal["idle", "loading", "ready", "generating", "fallback", "complete"]
 
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
-    {"panthera", "felis", "structured_digest"}
+    {"flash", "focused", "structured"}
 )
 LOCAL_BRIEFING_AGENTS: frozenset[str] = frozenset({"felis"})
 
 
 def strategy_to_briefing_mode(strategy: str) -> BriefingMode:
-    """Map legacy synthesis strategies onto explicit briefing modes."""
+    """Validate a canonical briefing mode without accepting legacy aliases."""
     normalized = (strategy or "").strip().lower()
-    if normalized == "raw":
-        return "structured_digest"
-    if normalized == "local":
-        return "felis"
-    if normalized == "cloud":
-        return "panthera"
-    if normalized == "comet":
-        return "panthera"
-    if normalized in {"felis", "acinonyx", "neofelis", "apodemus"}:
-        return "felis"
     if normalized in VALID_BRIEFING_MODES:
         return normalized  # type: ignore[return-value]
-    return "panthera"
+    return "flash"
 
 
 class CalendarFact(BaseModel):
     title: str
     start: str
+    end: str | None = None
     all_day: bool = False
+    location: str | None = None
+    time_zone: str | None = None
 
 
 class F1Fact(BaseModel):
@@ -52,9 +45,51 @@ class F1Fact(BaseModel):
     sprint_scheduled: bool = False
 
 
+class WeatherDayFact(BaseModel):
+    date: str
+    condition: str | None = None
+    temp_max_f: int | None = None
+    temp_min_f: int | None = None
+    precip_probability: int | None = None
+    wind_speed_mph: int | None = None
+
+
+class WeatherHourFact(BaseModel):
+    time: str
+    condition: str | None = None
+    temp_f: int | None = None
+    precip_probability: int | None = None
+    wind_speed_mph: int | None = None
+
+
+class ReminderFact(BaseModel):
+    note: str
+    due: str | None = None
+    importance: str | None = None
+    source: str | None = None
+    sync_state: str | None = None
+
+
+class EmailFact(BaseModel):
+    sender: str | None = None
+    subject: str
+    received_at: str | None = None
+    snippet: str | None = None
+
+
+class SportEventFact(BaseModel):
+    kind: str
+    title: str
+    start: str
+    detail: str | None = None
+
+
 class NewsFact(BaseModel):
     topic: str
     headline: str
+    source: str | None = None
+    published_at: str | None = None
+    synopsis: str | None = None
 
 
 class FootballFact(BaseModel):
@@ -69,9 +104,15 @@ class ConnectorHealthFact(BaseModel):
     name: str
     status: str
     reason_code: str = "ok"
+    freshness: str = "none"
+    observed_at: str | None = None
 
 
-class SynthesisInput(BaseModel):
+class BriefingFacts(BaseModel):
+    """Normalized, bounded facts collected once and projected per briefing mode."""
+    snapshot_id: str | None = None
+    snapshot_collected_at: str | None = None
+    local_time: str | None = None
     weather_summary: str | None = None
     weather_temp_f: int | None = None
     weather_apparent_temp_f: int | None = None
@@ -79,19 +120,62 @@ class SynthesisInput(BaseModel):
     weather_temp_min_f: int | None = None
     weather_precip_probability: int | None = None
     weather_condition: str | None = None
+    weather_daily: list[WeatherDayFact] = Field(default_factory=list)
+    weather_hourly: list[WeatherHourFact] = Field(default_factory=list)
     email_unread_count: int = Field(default=0, ge=0)
     email_recent_subjects: list[str] = Field(default_factory=list)
+    emails: list[EmailFact] = Field(default_factory=list)
     news_headlines: list[NewsFact] = Field(default_factory=list)
     calendar_event_count: int = Field(default=0, ge=0)
     next_calendar_event: CalendarFact | None = None
+    calendar_events: list[CalendarFact] = Field(default_factory=list)
+    calendar_truncated: bool = False
     pending_reminder_count: int = Field(default=0, ge=0)
     first_pending_reminder: str | None = None
+    reminders: list[ReminderFact] = Field(default_factory=list)
+    overdue_reminder_count: int = Field(default=0, ge=0)
+    due_today_reminder_count: int = Field(default=0, ge=0)
+    reminders_truncated: bool = False
     f1_this_week: F1Fact | None = None
     football_next_fixture: FootballFact | None = None
+    sports_events: list[SportEventFact] = Field(default_factory=list)
+    sports_truncated: bool = False
     connector_health: list[ConnectorHealthFact] = Field(default_factory=list)
     failed_connectors: list[str] = Field(default_factory=list)
     generated_at: str
     timezone: str = "America/New_York"
+
+    def flash_view(self) -> "BriefingFacts":
+        """Return the deliberately small immediate-orientation projection."""
+        return self.model_copy(
+            update={
+                "weather_daily": self.weather_daily[:1],
+                "weather_hourly": self.weather_hourly[:24],
+                "emails": self.emails[:3],
+                "email_recent_subjects": self.email_recent_subjects[:3],
+                "news_headlines": self.news_headlines[:1],
+                "calendar_events": self.calendar_events[:2],
+                "reminders": self.reminders[:3],
+                "sports_events": self.sports_events[:2],
+            }
+        )
+
+    def focused_view(self) -> "BriefingFacts":
+        """Return the complete bounded planning-horizon projection."""
+        return self.model_copy(
+            update={
+                "weather_daily": self.weather_daily[:10],
+                "weather_hourly": self.weather_hourly[:48],
+                "emails": self.emails[:8],
+                "news_headlines": self.news_headlines[:5],
+                "calendar_events": self.calendar_events[:100],
+                "reminders": self.reminders[:50],
+            }
+        )
+
+
+# Kept as a source-level alias while callers move to the explicit facts name.
+SynthesisInput = BriefingFacts
 
 
 class SynthesisResult(BaseModel):

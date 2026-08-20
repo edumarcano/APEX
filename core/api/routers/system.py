@@ -92,13 +92,23 @@ def get_global_config() -> dict[str, Any]:
         "dev_mode_active": is_dev_mode(),
         "demo_mode_active": DEMO_MODE,
         "synthesis_strategy": (
-            "demo" if DEMO_MODE else DEV_AI_SYNTHESIS if is_dev_mode() else "cloud"
+            "demo"
+            if DEMO_MODE
+            else (
+                "raw"
+                if DEV_AI_SYNTHESIS == "structured"
+                else "local"
+                if DEV_AI_SYNTHESIS == "flash"
+                else "cloud"
+            )
+            if is_dev_mode()
+            else "local"
         ),
         "synthesis_agent": (
             None
-            if DEMO_MODE or (is_dev_mode() and DEV_AI_SYNTHESIS == "raw")
+            if DEMO_MODE or (is_dev_mode() and DEV_AI_SYNTHESIS == "structured")
             else "felis"
-            if is_dev_mode() and DEV_AI_SYNTHESIS == "local"
+            if is_dev_mode() and DEV_AI_SYNTHESIS == "flash"
             else "panthera"
         ),
         "briefing_default_mode": snapshot.briefing.default_mode,

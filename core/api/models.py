@@ -40,7 +40,7 @@ class RuntimeMetadata(BaseModel):
     synthesis_strategy: str = Field(
         description="Active briefing synthesis backend (dev config or production default).",
     )
-    briefing_mode: Literal["panthera", "felis", "structured_digest"] | None = Field(
+    briefing_mode: Literal["flash", "focused", "structured"] | None = Field(
         default=None,
         description="Explicit briefing mode used for this run.",
     )
@@ -258,6 +258,8 @@ class ReminderRecord(BaseModel):
     note: str = Field(..., description="Sanitized reminder text.")
     source: Literal["todo", "local"]
     sync_state: Literal["synced", "pending", "unknown"]
+    due: dict[str, str] | None = None
+    importance: Literal["low", "normal", "high"] | None = None
 
 
 class ReminderListResponse(BaseModel):
@@ -838,7 +840,7 @@ class AgentStatus(BaseModel):
 class BriefingTargetStatus(BaseModel):
     """Authoritative synthesis target and live availability for one Briefing mode."""
 
-    mode: Literal["panthera", "felis", "structured_digest"] = Field(
+    mode: Literal["flash", "focused", "structured"] = Field(
         description="Selectable briefing mode identifier.",
     )
     label: str = Field(description="Display label for the briefing mode.")
@@ -1089,7 +1091,7 @@ class VoiceSpeakResponse(BaseModel):
 
 
 class BriefingTriggerRequest(BaseModel):
-    mode: Literal["panthera", "felis", "structured_digest"] | None = Field(
+    mode: Literal["flash", "focused", "structured"] | None = Field(
         default=None,
         description="Optional briefing mode override; omitted requests use the saved default.",
     )
@@ -1101,7 +1103,7 @@ class BriefingGenerateRequest(BaseModel):
         min_length=1,
         description="Process-current telemetry snapshot identity to synthesize from.",
     )
-    mode: Literal["panthera", "felis", "structured_digest"] = Field(
+    mode: Literal["flash", "focused", "structured"] = Field(
         ...,
         description="Explicit briefing synthesis mode.",
     )

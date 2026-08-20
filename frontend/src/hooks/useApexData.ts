@@ -241,6 +241,7 @@ const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = [
   'ollama',
   'llama_cpp',
   'openai',
+  'openrouter',
   'xai',
   'raw',
   'demo',
@@ -401,9 +402,9 @@ export function useApexData(): UseApexDataReturn {
     system_load_throttled: false,
     agentQueriesEnabled: true,
     marketEnabled: true,
-    synthesisStrategy: 'cloud',
-    synthesisProvider: 'openai',
-    synthesisAgent: 'panthera',
+    synthesisStrategy: 'local',
+    synthesisProvider: 'llama_cpp',
+    synthesisAgent: 'felis',
     synthesisFallbackReason: null,
   })
 
@@ -902,9 +903,9 @@ export function useApexData(): UseApexDataReturn {
                 devModeActive = body.dev_mode_active
               }
               briefingDefaultMode = parseEnum(body.briefing_default_mode, [
-                'panthera',
-                'felis',
-                'structured_digest',
+                'flash',
+                'focused',
+                'structured',
               ] as const) ?? undefined
               voiceMode = parseEnum(body.voice_mode, ['off', 'manual', 'automatic'] as const) ?? undefined
               synthesisStrategy = parseEnum(body.synthesis_strategy, VALID_SYNTHESIS_STRATEGIES) ?? undefined

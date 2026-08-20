@@ -178,7 +178,7 @@ export function resolveBriefingModeAvailability(
   mode: BriefingMode,
   targets?: BriefingTargetStatus[],
 ): BriefingModeAvailability {
-  if (mode === 'structured_digest') {
+  if (mode === 'structured') {
     return { status: 'available', reason: null }
   }
   if (targets && targets.length > 0) {

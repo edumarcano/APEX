@@ -35,12 +35,18 @@ from core.connectors.scoring import compute_sync_health
 from core.runtime_logging import bind_run_id_context, run_id_scope
 from core.settings import get_settings_store
 from core.synthesis import (
+    BriefingFacts,
     BriefingMode,
     CalendarFact,
     ConnectorHealthFact,
     F1Fact,
     FootballFact,
     NewsFact,
+    ReminderFact,
+    EmailFact,
+    SportEventFact,
+    WeatherDayFact,
+    WeatherHourFact,
     SynthesisInput,
     SynthesisRouter,
     strategy_to_briefing_mode,
@@ -53,9 +59,9 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _mode_to_strategy(mode: BriefingMode) -> str:
-    if mode == "panthera":
+    if mode == "focused":
         return "cloud"
-    if mode == "structured_digest":
+    if mode == "structured":
         return "raw"
     return "local"
 
@@ -90,6 +96,7 @@ def _build_synthesis_input(
     *,
     results: dict[str, ConnectorResult | None],
     failed_connectors: list[str],
+    snapshot: TelemetrySnapshot | None = None,
 ) -> SynthesisInput:
     weather = results.get("weather")
     news = results.get("news")
@@ -156,18 +163,24 @@ def _build_synthesis_input(
 
     news_headlines: list[NewsFact] = []
     if news and isinstance(news.data.get("headlines"), list):
-        for item in news.data["headlines"][:2]:
+        for item in news.data["headlines"][:5]:
             if not isinstance(item, dict):
                 continue
             topic = str(item.get("topic", "")).strip()
             headline = str(item.get("headline", "")).strip()
             if topic and headline:
-                news_headlines.append(NewsFact(topic=topic, headline=headline))
+                news_headlines.append(NewsFact(
+                    topic=topic,
+                    headline=headline,
+                    source=str(item["source"]) if isinstance(item.get("source"), str) else None,
+                    published_at=str(item["published_at"]) if isinstance(item.get("published_at"), str) else None,
+                    synopsis=str(item["synopsis"]) if isinstance(item.get("synopsis"), str) else None,
+                ))
 
     email_subjects: list[str] = []
     emails = email_data.get("emails") if isinstance(email_data, dict) else None
     if isinstance(emails, list):
-        for item in emails[:3]:
+        for item in emails[:8]:
             if isinstance(item, dict):
                 subject = str(item.get("subject", "")).strip()
                 if subject:
@@ -185,6 +198,8 @@ def _build_synthesis_input(
             name=result.name,
             status=result.status,
             reason_code=result.reason_code,
+            freshness=result.freshness,
+            observed_at=result.observed_at,
         )
         for result in results.values()
         if result is not None and result.status != "disabled"
@@ -211,7 +226,94 @@ def _build_synthesis_input(
                 parts.append(f"{int(prob)}% chance of rain.")
             weather_summary = " ".join(parts)
 
-    return SynthesisInput(
+    calendar_facts: list[CalendarFact] = []
+    if isinstance(events, list):
+        for raw_event in events[:100]:
+            if isinstance(raw_event, dict):
+                calendar_facts.append(
+                    CalendarFact(
+                        title=str(raw_event.get("summary") or "Untitled event"),
+                        start=str(raw_event.get("start") or "Time unavailable"),
+                        end=str(raw_event["end"]) if isinstance(raw_event.get("end"), str) else None,
+                        all_day=bool(raw_event.get("all_day")),
+                        location=str(raw_event["location"]) if isinstance(raw_event.get("location"), str) else None,
+                        time_zone=str(raw_event["time_zone"]) if isinstance(raw_event.get("time_zone"), str) else None,
+                    )
+                )
+
+    reminder_facts: list[ReminderFact] = []
+    reminder_records = reminder_data.get("records") if isinstance(reminder_data, dict) else None
+    if isinstance(reminder_records, list):
+        for raw_reminder in reminder_records[:50]:
+            if not isinstance(raw_reminder, dict):
+                continue
+            note = raw_reminder.get("note")
+            if not isinstance(note, str) or not note.strip():
+                continue
+            due_value = raw_reminder.get("due")
+            due = None
+            if isinstance(due_value, dict) and isinstance(due_value.get("date_time"), str):
+                due = due_value["date_time"]
+            reminder_facts.append(
+                ReminderFact(
+                    note=note,
+                    due=due,
+                    importance=str(raw_reminder["importance"]) if isinstance(raw_reminder.get("importance"), str) else None,
+                    source=str(raw_reminder["source"]) if isinstance(raw_reminder.get("source"), str) else None,
+                    sync_state=str(raw_reminder["sync_state"]) if isinstance(raw_reminder.get("sync_state"), str) else None,
+                )
+            )
+
+    email_facts: list[EmailFact] = []
+    if isinstance(emails, list):
+        for raw_email in emails[:8]:
+            if isinstance(raw_email, dict):
+                subject = str(raw_email.get("subject") or "").strip()
+                if subject:
+                    email_facts.append(
+                        EmailFact(
+                            sender=str(raw_email["sender"]) if isinstance(raw_email.get("sender"), str) else None,
+                            subject=subject,
+                            received_at=str(raw_email["received_at"]) if isinstance(raw_email.get("received_at"), str) else str(raw_email["time"]) if isinstance(raw_email.get("time"), str) else None,
+                            snippet=str(raw_email["snippet"]) if isinstance(raw_email.get("snippet"), str) else None,
+                        )
+                    )
+
+    sports_events: list[SportEventFact] = []
+    if f1_fact is not None:
+        sports_events.append(SportEventFact(kind="f1", title=f1_fact.race_name, start=f1_fact.start, detail="Sprint scheduled" if f1_fact.sprint_scheduled else None))
+    if isinstance(fixtures, list):
+        for fixture in fixtures[:15]:
+            if isinstance(fixture, dict) and isinstance(fixture.get("kickoff_at"), str):
+                team, opponent = fixture.get("team"), fixture.get("opponent")
+                if isinstance(team, str) and isinstance(opponent, str):
+                    sports_events.append(SportEventFact(kind="football", title=f"{team} vs {opponent}", start=fixture["kickoff_at"], detail=str(fixture.get("competition") or "") or None))
+
+    weather_daily: list[WeatherDayFact] = []
+    for raw_day in weather_data.get("daily", []) if isinstance(weather_data, dict) and isinstance(weather_data.get("daily"), list) else []:
+        if isinstance(raw_day, dict) and isinstance(raw_day.get("date"), str):
+            weather_daily.append(WeatherDayFact(**raw_day))
+    weather_hourly: list[WeatherHourFact] = []
+    for raw_hour in weather_data.get("hourly", []) if isinstance(weather_data, dict) and isinstance(weather_data.get("hourly"), list) else []:
+        if isinstance(raw_hour, dict) and isinstance(raw_hour.get("time"), str):
+            weather_hourly.append(WeatherHourFact(**raw_hour))
+
+    now_local = datetime.now().astimezone()
+    overdue_count = 0
+    due_today_count = 0
+    for reminder in reminder_facts:
+        if not reminder.due:
+            continue
+        try:
+            due_at = datetime.fromisoformat(reminder.due.replace("Z", "+00:00")).astimezone(now_local.tzinfo)
+        except ValueError:
+            continue
+        if due_at.date() < now_local.date():
+            overdue_count += 1
+        elif due_at.date() == now_local.date():
+            due_today_count += 1
+
+    return BriefingFacts(
         weather_summary=weather_summary,
         weather_temp_f=(
             int(weather_data["temp_f"])
@@ -245,6 +347,7 @@ def _build_synthesis_input(
         ),
         email_unread_count=int(email_data.get("count", 0) or 0) if isinstance(email_data, dict) else 0,
         email_recent_subjects=email_subjects,
+        emails=email_facts,
         news_headlines=news_headlines,
         calendar_event_count=int(
             calendar_data.get("total_count", calendar_data.get("count", 0)) or 0
@@ -252,13 +355,24 @@ def _build_synthesis_input(
         if isinstance(calendar_data, dict)
         else 0,
         next_calendar_event=next_event,
+        calendar_events=calendar_facts,
+        calendar_truncated=bool(calendar_data.get("truncated", False)) if isinstance(calendar_data, dict) else False,
         pending_reminder_count=pending_count,
         first_pending_reminder=first_reminder,
+        reminders=reminder_facts,
+        overdue_reminder_count=overdue_count,
+        due_today_reminder_count=due_today_count,
+        reminders_truncated=bool(isinstance(reminder_records, list) and len(reminder_records) > 50),
         f1_this_week=f1_fact,
         football_next_fixture=football_fact,
+        sports_events=sports_events,
+        sports_truncated=bool(isinstance(fixtures, list) and len(fixtures) > 15),
         connector_health=connector_health,
         failed_connectors=failed_connectors,
         generated_at=datetime.now(timezone.utc).isoformat(),
+        local_time=now_local.isoformat(),
+        snapshot_id=snapshot.snapshot_id if snapshot is not None else None,
+        snapshot_collected_at=snapshot.collected_at if snapshot is not None else None,
     )
 
 
@@ -503,6 +617,7 @@ def _synthesize_from_snapshot(
         synthesis_input = _build_synthesis_input(
             results=results,
             failed_connectors=health.failed_connectors,
+            snapshot=snapshot,
         )
 
         global_pipeline_state.update(3, "SYNTHESIS")
@@ -711,7 +826,7 @@ def trigger_briefing(*, mode: BriefingMode | None = None) -> BriefingResponse:
 
 
 def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
-    """Return status and pricing for fixed Panthera, Felis, and Structured Digest briefing targets."""
+    """Return status and pricing for fixed Flash, Focused, and Structured modes."""
     import os
     from core.agent.model_catalog import (
         DEFAULT_FELIS_MODEL,
@@ -782,21 +897,9 @@ def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
 
     return [
         BriefingTargetStatus(
-            mode="panthera",
-            label="Apex Panthera",
-            description=f"Full briefing · {panthera_profile.display_name if panthera_profile else 'DeepSeek V4 Flash 0731'}",
-            model_id=panthera_profile.model_id if panthera_profile else PANTHERA_BRIEFING_MODEL,
-            model_display_name=panthera_profile.display_name if panthera_profile else "DeepSeek V4 Flash 0731",
-            provider="openrouter",
-            runtime="cloud",
-            status=panthera_status,
-            reason=panthera_reason,
-            pricing=panthera_pricing,
-        ),
-        BriefingTargetStatus(
-            mode="felis",
-            label="Apex Felis",
-            description=f"Full briefing · {felis_profile.display_name if felis_profile else 'Gemma 4 E2B'}",
+            mode="flash",
+            label="Flash",
+            description="Felis · local model",
             model_id=felis_profile.model_id if felis_profile else DEFAULT_FELIS_MODEL,
             model_display_name=felis_profile.display_name if felis_profile else "Gemma 4 E2B",
             provider="llama_cpp",
@@ -806,9 +909,21 @@ def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
             pricing=felis_pricing,
         ),
         BriefingTargetStatus(
-            mode="structured_digest",
-            label="Structured Digest",
-            description="Structured facts · no model or synthesis",
+            mode="focused",
+            label="Focused",
+            description=f"Panthera · {panthera_profile.display_name if panthera_profile else 'DeepSeek V4 Flash 0731'}",
+            model_id=panthera_profile.model_id if panthera_profile else PANTHERA_BRIEFING_MODEL,
+            model_display_name=panthera_profile.display_name if panthera_profile else "DeepSeek V4 Flash 0731",
+            provider="openrouter",
+            runtime="cloud",
+            status=panthera_status,
+            reason=panthera_reason,
+            pricing=panthera_pricing,
+        ),
+        BriefingTargetStatus(
+            mode="structured",
+            label="Structured",
+            description="Deterministic · no model",
             model_id=None,
             model_display_name=None,
             provider=None,

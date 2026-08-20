@@ -87,7 +87,7 @@ describe('agents helpers', () => {
 
   it('uses briefing targets as the sole source of model-mode availability', () => {
     const panthera: BriefingTargetStatus = {
-      mode: 'panthera',
+      mode: 'focused',
       label: 'Apex Panthera',
       description: 'Cloud briefing',
       model_id: 'gpt-5.6-luna',
@@ -99,15 +99,15 @@ describe('agents helpers', () => {
       pricing: null,
     }
 
-    expect(resolveBriefingModeAvailability('structured_digest')).toEqual({
+    expect(resolveBriefingModeAvailability('structured')).toEqual({
       status: 'available',
       reason: null,
     })
-    expect(resolveBriefingModeAvailability('panthera', [panthera])).toEqual({
+    expect(resolveBriefingModeAvailability('focused', [panthera])).toEqual({
       status: 'configured',
       reason: 'Credentials configured',
     })
-    expect(resolveBriefingModeAvailability('felis', [panthera])).toEqual({
+    expect(resolveBriefingModeAvailability('flash', [panthera])).toEqual({
       status: 'unknown',
       reason: 'Mode status unavailable',
     })

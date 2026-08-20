@@ -53,7 +53,7 @@ class ReminderServiceError(RuntimeError):
 
 @dataclass(frozen=True)
 class ReminderList:
-    items: list[dict[str, str]]
+    items: list[dict[str, object]]
     source_state: ReminderSourceState
     cache_timestamp: str | None
     pending_sync_count: int
@@ -100,6 +100,8 @@ class ReminderService:
                     {
                         "id": f"todo:{task.id}", "note": task.title,
                         "source": "todo", "sync_state": "synced",
+                        "due": self._task_detail(task)["due"],
+                        "importance": self._task_detail(task)["importance"],
                         "last_modified_at": task.last_modified_at,
                     }
                     for task in result.tasks[:50]
@@ -112,6 +114,8 @@ class ReminderService:
                             "id": task["id"].removeprefix("todo:"),
                             "title": task["note"],
                             "last_modified_at": task["last_modified_at"],
+                            "due": task.get("due"),
+                            "importance": task.get("importance"),
                         }
                         for task in remote
                     ],
@@ -133,6 +137,8 @@ class ReminderService:
                 "note": str(task.get("title", "")),
                 "source": "todo", "sync_state": "synced",
                 "last_modified_at": str(task.get("last_modified_at", "")),
+                "due": task.get("due"),
+                "importance": task.get("importance"),
             }
             for task in tasks[:50]
             if isinstance(task, dict) and task.get("id") and task.get("title")
@@ -487,7 +493,7 @@ class ReminderService:
         ]
 
     def _assemble(
-        self, remote: list[dict[str, str]], local: list[dict[str, str]],
+        self, remote: list[dict[str, object]], local: list[dict[str, str]],
         source_state: ReminderSourceState, cache_timestamp: str | None,
     ) -> ReminderList:
         public_remote = [

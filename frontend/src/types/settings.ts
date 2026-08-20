@@ -12,7 +12,7 @@ export type { McpProviderId } from '../lib/mcpProviders'
 
 export type VoiceGender = 'male' | 'female'
 export type VoiceMode = 'off' | 'manual' | 'automatic'
-export type BriefingMode = 'panthera' | 'felis' | 'structured_digest'
+export type BriefingMode = 'flash' | 'focused' | 'structured'
 
 export interface LlamaCppSettings {
   enabled: boolean

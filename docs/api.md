@@ -255,7 +255,7 @@ Returns up to 50 newest briefing records with transcript, digest, runtime metada
 
 ### GET `/api/v1/briefings/targets`
 
-Returns live availability and metadata for fixed briefing synthesis targets (`panthera`, `felis`, `structured_digest`).
+Returns live availability and metadata for fixed briefing-generation targets in this order: `flash` (Felis local model), `focused` (Panthera DeepSeek V4 Flash), and `structured` (deterministic, no model). Removed Agent-named identifiers are rejected.
 
 ## Reminders
 

@@ -43,7 +43,8 @@ __all__ = [
     "FEATURE_NEWS",
     "FEATURE_SPORTS",
     "FEATURE_WEATHER",
-    "PRIMARY_SYNTHESIS_PROMPT",
+    "FLASH_SYNTHESIS_PROMPT",
+    "FOCUSED_SYNTHESIS_PROMPT",
     "LOCAL_PRIMARY_GRACE_SECONDS",
     "LOCAL_FALLBACK_GRACE_SECONDS",
     "PRIMARY_TTS",
@@ -64,9 +65,9 @@ load_dotenv(dotenv_path=ENV_PATH)
 
 _TRUTHY_ENV_VALUES: Final[frozenset[str]] = frozenset({"1", "true", "yes", "on"})
 _FALSY_ENV_VALUES: Final[frozenset[str]] = frozenset({"0", "false", "no", "off"})
-_VALID_DEV_AI_SYNTHESIS: Final[frozenset[str]] = frozenset({"local", "cloud", "raw"})
+_VALID_DEV_AI_SYNTHESIS: Final[frozenset[str]] = frozenset({"flash", "focused", "structured"})
 _VALID_DEV_TTS_PLAYBACK: Final[frozenset[str]] = frozenset({"pyttsx3", "google", "kokoro"})
-DevAiSynthesisMode = Literal["local", "cloud", "raw"]
+DevAiSynthesisMode = Literal["flash", "focused", "structured"]
 DevTtsPlaybackMode = Literal["pyttsx3", "google", "kokoro"]
 
 
@@ -104,27 +105,21 @@ def _parse_dev_ai_synthesis(raw: str | None) -> DevAiSynthesisMode:
     """
     Normalize ``DEV_AI_SYNTHESIS`` for development-mode briefing routing.
 
-    Defaults to ``raw`` when unset. Malformed values log a warning and fall
-    back to ``raw``.
+    Defaults to ``structured`` when unset. Malformed values log a warning and
+    fall back to ``structured``.
     """
     if raw is None:
-        return "raw"
+        return "structured"
 
     normalized = raw.strip().lower().strip("'\"")
-    if normalized == "llm":
-        _LOGGER.warning("DEV_AI_SYNTHESIS='llm' is deprecated; use 'cloud' instead.")
-        return "cloud"
-    if normalized == "slm":
-        _LOGGER.warning("DEV_AI_SYNTHESIS='slm' is deprecated; use 'local' instead.")
-        return "local"
     if normalized in _VALID_DEV_AI_SYNTHESIS:
         return cast(DevAiSynthesisMode, normalized)
 
     _LOGGER.warning(
-        "Invalid DEV_AI_SYNTHESIS=%r; using default raw.",
+        "Invalid DEV_AI_SYNTHESIS=%r; using default structured.",
         raw,
     )
-    return "raw"
+    return "structured"
 
 
 def _parse_dev_tts_playback(raw: str | None) -> DevTtsPlaybackMode:
@@ -149,7 +144,7 @@ def _parse_dev_tts_playback(raw: str | None) -> DevTtsPlaybackMode:
 
 
 DEV_AI_SYNTHESIS: Final[DevAiSynthesisMode] = _parse_dev_ai_synthesis(
-    os.getenv("DEV_AI_SYNTHESIS", "raw"),
+    os.getenv("DEV_AI_SYNTHESIS", "structured"),
 )
 
 DEV_TTS_PLAYBACK: Final[DevTtsPlaybackMode] = _parse_dev_tts_playback(
@@ -214,9 +209,13 @@ def _required_prompt(value: object, *, key: str) -> str:
     return prompt
 
 
-PRIMARY_SYNTHESIS_PROMPT: Final[str] = _required_prompt(
-    _synthesis_cfg.get("primary_system_prompt"),
-    key="synthesis.primary_system_prompt",
+FLASH_SYNTHESIS_PROMPT: Final[str] = _required_prompt(
+    _synthesis_cfg.get("flash_system_prompt"),
+    key="synthesis.flash_system_prompt",
+)
+FOCUSED_SYNTHESIS_PROMPT: Final[str] = _required_prompt(
+    _synthesis_cfg.get("focused_system_prompt"),
+    key="synthesis.focused_system_prompt",
 )
 
 

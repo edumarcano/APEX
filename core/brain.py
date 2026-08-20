@@ -28,14 +28,14 @@ def process_telemetry(
 
     ``raw_data`` remains accepted for compatibility but is never forwarded to a
     model. Callers should supply a typed ``SynthesisInput``. Prefer ``mode``;
-    ``strategy`` remains for legacy callers and DEV_MODE mapping.
+    ``strategy`` accepts a canonical briefing mode when ``mode`` is omitted.
     """
     source = synthesis_input or SynthesisInput(
         weather_summary=raw_data or None,
         generated_at=datetime.now(timezone.utc).isoformat(),
     )
     resolved_mode = mode or strategy_to_briefing_mode(
-        strategy or (DEV_AI_SYNTHESIS if is_dev_mode() else "cloud")
+        strategy or (DEV_AI_SYNTHESIS if is_dev_mode() else "flash")
     )
     active_router = router or SynthesisRouter()
     result = active_router.synthesize_mode(source, resolved_mode, warmup)

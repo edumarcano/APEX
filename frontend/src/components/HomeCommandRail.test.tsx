@@ -98,7 +98,7 @@ function renderRail(overrides: Partial<ComponentProps<typeof HomeCommandRail>> =
     onStartApex: vi.fn(),
     onStartWithBriefing: vi.fn(),
     startDisabled: false,
-    briefingMode: 'panthera',
+    briefingMode: 'flash',
     onBriefingModeChange: vi.fn(),
     briefingControlsBusy: false,
     briefingModeAvailable: true,
@@ -122,9 +122,9 @@ describe('HomeCommandRail', () => {
 
     expect(screen.getByRole('button', { name: 'Start APEX' })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Start APEX with briefing' })).toBeVisible()
-    expect(screen.getByRole('button', { name: /briefing mode: full briefing/i })).toBeVisible()
+    expect(screen.getByRole('button', { name: /briefing mode: flash/i })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).toBeNull()
-    expect(screen.queryByRole('button', { name: /synthesize briefing/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /generate briefing/i })).toBeNull()
   })
 
   it('uses a compact model selector menu without changing briefing selection', async () => {
@@ -149,8 +149,8 @@ describe('HomeCommandRail', () => {
     renderRail({ agentQueriesEnabled: false })
 
     expect(screen.queryByLabelText('Agent query bar')).toBeNull()
-    expect(screen.getByRole('button', { name: /briefing mode: full briefing/i })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Synthesize briefing from current telemetry' })).toBeVisible()
+    expect(screen.getByRole('button', { name: /briefing mode: flash/i })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Generate briefing from current telemetry' })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).not.toBeInTheDocument()
   })
 

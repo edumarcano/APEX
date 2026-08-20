@@ -302,9 +302,9 @@ def collect_weather() -> ConnectorResult:
         payload = _forecast_payload(
             coordinates,
             current="temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m",
-            daily="temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum",
-            hourly="temperature_2m,weather_code,is_day,precipitation_probability",
-            forecast_days=2,
+            daily="temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,precipitation_sum,wind_speed_10m_max",
+            hourly="temperature_2m,weather_code,is_day,precipitation_probability,wind_speed_10m",
+            forecast_days=10,
         )
         current_data = _parse_current_conditions(payload.get("current") if payload is not None else None)
         if current_data is None:
@@ -340,6 +340,43 @@ def collect_weather() -> ConnectorResult:
             "location": location,
             "timeline": timeline,
         }
+        daily_times = daily.get("time") if isinstance(daily, dict) else None
+        daily_codes = daily.get("weather_code") if isinstance(daily, dict) else None
+        daily_wind = daily.get("wind_speed_10m_max") if isinstance(daily, dict) else None
+        if isinstance(daily_times, list):
+            forecasts: list[dict[str, Any]] = []
+            for index, day in enumerate(daily_times[:10]):
+                condition = _weather_condition(
+                    daily_codes[index] if isinstance(daily_codes, list) and index < len(daily_codes) else None,
+                    is_day=True,
+                )
+                forecasts.append({
+                    "date": str(day),
+                    "temp_max_f": _get_daily_metric(maxs, index),
+                    "temp_min_f": _get_daily_metric(mins, index),
+                    "precip_probability": _get_daily_metric(probs, index),
+                    "precipitation_in": _get_daily_metric(sums, index, decimals=2),
+                    "wind_speed_mph": _get_daily_metric(daily_wind, index),
+                    "condition": condition[0] if condition else None,
+                })
+            data["daily"] = forecasts
+
+        raw_hourly = payload.get("hourly") if isinstance(payload, dict) else None
+        if isinstance(raw_hourly, dict) and isinstance(raw_hourly.get("time"), list):
+            forecasts = []
+            for index, hour in enumerate(raw_hourly["time"][:48]):
+                condition = _weather_condition(
+                    raw_hourly.get("weather_code", [None])[index] if isinstance(raw_hourly.get("weather_code"), list) and index < len(raw_hourly.get("weather_code", [])) else None,
+                    is_day=raw_hourly.get("is_day", [None])[index] if isinstance(raw_hourly.get("is_day"), list) and index < len(raw_hourly.get("is_day", [])) else None,
+                )
+                forecasts.append({
+                    "time": str(hour),
+                    "temp_f": _get_daily_metric(raw_hourly.get("temperature_2m"), index),
+                    "precip_probability": _get_daily_metric(raw_hourly.get("precipitation_probability"), index),
+                    "wind_speed_mph": _get_daily_metric(raw_hourly.get("wind_speed_10m"), index),
+                    "condition": condition[0] if condition else None,
+                })
+            data["hourly"] = forecasts
         if temp_max_f is not None:
             data["temp_max_f"] = temp_max_f
         if temp_min_f is not None:

@@ -42,7 +42,7 @@ flowchart TB
 |---|---|---|---|---|
 | Activation | Start APEX | Browser `useAppActivation` | None | Advisory preflight; telemetry refresh follows |
 | Telemetry | Refresh all or selected connectors | Process-local telemetry service | Current snapshot is memory-only | Enabled connectors |
-| Briefing | Current snapshot or full trigger | Briefing orchestration | Normal-mode briefing ledger | Panthera/OpenRouter, Felis/llama.cpp, or Structured Digest |
+| Briefing | Current snapshot or full trigger | Briefing orchestration | Normal-mode briefing ledger | Flash/Felis local, Focused/Panthera OpenRouter, or Structured |
 | Cortex query | User prompt | `ApexAssistantRuntime` bridge plus backend turn execution | SQLite conversation tree and response metadata | Selected Agent and approved capabilities |
 | Retrieval | Explicit status/prepare or completed conversation turn | Retrieval service | SQLite retrieval items, FTS mirror, and optional vectors | None during normal search; explicit local model preparation only |
 | Voice | Manual or automatic delivery | Voice hook and backend speaker | None | Selected TTS engine |
@@ -142,9 +142,9 @@ Connector statuses feed equal-weight Sync Health scoring. Disabled connectors ar
 
 `POST /api/v1/briefings/generate` generates a briefing from the current process snapshot without calling connectors. The caller supplies both `snapshot_id` and briefing mode.
 
-Briefing orchestration converts structured module data into a bounded `SynthesisInput`. Panthera/OpenRouter and Felis/llama.cpp receive the same selected facts wrapped in `<untrusted_connector_data>` markers. Display strings, Agent history, and Agent tools are not forwarded to the briefing model.
+Briefing orchestration converts one collected snapshot into bounded `BriefingFacts`. Flash and Focused receive their own factual projections wrapped in `<untrusted_connector_data>` markers; Structured renders the complete normalized facts. Display strings, Agent history, and Agent tools are not forwarded to a briefing model.
 
-The current briefing modes are:
+The current breaking briefing modes are `flash`, `focused`, and `structured`. Flash is the default; historical Agent-named values are not accepted.
 
 | Mode | Provider | Current model or behavior |
 |---|---|---|

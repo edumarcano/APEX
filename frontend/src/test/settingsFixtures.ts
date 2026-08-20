@@ -46,7 +46,7 @@ export const BASE_SETTINGS: RuntimeSettings = {
     },
   },
   briefing: {
-    default_mode: 'panthera',
+    default_mode: 'flash',
   },
   voice: {
     engine: 'google',

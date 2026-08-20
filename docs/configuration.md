@@ -50,7 +50,7 @@ The HUD Runtime Settings panel and `GET` / `PATCH /api/v1/settings` expose schem
 | Personalization | Optional user designation used when addressing the user; persisted only to `config.local.json` |
 | Agent queries | Global enablement switch; Cortex owns Agent and model selection and the controls supported by the selected model; Home includes its own model selector that determines the Agent per query without persisting a preset |
 | Tool profiles | Saved custom tool profiles and per-Agent defaults; edited through Cortex Tools and persisted in `config.local.json` |
-| Briefing | Panthera, Felis, or Structured Digest mode selected in the Home command rail |
+| Briefing | Flash (default), Focused, or Structured mode selected in the Home command rail |
 | Voice | Google, pyttsx3, or Kokoro engine; male/female voice; off/manual/automatic delivery |
 | MCP | Global client runtime and tracked GitHub, Brave, and Alpha Vantage presets |
 | llama.cpp | Enablement, loopback router URL, and optional managed-server paths |
@@ -83,9 +83,9 @@ With `DEV_MODE=false` and `DEMO_MODE=false`, APEX calls only enabled connectors,
 
 `DEV_AI_SYNTHESIS` selects development briefing behavior:
 
-- `raw`: deterministic output without a model call
-- `local`: Felis synthesis with deterministic fallback
-- `cloud`: Panthera with Felis and deterministic fallback
+- `structured`: deterministic output without a model call (default)
+- `flash`: Felis synthesis with deterministic fallback
+- `focused`: Panthera with Flash and deterministic fallback
 
 `DEV_TTS_PLAYBACK` selects the development speech engine.
 
@@ -110,7 +110,7 @@ Disabling a connector prevents its network or authentication attempt and exclude
 | Reminders | Selected Microsoft To Do list, when configured | SQLite is a bounded stale cache and offline/local queue; no list is selected automatically |
 | Market | Alpha Vantage key plus Runtime Settings symbols | End-of-day data; absent configuration returns an empty not-configured state |
 
-Football telemetry keeps each configured team's next fixture. Briefing synthesis receives only the earliest eligible fixture within seven days.
+Football telemetry keeps up to five scheduled fixtures per configured team within 14 days. Briefing generation receives the bounded fixture horizon.
 
 Weather resolves the prompt-specified location or `TARGET_LOCATION` through Open-Meteo's geocoding service before requesting the forecast. The free hosted API is limited to non-commercial use and 10,000 calls per day, 5,000 per hour, and 600 per minute. The HUD and Cortex weather results identify Open-Meteo and GeoNames, link to the [CC BY 4.0 licence](https://creativecommons.org/licenses/by/4.0/), and state that APEX adapts the data for display.
 
@@ -262,9 +262,9 @@ For llama.cpp, `none` sends `reasoning_effort: "none"` with `chat_template_kwarg
 
 Legacy `ask_apex.local_context_windows`, `ask_apex.local_reasoning_modes`, and per-Agent llama.cpp resource-gate keys are migrated into the consolidated Felis and model-based configuration during settings normalization.
 
-Structured Digest requires no model and is the terminal fallback for every briefing mode.
+Structured requires no model and is the terminal fallback for every briefing mode.
 
-Panthera is the default cloud briefing engine and always uses OpenRouter `deepseek/deepseek-v4-flash-0731` with `none` reasoning, independently of the selected interactive Agent or reasoning option. It requires `OPENROUTER_API_KEY`. On Panthera failure, APEX tries Felis once before returning Structured Digest. Felis briefing synthesis is fixed to `gemma-4-E2B-Q4_K_M.gguf` through llama.cpp with no reasoning, independently of the interactive Felis model, runtime, context, or reasoning settings. An explicit Felis briefing request falls directly to Structured Digest on failure; it never silently substitutes another local model. Felis cold-load briefing synthesis uses the dedicated 16K context, while an already-resident compatible Gemma E2B llama.cpp alias can be reused.
+Flash is the default briefing mode and uses fixed Felis `gemma-4-E2B-Q4_K_M.gguf` through llama.cpp with 16K context and reasoning disabled. Focused always uses Panthera through OpenRouter `deepseek/deepseek-v4-flash-0731` with High reasoning and requires `OPENROUTER_API_KEY`. Focused failure tries Flash using the Flash projection, then Structured. Structured never warms a model or calls a provider. The interactive Agent model, runtime, context, and reasoning settings do not change these fixed briefing routes. The former `panthera`, `felis`, and `structured_digest` briefing identifiers are intentionally rejected without migration.
 
 ## Voice
 

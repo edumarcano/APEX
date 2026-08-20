@@ -34,7 +34,7 @@ APEX collects enabled weather, calendar, inbox, news, sports, reminder, and mark
 
 ### Produces briefings on user-defined terms
 
-A briefing can use Panthera, Felis, or Structured Digest, a deterministic briefing that does not use a model. Panthera falls back to Felis and then Structured Digest; an explicit Felis request falls directly to Structured Digest. All routes receive the same selected, size-limited facts, and a provider failure ends in a useful model-free result instead of a blank screen.
+A briefing uses Flash, Focused, or Structured. Flash uses the fixed local Felis model for immediate orientation; Focused uses Panthera through OpenRouter DeepSeek V4 Flash with High reasoning; Structured renders facts without a model. Focused falls back through Flash and then Structured. All routes derive from one bounded fact snapshot, and a provider failure ends in a useful deterministic result instead of a blank screen.
 
 ### Operates Apex Agents
 
@@ -63,7 +63,7 @@ The HUD exposes connector health, CPU and memory use, active model state, briefi
 - **Local-first:** FastAPI, the React HUD, SQLite, runtime settings, and the default Ollama endpoint stay on the machine and bind to loopback.
 - **Independent features:** Telemetry, briefing generation, Agent work, and voice delivery can fail independently instead of taking the whole HUD down.
 - **Safer model input:** Connectors produce structured results, and briefing models receive only selected facts marked as untrusted data.
-- **Cloud, local, and model-free briefings:** APEX can use Panthera, Felis, or Structured Digest and always keeps Structured Digest as the final fallback.
+- **Three briefing modes:** Flash is the default local Felis orientation, Focused is Panthera/OpenRouter planning, and Structured is a model-free deterministic view.
 - **One local model at a time:** APEX avoids hidden local-inference queues and keeps model loading visible.
 - **Local storage:** SQLite keeps briefing history, the reminder cache and offline queue, the durable action ledger, and Cortex conversation trees with response metadata. Reloading APEX restores the active conversation branch and its per-conversation Agent/tool preferences.
 - **Visible failures:** Readiness checks, connector health, stable errors, run IDs, and preflight warnings make degraded states easier to understand.
@@ -126,7 +126,7 @@ When the backend is already running, the included CLI can inspect APEX, run one 
 uv run apex status
 uv run apex agents
 uv run apex ask "What needs my attention?" --profile core_apex
-uv run apex briefing --mode structured_digest
+uv run apex briefing --mode structured
 uv run apex actions list
 ```
 
@@ -136,7 +136,7 @@ The CLI talks only to APEX's loopback API at `127.0.0.1:8000`; it does not start
 
 APEX is local-first, not fully offline. Enabled connectors and selected cloud model or speech providers receive the data required for their operation. The API has no authentication and intentionally binds only to `127.0.0.1`; CORS is not an access-control boundary.
 
-Use Felis or Structured Digest to avoid sending briefing data to a cloud model provider. Review [Privacy and Data Boundaries](docs/privacy.md) before enabling personal connectors or cloud processing.
+Use Flash or Structured to avoid sending briefing data to a cloud model provider. Review [Privacy and Data Boundaries](docs/privacy.md) before enabling personal connectors or cloud processing.
 
 ## Documentation
 

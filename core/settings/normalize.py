@@ -1172,9 +1172,9 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     briefing_raw = (
         merged.get("briefing") if isinstance(merged.get("briefing"), dict) else {}
     )
-    default_mode = briefing_raw.get("default_mode", "panthera")
+    default_mode = briefing_raw.get("default_mode", "flash")
     if default_mode not in VALID_BRIEFING_MODES:
-        default_mode = "panthera"
+        default_mode = "flash"
     briefing = BriefingSettings(
         default_mode=default_mode,  # type: ignore[arg-type]
     )

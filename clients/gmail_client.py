@@ -327,7 +327,7 @@ def get_gmail_message(service: Any, message_id: str) -> dict[str, Any]:
         raise
 
 
-def get_unread_gmail_data(service: Any) -> dict[str, int | list[dict[str, str]]]:
+def get_unread_gmail_data(service: Any) -> dict[str, Any]:
     """
     Fetches unread email data excluding promotions, social, and updates categories.
 
@@ -335,8 +335,8 @@ def get_unread_gmail_data(service: Any) -> dict[str, int | list[dict[str, str]]]
         service: A service object for the Gmail API.
 
     Returns:
-        A dictionary containing the total unread count and a list of up to three
-        emails with subject and formatted time.
+        A dictionary containing the primary-inbox unread count and up to eight
+        metadata-only recent candidates. Message bodies are never requested.
     """
     try:
         list_resp: dict[str, Any] = (
@@ -346,8 +346,9 @@ def get_unread_gmail_data(service: Any) -> dict[str, int | list[dict[str, str]]]
                 userId='me',
                 q=(
                     'is:unread -category:promotions -category:social '
-                    '-category:updates newer_than:1d'
+                    '-category:updates'
                 ),
+                maxResults=8,
             )
             .execute()
         )
@@ -356,7 +357,7 @@ def get_unread_gmail_data(service: Any) -> dict[str, int | list[dict[str, str]]]
         estimate = list_resp.get('resultSizeEstimate')
         count: int = len(messages_meta) if estimate is None else int(estimate)
 
-        id_slice = [m['id'] for m in messages_meta[:3]]
+        id_slice = [m['id'] for m in messages_meta[:8] if isinstance(m, dict) and isinstance(m.get('id'), str)]
 
         emails: list[dict[str, str]] = []
         for msg_id in id_slice:
@@ -367,24 +368,29 @@ def get_unread_gmail_data(service: Any) -> dict[str, int | list[dict[str, str]]]
                     userId='me',
                     id=msg_id,
                     format='metadata',
-                    metadataHeaders=['subject', 'date'],
+                    metadataHeaders=['subject', 'date', 'from'],
                 )
                 .execute()
             )
             subject: str | None = None
             date_value: str | None = None
+            sender: str | None = None
             for header in msg.get('payload', {}).get('headers', []):
                 header_name = header.get('name', '').lower()
                 if header_name == 'subject':
                     subject = header.get('value')
                 elif header_name == 'date':
                     date_value = header.get('value')
+                elif header_name == 'from':
+                    sender = header.get('value')
 
             time_str = ''
+            received_at = ''
             if date_value:
                 try:
                     parsed_datetime = parsedate_to_datetime(date_value)
                     time_str = parsed_datetime.strftime('%I:%M %p').lstrip('0')
+                    received_at = parsed_datetime.isoformat()
                 except (TypeError, ValueError):
                     time_str = ''
 
@@ -392,6 +398,9 @@ def get_unread_gmail_data(service: Any) -> dict[str, int | list[dict[str, str]]]
                 {
                     'subject': subject if subject is not None else '',
                     'time': time_str,
+                    'sender': sender if sender is not None else '',
+                    'received_at': received_at,
+                    'snippet': _bounded_text(msg.get('snippet'), limit=_MAX_SNIPPET_CHARS),
                 }
             )
 
@@ -402,6 +411,9 @@ def get_unread_gmail_data(service: Any) -> dict[str, int | list[dict[str, str]]]
                     {
                         'subject': _DEV_MASKED_SUBJECT,
                         'time': email.get('time', ''),
+                        'sender': _DEV_MASKED_VALUE,
+                        'received_at': email.get('received_at', ''),
+                        'snippet': _DEV_MASKED_VALUE,
                     }
                     for email in emails
                 ],
@@ -412,7 +424,7 @@ def get_unread_gmail_data(service: Any) -> dict[str, int | list[dict[str, str]]]
         if is_dev_mode():
             return {
                 'count': 0,
-                'emails': [{'subject': _DEV_OFFLINE_SUBJECT, 'time': ''}],
+                'emails': [{'subject': _DEV_OFFLINE_SUBJECT, 'time': '', 'sender': _DEV_MASKED_VALUE, 'received_at': '', 'snippet': _DEV_MASKED_VALUE}],
             }
         raise
 

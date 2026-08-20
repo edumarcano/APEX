@@ -26,7 +26,7 @@ CloudProvider = Literal["openai", "openrouter", "gemini", "xai"]
 LocalRuntime = Literal["ollama", "llama_cpp"]
 AgentRuntime = Literal["cloud", "local"]
 CloudEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
-BriefingMode = Literal["panthera", "felis", "structured_digest"]
+BriefingMode = Literal["flash", "focused", "structured"]
 VoiceEngine = Literal["google", "pyttsx3", "kokoro"]
 VoiceGender = Literal["male", "female"]
 VoiceMode = Literal["off", "manual", "automatic"]
@@ -39,7 +39,7 @@ VALID_CLOUD_EFFORTS: frozenset[str] = frozenset(
     {"none", "minimal", "low", "medium", "high", "xhigh", "max"}
 )
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
-    {"panthera", "felis", "structured_digest"}
+    {"flash", "focused", "structured"}
 )
 VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
@@ -259,7 +259,7 @@ class BriefingSettings(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    default_mode: BriefingMode = "panthera"
+    default_mode: BriefingMode = "flash"
 
 
 class VoiceSettings(BaseModel):
