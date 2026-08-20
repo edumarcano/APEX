@@ -33,14 +33,18 @@ Its outer shape forms an **A** and resembles the levels of a food-chain pyramid 
 ```text
 APEX
 ├── Home
+│   └── Briefing modes
+│       ├── Focused
+│       ├── Flash
+│       └── Structured
 └── Cortex
-    ├── Cortex workspace
+    ├── Cortex Workspace
     ├── Cortex Engine
     └── Apex Agents
         ├── Apex Panthera
-        │   └── Cloud model
+        │   └── Cloud models
         └── Apex Felis
-            └── Local model
+            └── Local models
 ```
 
 ### APEX
@@ -53,11 +57,23 @@ APEX
 
 Briefing modes are product behaviors, not Agent identities: **Flash**, **Focused**, and **Structured** are the only canonical mode names. Panthera and Felis remain Agent names used as resolved runtime metadata.
 
+### Briefing modes
+
+Briefing modes describe how APEX turns the current telemetry snapshot into a briefing. They are not Agents and do not identify the model that happens to execute them.
+
+**Focused** - the fuller analytical briefing. It uses a cloud model to interpret the available signals, identify priorities, conflicts, changes, and useful connections.
+
+**Flash** - the lightweight local briefing. It gives a quick view of what matters now and over the near term without the deeper analysis of Focused.
+
+**Structured** - the deterministic briefing. It presents the normalized facts directly without model interpretation.
+
+The names describe the kind of briefing being requested. Panthera and Felis may appear as runtime metadata when a model-backed mode is executed, but they remain Agent identities rather than briefing names.
+
 ### Cortex
 
 **Cortex** is where the operator interacts with the Agents in more detail.
 
-The **Cortex workspace** contains conversations, Agent and model selection, reasoning and local-model controls, tools, history, and execution details.
+The **Cortex Workspace** contains conversations, Agent and model selection, reasoning and local-model controls, tools, history, and execution details.
 
 The **Cortex Engine** is the backend that runs Agent requests, gathers context and tools, sends work to the selected model, and manages local models when needed.
 
@@ -91,8 +107,8 @@ Agent
 
 There are two Agents because there are two useful long-term roles:
 
-- **Apex Panthera** — `Cloud · Generalist`
-- **Apex Felis** — `Local · Private`
+- **Apex Panthera** - `Cloud · Generalist`
+- **Apex Felis** - `Local · Private`
 
 Panthera can move between supported cloud models without becoming a different Agent. Felis can move between supported local models or runtimes without becoming a different Agent.
 
@@ -122,10 +138,10 @@ Its selected model determines whether APEX uses a local runtime such as Ollama o
 
 The easiest way to think about the split is:
 
-- **Agent** — what role the user is choosing.
-- **Model** — what AI model does the work.
-- **Provider or runtime** — where that model runs.
-- **Model settings** — the controls that particular model supports.
+- **Agent** - what role the user is choosing.
+- **Model** - what AI model does the work.
+- **Provider or runtime** - where that model runs.
+- **Model settings** - the controls that particular model supports.
 
 Adding a new model should usually mean adding it under Panthera or Felis, not creating another Agent.
 
