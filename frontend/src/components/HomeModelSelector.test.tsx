@@ -150,8 +150,8 @@ describe('HomeModelSelector', () => {
 
     expect(screen.getByText('Model Selection')).toBeVisible()
     expect(screen.getByText('Select an operational model for Home queries.')).toBeVisible()
-    expect(within(popover).getByText(/Cloud · Apex Panthera/i)).toBeInTheDocument()
-    expect(within(popover).getByText(/Local · Apex Felis/i)).toBeInTheDocument()
+    expect(within(popover).getByText(/Apex Panthera · Cloud/i)).toBeInTheDocument()
+    expect(within(popover).getByText(/Apex Felis · Local/i)).toBeInTheDocument()
 
     await user.click(within(popover).getByRole('option', { name: /gemma 4 e2b/i }))
     expect(onModelChange).toHaveBeenCalledWith('gemma-4-E2B-Q4_K_M.gguf')

@@ -5,10 +5,10 @@ import {
   CalendarDays,
   Clock,
   Cpu,
-  Database,
   Globe,
   HardDrive,
   Mail,
+  MemoryStick,
   Newspaper,
   PlugZap,
   RefreshCw,
@@ -411,7 +411,7 @@ export function SystemDiagnostics({
           value={ramText}
           percentage={ramPctClamped}
           unavailable={ramUnavailable}
-          icon={Database}
+          icon={MemoryStick}
         />
         <div
           ref={containerRef}

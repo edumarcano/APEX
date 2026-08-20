@@ -483,6 +483,65 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         self.assertFalse(profiles["felis"].active)
         self.assertIsNone(profiles["felis"].idle_unload_remaining_seconds)
 
+    def test_felis_status_active_when_resident_model_differs_from_configured_model(self) -> None:
+        snapshot = {
+            "provider": "ollama",
+            "reachable": True,
+            "installed_models": ["qwen3:1.7b", "qwen3:4b-instruct"],
+            "loaded_models": [
+                {
+                    "provider": "ollama",
+                    "name": "qwen3:1.7b",
+                    "model": "qwen3:1.7b",
+                    "state": "loaded",
+                    "context_window": 16384,
+                    "size_bytes": 2000000000,
+                    "size_vram_bytes": 2000000000,
+                    "processor": "gpu",
+                    "context": None,
+                    "expires_at": None,
+                }
+            ],
+            "sampled_at": 0.0,
+        }
+        backend = mock.Mock()
+        backend.provider = "ollama"
+        backend.enabled = True
+        backend.get_status_snapshot.return_value = snapshot
+        settings = _felis_settings_mock()
+        settings.ask_apex.felis.model = "qwen3:4b-instruct"
+        with (
+            mock.patch(
+                "core.api.cortex.iter_local_runtime_backends",
+                return_value=(backend,),
+            ),
+            mock.patch("core.api.cortex.get_local_runtime_backend", return_value=backend),
+            mock.patch("core.api.cortex.get_system_vitals", return_value={"cpu": 10.0, "ram": 10.0}),
+            mock.patch(
+                "core.api.cortex.get_active_local_model",
+                return_value=LocalModelRef(provider="ollama", model="qwen3:1.7b"),
+            ),
+            mock.patch("core.api.cortex.get_loading_local_model", return_value=None),
+            mock.patch("core.api.cortex.get_idle_unload_remaining_seconds", return_value=60),
+            mock.patch("core.api.cortex.is_local_execution_active", return_value=False),
+            mock.patch("core.api.cortex.is_dev_mode", return_value=True),
+            mock.patch("core.agent.catalog.is_dev_mode", return_value=True),
+            mock.patch(
+                "core.settings.get_settings_store",
+                return_value=mock.Mock(get_snapshot=mock.Mock(return_value=settings)),
+            ),
+            mock.patch.dict("os.environ", {"OPENAI_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"}),
+        ):
+            profiles = {profile.key: profile for profile in build_agent_statuses()}
+
+        felis = profiles["felis"]
+        self.assertTrue(felis.active)
+        self.assertEqual(felis.configured_model, "qwen3:4b-instruct")
+        self.assertIsNotNone(felis.loaded_model)
+        assert felis.loaded_model is not None
+        self.assertEqual(felis.loaded_model.name, "qwen3:1.7b")
+        self.assertEqual(felis.idle_unload_remaining_seconds, 60)
+
 
 if __name__ == "__main__":
     unittest.main()

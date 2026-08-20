@@ -436,12 +436,29 @@ def build_agent_statuses() -> list[AgentStatus]:
                 profile.runtime_model_id,
                 state="failed",
             )
-            is_tracked_active = tracked_active == model_ref
-            is_active = loaded_model is not None
-            is_loading = loading == model_ref
+            resident_loaded_model = loaded_model or next(
+                (m for m in loaded_models if m.get("state") == "loaded"),
+                None,
+            )
+            if resident_loaded_model is None:
+                resident_loaded_model = next(
+                    (
+                        m
+                        for s in snapshots.values()
+                        if s and isinstance(s, dict)
+                        for m in s.get("loaded_models", [])
+                        if m.get("state") == "loaded"
+                    ),
+                    None,
+                )
+            is_active = resident_loaded_model is not None
+            is_loading = (
+                loading == model_ref
+                or (loading is not None and loading.provider == profile.provider)
+            )
             agent_status, reason = _resolve_local_agent_status(
                 profile,
-                is_active=is_active,
+                is_active=loaded_model is not None,
                 provider_reachable=provider_reachable,
                 installed_models=installed_models,
                 vitals=vitals,
@@ -450,7 +467,11 @@ def build_agent_statuses() -> list[AgentStatus]:
             )
             if agent_status == "available" and is_local_execution_active():
                 agent_status, reason = "busy", _BUSY_REASON
-            status_model = loaded_model if loaded_model is not None else failed_model
+            status_model = (
+                resident_loaded_model
+                if resident_loaded_model is not None
+                else failed_model
+            )
             agents.append(
                 AgentStatus(
                     key=key,
@@ -505,7 +526,7 @@ def build_agent_statuses() -> list[AgentStatus]:
                     loading=is_loading,
                     reason=reason,
                     idle_unload_remaining_seconds=(
-                        idle_remaining if is_active and is_tracked_active else None
+                        idle_remaining if is_active else None
                     ),
                     loaded_model=(
                         _loaded_model_status(status_model)

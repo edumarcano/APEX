@@ -1,11 +1,11 @@
-import { Network, MemoryStick } from 'lucide-react'
+import { Gpu, Network } from 'lucide-react'
 import type { ReactElement } from 'react'
 
 import type { AgentKey } from '../types/telemetry'
 
 const AGENT_MARKS: Record<string, { icon: typeof Network; label: string; className: string }> = {
-  panthera: { icon: Network, label: 'Panthera agent mark', className: 'border-purple-300/25 bg-purple-400/10 text-purple-200' },
-  felis: { icon: MemoryStick, label: 'Felis agent mark', className: 'border-amber-300/25 bg-amber-400/10 text-amber-200' },
+  panthera: { icon: Network, label: 'Panthera agent mark', className: 'border-[#1F6FE5]/35 bg-[#1F6FE5]/15 text-[#6EA8FF]' },
+  felis: { icon: Gpu, label: 'Felis agent mark', className: 'border-amber-300/25 bg-amber-400/10 text-amber-200' },
 }
 
 interface AgentMarkProps {

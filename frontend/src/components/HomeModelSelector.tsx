@@ -1,8 +1,8 @@
 import {
   Check,
   ChevronDown,
-  Cloud,
-  Cpu,
+  Network,
+  Gpu,
 } from 'lucide-react'
 import {
   useCallback,
@@ -258,9 +258,9 @@ export function HomeModelSelector({
             <ul role="listbox" aria-label="Select model">
               {cloudModels.length > 0 && (
                 <li role="presentation">
-                  <div className="flex items-center gap-2 px-2 py-1.5 font-mono text-[9px] uppercase tracking-widest text-purple-400/90" aria-hidden>
-                    <Cloud className="size-3.5 text-purple-400" />
-                    Cloud · Apex Panthera
+                  <div className="flex items-center gap-2 px-2 py-1.5 font-mono text-[9px] uppercase tracking-widest text-[#6EA8FF]/90" aria-hidden>
+                    <Network className="size-3.5 text-[#6EA8FF]" />
+                    Apex Panthera · Cloud
                   </div>
                   <ul role="group" aria-label="Cloud models" className="space-y-1">
                     {cloudModels.map((entry) => {
@@ -327,8 +327,8 @@ export function HomeModelSelector({
                 <li role="presentation">
                   {cloudModels.length > 0 ? <div className="mx-2 my-1 border-t border-white/10" aria-hidden /> : null}
                   <div className="flex items-center gap-2 px-2 py-1.5 font-mono text-[9px] uppercase tracking-widest text-amber-400/90" aria-hidden>
-                    <Cpu className="size-3.5 text-amber-400" />
-                    Local · Apex Felis
+                    <Gpu className="size-3.5 text-amber-400" />
+                    Apex Felis · Local
                   </div>
                   <ul role="group" aria-label="Local models" className="space-y-1">
                     {localModels.map((entry) => {

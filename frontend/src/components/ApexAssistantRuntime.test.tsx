@@ -803,4 +803,36 @@ describe('ApexAssistantRuntime', () => {
       local_reasoning_mode: 'none',
     })
   })
+
+  it('renders the reactive Apex logo in the thread empty state and after message completion', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([summary])
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}`)) return response({ ...summary, active_leaf_message_id: null, messages: [] })
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}/turns`)) {
+        return response({ answer: 'Response with logo below.', tool_trace: [], tool_outputs: [], citations: [] })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+
+    const { container } = render(
+      <ApexAssistantRuntime
+        config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+      >
+        <ApexAssistantThread logoProps={{ step: 1, status: 'idle' }} />
+      </ApexAssistantRuntime>,
+    )
+
+    await waitFor(() => expect(screen.getByText('Reminders')).toBeInTheDocument())
+    expect(container.querySelector('[data-slot="cortex-chat-logo"]')).toBeInTheDocument()
+
+    await user.click(screen.getByText('Reminders'))
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => expect(screen.getByText('Response with logo below.')).toBeInTheDocument())
+    expect(container.querySelector('[data-slot="cortex-chat-logo"]')).toBeInTheDocument()
+  })
 })
