@@ -8,7 +8,7 @@ import type {
   ToolPreflightEstimate,
 } from '../types/telemetry'
 
-import { AgentQueryBar } from './AgentQueryBar'
+import { AgentQueryBar, CortexQueryRim } from './AgentQueryBar'
 
 const felis: AgentStatus = {
   key: 'felis',
@@ -100,7 +100,6 @@ function renderBar(
 ): ReturnType<typeof render> {
   return render(
     <AgentQueryBar
-      presentation="cortex"
       activeAgent="felis"
       onSubmit={onSubmit}
       agentsStatus={[felis]}
@@ -115,37 +114,16 @@ function renderBar(
 }
 
 describe('AgentQueryBar unified tool selection', () => {
-  it.each([
-    ['submitting', { isSubmitting: true }],
-    ['preparing', { submissionPending: true }],
-  ] as const)('renders the query rim while Cortex is %s', (_state, overrides) => {
-    const { container } = renderBar(vi.fn(), overrides)
-
+  it('renders the query rim when CortexQueryRim is mounted', () => {
+    const { container } = render(<CortexQueryRim />)
     expect(container.querySelector('[data-slot="cortex-query-rim"]')).toBeInTheDocument()
   })
 
-  it('does not render the query rim in Home', () => {
-    const { container } = renderBar(vi.fn(), {
-      presentation: 'home',
-      isSubmitting: true,
-    })
-
-    expect(container.querySelector('[data-slot="cortex-query-rim"]')).not.toBeInTheDocument()
-  })
-
   it('uses an icon-only tools trigger in Home', () => {
-    renderBar(vi.fn(), { presentation: 'home' })
+    renderBar(vi.fn())
 
     const selector = screen.getByRole('button', { name: /Tools:/ })
     expect(selector.textContent).toBe('')
-  })
-
-  it('keeps the tools summary text in Cortex', () => {
-    renderBar()
-
-    const selector = screen.getByRole('button', { name: /Tools:/ })
-    expect(selector).toHaveTextContent('Tools')
-    expect(selector).toHaveTextContent('Custom')
   })
 
   it('submits the exact current names and profile ID', () => {
@@ -230,7 +208,6 @@ describe('AgentQueryBar unified tool selection', () => {
 
     view.rerender(
       <AgentQueryBar
-        presentation="cortex"
         activeAgent="felis"
         onSubmit={onSubmit}
         agentsStatus={[felis]}
@@ -251,5 +228,4 @@ describe('AgentQueryBar unified tool selection', () => {
       'custom_weather',
     )
   })
-
 })

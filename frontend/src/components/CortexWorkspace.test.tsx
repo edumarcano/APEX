@@ -1,12 +1,12 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ComponentProps, ReactElement } from 'react'
-import { useState } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ComponentProps } from 'react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { CortexWorkspace, ResponseMetrics } from './CortexWorkspace'
+import { AssistantResponseDisplay, CortexWorkspace, ResponseMetrics } from './CortexWorkspace'
+import { ApexAssistantRuntime } from './ApexAssistantRuntime'
 import type { AgentQueryMetadata } from '../lib/cortexResponse'
-import type { AgentStatus, CloudEffort, ToolCatalog, ToolPreflightEstimate } from '../types/telemetry'
+import type { AgentStatus, CloudEffort, ToolCatalog } from '../types/telemetry'
 import type { ApexLogoProps } from './ApexLogo'
 
 const pantheraModelCatalog = [
@@ -144,7 +144,6 @@ function workspaceProps(overrides: Partial<ComponentProps<typeof CortexWorkspace
     agentQueriesEnabled: true,
     agentsStatus: [panthera, felis],
     agentsStatusHydrated: true,
-    history: [],
     latestTrace: [],
     error: null,
     contextUsage: { estimated_prompt_tokens: 45, peak_prompt_tokens: null, context_window: 4096, history_messages_dropped: 0 },
@@ -173,17 +172,39 @@ function workspaceProps(overrides: Partial<ComponentProps<typeof CortexWorkspace
     onSandboxModeChange: vi.fn(),
     onLocalContextWindowChange: vi.fn().mockResolvedValue(true),
     onLocalReasoningModeChange: vi.fn().mockResolvedValue(true),
-    onSubmit: vi.fn().mockResolvedValue(true),
-    onNewSession: vi.fn(),
     actions: { actions: [], pendingCount: 0, isLoading: false, error: null, selectedActionId: null, detail: null, isDetailLoading: false, mutation: null, setSelectedActionId: vi.fn(), refresh: vi.fn().mockResolvedValue(undefined), resolve: vi.fn().mockResolvedValue(undefined) },
     demoModeActive: false,
+    assistantRunConfig: { agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null },
     ...overrides,
   }
 }
 
+function renderWorkspace(overrides: Partial<ComponentProps<typeof CortexWorkspace>> = {}): ReturnType<typeof render> {
+  const props = workspaceProps(overrides)
+  return render(
+    <ApexAssistantRuntime config={props.assistantRunConfig}>
+      <CortexWorkspace {...props} />
+    </ApexAssistantRuntime>,
+  )
+}
+
 describe('CortexWorkspace', () => {
+  beforeEach(() => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.includes('/api/v1/cortex/conversations')) {
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      return new Response(null, { status: 200 })
+    })
+  })
+
   afterEach(() => {
     vi.useRealTimers()
+    vi.restoreAllMocks()
   })
 
   it('collapses response information until it is explicitly expanded', async () => {
@@ -210,17 +231,13 @@ describe('CortexWorkspace', () => {
   })
 
   it('renders the brain circuit icon badge in the header and the shared live logo in the chat canvas', () => {
-    const { container } = render(
-      <CortexWorkspace
-        {...workspaceProps({
-          logoProps: {
-            step: 3,
-            status: 'loading',
-            outerShellActivity: 'synthesis',
-          },
-        })}
-      />,
-    )
+    const { container } = renderWorkspace({
+      logoProps: {
+        step: 3,
+        status: 'loading',
+        outerShellActivity: 'synthesis',
+      },
+    })
 
     const header = container.querySelector('header')
     expect(header?.querySelector('.hud-icon-badge')).toBeInTheDocument()
@@ -233,92 +250,10 @@ describe('CortexWorkspace', () => {
     expect(chatLogo?.querySelector('#blue-crown-top')).toHaveClass('apex-blue-metal--active')
   })
 
-  it('renders the shared live logo below active conversation history', () => {
-    const { container } = render(
-      <CortexWorkspace
-        {...workspaceProps({
-          history: [
-            { role: 'user', content: 'Hello APEX' },
-            { role: 'agent', content: 'Hello! How can I assist you today?' },
-          ],
-          logoProps: {
-            step: 2,
-            status: 'idle',
-          },
-        })}
-      />,
-    )
-
-    const chatLogo = container.querySelector('[data-slot="cortex-chat-logo"]')
-    expect(chatLogo).toBeInTheDocument()
-    expect(screen.getByText('Hello APEX')).toBeInTheDocument()
-    expect(screen.getByText('Hello! How can I assist you today?')).toBeInTheDocument()
-  })
-
-  it('offers empty-canvas prompt chips through the active profile submission path', async () => {
-    const onSubmit = vi.fn().mockResolvedValue(true)
-    const user = userEvent.setup()
-    render(<CortexWorkspace {...workspaceProps({ onSubmit })} />)
-
-    await user.click(screen.getByRole('button', { name: 'Forecast' }))
-    expect(onSubmit).toHaveBeenCalledWith('What is the 5-day weather forecast?', 'panthera', [], null)
-  })
-
-  it('hides prompt chips when preflight reports a strict selection failure', () => {
-    render(
-      <CortexWorkspace
-        {...workspaceProps({
-          toolPreflight: { can_proceed: false } as ToolPreflightEstimate,
-        })}
-      />,
-    )
-    expect(screen.queryByRole('button', { name: 'Forecast' })).not.toBeInTheDocument()
-  })
-
-  it('submits the footer with the chosen tool set on every request', async () => {
-    const onSubmit = vi.fn().mockResolvedValue(true)
-    const user = userEvent.setup()
-    function Harness(): ReactElement {
-      const [selected, setSelected] = useState<string[]>([])
-      return <CortexWorkspace {...workspaceProps({
-        onSubmit,
-        selectedToolNames: selected,
-        onToolSelectionChange: setSelected,
-      })} />
-    }
-
-    render(<Harness />)
-    await user.click(screen.getByRole('button', { name: /Tools:/ }))
-    await user.click(screen.getByRole('checkbox', { name: 'Select Schedule' }))
-    await user.click(screen.getByRole('button', { name: 'Expand Schedule' }))
-    await user.click(screen.getByRole('checkbox', { name: /Reminders/ }))
-
-    const input = screen.getByLabelText('Agent query')
-    await user.type(input, 'First request')
-    await user.click(screen.getByRole('button', { name: 'Send query' }))
-    await user.type(input, 'Second request')
-    await user.click(screen.getByRole('button', { name: 'Send query' }))
-
-    expect(onSubmit).toHaveBeenNthCalledWith(
-      1,
-      'First request',
-      'panthera',
-      ['get_upcoming_calendar_events'],
-      null,
-    )
-    expect(onSubmit).toHaveBeenNthCalledWith(
-      2,
-      'Second request',
-      'panthera',
-      ['get_upcoming_calendar_events'],
-      null,
-    )
-  })
-
   it('switches active agent directly via the segmented agent cards', async () => {
     const onAgentChange = vi.fn()
     const user = userEvent.setup()
-    render(<CortexWorkspace {...workspaceProps({ onAgentChange, agentsStatus: [panthera, felis] })} />)
+    renderWorkspace({ onAgentChange, agentsStatus: [panthera, felis] })
     const felisRadio = screen.getByRole('radio', { name: /Apex Felis.*Local · Private/i })
     expect(felisRadio).toBeInTheDocument()
     await user.click(felisRadio)
@@ -329,7 +264,7 @@ describe('CortexWorkspace', () => {
     const onEffortChange = vi.fn()
     const onVerifyCloudAgent = vi.fn().mockResolvedValue(true)
     const user = userEvent.setup()
-    render(<CortexWorkspace {...workspaceProps({ activeAgent: 'panthera', agentsStatus: [panthera, felis], onEffortChange, onVerifyCloudAgent })} />)
+    renderWorkspace({ activeAgent: 'panthera', agentsStatus: [panthera, felis], onEffortChange, onVerifyCloudAgent })
 
     expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toBeEnabled()
     await user.selectOptions(screen.getByRole('combobox', { name: 'Reasoning effort' }), 'xhigh')
@@ -342,9 +277,7 @@ describe('CortexWorkspace', () => {
   it('exposes model selection with rich model browser popover', async () => {
     const user = userEvent.setup()
     const onPantheraModelChange = vi.fn()
-    const { rerender } = render(
-      <CortexWorkspace {...workspaceProps({ activeAgent: 'panthera', onPantheraModelChange })} />,
-    )
+    const { rerender } = renderWorkspace({ activeAgent: 'panthera', onPantheraModelChange })
 
     const modelRegion = screen.getByRole('region', { name: 'Model selection' })
     expect(modelRegion).toBeInTheDocument()
@@ -352,14 +285,18 @@ describe('CortexWorkspace', () => {
     await user.click(within(modelRegion).getByRole('button', { expanded: false }))
     expect(screen.getByRole('listbox', { name: 'Select model for panthera' })).toBeInTheDocument()
 
-    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'felis', agentsStatus: [felis] })} />)
+    const felisProps = workspaceProps({ activeAgent: 'felis', agentsStatus: [felis] })
+    rerender(
+      <ApexAssistantRuntime config={felisProps.assistantRunConfig}>
+        <CortexWorkspace {...felisProps} />
+      </ApexAssistantRuntime>,
+    )
     const felisModelRegion = screen.getByRole('region', { name: 'Model selection' })
     expect(within(felisModelRegion).getAllByText('Gemma 4 E2B').length).toBeGreaterThanOrEqual(1)
-    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'panthera' })} />)
   })
 
   it('keeps agent marks accessible for Panthera and Felis', () => {
-    render(<CortexWorkspace {...workspaceProps({ agentsStatus: [panthera, felis] })} />)
+    renderWorkspace({ agentsStatus: [panthera, felis] })
 
     expect(screen.getAllByLabelText('Panthera agent mark').length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByLabelText('Felis agent mark').length).toBeGreaterThanOrEqual(1)
@@ -367,34 +304,61 @@ describe('CortexWorkspace', () => {
 
   it('shows local lifecycle controls only for local profiles and disables them during activity', () => {
     const onLoadLocalModel = vi.fn().mockResolvedValue(true)
-    const { rerender } = render(<CortexWorkspace {...workspaceProps({ activeAgent: 'felis', agentsStatus: [felis], onLoadLocalModel })} />)
+    const { rerender } = renderWorkspace({ activeAgent: 'felis', agentsStatus: [felis], onLoadLocalModel })
     expect(screen.getByLabelText('Local model lifecycle')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Load model' })).toBeEnabled()
-    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'felis', agentsStatus: [felis], lifecycleBusy: true, onLoadLocalModel })} />)
+
+    const busyProps = workspaceProps({ activeAgent: 'felis', agentsStatus: [felis], lifecycleBusy: true, onLoadLocalModel })
+    rerender(
+      <ApexAssistantRuntime config={busyProps.assistantRunConfig}>
+        <CortexWorkspace {...busyProps} />
+      </ApexAssistantRuntime>,
+    )
     expect(screen.getByRole('button', { name: 'Load model' })).toBeDisabled()
-    rerender(<CortexWorkspace {...workspaceProps()} />)
+
+    const defaultProps = workspaceProps()
+    rerender(
+      <ApexAssistantRuntime config={defaultProps.assistantRunConfig}>
+        <CortexWorkspace {...defaultProps} />
+      </ApexAssistantRuntime>,
+    )
     expect(screen.queryByLabelText('Local model lifecycle')).not.toBeInTheDocument()
   })
 
   it('makes every local lifecycle state explicit and only marks transitions as active', () => {
-    const { rerender } = render(<CortexWorkspace {...workspaceProps({ activeAgent: 'felis', agentsStatus: [felis] })} />)
+    const { rerender } = renderWorkspace({ activeAgent: 'felis', agentsStatus: [felis] })
     const lifecycleRegion = screen.getByLabelText('Local model lifecycle')
     expect(within(lifecycleRegion).getByText('Unloaded')).toBeInTheDocument()
 
-    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'felis', agentsStatus: [{ ...felis, active: true }] })} />)
+    const loadedProps = workspaceProps({ activeAgent: 'felis', agentsStatus: [{ ...felis, active: true }] })
+    rerender(
+      <ApexAssistantRuntime config={loadedProps.assistantRunConfig}>
+        <CortexWorkspace {...loadedProps} />
+      </ApexAssistantRuntime>,
+    )
     expect(within(screen.getByLabelText('Local model lifecycle')).getByText('Loaded')).toBeInTheDocument()
 
-    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'felis', agentsStatus: [{ ...felis, loading: true }] })} />)
+    const loadingProps = workspaceProps({ activeAgent: 'felis', agentsStatus: [{ ...felis, loading: true }] })
+    rerender(
+      <ApexAssistantRuntime config={loadingProps.assistantRunConfig}>
+        <CortexWorkspace {...loadingProps} />
+      </ApexAssistantRuntime>,
+    )
     expect(within(screen.getByLabelText('Local model lifecycle')).getByText('Loading…')).toBeInTheDocument()
 
-    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'felis', agentsStatus: [{ ...felis, status: 'ollama_unreachable', reason: 'Ollama is offline' }] })} />)
+    const unavailableProps = workspaceProps({ activeAgent: 'felis', agentsStatus: [{ ...felis, status: 'ollama_unreachable', reason: 'Ollama is offline' }] })
+    rerender(
+      <ApexAssistantRuntime config={unavailableProps.assistantRunConfig}>
+        <CortexWorkspace {...unavailableProps} />
+      </ApexAssistantRuntime>,
+    )
     expect(within(screen.getByLabelText('Local model lifecycle')).getByText('Unavailable')).toBeInTheDocument()
     expect(screen.getByText('Ollama is offline')).toBeInTheDocument()
   })
 
   it('shows the active local model auto-unload countdown in the lifecycle card', () => {
     vi.useFakeTimers()
-    const { rerender } = render(<CortexWorkspace {...workspaceProps({ activeAgent: 'felis', agentsStatus: [{ ...felis, active: true, idle_unload_remaining_seconds: 300 }] })} />)
+    const { rerender } = renderWorkspace({ activeAgent: 'felis', agentsStatus: [{ ...felis, active: true, idle_unload_remaining_seconds: 300 }] })
     expect(screen.getByText('Auto-unload in 05:00')).toBeInTheDocument()
 
     act(() => {
@@ -402,7 +366,12 @@ describe('CortexWorkspace', () => {
     })
     expect(screen.getByText('Auto-unload in 04:59')).toBeInTheDocument()
 
-    rerender(<CortexWorkspace {...workspaceProps({ activeAgent: 'felis', lifecycleBusy: true, agentsStatus: [{ ...felis, active: true, idle_unload_remaining_seconds: 299 }] })} />)
+    const busyProps = workspaceProps({ activeAgent: 'felis', lifecycleBusy: true, agentsStatus: [{ ...felis, active: true, idle_unload_remaining_seconds: 299 }] })
+    rerender(
+      <ApexAssistantRuntime config={busyProps.assistantRunConfig}>
+        <CortexWorkspace {...busyProps} />
+      </ApexAssistantRuntime>,
+    )
     expect(screen.getByText('In use · auto-unload paused')).toBeInTheDocument()
   })
 
@@ -410,16 +379,12 @@ describe('CortexWorkspace', () => {
     const user = userEvent.setup()
     const onLocalContextWindowChange = vi.fn().mockResolvedValue(true)
     const onLocalReasoningModeChange = vi.fn().mockResolvedValue(true)
-    render(
-      <CortexWorkspace
-        {...workspaceProps({
-          activeAgent: 'felis',
-          agentsStatus: [felis],
-          onLocalContextWindowChange,
-          onLocalReasoningModeChange,
-        })}
-      />,
-    )
+    renderWorkspace({
+      activeAgent: 'felis',
+      agentsStatus: [felis],
+      onLocalContextWindowChange,
+      onLocalReasoningModeChange,
+    })
 
     const contextSelect = screen.getByLabelText('Context window')
     expect(contextSelect).toBeEnabled()
@@ -446,16 +411,12 @@ describe('CortexWorkspace', () => {
     })
     const onLocalContextWindowChange = vi.fn().mockReturnValue(contextPersistence)
     const onLocalReasoningModeChange = vi.fn().mockReturnValue(reasoningPersistence)
-    render(
-      <CortexWorkspace
-        {...workspaceProps({
-          activeAgent: 'felis',
-          agentsStatus: [felis],
-          onLocalContextWindowChange,
-          onLocalReasoningModeChange,
-        })}
-      />,
-    )
+    renderWorkspace({
+      activeAgent: 'felis',
+      agentsStatus: [felis],
+      onLocalContextWindowChange,
+      onLocalReasoningModeChange,
+    })
 
     const contextSelect = screen.getByLabelText('Context window')
     const reasoningSelect = screen.getByLabelText('Reasoning')
@@ -479,29 +440,27 @@ describe('CortexWorkspace', () => {
       resolveContext = resolve
     })
     const onLocalContextWindowChange = vi.fn().mockReturnValue(contextPersistence)
-    const { rerender } = render(
-      <CortexWorkspace
-        {...workspaceProps({
-          activeAgent: 'felis',
-          agentsStatus: [felis],
-          onLocalContextWindowChange,
-        })}
-      />,
-    )
+    const { rerender } = renderWorkspace({
+      activeAgent: 'felis',
+      agentsStatus: [felis],
+      onLocalContextWindowChange,
+    })
 
     const contextSelect = screen.getByLabelText('Context window')
     await user.selectOptions(contextSelect, '32768')
     expect(contextSelect).toHaveValue('32768')
     resolveContext(true)
     expect(contextSelect).toHaveValue('32768')
+
+    const refreshedProps = workspaceProps({
+      activeAgent: 'felis',
+      agentsStatus: [{ ...felis, context_window: 32768 }],
+      onLocalContextWindowChange,
+    })
     rerender(
-      <CortexWorkspace
-        {...workspaceProps({
-          activeAgent: 'felis',
-          agentsStatus: [{ ...felis, context_window: 32768 }],
-          onLocalContextWindowChange,
-        })}
-      />,
+      <ApexAssistantRuntime config={refreshedProps.assistantRunConfig}>
+        <CortexWorkspace {...refreshedProps} />
+      </ApexAssistantRuntime>,
     )
     await waitFor(() => expect(contextSelect).toHaveValue('32768'))
   })
@@ -513,15 +472,11 @@ describe('CortexWorkspace', () => {
       resolveContext = resolve
     })
     const onLocalContextWindowChange = vi.fn().mockReturnValue(contextPersistence)
-    const { rerender } = render(
-      <CortexWorkspace
-        {...workspaceProps({
-          activeAgent: 'felis',
-          agentsStatus: [felis],
-          onLocalContextWindowChange,
-        })}
-      />,
-    )
+    const { rerender } = renderWorkspace({
+      activeAgent: 'felis',
+      agentsStatus: [felis],
+      onLocalContextWindowChange,
+    })
 
     const contextSelect = screen.getByLabelText('Context window')
     await user.selectOptions(contextSelect, '32768')
@@ -532,14 +487,15 @@ describe('CortexWorkspace', () => {
 
     // Stale authority must not snap the selector back, and the control must
     // remain usable for another change even before refreshed status catches up.
+    const staleProps = workspaceProps({
+      activeAgent: 'felis',
+      agentsStatus: [felis],
+      onLocalContextWindowChange,
+    })
     rerender(
-      <CortexWorkspace
-        {...workspaceProps({
-          activeAgent: 'felis',
-          agentsStatus: [felis],
-          onLocalContextWindowChange,
-        })}
-      />,
+      <ApexAssistantRuntime config={staleProps.assistantRunConfig}>
+        <CortexWorkspace {...staleProps} />
+      </ApexAssistantRuntime>,
     )
     expect(contextSelect).toHaveValue('32768')
     expect(contextSelect).toBeEnabled()
@@ -549,34 +505,32 @@ describe('CortexWorkspace', () => {
   })
 
   it('disables local context selection during generation or loading', () => {
-    const { rerender } = render(
-      <CortexWorkspace
-        {...workspaceProps({
-          activeAgent: 'felis',
-          agentsStatus: [felis],
-        })}
-      />,
-    )
+    const { rerender } = renderWorkspace({
+      activeAgent: 'felis',
+      agentsStatus: [felis],
+    })
     expect(screen.getByLabelText('Context window')).toBeEnabled()
 
+    const loadingProps = workspaceProps({
+      activeAgent: 'felis',
+      agentsStatus: [{ ...felis, loading: true }],
+    })
     rerender(
-      <CortexWorkspace
-        {...workspaceProps({
-          activeAgent: 'felis',
-          agentsStatus: [{ ...felis, loading: true }],
-        })}
-      />,
+      <ApexAssistantRuntime config={loadingProps.assistantRunConfig}>
+        <CortexWorkspace {...loadingProps} />
+      </ApexAssistantRuntime>,
     )
     expect(screen.getByLabelText('Context window')).toBeDisabled()
 
+    const busyProps = workspaceProps({
+      activeAgent: 'felis',
+      agentsStatus: [felis],
+      lifecycleBusy: true,
+    })
     rerender(
-      <CortexWorkspace
-        {...workspaceProps({
-          activeAgent: 'felis',
-          agentsStatus: [felis],
-          lifecycleBusy: true,
-        })}
-      />,
+      <ApexAssistantRuntime config={busyProps.assistantRunConfig}>
+        <CortexWorkspace {...busyProps} />
+      </ApexAssistantRuntime>,
     )
     expect(screen.getByLabelText('Context window')).toBeDisabled()
   })
@@ -588,18 +542,7 @@ describe('CortexWorkspace', () => {
       '| Feature | Status |\n| --- | --- |\n| Markdown | Supported |',
     ].join('\n\n')
 
-    render(
-      <CortexWorkspace
-        {...workspaceProps({
-          history: [
-            {
-              role: 'agent',
-              content: markdownContent,
-            },
-          ],
-        })}
-      />,
-    )
+    render(<AssistantResponseDisplay text={markdownContent} rawMetadata={{}} onOpenRecord={vi.fn()} />)
 
     expect(screen.getByRole('heading', { level: 1, name: 'Cortex Response Header' })).toBeInTheDocument()
     expect(screen.getByText('bold text')).toBeInTheDocument()
@@ -613,22 +556,20 @@ describe('CortexWorkspace', () => {
 
   it('keeps Google Maps sources beside the response and isolates Search Suggestions markup', () => {
     render(
-      <CortexWorkspace
-        {...workspaceProps({
-          history: [{
-            role: 'agent',
-            content: 'A grounded answer with [Google Maps: Cafe](https://maps.google.com/cafe).',
-            metadata: {
-              agent: null,
-              usage: null,
-              timing: null,
-              cost: null,
-              citations: [{ title: 'Cafe', uri: 'https://maps.google.com/cafe', snippet: null, source: 'google_maps' }],
-              grounding: { searchSuggestionsHtml: '<a href="https://www.google.com/search">Search</a>' },
-              toolSelection: null,
-            },
-          }],
-        })}
+      <AssistantResponseDisplay
+        text="A grounded answer with [Google Maps: Cafe](https://maps.google.com/cafe)."
+        rawMetadata={{
+          metadata: {
+            agent: null,
+            usage: null,
+            timing: null,
+            cost: null,
+            citations: [{ title: 'Cafe', uri: 'https://maps.google.com/cafe', snippet: null, source: 'google_maps' }],
+            grounding: { searchSuggestionsHtml: '<a href="https://www.google.com/search">Search</a>' },
+            toolSelection: null,
+          },
+        }}
+        onOpenRecord={vi.fn()}
       />,
     )
 
@@ -640,19 +581,17 @@ describe('CortexWorkspace', () => {
 
   it('uses display labels rather than raw cloud provider IDs in response metadata', () => {
     render(
-      <CortexWorkspace
-        {...workspaceProps({
-          history: [{
-            role: 'agent',
-            content: 'Research complete.',
-            metadata: {
-              agent: {
-                key: 'panthera', version: '1.0', provider: 'xai', configuredModel: 'grok-4.5', resolvedModel: 'grok-4.5', requestedEffort: 'high', resolvedEffort: 'high',
-              },
-              usage: null, timing: null, cost: null, citations: [], grounding: null, toolSelection: null,
+      <AssistantResponseDisplay
+        text="Research complete."
+        rawMetadata={{
+          metadata: {
+            agent: {
+              key: 'panthera', version: '1.0', provider: 'xai', configuredModel: 'grok-4.5', resolvedModel: 'grok-4.5', requestedEffort: 'high', resolvedEffort: 'high',
             },
-          }],
-        })}
+            usage: null, timing: null, cost: null, citations: [], grounding: null, toolSelection: null,
+          },
+        }}
+        onOpenRecord={vi.fn()}
       />,
     )
 
@@ -662,17 +601,13 @@ describe('CortexWorkspace', () => {
 
   it('renders model-native reasoning options dynamically for the selected cloud model', () => {
     const onEffortChange = vi.fn()
-    render(
-      <CortexWorkspace
-        {...workspaceProps({
-          activeAgent: 'panthera',
-          pantheraModel: 'gpt-5.6-luna',
-          cloudEffort: 'medium',
-          agentsStatus: [panthera],
-          onEffortChange,
-        })}
-      />,
-    )
+    renderWorkspace({
+      activeAgent: 'panthera',
+      pantheraModel: 'gpt-5.6-luna',
+      cloudEffort: 'medium',
+      agentsStatus: [panthera],
+      onEffortChange,
+    })
 
     const effortSelect = screen.getByLabelText('Reasoning effort')
     expect(effortSelect).toHaveValue('medium')
@@ -685,15 +620,11 @@ describe('CortexWorkspace', () => {
   })
 
   it('renders None and High labels for local Felis reasoning mode', () => {
-    render(
-      <CortexWorkspace
-        {...workspaceProps({
-          activeAgent: 'felis',
-          felisModel: 'gemma-4-E2B-Q4_K_M.gguf',
-          agentsStatus: [felis],
-        })}
-      />,
-    )
+    renderWorkspace({
+      activeAgent: 'felis',
+      felisModel: 'gemma-4-E2B-Q4_K_M.gguf',
+      agentsStatus: [felis],
+    })
 
     const reasoningSelect = screen.getByLabelText('Reasoning')
     expect(reasoningSelect).toBeInTheDocument()
