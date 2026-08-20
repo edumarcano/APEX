@@ -178,7 +178,7 @@ export function resolveBriefingModeAvailability(
   mode: BriefingMode,
   targets?: BriefingTargetStatus[],
 ): BriefingModeAvailability {
-  if (mode === 'structured_digest') {
+  if (mode === 'structured') {
     return { status: 'available', reason: null }
   }
   if (targets && targets.length > 0) {
@@ -241,23 +241,4 @@ export function resolveHomeQueryOverrides(
     contextWindow: null,
     localReasoningMode: null,
   }
-}
-
-export function formatHomeModelSecondaryMetadata(
-  modelEntry: ModelCatalogEntry | null | undefined,
-): string {
-  if (!modelEntry) return 'Panthera'
-  if (modelEntry.runtime === 'local') {
-    const runtimeName = runtimeDisplayName(modelEntry.provider as LocalRuntime)
-    const contextLabel = modelEntry.provider === 'ollama' ? '4K' : '16K'
-    return `Felis · ${runtimeName} · ${contextLabel} · Reasoning off`
-  }
-
-  const provider = providerDisplayName(modelEntry.provider)
-  const lowest = resolveLowestReasoningEffort(modelEntry.reasoning_options)
-  const reasoningPart = lowest && lowest !== 'none'
-    ? `${formatReasoningLabel(lowest)} reasoning`
-    : 'Reasoning off'
-
-  return `Panthera · ${provider} · ${reasoningPart}`
 }

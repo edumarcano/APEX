@@ -81,6 +81,7 @@ def _normalize_event(
         "end": normalized_end,
         "all_day": all_day,
         "time_zone": time_zone_name,
+        "location": str(item.get("location")) if item.get("location") else None,
     }
 
 

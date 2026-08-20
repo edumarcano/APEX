@@ -466,8 +466,8 @@ def check_default_briefing_provider(
 
     def provider_for_mode(mode: str) -> str:
         model_id = {
-            "panthera": PANTHERA_BRIEFING_MODEL,
-            "felis": DEFAULT_FELIS_MODEL,
+            "focused": PANTHERA_BRIEFING_MODEL,
+            "flash": DEFAULT_FELIS_MODEL,
         }.get(mode)
         profile = get_model_profile(model_id) if model_id is not None else None
         if profile is None:
@@ -475,12 +475,12 @@ def check_default_briefing_provider(
         return profile.provider
 
     config = json.loads((root / "config.json").read_text(encoding="utf-8"))
-    default_mode = config.get("briefing", {}).get("default_mode", "panthera")
-    if default_mode in {"panthera", "felis"}:
+    default_mode = config.get("briefing", {}).get("default_mode", "flash")
+    if default_mode in {"focused", "flash"}:
         provider = provider_for_mode(default_mode)
         expected = PROVIDER_DISPLAY_NAMES[provider]
     else:
-        expected = "Structured Digest"
+        expected = "Structured"
 
     readme_path = root / "README.md"
     readme = (
@@ -515,8 +515,8 @@ def check_default_briefing_provider(
             )
 
         expected_paths = {
-            "Structured Digest"
-            if mode == "structured_digest"
+            "Structured"
+            if mode == "structured"
             else PROVIDER_DISPLAY_NAMES[provider_for_mode(mode)]
             for mode in VALID_BRIEFING_MODES
         }

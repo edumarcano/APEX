@@ -42,22 +42,22 @@ from core.agent.providers.llama_cpp_models import (
 )
 from core.agent.types import AgentMessage, LocalReasoningMode
 from core.config import (
+    FLASH_SYNTHESIS_PROMPT,
+    FOCUSED_SYNTHESIS_PROMPT,
     LOCAL_FALLBACK_GRACE_SECONDS,
     LOCAL_PRIMARY_GRACE_SECONDS,
-    PRIMARY_SYNTHESIS_PROMPT,
 )
 from core.synthesis.formatting import (
-    deterministic_fallback,
     parse_model_output,
+    render_structured_briefing,
     wrap_untrusted_payload,
 )
 from core.synthesis.models import (
     FELIS_BRIEFING_CONTEXT_WINDOW,
     LOCAL_BRIEFING_AGENTS,
+    BriefingFacts,
     BriefingMode,
-    SynthesisInput,
     SynthesisResult,
-    strategy_to_briefing_mode,
 )
 from core.settings import get_settings_store
 
@@ -238,38 +238,31 @@ class SynthesisRouter:
         threading.Thread(target=worker, daemon=True, name="apex-synthesis-warmup").start()
         return handle
 
-    def prepare(self, strategy: str) -> WarmupHandle | None:
-        mode = strategy_to_briefing_mode(strategy)
-        return self.prepare_mode(mode)
-
     def prepare_mode(self, mode: BriefingMode) -> WarmupHandle | None:
-        if mode == "structured_digest" or mode == "panthera":
+        if mode in {"structured", "focused"}:
             return None
-        if mode not in LOCAL_BRIEFING_AGENTS:
+        if mode != "flash":
             return None
-        resident_ref = _resident_felis_briefing_model() if mode == "felis" else None
+        resident_ref = _resident_felis_briefing_model()
         if resident_ref is not None:
             self._state(
                 "ready",
                 _felis_briefing_provider(),
-                mode,
+                "felis",
                 None,
             )
             return None
-        # Explicit local selection warms the selected Agent.
-        if mode == "felis":
-            return self.start_agent_warmup(
-                mode,
-                context_window=FELIS_BRIEFING_CONTEXT_WINDOW,
-                reasoning_mode="none",
-            )
-        return self.start_agent_warmup(mode)
+        return self.start_agent_warmup(
+            "felis",
+            context_window=FELIS_BRIEFING_CONTEXT_WINDOW,
+            reasoning_mode="none",
+        )
 
     def _raw(
-        self, source: SynthesisInput, reason: str | None, warmup_ms: int | None = None
+        self, source: BriefingFacts, reason: str | None, warmup_ms: int | None = None
     ) -> SynthesisResult:
         self._state("fallback", "raw", None, reason)
-        briefing, insights = deterministic_fallback(source)
+        briefing, insights = render_structured_briefing(source.structured_view())
         return SynthesisResult(
             briefing=briefing,
             insights=insights,
@@ -278,18 +271,18 @@ class SynthesisRouter:
             warmup_ms=warmup_ms,
         )
 
-    def _structured_digest_fallback(
+    def _structured_fallback(
         self,
-        source: SynthesisInput,
+        source: BriefingFacts,
         reason: str,
         warmup_ms: int | None = None,
     ) -> SynthesisResult:
         result = self._raw(source, reason, warmup_ms)
-        result.fallback_steps = ["structured_digest:resolved"]
+        result.fallback_steps = ["structured:resolved"]
         return result
 
-    def _panthera(self, source: SynthesisInput) -> SynthesisResult:
-        """Synthesize with the fixed-None Panthera briefing agent."""
+    def _panthera(self, source: BriefingFacts) -> SynthesisResult:
+        """Generate the Focused briefing with the fixed Panthera route."""
         import os
 
         api_key = os.getenv("OPENROUTER_API_KEY")
@@ -297,21 +290,23 @@ class SynthesisRouter:
             raise RuntimeError("openrouter_unavailable")
         agent = build_concrete_agent(
             "panthera",
-            native_effort="none",
+            native_effort="high",
             model_id=_PANTHERA_BRIEFING_MODEL,
         )
         self._state("generating", "openrouter", "panthera", None)
         turn = OpenRouterProvider(api_key).generate_turn(
-            [AgentMessage(role="user", content=wrap_untrusted_payload(source))],
+            [AgentMessage(role="user", content=wrap_untrusted_payload(source, mode="focused"))],
             [],
             agent,
             system_instruction_override=compose_agent_system_instruction(
                 "panthera",
-                PRIMARY_SYNTHESIS_PROMPT,
+                FOCUSED_SYNTHESIS_PROMPT,
                 user_designation=get_settings_store().get_snapshot().user_designation,
             ),
         )
-        briefing, insights = parse_model_output(turn.message.content or "")
+        briefing, insights = parse_model_output(
+            turn.message.content or "", max_words=450, max_insights=5, insight_max_words=24
+        )
         return SynthesisResult(
             briefing=briefing,
             insights=insights,
@@ -355,7 +350,7 @@ class SynthesisRouter:
         user_designation = get_settings_store().get_snapshot().user_designation
         system_instruction = compose_agent_system_instruction(
             agent_key,
-            PRIMARY_SYNTHESIS_PROMPT,
+            FLASH_SYNTHESIS_PROMPT,
             user_designation=user_designation,
         )
         return build_concrete_agent(
@@ -373,7 +368,7 @@ class SynthesisRouter:
 
     def _local(
         self,
-        source: SynthesisInput,
+        source: BriefingFacts,
         agent_key: str,
         warmup_ms: int | None,
         *,
@@ -395,7 +390,7 @@ class SynthesisRouter:
                 raise RuntimeError("local_provider_invalid")
             self._state("generating", agent.provider, agent_key, None)
             turn = provider.generate_turn(
-                [AgentMessage(role="user", content=wrap_untrusted_payload(source))],
+                [AgentMessage(role="user", content=wrap_untrusted_payload(source, mode="flash"))],
                 [],
                 agent,
             )
@@ -423,7 +418,7 @@ class SynthesisRouter:
 
     def _synthesize_explicit_local(
         self,
-        source: SynthesisInput,
+        source: BriefingFacts,
         agent_key: str,
         warmup: WarmupHandle | None,
     ) -> SynthesisResult:
@@ -443,7 +438,7 @@ class SynthesisRouter:
                 return result
             except Exception as exc:
                 reason = str(exc) if str(exc).startswith("local_") else "local_generation_failed"
-                return self._structured_digest_fallback(source, reason)
+                return self._structured_fallback(source, reason)
 
         if warmup is None:
             warmup = self.start_agent_warmup(agent_key)
@@ -452,11 +447,11 @@ class SynthesisRouter:
             warmup = self.start_agent_warmup(agent_key)
 
         if not warmup.event.wait(LOCAL_PRIMARY_GRACE_SECONDS):
-            return self._structured_digest_fallback(
+            return self._structured_fallback(
                 source, "local_warmup_timeout", warmup.elapsed_ms
             )
         if not warmup.success:
-            return self._structured_digest_fallback(
+            return self._structured_fallback(
                 source, warmup.reason or "local_warmup_failed", warmup.elapsed_ms
             )
         self._state(
@@ -476,10 +471,12 @@ class SynthesisRouter:
             return result
         except Exception as exc:
             reason = str(exc) if str(exc).startswith("local_") else "local_generation_failed"
-            return self._structured_digest_fallback(source, reason, warmup.elapsed_ms)
+            return self._structured_fallback(source, reason, warmup.elapsed_ms)
 
-    def _synthesize_panthera(self, source: SynthesisInput) -> SynthesisResult:
-        """Route Panthera failure through Felis, then Structured Digest."""
+    def _synthesize_focused(
+        self, source: BriefingFacts, flash_source: BriefingFacts
+    ) -> SynthesisResult:
+        """Route Focused failure through Flash, then Structured."""
         fallback_steps: list[str] = []
         try:
             result = self._panthera(source)
@@ -487,7 +484,7 @@ class SynthesisRouter:
             return result
         except Exception as exc:
             _LOGGER.error(
-                "Panthera briefing synthesis failed; falling back to Felis/Structured Digest. "
+                "Focused briefing generation failed; falling back to Flash/Structured. "
                 "error_type=%s",
                 type(exc).__name__,
             )
@@ -499,7 +496,7 @@ class SynthesisRouter:
             fallback_steps.append(f"panthera:{reason}")
 
         for agent_key in ("felis",):
-            result, local_reason = self._try_panthera_local_fallback(source, agent_key)
+            result, local_reason = self._try_panthera_local_fallback(flash_source, agent_key)
             if result is not None:
                 fallback_steps.append(f"{agent_key}:resolved")
                 result.fallback_reason = fallback_steps[0].split(":", 1)[1]
@@ -512,13 +509,13 @@ class SynthesisRouter:
             reason = local_reason
 
         result = self._raw(source, reason)
-        fallback_steps.append("structured_digest:resolved")
+        fallback_steps.append("structured:resolved")
         result.fallback_steps = fallback_steps
         self._state("complete", result.provider, result.agent, reason)
         return result
 
     def _try_panthera_local_fallback(
-        self, source: SynthesisInput, agent_key: str
+        self, source: BriefingFacts, agent_key: str
     ) -> tuple[SynthesisResult | None, str]:
         """Attempt one ordered local fallback without substituting agents."""
         resident_ref = (
@@ -572,32 +569,19 @@ class SynthesisRouter:
 
     def synthesize_mode(
         self,
-        source: SynthesisInput,
+        source: BriefingFacts,
         mode: BriefingMode,
         warmup: WarmupHandle | None = None,
     ) -> SynthesisResult:
-        if mode == "structured_digest":
-            result = self._raw(source, "configured_raw")
+        if mode == "structured":
+            result = self._raw(source, "configured_structured")
             self._state("complete", result.provider, result.agent, result.fallback_reason)
             return result
 
-        if mode == "panthera":
-            return self._synthesize_panthera(source)
+        if mode == "focused":
+            return self._synthesize_focused(source.focused_view(), source.flash_view())
 
-        if mode in LOCAL_BRIEFING_AGENTS:
-            return self._synthesize_explicit_local(source, mode, warmup)
+        if mode == "flash":
+            return self._synthesize_explicit_local(source.flash_view(), "felis", warmup)
 
         return self._raw(source, "invalid_briefing_mode")
-
-    def synthesize(
-        self,
-        source: SynthesisInput,
-        strategy: str,
-        warmup: WarmupHandle | None = None,
-        *,
-        full_telemetry: str | None = None,
-    ) -> SynthesisResult:
-        # full_telemetry is retained only as an unused compatibility keyword.
-        _ = full_telemetry
-        mode = strategy_to_briefing_mode(strategy)
-        return self.synthesize_mode(source, mode, warmup)

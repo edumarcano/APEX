@@ -11,6 +11,19 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+"""Live Ollama briefing-synthesis smoke matrix for local Agents."""
+
+from __future__ import annotations
+
+import time
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from core.agent.local_runtime.coordinator import (
     end_local_execution,
     get_provider_snapshot,
@@ -18,7 +31,7 @@ from core.agent.local_runtime.coordinator import (
     try_begin_local_execution,
 )
 from core.agent.catalog import AGENT_SPECS, build_concrete_agent
-from core.synthesis import CalendarFact, F1Fact, SynthesisInput, SynthesisRouter
+from core.synthesis import CalendarFact, F1Fact, BriefingFacts, SynthesisRouter
 
 
 def main() -> int:
@@ -27,13 +40,13 @@ def main() -> int:
         print("[SMOKE][SKIP] Ollama is unreachable.")
         return 2
 
-    source = SynthesisInput(
+    source = BriefingFacts(
         weather_summary="Current temperature is 72 degrees with clear skies.",
         calendar_event_count=1,
         next_calendar_event=CalendarFact(title="Operations review", start="Friday at 2 PM"),
         pending_reminder_count=1,
         first_pending_reminder="Charge the backup laptop",
-        f1_this_week=F1Fact(race_name="British Grand Prix", start="Sunday at 10 AM"),
+        f1_upcoming=F1Fact(race_name="British Grand Prix", start="Sunday at 10 AM"),
         generated_at=datetime.now(timezone.utc).isoformat(),
     )
     installed = set(snapshot["installed_models"])

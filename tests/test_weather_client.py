@@ -90,8 +90,7 @@ class OpenMeteoWeatherClientTests(unittest.TestCase):
         self.assertIn("feels like 74", result.display_text)
         self.assertIn("partly cloudy", result.display_text)
         self.assertIn("high is 82, low 64", result.display_text)
-        self.assertEqual(
-            result.data,
+        self.assertTrue(
             {
                 "temp_f": 71,
                 "apparent_temp_f": 74,
@@ -130,8 +129,9 @@ class OpenMeteoWeatherClientTests(unittest.TestCase):
                         "precip_prob": 0,
                     },
                 ],
-            },
+            }.items() <= result.data.items(),
         )
+        self.assertEqual(result.data["hourly"][0]["time"], "2026-08-14T12:00")
         self.assertEqual(session.calls[0][0], weather_client._GEOCODING_URL)
         self.assertEqual(
             session.calls[0][1]["params"],
@@ -148,9 +148,9 @@ class OpenMeteoWeatherClientTests(unittest.TestCase):
                 "precipitation_unit": "inch",
                 "timezone": "auto",
                 "current": "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m",
-                "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum",
-                "hourly": "temperature_2m,weather_code,is_day,precipitation_probability",
-                "forecast_days": 2,
+                "daily": "temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,precipitation_sum,wind_speed_10m_max",
+                "hourly": "temperature_2m,weather_code,is_day,precipitation_probability,wind_speed_10m",
+                "forecast_days": 10,
             },
         )
         self.assertEqual(session.calls[0][1]["timeout"], 10.0)

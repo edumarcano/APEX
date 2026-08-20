@@ -223,16 +223,16 @@ class SettingsStoreLoadTests(unittest.TestCase):
             self.assertTrue(persisted["ask_apex"]["panthera"]["personal_context_enabled"])
             self.assertTrue(persisted["ask_apex"]["felis"]["personal_context_enabled"])
 
-    def test_felis_briefing_mode_survives_reload(self) -> None:
+    def test_focused_briefing_mode_survives_reload(self) -> None:
         store = self._store()
         store.apply_patch(
-            SettingsPatch(briefing=BriefingPatch(default_mode="felis"))
+            SettingsPatch(briefing=BriefingPatch(default_mode="focused"))
         )
         self.assertEqual(
-            store.get_snapshot().briefing.default_mode, "felis"
+            store.get_snapshot().briefing.default_mode, "focused"
         )
 
-        self.assertEqual(self._store().get_snapshot().briefing.default_mode, "felis")
+        self.assertEqual(self._store().get_snapshot().briefing.default_mode, "focused")
 
     def test_immutable_snapshot(self) -> None:
         store = self._store()

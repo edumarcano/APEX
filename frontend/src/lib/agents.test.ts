@@ -4,7 +4,6 @@ import {
   AGENT_KEYS,
   canVerifyCloudProvider,
   formatContextWindowLabel,
-  formatHomeModelSecondaryMetadata,
   formatReasoningLabel,
   isAgentKey,
   isFelisKey,
@@ -87,7 +86,7 @@ describe('agents helpers', () => {
 
   it('uses briefing targets as the sole source of model-mode availability', () => {
     const panthera: BriefingTargetStatus = {
-      mode: 'panthera',
+      mode: 'focused',
       label: 'Apex Panthera',
       description: 'Cloud briefing',
       model_id: 'gpt-5.6-luna',
@@ -99,15 +98,15 @@ describe('agents helpers', () => {
       pricing: null,
     }
 
-    expect(resolveBriefingModeAvailability('structured_digest')).toEqual({
+    expect(resolveBriefingModeAvailability('structured')).toEqual({
       status: 'available',
       reason: null,
     })
-    expect(resolveBriefingModeAvailability('panthera', [panthera])).toEqual({
+    expect(resolveBriefingModeAvailability('focused', [panthera])).toEqual({
       status: 'configured',
       reason: 'Credentials configured',
     })
-    expect(resolveBriefingModeAvailability('felis', [panthera])).toEqual({
+    expect(resolveBriefingModeAvailability('flash', [panthera])).toEqual({
       status: 'unknown',
       reason: 'Mode status unavailable',
     })
@@ -160,32 +159,5 @@ describe('agents helpers', () => {
       contextWindow: 16384,
       localReasoningMode: 'none',
     })
-  })
-
-  it('formats home model secondary metadata strings', () => {
-    const cloudEntry: ModelCatalogEntry = {
-      model_id: 'deepseek/deepseek-v4-flash-0731',
-      display_name: 'DeepSeek V4 Flash',
-      provider: 'openrouter',
-      runtime: 'cloud',
-      stability: 'stable',
-      reasoning_options: ['low', 'high', 'max'],
-      default_reasoning: 'high',
-      hosted_capabilities: [],
-    }
-    expect(formatHomeModelSecondaryMetadata(cloudEntry)).toBe('Panthera · OpenRouter · Low reasoning')
-
-    const localEntry: ModelCatalogEntry = {
-      model_id: 'gemma-4-E2B-Q4_K_M.gguf',
-      display_name: 'Gemma 4 E2B',
-      provider: 'llama_cpp',
-      runtime: 'local',
-      stability: 'stable',
-      reasoning_options: null,
-      default_reasoning: null,
-      maximum_context_window: 131072,
-      hosted_capabilities: [],
-    }
-    expect(formatHomeModelSecondaryMetadata(localEntry)).toBe('Felis · llama.cpp · 16K · Reasoning off')
   })
 })

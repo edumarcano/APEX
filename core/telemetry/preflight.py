@@ -215,12 +215,12 @@ def _cloud_credential_blockers(
 
     briefing_ops = {"activate_with_briefing", "generate_briefing"}
     if agent == "panthera" and operation in briefing_ops:
-        if os.getenv("OPENAI_API_KEY"):
+        if os.getenv("OPENROUTER_API_KEY"):
             return []
         return [
             _blocker(
                 "missing_credentials",
-                "OpenAI API key is not configured for cloud briefing.",
+                "OpenRouter API key is not configured for Focused briefing.",
             )
         ]
 
@@ -334,8 +334,8 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         "activate_with_briefing",
         "generate_briefing",
     }:
-        agent = None if briefing_mode == "structured_digest" else briefing_mode
-        involves_cloud = briefing_mode == "panthera"
+        agent = "felis" if briefing_mode == "flash" else "panthera" if briefing_mode == "focused" else None
+        involves_cloud = briefing_mode == "focused"
     else:
         agent = (request.synthesis_agent or "").strip() or None
         if (
@@ -351,8 +351,8 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
             agent = (
                 settings.briefing.default_mode
                 if settings is not None
-                and settings.briefing.default_mode != "structured_digest"
-                else "panthera"
+                and settings.briefing.default_mode != "structured"
+                else "felis"
             )
         cloud_agent = is_cloud_agent_key(agent) if agent else False
         involves_cloud = bool(request.involves_cloud or cloud_agent)

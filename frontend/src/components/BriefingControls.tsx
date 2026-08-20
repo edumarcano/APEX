@@ -1,13 +1,11 @@
 import {
-  ChartNoAxesCombined,
   Check,
   ChevronDown,
-  Cloud,
-  Cpu,
-  FileText,
+  Orbit,
   RefreshCw,
+  Rows3,
+  Sparkles,
   Zap,
-  type LucideIcon,
 } from 'lucide-react'
 import {
   useCallback,
@@ -26,6 +24,10 @@ import type {
   AgentAvailabilityStatus,
   BriefingTargetStatus,
 } from '../types/telemetry'
+import {
+  resolveBriefingModeAvailability,
+  type BriefingModeAvailability as ModeAvailability,
+} from '../lib/agents'
 
 interface BriefingOption {
   key: BriefingMode
@@ -33,33 +35,16 @@ interface BriefingOption {
   description: string
 }
 
-const CLOUD_OPTIONS: readonly BriefingOption[] = [
-  { key: 'panthera', label: 'Full Briefing', description: 'Panthera · DeepSeek V4 Flash' },
-]
-
-const LOCAL_OPTIONS: readonly BriefingOption[] = [
-  { key: 'felis', label: 'Quick Briefing', description: 'Felis · Local model' },
-  {
-    key: 'structured_digest',
-    label: 'Structured Digest',
-    description: 'Deterministic · No model',
-  },
-]
-const ALL_OPTIONS = [...CLOUD_OPTIONS, ...LOCAL_OPTIONS] as const
-
-const SECTIONS: readonly {
-  title: string
-  icon: LucideIcon
-  options: readonly BriefingOption[]
-}[] = [
-  { title: 'Cloud', icon: Cloud, options: CLOUD_OPTIONS },
-  { title: 'Local', icon: Cpu, options: LOCAL_OPTIONS },
+const ALL_OPTIONS: readonly BriefingOption[] = [
+  { key: 'focused', label: 'Focused', description: 'Panthera · DeepSeek V4 Flash' },
+  { key: 'flash', label: 'Flash', description: 'Felis · Gemma 4 E2B' },
+  { key: 'structured', label: 'Structured', description: 'Deterministic · no model' },
 ]
 
 const MODE_LABELS: Record<string, string> = {
-  panthera: 'Full Briefing',
-  felis: 'Quick Briefing',
-  structured_digest: 'Structured Digest',
+  flash: 'Flash',
+  focused: 'Focused',
+  structured: 'Structured',
 }
 
 const STATUS_REASONS: Record<AgentAvailabilityStatus, string> = {
@@ -83,11 +68,6 @@ const STATUS_REASONS: Record<AgentAvailabilityStatus, string> = {
   cpu_overloaded: 'Current CPU utilization exceeds threshold',
 }
 
-import {
-  resolveBriefingModeAvailability,
-  type BriefingModeAvailability as ModeAvailability,
-} from '../lib/agents'
-
 function statusLedClass(status: AgentAvailabilityStatus): string {
   if (status === 'available' || status === 'configured' || status === 'verified') return 'hud-led--live'
   if (status === 'busy' || status === 'verifying' || status === 'rate_limited') return 'hud-led--loading'
@@ -97,6 +77,18 @@ function statusLedClass(status: AgentAvailabilityStatus): string {
 
 function statusReason(availability: ModeAvailability): string {
   return availability.reason?.trim() || STATUS_REASONS[availability.status] || availability.status
+}
+
+const MODE_SUMMARIES: Record<BriefingMode, string> = {
+  focused: 'A deeper briefing that looks across the next 1–2 weeks to find conflicts, priorities, and useful connections.',
+  flash: 'A quick local briefing for what matters right now and over the next few days.',
+  structured: 'A deterministic readout of APEX telemetry with no model interpretation.',
+}
+
+const MODE_EXPANDED_SUBTEXTS: Record<BriefingMode, string> = {
+  focused: 'Panthera · OpenRouter · DeepSeek V4 Flash · High',
+  flash: 'Felis · llama.cpp · Gemma 4 E4B',
+  structured: 'Deterministic · No model',
 }
 
 function modeDescription(mode: BriefingMode, targets?: BriefingTargetStatus[]): string {
@@ -110,7 +102,7 @@ function compactRate(value: number): string {
 }
 
 function modeCost(mode: BriefingMode, targets?: BriefingTargetStatus[]): string {
-  if (mode === 'structured_digest') return 'No model cost'
+  if (mode === 'structured') return 'No model cost'
   const target = targets?.find((entry) => entry.mode === mode)
   if (target?.pricing) {
     if (target.pricing.billing_basis === 'local') return 'No provider token charge'
@@ -121,21 +113,21 @@ function modeCost(mode: BriefingMode, targets?: BriefingTargetStatus[]): string 
 }
 
 function BriefingModeMark({ mode }: { mode: BriefingMode }): ReactElement {
-  if (mode === 'panthera') {
+  if (mode === 'focused') {
     return (
       <span
-        aria-label="Full Briefing mark"
-        className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-purple-300/25 bg-purple-400/10 text-purple-200"
+        aria-label="Focused Briefing mark"
+        className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-[#1F6FE5]/35 bg-[#1F6FE5]/15 text-[#1F6FE5]"
       >
-        <ChartNoAxesCombined className="size-3.5" aria-hidden />
+        <Orbit className="size-3.5" aria-hidden />
       </span>
     )
   }
-  if (mode === 'felis') {
+  if (mode === 'flash') {
     return (
       <span
-        aria-label="Quick Briefing mark"
-        className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-amber-300/25 bg-amber-400/10 text-amber-200"
+        aria-label="Flash Briefing mark"
+        className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-[#6EA8FF]/35 bg-[#6EA8FF]/15 text-[#6EA8FF]"
       >
         <Zap className="size-3.5" aria-hidden />
       </span>
@@ -143,10 +135,10 @@ function BriefingModeMark({ mode }: { mode: BriefingMode }): ReactElement {
   }
   return (
     <span
-      aria-label="Structured Digest mark"
-      className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-slate-300/20 bg-slate-400/10 text-slate-200"
+      aria-label="Structured Briefing mark"
+      className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg border border-slate-400/20 bg-slate-500/10 text-slate-300"
     >
-      <FileText className="size-3.5" aria-hidden />
+      <Rows3 className="size-3.5" aria-hidden />
     </span>
   )
 }
@@ -278,7 +270,10 @@ export function BriefingModeSelector({
       >
         <BriefingModeMark mode={value} />
         <span className={`hud-led size-1.5 shrink-0 ${statusLedClass(activeAvailability.status)}`} aria-hidden />
-        <span className="min-w-0 flex-1 text-left"><span className="block truncate uppercase tracking-wider">{MODE_LABELS[value]}</span><span className="block truncate text-[8px] normal-case tracking-normal text-zinc-500">{modeDescription(value, targets)}</span></span>
+        <span className="min-w-0 flex-1 text-left">
+          <span className="block truncate uppercase tracking-wider">{MODE_LABELS[value]}</span>
+          <span className="block truncate text-[8px] normal-case tracking-normal text-zinc-500">{modeDescription(value, targets)}</span>
+        </span>
         <ChevronDown className={`ml-auto size-3.5 shrink-0 text-[#6EA8FF] transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
 
@@ -299,59 +294,48 @@ export function BriefingModeSelector({
             </p>
           </div>
           <ul role="listbox" aria-label="Select briefing mode">
-            {SECTIONS.map((section, sectionIndex) => (
-              <li key={section.title} role="presentation">
-                {sectionIndex > 0 ? <div className="mx-2 border-t border-white/10" aria-hidden /> : null}
-                <div className="flex items-center gap-2 px-2 py-1.5 font-mono text-[9px] uppercase tracking-widest text-zinc-500" aria-hidden>
-                  <section.icon className="size-3.5 text-zinc-600" />
-                  {section.title}
-                </div>
-                <ul role="group" aria-label={section.title} className="space-y-1">
-                  {section.options.map((option) => {
-                    const index = ALL_OPTIONS.findIndex((entry) => entry.key === option.key)
-                    const availability = resolveBriefingModeAvailability(option.key, targets)
-                    const unavailable = !['available', 'configured', 'verified'].includes(availability.status)
-                    const selected = option.key === value
-                    return (
-                      <li key={option.key} role="presentation" className="group/briefing-option relative">
-                        <button
-                          ref={(element) => { optionRefs.current[index] = element }}
-                          type="button"
-                          role="option"
-                          aria-selected={selected}
-                          aria-disabled={unavailable}
-                          disabled={unavailable}
-                          onClick={() => {
-                            onChange(option.key)
-                            close(true)
-                          }}
-                          onKeyDown={(event) => handleOptionKeyDown(event, index)}
-                          className={[
-                            'flex min-h-16 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors focus-visible:outline-none',
-                            unavailable
-                              ? 'pointer-events-none cursor-not-allowed text-zinc-600 opacity-45'
-                              : `hover:bg-[#0F4DB8]/15 focus-visible:bg-[#0F4DB8]/15 ${selected ? 'bg-[#0F4DB8]/12 ring-1 ring-[#0F4DB8]/25' : ''}`,
-                          ].join(' ')}
-                        >
-                          <BriefingModeMark mode={option.key} />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">{option.label}</span>
-                            <span className="mt-0.5 block truncate text-[10px] text-zinc-500">{modeDescription(option.key, targets)}</span>
-                            <span className="mt-1 block font-mono text-[9px] text-zinc-400">{modeCost(option.key, targets)}</span>
-                          </span>
-                          {selected ? <Check className="size-3.5 shrink-0 text-[#39FF88]" strokeWidth={2.25} aria-hidden /> : null}
-                        </button>
-                        {unavailable ? (
-                          <span role="tooltip" className="pointer-events-none absolute left-full top-1/2 z-[110] ml-2 -translate-y-1/2 whitespace-nowrap rounded-lg border border-white/10 bg-zinc-950/95 px-2.5 py-1.5 font-mono text-[10px] text-rose-400 opacity-0 shadow-xl transition-opacity group-hover/briefing-option:opacity-100">
-                            {statusReason(availability)}
-                          </span>
-                        ) : null}
-                      </li>
-                    )
-                  })}
-                </ul>
-              </li>
-            ))}
+            {ALL_OPTIONS.map((option, index) => {
+              const availability = resolveBriefingModeAvailability(option.key, targets)
+              const unavailable = !['available', 'configured', 'verified'].includes(availability.status)
+              const selected = option.key === value
+              return (
+                <li key={option.key} role="presentation" className="group/briefing-option relative">
+                  <button
+                    ref={(element) => { optionRefs.current[index] = element }}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    aria-disabled={unavailable}
+                    disabled={unavailable}
+                    onClick={() => {
+                      onChange(option.key)
+                      close(true)
+                    }}
+                    onKeyDown={(event) => handleOptionKeyDown(event, index)}
+                    className={[
+                      'flex min-h-16 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors focus-visible:outline-none',
+                      unavailable
+                        ? 'pointer-events-none cursor-not-allowed text-zinc-600 opacity-45'
+                        : `hover:bg-[#0F4DB8]/15 focus-visible:bg-[#0F4DB8]/15 ${selected ? 'bg-[#0F4DB8]/12 ring-1 ring-[#0F4DB8]/25' : ''}`,
+                    ].join(' ')}
+                  >
+                    <BriefingModeMark mode={option.key} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">{option.label}</span>
+                      <span className="mt-1 block text-[10px] leading-snug text-zinc-400">{MODE_SUMMARIES[option.key]}</span>
+                      <span className="mt-1 block font-mono text-[9px] text-zinc-500">{MODE_EXPANDED_SUBTEXTS[option.key]}</span>
+                      <span className="mt-1 block font-mono text-[9px] text-zinc-400">{modeCost(option.key, targets)}</span>
+                    </span>
+                    {selected ? <Check className="size-3.5 shrink-0 text-[#39FF88]" strokeWidth={2.25} aria-hidden /> : null}
+                  </button>
+                  {unavailable ? (
+                    <span role="tooltip" className="pointer-events-none absolute left-full top-1/2 z-[110] ml-2 -translate-y-1/2 whitespace-nowrap rounded-lg border border-white/10 bg-zinc-950/95 px-2.5 py-1.5 font-mono text-[10px] text-rose-400 opacity-0 shadow-xl transition-opacity group-hover/briefing-option:opacity-100">
+                      {statusReason(availability)}
+                    </span>
+                  ) : null}
+                </li>
+              )
+            })}
           </ul>
         </div>,
         document.body,
@@ -421,20 +405,21 @@ export function BriefingGenerateControl({
   }, [open, updatePosition])
 
   return (
-    <div className={`hud-command-surface inline-flex min-w-0 rounded-md border border-white/10 bg-white/5 text-[#C084FC] transition-colors duration-300 hover:border-white/20 hover:bg-white/10 ${className}`}>
+    <div className={`hud-command-surface inline-flex min-w-0 rounded-lg border border-amber-400/25 bg-amber-950/20 text-amber-200 shadow-[inset_0_1px_0_rgba(251,191,36,0.1)] transition-[border-color,background-color,box-shadow,color] duration-300 hover:border-amber-400/40 hover:bg-amber-400/15 hover:text-amber-100 hover:shadow-[0_0_12px_rgba(251,191,36,0.18)] active:bg-amber-400/25 ${className}`}>
       <button
         type="button"
         disabled={mainDisabled}
         onClick={onGenerate}
-        className="group inline-flex min-w-0 flex-1 items-center justify-center rounded-l-md px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[#C084FC] transition-colors hover:text-[#D8B4FE] focus-visible:z-10 focus-visible:text-[#D8B4FE] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A855F7] disabled:cursor-not-allowed disabled:opacity-40 sm:text-[11px]"
-        aria-label="Synthesize briefing from current telemetry"
+        className="group inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-l-lg px-3 py-1.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-200 transition-colors hover:text-amber-100 focus-visible:z-10 focus-visible:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F59E0B] disabled:cursor-not-allowed disabled:opacity-40 sm:text-[11px]"
+        aria-label="Generate briefing from current telemetry"
       >
+        <Sparkles className="size-3.5 shrink-0 text-amber-300 transition-transform group-hover:scale-110" aria-hidden />
         {busy ? (
-          '[ WORKING… ]'
+          <span className="whitespace-nowrap">Working…</span>
         ) : (
           <>
-            <span className="group-hover:hidden group-focus-visible:hidden">[ SYNTHESIZE ]</span>
-            <span className="hidden group-hover:inline group-focus-visible:inline">&gt; SYNTHESIZE</span>
+            <span className="whitespace-nowrap group-hover:hidden group-focus-visible:hidden">Generate Briefing</span>
+            <span className="hidden whitespace-nowrap group-hover:inline group-focus-visible:inline">&gt; Generate Briefing</span>
           </>
         )}
       </button>
@@ -444,7 +429,7 @@ export function BriefingGenerateControl({
         disabled={refreshDisabled}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="More briefing synthesis options"
+        aria-label="More briefing generation options"
         onClick={() => setOpen((current) => !current)}
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
@@ -452,13 +437,13 @@ export function BriefingGenerateControl({
             close()
           }
         }}
-        className="inline-flex w-9 items-center justify-center rounded-r-md border-l border-white/10 text-[#C084FC] transition-colors hover:bg-white/5 hover:text-[#D8B4FE] focus-visible:z-10 focus-visible:text-[#D8B4FE] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A855F7] disabled:cursor-not-allowed disabled:opacity-40 sm:w-10"
+        className="inline-flex w-8 shrink-0 items-center justify-center rounded-r-lg border-l border-amber-400/20 text-amber-300 transition-colors hover:bg-amber-400/10 hover:text-amber-100 focus-visible:z-10 focus-visible:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F59E0B] disabled:cursor-not-allowed disabled:opacity-40 sm:w-9"
       >
         <ChevronDown className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
 
       {open && position ? createPortal(
-        <div ref={menuRef} style={position} role="menu" aria-label="Briefing synthesis options" className="hud-corner-brackets hud-glass hud-glass-solid fixed z-[100] rounded-xl border border-white/10 p-2 shadow-2xl">
+        <div ref={menuRef} style={position} role="menu" aria-label="Briefing generation options" className="hud-corner-brackets hud-glass hud-glass-solid fixed z-[100] rounded-xl border border-white/10 p-2 shadow-2xl">
           <span className="hud-corner-bl" aria-hidden />
           <span className="hud-corner-br" aria-hidden />
           <button
@@ -474,12 +459,12 @@ export function BriefingGenerateControl({
                 close(true)
               }
             }}
-            className="flex w-full items-start gap-3 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-purple-400/10 focus-visible:bg-purple-400/10 focus-visible:outline-none"
+            className="flex w-full items-start gap-3 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-amber-400/10 focus-visible:bg-amber-400/10 focus-visible:outline-none"
           >
             <RefreshCw className="mt-0.5 size-4 shrink-0 text-emerald-300" strokeWidth={2} aria-hidden />
             <span>
               <span className="block font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-100">Refresh All</span>
-              <span className="mt-1 block text-[10px] leading-relaxed text-zinc-500">Recollect every enabled connector without synthesizing.</span>
+              <span className="mt-1 block text-[10px] leading-relaxed text-zinc-500">Recollect every enabled connector without generating a briefing.</span>
             </span>
           </button>
           <button
@@ -495,12 +480,12 @@ export function BriefingGenerateControl({
                 close(true)
               }
             }}
-            className="flex w-full items-start gap-3 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-purple-400/10 focus-visible:bg-purple-400/10 focus-visible:outline-none"
+            className="flex w-full items-start gap-3 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-amber-400/10 focus-visible:bg-amber-400/10 focus-visible:outline-none"
           >
             <RefreshCw className="mt-0.5 size-4 shrink-0 text-emerald-300" strokeWidth={2} aria-hidden />
             <span>
-              <span className="block font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-100">Refresh All &amp; Synthesize</span>
-              <span className="mt-1 block text-[10px] leading-relaxed text-zinc-500">Recollect every enabled connector before synthesis.</span>
+              <span className="block font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-100">Refresh All &amp; Generate Briefing</span>
+              <span className="mt-1 block text-[10px] leading-relaxed text-zinc-500">Recollect every enabled connector before briefing generation.</span>
             </span>
           </button>
         </div>,

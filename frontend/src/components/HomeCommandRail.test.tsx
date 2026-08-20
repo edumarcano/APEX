@@ -98,7 +98,7 @@ function renderRail(overrides: Partial<ComponentProps<typeof HomeCommandRail>> =
     onStartApex: vi.fn(),
     onStartWithBriefing: vi.fn(),
     startDisabled: false,
-    briefingMode: 'panthera',
+    briefingMode: 'flash',
     onBriefingModeChange: vi.fn(),
     briefingControlsBusy: false,
     briefingModeAvailable: true,
@@ -122,9 +122,9 @@ describe('HomeCommandRail', () => {
 
     expect(screen.getByRole('button', { name: 'Start APEX' })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Start APEX with briefing' })).toBeVisible()
-    expect(screen.getByRole('button', { name: /briefing mode: full briefing/i })).toBeVisible()
+    expect(screen.getByRole('button', { name: /briefing mode: flash/i })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).toBeNull()
-    expect(screen.queryByRole('button', { name: /synthesize briefing/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /generate briefing/i })).toBeNull()
   })
 
   it('uses a compact model selector menu without changing briefing selection', async () => {
@@ -134,11 +134,11 @@ describe('HomeCommandRail', () => {
     renderRail({ onModelChange, onBriefingModeChange })
 
     const trigger = screen.getByRole('button', { name: /model: gpt-5\.6 luna/i })
-    expect(screen.getByText('GPT-5.6 Luna')).toBeVisible()
-    expect(screen.getByText(/Panthera · OpenAI · Reasoning off/i)).toBeVisible()
+    expect(trigger).toBeVisible()
     await user.click(trigger)
     const listbox = screen.getByRole('listbox', { name: /select model/i })
     expect(listbox).toBeVisible()
+    expect(within(listbox).getByText('GPT-5.6 Luna')).toBeVisible()
     await user.click(within(listbox).getByRole('option', { name: /gemma 4 e2b/i }))
 
     expect(onModelChange).toHaveBeenCalledWith('gemma-4-E2B-Q4_K_M.gguf')
@@ -149,8 +149,8 @@ describe('HomeCommandRail', () => {
     renderRail({ agentQueriesEnabled: false })
 
     expect(screen.queryByLabelText('Agent query bar')).toBeNull()
-    expect(screen.getByRole('button', { name: /briefing mode: full briefing/i })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Synthesize briefing from current telemetry' })).toBeVisible()
+    expect(screen.getByRole('button', { name: /briefing mode: flash/i })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Generate briefing from current telemetry' })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).not.toBeInTheDocument()
   })
 
@@ -222,5 +222,15 @@ describe('HomeCommandRail', () => {
 
     expect(screen.getByText('Felis · llama.cpp · Loading')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Unload Apex Felis' })).toBeDisabled()
+  })
+
+  it('renders active command panel with 42rem max width and distinct query/briefing rows', () => {
+    renderRail()
+
+    const rail = screen.getByLabelText('Home command rail')
+    expect(rail).toHaveClass('max-w-[42rem]')
+    expect(document.querySelector('[data-slot="home-agent-row"]')).toBeVisible()
+    expect(document.querySelector('[data-slot="home-briefing-row"]')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Generate briefing from current telemetry' })).toBeVisible()
   })
 })

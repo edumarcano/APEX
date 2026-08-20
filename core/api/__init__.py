@@ -14,7 +14,6 @@ from core.api.cortex import (
 )
 from core.api.briefing import (
     _DEMO_STAGE_DELAY_SECONDS,
-    _compute_confidence_and_failures,
     _run_demo_briefing,
     trigger_briefing,
 )
@@ -109,7 +108,6 @@ __all__ = [
     "_build_agent_statuses",
     "_build_demo_briefing",
     "_build_settings_response",
-    "_compute_confidence_and_failures",
     "_execute_agent_turn",
     "_load_mock_agent_responses",
     "_load_mock_telemetry",

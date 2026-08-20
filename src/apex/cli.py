@@ -142,7 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json_option(briefing)
     briefing.add_argument(
         "--mode",
-        choices=("panthera", "felis", "structured_digest"),
+        choices=("flash", "focused", "structured"),
         help="Briefing mode override.",
     )
     briefing.set_defaults(handler=_briefing)

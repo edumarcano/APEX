@@ -202,7 +202,7 @@ vi.mock('./hooks/useApexData', () => ({
       agent: appMocks.initialAgent,
       effort: 'focused',
     },
-    briefingDefaultMode: 'panthera',
+    briefingDefaultMode: 'flash',
     voiceMode: 'automatic',
     markReminderAsRead: appMocks.markReminderAsRead,
     getReminderTask: appMocks.getReminderTask,
@@ -399,7 +399,7 @@ function settingsResponse(
         custom_profiles: [],
         default_profile_by_agent: {},
       },
-      briefing: { default_mode: 'panthera' },
+      briefing: { default_mode: 'flash' },
       voice: { engine: 'google', gender: 'female', mode: 'automatic' },
       mcp: {
         enabled: false,

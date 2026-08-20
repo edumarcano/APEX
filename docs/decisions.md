@@ -116,7 +116,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Synthesize from typed facts instead of display prose
 
-**Decision.** Connectors turn their data into typed results, and briefing models receive a bounded `SynthesisInput` marked as untrusted data.
+**Decision.** Connectors turn their data into one normalized, bounded `BriefingFacts` snapshot. Flash and Focused use explicit factual projections, while Structured consumes the complete facts directly; all model input is marked as untrusted data.
 
 **Why.** Display text mixes presentation, health state, and third-party content. A separate schema makes it clear which facts can be sent to a briefing model and keeps third-party text inside an explicit untrusted-data boundary.
 
@@ -124,7 +124,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Keep deterministic synthesis as the final fallback
 
-**Decision.** Every briefing mode ends in Structured Digest when its selected model path cannot produce valid output.
+**Decision.** Every briefing mode ends in Structured when its selected model path cannot produce valid output.
 
 **Why.** A personal briefing should remain useful when credentials, networks, providers, local models, or the generated format fail.
 
@@ -140,7 +140,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Expose explicit briefing modes
 
-**Decision.** The HUD offers Panthera, Felis, and Structured Digest rather than choosing automatically.
+**Decision.** The HUD offers canonical `flash`, `focused`, and `structured` modes rather than exposing Agent identities as mode identifiers. Flash is the default; legacy identifiers are intentionally rejected without migration.
 
 **Why.** Cloud disclosure, local resource use, latency, and model-free output are meaningful personal choices. The selected mode should make that choice visible before execution.
 

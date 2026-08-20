@@ -50,5 +50,9 @@ describe('resolveLogoVisualColors', () => {
     expect(resolveLogoVisualColors({ ...BASE, isCortexQuerying: true }).logo).toBe('168, 85, 247')
     expect(resolveLogoVisualColors({ ...BASE, activeStep: 4 }).logo).toBe('251, 191, 36')
     expect(resolveLogoVisualColors({ ...BASE, isBriefingRunning: true, activeStep: 2 }).logo).toBe('57, 255, 136')
+    expect(resolveLogoVisualColors({ ...BASE, isTelemetryCollecting: true })).toEqual({
+      atmosphere: '57, 255, 136',
+      logo: '57, 255, 136',
+    })
   })
 })

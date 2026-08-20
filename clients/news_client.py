@@ -33,6 +33,7 @@ def collect_news() -> ConnectorResult:
 
     topics = ["Artificial Intelligence", "Global Events"]
     headlines: list[dict[str, str]] = []
+    seen_headlines: set[str] = set()
     formatted_headlines: list[str] = []
     successes = 0
     failures = 0
@@ -43,7 +44,7 @@ def collect_news() -> ConnectorResult:
         try:
             url = (
                 f"https://gnews.io/api/v4/search"
-                f"?q={topic}&lang=en&max=1&apikey={api_key}"
+                f"?q={topic}&lang=en&max=3&apikey={api_key}"
             )
             session = get_connector_http_session("news")
             response = (
@@ -59,12 +60,28 @@ def collect_news() -> ConnectorResult:
             if not isinstance(articles, list):
                 raise ValueError("News articles must be a list.")
             if articles:
-                article = articles[0]
-                if not isinstance(article, dict):
-                    raise ValueError("News article must be an object.")
-                headline = str(article.get("title") or "").strip() or "Untitled"
-                headlines.append({"topic": topic, "headline": headline})
-                formatted_headlines.append(f"[{topic}] {headline}")
+                if any(not isinstance(article, dict) for article in articles):
+                    raise ValueError("News articles must contain objects.")
+                for article in articles:
+                    headline = str(article.get("title") or "").strip()
+                    normalized = headline.casefold()
+                    if not headline or normalized in seen_headlines or len(headlines) >= 5:
+                        continue
+                    seen_headlines.add(normalized)
+                    source = article.get("source")
+                    source_name = source.get("name") if isinstance(source, dict) else None
+                    headlines.append({
+                        "topic": topic,
+                        "headline": headline,
+                        "source": str(source_name or "")[:120],
+                        "published_at": str(article.get("publishedAt") or "")[:64],
+                        "synopsis": str(article.get("description") or "")[:360],
+                    })
+                formatted_headlines.extend(
+                    f"[{item['topic']}] {item['headline']}"
+                    for item in headlines
+                    if item["topic"] == topic
+                )
                 successes += 1
             else:
                 formatted_headlines.append(f"[{topic}] No major headlines found.")

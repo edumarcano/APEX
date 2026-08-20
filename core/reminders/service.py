@@ -53,7 +53,7 @@ class ReminderServiceError(RuntimeError):
 
 @dataclass(frozen=True)
 class ReminderList:
-    items: list[dict[str, str]]
+    items: list[dict[str, object]]
     source_state: ReminderSourceState
     cache_timestamp: str | None
     pending_sync_count: int
@@ -96,14 +96,18 @@ class ReminderService:
                 result = self._client.list_tasks(
                     list_id, include_completed=False, max_results=50
                 )
-                remote = [
-                    {
-                        "id": f"todo:{task.id}", "note": task.title,
-                        "source": "todo", "sync_state": "synced",
-                        "last_modified_at": task.last_modified_at,
-                    }
-                    for task in result.tasks[:50]
-                ]
+                remote = []
+                for task in result.tasks[:50]:
+                    detail = self._task_detail(task)
+                    remote.append(
+                        {
+                            "id": f"todo:{task.id}", "note": task.title,
+                            "source": "todo", "sync_state": "synced",
+                            "due": detail["due"],
+                            "importance": detail["importance"],
+                            "last_modified_at": getattr(task, "last_modified_at", ""),
+                        }
+                    )
                 database.replace_microsoft_todo_reminder_cache(
                     list_id,
                     fetched_at=utc_now_iso(),
@@ -112,6 +116,8 @@ class ReminderService:
                             "id": task["id"].removeprefix("todo:"),
                             "title": task["note"],
                             "last_modified_at": task["last_modified_at"],
+                            "due": task.get("due"),
+                            "importance": task.get("importance"),
                         }
                         for task in remote
                     ],
@@ -133,6 +139,8 @@ class ReminderService:
                 "note": str(task.get("title", "")),
                 "source": "todo", "sync_state": "synced",
                 "last_modified_at": str(task.get("last_modified_at", "")),
+                "due": task.get("due"),
+                "importance": task.get("importance"),
             }
             for task in tasks[:50]
             if isinstance(task, dict) and task.get("id") and task.get("title")
@@ -457,15 +465,16 @@ class ReminderService:
                 return None
             return {"date_time": value.date_time, "time_zone": value.time_zone}
 
-        importance = task.importance if task.importance in {"low", "normal", "high"} else "normal"
+        importance_value = getattr(task, "importance", "normal")
+        importance = importance_value if importance_value in {"low", "normal", "high"} else "normal"
         return {
             "id": f"todo:{task.id}",
             "title": task.title,
-            "due": date_time(task.due),
+            "due": date_time(getattr(task, "due", None)),
             "importance": importance,
-            "is_completed": task.is_completed,
-            "completed_at": date_time(task.completed_at),
-            "last_modified_at": task.last_modified_at,
+            "is_completed": bool(getattr(task, "is_completed", False)),
+            "completed_at": date_time(getattr(task, "completed_at", None)),
+            "last_modified_at": getattr(task, "last_modified_at", ""),
         }
 
     def _linked_action_is_active(self, row: Mapping[str, object]) -> bool:
@@ -487,7 +496,7 @@ class ReminderService:
         ]
 
     def _assemble(
-        self, remote: list[dict[str, str]], local: list[dict[str, str]],
+        self, remote: list[dict[str, object]], local: list[dict[str, str]],
         source_state: ReminderSourceState, cache_timestamp: str | None,
     ) -> ReminderList:
         public_remote = [

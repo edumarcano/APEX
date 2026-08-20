@@ -15,18 +15,18 @@ function target(
   status: AgentAvailabilityStatus = 'available',
   reason: string | null = null,
 ): BriefingTargetStatus {
-  const local = mode === 'felis'
+  const local = mode === 'flash'
   return {
     mode,
-    label: mode === 'panthera' ? 'Apex Panthera' : mode === 'felis' ? 'Apex Felis' : 'Structured Digest',
-    description: mode === 'panthera' ? 'Full briefing · GPT-5.6 Luna' : mode === 'felis' ? 'Full briefing · Gemma 4 E2B' : 'Structured facts · no model or synthesis',
-    model_id: mode === 'structured_digest' ? null : mode,
-    model_display_name: mode === 'structured_digest' ? null : mode,
-    provider: mode === 'panthera' ? 'openai' : local ? 'llama_cpp' : null,
-    runtime: mode === 'structured_digest' ? 'none' : local ? 'local' : 'cloud',
+    label: mode === 'focused' ? 'Focused' : mode === 'flash' ? 'Flash' : 'Structured',
+    description: mode === 'focused' ? 'Panthera · DeepSeek V4 Flash' : mode === 'flash' ? 'Felis · Gemma 4 E2B' : 'Deterministic · no model',
+    model_id: mode === 'structured' ? null : mode,
+    model_display_name: mode === 'structured' ? null : mode,
+    provider: mode === 'focused' ? 'openrouter' : local ? 'llama_cpp' : null,
+    runtime: mode === 'structured' ? 'none' : local ? 'local' : 'cloud',
     status,
     reason,
-    pricing: mode === 'structured_digest' ? null : {
+    pricing: mode === 'structured' ? null : {
       currency: 'USD',
       pricing_version: 'test',
       billing_basis: local ? 'local' : 'standard',
@@ -42,14 +42,14 @@ function target(
 }
 
 const AVAILABLE_TARGETS = [
-  target('panthera'),
-  target('felis'),
-  target('structured_digest'),
+  target('focused'),
+  target('flash'),
+  target('structured'),
 ]
 
 function renderSelector(overrides: Partial<ComponentProps<typeof BriefingModeSelector>> = {}) {
   const props: ComponentProps<typeof BriefingModeSelector> = {
-    value: 'panthera',
+    value: 'flash',
     onChange: vi.fn(),
     targets: AVAILABLE_TARGETS,
     disabled: false,
@@ -59,52 +59,54 @@ function renderSelector(overrides: Partial<ComponentProps<typeof BriefingModeSel
 }
 
 describe('BriefingModeSelector', () => {
-  it('groups and describes cloud, local, and model-free modes', async () => {
+  it('orders and describes Focused, Flash, and Structured modes', async () => {
     const user = userEvent.setup()
     renderSelector()
 
-    await user.click(screen.getByRole('button', { name: /briefing mode: full briefing/i }))
+    await user.click(screen.getByRole('button', { name: /briefing mode: flash/i }))
     const listbox = screen.getByRole('listbox', { name: /select briefing mode/i })
 
     expect(screen.getByText('Briefing Mode')).toBeVisible()
     expect(screen.getByText('Select a briefing type for the next briefing.')).toBeVisible()
-    expect(screen.getAllByLabelText('Full Briefing mark')).toHaveLength(2)
-    expect(screen.getByLabelText('Structured Digest mark')).toBeVisible()
+    expect(screen.getAllByLabelText('Flash Briefing mark')).toHaveLength(2)
+    expect(screen.getByLabelText('Focused Briefing mark')).toBeVisible()
+    expect(screen.getByLabelText('Structured Briefing mark')).toBeVisible()
     expect(screen.getAllByText('No provider token charge')).toHaveLength(1)
-    expect(screen.getByText('No model cost')).toBeVisible()
-    expect(within(listbox).getByRole('group', { name: 'Cloud' })).toBeInTheDocument()
-    expect(within(listbox).getByRole('group', { name: 'Local' })).toBeInTheDocument()
-    expect(within(listbox).getByText('Full briefing · GPT-5.6 Luna')).toBeVisible()
-    expect(within(listbox).getByText('Full briefing · Gemma 4 E2B')).toBeVisible()
-    expect(within(listbox).getByText('Structured facts · no model or synthesis')).toBeVisible()
+    expect(within(listbox).getAllByRole('option')).toHaveLength(3)
+    expect(within(listbox).getByText('A deeper briefing that looks across the next 1–2 weeks to find conflicts, priorities, and useful connections.')).toBeVisible()
+    expect(within(listbox).getByText('Panthera · OpenRouter · DeepSeek V4 Flash · High')).toBeVisible()
+    expect(within(listbox).getByText('A quick local briefing for what matters right now and over the next few days.')).toBeVisible()
+    expect(within(listbox).getByText('Felis · llama.cpp · Gemma 4 E4B')).toBeVisible()
+    expect(within(listbox).getByText('A deterministic readout of APEX telemetry with no model interpretation.')).toBeVisible()
+    expect(within(listbox).getByText('Deterministic · No model')).toBeVisible()
     expect(within(listbox).queryByRole('option', { name: /^Mus\b/i })).not.toBeInTheDocument()
     expect(within(listbox).queryByRole('option', { name: /^Sorex\b/i })).not.toBeInTheDocument()
   })
 
-  it('blocks unavailable model modes but always allows Structured Digest', async () => {
+  it('blocks unavailable model modes but always allows Structured', async () => {
     const onModeChange = vi.fn()
     const user = userEvent.setup()
     renderSelector({
       onChange: onModeChange,
       targets: [
-        target('panthera'),
-        target('felis', 'insufficient_ram', 'Current memory pressure exceeds threshold'),
-        target('structured_digest'),
+        target('focused'),
+        target('flash', 'insufficient_ram', 'Current memory pressure exceeds threshold'),
+        target('structured'),
       ],
     })
 
-    await user.click(screen.getByRole('button', { name: /briefing mode: full briefing/i }))
-    expect(screen.getByRole('option', { name: /quick briefing/i })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: /briefing mode: flash/i }))
+    expect(screen.getAllByRole('option')[1]).toBeDisabled()
 
-    await user.click(screen.getByRole('option', { name: /structured digest/i }))
-    expect(onModeChange).toHaveBeenCalledWith('structured_digest')
+    await user.click(screen.getByRole('option', { name: /structured/i }))
+    expect(onModeChange).toHaveBeenCalledWith('structured')
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 
   it('closes on Escape and restores focus to the selector', async () => {
     const user = userEvent.setup()
     renderSelector()
-    const trigger = screen.getByRole('button', { name: /briefing mode: full briefing/i })
+    const trigger = screen.getByRole('button', { name: /briefing mode: flash/i })
 
     await user.click(trigger)
     expect(screen.getByRole('listbox')).toBeInTheDocument()
@@ -117,22 +119,22 @@ describe('BriefingModeSelector', () => {
   it('shows the selected mode description rather than pricing while closed', () => {
     renderSelector()
 
-    expect(screen.getByRole('button', { name: /briefing mode: full briefing/i })).toHaveTextContent(/Full briefing/)
-    expect(screen.getByRole('button', { name: /briefing mode: full briefing/i })).not.toHaveTextContent(/In \$/)
+    expect(screen.getByRole('button', { name: /briefing mode: flash/i })).toHaveTextContent(/Flash/)
+    expect(screen.getByRole('button', { name: /briefing mode: flash/i })).not.toHaveTextContent(/In \$/)
   })
 
   it('does not use interactive Agent pricing when a briefing target is missing', async () => {
     const user = userEvent.setup()
-    renderSelector({ targets: [target('structured_digest')] })
+    renderSelector({ targets: [target('structured')] })
 
-    await user.click(screen.getByRole('button', { name: /briefing mode: full briefing/i }))
+    await user.click(screen.getByRole('button', { name: /briefing mode: flash/i }))
 
     expect(screen.getAllByText('Pricing unavailable')).toHaveLength(2)
   })
 })
 
 describe('BriefingGenerateControl', () => {
-  it('keeps refresh-and-synthesize available when current-snapshot synthesis is disabled', async () => {
+  it('keeps refresh-and-generate available when current-snapshot generation is disabled', async () => {
     const onGenerate = vi.fn()
     const onRefreshAll = vi.fn()
     const onRefreshAndGenerate = vi.fn()
@@ -148,9 +150,9 @@ describe('BriefingGenerateControl', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: /synthesize briefing from current telemetry/i })).toBeDisabled()
-    await user.click(screen.getByRole('button', { name: /more briefing synthesis options/i }))
-    await user.click(screen.getByRole('menuitem', { name: /refresh all & synthesize/i }))
+    expect(screen.getByRole('button', { name: /generate briefing from current telemetry/i })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: /more briefing generation options/i }))
+    await user.click(screen.getByRole('menuitem', { name: /refresh all & generate briefing/i }))
 
     expect(onGenerate).not.toHaveBeenCalled()
     expect(onRefreshAndGenerate).toHaveBeenCalledTimes(1)
@@ -170,10 +172,38 @@ describe('BriefingGenerateControl', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: /more briefing synthesis options/i }))
+    await user.click(screen.getByRole('button', { name: /more briefing generation options/i }))
     await user.click(screen.getAllByRole('menuitem')[0])
 
     expect(onRefreshAll).toHaveBeenCalledTimes(1)
   })
 
+  it('renders title-case Generate Briefing and switches to Working… when busy', () => {
+    const onGenerate = vi.fn()
+    const { rerender } = render(
+      <BriefingGenerateControl
+        mainDisabled={false}
+        refreshDisabled={false}
+        busy={false}
+        onGenerate={onGenerate}
+        onRefreshAll={vi.fn()}
+        onRefreshAndGenerate={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /generate briefing from current telemetry/i })).toHaveTextContent(/Generate Briefing/i)
+
+    rerender(
+      <BriefingGenerateControl
+        mainDisabled={false}
+        refreshDisabled={false}
+        busy
+        onGenerate={onGenerate}
+        onRefreshAll={vi.fn()}
+        onRefreshAndGenerate={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /generate briefing from current telemetry/i })).toHaveTextContent(/Working…/i)
+  })
 })

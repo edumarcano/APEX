@@ -11,7 +11,7 @@ export interface PipelineState {
   synthesis?: SynthesisLiveState | null
 }
 
-export type SynthesisProvider = 'gemini' | 'ollama' | 'llama_cpp' | 'openai' | 'xai' | 'raw' | 'demo'
+export type SynthesisProvider = 'gemini' | 'ollama' | 'llama_cpp' | 'openai' | 'openrouter' | 'xai' | 'raw' | 'demo'
 export type SynthesisAgent = 'panthera' | 'felis'
 export type SynthesisStrategy = 'cloud' | 'local' | 'raw' | 'demo'
 
@@ -341,7 +341,7 @@ export interface TelemetryRefreshRequest {
   force?: boolean
 }
 
-export type BriefingMode = 'panthera' | 'felis' | 'structured_digest'
+export type BriefingMode = 'flash' | 'focused' | 'structured'
 
 export interface BriefingTargetStatus {
   mode: BriefingMode

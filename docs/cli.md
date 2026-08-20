@@ -12,7 +12,7 @@ uv run apex agents
 uv run apex ask "What needs my attention?"
 uv run apex ask "Review my plan" --agent panthera --effort focused --profile daily_planning
 uv run apex briefing
-uv run apex briefing --mode structured_digest
+uv run apex briefing --mode structured
 uv run apex actions list
 uv run apex actions show <action-id>
 uv run apex actions approve <action-id>
@@ -28,7 +28,7 @@ FastEmbed model and backfills semantic vectors; it may take a while and is the
 only CLI command that can download model files. Both commands talk only to the
 loopback API and support `--json`.
 
-`briefing` uses the normal full refresh-and-generate route. Omitting `--mode` uses the saved briefing default; supported overrides are `panthera`, `felis`, and `structured_digest`.
+`briefing` uses the normal full refresh-and-generate route. Omitting `--mode` uses the saved Flash default; supported overrides are `flash`, `focused`, and `structured`. These are breaking identifiers: the former Agent-named values are rejected.
 
 ## Actions
 

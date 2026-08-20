@@ -60,6 +60,7 @@ class ReminderServiceTests(unittest.TestCase):
 
         self.assertEqual(view["source_state"], "live")
         self.assertEqual(view["items"][0]["id"], "todo:task-a")
+        self.assertEqual(view["items"][0]["importance"], "normal")
         self.assertIsNotNone(database.fetch_microsoft_todo_reminder_cache("list-a"))
         self.assertIsNone(database.fetch_microsoft_todo_reminder_cache("list-b"))
         self.client.list_tasks.assert_called_once_with(

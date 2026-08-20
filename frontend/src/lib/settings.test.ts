@@ -183,7 +183,7 @@ describe('settings cloning and mutations', () => {
     draft.features.market = false
     draft.ask_apex.agent = 'felis'
     draft.ask_apex.felis.context_window = 32768
-    draft.briefing.default_mode = 'felis'
+    draft.briefing.default_mode = 'flash'
     draft.voice.gender = 'male'
     draft.voice.mode = 'manual'
     draft.mcp.enabled = true
@@ -199,7 +199,6 @@ describe('settings cloning and mutations', () => {
           context_window: 32768,
         },
       },
-      briefing: { default_mode: 'felis' },
       voice: { gender: 'male', mode: 'manual' },
       mcp: {
         enabled: true,

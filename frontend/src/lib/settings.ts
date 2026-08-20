@@ -110,9 +110,9 @@ const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = [
   'max',
 ]
 const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
-  'panthera',
-  'felis',
-  'structured_digest',
+  'flash',
+  'focused',
+  'structured',
 ]
 const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'pyttsx3']
 const VALID_VOICE_GENDERS: readonly VoiceGender[] = ['male', 'female']

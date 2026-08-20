@@ -132,9 +132,9 @@ function parseNewsTelemetry(newsText: string): ParsedNews[] {
 }
 
 const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
-  'panthera',
-  'felis',
-  'structured_digest',
+  'flash',
+  'focused',
+  'structured',
 ]
 
 function isBriefingMode(value: string): value is BriefingMode {
@@ -148,7 +148,7 @@ function isVoiceMode(value: string): value is VoiceMode {
 }
 
 function briefingModeInvolvesCloud(mode: BriefingMode): boolean {
-  return mode === 'panthera'
+  return mode === 'focused'
 }
 
 function isCloudAgentKey(
@@ -163,10 +163,9 @@ function isCloudAgentKey(
 }
 
 function synthesisAgentForMode(mode: BriefingMode): string | null {
-  if (mode === 'structured_digest') {
-    return null
-  }
-  return mode
+  if (mode === 'focused') return 'panthera'
+  if (mode === 'flash') return 'felis'
+  return null
 }
 
 function applyAskApexSettings(
@@ -197,7 +196,7 @@ export default function App(): ReactElement {
   const [reminderPulseCount, setReminderPulseCount] = useState(0)
   const [activeAgent, setAgent] = useState<AgentKey>('panthera')
   const [cloudEffort, setCloudEffort] = useState<CloudEffort>('medium')
-  const [briefingMode, setBriefingMode] = useState<BriefingMode>('panthera')
+  const [briefingMode, setBriefingMode] = useState<BriefingMode>('flash')
   const briefingModeSelectionTouchedRef = useRef(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
   const [workspace, setWorkspace] = useState<'home' | 'cortex'>('home')
@@ -1661,6 +1660,7 @@ export default function App(): ReactElement {
                       isCortexQuerying={isCortexQuerying}
                       isLocalModelLoading={isLocalModelLoading}
                       loadingDisplayName={loadingDisplayName}
+                      isTelemetryCollecting={isTelemetryCollecting}
                     />
                   </div>
                 </div>
