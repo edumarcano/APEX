@@ -254,4 +254,3 @@ class BriefingRouterContractTests(unittest.TestCase):
                 speak_fillers=False,
             )
         self.assertFalse(response.metadata.spoken)
-
