@@ -248,12 +248,49 @@ class ProfileStatusMetadataTests(unittest.TestCase):
 
 
 class ModelNativeReasoningTests(unittest.TestCase):
-    def test_normal_cloud_catalog_includes_luna_and_deepseek_only(self) -> None:
+    def test_normal_cloud_catalog_includes_deepseek_and_luna_only(self) -> None:
         from core.agent.model_catalog import visible_cloud_models
 
         self.assertEqual(
             [profile.model_id for profile in visible_cloud_models()],
-            ["gpt-5.6-luna", "deepseek/deepseek-v4-flash-0731"],
+            ["deepseek/deepseek-v4-flash-0731", "gpt-5.6-luna"],
+        )
+
+    def test_ordered_cloud_models_in_dev_mode(self) -> None:
+        from core.agent.model_catalog import visible_cloud_models
+
+        self.assertEqual(
+            [profile.model_id for profile in visible_cloud_models(dev_mode=True)],
+            [
+                "deepseek/deepseek-v4-flash-0731",
+                "gpt-5.6-luna",
+                "gemini-3.5-flash-lite",
+                "gemini-3.6-flash",
+                "grok-4.3",
+                "grok-4.5",
+            ],
+        )
+
+    def test_ordered_local_models(self) -> None:
+        from core.agent.model_catalog import visible_local_models
+
+        self.assertEqual(
+            [profile.model_id for profile in visible_local_models()],
+            [
+                "gemma-4-E2B-Q4_K_M.gguf",
+                "gemma-4-E4B-Q4_K_M.gguf",
+                "Qwen3.5-4B-Q4_K_M.gguf",
+            ],
+        )
+        self.assertEqual(
+            [profile.model_id for profile in visible_local_models(dev_mode=True)],
+            [
+                "gemma-4-E2B-Q4_K_M.gguf",
+                "gemma-4-E4B-Q4_K_M.gguf",
+                "qwen3:1.7b",
+                "qwen3:4b-instruct",
+                "Qwen3.5-4B-Q4_K_M.gguf",
+            ],
         )
 
     def test_model_profiles_define_native_reasoning_options(self) -> None:
