@@ -29,6 +29,7 @@ import { CortexErrorFeedback, CortexQueryRim } from './AgentQueryBar'
 import { ToolsSelector, type ToolsSelectorProps } from './ToolsSelector'
 import { OPERATION_PROMPT_CHIPS } from '../lib/promptChips'
 import { Trash2 } from 'lucide-react'
+import { ApexLogo, type ApexLogoProps } from './ApexLogo'
 
 type ConversationSummary = {
   id: string
@@ -769,10 +770,12 @@ const ApexAssistantPresentationContext = createContext<{
 }>({})
 
 function ApexAssistantMessage(): ReactNode {
+  const messageRef = useRef<HTMLDivElement>(null)
   const aui = useAui()
   const { renderAgent, composer } = useContext(ApexAssistantPresentationContext)
   const context = useContext(ApexAssistantComposerContext)
   const role = useAuiState((state) => state.message.role)
+  const isLast = useAuiState((state) => state.message.isLast)
   const content = useAuiState((state) => state.message.content)
   const status = useAuiState((state) => state.message.status)
   const branchCount = useAuiState((state) => state.message.branchCount)
@@ -783,6 +786,18 @@ function ApexAssistantMessage(): ReactNode {
     .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
     .map((part) => part.text)
     .join('\n')
+
+  const hasScrolledRef = useRef(false)
+  useEffect(() => {
+    if (role === 'assistant' && isLast && !hasScrolledRef.current) {
+      hasScrolledRef.current = true
+      const target = messageRef.current
+      if (typeof target?.scrollIntoView === 'function') {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    }
+  }, [role, isLast])
+
   const selectBranch = (position: 'previous' | 'next'): void => {
     if (context?.isTurnLocked) return
     context?.clearBranchPersistenceError()
@@ -794,7 +809,7 @@ function ApexAssistantMessage(): ReactNode {
     })
   }
   if (status?.type === 'running') return null
-  return <MessagePrimitive.Root className={role === 'user' ? 'flex justify-end' : 'max-w-5xl'}>
+  return <MessagePrimitive.Root ref={messageRef} className={role === 'user' ? 'flex justify-end' : 'max-w-5xl'}>
     {editing && role === 'user' ? <GatedComposer edit disabled={Boolean(composer?.disabled) || Boolean(context?.isTurnLocked)} /> : null}
     {editing && role === 'user' ? null : <>
     <div className={role === 'user'
@@ -813,16 +828,18 @@ function ApexAssistantMessage(): ReactNode {
 }
 
 /** APEX-owned presentation built from assistant-ui primitives, not its starter kit. */
-export function ApexAssistantThread({ disabled = false, renderAgent, composer }: { disabled?: boolean; renderAgent?: (text: string, metadata: Record<string, unknown>) => ReactNode; composer?: ApexAssistantComposerProps }): ReactNode {
+export function ApexAssistantThread({ disabled = false, renderAgent, composer, logoProps }: { disabled?: boolean; renderAgent?: (text: string, metadata: Record<string, unknown>) => ReactNode; composer?: ApexAssistantComposerProps; logoProps?: Omit<ApexLogoProps, 'className'> }): ReactNode {
   const running = useAuiState((state) => state.thread.isRunning)
+  const isEmpty = useAuiState((state) => state.thread.isEmpty)
   const context = useContext(ApexAssistantComposerContext)
   const presentation = useMemo(() => ({ renderAgent, composer }), [composer, renderAgent])
   const messageComponents = useMemo(() => ({ Message: ApexAssistantMessage }), [])
   return <ApexAssistantPresentationContext.Provider value={presentation}><ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">
-    <ThreadPrimitive.Viewport className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 scrollbar-thin" autoScroll>
-      <ThreadPrimitive.Empty><div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-white/10 px-6 text-center"><p className="font-mono text-xs uppercase tracking-widest text-zinc-500">APEX is ready. Start a session with a focused question.</p><div className="mt-4 flex max-w-xl flex-wrap justify-center gap-2">{OPERATION_PROMPT_CHIPS.map((chip) => <ThreadPrimitive.Suggestion key={chip.label} prompt={chip.query} send={false} className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 transition-colors hover:border-[#0F4DB8]/50 hover:bg-[#0F4DB8]/15 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF]">{chip.label}</ThreadPrimitive.Suggestion>)}</div></div></ThreadPrimitive.Empty>
+    <ThreadPrimitive.Viewport className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 scrollbar-thin" autoScroll={false}>
+      <ThreadPrimitive.Empty><div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-white/10 px-6 py-8 text-center"><p className="font-mono text-xs uppercase tracking-widest text-zinc-500">APEX is ready. Start a session with a focused question.</p><div className="mt-4 flex max-w-xl flex-wrap justify-center gap-2">{OPERATION_PROMPT_CHIPS.map((chip) => <ThreadPrimitive.Suggestion key={chip.label} prompt={chip.query} send={false} className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 transition-colors hover:border-[#0F4DB8]/50 hover:bg-[#0F4DB8]/15 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF]">{chip.label}</ThreadPrimitive.Suggestion>)}</div>{logoProps ? <div data-slot="cortex-chat-logo" className="mt-6 flex items-center justify-center filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]"><ApexLogo {...logoProps} className="size-40 sm:size-48" /></div> : null}</div></ThreadPrimitive.Empty>
       <ThreadPrimitive.Messages components={messageComponents} />
       {running ? <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-[#D8B4FE]" aria-live="polite"><span className="inline-block size-2 animate-pulse rounded-full bg-[#C084FC]" aria-hidden />{composer?.activeAgentName ?? 'Agent'} working</div> : null}
+      {!isEmpty && logoProps ? <div data-slot="cortex-chat-logo" className="my-8 flex items-center justify-center filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]"><ApexLogo {...logoProps} className="size-40 sm:size-48" /></div> : null}
     </ThreadPrimitive.Viewport>
     {context?.branchPersistenceError ? <p className="border-t border-red-500/20 bg-red-950/20 px-4 py-2 text-xs text-red-200" role="alert">{context.branchPersistenceError}</p> : null}
     <GatedComposer disabled={disabled} composer={composer} />

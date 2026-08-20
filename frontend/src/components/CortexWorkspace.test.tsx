@@ -209,7 +209,7 @@ describe('CortexWorkspace', () => {
     expect(screen.getByText('820 ms')).toBeVisible()
   })
 
-  it('renders the shared live logo in the header', () => {
+  it('renders the brain circuit icon badge in the header and the shared live logo in the chat canvas', () => {
     const { container } = render(
       <CortexWorkspace
         {...workspaceProps({
@@ -222,12 +222,37 @@ describe('CortexWorkspace', () => {
       />,
     )
 
-    const logo = container.querySelector('[data-slot="cortex-logo"]')
-    expect(logo).toBeInTheDocument()
-    const mark = logo?.firstElementChild
+    const header = container.querySelector('header')
+    expect(header?.querySelector('.hud-icon-badge')).toBeInTheDocument()
+    expect(header?.querySelector('[data-slot="cortex-logo"]')).toBeNull()
+
+    const chatLogo = container.querySelector('[data-slot="cortex-chat-logo"]')
+    expect(chatLogo).toBeInTheDocument()
+    const mark = chatLogo?.firstElementChild
     expect(mark).toHaveAttribute('aria-hidden', 'true')
-    expect(mark).toHaveClass('h-8', 'w-auto')
-    expect(logo?.querySelector('#blue-crown-top')).toHaveClass('apex-blue-metal--active')
+    expect(chatLogo?.querySelector('#blue-crown-top')).toHaveClass('apex-blue-metal--active')
+  })
+
+  it('renders the shared live logo below active conversation history', () => {
+    const { container } = render(
+      <CortexWorkspace
+        {...workspaceProps({
+          history: [
+            { role: 'user', content: 'Hello APEX' },
+            { role: 'agent', content: 'Hello! How can I assist you today?' },
+          ],
+          logoProps: {
+            step: 2,
+            status: 'idle',
+          },
+        })}
+      />,
+    )
+
+    const chatLogo = container.querySelector('[data-slot="cortex-chat-logo"]')
+    expect(chatLogo).toBeInTheDocument()
+    expect(screen.getByText('Hello APEX')).toBeInTheDocument()
+    expect(screen.getByText('Hello! How can I assist you today?')).toBeInTheDocument()
   })
 
   it('offers empty-canvas prompt chips through the active profile submission path', async () => {
