@@ -9,10 +9,10 @@
 ## Current Focus
 
 **Current Phase:** [Phase V: APEX 2.0 Beta](#phase-v-apex-20-beta)
-**Active Milestone:** [v2.0.0-beta.2 - Cortex: Bounded Task Execution & Observability](#v200-beta2---cortex-bounded-task-execution--observability)
+**Active Milestone:** [v2.0.0-beta.2 - Cortex: Bounded Runs & Live Activity](#v200-beta2---cortex-bounded-runs--live-activity)
 **Current Initiative:** [Cortex Initiative - Continued](#cortex-initiative---continued)
 
-**Next Milestone:** [v2.0.0-beta.3 - Cortex: Workflow Graphs & Worker Orchestration](#v200-beta3---cortex-workflow-graphs--worker-orchestration)
+**Next Milestone:** [v2.0.0-beta.3 - Cortex: Trusted Context & Reconciliation](#v200-beta3---cortex-trusted-context--reconciliation)
 
 ### Navigation
 
@@ -31,18 +31,20 @@ APEX began as a collection of single-purpose Python automation scripts and has g
 
 Its development has moved through several stages:
 
-* **Foundational automation:** Collect personal data, run scheduled tasks, and establish the first client-server version of APEX.
-* **Modern interface architecture:** Move to the React/Vite HUD, make system activity visible, and build the visual and interaction model used today.
-* **Cognitive interaction:** Add conversational AI, local and cloud models, briefing generation, and the beginnings of Cortex.
-* **Interactive agent execution:** Give Apex Agents tools, controlled write actions, verification, and a CLI that can use Cortex without the HUD.
-* **Persistent personal context and agent operation:** Give APEX a durable record of useful personal context, make that context available to Cortex and approved models when relevant, and let Cortex use it for longer tasks, reusable procedures, and proactive work.
-* **Platform consolidation and physical integration:** Clean up the 1.x foundations, move toward a native desktop application, and connect APEX to independent physical systems such as Tyto-S3.
+- **Foundational automation:** Collect personal data, run scheduled tasks, and establish the first client-server version of APEX.
+- **Modern interface architecture:** Move to the React and Vite HUD, make system activity visible, and establish the visual and interaction model used today.
+- **Cognitive interaction:** Add conversational AI, local and cloud models, briefing generation, and the beginnings of Cortex.
+- **Interactive Agent execution:** Give Apex Agents tools, controlled write actions, verification, and a CLI that can use Cortex without the HUD.
+- **Personal context and connected tools:** Keep a lasting, sourced understanding of the user's world and make it available to approved models, clients, workflows, and workers without giving those systems ownership of it.
+- **Native and physical integration:** Move the interface into a native desktop shell and connect APEX to independent physical systems such as Tyto-S3.
 
-Across these phases, APEX is moving from a system that mainly gathers and presents information toward one that can keep a lasting understanding of the user's world and use it across different Agents and models.
+APEX does not need to become its own version of every AI or automation tool it uses. Mature projects can continue to handle model inference, workflow execution, autonomous coding, system monitoring, remote access, service automation, and device communication.
 
-APEX should own that context rather than leaving it tied to a single model provider. Cortex can use the same context to complete and verify work, while approved outside LLMs can retrieve only what is relevant to the current task.
+APEX should focus on the personal layer that ties those tools together: context, source history, permissions, approvals, verified actions, and a consistent interface.
 
-The local-first, single-user focus remains the same throughout that evolution.
+The model, worker, workflow engine, and automation platform should all remain replaceable. The user's accumulated context should not.
+
+The local-first, single-user focus remains the same. External access is optional and limited to the parts of APEX that the operator chooses to expose.
 
 ---
 
@@ -381,9 +383,9 @@ Give Cortex its first safe write path through verified Microsoft To Do actions, 
 **Status:** In Progress
 
 **Core Focus:**
-Building and stabilizing the new APEX 2.0 architecture around persistent personal context, bounded Agent execution, reusable workflows, and proactive operation before the stable 2.0 release.
+Building and stabilizing the new APEX 2.0 architecture around personal context, source history, permissions, approvals, verified actions, and a consistent way to connect outside tools.
 
-APEX should remain the owner of its personal context even when outside models or workers are allowed to use parts of it.
+APEX should not try to become a production-grade workflow engine, automation platform, system monitor, remote-access service, device hub, or general autonomous Agent runtime. When a mature tool already solves one of those problems well, APEX should connect to it through a small adapter and keep only the state needed to explain, govern, and review its use.
 
 [Back to Current Focus](#current-focus)
 
@@ -391,13 +393,13 @@ APEX should remain the owner of its personal context even when outside models or
 
 ## Cortex Initiative - Continued
 
-Phase V takes Cortex from interactive requests into persistent operation and makes APEX the long-term home for useful personal context.
+Phase V makes Cortex the personal layer between APEX context and the tools that do the work.
 
-APEX should be able to remember information given directly by the operator as well as context gathered from connected sources. It should keep a sourced model of people, projects, ideas, preferences, decisions, relationships, and changes, then retrieve only the parts that matter for the current task.
+APEX keeps the long-term context and decides what each model, client, workflow, or worker is allowed to see. It also decides which actions need approval, what evidence is required, and whether new information should become part of trusted personal context.
 
-Cortex should use that same context for longer tasks, workflow graphs, reusable skills, and proactive work. Approved outside models and workers may also use relevant context without becoming owners of APEX memory.
+The tools behind Cortex can change over time. A cloud model can replace another cloud model. A local runtime can replace another local runtime. A workflow or automation tool can be swapped without moving APEX's personal state into it.
 
-The design should keep software in control of permissions and limits. Evidence should matter more than model confidence, APEX should keep one authoritative world model, and learned procedures should be versioned and reviewable rather than allowing unrestricted self-modification.
+The rule for this phase is simple: build the small parts that are specific to APEX and connect mature tools for the general problems they already solve.
 
 ---
 
@@ -406,127 +408,165 @@ The design should keep software in control of permissions and limits. Evidence s
 **Status:** Complete
 
 **Objective:**
-Establish the stable APEX 2.0 beta baseline with persistent conversations, personal context and retrieval, simplified Agents, and the updated Cortex and briefing experience.
+Establish the APEX 2.0 beta foundation with persistent conversations, personal context and retrieval, simplified Agents, and the updated Cortex and briefing experience.
+
 ---
 
-## v2.0.0-beta.2 - Cortex: Bounded Task Execution & Observability
+## v2.0.0-beta.2 - Cortex: Bounded Runs & Live Activity
 
 **Status:** In Progress
 
 **Objective:**
-Let Cortex work through a task in repeated, bounded steps: observe, retrieve context, reason, act, verify, and stop when there is enough evidence that the task is complete.
+Let Cortex carry a task through several steps without turning APEX into a general autonomous Agent runtime.
 
-The loop should have clear limits for iterations, time or execution budget, cancellation, retries, failure handling, verification, traces, and completion evidence. Software rules, not the model alone, should decide when the loop must stop.
+A run can retrieve context, reason, call tools, propose or complete allowed actions, check the result, and stop when there is enough evidence that the task is finished. APEX, rather than the model alone, sets the limits for iterations, time, token use, retries, cancellation, and failure handling.
 
-Cortex should also gain an APEX-owned streaming path for response text, tool activity, action proposals, runtime measurements, completion, and errors. The frontend can use this stream for live responses and execution state without making its chat library part of the Cortex runtime.
+Cortex should gain an APEX-owned streaming path for response text, tool activity, action proposals, runtime measurements, completion, and errors. The assistant-ui frontend can display that stream without becoming part of the Cortex runtime.
 
-This milestone should also improve structured outputs where providers support them and expose useful inference measurements such as tokens per second, time to first token, and context-window use.
+Run details should use standard tracing where practical. APEX can send detailed traces to an optional OpenTelemetry-compatible viewer such as Phoenix instead of building a complete AI tracing and evaluation product of its own.
 
-APEX should also gain a Task Manager-like resource view for CPU, memory, local inference processes, loaded models, and other useful system information. The same resource service can later help Cortex decide when local work is safe to run.
+The HUD should show the resource information that is useful for APEX, including active runs, local inference processes, loaded models, memory use, and configured limits. General CPU, memory, disk, and process data can come from the operating system or an existing monitor such as Glances. APEX does not need to recreate a full Task Manager.
 
-The CLI should grow with the loop runtime so it can inspect resources and active runs, cancel work, and view execution traces.
+The CLI should be able to inspect active runs, cancel work, show completion evidence, and open or reference the related trace.
 
 ---
 
-## v2.0.0-beta.3 - Cortex: Workflow Graphs & Worker Orchestration
+## v2.0.0-beta.3 - Cortex: Trusted Context & Reconciliation
 
 **Status:** Planned
 
 **Objective:**
-Add explicit workflow graphs for tasks that genuinely need branching, parallel work, joins, specialist workers, independent checks, or approval points.
+Make the context introduced in beta.1 easier to trust, correct, and understand before APEX begins accepting more information from outside systems.
 
-A bounded Agent loop remains the normal way to run a task. Graphs should be used only when the shape of the work is easier to express that way.
+Stored claims should keep their source, timestamp, and history. APEX should distinguish between something the operator stated directly, something imported from a connected source, and something inferred by a model.
 
-The first graph runtime should support sequential steps, conditions, parallel branches, joins, retries, verification, approval gates, failure paths, and explicit state changes.
+New information should not silently replace older information. APEX should be able to mark a claim as current, disputed, rejected, or superseded while keeping the earlier record available.
 
-Workflow graphs should describe how work runs. They should remain separate from the world model, which describes what APEX knows.
+Clear updates can be handled through simple rules. Conflicts, sensitive changes, uncertain matches, and model inferences should be available for review.
 
-Each graph step should use a common worker interface so APEX can send work to Apex Agents, normal code, or future external Agent runtimes without tying the graph itself to one model provider. Workers should receive only the context and permissions needed for their part of the task.
+Information submitted by an outside model or worker should first enter an evidence inbox. It may suggest new claims or changes, but it does not become trusted context until APEX accepts or reconciles it.
+
+The HUD and CLI should make it possible to inspect sources, correct a record, review a conflict, and understand why APEX currently believes something.
+
+This work should build on the existing SQLite knowledge and retrieval system. APEX does not need to become a general knowledge-graph database or a separate memory platform.
 
 ---
 
-## v2.0.0-beta.4 - Cortex: Procedural Learning & Skills
+## v2.0.0-beta.4 - Cortex: Context Access & External Clients
 
 **Status:** Planned
 
 **Objective:**
-Let Cortex recognize procedures that worked repeatedly and turn them into reusable, versioned skills after they have been reviewed and validated.
+Allow approved outside clients to use APEX context without exposing the main backend, database, or unrestricted personal history.
 
-The world model should store what Cortex knows about the user and environment. Procedural skills should instead store how a recurring kind of task can be completed reliably.
+APEX should add a small access gateway that is separate from the main FastAPI service. The main backend can continue to bind locally while the gateway exposes only a narrow set of approved capabilities.
 
-A skill candidate should record when it applies, what tools it needs, the steps to follow, what evidence to expect, how to verify success, how failures are handled, where the procedure came from, and how well it has worked.
+MCP should be the first external protocol. The gateway should use the authorization model expected by MCP rather than inventing a custom login system.
 
-New procedures should be reviewable, reversible, and subject to operator or policy approval. Cortex should not be able to rewrite its own behavior without those controls.
+Gemini Spark should be the first real client used to prove the design. It should be able to request an approved slice of APEX context and submit sourced findings from an autonomous task. It should not be able to browse the APEX database, read unrelated personal context, or change trusted knowledge directly.
+
+External clients may receive capabilities such as:
+
+* searching approved context;
+* reading a specific entity or project;
+* retrieving a relevant timeline;
+* submitting evidence;
+* proposing a context change;
+* proposing an action.
+
+Direct world-model writes should not be exposed.
+
+Each client should have its own identity and permissions. APEX should record what context was shared, what the client returned, and which client was responsible.
+
+Network reachability should come from an existing private network, tunnel, or reverse proxy. APEX should not build its own VPN, tunneling service, certificate system, or public identity provider. The general APEX API should never be exposed simply because an MCP client needs access.
+
+The authoritative context remains on the APEX machine. The first version may require that machine to be online. Cloud replication and continuous synchronization are not part of this milestone.
 
 ---
 
-## v2.0.0-beta.5 - Cortex: Hermes Worker Integration
+## v2.0.0-beta.5 - Cortex: Connected Workflows & Task Handoffs
 
 **Status:** Planned
 
 **Objective:**
-Use Hermes Agent as an optional sandboxed worker for tasks that benefit from a more mature autonomous execution environment, while APEX keeps control of permissions, verification, persistent state, and orchestration.
+Let APEX hand off complicated multi-step work to an existing workflow or automation tool when the normal bounded Cortex run is no longer enough.
 
-Hermes should receive a tightly scoped task with the context, tools, workspace access, execution budget, network policy, and output requirements it is allowed to use.
+APEX should define a small handoff format that includes the task, allowed context, permissions, limits, expected result, and evidence requirements. The outside runtime can then handle the mechanics of running the workflow.
 
-It should return results, artifacts, actions, evidence, errors, and execution details to Cortex so APEX can verify and reconcile them independently.
+A real APEX use case should choose the first integration. LangGraph may be useful for code-defined Agent workflows with branching, checkpoints, and approval pauses. n8n may be a better fit for service automation, webhooks, and visual workflows. APEX does not need to adopt both before there is a reason to use them.
 
-Hermes should receive only the personal context needed for the assigned task. If it discovers useful new context, it should return that information and its evidence to APEX rather than changing the world model directly.
+The connected tool should own graph scheduling, checkpoints, parallel branches, retries, and its own workflow editor. APEX should own what each step is allowed to know and do, which actions require approval, and what results are accepted back into personal context.
 
-Hermes should not keep its own personal or world-state memory at first. APEX should remain the authoritative memory system.
+Workflow status should be translated into the same run and activity model introduced in beta.2 so the HUD and CLI can show it without recreating the external tool's full interface.
+
+The normal bounded Cortex run should remain the default. A workflow handoff is for tasks that clearly benefit from a mature external runtime.
+
+APEX should not build its own general graph engine, visual workflow builder, connector marketplace, or distributed task scheduler.
 
 ---
 
-## v2.0.0-beta.6 - Cortex: Context Access & Workspace Integration
+## v2.0.0-beta.6 - Cortex: External Workers & Portable Skills
 
 **Status:** Planned
 
 **Objective:**
-Let trusted outside sources add context to APEX and let approved outside LLM clients retrieve relevant personal context from APEX without bypassing source tracking, permissions, or local-first ownership.
+Let Cortex delegate bounded work to a more autonomous external Agent without placing that Agent inside the APEX trust boundary.
 
-This milestone should add a narrowly scoped APEX MCP server or equivalent context interface. It should support both directions: new evidence entering APEX and approved clients asking APEX for context relevant to a question or task.
+Hermes Agent should be the first reference worker, but it should remain optional. The intended reference setup is Hermes running on an isolated machine or inside a whole-process sandbox rather than sharing the APEX host environment.
 
-Outside clients should not receive unrestricted access to the APEX database, wider backend, or direct world-model writes. New information should pass through the same source-tracked review and reconciliation path before it becomes part of APEX's trusted context.
+For the first deployment, APEX can connect to Hermes on a separate device through a private authenticated connection. APEX should treat Hermes as a remote service, not as a Python library embedded into Cortex.
 
-External access should be optional and authenticated. The authoritative world model should remain local by default, and the first version may require the APEX host to be online. A continuously available cloud copy of personal context is not required for this milestone.
+Each job should include only the context, files, tools, network access, credentials, limits, and output requirements needed for that task. Hermes should not receive the APEX database, the full conversation archive, the operator's home directory, or the general APEX environment.
 
-APEX should also add a permissioned device-context service for information such as current location and timezone. Features such as weather can then use device state without owning location detection themselves.
+Hermes should return results, artifacts, evidence, proposed actions, errors, and useful execution details. APEX then decides what to keep, what to verify, and what may change trusted context.
 
-Workspace support may include an APEX-managed Markdown knowledge folder using portable frontmatter and wikilinks, with optional compatibility with tools such as Obsidian rather than a runtime dependency on them.
+The same worker interface should be usable by future Agent runtimes so that Hermes does not become a permanent architectural dependency.
+
+Reusable procedures should follow the open Agent Skills format instead of using an APEX-only skill format. APEX may keep a personal catalog that records where a skill came from, which version is installed, what tools it needs, and whether it is enabled.
+
+APEX may help turn a successful run into a proposed skill draft, but the operator should review it before it becomes active. APEX does not need to build an autonomous learning system, a separate skill execution engine, or a public skill marketplace.
 
 ---
 
-## v2.0.0-beta.7 - Cortex: Proactive Automation & Event Response
+## v2.0.0-beta.7 - Cortex: Events & Proactive Response
 
 **Status:** Planned
 
 **Objective:**
-Let Cortex respond to meaningful changes in connected data, keep its world model current, and start bounded workflows when a change actually needs attention.
+Let existing tools tell APEX when something changes so Cortex can respond without constantly rescanning every connected source.
 
-Instead of repeatedly rescanning every source, Cortex should react to structured changes and events, decide whether they affect known people, tasks, commitments, projects, or goals, and run only the work that is needed.
+Schedules, webhooks, service triggers, device events, and general automation should come from tools that already specialize in them. n8n can handle digital-service automation, while Home Assistant and MQTT can handle device and sensor events. Existing direct APEX integrations may also submit events.
 
-Scheduled and event-triggered workflows should support proactive briefings, stale-state checks, contradiction discovery, commitment tracking, threshold monitoring, and action proposals.
+APEX should accept those events through a small shared format that records the source, event type, time, sensitivity, affected subject, and a reference to the original information.
 
-By this point, persistent context, verified actions, learned procedures, execution graphs, Apex Agents, normal software workers, and optional external runtimes should work together under the same permissions and verification rules.
+When an event arrives, APEX decides whether it matters. It may update the evidence inbox, flag a conflict, start a bounded Cortex run, hand work to a connected workflow, propose an action, notify the operator, or ignore the event.
+
+The outside platform should keep responsibility for schedules, connector setup, message delivery, and automation editing. APEX keeps responsibility for personal relevance, context, permissions, approvals, evidence, and verification.
+
+No external event should be able to cause a sensitive write on its own. Proactive work should follow the same limits and approval rules as work started by the operator.
+
+The HUD and CLI should show recent events, what APEX did with them, and any actions waiting for review. They do not need to replace the full n8n or Home Assistant interface.
+
+The same event path can later receive observations from Tyto-S3.
 
 ---
 
-## v2.0.0 - Platform Consolidation
+## v2.0.0 - APEX 2.0 Stable
 
 **Status:** Planned
 
 **Objective:**
-Graduate the Phase V beta architecture into the stable APEX 2.0 platform, removing obsolete 1.x compatibility layers and settling on the persistence, configuration, API, and runtime structures that future work should use.
+Turn the Phase V beta work into a stable APEX 2.0 platform without adding another large feature area.
 
-This milestone should audit the database, configuration system, APIs, persistence paths, runtime code, naming, and compatibility code.
+This release should settle the contracts for personal context, evidence, permissions, actions, runs, external clients, workflow handoffs, workers, and events.
 
-Old tables, columns, profile-era records, deprecated settings, unused telemetry structures, migration scaffolding, aliases, and replaced persistence paths should be removed or migrated when they are no longer needed.
+Old 1.x tables, settings, aliases, persistence paths, and compatibility code should be removed or migrated when they are no longer useful. Important operator data should be preserved wherever practical.
 
-Useful operator data should be preserved where practical, including Cortex conversations, world-model knowledge, evidence, learned procedures, execution history, meaningful configuration, and audit records.
+Fresh installations and upgraded installations should end with the same current schema, configuration, and runtime behavior.
 
-Fresh installations and systems upgraded through APEX 1.x should end up with the same current schema, configuration shape, and runtime behavior.
+External tools should remain optional. APEX should still start, keep its personal context, and support its core local features when a tracing viewer, system monitor, workflow tool, Hermes worker, automation platform, or device hub is unavailable.
 
-Some old internal contracts may be removed when keeping them would make the 2.x code harder to understand or maintain.
+The stable release should include migration testing, security review of the external gateway and worker boundaries, graceful-degradation testing, and clear documentation of which system owns each kind of state.
 
 ---
 
@@ -535,78 +575,85 @@ Some old internal contracts may be removed when keeping them would make the 2.x 
 **Status:** Planned
 
 **Core Focus:**
-Extending the stable APEX 2.0 platform, moving the main interface to a native desktop application, and connecting APEX to independent physical sensing systems without making those systems depend on Cortex.
+Build on the stable APEX 2.0 platform by improving how the operator accesses it and by connecting independent physical systems through existing desktop and device ecosystems.
 
 [Back to Current Focus](#current-focus)
 
 ---
 
-## v2.1.0 - Native Desktop Application
+## v2.1.0 - Native Desktop App
 
 **Status:** Planned
 
 **Objective:**
-Move the main APEX HUD from a browser-oriented shell to a native Tauri desktop application while keeping the existing separation between the interface, backend, API, and CLI.
+Package the existing APEX interface as a Tauri desktop application while keeping Cortex, persistence, APIs, and the CLI independent of the desktop shell.
 
-The Tauri app should remain a client of the APEX platform rather than moving Cortex or backend logic into the desktop shell.
+The desktop app should remain a client of the APEX backend. It should not become the place where personal context or Cortex runtime state lives.
 
-The CLI and backend should continue to work independently. The desktop app can then improve startup and shutdown, window behavior, local permissions, notifications, system integration, and distribution without becoming the only way to run APEX.
+Tauri and its maintained plugins should handle desktop concerns such as windows, startup, notifications, permissions, the system tray, deep links, updates, and distribution. APEX does not need to build its own cross-platform native framework.
 
-Native features should go through clear platform services when possible instead of being accessed directly by Cortex or individual frontend components.
+The backend and CLI should continue to work without the desktop application. Desktop-only features should go through small platform services rather than being called directly from Cortex or scattered across frontend components.
 
-The goal is to keep the current HUD experience while giving desktop-specific features a cleaner home.
+The goal is to make APEX feel native without tying the platform to one interface.
 
 ---
 
-## v2.2.0 - Tyto Environmental Integration
+## v2.2.0 - Tyto Physical Context Integration
 
 **Status:** Planned
 
 **Objective:**
-Connect [Tyto-S3](https://github.com/edumarcano/Tyto-S3) to APEX so environmental measurements, device health, history, and detected events can become part of Cortex context while Tyto remains a fully independent system.
+Connect [Tyto-S3](https://github.com/edumarcano/Tyto-S3) to APEX as an independent source of physical context without turning APEX into a device-management or home-automation platform.
 
-APEX should talk to Tyto through a versioned, authenticated device interface instead of depending on firmware implementation details.
+Tyto should expose measurements, health, availability, and events through a stable interface such as MQTT or a small versioned API. Home Assistant may act as the first device hub and history source, while a narrow direct MQTT connection can remain possible where useful.
 
-The integration should cover current measurements, derived climate values, sensor and device health, historical observations, environmental events, firmware and protocol compatibility, and temporary network outages.
+Tyto, the MQTT broker, and Home Assistant should own device discovery, message delivery, reconnect behavior, general sensor history, and device automation.
 
-Cortex tools should be able to query current Tyto data and relevant history. Important observations can later enter the world model with their source and timestamp intact.
+APEX should consume the measurements and events that are useful as personal context. It should preserve the device identity, timestamp, and source of each observation.
 
-Tyto events should also be able to enter the APEX event path and contribute to briefings, context retrieval, anomaly detection, or bounded Cortex workflows when useful.
+Cortex should be able to answer questions about current conditions, use recent history in briefings, explain important changes, and respond to selected events through the event path added in beta.7.
 
-Tyto must keep working when APEX is unavailable. APEX should treat it as an independent source of physical-world data, not as a peripheral that needs Cortex to function.
+APEX should not directly manage Tyto firmware or silently turn sensor changes into external actions. Tyto must remain useful when APEX is unavailable.
 
 ### Integration Readiness
 
-Development of this milestone assumes Tyto has reached sufficient standalone maturity for reliable integration.
+Work on this milestone assumes Tyto has reached enough standalone maturity for reliable integration.
 
-Before APEX v2.2.0 integration work begins, Tyto should provide:
+Before integration begins, Tyto should provide:
 
 * reliable unattended operation;
-* stable environmental sensing and derived measurements;
+* stable measurements and derived values;
 * persistent or exportable history;
-* explicit freshness and device-health state;
-* a versioned telemetry contract;
-* network interruption and reconnection handling;
-* authenticated external access;
+* clear freshness and device-health information;
+* a versioned telemetry format;
+* network interruption and reconnect handling;
+* authenticated access;
 * documented protocol and compatibility behavior.
 
 ---
 
 # Long-Term Vision
 
-APEX is intended to become a local-first personal context and operations platform.
+APEX is intended to become the personal layer around the tools the operator chooses to use.
 
-It should act as the long-term home for useful personal knowledge: ideas, preferences, decisions, people, projects, relationships, history, and context gathered from connected services, files, and devices.
+It should keep a lasting, sourced understanding of the user's world: people, projects, ideas, preferences, decisions, commitments, history, connected services, files, and physical observations.
 
-That knowledge should belong to APEX rather than a particular model provider. Cortex, Apex Agents, and approved outside LLM clients should be able to retrieve the parts that are relevant to what they are doing without needing the full personal history every time.
+That context belongs to APEX rather than to a model provider, workflow tool, autonomous Agent, or automation platform.
 
-Cortex should use the same context to complete and verify bounded actions, coordinate longer workflows, learn reusable procedures, and respond to meaningful changes.
+Cortex and approved outside clients should be able to retrieve the parts that matter for a task without receiving the full personal history. Outside systems may return findings, artifacts, and proposed changes, but APEX decides what becomes trusted context.
 
-The single-user, local-first model remains the default. External access should be optional, authenticated, and narrowly scoped rather than requiring APEX or its authoritative world model to move to the cloud.
+APEX does not need to outperform Open WebUI as a general AI interface, LangGraph as a workflow runtime, Hermes as an autonomous Agent, n8n as an automation platform, Home Assistant as a device hub, or Tailscale and similar tools as secure networking systems.
+
+It should connect those tools and make them feel like parts of one personal system.
+
+When those projects improve, APEX should benefit from their progress rather than having to compete with it.
+
+The local-first model remains the default. The authoritative context stays under the operator's control, APEX continues to work without a cloud service, and remote access is optional, authenticated, limited, and recorded.
 
 ## Current Focus
 
 APEX is currently in **Phase V: APEX 2.0 Beta**.
 
 **Active milestone:**
-[v2.0.0-beta.2 - Cortex: Bounded Task Execution & Observability](#v200-beta2---cortex-bounded-task-execution--observability)
+[v2.0.0-beta.2 - Cortex: Bounded Runs & Live Activity](#v200-beta2---cortex-bounded-runs--live-activity)
+
