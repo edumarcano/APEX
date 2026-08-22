@@ -656,4 +656,3 @@ APEX is currently in **Phase V: APEX 2.0 Beta**.
 
 **Active milestone:**
 [v2.0.0-beta.2 - Cortex: Bounded Runs & Live Activity](#v200-beta2---cortex-bounded-runs--live-activity)
-
