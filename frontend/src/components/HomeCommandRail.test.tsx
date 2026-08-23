@@ -32,13 +32,13 @@ const mockCatalog: ModelCatalogEntry[] = [
 ]
 
 function profile(key: AgentKey, status: AgentStatus['status'] = 'available'): AgentStatus {
-  const local = key === 'felis'
+  const local = key === 'local'
   return {
     key,
-    display_name: key === 'panthera' ? 'Apex Panthera' : 'Apex Felis',
+    display_name: key === 'cloud' ? 'Apex Panthera' : 'Apex Felis',
     description: `${key} profile.`,
     configured_model: local ? 'gemma-4-E2B-Q4_K_M.gguf' : 'gpt-5.6-luna',
-    sort_order: key === 'panthera' ? 1 : 2,
+    sort_order: key === 'cloud' ? 1 : 2,
     capabilities: [],
     native_tools: {},
     provider: local ? 'llama_cpp' : 'openai',
@@ -71,7 +71,7 @@ function profile(key: AgentKey, status: AgentStatus['status'] = 'available'): Ag
 
 function renderRail(overrides: Partial<ComponentProps<typeof HomeCommandRail>> = {}) {
   const toolCatalog: ToolCatalog = {
-    agent: 'panthera',
+    agent: 'cloud',
     groups: [],
     tools: [],
     profiles: [],
@@ -88,7 +88,7 @@ function renderRail(overrides: Partial<ComponentProps<typeof HomeCommandRail>> =
     selectedModelId: 'gpt-5.6-luna',
     onModelChange: vi.fn(),
     modelCatalog: mockCatalog,
-    agentsStatus: [profile('panthera'), profile('felis')],
+    agentsStatus: [profile('cloud'), profile('local')],
     isCortexQuerying: false,
     onAgentSubmit: vi.fn().mockResolvedValue(true),
     toolCatalog,
@@ -179,7 +179,7 @@ describe('HomeCommandRail', () => {
 
   it('shows the resident local runtime beneath command rows and keeps its unload action separate from synthesis', async () => {
     const onUnloadLocalModel = vi.fn(async () => true)
-    const activeFelis = { ...profile('felis'), active: true, display_name: 'Apex Felis' }
+    const activeFelis = { ...profile('local'), active: true, display_name: 'Apex Felis' }
     const user = userEvent.setup()
     renderRail({ activeLocalModel: activeFelis, onUnloadLocalModel })
 
@@ -196,7 +196,7 @@ describe('HomeCommandRail', () => {
 
   it('includes active local model in the local runtime strip', () => {
     const activeFelis = {
-      ...profile('felis'),
+      ...profile('local'),
       active: true,
       display_name: 'Apex Felis',
       loaded_model: {
@@ -218,7 +218,7 @@ describe('HomeCommandRail', () => {
   })
 
   it('keeps the local runtime strip visible and disables unloading while a model is loading', () => {
-    renderRail({ activeLocalModel: null, loadingLocalAgent: profile('felis') })
+    renderRail({ activeLocalModel: null, loadingLocalAgent: profile('local') })
 
     expect(screen.getByText('gemma-4-E2B-Q4_K_M.gguf · llama.cpp · Loading')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Unload gemma-4-E2B-Q4_K_M.gguf' })).toBeDisabled()
@@ -227,7 +227,7 @@ describe('HomeCommandRail', () => {
   it('renders local model control during standby below briefing mode selector when a model is active', async () => {
     const onUnloadLocalModel = vi.fn(async () => true)
     const activeFelis = {
-      ...profile('felis'),
+      ...profile('local'),
       active: true,
       display_name: 'Apex Felis',
       loaded_model: {

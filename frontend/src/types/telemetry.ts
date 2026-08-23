@@ -12,7 +12,7 @@ export interface PipelineState {
 }
 
 export type SynthesisProvider = 'gemini' | 'ollama' | 'llama_cpp' | 'openai' | 'openrouter' | 'xai' | 'raw' | 'demo'
-export type SynthesisAgent = 'panthera' | 'felis'
+export type SynthesisAgent = 'cloud' | 'local'
 export type SynthesisStrategy = 'cloud' | 'local' | 'raw' | 'demo'
 
 export interface SynthesisLiveState {
@@ -94,7 +94,7 @@ export type CloudProvider = 'openai' | 'openrouter' | 'gemini' | 'xai'
 export type LocalRuntime = 'ollama' | 'llama_cpp'
 export type HostedTool = 'google_search' | 'google_maps' | 'x_search'
 
-export type AgentKey = 'panthera' | 'felis'
+export type AgentKey = 'cloud' | 'local'
 
 export type ToolCatalogGroupKind = 'apex_family' | 'mcp_server'
 
@@ -260,6 +260,8 @@ export interface LocalLoadedModelStatus {
 
 export interface AgentStatus {
   key: AgentKey
+  role?: AgentRuntime
+  designation?: string
   description: string
   configured_model: string
   native_tools: Record<string, boolean>

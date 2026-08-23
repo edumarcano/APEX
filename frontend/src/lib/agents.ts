@@ -12,27 +12,27 @@ import type {
   ModelCatalogEntry,
 } from '../types/telemetry'
 
-export const AGENT_KEYS = ['panthera', 'felis'] as const satisfies readonly AgentKey[]
+export const AGENT_KEYS = ['cloud', 'local'] as const satisfies readonly AgentKey[]
 
-export function isPantheraKey(value: unknown): value is 'panthera' {
-  return value === 'panthera'
+export function isCloudAgentKey(value: unknown): value is 'cloud' {
+  return value === 'cloud'
 }
 
-export function isFelisKey(value: unknown): value is 'felis' {
-  return value === 'felis'
+export function isLocalAgentKey(value: unknown): value is 'local' {
+  return value === 'local'
 }
 
-export function isLocalAgentKey(value: unknown): value is 'felis' {
-  return value === 'felis'
+export function isPantheraKey(value: unknown): value is 'cloud' {
+  return value === 'cloud'
 }
 
-export function isCloudAgentKey(value: unknown): value is 'panthera' {
-  return value === 'panthera'
+export function isFelisKey(value: unknown): value is 'local' {
+  return value === 'local'
 }
 
 /** True for any selectable Cortex Agent key. */
 export function isAgentKey(value: unknown): value is AgentKey {
-  return isPantheraKey(value) || isFelisKey(value)
+  return isCloudAgentKey(value) || isLocalAgentKey(value)
 }
 
 /** True when the operator may switch HUD focus to this Agent identity. */
@@ -225,7 +225,7 @@ export function resolveHomeQueryOverrides(
     const modelId = modelEntry?.model_id ?? 'gemma-4-E2B-Q4_K_M.gguf'
     const contextWindow = modelEntry?.provider === 'ollama' ? 4096 : 16384
     return {
-      agent: 'felis',
+      agent: 'local',
       modelId,
       effort: null,
       contextWindow,
@@ -235,7 +235,7 @@ export function resolveHomeQueryOverrides(
 
   const effort = resolveLowestReasoningEffort(modelEntry.reasoning_options)
   return {
-    agent: 'panthera',
+    agent: 'cloud',
     modelId: modelEntry.model_id,
     effort,
     contextWindow: null,

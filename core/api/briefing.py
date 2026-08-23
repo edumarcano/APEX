@@ -950,11 +950,15 @@ def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
         _model_pricing_metadata(felis_profile) if felis_profile else None
     )
 
+    ask_apex_settings = get_settings_store().get_snapshot().ask_apex
+    cloud_designation = ask_apex_settings.cloud.designation
+    local_designation = ask_apex_settings.local.designation
+
     return [
         BriefingTargetStatus(
             mode="focused",
             label="Focused",
-            description=f"Panthera · {panthera_profile.display_name if panthera_profile else 'DeepSeek V4 Flash 0731'}",
+            description=f"{cloud_designation} · {panthera_profile.display_name if panthera_profile else 'DeepSeek V4 Flash 0731'}",
             model_id=panthera_profile.model_id if panthera_profile else PANTHERA_BRIEFING_MODEL,
             model_display_name=panthera_profile.display_name if panthera_profile else "DeepSeek V4 Flash 0731",
             provider="openrouter",
@@ -966,7 +970,7 @@ def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
         BriefingTargetStatus(
             mode="flash",
             label="Flash",
-            description=f"Felis · {felis_profile.display_name if felis_profile else 'Gemma 4 E2B'}",
+            description=f"{local_designation} · {felis_profile.display_name if felis_profile else 'Gemma 4 E2B'}",
             model_id=felis_profile.model_id if felis_profile else DEFAULT_FELIS_MODEL,
             model_display_name=felis_profile.display_name if felis_profile else "Gemma 4 E2B",
             provider="llama_cpp",

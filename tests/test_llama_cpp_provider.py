@@ -42,7 +42,7 @@ def _llama_profile(
     assert model_profile is not None
     native = resolve_effort(model_profile, None)
     return build_concrete_agent(
-        "felis",
+        "local",
         native_effort=native,
         local_context_window=context_window,
         local_reasoning_mode=reasoning_mode,

@@ -54,32 +54,37 @@ export interface MarketSettings {
   symbols: string[]
 }
 
-export interface PantheraHostedToolsSettings {
+export interface CloudAgentHostedToolsSettings {
   google_search: boolean
   google_maps: boolean
   x_search: boolean
 }
+export type PantheraHostedToolsSettings = CloudAgentHostedToolsSettings
 
-export interface PantheraSettings {
+export interface CloudAgentSettings {
+  designation: string
   model: string
   effort: CloudEffort
   personal_context_enabled: boolean
-  hosted_tools: PantheraHostedToolsSettings
+  hosted_tools: CloudAgentHostedToolsSettings
 }
+export type PantheraSettings = CloudAgentSettings
 
-export interface FelisSettings {
+export interface LocalAgentSettings {
+  designation: string
   model: string
   context_window: number
   reasoning_mode: LocalReasoningMode
   personal_context_enabled: boolean
 }
+export type FelisSettings = LocalAgentSettings
 
 export interface AgentSettings {
   enabled: boolean
   agent: AgentKey
   sandbox_mode: boolean
-  panthera: PantheraSettings
-  felis: FelisSettings
+  cloud: CloudAgentSettings
+  local: LocalAgentSettings
 }
 
 export interface ToolProfileSettings {
@@ -157,32 +162,37 @@ export interface MarketPatch {
   symbols?: string[]
 }
 
-export interface PantheraHostedToolsPatch {
+export interface CloudAgentHostedToolsPatch {
   google_search?: boolean
   google_maps?: boolean
   x_search?: boolean
 }
+export type PantheraHostedToolsPatch = CloudAgentHostedToolsPatch
 
-export interface PantheraSettingsPatch {
+export interface CloudAgentSettingsPatch {
+  designation?: string
   model?: string
   effort?: CloudEffort
   personal_context_enabled?: boolean
-  hosted_tools?: PantheraHostedToolsPatch
+  hosted_tools?: CloudAgentHostedToolsPatch
 }
+export type PantheraSettingsPatch = CloudAgentSettingsPatch
 
-export interface FelisSettingsPatch {
+export interface LocalAgentSettingsPatch {
+  designation?: string
   model?: string
   context_window?: number
   reasoning_mode?: LocalReasoningMode
   personal_context_enabled?: boolean
 }
+export type FelisSettingsPatch = LocalAgentSettingsPatch
 
 export interface AgentSettingsPatch {
   enabled?: boolean
   agent?: AgentKey
   sandbox_mode?: boolean
-  panthera?: PantheraSettingsPatch
-  felis?: FelisSettingsPatch
+  cloud?: CloudAgentSettingsPatch
+  local?: LocalAgentSettingsPatch
 }
 
 export interface ToolProfilesPatch {

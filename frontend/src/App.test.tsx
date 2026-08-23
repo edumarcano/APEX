@@ -7,7 +7,7 @@ import App from './App'
 import type { AgentKey, ToolCatalog } from './types/telemetry'
 
 const appMocks = vi.hoisted(() => ({
-  initialAgent: 'panthera' as AgentKey,
+  initialAgent: 'cloud' as AgentKey,
   devModeActive: false,
   refreshAgentsStatus: vi.fn().mockResolvedValue(undefined),
   queryAgent: vi.fn().mockResolvedValue(undefined),
@@ -159,7 +159,7 @@ vi.mock('./components/CortexWorkspace', () => ({
         <output data-testid="actions-pending-count">
           {actions?.pendingCount ?? 0}
         </output>
-        {activeAgent === 'felis' ? (
+        {activeAgent === 'local' ? (
           <select
             aria-label="Context window"
             value={String(selectedContextWindow ?? '')}
@@ -198,7 +198,7 @@ vi.mock('./hooks/useApexData', () => ({
     marketEnabled: false,
     defaultAgent: appMocks.initialAgent,
     agentInitialSelection: {
-      runtime: appMocks.initialAgent === 'felis' ? 'local' : 'cloud',
+      runtime: appMocks.initialAgent === 'local' ? 'local' : 'cloud',
       agent: appMocks.initialAgent,
       effort: 'focused',
     },
@@ -247,16 +247,16 @@ vi.mock('./hooks/useCortex', () => ({
     agentsStatus: [{
       key: appMocks.initialAgent,
       display_name: `Apex ${appMocks.initialAgent}`,
-      runtime: appMocks.initialAgent === 'felis' ? 'local' : 'cloud',
-      status: appMocks.initialAgent === 'felis' ? 'available' : 'configured',
+      runtime: appMocks.initialAgent === 'local' ? 'local' : 'cloud',
+      status: appMocks.initialAgent === 'local' ? 'available' : 'configured',
       active: true,
       loading: false,
       loaded_model: null,
       model_catalog: [{
-        model_id: appMocks.initialAgent === 'felis' ? 'gemma-4-E2B-Q4_K_M.gguf' : 'gpt-5.6-luna',
-        display_name: appMocks.initialAgent === 'felis' ? 'Gemma 4 E2B' : 'GPT-5.6 Luna',
-        provider: appMocks.initialAgent === 'felis' ? 'llama_cpp' : 'openai',
-        runtime: appMocks.initialAgent === 'felis' ? 'local' : 'cloud',
+        model_id: appMocks.initialAgent === 'local' ? 'gemma-4-E2B-Q4_K_M.gguf' : 'gpt-5.6-luna',
+        display_name: appMocks.initialAgent === 'local' ? 'Gemma 4 E2B' : 'GPT-5.6 Luna',
+        provider: appMocks.initialAgent === 'local' ? 'llama_cpp' : 'openai',
+        runtime: appMocks.initialAgent === 'local' ? 'local' : 'cloud',
         stability: 'stable',
         hosted_capabilities: [],
       }],
@@ -350,8 +350,8 @@ function catalogFor(
     default_profile_name: 'No APEX Tools',
     default_selected_tool_names: [],
     provider_hosted_tools: googleSearchEnabled ? ['google_search'] : [],
-    context_window: agent === 'felis' ? contextWindow : null,
-    reserved_response_tokens: agent === 'felis' ? 512 : null,
+    context_window: agent === 'local' ? contextWindow : null,
+    reserved_response_tokens: agent === 'local' ? 512 : null,
   }
 }
 
@@ -380,7 +380,8 @@ function settingsResponse(
         enabled: true,
         agent,
         sandbox_mode: sandboxMode,
-        panthera: {
+        cloud: {
+          designation: 'Panthera',
           model: 'gemini-3.6-flash',
           effort: 'medium',
           hosted_tools: {
@@ -389,7 +390,8 @@ function settingsResponse(
             x_search: false,
           },
         },
-        felis: {
+        local: {
+          designation: 'Felis',
           model: 'gemma-4-E2B-Q4_K_M.gguf',
           context_window: contextWindow,
           reasoning_mode: 'none',
@@ -430,17 +432,17 @@ function settingsResponse(
 
 describe('App catalog-affecting settings', () => {
   afterEach(() => {
-    appMocks.initialAgent = 'panthera'
+    appMocks.initialAgent = 'cloud'
     appMocks.devModeActive = false
     appMocks.weatherSnapshot = null
     vi.restoreAllMocks()
   })
 
-  it('refreshes the current Panthera catalog after enabling Google Search', async () => {
+  it('refreshes the current Cloud catalog after enabling Google Search', async () => {
     const user = userEvent.setup()
     const settingsPatch = deferred<Response>()
     const catalogRequests: AgentKey[] = []
-    let pantheraCatalogRequests = 0
+    let cloudCatalogRequests = 0
 
     vi.stubGlobal(
       'fetch',
@@ -450,7 +452,7 @@ describe('App catalog-affecting settings', () => {
           const agent = url.searchParams.get('agent') as AgentKey
           catalogRequests.push(agent)
           const googleSearchEnabled =
-            agent === 'panthera' && pantheraCatalogRequests++ > 0
+            agent === 'cloud' && cloudCatalogRequests++ > 0
           return Promise.resolve(new Response(
             JSON.stringify(catalogFor(agent, googleSearchEnabled)),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -466,27 +468,27 @@ describe('App catalog-affecting settings', () => {
     render(<App />)
 
     await user.click(screen.getByRole('button', { name: 'Cortex' }))
-    await waitFor(() => expect(catalogRequests).toContain('panthera'))
-    await waitFor(() => expect(screen.getByTestId('active-agent')).toHaveTextContent('panthera'))
+    await waitFor(() => expect(catalogRequests).toContain('cloud'))
+    await waitFor(() => expect(screen.getByTestId('active-agent')).toHaveTextContent('cloud'))
     expect(screen.getByTestId('provider-hosted-tools')).toHaveTextContent('')
 
     await user.click(screen.getByRole('button', { name: 'Enable Google Search' }))
-    expect(catalogRequests.filter((agent) => agent === 'panthera')).toHaveLength(1)
+    expect(catalogRequests.filter((agent) => agent === 'cloud')).toHaveLength(1)
 
-    settingsPatch.resolve(settingsResponse('panthera', true))
+    settingsPatch.resolve(settingsResponse('cloud', true))
 
     await waitFor(() => {
-      expect(catalogRequests.filter((agent) => agent === 'panthera')).toHaveLength(2)
+      expect(catalogRequests.filter((agent) => agent === 'cloud')).toHaveLength(2)
       expect(screen.getByTestId('provider-hosted-tools')).toHaveTextContent('google_search')
     })
   })
 
-  it('refreshes the current Felis catalog after changing its context window', async () => {
-    appMocks.initialAgent = 'felis'
+  it('refreshes the current Local catalog after changing its context window', async () => {
+    appMocks.initialAgent = 'local'
     const user = userEvent.setup()
     const settingsPatch = deferred<Response>()
     const catalogRequests: AgentKey[] = []
-    let felisCatalogRequests = 0
+    let localCatalogRequests = 0
 
     vi.stubGlobal(
       'fetch',
@@ -496,7 +498,7 @@ describe('App catalog-affecting settings', () => {
           const agent = url.searchParams.get('agent') as AgentKey
           catalogRequests.push(agent)
           const refreshedContextWindow =
-            agent === 'felis' && felisCatalogRequests++ > 0 ? 32768 : 16384
+            agent === 'local' && localCatalogRequests++ > 0 ? 32768 : 16384
           return Promise.resolve(new Response(
             JSON.stringify(catalogFor(agent, false, refreshedContextWindow)),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -512,21 +514,21 @@ describe('App catalog-affecting settings', () => {
     render(<App />)
 
     await user.click(screen.getByRole('button', { name: 'Cortex' }))
-    await waitFor(() => expect(catalogRequests).toContain('felis'))
+    await waitFor(() => expect(catalogRequests).toContain('local'))
     await waitFor(() => {
-      expect(screen.getByTestId('active-agent')).toHaveTextContent('felis')
+      expect(screen.getByTestId('active-agent')).toHaveTextContent('local')
       expect(screen.getByTestId('catalog-context-window')).toHaveTextContent('16384')
     })
 
     const contextSelect = screen.getByRole('combobox', { name: 'Context window' })
     await user.selectOptions(contextSelect, '32768')
     expect(contextSelect).toHaveValue('32768')
-    expect(catalogRequests.filter((agent) => agent === 'felis')).toHaveLength(1)
+    expect(catalogRequests.filter((agent) => agent === 'local')).toHaveLength(1)
 
-    settingsPatch.resolve(settingsResponse('felis', false, 32768))
+    settingsPatch.resolve(settingsResponse('local', false, 32768))
 
     await waitFor(() => {
-      expect(catalogRequests.filter((agent) => agent === 'felis')).toHaveLength(2)
+      expect(catalogRequests.filter((agent) => agent === 'local')).toHaveLength(2)
       expect(screen.getByTestId('catalog-context-window')).toHaveTextContent('32768')
     })
   })
@@ -551,7 +553,7 @@ describe('App catalog-affecting settings', () => {
         }
         if (url.pathname.endsWith('/settings') && init?.method === 'PATCH') {
           sandboxPatch = JSON.parse(String(init.body)) as Record<string, unknown>
-          return Promise.resolve(settingsResponse('panthera', false, 16384, true))
+          return Promise.resolve(settingsResponse('cloud', false, 16384, true))
         }
         return Promise.resolve(new Response('{}', { status: 200 }))
       }),
@@ -560,13 +562,13 @@ describe('App catalog-affecting settings', () => {
     render(<App />)
 
     await user.click(screen.getByRole('button', { name: 'Cortex' }))
-    await waitFor(() => expect(catalogRequests).toContain('panthera'))
+    await waitFor(() => expect(catalogRequests).toContain('cloud'))
 
     await user.click(screen.getByRole('checkbox', { name: 'Sandbox mode' }))
 
     await waitFor(() => {
       expect(sandboxPatch).toEqual({ ask_apex: { sandbox_mode: true } })
-      expect(catalogRequests.filter((agent) => agent === 'panthera')).toHaveLength(2)
+      expect(catalogRequests.filter((agent) => agent === 'cloud')).toHaveLength(2)
     })
   })
 
@@ -575,7 +577,7 @@ describe('App catalog-affecting settings', () => {
     const actionProposal = {
       action_id: 'action-123',
       proposal: {
-        agent_key: 'panthera',
+        agent_key: 'cloud',
         capability_name: 'remember_personal_context',
         arguments: { text: 'Prefers tea over coffee' },
         target: 'Remember personal context',
@@ -597,7 +599,7 @@ describe('App catalog-affecting settings', () => {
         const url = new URL(String(input))
         if (url.pathname.endsWith('/cortex/tool-catalog')) {
           return Promise.resolve(new Response(
-            JSON.stringify(catalogFor('panthera')),
+            JSON.stringify(catalogFor('cloud')),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           ))
         }

@@ -77,7 +77,7 @@ interface CortexWorkspaceProps {
   verifyingCloudAgent: AgentKey | null
   onLoadLocalModel: () => Promise<boolean>
   onUnloadLocalModel: () => Promise<boolean>
-  onVerifyCloudAgent: (agent: 'panthera') => Promise<boolean>
+  onVerifyCloudAgent: (agent: 'cloud') => Promise<boolean>
   snapshotAttached: boolean
   snapshotAvailable: boolean
   personalContextEnabled?: boolean
@@ -516,35 +516,35 @@ function RuntimeControls({
   const controlsDisabled = props.isQuerying || Boolean(props.submissionPending) || Boolean(props.conversationHydrating)
   const localModel = props.felisModel ?? 'gemma-4-E2B-Q4_K_M.gguf'
   const onLocalModelChange = props.onFelisModelChange ?? (() => {})
-  const pantheraStatus = props.agentsStatus.find((agent) => agent.key === 'panthera')
-  const felisStatus = props.agentsStatus.find((agent) => agent.key === 'felis')
+  const cloudStatus = props.agentsStatus.find((agent) => agent.key === 'cloud')
+  const localStatus = props.agentsStatus.find((agent) => agent.key === 'local')
   const catalog = resolveModelCatalog(
-    activeAgent === 'panthera' ? pantheraStatus : felisStatus,
+    activeAgent === 'cloud' ? cloudStatus : localStatus,
   )
   const models = catalog.filter(
-    (entry) => entry.runtime === (activeAgent === 'panthera' ? 'cloud' : 'local'),
+    (entry) => entry.runtime === (activeAgent === 'cloud' ? 'cloud' : 'local'),
   )
   const hostedCapabilities = hostedCapabilitiesForModel(
-    activeAgent === 'panthera' ? props.pantheraModel : localModel,
+    activeAgent === 'cloud' ? props.pantheraModel : localModel,
     catalog,
   )
 
   const selectedModelEntry = models.find(
-    (entry) => entry.model_id === (activeAgent === 'panthera' ? props.pantheraModel : localModel),
+    (entry) => entry.model_id === (activeAgent === 'cloud' ? props.pantheraModel : localModel),
   )
-  const reasoningOptions = selectedModelEntry?.reasoning_options ?? pantheraStatus?.reasoning_options ?? []
+  const reasoningOptions = selectedModelEntry?.reasoning_options ?? cloudStatus?.reasoning_options ?? []
   const supportsEffort = Boolean(reasoningOptions.length)
 
   return (
     <div className="space-y-4">
-      {activeAgent === 'panthera' ? (
+      {activeAgent === 'cloud' ? (
         <>
           <ModelSelector
-            activeAgent="panthera"
+            activeAgent="cloud"
             selectedModelId={props.pantheraModel}
             onModelChange={props.onPantheraModelChange}
             catalog={models}
-            activeStatus={pantheraStatus ?? null}
+            activeStatus={cloudStatus ?? null}
             disabled={controlsDisabled}
             isQuerying={props.isQuerying}
             verifyingAgent={props.verifyingCloudAgent}
@@ -574,11 +574,11 @@ function RuntimeControls({
       ) : (
         <>
           <ModelSelector
-            activeAgent="felis"
+            activeAgent="local"
             selectedModelId={localModel}
             onModelChange={onLocalModelChange}
             catalog={models}
-            activeStatus={felisStatus ?? null}
+            activeStatus={localStatus ?? null}
             disabled={controlsDisabled}
             isQuerying={props.isQuerying}
           />

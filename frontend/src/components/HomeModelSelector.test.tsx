@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { AgentStatus, ModelCatalogEntry } from '../types/telemetry'
+import type { AgentKey, AgentStatus, ModelCatalogEntry } from '../types/telemetry'
 import { HomeModelSelector } from './HomeModelSelector'
 
 const mockCatalog: ModelCatalogEntry[] = [
@@ -40,17 +40,17 @@ const mockCatalog: ModelCatalogEntry[] = [
 ]
 
 function profile(
-  key: 'panthera' | 'felis',
+  key: AgentKey,
   status: AgentStatus['status'],
   configuredModel: string,
 ): AgentStatus {
-  const local = key === 'felis'
+  const local = key === 'local'
   return {
     key,
-    display_name: key === 'panthera' ? 'Apex Panthera' : 'Apex Felis',
+    display_name: key === 'cloud' ? 'Apex Panthera' : 'Apex Felis',
     description: `${key} profile.`,
     configured_model: configuredModel,
-    sort_order: key === 'panthera' ? 1 : 2,
+    sort_order: key === 'cloud' ? 1 : 2,
     capabilities: [],
     native_tools: {},
     provider: local ? 'llama_cpp' : 'openrouter',
@@ -82,8 +82,8 @@ function profile(
 }
 
 const mockAgentsStatus: AgentStatus[] = [
-  profile('panthera', 'configured', 'deepseek/deepseek-v4-flash-0731'),
-  profile('felis', 'available', 'gemma-4-E2B-Q4_K_M.gguf'),
+  profile('cloud', 'configured', 'deepseek/deepseek-v4-flash-0731'),
+  profile('local', 'available', 'gemma-4-E2B-Q4_K_M.gguf'),
 ]
 
 describe('HomeModelSelector', () => {
@@ -179,8 +179,8 @@ describe('HomeModelSelector', () => {
         onModelChange={vi.fn()}
         catalog={customCatalog}
         agentsStatus={[
-          profile('panthera', 'configured', 'gpt-5.6-luna'),
-          profile('felis', 'model_not_installed', 'other-model.gguf'),
+          profile('cloud', 'configured', 'gpt-5.6-luna'),
+          profile('local', 'model_not_installed', 'other-model.gguf'),
         ]}
       />,
     )

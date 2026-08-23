@@ -95,9 +95,9 @@ class RetrievalTests(unittest.TestCase):
 
     def test_startup_backfill_and_archived_delete_trigger(self) -> None:
         conversation_id = uuid4()
-        self.conversations.create(conversation_id=conversation_id, title="Test", partition="production", origin="cli", agent="panthera", selected_tool_names=None, tool_profile_id=None)
+        self.conversations.create(conversation_id=conversation_id, title="Test", partition="production", origin="cli", agent="cloud", selected_tool_names=None, tool_profile_id=None)
         user_id, agent_id = uuid4(), uuid4()
-        user, agent, _, _ = self.conversations.begin_turn(conversation_id=conversation_id, partition="production", user_id=user_id, agent_id=agent_id, parent_id=None, prompt="alpha question", agent="panthera", request_metadata={}, selected_tool_names=None, tool_profile_id=None, history_limit=6)
+        user, agent, _, _ = self.conversations.begin_turn(conversation_id=conversation_id, partition="production", user_id=user_id, agent_id=agent_id, parent_id=None, prompt="alpha question", agent="cloud", request_metadata={}, selected_tool_names=None, tool_profile_id=None, history_limit=6)
         agent = self.conversations.finalize(conversation_id=conversation_id, agent_id=agent_id, answer="alpha answer", status="completed", response_metadata={})
         service = RetrievalService(self.store, self.conversations, adapter=FakeEmbeddingAdapter())
         service.initialize()
@@ -171,9 +171,9 @@ class RetrievalTests(unittest.TestCase):
 
     def test_unresolved_partition_is_not_written_as_production(self) -> None:
         conversation_id = uuid4()
-        self.conversations.create(conversation_id=conversation_id, title="Test", partition="sandbox", origin="cli", agent="panthera", selected_tool_names=None, tool_profile_id=None)
+        self.conversations.create(conversation_id=conversation_id, title="Test", partition="sandbox", origin="cli", agent="cloud", selected_tool_names=None, tool_profile_id=None)
         user_id, agent_id = uuid4(), uuid4()
-        user, agent, _, _ = self.conversations.begin_turn(conversation_id=conversation_id, partition="sandbox", user_id=user_id, agent_id=agent_id, parent_id=None, prompt="sandbox secret", agent="panthera", request_metadata={}, selected_tool_names=None, tool_profile_id=None, history_limit=6)
+        user, agent, _, _ = self.conversations.begin_turn(conversation_id=conversation_id, partition="sandbox", user_id=user_id, agent_id=agent_id, parent_id=None, prompt="sandbox secret", agent="cloud", request_metadata={}, selected_tool_names=None, tool_profile_id=None, history_limit=6)
         agent = self.conversations.finalize(conversation_id=conversation_id, agent_id=agent_id, answer="sandbox answer", status="completed", response_metadata={})
         service = RetrievalService(self.store, self.conversations, adapter=FakeEmbeddingAdapter())
         self.assertEqual(service.index_messages((user, agent), partitions={}), 0)

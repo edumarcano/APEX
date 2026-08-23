@@ -32,11 +32,11 @@ from tests.support.agent_fixtures import (
 
 class AgentIdentityTests(unittest.TestCase):
     _IDENTITIES = {
-        "panthera": (
+        "cloud": (
             "You are Apex Panthera, the cloud Apex Agent. "
             "You run through the operator's selected cloud provider and model."
         ),
-        "felis": (
+        "local": (
             "You are Apex Felis, the local Apex Agent. "
             "You run through the operator's selected local runtime and model."
         ),
@@ -61,22 +61,46 @@ class AgentIdentityTests(unittest.TestCase):
             with self.subTest(agent=key):
                 self.assertEqual(AGENT_SPECS[key].identity_instruction, identity)
 
+    def test_custom_designation_is_injected_into_identity(self) -> None:
+        cloud_instruction = compose_agent_system_instruction(
+            "cloud",
+            "Behavior instructions.",
+            designation="Atlas",
+        )
+        self.assertTrue(
+            cloud_instruction.startswith(
+                "You are Apex Atlas, the cloud Apex Agent. "
+                "You run through the operator's selected cloud provider and model."
+            )
+        )
+        local_instruction = compose_agent_system_instruction(
+            "local",
+            "Behavior instructions.",
+            designation="Hermes",
+        )
+        self.assertTrue(
+            local_instruction.startswith(
+                "You are Apex Hermes, the local Apex Agent. "
+                "You run through the operator's selected local runtime and model."
+            )
+        )
+
     def test_switching_model_preserves_agent_identity(self) -> None:
         cases = (
-            ("panthera", GEMINI_FLASH_MODEL),
-            ("panthera", GROK_43_MODEL),
-            ("panthera", GROK_45_MODEL),
-            ("panthera", GEMINI_FLASH_LITE_MODEL),
-            ("felis", QWEN3_17B_MODEL),
-            ("felis", QWEN3_4B_MODEL),
-            ("felis", GEMMA_E2B_MODEL),
-            ("felis", GEMMA_E4B_MODEL),
-            ("felis", EXPERIMENTAL_MODEL),
+            ("cloud", GEMINI_FLASH_MODEL),
+            ("cloud", GROK_43_MODEL),
+            ("cloud", GROK_45_MODEL),
+            ("cloud", GEMINI_FLASH_LITE_MODEL),
+            ("local", QWEN3_17B_MODEL),
+            ("local", QWEN3_4B_MODEL),
+            ("local", GEMMA_E2B_MODEL),
+            ("local", GEMMA_E4B_MODEL),
+            ("local", EXPERIMENTAL_MODEL),
         )
         for agent_key, model_id in cases:
             with self.subTest(agent=agent_key, model=model_id):
                 identity = self._IDENTITIES[agent_key]
-                if agent_key == "panthera":
+                if agent_key == "cloud":
                     profile = build_panthera_profile(model=model_id)
                 else:
                     profile = build_felis_profile(model=model_id)
@@ -94,8 +118,8 @@ class AgentIdentityTests(unittest.TestCase):
             return AgentQueryResponse(answer="ok", agent_used={}, session_id=None)
 
         cases = (
-            ("panthera", "gpt-5.6-luna"),
-            ("felis", GEMMA_E2B_MODEL),
+            ("cloud", "gpt-5.6-luna"),
+            ("local", GEMMA_E2B_MODEL),
         )
         with (
             mock.patch("core.api.cortex._create_provider", return_value=mock.Mock()),
@@ -108,7 +132,7 @@ class AgentIdentityTests(unittest.TestCase):
             ),
         ):
             for agent_key, model_id in cases:
-                if agent_key == "panthera":
+                if agent_key == "cloud":
                     profile = build_panthera_profile(model=model_id)
                 else:
                     profile = build_felis_profile(model=model_id)
@@ -138,13 +162,13 @@ class AgentIdentityTests(unittest.TestCase):
                 self.assertIn(expected_runtime_prompt, instruction)
 
     def test_identity_composition_keeps_identity_when_base_prompt_is_empty(self) -> None:
-        identity = AGENT_SPECS["panthera"].identity_instruction
-        self.assertEqual(compose_agent_system_instruction("panthera", "  "), identity)
+        identity = AGENT_SPECS["cloud"].identity_instruction
+        self.assertEqual(compose_agent_system_instruction("cloud", "  "), identity)
 
     def test_user_designation_is_optional_and_added_once(self) -> None:
-        identity = AGENT_SPECS["panthera"].identity_instruction
+        identity = AGENT_SPECS["cloud"].identity_instruction
         instruction = compose_agent_system_instruction(
-            "panthera",
+            "cloud",
             "Behavior instructions.",
             user_designation="  Chief\n ",
         )
@@ -153,7 +177,7 @@ class AgentIdentityTests(unittest.TestCase):
         self.assertEqual(instruction.count('Address the user as "Chief"'), 1)
         self.assertEqual(
             compose_agent_system_instruction(
-                "panthera", "Behavior instructions.", user_designation=""
+                "cloud", "Behavior instructions.", user_designation=""
             ),
             f"{identity}\n\nBehavior instructions.",
         )

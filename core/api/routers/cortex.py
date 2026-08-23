@@ -294,7 +294,7 @@ def _normalize_profile_name(value: str) -> str:
     "/api/v1/cortex/tool-catalog",
     response_model=ToolCatalogResponse,
 )
-def tool_catalog(agent: AgentKey = "panthera") -> ToolCatalogResponse:
+def tool_catalog(agent: AgentKey = "cloud") -> ToolCatalogResponse:
     """Return the resolved selector catalog for one Apex Agent."""
     _ensure_agent_api_access(agent)
     return build_tool_catalog(agent)

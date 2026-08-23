@@ -6,10 +6,10 @@ export function agentShortName(displayName: string): string {
 /** Return the canonical presentation descriptor for an Agent. */
 export function agentDescriptor(agentKeyOrDisplayName: string): string {
   const normalized = agentKeyOrDisplayName.toLowerCase()
-  if (normalized.includes('panthera')) {
+  if (normalized.includes('cloud') || normalized.includes('panthera')) {
     return 'Cloud · Generalist'
   }
-  if (normalized.includes('felis')) {
+  if (normalized.includes('local') || normalized.includes('felis')) {
     return 'Local · Private'
   }
   return ''

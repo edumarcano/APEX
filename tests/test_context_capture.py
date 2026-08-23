@@ -67,7 +67,7 @@ class ContextCaptureTests(unittest.TestCase):
             },
         }
         arguments.update(overrides)
-        return self.actions.propose(agent_key="panthera", capability_name=CAPABILITY_NAME,
+        return self.actions.propose(agent_key="cloud", capability_name=CAPABILITY_NAME,
             arguments=arguments, target="Personal Context", risk="write", summary="Approve personal context capture")
 
     def test_approved_capture_writes_source_record_effect_and_verifies(self) -> None:

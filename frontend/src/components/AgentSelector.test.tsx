@@ -9,7 +9,7 @@ import { AgentSelector } from './AgentSelector'
 function agent(overrides: Partial<AgentStatus> = {}): AgentStatus {
   const stability = overrides.model_stability ?? 'stable'
   return {
-    key: 'panthera',
+    key: 'cloud',
     display_name: 'Apex Panthera',
     description: 'Cloud generalist.',
     configured_model: 'gpt-5.6-luna',
@@ -55,7 +55,7 @@ function agent(overrides: Partial<AgentStatus> = {}): AgentStatus {
 }
 
 const felis = agent({
-  key: 'felis',
+  key: 'local',
   display_name: 'Apex Felis',
   description: 'Local Agent for private on-device work.',
   configured_model: 'gemma-4-E2B-Q4_K_M.gguf',
@@ -87,7 +87,7 @@ describe('AgentSelector', () => {
     const onChange = vi.fn()
     render(
       <AgentSelector
-        activeAgent="panthera"
+        activeAgent="cloud"
         onChange={onChange}
         agentsStatus={[agent(), felis]}
         agentsStatusHydrated
@@ -99,13 +99,13 @@ describe('AgentSelector', () => {
     expect(screen.getByRole('radio', { name: /Apex Felis, Local · Private/i })).toBeVisible()
 
     await user.click(screen.getByRole('radio', { name: /Apex Felis, Local · Private/i }))
-    expect(onChange).toHaveBeenCalledWith('felis')
+    expect(onChange).toHaveBeenCalledWith('local')
   })
 
   it('indicates the active agent in Cortex with checked state', () => {
     render(
       <AgentSelector
-        activeAgent="felis"
+        activeAgent="local"
         onChange={vi.fn()}
         agentsStatus={[agent(), felis]}
         agentsStatusHydrated
@@ -123,7 +123,7 @@ describe('AgentSelector', () => {
   it('disables switching while an agent query is in flight', () => {
     render(
       <AgentSelector
-        activeAgent="panthera"
+        activeAgent="cloud"
         onChange={vi.fn()}
         agentsStatus={[agent(), felis]}
         agentsStatusHydrated

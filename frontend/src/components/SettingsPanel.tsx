@@ -452,6 +452,76 @@ export default function SettingsPanel({
                       }))
                     }
                   />
+                  <div className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2.5">
+                    <label
+                      htmlFor="settings-cloud-agent-designation"
+                      className="text-xs tracking-wide text-[color:var(--hud-text)]"
+                    >
+                      Cloud Agent designation
+                    </label>
+                    <input
+                      id="settings-cloud-agent-designation"
+                      type="text"
+                      value={draft.ask_apex.cloud.designation}
+                      maxLength={32}
+                      placeholder="Panthera"
+                      aria-describedby={`${titleId}-cloud-designation-help`}
+                      onChange={(event) =>
+                        setDraft((prev) => ({
+                          ...prev,
+                          ask_apex: {
+                            ...prev.ask_apex,
+                            cloud: {
+                              ...prev.ask_apex.cloud,
+                              designation: event.target.value,
+                            },
+                          },
+                        }))
+                      }
+                      className="hud-command-surface mt-1.5 w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
+                    />
+                    <p
+                      id={`${titleId}-cloud-designation-help`}
+                      className="mt-1.5 text-[11px] leading-relaxed text-zinc-500"
+                    >
+                      Custom name for your Cloud Agent (defaults to Panthera).
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2.5">
+                    <label
+                      htmlFor="settings-local-agent-designation"
+                      className="text-xs tracking-wide text-[color:var(--hud-text)]"
+                    >
+                      Local Agent designation
+                    </label>
+                    <input
+                      id="settings-local-agent-designation"
+                      type="text"
+                      value={draft.ask_apex.local.designation}
+                      maxLength={32}
+                      placeholder="Felis"
+                      aria-describedby={`${titleId}-local-designation-help`}
+                      onChange={(event) =>
+                        setDraft((prev) => ({
+                          ...prev,
+                          ask_apex: {
+                            ...prev.ask_apex,
+                            local: {
+                              ...prev.ask_apex.local,
+                              designation: event.target.value,
+                            },
+                          },
+                        }))
+                      }
+                      className="hud-command-surface mt-1.5 w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
+                    />
+                    <p
+                      id={`${titleId}-local-designation-help`}
+                      className="mt-1.5 text-[11px] leading-relaxed text-zinc-500"
+                    >
+                      Custom name for your Local Agent (defaults to Felis).
+                    </p>
+                  </div>
                 </div>
               </section>
 

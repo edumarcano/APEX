@@ -71,7 +71,7 @@ class ActionKernelTests(unittest.TestCase):
 
     def _propose(self, *, arguments=None, risk="write"):
         return self.service.propose(
-            agent_key="panthera",
+            agent_key="cloud",
             capability_name="test_write",
             arguments=arguments or {"title": "Study", "nested": {"rank": 1}},
             target="Microsoft To Do / Study",

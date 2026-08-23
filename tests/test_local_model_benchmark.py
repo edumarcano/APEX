@@ -154,15 +154,15 @@ class BenchmarkUtilityTests(unittest.TestCase):
             cpu_limit=95.0,
         )
         configuration = benchmark.BenchmarkConfiguration(
-            agent="felis",
+            agent="local",
             provider="llama_cpp",
             model="model.gguf",
             runtime_alias="gemma-4-e2b-32k",
             context=32768,
             reasoning="none",
             profile=profile,
-            agent_key="felis",
-            tool_projection_agent="felis",
+            agent_key="local",
+            tool_projection_agent="local",
         )
         runner = benchmark.BenchmarkRunner.__new__(benchmark.BenchmarkRunner)
         runner._allowed_refs = frozenset({first, second})
@@ -212,15 +212,15 @@ class BenchmarkUtilityTests(unittest.TestCase):
             cpu_limit=95.0,
         )
         configuration = benchmark.BenchmarkConfiguration(
-            agent="felis",
+            agent="local",
             provider="llama_cpp",
             model="model.gguf",
             runtime_alias="gemma-4-e4b-16k",
             context=16384,
             reasoning="none",
             profile=profile,
-            agent_key="felis",
-            tool_projection_agent="felis",
+            agent_key="local",
+            tool_projection_agent="local",
         )
         runner = benchmark.BenchmarkRunner.__new__(benchmark.BenchmarkRunner)
         runner.resource_recovery_timeout_seconds = 5.0
@@ -257,15 +257,15 @@ class BenchmarkUtilityTests(unittest.TestCase):
             cpu_limit=95.0,
         )
         configuration = benchmark.BenchmarkConfiguration(
-            agent="felis",
+            agent="local",
             provider="llama_cpp",
             model="model.gguf",
             runtime_alias="gemma-4-e4b-16k",
             context=16384,
             reasoning="none",
             profile=profile,
-            agent_key="felis",
-            tool_projection_agent="felis",
+            agent_key="local",
+            tool_projection_agent="local",
         )
         runner = benchmark.BenchmarkRunner.__new__(benchmark.BenchmarkRunner)
         runner._prepare_configuration = mock.Mock(
@@ -326,15 +326,15 @@ class BenchmarkUtilityTests(unittest.TestCase):
     def test_context_mismatch_still_cleans_up_loaded_model(self) -> None:
         reference = LocalModelRef(provider="llama_cpp", model="gemma-4-e2b-16k")
         configuration = benchmark.BenchmarkConfiguration(
-            agent="felis",
+            agent="local",
             provider="llama_cpp",
             model="model.gguf",
             runtime_alias="gemma-4-e2b-16k",
             context=16384,
             reasoning="none",
             profile=SimpleNamespace(),
-            agent_key="felis",
-            tool_projection_agent="felis",
+            agent_key="local",
+            tool_projection_agent="local",
         )
         runner = benchmark.BenchmarkRunner.__new__(benchmark.BenchmarkRunner)
         runner.configurations = (configuration,)
@@ -373,7 +373,7 @@ class BenchmarkUtilityTests(unittest.TestCase):
         self.assertEqual(cleaned_refs, [reference])
 
     def test_warmup_is_not_counted_as_a_measured_repetition(self) -> None:
-        default_profile = benchmark.get_model_profile(benchmark.DEFAULT_FELIS_MODEL)
+        default_profile = benchmark.get_model_profile(benchmark.DEFAULT_LOCAL_MODEL)
         assert default_profile is not None
         with (
             mock.patch.object(
@@ -387,7 +387,7 @@ class BenchmarkUtilityTests(unittest.TestCase):
             ),
         ):
             configurations = benchmark.build_configurations(
-                agents=("felis",),
+                agents=("local",),
                 context=16384,
                 all_contexts=False,
                 reasoning_modes=("none",),

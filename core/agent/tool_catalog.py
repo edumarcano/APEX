@@ -332,7 +332,7 @@ def _default_profile(agent_key: str) -> tuple[str, str]:
     return profile.id, profile.name
 
 
-def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
+def build_tool_catalog(agent_key: str = "cloud") -> ToolCatalogResponse:
     """Build the complete provider-neutral catalog for one Apex Agent."""
     from core.agent.catalog import AGENT_SPECS
 
@@ -347,9 +347,9 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
         dev_mode=is_dev_mode(),
     )
     google_search, google_maps, x_search = (
-        settings.ask_apex.panthera.hosted_tools.google_search,
-        settings.ask_apex.panthera.hosted_tools.google_maps,
-        settings.ask_apex.panthera.hosted_tools.x_search,
+        settings.ask_apex.cloud.hosted_tools.google_search,
+        settings.ask_apex.cloud.hosted_tools.google_maps,
+        settings.ask_apex.cloud.hosted_tools.x_search,
     )
     hosted_tools = hosted_tools_for_agent(
         agent_key,

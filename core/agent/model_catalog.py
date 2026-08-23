@@ -215,10 +215,15 @@ ALL_MODEL_PROFILES: dict[str, ModelProfile] = {
     **LOCAL_MODEL_PROFILES,
 }
 
-DEFAULT_PANTHERA_MODEL = "gpt-5.6-luna"
-PANTHERA_BRIEFING_MODEL = "deepseek/deepseek-v4-flash-0731"
-DEFAULT_FELIS_MODEL = "gemma-4-E2B-Q4_K_M.gguf"
-DEFAULT_FELIS_RUNTIME: LocalRuntime = "llama_cpp"
+DEFAULT_CLOUD_MODEL = "gpt-5.6-luna"
+CLOUD_BRIEFING_MODEL = "deepseek/deepseek-v4-flash-0731"
+DEFAULT_LOCAL_MODEL = "gemma-4-E2B-Q4_K_M.gguf"
+DEFAULT_LOCAL_RUNTIME: LocalRuntime = "llama_cpp"
+
+DEFAULT_PANTHERA_MODEL = DEFAULT_CLOUD_MODEL
+PANTHERA_BRIEFING_MODEL = CLOUD_BRIEFING_MODEL
+DEFAULT_FELIS_MODEL = DEFAULT_LOCAL_MODEL
+DEFAULT_FELIS_RUNTIME: LocalRuntime = DEFAULT_LOCAL_RUNTIME
 
 
 def get_model_profile(model_id: str) -> ModelProfile | None:
@@ -254,12 +259,12 @@ def model_display_label(model_id: str) -> str:
     return profile.display_name if profile is not None else model_id
 
 
-def reconcile_panthera_model(
+def reconcile_cloud_model(
     model: str,
     *,
     dev_mode: bool = False,
 ) -> str:
-    """Return a supported cloud model, falling back to the default Panthera model."""
+    """Return a supported cloud model, falling back to the default cloud model."""
     profile = get_model_profile(model)
     if (
         profile is not None
@@ -267,15 +272,15 @@ def reconcile_panthera_model(
         and (not profile.dev_only or dev_mode)
     ):
         return model
-    return DEFAULT_PANTHERA_MODEL
+    return DEFAULT_CLOUD_MODEL
 
 
-def reconcile_felis_model(
+def reconcile_local_model(
     model: str,
     *,
     dev_mode: bool = False,
 ) -> str:
-    """Return a supported local model, falling back to the default Felis model."""
+    """Return a supported local model, falling back to the default local model."""
     profile = get_model_profile(model)
     if (
         profile is not None
@@ -283,10 +288,10 @@ def reconcile_felis_model(
         and (not profile.dev_only or dev_mode)
     ):
         return model
-    return DEFAULT_FELIS_MODEL
+    return DEFAULT_LOCAL_MODEL
 
 
-def reconcile_felis_context_window(
+def reconcile_local_context_window(
     runtime: LocalRuntime,
     model: str,
     context_window: int,
@@ -302,7 +307,7 @@ def reconcile_felis_context_window(
     return llama_runtime.default_context_window
 
 
-def reconcile_felis_reasoning_mode(
+def reconcile_local_reasoning_mode(
     model: str,
     reasoning_mode: LocalReasoningMode,
 ) -> LocalReasoningMode:
@@ -317,7 +322,7 @@ def reconcile_felis_reasoning_mode(
     return supported[0]
 
 
-def reconcile_panthera_reasoning(
+def reconcile_cloud_reasoning(
     model: str,
     reasoning: str | None,
 ) -> str | None:
@@ -328,3 +333,11 @@ def reconcile_panthera_reasoning(
     if reasoning in profile.reasoning_options:
         return reasoning
     return profile.default_reasoning
+
+
+reconcile_panthera_model = reconcile_cloud_model
+reconcile_felis_model = reconcile_local_model
+reconcile_felis_context_window = reconcile_local_context_window
+reconcile_felis_reasoning_mode = reconcile_local_reasoning_mode
+reconcile_panthera_reasoning = reconcile_cloud_reasoning
+

@@ -17,12 +17,12 @@ import {
 import type { BriefingTargetStatus, ModelCatalogEntry } from '../types/telemetry'
 
 describe('agents helpers', () => {
-  it('exposes only Panthera and Felis agent keys', () => {
-    expect(AGENT_KEYS).toEqual(['panthera', 'felis'])
-    expect(isFelisKey('felis')).toBe(true)
-    expect(isPantheraKey('panthera')).toBe(true)
-    expect(isAgentKey('panthera')).toBe(true)
-    expect(isAgentKey('felis')).toBe(true)
+  it('exposes only Cloud and Local agent keys', () => {
+    expect(AGENT_KEYS).toEqual(['cloud', 'local'])
+    expect(isFelisKey('local')).toBe(true)
+    expect(isPantheraKey('cloud')).toBe(true)
+    expect(isAgentKey('cloud')).toBe(true)
+    expect(isAgentKey('local')).toBe(true)
     expect(isAgentKey('lynx')).toBe(false)
     expect(isAgentKey('apodemus')).toBe(false)
     expect(isAgentKey('unknown')).toBe(false)
@@ -60,24 +60,24 @@ describe('agents helpers', () => {
     expect(usesSandboxHistory(true, true)).toBe(true)
   })
 
-  it('allows cloud verification only when Panthera is not disabled', () => {
+  it('allows cloud verification only when Cloud agent is not disabled', () => {
     expect(
       canVerifyCloudProvider({
-        key: 'panthera',
+        key: 'cloud',
         runtime: 'cloud',
         status: 'configured',
       }),
     ).toBe(true)
     expect(
       canVerifyCloudProvider({
-        key: 'panthera',
+        key: 'cloud',
         runtime: 'cloud',
         status: 'disabled',
       }),
     ).toBe(false)
     expect(
       canVerifyCloudProvider({
-        key: 'felis',
+        key: 'local',
         runtime: 'local',
         status: 'available',
       }),
@@ -85,7 +85,7 @@ describe('agents helpers', () => {
   })
 
   it('uses briefing targets as the sole source of model-mode availability', () => {
-    const panthera: BriefingTargetStatus = {
+    const cloud: BriefingTargetStatus = {
       mode: 'focused',
       label: 'Apex Panthera',
       description: 'Cloud briefing',
@@ -102,11 +102,11 @@ describe('agents helpers', () => {
       status: 'available',
       reason: null,
     })
-    expect(resolveBriefingModeAvailability('focused', [panthera])).toEqual({
+    expect(resolveBriefingModeAvailability('focused', [cloud])).toEqual({
       status: 'configured',
       reason: 'Credentials configured',
     })
-    expect(resolveBriefingModeAvailability('flash', [panthera])).toEqual({
+    expect(resolveBriefingModeAvailability('flash', [cloud])).toEqual({
       status: 'unknown',
       reason: 'Mode status unavailable',
     })
@@ -134,7 +134,7 @@ describe('agents helpers', () => {
       hosted_capabilities: [],
     }
     expect(resolveHomeQueryOverrides(cloudEntry)).toEqual({
-      agent: 'panthera',
+      agent: 'cloud',
       modelId: 'deepseek/deepseek-v4-flash-0731',
       effort: 'none',
       contextWindow: null,
@@ -153,7 +153,7 @@ describe('agents helpers', () => {
       hosted_capabilities: [],
     }
     expect(resolveHomeQueryOverrides(localEntry)).toEqual({
-      agent: 'felis',
+      agent: 'local',
       modelId: 'gemma-4-E2B-Q4_K_M.gguf',
       effort: null,
       contextWindow: 16384,

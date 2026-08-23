@@ -106,7 +106,7 @@ class ActionControlApiTests(unittest.TestCase):
 
     def _propose(self):
         return self.service.propose(
-            agent_key="panthera", capability_name="test_write", arguments={"count": 4},
+            agent_key="cloud", capability_name="test_write", arguments={"count": 4},
             target="Test Write", risk="write", summary="Approve Test Write",
         )
 
@@ -118,14 +118,14 @@ class ActionControlApiTests(unittest.TestCase):
         self.assertEqual(self.handler_calls, 0)
 
     def test_supported_native_write_is_selectable_and_loop_creates_proposal(self) -> None:
-        selection = resolve_selected_tools("panthera", ["test_write"])
+        selection = resolve_selected_tools("cloud", ["test_write"])
         self.assertEqual([tool.name for tool in selection.descriptors], ["test_write"])
         provider = _ProposalProvider()
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Write", agent="panthera", selected_tool_names=["test_write"]),
-            provider, build_concrete_agent("panthera", native_effort=None),
+            AgentQueryRequest(prompt="Write", agent="cloud", selected_tool_names=["test_write"]),
+            provider, build_concrete_agent("cloud", native_effort=None),
             selected_tools=list(selection.descriptors), tool_selection=selection.diagnostics,
-            agent_key="panthera",
+            agent_key="cloud",
         )
         self.assertEqual(response.tool_outputs[0]["status"], "ok")
         output = response.tool_outputs[0]["output"]
@@ -152,9 +152,9 @@ class ActionControlApiTests(unittest.TestCase):
                 ),
                 lambda: None,
             )
-        native = resolve_selected_tools("panthera", ["unsupported_write"])
+        native = resolve_selected_tools("cloud", ["unsupported_write"])
         self.assertEqual(native.diagnostics.rejected_tools[0].code, "unavailable")
-        remote = resolve_selected_tools("panthera", ["remote_write"])
+        remote = resolve_selected_tools("cloud", ["remote_write"])
         self.assertEqual(remote.diagnostics.rejected_tools[0].code, "risk-rejected")
 
     def test_api_list_detail_approve_and_audit(self) -> None:

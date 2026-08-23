@@ -17,7 +17,6 @@ import {
 } from 'react'
 
 import { ApexLogo, type ApexLogoProps } from './components/ApexLogo'
-import { CelestialBackground } from './components/CelestialBackground'
 import { CortexWorkspace } from './components/CortexWorkspace'
 import { ApexAssistantRuntime, type ApexAssistantRunConfig, type ApexAssistantRuntimeHandle } from './components/ApexAssistantRuntime'
 import { BriefingDigest } from './components/BriefingDigest'
@@ -27,6 +26,7 @@ import { MarketTickerCard } from './components/MarketTickerCard'
 import { PreflightDialog } from './components/PreflightDialog'
 import { ReminderListRow } from './components/ReminderListRow'
 import { ReminderQuickAdd } from './components/ReminderQuickAdd'
+import { CelestialBackground } from './components/CelestialBackground'
 import { ReminderReviewDialog } from './components/ReminderReviewDialog'
 import { ReminderTaskDialog } from './components/ReminderTaskDialog'
 import { CompletedRemindersDialog } from './components/CompletedRemindersDialog'
@@ -65,8 +65,7 @@ import {
   resolveInitialAgentSelection,
 } from './lib/settings'
 import {
-  isFelisKey,
-  isPantheraKey,
+  isLocalAgentKey,
   resolveBriefingModeAvailability,
   resolveHomeQueryOverrides,
 } from './lib/agents'
@@ -159,12 +158,12 @@ function isCloudAgentKey(
   if (match) {
     return match.runtime === 'cloud'
   }
-  return isPantheraKey(agent)
+  return agent === 'cloud'
 }
 
 function synthesisAgentForMode(mode: BriefingMode): string | null {
-  if (mode === 'focused') return 'panthera'
-  if (mode === 'flash') return 'felis'
+  if (mode === 'focused') return 'cloud'
+  if (mode === 'flash') return 'local'
   return null
 }
 
@@ -179,13 +178,13 @@ function applyAskApexSettings(
     setPersonalContextEnabled: (agent: AgentKey, enabled: boolean) => void
   },
 ): void {
-  setters.setCloudEffort(askApex.panthera.effort)
-  setters.setPantheraModel(askApex.panthera.model)
-  setters.setFelisModel(askApex.felis?.model ?? 'gemma-4-E2B-Q4_K_M.gguf')
+  setters.setCloudEffort(askApex.cloud.effort)
+  setters.setPantheraModel(askApex.cloud.model)
+  setters.setFelisModel(askApex.local?.model ?? 'gemma-4-E2B-Q4_K_M.gguf')
   setters.setSandboxMode(askApex.sandbox_mode)
-  setters.setPantheraHostedTools({ ...askApex.panthera.hosted_tools })
-  setters.setPersonalContextEnabled('panthera', askApex.panthera.personal_context_enabled)
-  setters.setPersonalContextEnabled('felis', askApex.felis.personal_context_enabled)
+  setters.setPantheraHostedTools({ ...askApex.cloud.hosted_tools })
+  setters.setPersonalContextEnabled('cloud', askApex.cloud.personal_context_enabled)
+  setters.setPersonalContextEnabled('local', askApex.local.personal_context_enabled)
 }
 
 interface PersistAgentSettingsOptions {
@@ -194,7 +193,7 @@ interface PersistAgentSettingsOptions {
 
 export default function App(): ReactElement {
   const [reminderPulseCount, setReminderPulseCount] = useState(0)
-  const [activeAgent, setAgent] = useState<AgentKey>('panthera')
+  const [activeAgent, setAgent] = useState<AgentKey>('cloud')
   const [cloudEffort, setCloudEffort] = useState<CloudEffort>('medium')
   const [briefingMode, setBriefingMode] = useState<BriefingMode>('flash')
   const briefingModeSelectionTouchedRef = useRef(false)
@@ -209,7 +208,7 @@ export default function App(): ReactElement {
     x_search: true,
   })
   const [snapshotAttached, setSnapshotAttached] = useState(true)
-  const [personalContextEnabled, setPersonalContextEnabled] = useState<Record<AgentKey, boolean>>({ panthera: false, felis: false })
+  const [personalContextEnabled, setPersonalContextEnabled] = useState<Record<AgentKey, boolean>>({ cloud: false, local: false })
   const [draftPrompt, setDraftPrompt] = useState('')
   const [submissionPending, setSubmissionPending] = useState(false)
   const submissionPendingRef = useRef(false)
@@ -321,8 +320,8 @@ export default function App(): ReactElement {
   }, [mcpRuntime.status])
 
   const fullModelCatalog = useMemo(() => {
-    const cloud = agentsStatus.find((a) => a.key === 'panthera')?.model_catalog ?? []
-    const local = agentsStatus.find((a) => a.key === 'felis')?.model_catalog ?? []
+    const cloud = agentsStatus.find((a) => a.key === 'cloud')?.model_catalog ?? []
+    const local = agentsStatus.find((a) => a.key === 'local')?.model_catalog ?? []
     return [...cloud, ...local]
   }, [agentsStatus])
 
@@ -632,7 +631,7 @@ export default function App(): ReactElement {
     pipelineState?.system_load_throttled ?? system_load_throttled
   const liveSynthesis = pipelineState?.synthesis
   const localLifecycleBusy =
-    isFelisKey(activeQueryAgent) ||
+    isLocalAgentKey(activeQueryAgent) ||
     liveSynthesis?.phase === 'loading' ||
     liveSynthesis?.phase === 'generating'
 
@@ -657,7 +656,7 @@ export default function App(): ReactElement {
     loadingLocalAgent !== null ||
     (liveSynthesis?.loading === true &&
       (liveSynthesis.provider === 'llama_cpp' ||
-        (liveSynthesis.agent !== undefined && isFelisKey(liveSynthesis.agent))))
+        (liveSynthesis.agent !== undefined && isLocalAgentKey(liveSynthesis.agent))))
   const isLocalModelLoaded = activeLocalModel !== null
   const loadingDisplayName =
     loadingLocalAgent?.display_name ??
@@ -1266,7 +1265,7 @@ export default function App(): ReactElement {
 
   const handlePantheraModelChange = useCallback((model: string): void => {
     setPantheraModel(model)
-    const pantheraStatus = agentsStatus.find((agent) => agent.key === 'panthera')
+    const pantheraStatus = agentsStatus.find((agent) => agent.key === 'cloud')
     const entry = (pantheraStatus?.model_catalog ?? []).find((m) => m.model_id === model)
     let nextEffort = cloudEffort
     if (entry?.reasoning_options && entry.reasoning_options.length > 0) {
@@ -1276,21 +1275,21 @@ export default function App(): ReactElement {
       }
     }
     void persistAgentSettings({
-      panthera: { model, effort: nextEffort },
+      cloud: { model, effort: nextEffort },
     }, activeAgent, { refreshToolCatalog: true })
   }, [activeAgent, agentsStatus, cloudEffort, persistAgentSettings])
 
   const handleFelisModelChange = useCallback((model: string): void => {
     setFelisModel(model)
     void persistAgentSettings({
-      felis: { model },
+      local: { model },
     }, activeAgent, { refreshToolCatalog: true })
   }, [activeAgent, persistAgentSettings])
 
   const handleEffortChange = useCallback((effort: CloudEffort): void => {
     setCloudEffort(effort)
     void persistAgentSettings(
-      { panthera: { effort } },
+      { cloud: { effort } },
       activeAgent,
       { refreshToolCatalog: false },
     )
@@ -1299,7 +1298,7 @@ export default function App(): ReactElement {
   const handleHostedToolChange = useCallback((tool: HostedTool, enabled: boolean): void => {
     setPantheraHostedTools((current) => ({ ...current, [tool]: enabled }))
     void persistAgentSettings(
-      { panthera: { hosted_tools: { [tool]: enabled } } },
+      { cloud: { hosted_tools: { [tool]: enabled } } },
       activeAgent,
       { refreshToolCatalog: true },
     )
@@ -1315,9 +1314,9 @@ export default function App(): ReactElement {
   ): Promise<boolean> => {
     return persistAgentSettings(
       {
-        felis: { context_window: contextWindow },
+        local: { context_window: contextWindow },
       },
-      'felis',
+      'local',
       { refreshToolCatalog: true },
     )
   }, [persistAgentSettings])
@@ -1327,9 +1326,9 @@ export default function App(): ReactElement {
   ): Promise<boolean> => {
     return persistAgentSettings(
       {
-        felis: { reasoning_mode: reasoningMode },
+        local: { reasoning_mode: reasoningMode },
       },
-      'felis',
+      'local',
       { refreshToolCatalog: false },
     )
   }, [persistAgentSettings])

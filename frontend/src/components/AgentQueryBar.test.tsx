@@ -11,7 +11,7 @@ import type {
 import { AgentQueryBar, CortexQueryRim } from './AgentQueryBar'
 
 const felis: AgentStatus = {
-  key: 'felis',
+  key: 'local',
   display_name: 'Apex Felis',
   description: 'Balanced local profile.',
   configured_model: 'gemma-4-E2B-Q4_K_M.gguf',
@@ -55,7 +55,7 @@ const felis: AgentStatus = {
 }
 
 const catalog: ToolCatalog = {
-  agent: 'felis',
+  agent: 'local',
   groups: [],
   tools: [],
   profiles: [],
@@ -68,7 +68,7 @@ const catalog: ToolCatalog = {
 }
 
 const overflowPreflight: ToolPreflightEstimate = {
-  agent: 'felis',
+  agent: 'local',
   selection: {
     requested_tool_names: ['get_weather_forecast'],
     offered_tool_names: ['get_weather_forecast'],
@@ -100,7 +100,7 @@ function renderBar(
 ): ReturnType<typeof render> {
   return render(
     <AgentQueryBar
-      activeAgent="felis"
+      activeAgent="local"
       onSubmit={onSubmit}
       agentsStatus={[felis]}
       catalog={catalog}
@@ -137,7 +137,7 @@ describe('AgentQueryBar unified tool selection', () => {
 
     expect(onSubmit).toHaveBeenCalledWith(
       'Check status',
-      'felis',
+      'local',
       ['get_weather_forecast'],
       'custom_weather',
     )
@@ -208,7 +208,7 @@ describe('AgentQueryBar unified tool selection', () => {
 
     view.rerender(
       <AgentQueryBar
-        activeAgent="felis"
+        activeAgent="local"
         onSubmit={onSubmit}
         agentsStatus={[felis]}
         catalog={catalog}
@@ -223,7 +223,7 @@ describe('AgentQueryBar unified tool selection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send query' }))
     expect(onSubmit).toHaveBeenCalledWith(
       'Shorten this prompt',
-      'felis',
+      'local',
       ['get_weather_forecast'],
       'custom_weather',
     )

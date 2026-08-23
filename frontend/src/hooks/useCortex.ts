@@ -15,7 +15,7 @@ export interface UseCortexResult {
   refreshAgentsStatus: () => Promise<void>
   unloadLocalModel: () => Promise<boolean>
   loadLocalModel: () => Promise<boolean>
-  verifyCloudAgent: (agent: 'panthera') => Promise<boolean>
+  verifyCloudAgent: (agent: 'cloud') => Promise<boolean>
 }
 
 function parseAgentStatusList(body: unknown): AgentStatus[] {
@@ -23,7 +23,7 @@ function parseAgentStatusList(body: unknown): AgentStatus[] {
   return body.filter((item): item is AgentStatus => {
     if (!item || typeof item !== 'object') return false
     const record = item as Record<string, unknown>
-    return (record.key === 'panthera' || record.key === 'felis') && typeof record.display_name === 'string'
+    return (record.key === 'cloud' || record.key === 'local') && typeof record.display_name === 'string'
   })
 }
 
@@ -89,7 +89,7 @@ export function useCortex(agentsPollingEnabled = false): UseCortexResult {
     } finally { setIsLocalModelActionPending(false) }
   }, [isLocalModelActionPending, refreshAgentsStatus])
 
-  const verifyCloudAgent = useCallback(async (agent: 'panthera'): Promise<boolean> => {
+  const verifyCloudAgent = useCallback(async (agent: 'cloud'): Promise<boolean> => {
     if (verifyingCloudAgent) return false
     setVerifyingCloudAgent(agent)
     try {

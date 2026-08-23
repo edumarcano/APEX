@@ -13,10 +13,12 @@ interface AgentSelectorProps {
   agentsStatusHydrated: boolean
   isQuerying: boolean
   verifyingAgent?: AgentKey | null
-  onVerify?: (agent: 'panthera') => Promise<boolean>
+  onVerify?: (agent: 'cloud') => Promise<boolean>
 }
 
 const AGENT_TAGS: Record<string, string> = {
+  cloud: 'Cloud · Generalist',
+  local: 'Local · Private',
   panthera: 'Cloud · Generalist',
   felis: 'Local · Private',
 }
@@ -28,7 +30,7 @@ export function AgentSelector({
   agentsStatusHydrated,
   isQuerying,
 }: AgentSelectorProps): ReactElement {
-  const durableAgents: AgentKey[] = ['panthera', 'felis']
+  const durableAgents: AgentKey[] = ['cloud', 'local']
 
   if (!agentsStatusHydrated && agentsStatus.length === 0) {
     return (
@@ -48,8 +50,8 @@ export function AgentSelector({
           const status = agentsStatus.find((agent) => agent.key === key)
           const selected = key === activeAgent
           const selectable = status ? isAgentIdentitySelectable(status) : true
-          const fullName = status?.display_name || (key === 'panthera' ? 'Apex Panthera' : 'Apex Felis')
-          const tag = AGENT_TAGS[key] || (key === 'panthera' ? 'Cloud · Generalist' : 'Local · Private')
+          const fullName = status?.display_name || (key === 'cloud' ? 'Apex Panthera' : 'Apex Felis')
+          const tag = AGENT_TAGS[key] || (key === 'cloud' ? 'Cloud · Generalist' : 'Local · Private')
 
           return (
             <button

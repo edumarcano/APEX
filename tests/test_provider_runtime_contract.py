@@ -50,16 +50,16 @@ from core.agent.types import AgentMessage, AgentQueryRequest, TokenUsage, ToolCa
 from core.agent.model_catalog import get_model_profile
 
 def _concrete_profile(key_or_model: str = "gpt-5.6-luna"):
-    if key_or_model == "panthera":
+    if key_or_model in {"panthera", "cloud"}:
         model_id = "gpt-5.6-luna"
-    elif key_or_model == "felis":
+    elif key_or_model in {"felis", "local"}:
         model_id = "gemma-4-E2B-Q4_K_M.gguf"
     else:
         model_id = key_or_model
     model_profile = get_model_profile(model_id)
     assert model_profile is not None
     native = resolve_effort(model_profile, None)
-    agent_key = "felis" if model_profile.runtime == "local" else "panthera"
+    agent_key = "local" if model_profile.runtime == "local" else "cloud"
     return build_concrete_agent(
         agent_key,
         native_effort=native,
@@ -158,7 +158,7 @@ class ProviderContractTests(unittest.TestCase):
             self.assertTrue(refs)
             selected = next(iter(refs))
             self.assertEqual(selected.provider, profile.provider)
-            self.assertEqual(agent_key_for_local_model_ref(selected), "felis")
+            self.assertEqual(agent_key_for_local_model_ref(selected), "local")
 
         known = known_local_model_refs()
         self.assertTrue(known)
@@ -170,7 +170,7 @@ class ProviderContractTests(unittest.TestCase):
 
     def test_local_reasoning_mode_reaches_llama_cpp_profile(self) -> None:
         focused = build_concrete_agent(
-            "felis",
+            "local",
             native_effort=None,
             local_reasoning_mode="focused",
             model_id="gemma-4-E2B-Q4_K_M.gguf",
@@ -181,7 +181,7 @@ class ProviderContractTests(unittest.TestCase):
         for model_id in ("gemma-4-E2B-Q4_K_M.gguf", "gemma-4-E4B-Q4_K_M.gguf", "Qwen3.5-4B-Q4_K_M.gguf"):
             with self.subTest(model=model_id):
                 profile = build_concrete_agent(
-                    "felis",
+                    "local",
                     native_effort=None,
                     local_reasoning_mode="focused",
                     model_id=model_id,
@@ -225,7 +225,7 @@ class ProviderContractTests(unittest.TestCase):
 
         provider = Provider()
         response = run_agent_loop(
-            AgentQueryRequest(prompt="hello", agent="felis"),
+            AgentQueryRequest(prompt="hello", agent="local"),
             provider,
             profile,  # type: ignore[arg-type]
         )
@@ -285,7 +285,7 @@ class ProviderContractTests(unittest.TestCase):
                 )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Weather?", agent="panthera"),
+            AgentQueryRequest(prompt="Weather?", agent="cloud"),
             Provider(),
             profile,
             tools_dispatcher=lambda _name, _args: {"summary": "clear"},
@@ -306,9 +306,9 @@ class ProviderContractTests(unittest.TestCase):
         gemini_keys = {
             key
             for key in AGENT_SPECS
-            if key == "panthera"
+            if key == "cloud"
         }
-        self.assertEqual(gemini_keys, {"panthera"})
+        self.assertEqual(gemini_keys, {"cloud"})
 
     def test_provider_tool_events_reach_the_trace_with_numeric_durations(self) -> None:
         class Provider:
@@ -333,7 +333,7 @@ class ProviderContractTests(unittest.TestCase):
                 )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Search?", agent="panthera"),
+            AgentQueryRequest(prompt="Search?", agent="cloud"),
             Provider(),
             _concrete_profile("gemini-3.6-flash"),
         )
@@ -477,7 +477,7 @@ class PricingRegistryTests(unittest.TestCase):
 
     def test_gemini_flash_lite_uses_free_tier_billing(self) -> None:
         pricing = agent_pricing(
-            "panthera",
+            "cloud",
             model="gemini-3.5-flash-lite",
             provider="gemini",
         )
@@ -542,7 +542,7 @@ class PricingRegistryTests(unittest.TestCase):
             model="gemini-3.5-flash-lite",
             configured_model="gemini-3.5-flash-lite",
             provider="gemini",
-            agent_key="panthera",
+            agent_key="cloud",
             usage=TokenUsage(input_tokens=1000, output_tokens=200),
         )
         self.assertEqual(estimate.token_cost, 0.0)
@@ -901,10 +901,10 @@ class ResponsesAdapterTests(unittest.TestCase):
 
 
 class PublicRosterTests(unittest.TestCase):
-    def test_unified_registry_exposes_panthera_and_felis(self) -> None:
-        self.assertEqual(set(AGENT_SPECS), {"panthera", "felis"})
-        self.assertEqual(AGENT_SPECS["panthera"].runtime, "cloud")
-        self.assertEqual(AGENT_SPECS["felis"].runtime, "local")
+    def test_unified_registry_exposes_cloud_and_local(self) -> None:
+        self.assertEqual(set(AGENT_SPECS), {"cloud", "local"})
+        self.assertEqual(AGENT_SPECS["cloud"].runtime, "cloud")
+        self.assertEqual(AGENT_SPECS["local"].runtime, "local")
 
 
 if __name__ == "__main__":

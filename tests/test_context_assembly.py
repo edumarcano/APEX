@@ -275,18 +275,18 @@ class ContextAssemblyTests(unittest.TestCase):
         from core.api.models import ToolPreflightRequest
         from core.settings.models import (
             AgentSettingsPatch,
-            PantheraSettingsPatch,
+            CloudAgentSettingsPatch,
             SettingsPatch,
         )
         from core.settings import get_settings_store
 
         store = get_settings_store()
         try:
-            # Opt-in enabled for Panthera
+            # Opt-in enabled for Cloud
             store.apply_patch(
                 SettingsPatch(
                     ask_apex=AgentSettingsPatch(
-                        panthera=PantheraSettingsPatch(
+                        cloud=CloudAgentSettingsPatch(
                             personal_context_enabled=True
                         )
                     )
@@ -294,17 +294,17 @@ class ContextAssemblyTests(unittest.TestCase):
             )
             resp_enabled = build_tool_preflight(
                 ToolPreflightRequest(
-                    agent="panthera",
+                    agent="cloud",
                     prompt="Hello world",
                 )
             )
             self.assertEqual(resp_enabled.breakdown.retrieved_context, 1500)
 
-            # Opt-in disabled for Panthera
+            # Opt-in disabled for Cloud
             store.apply_patch(
                 SettingsPatch(
                     ask_apex=AgentSettingsPatch(
-                        panthera=PantheraSettingsPatch(
+                        cloud=CloudAgentSettingsPatch(
                             personal_context_enabled=False
                         )
                     )
@@ -312,7 +312,7 @@ class ContextAssemblyTests(unittest.TestCase):
             )
             resp_disabled = build_tool_preflight(
                 ToolPreflightRequest(
-                    agent="panthera",
+                    agent="cloud",
                     prompt="Hello world",
                 )
             )
@@ -321,7 +321,7 @@ class ContextAssemblyTests(unittest.TestCase):
             store.apply_patch(
                 SettingsPatch(
                     ask_apex=AgentSettingsPatch(
-                        panthera=PantheraSettingsPatch(
+                        cloud=CloudAgentSettingsPatch(
                             personal_context_enabled=False
                         )
                     )

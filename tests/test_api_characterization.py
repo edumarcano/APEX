@@ -41,7 +41,7 @@ class ApiCharacterizationBase(unittest.TestCase):
                     "market": True,
                 },
                 "modules": {"football": False, "f1": True},
-                "ask_apex": {"enabled": True, "cloud_agent": "panthera"},
+                "ask_apex": {"enabled": True, "agent": "cloud"},
                 "tts_settings": {
                     "primary_tts": "pyttsx3",
                     "voice_gender": "female",

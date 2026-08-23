@@ -1,5 +1,5 @@
 import {
-  isPantheraKey,
+  isCloudAgentKey,
   runtimeForAgentKey,
   usesSandboxHistory,
 } from './agents'
@@ -33,9 +33,9 @@ import type {
 } from '../types/settings'
 import { MCP_PROVIDER_IDS } from './mcpProviders'
 
-const VALID_AGENT_KEYS: readonly AgentKey[] = ['panthera', 'felis']
+const VALID_AGENT_KEYS: readonly AgentKey[] = ['cloud', 'local']
 
-export { isLocalAgentKey, isPantheraKey, isFelisKey } from './agents'
+export { isLocalAgentKey, isCloudAgentKey, isPantheraKey, isFelisKey } from './agents'
 
 export function resolveInitialAgentSelection(
   alreadyHydrated: boolean,
@@ -68,7 +68,7 @@ export function resolveAppliedAgentSelection(
   return {
     runtime: runtimeForAgentKey(agent),
     agent,
-    effort: isPantheraKey(agent) ? settings.panthera.effort : null,
+    effort: isCloudAgentKey(agent) ? settings.cloud.effort : null,
     ...(response.dev_mode_active
       ? { sandboxMode: sandboxMode ?? settings.sandbox_mode }
       : {}),
@@ -86,11 +86,11 @@ export function resolveHistoryPartition(
   return usesSandboxHistory(devModeActive, sandboxMode) ? 'sandbox' : 'production'
 }
 
-const DEV_MODE_AGENT_SETTINGS_KEYS = new Set(['panthera', 'felis', 'sandbox_mode'])
+const DEV_MODE_AGENT_SETTINGS_KEYS = new Set(['cloud', 'local', 'sandbox_mode'])
 
 /**
  * Keep session-only agent selection out of persisted DEV_MODE settings,
- * while allowing nested Panthera and Felis preferences to remain configurable.
+ * while allowing nested Cloud and Local agent preferences to remain configurable.
  */
 export function filterAgentSettingsForDevMode(
   agentSettings: Record<string, unknown>,
@@ -170,7 +170,7 @@ function isVoiceMode(value: unknown): value is VoiceMode {
   )
 }
 
-function parsePantheraHostedTools(value: unknown): RuntimeSettings['ask_apex']['panthera']['hosted_tools'] | null {
+function parseCloudHostedTools(value: unknown): RuntimeSettings['ask_apex']['cloud']['hosted_tools'] | null {
   if (!isRecord(value)) {
     return null
   }
@@ -188,7 +188,7 @@ function parsePantheraHostedTools(value: unknown): RuntimeSettings['ask_apex']['
   }
 }
 
-function parsePantheraSettings(value: unknown): RuntimeSettings['ask_apex']['panthera'] | null {
+function parseCloudSettings(value: unknown): RuntimeSettings['ask_apex']['cloud'] | null {
   if (!isRecord(value)) {
     return null
   }
@@ -198,11 +198,16 @@ function parsePantheraSettings(value: unknown): RuntimeSettings['ask_apex']['pan
   if (!isCloudEffort(value.effort)) {
     return null
   }
-  const hostedTools = parsePantheraHostedTools(value.hosted_tools)
+  const hostedTools = parseCloudHostedTools(value.hosted_tools)
   if (!hostedTools) {
     return null
   }
+  const designation =
+    typeof value.designation === 'string' && value.designation.trim()
+      ? value.designation.trim()
+      : 'Panthera'
   return {
+    designation,
     model: value.model.trim(),
     effort: value.effort,
     personal_context_enabled: value.personal_context_enabled === true,
@@ -210,7 +215,7 @@ function parsePantheraSettings(value: unknown): RuntimeSettings['ask_apex']['pan
   }
 }
 
-function parseFelisSettings(value: unknown): RuntimeSettings['ask_apex']['felis'] | null {
+function parseLocalSettings(value: unknown): RuntimeSettings['ask_apex']['local'] | null {
   if (!isRecord(value)) {
     return null
   }
@@ -224,7 +229,12 @@ function parseFelisSettings(value: unknown): RuntimeSettings['ask_apex']['felis'
   ) {
     return null
   }
+  const designation =
+    typeof value.designation === 'string' && value.designation.trim()
+      ? value.designation.trim()
+      : 'Felis'
   return {
+    designation,
     model: value.model.trim(),
     context_window: value.context_window,
     reasoning_mode: value.reasoning_mode,
@@ -456,9 +466,9 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   if (typeof value.ask_apex.sandbox_mode !== 'boolean') {
     return null
   }
-  const panthera = parsePantheraSettings(value.ask_apex.panthera)
-  const felis = parseFelisSettings(value.ask_apex.felis)
-  if (!panthera || !felis) {
+  const cloud = parseCloudSettings(value.ask_apex.cloud)
+  const local = parseLocalSettings(value.ask_apex.local)
+  if (!cloud || !local) {
     return null
   }
   if (!isBriefingMode(value.briefing.default_mode)) {
@@ -483,8 +493,8 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
       enabled: value.ask_apex.enabled,
       agent: value.ask_apex.agent,
       sandbox_mode: value.ask_apex.sandbox_mode,
-      panthera,
-      felis,
+      cloud,
+      local,
     },
     ...(hasToolProfiles ? { tool_profiles } : {}),
     briefing: {
@@ -518,11 +528,11 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
     },
     ask_apex: {
       ...settings.ask_apex,
-      panthera: {
-        ...settings.ask_apex.panthera,
-        hosted_tools: { ...settings.ask_apex.panthera.hosted_tools },
+      cloud: {
+        ...settings.ask_apex.cloud,
+        hosted_tools: { ...settings.ask_apex.cloud.hosted_tools },
       },
-      felis: { ...settings.ask_apex.felis },
+      local: { ...settings.ask_apex.local },
     },
     ...(settings.tool_profiles
       ? {

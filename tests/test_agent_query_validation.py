@@ -32,7 +32,7 @@ class LocalEffortRejectionTests(unittest.TestCase):
                 query_agent(
                     AgentQueryRequest(
                         prompt="hello",
-                        agent="felis",
+                        agent="local",
                         effort="medium",
                     )
                 )
@@ -97,7 +97,7 @@ class SandboxPolicyTests(unittest.TestCase):
             query_agent(
                 AgentQueryRequest(
                     prompt="hello",
-                    agent="panthera",
+                    agent="cloud",
                     snapshot_id="snap-1",
                     history=[
                         AgentMessage(role="user", content="prior production turn")
@@ -151,7 +151,7 @@ class SandboxPolicyTests(unittest.TestCase):
             query_agent(
                 AgentQueryRequest(
                     prompt="hello",
-                    agent="felis",
+                    agent="local",
                     history=[
                         AgentMessage(role="user", content="prior production turn")
                     ],
@@ -180,7 +180,7 @@ class SandboxPolicyTests(unittest.TestCase):
             )
 
         filtered = filter_agent_capabilities(
-            "panthera",
+            "cloud",
             [
                 descriptor("get_weather_forecast"),
                 descriptor("get_active_reminders"),
@@ -200,26 +200,26 @@ class SandboxPolicyTests(unittest.TestCase):
             ],
         )
 
-    def test_hosted_tool_policy_matches_panthera_models_and_toggles(self) -> None:
+    def test_hosted_tool_policy_matches_cloud_models_and_toggles(self) -> None:
         with mock.patch(
             "core.agent.catalog.resolve_selected_model_profile"
         ) as resolve_profile:
             resolve_profile.return_value = get_model_profile("gemini-3.6-flash")
             self.assertEqual(
                 hosted_tools_for_agent(
-                    "panthera", google_search_enabled=True
+                    "cloud", google_search_enabled=True
                 ),
                 frozenset({"google_search", "google_maps"}),
             )
             self.assertEqual(
                 hosted_tools_for_agent(
-                    "panthera", google_search_enabled=False
+                    "cloud", google_search_enabled=False
                 ),
                 frozenset({"google_maps"}),
             )
             self.assertEqual(
                 hosted_tools_for_agent(
-                    "panthera",
+                    "cloud",
                     google_search_enabled=False,
                     google_maps_enabled=False,
                 ),
@@ -229,13 +229,13 @@ class SandboxPolicyTests(unittest.TestCase):
             resolve_profile.return_value = get_model_profile("grok-4.3")
             self.assertEqual(
                 hosted_tools_for_agent(
-                    "panthera", x_search_enabled=True
+                    "cloud", x_search_enabled=True
                 ),
                 frozenset({"x_search"}),
             )
             self.assertEqual(
                 hosted_tools_for_agent(
-                    "panthera",
+                    "cloud",
                     x_search_enabled=False,
                 ),
                 frozenset(),
@@ -244,7 +244,7 @@ class SandboxPolicyTests(unittest.TestCase):
             resolve_profile.return_value = get_model_profile("grok-4.5")
             self.assertEqual(
                 hosted_tools_for_agent(
-                    "panthera",
+                    "cloud",
                     x_search_enabled=False,
                 ),
                 frozenset(),

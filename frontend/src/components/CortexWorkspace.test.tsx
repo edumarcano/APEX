@@ -58,11 +58,11 @@ const felisModelCatalog = [
 ]
 
 const panthera: AgentStatus = {
-  key: 'panthera', display_name: 'Apex Panthera', description: 'Cloud profile.', configured_model: 'gpt-5.6-luna', sort_order: 1, capabilities: ['Generalist', 'Planning'], native_tools: {}, provider: 'openai', runtime: 'cloud', model_stability: 'stable', reasoning_options: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'], default_reasoning: 'medium', context_window: null, context_window_options: null, context_window_high_resource_options: null, default_context_window: null, reasoning_mode: null, reasoning_mode_options: null, default_reasoning_mode: null, status: 'configured', status_source: 'configuration', status_checked_at: null, provider_account_tier: null, pricing: { currency: 'USD', pricing_version: '2026.08.02', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 1.2, cached_input_per_million: 0.02, long_context_threshold_tokens: 272000, long_context_input_per_million: 0.4, long_context_output_per_million: 1.8, long_context_cached_input_per_million: 0.04 }, active: false, loading: false, reason: null, idle_unload_remaining_seconds: null, loaded_model: null, model_catalog: pantheraModelCatalog,
+  key: 'cloud', display_name: 'Apex Panthera', description: 'Cloud profile.', configured_model: 'gpt-5.6-luna', sort_order: 1, capabilities: ['Generalist', 'Planning'], native_tools: {}, provider: 'openai', runtime: 'cloud', model_stability: 'stable', reasoning_options: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'], default_reasoning: 'medium', context_window: null, context_window_options: null, context_window_high_resource_options: null, default_context_window: null, reasoning_mode: null, reasoning_mode_options: null, default_reasoning_mode: null, status: 'configured', status_source: 'configuration', status_checked_at: null, provider_account_tier: null, pricing: { currency: 'USD', pricing_version: '2026.08.02', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 1.2, cached_input_per_million: 0.02, long_context_threshold_tokens: 272000, long_context_input_per_million: 0.4, long_context_output_per_million: 1.8, long_context_cached_input_per_million: 0.04 }, active: false, loading: false, reason: null, idle_unload_remaining_seconds: null, loaded_model: null, model_catalog: pantheraModelCatalog,
 }
-const felis: AgentStatus = { ...panthera, key: 'felis', display_name: 'Apex Felis', configured_model: 'gemma-4-E2B-Q4_K_M.gguf', provider: 'llama_cpp', runtime: 'local', sort_order: 2, capabilities: ['Local', 'Private'], reasoning_options: null, default_reasoning: null, status: 'available', status_source: 'runtime', context_window: 16384, context_window_options: [4096, 16384, 32768, 131072], context_window_high_resource_options: [131072], default_context_window: 16384, reasoning_mode: 'none', reasoning_mode_options: ['none', 'focused'], default_reasoning_mode: 'none', pricing: { ...panthera.pricing, billing_basis: 'local', input_per_million: 0, output_per_million: 0 }, model_catalog: felisModelCatalog }
+const felis: AgentStatus = { ...panthera, key: 'local', display_name: 'Apex Felis', configured_model: 'gemma-4-E2B-Q4_K_M.gguf', provider: 'llama_cpp', runtime: 'local', sort_order: 2, capabilities: ['Local', 'Private'], reasoning_options: null, default_reasoning: null, status: 'available', status_source: 'runtime', context_window: 16384, context_window_options: [4096, 16384, 32768, 131072], context_window_high_resource_options: [131072], default_context_window: 16384, reasoning_mode: 'none', reasoning_mode_options: ['none', 'focused'], default_reasoning_mode: 'none', pricing: { ...panthera.pricing, billing_basis: 'local', input_per_million: 0, output_per_million: 0 }, model_catalog: felisModelCatalog }
 const toolCatalog: ToolCatalog = {
-  agent: 'panthera',
+  agent: 'cloud',
   groups: [{
     id: 'family:schedule',
     label: 'Schedule',
@@ -134,7 +134,7 @@ const toolCatalog: ToolCatalog = {
 
 function workspaceProps(overrides: Partial<ComponentProps<typeof CortexWorkspace>> = {}): ComponentProps<typeof CortexWorkspace> {
   return {
-    activeAgent: 'panthera',
+    activeAgent: 'cloud',
     cloudEffort: 'medium',
     pantheraModel: 'gpt-5.6-luna',
     felisModel: 'gemma-4-E2B-Q4_K_M.gguf',
@@ -174,7 +174,7 @@ function workspaceProps(overrides: Partial<ComponentProps<typeof CortexWorkspace
     onLocalReasoningModeChange: vi.fn().mockResolvedValue(true),
     actions: { actions: [], pendingCount: 0, isLoading: false, error: null, selectedActionId: null, detail: null, isDetailLoading: false, mutation: null, setSelectedActionId: vi.fn(), refresh: vi.fn().mockResolvedValue(undefined), resolve: vi.fn().mockResolvedValue(undefined) },
     demoModeActive: false,
-    assistantRunConfig: { agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null },
+    assistantRunConfig: { agent: 'cloud', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null },
     ...overrides,
   }
 }
@@ -209,7 +209,7 @@ describe('CortexWorkspace', () => {
 
   it('collapses response information until it is explicitly expanded', async () => {
     const metadata: AgentQueryMetadata = {
-      agent: { key: 'panthera', version: null, provider: 'gemini', configuredModel: 'gemini-2.5-pro', resolvedModel: 'gemini-2.5-pro', requestedEffort: null, resolvedEffort: null },
+      agent: { key: 'cloud', version: null, provider: 'gemini', configuredModel: 'gemini-2.5-pro', resolvedModel: 'gemini-2.5-pro', requestedEffort: null, resolvedEffort: null },
       usage: { inputTokens: 120, cachedInputTokens: null, reasoningTokens: null, outputTokens: 30, totalTokens: 150 },
       timing: { totalMs: 820, providerMs: 700, apexToolMs: 40 },
       cost: { tokenCost: 0.01, hostedToolCost: 0, totalCost: 0.01, currency: 'USD', pricingVersion: 'v1', completeness: 'complete' },
@@ -257,35 +257,35 @@ describe('CortexWorkspace', () => {
     const felisRadio = screen.getByRole('radio', { name: /Apex Felis.*Local · Private/i })
     expect(felisRadio).toBeInTheDocument()
     await user.click(felisRadio)
-    expect(onAgentChange).toHaveBeenCalledWith('felis')
+    expect(onAgentChange).toHaveBeenCalledWith('local')
   })
 
   it('uses backend pricing, effort options, and verification actions on the model selector', async () => {
     const onEffortChange = vi.fn()
     const onVerifyCloudAgent = vi.fn().mockResolvedValue(true)
     const user = userEvent.setup()
-    renderWorkspace({ activeAgent: 'panthera', agentsStatus: [panthera, felis], onEffortChange, onVerifyCloudAgent })
+    renderWorkspace({ activeAgent: 'cloud', agentsStatus: [panthera, felis], onEffortChange, onVerifyCloudAgent })
 
     expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toBeEnabled()
     await user.selectOptions(screen.getByRole('combobox', { name: 'Reasoning effort' }), 'xhigh')
     expect(onEffortChange).toHaveBeenCalledWith('xhigh')
     expect(screen.getByText('$0.20/M in · $1.20/M out')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Verify' }))
-    expect(onVerifyCloudAgent).toHaveBeenCalledWith('panthera')
+    expect(onVerifyCloudAgent).toHaveBeenCalledWith('cloud')
   })
 
   it('exposes model selection with rich model browser popover', async () => {
     const user = userEvent.setup()
     const onPantheraModelChange = vi.fn()
-    const { rerender } = renderWorkspace({ activeAgent: 'panthera', onPantheraModelChange })
+    const { rerender } = renderWorkspace({ activeAgent: 'cloud', onPantheraModelChange })
 
     const modelRegion = screen.getByRole('region', { name: 'Model selection' })
     expect(modelRegion).toBeInTheDocument()
     expect(within(modelRegion).getByText('GPT-5.6 Luna')).toBeInTheDocument()
     await user.click(within(modelRegion).getByRole('button', { expanded: false }))
-    expect(screen.getByRole('listbox', { name: 'Select model for panthera' })).toBeInTheDocument()
+    expect(screen.getByRole('listbox', { name: 'Select model for cloud' })).toBeInTheDocument()
 
-    const felisProps = workspaceProps({ activeAgent: 'felis', agentsStatus: [felis] })
+    const felisProps = workspaceProps({ activeAgent: 'local', agentsStatus: [felis] })
     rerender(
       <ApexAssistantRuntime config={felisProps.assistantRunConfig}>
         <CortexWorkspace {...felisProps} />
@@ -295,20 +295,20 @@ describe('CortexWorkspace', () => {
     expect(within(felisModelRegion).getAllByText('Gemma 4 E2B').length).toBeGreaterThanOrEqual(1)
   })
 
-  it('keeps agent marks accessible for Panthera and Felis', () => {
+  it('keeps agent marks accessible for Cloud and Local agents', () => {
     renderWorkspace({ agentsStatus: [panthera, felis] })
 
-    expect(screen.getAllByLabelText('Panthera agent mark').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByLabelText('Felis agent mark').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByLabelText('Cloud agent mark').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByLabelText('Local agent mark').length).toBeGreaterThanOrEqual(1)
   })
 
   it('shows local lifecycle controls only for local profiles and disables them during activity', () => {
     const onLoadLocalModel = vi.fn().mockResolvedValue(true)
-    const { rerender } = renderWorkspace({ activeAgent: 'felis', agentsStatus: [felis], onLoadLocalModel })
+    const { rerender } = renderWorkspace({ activeAgent: 'local', agentsStatus: [felis], onLoadLocalModel })
     expect(screen.getByLabelText('Local model lifecycle')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Load model' })).toBeEnabled()
 
-    const busyProps = workspaceProps({ activeAgent: 'felis', agentsStatus: [felis], lifecycleBusy: true, onLoadLocalModel })
+    const busyProps = workspaceProps({ activeAgent: 'local', agentsStatus: [felis], lifecycleBusy: true, onLoadLocalModel })
     rerender(
       <ApexAssistantRuntime config={busyProps.assistantRunConfig}>
         <CortexWorkspace {...busyProps} />
@@ -326,11 +326,11 @@ describe('CortexWorkspace', () => {
   })
 
   it('makes every local lifecycle state explicit and only marks transitions as active', () => {
-    const { rerender } = renderWorkspace({ activeAgent: 'felis', agentsStatus: [felis] })
+    const { rerender } = renderWorkspace({ activeAgent: 'local', agentsStatus: [felis] })
     const lifecycleRegion = screen.getByLabelText('Local model lifecycle')
     expect(within(lifecycleRegion).getByText('Unloaded')).toBeInTheDocument()
 
-    const loadedProps = workspaceProps({ activeAgent: 'felis', agentsStatus: [{ ...felis, active: true }] })
+    const loadedProps = workspaceProps({ activeAgent: 'local', agentsStatus: [{ ...felis, active: true }] })
     rerender(
       <ApexAssistantRuntime config={loadedProps.assistantRunConfig}>
         <CortexWorkspace {...loadedProps} />
@@ -338,7 +338,7 @@ describe('CortexWorkspace', () => {
     )
     expect(within(screen.getByLabelText('Local model lifecycle')).getByText('Loaded')).toBeInTheDocument()
 
-    const loadingProps = workspaceProps({ activeAgent: 'felis', agentsStatus: [{ ...felis, loading: true }] })
+    const loadingProps = workspaceProps({ activeAgent: 'local', agentsStatus: [{ ...felis, loading: true }] })
     rerender(
       <ApexAssistantRuntime config={loadingProps.assistantRunConfig}>
         <CortexWorkspace {...loadingProps} />
@@ -346,7 +346,7 @@ describe('CortexWorkspace', () => {
     )
     expect(within(screen.getByLabelText('Local model lifecycle')).getByText('Loading…')).toBeInTheDocument()
 
-    const unavailableProps = workspaceProps({ activeAgent: 'felis', agentsStatus: [{ ...felis, status: 'ollama_unreachable', reason: 'Ollama is offline' }] })
+    const unavailableProps = workspaceProps({ activeAgent: 'local', agentsStatus: [{ ...felis, status: 'ollama_unreachable', reason: 'Ollama is offline' }] })
     rerender(
       <ApexAssistantRuntime config={unavailableProps.assistantRunConfig}>
         <CortexWorkspace {...unavailableProps} />
@@ -358,7 +358,7 @@ describe('CortexWorkspace', () => {
 
   it('shows the active local model auto-unload countdown in the lifecycle card', () => {
     vi.useFakeTimers()
-    const { rerender } = renderWorkspace({ activeAgent: 'felis', agentsStatus: [{ ...felis, active: true, idle_unload_remaining_seconds: 300 }] })
+    const { rerender } = renderWorkspace({ activeAgent: 'local', agentsStatus: [{ ...felis, active: true, idle_unload_remaining_seconds: 300 }] })
     expect(screen.getByText('Auto-unload in 05:00')).toBeInTheDocument()
 
     act(() => {
@@ -366,7 +366,7 @@ describe('CortexWorkspace', () => {
     })
     expect(screen.getByText('Auto-unload in 04:59')).toBeInTheDocument()
 
-    const busyProps = workspaceProps({ activeAgent: 'felis', lifecycleBusy: true, agentsStatus: [{ ...felis, active: true, idle_unload_remaining_seconds: 299 }] })
+    const busyProps = workspaceProps({ activeAgent: 'local', lifecycleBusy: true, agentsStatus: [{ ...felis, active: true, idle_unload_remaining_seconds: 299 }] })
     rerender(
       <ApexAssistantRuntime config={busyProps.assistantRunConfig}>
         <CortexWorkspace {...busyProps} />
@@ -375,12 +375,12 @@ describe('CortexWorkspace', () => {
     expect(screen.getByText('In use · auto-unload paused')).toBeInTheDocument()
   })
 
-  it('shows context and reasoning selectors for Felis', async () => {
+  it('shows context and reasoning selectors for Local Agent', async () => {
     const user = userEvent.setup()
     const onLocalContextWindowChange = vi.fn().mockResolvedValue(true)
     const onLocalReasoningModeChange = vi.fn().mockResolvedValue(true)
     renderWorkspace({
-      activeAgent: 'felis',
+      activeAgent: 'local',
       agentsStatus: [felis],
       onLocalContextWindowChange,
       onLocalReasoningModeChange,
@@ -412,7 +412,7 @@ describe('CortexWorkspace', () => {
     const onLocalContextWindowChange = vi.fn().mockReturnValue(contextPersistence)
     const onLocalReasoningModeChange = vi.fn().mockReturnValue(reasoningPersistence)
     renderWorkspace({
-      activeAgent: 'felis',
+      activeAgent: 'local',
       agentsStatus: [felis],
       onLocalContextWindowChange,
       onLocalReasoningModeChange,
@@ -441,7 +441,7 @@ describe('CortexWorkspace', () => {
     })
     const onLocalContextWindowChange = vi.fn().mockReturnValue(contextPersistence)
     const { rerender } = renderWorkspace({
-      activeAgent: 'felis',
+      activeAgent: 'local',
       agentsStatus: [felis],
       onLocalContextWindowChange,
     })
@@ -453,7 +453,7 @@ describe('CortexWorkspace', () => {
     expect(contextSelect).toHaveValue('32768')
 
     const refreshedProps = workspaceProps({
-      activeAgent: 'felis',
+      activeAgent: 'local',
       agentsStatus: [{ ...felis, context_window: 32768 }],
       onLocalContextWindowChange,
     })
@@ -473,7 +473,7 @@ describe('CortexWorkspace', () => {
     })
     const onLocalContextWindowChange = vi.fn().mockReturnValue(contextPersistence)
     const { rerender } = renderWorkspace({
-      activeAgent: 'felis',
+      activeAgent: 'local',
       agentsStatus: [felis],
       onLocalContextWindowChange,
     })
@@ -488,7 +488,7 @@ describe('CortexWorkspace', () => {
     // Stale authority must not snap the selector back, and the control must
     // remain usable for another change even before refreshed status catches up.
     const staleProps = workspaceProps({
-      activeAgent: 'felis',
+      activeAgent: 'local',
       agentsStatus: [felis],
       onLocalContextWindowChange,
     })
@@ -506,13 +506,13 @@ describe('CortexWorkspace', () => {
 
   it('disables local context selection during generation or loading', () => {
     const { rerender } = renderWorkspace({
-      activeAgent: 'felis',
+      activeAgent: 'local',
       agentsStatus: [felis],
     })
     expect(screen.getByLabelText('Context window')).toBeEnabled()
 
     const loadingProps = workspaceProps({
-      activeAgent: 'felis',
+      activeAgent: 'local',
       agentsStatus: [{ ...felis, loading: true }],
     })
     rerender(
@@ -523,7 +523,7 @@ describe('CortexWorkspace', () => {
     expect(screen.getByLabelText('Context window')).toBeDisabled()
 
     const busyProps = workspaceProps({
-      activeAgent: 'felis',
+      activeAgent: 'local',
       agentsStatus: [felis],
       lifecycleBusy: true,
     })
@@ -586,7 +586,7 @@ describe('CortexWorkspace', () => {
         rawMetadata={{
           metadata: {
             agent: {
-              key: 'panthera', version: '1.0', provider: 'xai', configuredModel: 'grok-4.5', resolvedModel: 'grok-4.5', requestedEffort: 'high', resolvedEffort: 'high',
+              key: 'cloud', version: '1.0', provider: 'xai', configuredModel: 'grok-4.5', resolvedModel: 'grok-4.5', requestedEffort: 'high', resolvedEffort: 'high',
             },
             usage: null, timing: null, cost: null, citations: [], grounding: null, toolSelection: null,
           },
@@ -595,14 +595,14 @@ describe('CortexWorkspace', () => {
       />,
     )
 
-    expect(screen.getByText('SpaceXAI / panthera')).toBeInTheDocument()
-    expect(screen.queryByText('xai / panthera')).not.toBeInTheDocument()
+    expect(screen.getByText('SpaceXAI / cloud')).toBeInTheDocument()
+    expect(screen.queryByText('xai / cloud')).not.toBeInTheDocument()
   })
 
   it('renders model-native reasoning options dynamically for the selected cloud model', () => {
     const onEffortChange = vi.fn()
     renderWorkspace({
-      activeAgent: 'panthera',
+      activeAgent: 'cloud',
       pantheraModel: 'gpt-5.6-luna',
       cloudEffort: 'medium',
       agentsStatus: [panthera],
@@ -621,7 +621,7 @@ describe('CortexWorkspace', () => {
 
   it('renders None and High labels for local Felis reasoning mode', () => {
     renderWorkspace({
-      activeAgent: 'felis',
+      activeAgent: 'local',
       felisModel: 'gemma-4-E2B-Q4_K_M.gguf',
       agentsStatus: [felis],
     })

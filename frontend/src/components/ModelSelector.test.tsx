@@ -108,7 +108,7 @@ const localModels: ModelCatalogEntry[] = [
 ]
 
 const pantheraStatus: AgentStatus = {
-  key: 'panthera',
+  key: 'cloud',
   display_name: 'Apex Panthera',
   description: 'Cloud profile',
   configured_model: 'gpt-5.6-luna',
@@ -155,7 +155,7 @@ describe('ModelSelector', () => {
   it('renders selected model card with pricing, capabilities, and no badge for stable models', () => {
     render(
       <ModelSelector
-        activeAgent="panthera"
+        activeAgent="cloud"
         selectedModelId="gpt-5.6-luna"
         onModelChange={vi.fn()}
         catalog={cloudModels}
@@ -175,7 +175,7 @@ describe('ModelSelector', () => {
   it('renders privacy banner when free-tier model is selected', () => {
     render(
       <ModelSelector
-        activeAgent="panthera"
+        activeAgent="cloud"
         selectedModelId="gemini-3.5-flash-lite"
         onModelChange={vi.fn()}
         catalog={cloudModels}
@@ -196,7 +196,7 @@ describe('ModelSelector', () => {
 
     render(
       <ModelSelector
-        activeAgent="panthera"
+        activeAgent="cloud"
         selectedModelId="gpt-5.6-luna"
         onModelChange={onModelChange}
         catalog={cloudModels}
@@ -207,7 +207,7 @@ describe('ModelSelector', () => {
     const trigger = screen.getByRole('button', { name: /Model/i })
     await user.click(trigger)
 
-    expect(screen.getByRole('listbox', { name: 'Select model for panthera' })).toBeVisible()
+    expect(screen.getByRole('listbox', { name: 'Select model for cloud' })).toBeVisible()
     expect(screen.getByText('Gemini 3.6 Flash')).toBeVisible()
     expect(screen.getByText('Gemini 3.5 Flash Lite')).toBeVisible()
 
@@ -218,7 +218,7 @@ describe('ModelSelector', () => {
   it('renders local model card with no provider charge, context, and residency state', () => {
     const felisStatus: AgentStatus = {
       ...pantheraStatus,
-      key: 'felis',
+      key: 'local',
       display_name: 'Apex Felis',
       configured_model: 'gemma-4-E2B-Q4_K_M.gguf',
       provider: 'llama_cpp',
@@ -229,7 +229,7 @@ describe('ModelSelector', () => {
 
     render(
       <ModelSelector
-        activeAgent="felis"
+        activeAgent="local"
         selectedModelId="gemma-4-E2B-Q4_K_M.gguf"
         onModelChange={vi.fn()}
         catalog={localModels}
@@ -250,7 +250,7 @@ describe('ModelSelector', () => {
 
     render(
       <ModelSelector
-        activeAgent="panthera"
+        activeAgent="cloud"
         selectedModelId="gpt-5.6-luna"
         onModelChange={vi.fn()}
         catalog={cloudModels}
@@ -263,6 +263,6 @@ describe('ModelSelector', () => {
     expect(verifyBtn).toBeVisible()
 
     await user.click(verifyBtn)
-    expect(onVerify).toHaveBeenCalledWith('panthera')
+    expect(onVerify).toHaveBeenCalledWith('cloud')
   })
 })

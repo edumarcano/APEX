@@ -92,8 +92,8 @@ def get_global_config() -> dict[str, Any]:
         else snapshot.briefing.default_mode
     )
     briefing_runtime = {
-        "flash": ("local", "felis"),
-        "focused": ("cloud", "panthera"),
+        "flash": ("local", "local"),
+        "focused": ("cloud", "cloud"),
         "structured": ("raw", None),
     }[effective_briefing_mode]
     return {

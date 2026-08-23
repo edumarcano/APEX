@@ -79,10 +79,10 @@ def project_descriptor_for_agent(
     """
     projected = descriptor
     uses_compact_brave = False
-    if agent_key == "felis" and descriptor.name == "brave_brave_web_search":
+    if agent_key == "local" and descriptor.name == "brave_brave_web_search":
         import core.agent.catalog as catalog
 
-        uses_compact_brave = catalog.resolve_felis_runtime() == "ollama"
+        uses_compact_brave = catalog.resolve_local_runtime() == "ollama"
     if uses_compact_brave:
         projected = descriptor.model_copy(
             update={

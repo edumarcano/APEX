@@ -247,8 +247,8 @@ const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = [
   'demo',
 ]
 const VALID_SYNTHESIS_PROFILES: readonly SynthesisAgent[] = [
-  'panthera',
-  'felis',
+  'cloud',
+  'local',
 ]
 const VALID_SYNTHESIS_STRATEGIES: readonly SynthesisStrategy[] = ['cloud', 'local', 'raw', 'demo']
 const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = [
@@ -404,7 +404,7 @@ export function useApexData(): UseApexDataReturn {
     marketEnabled: true,
     synthesisStrategy: 'local',
     synthesisProvider: 'llama_cpp',
-    synthesisAgent: 'felis',
+    synthesisAgent: 'local',
     synthesisFallbackReason: null,
   })
 

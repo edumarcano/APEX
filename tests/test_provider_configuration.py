@@ -13,14 +13,14 @@ from core.agent.types import AgentMessage
 from core.config import GEMINI_AGENT_MAX_TOOL_CALLS, GEMINI_AGENT_MAX_TURNS
 
 _MODEL_PROFILES = {
-    "panthera": ("panthera", "gpt-5.6-luna"),
-    "neofelis": ("panthera", "gemini-3.6-flash"),
-    "acinonyx": ("panthera", "gemini-3.5-flash-lite"),
-    "sorex": ("felis", "qwen3:1.7b"),
-    "mus": ("felis", "qwen3:4b-instruct"),
-    "apodemus": ("felis", "gemma-4-E2B-Q4_K_M.gguf"),
-    "neotoma": ("felis", "gemma-4-E4B-Q4_K_M.gguf"),
-    "unnamed-experimental-agent": ("felis", "Qwen3.5-4B-Q4_K_M.gguf"),
+    "panthera": ("cloud", "gpt-5.6-luna"),
+    "neofelis": ("cloud", "gemini-3.6-flash"),
+    "acinonyx": ("cloud", "gemini-3.5-flash-lite"),
+    "sorex": ("local", "qwen3:1.7b"),
+    "mus": ("local", "qwen3:4b-instruct"),
+    "apodemus": ("local", "gemma-4-E2B-Q4_K_M.gguf"),
+    "neotoma": ("local", "gemma-4-E4B-Q4_K_M.gguf"),
+    "unnamed-experimental-agent": ("local", "Qwen3.5-4B-Q4_K_M.gguf"),
 }
 
 

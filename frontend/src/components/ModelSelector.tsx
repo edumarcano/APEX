@@ -31,7 +31,7 @@ interface ModelSelectorProps {
   disabled?: boolean
   isQuerying?: boolean
   verifyingAgent?: AgentKey | null
-  onVerify?: (agent: 'panthera') => Promise<boolean>
+  onVerify?: (agent: 'cloud') => Promise<boolean>
 }
 
 const STATUS_LABELS: Record<AgentAvailabilityStatus, string> = {
@@ -117,7 +117,7 @@ export function ModelSelector({
   const containerRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
 
-  const runtimeTarget = activeAgent === 'panthera' ? 'cloud' : 'local'
+  const runtimeTarget = activeAgent === 'cloud' ? 'cloud' : 'local'
   const availableModels = useMemo(
     () => catalog.filter((entry) => entry.runtime === runtimeTarget),
     [catalog, runtimeTarget],
@@ -156,8 +156,8 @@ export function ModelSelector({
     window.setTimeout(() => triggerRef.current?.focus(), 0)
   }
 
-  const isCloud = activeAgent === 'panthera'
-  const isVerifying = verifyingAgent === 'panthera' || activeStatus?.status === 'verifying'
+  const isCloud = activeAgent === 'cloud'
+  const isVerifying = verifyingAgent === 'cloud' || activeStatus?.status === 'verifying'
   const canVerify = isCloud && onVerify && activeStatus?.status !== 'disabled'
 
   // Model-level readiness/residency status label
@@ -270,7 +270,7 @@ export function ModelSelector({
               type="button"
               disabled={isVerifying || isQuerying}
               onClick={() => {
-                if (onVerify) void onVerify('panthera')
+                if (onVerify) void onVerify('cloud')
               }}
               className="inline-flex items-center gap-1 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-zinc-300 hover:border-[#7EB3FF]/60 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
             >
@@ -313,7 +313,7 @@ export function ModelSelector({
               Select Model
             </p>
             <p className="mt-0.5 text-[10px] text-zinc-500">
-              Choose the intelligence profile for {activeAgent === 'panthera' ? 'Panthera' : 'Felis'}.
+              Choose the intelligence profile for {activeStatus?.designation || (activeAgent === 'cloud' ? 'Panthera' : 'Felis')}.
             </p>
           </div>
 

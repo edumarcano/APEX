@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { useCortex } from './useCortex'
 
-const agent = { key: 'felis', display_name: 'Apex Felis' }
+const agent = { key: 'local', display_name: 'Apex Felis' }
 
 describe('useCortex Agent lifecycle', () => {
   afterEach(() => vi.restoreAllMocks())

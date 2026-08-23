@@ -119,7 +119,7 @@ export function HomeCommandRail({
 }: HomeCommandRailProps): ReactElement {
   const showAgentControls = activated && agentQueriesEnabled
   const selectedModel = modelCatalog.find((entry) => entry.model_id === selectedModelId)
-  const inferredAgent: AgentKey = selectedModel?.runtime === 'local' ? 'felis' : 'panthera'
+  const inferredAgent: AgentKey = selectedModel?.runtime === 'local' ? 'local' : 'cloud'
 
   return (
     <section

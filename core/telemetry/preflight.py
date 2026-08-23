@@ -43,7 +43,7 @@ from core.telemetry.models import (
     PreflightWarningCode,
 )
 from core.synthesis.models import (
-    FELIS_BRIEFING_CONTEXT_WINDOW,
+    LOCAL_BRIEFING_CONTEXT_WINDOW,
     VALID_BRIEFING_MODES,
 )
 from core.telemetry.service import get_telemetry_service
@@ -214,7 +214,7 @@ def _cloud_credential_blockers(
         return []
 
     briefing_ops = {"activate_with_briefing", "generate_briefing"}
-    if agent == "panthera" and operation in briefing_ops:
+    if agent == "cloud" and operation in briefing_ops:
         if os.getenv("OPENROUTER_API_KEY"):
             return []
         return [
@@ -334,7 +334,7 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         "activate_with_briefing",
         "generate_briefing",
     }:
-        agent = "felis" if briefing_mode == "flash" else "panthera" if briefing_mode == "focused" else None
+        agent = "local" if briefing_mode == "flash" else "cloud" if briefing_mode == "focused" else None
         involves_cloud = briefing_mode == "focused"
     else:
         agent = (request.synthesis_agent or "").strip() or None
@@ -352,7 +352,7 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
                 settings.briefing.default_mode
                 if settings is not None
                 and settings.briefing.default_mode != "structured"
-                else "felis"
+                else "local"
             )
         cloud_agent = is_cloud_agent_key(agent) if agent else False
         involves_cloud = bool(request.involves_cloud or cloud_agent)
@@ -370,9 +370,9 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
     cold_local_load = False
     if local_agent and agent is not None:
         local_context_window = (
-            FELIS_BRIEFING_CONTEXT_WINDOW
+            LOCAL_BRIEFING_CONTEXT_WINDOW
             if (
-                agent == "felis"
+                agent == "local"
                 and request.operation in {"activate_with_briefing", "generate_briefing"}
             )
             else None
@@ -400,9 +400,9 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
             agent,
             native_effort=None,
             local_context_window=(
-                FELIS_BRIEFING_CONTEXT_WINDOW
+                LOCAL_BRIEFING_CONTEXT_WINDOW
                 if (
-                    agent == "felis"
+                    agent == "local"
                     and request.operation
                     in {"activate_with_briefing", "generate_briefing"}
                 )

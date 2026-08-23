@@ -138,14 +138,14 @@ class TelemetryApiTests(unittest.TestCase):
                 "modules": {"football": False, "f1": False},
                 "ask_apex": {
                     "enabled": True,
-                    "agent": "felis",
-                    "panthera": {
-                        "provider": "openai",
+                    "agent": "local",
+                    "cloud": {
+                        "designation": "Panthera",
                         "model": "gpt-5.6-luna",
-                        "effort": "focused",
+                        "effort": "medium",
                     },
-                    "felis": {
-                        "runtime": "ollama",
+                    "local": {
+                        "designation": "Felis",
                         "model": "qwen3:1.7b",
                         "reasoning_mode": "none",
                     },
@@ -462,7 +462,7 @@ class TelemetryApiTests(unittest.TestCase):
                 "/api/v1/preflight",
                 json={
                     "operation": "activate",
-                    "synthesis_agent": "felis",
+                    "synthesis_agent": "local",
                     "involves_cloud": False,
                 },
             )
@@ -669,7 +669,7 @@ class TelemetryApiTests(unittest.TestCase):
         ):
             response = self.client.post(
                 "/api/v1/preflight",
-                json={"operation": "cortex_query", "synthesis_agent": "felis"},
+                json={"operation": "cortex_query", "synthesis_agent": "local"},
             )
 
         payload = response.json()
@@ -789,14 +789,14 @@ class TriggerWithoutGateTests(unittest.TestCase):
                 "modules": {"football": False, "f1": False},
                 "ask_apex": {
                     "enabled": True,
-                    "agent": "felis",
-                    "panthera": {
-                        "provider": "openai",
+                    "agent": "local",
+                    "cloud": {
+                        "designation": "Panthera",
                         "model": "gpt-5.6-luna",
-                        "effort": "focused",
+                        "effort": "medium",
                     },
-                    "felis": {
-                        "runtime": "ollama",
+                    "local": {
+                        "designation": "Felis",
                         "model": "qwen3:1.7b",
                         "reasoning_mode": "none",
                     },

@@ -58,14 +58,14 @@ class ProfileBusyStatusTests(unittest.TestCase):
                 "modules": {"f1": True, "football": False},
                 "ask_apex": {
                     "enabled": True,
-                    "agent": "felis",
-                    "panthera": {
-                        "provider": "openai",
+                    "agent": "local",
+                    "cloud": {
+                        "designation": "Panthera",
                         "model": "gpt-5.6-luna",
-                        "effort": "focused",
+                        "effort": "medium",
                     },
-                    "felis": {
-                        "runtime": "ollama",
+                    "local": {
+                        "designation": "Felis",
                         "model": "qwen3:1.7b",
                         "reasoning_mode": "none",
                     },
@@ -141,13 +141,13 @@ class ProfileBusyStatusTests(unittest.TestCase):
             profiles = build_agent_statuses()
 
         by_key = {entry.key: entry for entry in profiles}
-        self.assertEqual(by_key["felis"].status, "busy")
+        self.assertEqual(by_key["local"].status, "busy")
         self.assertEqual(
-            by_key["felis"].reason,
+            by_key["local"].reason,
             "Briefing synthesis is using local inference.",
         )
-        self.assertEqual(by_key["panthera"].status, "configured")
-        self.assertIsNone(by_key["panthera"].reason)
+        self.assertEqual(by_key["cloud"].status, "configured")
+        self.assertIsNone(by_key["cloud"].reason)
 
     def test_cloud_available_during_local_execution(self) -> None:
         backend = mock.Mock()
@@ -299,14 +299,14 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
                 "modules": {"f1": True, "football": False},
                 "ask_apex": {
                     "enabled": True,
-                    "agent": "felis",
-                    "panthera": {
-                        "provider": "openai",
+                    "agent": "local",
+                    "cloud": {
+                        "designation": "Panthera",
                         "model": "gpt-5.6-luna",
-                        "effort": "focused",
+                        "effort": "medium",
                     },
-                    "felis": {
-                        "runtime": "ollama",
+                    "local": {
+                        "designation": "Felis",
                         "model": "qwen3:1.7b",
                         "reasoning_mode": "none",
                     },

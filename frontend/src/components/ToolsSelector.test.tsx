@@ -7,7 +7,7 @@ import type { ToolCatalog } from '../types/telemetry'
 import { ToolsSelector } from './ToolsSelector'
 
 const catalog: ToolCatalog = {
-  agent: 'panthera',
+  agent: 'cloud',
   groups: [
     {
       id: 'schedule',

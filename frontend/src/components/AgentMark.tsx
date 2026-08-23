@@ -4,6 +4,8 @@ import type { ReactElement } from 'react'
 import type { AgentKey } from '../types/telemetry'
 
 const AGENT_MARKS: Record<string, { icon: typeof Network; label: string; className: string }> = {
+  cloud: { icon: Network, label: 'Cloud agent mark', className: 'border-[#1F6FE5]/35 bg-[#1F6FE5]/15 text-[#6EA8FF]' },
+  local: { icon: Gpu, label: 'Local agent mark', className: 'border-amber-300/25 bg-amber-400/10 text-amber-200' },
   panthera: { icon: Network, label: 'Panthera agent mark', className: 'border-[#1F6FE5]/35 bg-[#1F6FE5]/15 text-[#6EA8FF]' },
   felis: { icon: Gpu, label: 'Felis agent mark', className: 'border-amber-300/25 bg-amber-400/10 text-amber-200' },
 }
@@ -14,7 +16,7 @@ interface AgentMarkProps {
 }
 
 export function AgentMark({ agent, size = 'compact' }: AgentMarkProps): ReactElement {
-  const mark = AGENT_MARKS[agent]
+  const mark = AGENT_MARKS[agent] ?? AGENT_MARKS.cloud
   const Icon = mark.icon
   return (
     <span

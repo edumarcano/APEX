@@ -30,7 +30,7 @@ from tests.support.agent_fixtures import (
     GEMINI_FLASH_MODEL,
     GROK_43_MODEL,
     GROK_45_MODEL,
-    build_panthera_profile,
+    build_cloud_profile,
 )
 
 
@@ -42,7 +42,7 @@ class HostedGroundingTests(unittest.TestCase):
             GROK_45_MODEL: {"x_search"},
         }
         for model_id, hosted_names in expected.items():
-            profile = build_panthera_profile(model=model_id)
+            profile = build_cloud_profile(model=model_id)
             instruction = build_tool_access_instruction(
                 [],
                 hosted_tool_names=tuple(profile.hosted_tools),
@@ -128,9 +128,9 @@ class HostedGroundingTests(unittest.TestCase):
                     ),
                 )
 
-        profile = build_panthera_profile(model=GEMINI_FLASH_MODEL)
+        profile = build_cloud_profile(model=GEMINI_FLASH_MODEL)
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Find current information", agent="panthera"),
+            AgentQueryRequest(prompt="Find current information", agent="cloud"),
             Provider(),
             profile,
         )
@@ -150,7 +150,7 @@ class HostedGroundingTests(unittest.TestCase):
         client.responses.create.return_value = SimpleNamespace(
             output=[], model="grok-4.3", usage=None
         )
-        profile = build_panthera_profile(model=GROK_43_MODEL)
+        profile = build_cloud_profile(model=GROK_43_MODEL)
 
         XAIProvider(api_key="test").generate_turn(
             [AgentMessage(role="user", content="What is happening on X?")],
@@ -222,20 +222,20 @@ class SandboxContextTests(unittest.TestCase):
             current = _build_hud_context(
                 AgentQueryRequest(
                     prompt="Summarize",
-                    agent="panthera",
+                    agent="cloud",
                     snapshot_id="current-snapshot",
                     history_partition="sandbox",
                 ),
-                agent_key="panthera",
+                agent_key="cloud",
             )
             stale = _build_hud_context(
                 AgentQueryRequest(
                     prompt="Summarize",
-                    agent="panthera",
+                    agent="cloud",
                     snapshot_id="stale-snapshot",
                     history_partition="sandbox",
                 ),
-                agent_key="panthera",
+                agent_key="cloud",
             )
 
         self.assertIn("CURRENT MASKED DEV BRIEFING", current)
@@ -313,11 +313,11 @@ class SandboxContextTests(unittest.TestCase):
                     message=AgentMessage(role="agent", content="Cannot access that tool.")
                 )
 
-        profile = build_panthera_profile(model="gemini-3.5-flash-lite")
+        profile = build_cloud_profile(model="gemini-3.5-flash-lite")
         response = run_agent_loop(
             AgentQueryRequest(
                 prompt="Read reminders",
-                agent="panthera",
+                agent="cloud",
                 history_partition="sandbox",
             ),
             Provider(),

@@ -50,7 +50,7 @@ from core.agent.catalog import (
     local_reasoning_modes_for_agent,
     resolve_selected_model_profile,
 )
-from core.agent.model_catalog import DEFAULT_FELIS_MODEL, get_model_profile
+from core.agent.model_catalog import DEFAULT_LOCAL_MODEL, get_model_profile
 from core.agent.local_runtime.contract import (
     LocalModelRef,
     LocalModelProfile,
@@ -551,9 +551,9 @@ def _build_candidate_configuration(
 ) -> BenchmarkConfiguration:
     """Build an in-memory llama.cpp profile without changing the Agent catalog."""
     resolved_context = context or LLAMA_CPP_RUNTIME_CONFIGS[
-        DEFAULT_FELIS_MODEL
+        DEFAULT_LOCAL_MODEL
     ].default_context_window
-    supported = local_reasoning_modes_for_agent("felis")
+    supported = local_reasoning_modes_for_agent("local")
     if reasoning not in supported:
         raise ValueError(
             f"llama.cpp candidate does not support reasoning mode {reasoning!r}."
@@ -565,15 +565,15 @@ def _build_candidate_configuration(
     if not alias:
         raise ValueError("The llama.cpp candidate requires a runtime alias.")
 
-    felis_profile = get_model_profile(DEFAULT_FELIS_MODEL)
-    assert felis_profile is not None
+    local_profile = get_model_profile(DEFAULT_LOCAL_MODEL)
+    assert local_profile is not None
     profile = build_llama_cpp_profile(
-        DEFAULT_FELIS_MODEL,
+        DEFAULT_LOCAL_MODEL,
         display_name="Benchmark candidate",
         api_model=model_name,
-        stability=felis_profile.stability,
-        max_tool_turns=felis_profile.max_tool_turns,
-        max_tool_calls=felis_profile.max_tool_calls,
+        stability=local_profile.stability,
+        max_tool_turns=local_profile.max_tool_turns,
+        max_tool_calls=local_profile.max_tool_calls,
         system_instruction=LOCAL_AGENT_SYSTEM_PROMPT,
         context_window=resolved_context,
         reasoning_mode=reasoning,  # type: ignore[arg-type]
@@ -587,7 +587,7 @@ def _build_candidate_configuration(
         reasoning=profile.reasoning_mode,
         profile=profile,
         agent_key=None,
-        tool_projection_agent="felis",
+        tool_projection_agent="local",
     )
 
 
@@ -617,9 +617,9 @@ def build_configurations(
         if candidate_model:
             selected_agents = []
         else:
-            felis_profile = resolve_selected_model_profile("felis")
-            if get_local_runtime_backend(felis_profile.provider).enabled:
-                selected_agents = ["felis"]
+            local_profile = resolve_selected_model_profile("local")
+            if get_local_runtime_backend(local_profile.provider).enabled:
+                selected_agents = ["local"]
             else:
                 selected_agents = []
     else:
@@ -1150,7 +1150,7 @@ class BenchmarkRunner:
     ) -> tuple[AgentQueryResponse, float]:
         request = AgentQueryRequest(
             prompt=prompt,
-            agent="felis",
+            agent="local",
             selected_tool_names=[descriptor.name for descriptor in descriptors],
         )
         started = time.perf_counter()

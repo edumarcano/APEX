@@ -138,7 +138,7 @@ _PROVIDER_DISPLAY_NAMES: dict[str, str] = {
 
 
 def _model_pricing_metadata(profile: ModelProfile) -> AgentPricingMetadata:
-    agent_key = "panthera" if profile.runtime == "cloud" else "felis"
+    agent_key = "cloud" if profile.runtime == "cloud" else "local"
     pricing = agent_pricing(
         agent_key,
         model=profile.model_id,
@@ -151,6 +151,7 @@ def _model_pricing_metadata(profile: ModelProfile) -> AgentPricingMetadata:
         input_per_million=rates.input_per_million,
         output_per_million=rates.output_per_million,
         cached_input_per_million=rates.cached_input_per_million,
+        reasoning_per_million=rates.reasoning_per_million,
         long_context_threshold_tokens=rates.long_context_threshold_tokens,
         long_context_input_per_million=rates.long_context_input_per_million,
         long_context_output_per_million=rates.long_context_output_per_million,
@@ -169,32 +170,59 @@ def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
         if profile.provider == "ollama"
         else None
     )
-    reasoning_modes_tuple = (
-        local_reasoning_modes_for_model(profile.model_id)
-        if profile.runtime == "local"
-        else ()
-    )
-    context_options = list(llama_runtime.allowed_context_windows) if llama_runtime else None
-    default_context_window = llama_runtime.default_context_window if llama_runtime else None
-    high_resource_context_options = (
-        list(llama_runtime.high_resource_context_options) if llama_runtime else None
-    )
-    maximum_context_window = (
-        profile.maximum_context_window
-        if profile.maximum_context_window is not None
+    runtime_config = llama_runtime or ollama_runtime
+
+    context_options = (
+        list(llama_runtime.allowed_context_windows)
+        if llama_runtime is not None
         else (
-            llama_runtime.maximum_context_window
-            if llama_runtime
-            else (ollama_runtime.context_window if ollama_runtime else None)
+            list(profile.allowed_context_windows)
+            if hasattr(profile, "allowed_context_windows")
+            else None
         )
     )
-    reasoning_modes = list(reasoning_modes_tuple) if reasoning_modes_tuple else None
-    default_reasoning_mode = (
-        llama_runtime.default_reasoning_mode
-        if llama_runtime
-        else (reasoning_modes[0] if reasoning_modes else None)
+    default_context_window = (
+        llama_runtime.default_context_window
+        if llama_runtime is not None
+        else (
+            profile.default_context_window
+            if hasattr(profile, "default_context_window")
+            else None
+        )
     )
-    reasoning_options: list[str] | None = (
+    high_resource_context_options = (
+        list(llama_runtime.high_resource_context_options)
+        if llama_runtime is not None
+        else (
+            list(profile.high_resource_context_options)
+            if hasattr(profile, "high_resource_context_options")
+            else None
+        )
+    )
+    maximum_context_window = (
+        llama_runtime.maximum_context_window
+        if llama_runtime is not None
+        else profile.maximum_context_window
+    )
+    reasoning_modes = (
+        list(runtime_config.supported_reasoning_modes)
+        if runtime_config is not None
+        else (
+            list(profile.supported_reasoning_modes)
+            if hasattr(profile, "supported_reasoning_modes")
+            else None
+        )
+    )
+    default_reasoning_mode = (
+        runtime_config.default_reasoning_mode
+        if runtime_config is not None
+        else (
+            profile.default_reasoning_mode
+            if hasattr(profile, "default_reasoning_mode")
+            else None
+        )
+    )
+    reasoning_options = (
         list(profile.reasoning_options) if profile.reasoning_options else None
     )
     default_reasoning = profile.default_reasoning
@@ -239,9 +267,12 @@ def _is_sandbox_agent_query(agent_key: str) -> bool:
     )
 
 
-def _panthera_hosted_tool_settings() -> tuple[bool, bool, bool]:
-    hosted = get_settings_store().get_snapshot().ask_apex.panthera.hosted_tools
+def _cloud_hosted_tool_settings() -> tuple[bool, bool, bool]:
+    hosted = get_settings_store().get_snapshot().ask_apex.cloud.hosted_tools
     return hosted.google_search, hosted.google_maps, hosted.x_search
+
+
+_panthera_hosted_tool_settings = _cloud_hosted_tool_settings
 
 
 def _local_provider_label(provider: str) -> str:
@@ -259,14 +290,23 @@ def _ensure_local_alias_configured(profile: LocalModelProfile) -> None:
 
     Raises HTTP 503 when the provider is unreachable or the alias is absent.
     """
-    snapshot = get_provider_snapshot(profile.provider, force_refresh=True)
     provider_label = _local_provider_label(profile.provider)
+    backend = get_local_runtime_backend(profile.provider)
+    if not backend.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                f"{provider_label} is disabled in settings. Enable it in "
+                "Settings -> Ask Apex -> Runtime Settings to use local models."
+            ),
+        )
+    snapshot = get_provider_snapshot(profile.provider, force_refresh=True)
     if not snapshot["reachable"]:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=(
-                f"{provider_label} is unreachable at the configured host. "
-                "Ensure the local runtime is running and reachable."
+                f"{provider_label} is unreachable. Ensure the local runtime daemon "
+                "is running before executing local queries."
             ),
         )
     if profile.runtime_model_id not in snapshot["installed_models"]:
@@ -392,6 +432,7 @@ def build_agent_statuses() -> list[AgentStatus]:
     idle_remaining = get_idle_unload_remaining_seconds()
     dev_mode = is_dev_mode()
     vitals = get_system_vitals()
+    ask_apex_settings = get_settings_store().get_snapshot().ask_apex
 
     snapshots: dict[str, Any] = {}
     for backend in iter_local_runtime_backends(enabled_only=True):
@@ -472,10 +513,13 @@ def build_agent_statuses() -> list[AgentStatus]:
                 if resident_loaded_model is not None
                 else failed_model
             )
+            local_designation = ask_apex_settings.local.designation
             agents.append(
                 AgentStatus(
                     key=key,
-                    display_name=spec.display_name,
+                    role=spec.runtime,
+                    designation=local_designation,
+                    display_name=f"Apex {local_designation}",
                     description=spec.description,
                     provider=profile.provider,
                     configured_model=model_profile.model_id,
@@ -541,7 +585,7 @@ def build_agent_statuses() -> list[AgentStatus]:
         agent_status, cloud_reason, status_source, checked_at = _resolve_cloud_agent_status(
             key
         )
-        google_search, google_maps, x_search = _panthera_hosted_tool_settings()
+        google_search, google_maps, x_search = _cloud_hosted_tool_settings()
         native_tools = effective_native_tools(
             model_profile,
             google_search_enabled=google_search,
@@ -553,10 +597,13 @@ def build_agent_statuses() -> list[AgentStatus]:
             if model_profile.reasoning_options
             else None
         )
+        cloud_designation = ask_apex_settings.cloud.designation
         agents.append(
             AgentStatus(
                 key=key,
-                display_name=spec.display_name,
+                role=spec.runtime,
+                designation=cloud_designation,
+                display_name=f"Apex {cloud_designation}",
                 description=spec.description,
                 provider=model_profile.provider,
                 configured_model=model_profile.model_id,
@@ -820,7 +867,7 @@ def _prepare_agent_payload(
 
 
 def _build_hud_context(
-    payload: AgentQueryRequest, *, agent_key: str = "panthera"
+    payload: AgentQueryRequest, *, agent_key: str = "cloud"
 ) -> str:
     """
     Build optional HUD context from explicit identifiers only.
@@ -1192,7 +1239,7 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
     )
 
     google_search, google_maps, x_search = (
-        _panthera_hosted_tool_settings()
+        _cloud_hosted_tool_settings()
         if spec.runtime == "cloud"
         else (False, False, False)
     )
@@ -1309,7 +1356,7 @@ def query_agent(
         else None
     )
     google_search, google_maps, x_search = (
-        _panthera_hosted_tool_settings()
+        _cloud_hosted_tool_settings()
         if spec.runtime == "cloud"
         else (False, False, False)
     )

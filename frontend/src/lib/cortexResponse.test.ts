@@ -7,7 +7,7 @@ describe('parseAgentQueryResponse', () => {
     const parsed = parseAgentQueryResponse({
       answer: 'Ready.',
       agent_used: {
-        key: 'panthera',
+        key: 'cloud',
         provider: 'gemini',
         configured_model: 'gemini-2.5-pro',
         resolved_model: 'gemini-2.5-pro',
@@ -29,7 +29,7 @@ describe('parseAgentQueryResponse', () => {
       },
     })
 
-    expect(parsed.metadata?.agent?.key).toBe('panthera')
+    expect(parsed.metadata?.agent?.key).toBe('cloud')
     expect(parsed.metadata?.usage?.totalTokens).toBe(150)
     expect(parsed.metadata?.timing?.totalMs).toBe(820)
     expect(parsed.metadata?.cost?.totalCost).toBe(0.01)
@@ -39,12 +39,12 @@ describe('parseAgentQueryResponse', () => {
   it('continues to parse the nested metadata shape', () => {
     const parsed = parseAgentQueryResponse({
       metadata: {
-        agent: { key: 'felis' },
+        agent: { key: 'local' },
         usage: { total_tokens: 12 },
       },
     })
 
-    expect(parsed.metadata?.agent?.key).toBe('felis')
+    expect(parsed.metadata?.agent?.key).toBe('local')
     expect(parsed.metadata?.usage?.totalTokens).toBe(12)
   })
 })

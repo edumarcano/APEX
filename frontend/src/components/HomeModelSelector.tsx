@@ -90,11 +90,11 @@ export function HomeModelSelector({
   const [position, setPosition] = useState<CSSProperties | null>(null)
 
   const pantheraStatus = useMemo(
-    () => agentsStatus.find((agent) => agent.key === 'panthera'),
+    () => agentsStatus.find((agent) => agent.key === 'cloud'),
     [agentsStatus],
   )
   const felisStatus = useMemo(
-    () => agentsStatus.find((agent) => agent.key === 'felis'),
+    () => agentsStatus.find((agent) => agent.key === 'local'),
     [agentsStatus],
   )
 
@@ -260,7 +260,7 @@ export function HomeModelSelector({
                 <li role="presentation">
                   <div className="flex items-center gap-2 px-2 py-1.5 font-mono text-[9px] uppercase tracking-widest text-[#6EA8FF]/90" aria-hidden>
                     <Network className="size-3.5 text-[#6EA8FF]" />
-                    Apex Panthera · Cloud
+                    {pantheraStatus?.display_name || 'Apex Panthera'} · Cloud
                   </div>
                   <ul role="group" aria-label="Cloud models" className="space-y-1">
                     {cloudModels.map((entry) => {
@@ -306,7 +306,7 @@ export function HomeModelSelector({
                                 <StabilityBadge stability={entry.stability} />
                               </span>
                               <span className="mt-0.5 block truncate text-[10px] text-zinc-500">
-                                Panthera · {provider} · {isUnauthorized ? 'Missing API key' : reasoningLabel}
+                                {pantheraStatus?.designation || 'Panthera'} · {provider} · {isUnauthorized ? 'Missing API key' : reasoningLabel}
                               </span>
                               <span className="mt-1 block font-mono text-[9px] text-zinc-400">
                                 {modelCost(entry)}
@@ -328,7 +328,7 @@ export function HomeModelSelector({
                   {cloudModels.length > 0 ? <div className="mx-2 my-1 border-t border-white/10" aria-hidden /> : null}
                   <div className="flex items-center gap-2 px-2 py-1.5 font-mono text-[9px] uppercase tracking-widest text-amber-400/90" aria-hidden>
                     <Gpu className="size-3.5 text-amber-400" />
-                    Apex Felis · Local
+                    {felisStatus?.display_name || 'Apex Felis'} · Local
                   </div>
                   <ul role="group" aria-label="Local models" className="space-y-1">
                     {localModels.map((entry) => {
@@ -368,7 +368,7 @@ export function HomeModelSelector({
                                 <StabilityBadge stability={entry.stability} />
                               </span>
                               <span className="mt-0.5 block truncate text-[10px] text-zinc-500">
-                                Felis · {runtimeName} · {entry.provider === 'ollama' ? '4K context' : '16K context'}
+                                {felisStatus?.designation || 'Felis'} · {runtimeName} · {entry.provider === 'ollama' ? '4K context' : '16K context'}
                               </span>
                               <span className="mt-1 block font-mono text-[9px] text-zinc-400">
                                 {modelCost(entry)}

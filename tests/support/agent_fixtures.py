@@ -6,9 +6,12 @@ from core.agent.catalog import build_concrete_agent, resolve_effort
 from core.agent.model_catalog import get_model_profile
 from core.settings.models import (
     AgentSettings,
-    FelisSettings,
+    CloudAgentHostedToolsSettings,
+    CloudAgentSettings,
+    LocalAgentSettings,
     PantheraHostedToolsSettings,
     PantheraSettings,
+    FelisSettings,
 )
 
 GEMMA_E2B_MODEL = "gemma-4-E2B-Q4_K_M.gguf"
@@ -24,8 +27,9 @@ GEMMA_E2B_ALIAS = "gemma-4-e2b-16k"
 GEMMA_E4B_ALIAS = "gemma-4-e4b-16k"
 
 
-def panthera_settings(
+def cloud_settings(
     *,
+    designation: str = "Panthera",
     model: str = "gpt-5.6-luna",
     effort: str = "medium",
     google_search: bool = True,
@@ -33,11 +37,12 @@ def panthera_settings(
     x_search: bool = True,
 ) -> AgentSettings:
     return AgentSettings(
-        agent="panthera",
-        panthera=PantheraSettings(
+        agent="cloud",
+        cloud=CloudAgentSettings(
+            designation=designation,
             model=model,
             effort=effort,  # type: ignore[arg-type]
-            hosted_tools=PantheraHostedToolsSettings(
+            hosted_tools=CloudAgentHostedToolsSettings(
                 google_search=google_search,
                 google_maps=google_maps,
                 x_search=x_search,
@@ -46,22 +51,30 @@ def panthera_settings(
     )
 
 
-def felis_settings(
+panthera_settings = cloud_settings
+
+
+def local_settings(
     *,
+    designation: str = "Felis",
     model: str = GEMMA_E2B_MODEL,
     context_window: int | None = None,
     reasoning_mode: str = "none",
 ) -> AgentSettings:
     kwargs: dict[str, object] = {
+        "designation": designation,
         "model": model,
         "reasoning_mode": reasoning_mode,  # type: ignore[arg-type]
     }
     if context_window is not None:
         kwargs["context_window"] = context_window
-    return AgentSettings(agent="felis", felis=FelisSettings(**kwargs))
+    return AgentSettings(agent="local", local=LocalAgentSettings(**kwargs))
 
 
-def build_felis_profile(
+felis_settings = local_settings
+
+
+def build_local_profile(
     *,
     model: str = GEMMA_E2B_MODEL,
     context_window: int | None = None,
@@ -71,7 +84,7 @@ def build_felis_profile(
     assert profile is not None
     native = resolve_effort(profile, None)
     return build_concrete_agent(
-        "felis",
+        "local",
         native_effort=native,
         local_context_window=context_window,
         local_reasoning_mode=reasoning_mode,  # type: ignore[arg-type]
@@ -79,7 +92,10 @@ def build_felis_profile(
     )
 
 
-def build_panthera_profile(
+build_felis_profile = build_local_profile
+
+
+def build_cloud_profile(
     *,
     model: str = "gpt-5.6-luna",
     effort: str | None = "medium",
@@ -88,7 +104,10 @@ def build_panthera_profile(
     assert profile is not None
     native = resolve_effort(profile, effort)  # type: ignore[arg-type]
     return build_concrete_agent(
-        "panthera",
+        "cloud",
         native_effort=native,
         model_id=model,
     )
+
+
+build_panthera_profile = build_cloud_profile

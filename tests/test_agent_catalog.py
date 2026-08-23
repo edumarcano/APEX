@@ -17,34 +17,34 @@ from core.agent.catalog import (
 from core.agent.types import AgentQueryRequest
 from core.api.cortex import build_agent_statuses
 from core.agent.providers.cloud_verification import clear_cloud_status_cache
-from core.settings.models import AgentSettings, FelisSettings, PantheraSettings
-from tests.support.agent_fixtures import felis_settings, panthera_settings
+from core.settings.models import AgentSettings, CloudAgentSettings, LocalAgentSettings
+from tests.support.agent_fixtures import cloud_settings, local_settings
 
 
 class AgentSelectionTests(unittest.TestCase):
-    def test_sandbox_mode_selects_panthera_with_sandbox_flag(self) -> None:
+    def test_sandbox_mode_selects_cloud_with_sandbox_flag(self) -> None:
         agent_settings = AgentSettings(sandbox_mode=True)
         mode, profile, effort = resolve_agent_selection(agent_settings)
-        self.assertEqual((mode, profile, effort), ("cloud", "panthera", "medium"))
+        self.assertEqual((mode, profile, effort), ("cloud", "cloud", "medium"))
         self.assertTrue(agent_settings.sandbox_mode)
 
     def test_cloud_settings_resolve_profile_and_effort(self) -> None:
-        agent_settings = panthera_settings(
+        agent_settings = cloud_settings(
             model="gemini-3.6-flash",
             effort="high",
         )
         mode, profile, effort = resolve_agent_selection(agent_settings)
-        self.assertEqual((mode, profile, effort), ("cloud", "panthera", "high"))
+        self.assertEqual((mode, profile, effort), ("cloud", "cloud", "high"))
 
     def test_local_settings_resolve_without_effort(self) -> None:
-        agent_settings = felis_settings(model="qwen3:1.7b")
+        agent_settings = local_settings(model="qwen3:1.7b")
         mode, profile, effort = resolve_agent_selection(agent_settings)
-        self.assertEqual((mode, profile, effort), ("local", "felis", None))
+        self.assertEqual((mode, profile, effort), ("local", "local", None))
 
     def test_dev_only_local_model_remains_selectable_in_dev_mode(self) -> None:
-        agent_settings = felis_settings(model="qwen3:4b-instruct")
-        self.assertTrue(is_agent_visible("felis"))
-        self.assertEqual(agent_settings.felis.model, "qwen3:4b-instruct")
+        agent_settings = local_settings(model="qwen3:4b-instruct")
+        self.assertTrue(is_agent_visible("local"))
+        self.assertEqual(agent_settings.local.model, "qwen3:4b-instruct")
 
 
 class CredentialIsolationTests(unittest.TestCase):
@@ -109,8 +109,8 @@ class CredentialIsolationTests(unittest.TestCase):
                 get_model_profile("gpt-5.6-luna"),
                 get_model_profile("gemini-3.6-flash"),
             ]
-            self.assertTrue(agent_has_credentials("panthera"))
-            self.assertFalse(agent_has_credentials("panthera"))
+            self.assertTrue(agent_has_credentials("cloud"))
+            self.assertFalse(agent_has_credentials("cloud"))
 
     def test_missing_credential_message_uses_provider_display_names(self) -> None:
         with mock.patch(
@@ -119,19 +119,19 @@ class CredentialIsolationTests(unittest.TestCase):
             from core.agent.model_catalog import get_model_profile
 
             resolve_profile.side_effect = lambda *_args: get_model_profile("gpt-5.6-luna")
-            self.assertIn("OpenAI API key", credential_missing_message("panthera"))
+            self.assertIn("OpenAI API key", credential_missing_message("cloud"))
             resolve_profile.side_effect = lambda *_args: get_model_profile("gemini-3.6-flash")
-            self.assertIn("Google API key", credential_missing_message("panthera"))
+            self.assertIn("Google API key", credential_missing_message("cloud"))
             resolve_profile.side_effect = lambda *_args: get_model_profile("grok-4.5")
-            self.assertIn("SpaceXAI API key", credential_missing_message("panthera"))
+            self.assertIn("SpaceXAI API key", credential_missing_message("cloud"))
             resolve_profile.side_effect = lambda *_args: get_model_profile("deepseek/deepseek-v4-flash-0731")
-            self.assertIn("OpenRouter API key", credential_missing_message("panthera"))
+            self.assertIn("OpenRouter API key", credential_missing_message("cloud"))
 
 
 class DemoRosterTests(unittest.TestCase):
-    def test_runtime_roster_exposes_panthera_and_felis(self) -> None:
+    def test_runtime_roster_exposes_cloud_and_local(self) -> None:
         visible = runtime_agent_order()
-        self.assertEqual(visible, ("panthera", "felis"))
+        self.assertEqual(visible, ("cloud", "local"))
 
     def test_demo_agent_query_rejects_unknown_profile(self) -> None:
         from core.api.demo import run_demo_agent_query
@@ -139,7 +139,7 @@ class DemoRosterTests(unittest.TestCase):
         with mock.patch("core.agent.catalog.is_agent_visible", return_value=False):
             with self.assertRaises(HTTPException) as ctx:
                 run_demo_agent_query(
-                    AgentQueryRequest(prompt="status", agent="panthera")
+                    AgentQueryRequest(prompt="status", agent="cloud")
                 )
         self.assertEqual(ctx.exception.status_code, 404)
 
@@ -151,10 +151,13 @@ class ProfileStatusMetadataTests(unittest.TestCase):
 
     def test_panthera_reports_configured_model_and_effective_native_tools(self) -> None:
         settings = mock.Mock()
-        settings.ask_apex.panthera.hosted_tools.google_search = False
-        settings.ask_apex.panthera.hosted_tools.google_maps = True
-        settings.ask_apex.panthera.hosted_tools.x_search = True
-        settings.ask_apex.panthera.model = "gemini-3.6-flash"
+        settings.ask_apex.cloud.designation = "Panthera"
+        settings.ask_apex.cloud.hosted_tools.google_search = False
+        settings.ask_apex.cloud.hosted_tools.google_maps = True
+        settings.ask_apex.cloud.hosted_tools.x_search = True
+        settings.ask_apex.cloud.model = "gemini-3.6-flash"
+        settings.ask_apex.local.designation = "Felis"
+        settings.ask_apex.local.model = "gemma-4-E2B-Q4_K_M.gguf"
         backend = mock.Mock()
         backend.provider = "ollama"
         backend.enabled = False
@@ -193,7 +196,10 @@ class ProfileStatusMetadataTests(unittest.TestCase):
             store.return_value.get_snapshot.return_value = settings
             profiles = build_agent_statuses()
 
-        panthera = next(item for item in profiles if item.key == "panthera")
+        panthera = next(item for item in profiles if item.key == "cloud")
+        self.assertEqual(panthera.designation, "Panthera")
+        self.assertEqual(panthera.role, "cloud")
+        self.assertEqual(panthera.display_name, "Apex Panthera")
         self.assertTrue(panthera.description)
         self.assertEqual(panthera.status, "configured")
         self.assertEqual(panthera.status_source, "configuration")
@@ -211,7 +217,10 @@ class ProfileStatusMetadataTests(unittest.TestCase):
             ["none", "minimal", "low", "medium", "high", "xhigh"],
         )
 
-        felis = next(item for item in profiles if item.key == "felis")
+        felis = next(item for item in profiles if item.key == "local")
+        self.assertEqual(felis.designation, "Felis")
+        self.assertEqual(felis.role, "local")
+        self.assertEqual(felis.display_name, "Apex Felis")
         self.assertTrue(felis.model_catalog)
         gemma_entry = next(entry for entry in felis.model_catalog if entry.model_id == "gemma-4-E2B-Q4_K_M.gguf")
         self.assertEqual(gemma_entry.pricing.billing_basis, "local")
@@ -385,7 +394,7 @@ class ModelNativeReasoningTests(unittest.TestCase):
 
         all_models = {**CLOUD_MODEL_PROFILES, **LOCAL_MODEL_PROFILES}
         for model_id, model_profile in all_models.items():
-            agent_key = "panthera" if model_profile.runtime == "cloud" else "felis"
+            agent_key = "cloud" if model_profile.runtime == "cloud" else "local"
             concrete = build_concrete_agent(
                 agent_key,
                 native_effort="medium",
@@ -400,7 +409,7 @@ class ModelNativeReasoningTests(unittest.TestCase):
 
         # Local llama_cpp model with 16K context window override and none reasoning mode
         local_concrete = build_concrete_agent(
-            "felis",
+            "local",
             native_effort=None,
             local_context_window=16384,
             local_reasoning_mode="none",
@@ -412,7 +421,7 @@ class ModelNativeReasoningTests(unittest.TestCase):
 
         # Local Ollama model retains fixed 4K context window
         ollama_concrete = build_concrete_agent(
-            "felis",
+            "local",
             native_effort=None,
             local_context_window=16384,
             model_id="qwen3:1.7b",
@@ -422,7 +431,7 @@ class ModelNativeReasoningTests(unittest.TestCase):
 
         # Cloud model with lowest reasoning effort override
         cloud_concrete = build_concrete_agent(
-            "panthera",
+            "cloud",
             native_effort="low",
             model_id="deepseek/deepseek-v4-flash-0731",
         )
@@ -435,21 +444,21 @@ class ModelNativeReasoningTests(unittest.TestCase):
 
         deepseek = get_model_profile("deepseek/deepseek-v4-flash-0731")
         assert deepseek is not None
-        self.assertIn("OpenRouter API key", credential_missing_message("panthera", deepseek))
-        self.assertIn("OPENROUTER_API_KEY", credential_missing_error("panthera", deepseek))
+        self.assertIn("OpenRouter API key", credential_missing_message("cloud", deepseek))
+        self.assertIn("OPENROUTER_API_KEY", credential_missing_error("cloud", deepseek))
 
     def test_query_agent_validates_model_id_and_runtime_compatibility(self) -> None:
         from core.api.cortex import query_agent
 
         # Unknown model
         with self.assertRaises(HTTPException) as ctx:
-            query_agent(AgentQueryRequest(prompt="hi", agent="panthera", model_id="nonexistent-model"))
+            query_agent(AgentQueryRequest(prompt="hi", agent="cloud", model_id="nonexistent-model"))
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertIn("Unknown model", str(ctx.exception.detail))
 
-        # Incompatible runtime (local model with cloud agent panthera)
+        # Incompatible runtime (local model with cloud agent)
         with self.assertRaises(HTTPException) as ctx:
-            query_agent(AgentQueryRequest(prompt="hi", agent="panthera", model_id="gemma-4-E2B-Q4_K_M.gguf"))
+            query_agent(AgentQueryRequest(prompt="hi", agent="cloud", model_id="gemma-4-E2B-Q4_K_M.gguf"))
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertIn("is incompatible with Agent", str(ctx.exception.detail))
 
@@ -460,12 +469,12 @@ class ModelNativeReasoningTests(unittest.TestCase):
         with mock.patch("core.api.cortex.is_dev_mode", return_value=False):
             # grok-4.5 is dev_only
             with self.assertRaises(HTTPException) as ctx:
-                query_agent(AgentQueryRequest(prompt="hi", agent="panthera", model_id="grok-4.5"))
+                query_agent(AgentQueryRequest(prompt="hi", agent="cloud", model_id="grok-4.5"))
             self.assertEqual(ctx.exception.status_code, 400)
             self.assertIn("only available in development mode", str(ctx.exception.detail))
 
             with self.assertRaises(HTTPException) as ctx:
-                build_tool_preflight(ToolPreflightRequest(agent="panthera", model_id="grok-4.5"))
+                build_tool_preflight(ToolPreflightRequest(agent="cloud", model_id="grok-4.5"))
             self.assertEqual(ctx.exception.status_code, 400)
             self.assertIn("only available in development mode", str(ctx.exception.detail))
 

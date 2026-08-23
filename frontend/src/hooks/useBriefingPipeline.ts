@@ -60,8 +60,8 @@ const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = [
   'demo',
 ]
 const VALID_SYNTHESIS_PROFILES: readonly SynthesisAgent[] = [
-  'panthera',
-  'felis',
+  'cloud',
+  'local',
 ]
 
 function parseEnum<T extends string>(value: unknown, values: readonly T[]): T | null {

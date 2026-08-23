@@ -23,7 +23,7 @@ function catalogFor(
     },
   ],
 ): ToolCatalog {
-  const allAllowed = agent === 'panthera'
+  const allAllowed = agent === 'cloud'
   return {
     agent,
     groups: [],
@@ -58,8 +58,8 @@ function catalogFor(
     default_profile_name: allAllowed ? 'All APEX Tools' : 'No APEX Tools',
     default_selected_tool_names: allAllowed ? ['get_weather_forecast'] : [],
     provider_hosted_tools: [],
-    context_window: agent === 'panthera' ? null : 4096,
-    reserved_response_tokens: agent === 'panthera' ? null : 512,
+    context_window: agent === 'cloud' ? null : 4096,
+    reserved_response_tokens: agent === 'cloud' ? null : 512,
   }
 }
 
@@ -83,18 +83,18 @@ describe('useToolCatalog per-Agent hydration', () => {
 
     const hook = renderHook(
       ({ agent }: { agent: AgentKey }) => useToolCatalog(agent),
-      { initialProps: { agent: 'panthera' as AgentKey } },
+      { initialProps: { agent: 'cloud' as AgentKey } },
     )
     await waitFor(() => expect(hook.result.current.selectionReady).toBe(true))
     expect(hook.result.current.selectedToolNames).toEqual(['get_weather_forecast'])
     expect(hook.result.current.activeToolProfileId).toBe('all_allowed')
 
-    hook.rerender({ agent: 'felis' })
+    hook.rerender({ agent: 'local' })
     await waitFor(() => expect(hook.result.current.selectionReady).toBe(true))
     expect(hook.result.current.selectedToolNames).toEqual([])
     expect(hook.result.current.activeToolProfileId).toBe('no_tools')
 
-    hook.rerender({ agent: 'panthera' })
+    hook.rerender({ agent: 'cloud' })
     await waitFor(() => expect(hook.result.current.selectionReady).toBe(true))
     expect(hook.result.current.selectedToolNames).toEqual(['get_weather_forecast'])
     expect(hook.result.current.activeToolProfileId).toBe('all_allowed')
@@ -102,7 +102,7 @@ describe('useToolCatalog per-Agent hydration', () => {
 
   it('does not retain a stored profile identity when names no longer match it', async () => {
     sessionStorage.setItem(
-      'apex.tool-selection.felis',
+      'apex.tool-selection.local',
       JSON.stringify({
         names: ['unknown_tool'],
         profileId: 'saved_weather',
@@ -113,12 +113,12 @@ describe('useToolCatalog per-Agent hydration', () => {
       vi.fn(() =>
         Promise.resolve({
           ok: true,
-          json: async () => catalogFor('felis'),
+          json: async () => catalogFor('local'),
         }),
       ),
     )
 
-    const hook = renderHook(() => useToolCatalog('felis'))
+    const hook = renderHook(() => useToolCatalog('local'))
     await waitFor(() => expect(hook.result.current.selectionReady).toBe(true))
 
     expect(hook.result.current.selectedToolNames).toEqual(['unknown_tool'])
@@ -126,7 +126,7 @@ describe('useToolCatalog per-Agent hydration', () => {
   })
 
   it('re-resolves a stored dynamic profile after availability, discovery, and policy changes', async () => {
-    const weather = catalogFor('panthera').tools[0]
+    const weather = catalogFor('cloud').tools[0]
     const newMcpTool = {
       ...weather,
       name: 'brave_brave_web_search',
@@ -143,25 +143,25 @@ describe('useToolCatalog per-Agent hydration', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => catalogFor('panthera', [disconnectedWeather, newMcpTool]),
+        json: async () => catalogFor('cloud', [disconnectedWeather, newMcpTool]),
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => catalogFor('panthera', [
+        json: async () => catalogFor('cloud', [
           disconnectedWeather,
           { ...newMcpTool, allowed_for_agent: false },
         ]),
       })
     vi.stubGlobal('fetch', fetchMock)
     sessionStorage.setItem(
-      'apex.tool-selection.panthera',
+      'apex.tool-selection.cloud',
       JSON.stringify({
         names: ['get_weather_forecast'],
         profileId: 'all_allowed',
       }),
     )
 
-    const hook = renderHook(() => useToolCatalog('panthera'))
+    const hook = renderHook(() => useToolCatalog('cloud'))
     await waitFor(() => expect(hook.result.current.selectionReady).toBe(true))
     expect(hook.result.current.selectedToolNames).toEqual(['brave_brave_web_search'])
     expect(hook.result.current.activeToolProfileId).toBe('all_allowed')
@@ -175,7 +175,7 @@ describe('useToolCatalog per-Agent hydration', () => {
 
   it('refreshes a dynamic profile when MCP runtime availability changes', async () => {
     const braveTool: ToolCatalogTool = {
-      ...catalogFor('panthera').tools[0],
+      ...catalogFor('cloud').tools[0],
       name: 'brave_brave_web_search',
       label: 'Brave Web Search',
       origin: 'mcp',
@@ -187,17 +187,17 @@ describe('useToolCatalog per-Agent hydration', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => catalogFor('panthera', [braveTool]),
+        json: async () => catalogFor('cloud', [braveTool]),
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => catalogFor('panthera', [{ ...braveTool, available: true, unavailable_reason: null }]),
+        json: async () => catalogFor('cloud', [{ ...braveTool, available: true, unavailable_reason: null }]),
       })
     vi.stubGlobal('fetch', fetchMock)
 
     const hook = renderHook(
       ({ availabilityVersion }: { availabilityVersion: string | null }) =>
-        useToolCatalog('panthera', availabilityVersion),
+        useToolCatalog('cloud', availabilityVersion),
       { initialProps: { availabilityVersion: null as string | null } },
     )
     await waitFor(() => expect(hook.result.current.selectionReady).toBe(true))
@@ -226,12 +226,12 @@ describe('useToolCatalog per-Agent hydration', () => {
 
     const hook = renderHook(
       ({ agent }: { agent: AgentKey }) => useToolCatalog(agent),
-      { initialProps: { agent: 'panthera' as AgentKey } },
+      { initialProps: { agent: 'cloud' as AgentKey } },
     )
     await waitFor(() => expect(pendingResponses).toHaveLength(1))
     pendingResponses[0].resolve({
       ok: true,
-      json: async () => catalogFor('panthera'),
+      json: async () => catalogFor('cloud'),
     })
     await waitFor(() => expect(hook.result.current.selectionReady).toBe(true))
 
@@ -241,7 +241,7 @@ describe('useToolCatalog per-Agent hydration', () => {
     })
     await waitFor(() => expect(pendingResponses).toHaveLength(2))
 
-    hook.rerender({ agent: 'felis' })
+    hook.rerender({ agent: 'local' })
     await waitFor(() => {
       expect(pendingResponses).toHaveLength(3)
       expect(hook.result.current.catalog).toBeNull()
@@ -253,26 +253,26 @@ describe('useToolCatalog per-Agent hydration', () => {
     })
     expect(fetchMock).toHaveBeenCalledTimes(3)
 
-    const felisResponse = pendingResponses.find((request) => request.agent === 'felis')
-    const oldPantheraResponse = pendingResponses[1]
-    felisResponse?.resolve({
+    const localResponse = pendingResponses.find((request) => request.agent === 'local')
+    const oldCloudResponse = pendingResponses[1]
+    localResponse?.resolve({
       ok: true,
-      json: async () => catalogFor('felis'),
+      json: async () => catalogFor('local'),
     })
     await waitFor(() => {
-      expect(hook.result.current.catalog?.agent).toBe('felis')
+      expect(hook.result.current.catalog?.agent).toBe('local')
       expect(hook.result.current.selectionReady).toBe(true)
     })
 
-    oldPantheraResponse.resolve({
+    oldCloudResponse.resolve({
       ok: true,
-      json: async () => catalogFor('panthera'),
+      json: async () => catalogFor('cloud'),
     })
     await act(async () => {
       await Promise.resolve()
     })
 
-    expect(hook.result.current.catalog?.agent).toBe('felis')
+    expect(hook.result.current.catalog?.agent).toBe('local')
     expect(hook.result.current.selectionReady).toBe(true)
   })
 })

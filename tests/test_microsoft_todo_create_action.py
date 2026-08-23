@@ -79,7 +79,7 @@ class MicrosoftTodoCreateActionTests(unittest.TestCase):
         payload = {"list_id": "list-1", "title": "Study", "importance": "normal"}
         payload.update(arguments)
         return self.service.propose(
-            agent_key="panthera",
+            agent_key="cloud",
             capability_name="create_microsoft_todo_task",
             arguments=payload,
             target="Create Microsoft To Do Task",

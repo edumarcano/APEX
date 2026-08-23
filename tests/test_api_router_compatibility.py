@@ -206,7 +206,9 @@ class ExtractedRouterHttpTests(unittest.TestCase):
 
     def test_cortex_routes_delegate_and_preserve_payloads(self) -> None:
         agent = AgentStatus(
-            key="panthera",
+            key="cloud",
+            role="cloud",
+            designation="Panthera",
             display_name="Apex Panthera",
             description="Balanced general-purpose cloud intelligence.",
             provider="openai",
@@ -225,7 +227,7 @@ class ExtractedRouterHttpTests(unittest.TestCase):
             response = self.client.get("/api/v1/agents")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()[0]["key"], "panthera")
+        self.assertEqual(response.json()[0]["key"], "cloud")
 
         with mock.patch(
             "core.api.routers.cortex.unload_active_local_model_endpoint",
@@ -238,15 +240,15 @@ class ExtractedRouterHttpTests(unittest.TestCase):
 
         with mock.patch(
             "core.api.routers.cortex.load_local_model_endpoint",
-            return_value=LocalLoadResponse(agent="felis"),
+            return_value=LocalLoadResponse(agent="local"),
         ) as load:
-            response = self.client.post("/api/v1/cortex/local-model/load", json={"agent": "felis"})
+            response = self.client.post("/api/v1/cortex/local-model/load", json={"agent": "local"})
 
-        self.assertEqual(response.json(), {"status": "success", "agent": "felis"})
-        load.assert_called_once_with("felis")
+        self.assertEqual(response.json(), {"status": "success", "agent": "local"})
+        load.assert_called_once_with("local")
 
         verification = CloudAgentVerificationResponse(
-            agent="panthera",
+            agent="cloud",
             status="verified",
             checked_at="2026-08-02T12:00:00Z",
         )
@@ -254,11 +256,11 @@ class ExtractedRouterHttpTests(unittest.TestCase):
             "core.api.routers.cortex.verify_cloud_agent_endpoint",
             return_value=verification,
         ) as verify:
-            response = self.client.post("/api/v1/agents/panthera/verify")
+            response = self.client.post("/api/v1/agents/cloud/verify")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "verified")
-        verify.assert_called_once_with("panthera")
+        verify.assert_called_once_with("cloud")
 
         service = mock.Mock()
         conversation_id = "00000000-0000-4000-8000-000000000001"

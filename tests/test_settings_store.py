@@ -14,13 +14,13 @@ from pydantic import ValidationError
 from core.settings.models import (
     AgentSettingsPatch,
     BriefingPatch,
+    CloudAgentSettingsPatch,
     FeaturesPatch,
-    FelisSettingsPatch,
     FootballPatch,
     FootballTeamPatch,
+    LocalAgentSettingsPatch,
     MarketPatch,
     ModulesPatch,
-    PantheraSettingsPatch,
     SettingsPatch,
     VoicePatch,
 )
@@ -55,8 +55,9 @@ class SettingsStoreLoadTests(unittest.TestCase):
             "market": {"symbols": ["SPY"]},
             "ask_apex": {
                 "enabled": True,
-                "agent": "panthera",
-                "panthera": {
+                "agent": "cloud",
+                "cloud": {
+                    "designation": "Panthera",
                     "model": "gpt-5.6-luna",
                     "effort": "medium",
                     "hosted_tools": {
@@ -65,7 +66,8 @@ class SettingsStoreLoadTests(unittest.TestCase):
                         "x_search": True,
                     },
                 },
-                "felis": {
+                "local": {
+                    "designation": "Felis",
                     "model": "gemma-4-E2B-Q4_K_M.gguf",
                     "context_window": 16384,
                     "reasoning_mode": "none",
@@ -94,10 +96,12 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertFalse(snap.modules.football)
         self.assertTrue(snap.modules.f1)
         self.assertTrue(snap.ask_apex.enabled)
-        self.assertEqual(snap.ask_apex.agent, "panthera")
-        self.assertEqual(snap.ask_apex.panthera.model, "gpt-5.6-luna")
-        self.assertEqual(snap.ask_apex.panthera.effort, "medium")
-        self.assertEqual(snap.ask_apex.felis.model, "gemma-4-E2B-Q4_K_M.gguf")
+        self.assertEqual(snap.ask_apex.agent, "cloud")
+        self.assertEqual(snap.ask_apex.cloud.designation, "Panthera")
+        self.assertEqual(snap.ask_apex.cloud.model, "gpt-5.6-luna")
+        self.assertEqual(snap.ask_apex.cloud.effort, "medium")
+        self.assertEqual(snap.ask_apex.local.designation, "Felis")
+        self.assertEqual(snap.ask_apex.local.model, "gemma-4-E2B-Q4_K_M.gguf")
         self.assertEqual(snap.user_designation, "")
         self.assertEqual(snap.voice.engine, "pyttsx3")
         self.assertEqual(snap.voice.gender, "female")
@@ -105,13 +109,23 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertFalse(store.local_override_active)
         self.assertIsNone(store.load_warning)
 
-    def test_invalid_local_model_falls_back_to_default_felis_model(self) -> None:
-        self.base["ask_apex"] = {"felis": {"model": "not-a-model"}}
+    def test_invalid_local_model_falls_back_to_default_local_model(self) -> None:
+        self.base["ask_apex"] = {"local": {"model": "not-a-model"}}
         _write_json(self.config_path, self.base)
         self.assertEqual(
-            self._store().get_snapshot().ask_apex.felis.model,
+            self._store().get_snapshot().ask_apex.local.model,
             "gemma-4-E2B-Q4_K_M.gguf",
         )
+
+    def test_designation_normalization_and_fallbacks(self) -> None:
+        self.base["ask_apex"] = {
+            "cloud": {"designation": "  Atlas  "},
+            "local": {"designation": "   "},
+        }
+        _write_json(self.config_path, self.base)
+        snap = self._store().get_snapshot()
+        self.assertEqual(snap.ask_apex.cloud.designation, "Atlas")
+        self.assertEqual(snap.ask_apex.local.designation, "Felis")
 
     def test_base_plus_local_loading(self) -> None:
         _write_json(
@@ -119,7 +133,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
             {
                 "user_designation": "  Chief  ",
                 "features": {"news": True},
-                "ask_apex": {"enabled": False, "agent": "panthera"},
+                "ask_apex": {"enabled": False, "agent": "cloud"},
                 "tts_settings": {"primary_tts": "kokoro"},
             },
         )
@@ -128,7 +142,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertTrue(snap.features.weather)
         self.assertTrue(snap.features.news)
         self.assertFalse(snap.ask_apex.enabled)
-        self.assertEqual(snap.ask_apex.agent, "panthera")
+        self.assertEqual(snap.ask_apex.agent, "cloud")
         self.assertEqual(snap.voice.engine, "kokoro")
         self.assertEqual(snap.voice.gender, "female")
         self.assertEqual(snap.user_designation, "Chief")
@@ -197,12 +211,14 @@ class SettingsStoreLoadTests(unittest.TestCase):
             store.apply_patch(
                 SettingsPatch(
                     ask_apex=AgentSettingsPatch(
-                        panthera=PantheraSettingsPatch(
+                        cloud=CloudAgentSettingsPatch(
+                            designation="Panthera",
                             model="grok-4.5",
                             effort="high",
                             personal_context_enabled=True,
                         ),
-                        felis=FelisSettingsPatch(
+                        local=LocalAgentSettingsPatch(
+                            designation="Felis",
                             model="qwen3:1.7b",
                             personal_context_enabled=True,
                         ),
@@ -214,14 +230,14 @@ class SettingsStoreLoadTests(unittest.TestCase):
             agent_settings = store.get_snapshot().ask_apex
 
             self.assertFalse(agent_settings.enabled)
-            self.assertEqual(agent_settings.panthera.model, "grok-4.5")
-            self.assertEqual(agent_settings.panthera.effort, "high")
-            self.assertTrue(agent_settings.panthera.personal_context_enabled)
-            self.assertEqual(agent_settings.felis.model, "qwen3:1.7b")
-            self.assertTrue(agent_settings.felis.personal_context_enabled)
+            self.assertEqual(agent_settings.cloud.model, "grok-4.5")
+            self.assertEqual(agent_settings.cloud.effort, "high")
+            self.assertTrue(agent_settings.cloud.personal_context_enabled)
+            self.assertEqual(agent_settings.local.model, "qwen3:1.7b")
+            self.assertTrue(agent_settings.local.personal_context_enabled)
             persisted = json.loads(self.local_path.read_text(encoding="utf-8"))
-            self.assertTrue(persisted["ask_apex"]["panthera"]["personal_context_enabled"])
-            self.assertTrue(persisted["ask_apex"]["felis"]["personal_context_enabled"])
+            self.assertTrue(persisted["ask_apex"]["cloud"]["personal_context_enabled"])
+            self.assertTrue(persisted["ask_apex"]["local"]["personal_context_enabled"])
 
     def test_focused_briefing_mode_survives_reload(self) -> None:
         store = self._store()
@@ -247,7 +263,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         store = self._store()
         snap = store.get_snapshot()
         self.assertTrue(snap.features.weather)
-        self.assertEqual(snap.ask_apex.agent, "panthera")
+        self.assertEqual(snap.ask_apex.agent, "cloud")
         self.assertIsNotNone(store.load_warning)
         self.assertTrue(store.local_file_present)
         self.assertFalse(store.local_override_active)
@@ -275,7 +291,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         snap = store.get_snapshot()
         self.assertTrue(snap.features.weather)
         self.assertTrue(snap.modules.f1)
-        self.assertEqual(snap.ask_apex.agent, "panthera")
+        self.assertEqual(snap.ask_apex.agent, "cloud")
         self.assertEqual(snap.voice.engine, "pyttsx3")
         self.assertIsNotNone(store.load_warning)
         self.assertTrue(store.local_file_present)
@@ -312,7 +328,7 @@ class SettingsStoreLoadTests(unittest.TestCase):
         self.assertFalse(store.local_override_active)
         self.assertIn("unsupported Agent settings format", store.load_warning or "")
         self.assertIn("reset local settings", store.load_warning or "")
-        self.assertEqual(store.get_snapshot().ask_apex.agent, "panthera")
+        self.assertEqual(store.get_snapshot().ask_apex.agent, "cloud")
 
 
 class SettingsStorePatchTests(unittest.TestCase):
@@ -333,7 +349,12 @@ class SettingsStorePatchTests(unittest.TestCase):
                     "calendar": False,
                 },
                 "modules": {"football": False, "f1": False},
-                "ask_apex": {"enabled": True, "agent": "panthera"},
+                "ask_apex": {
+                    "enabled": True,
+                    "agent": "cloud",
+                    "cloud": {"designation": "Panthera", "model": "gpt-5.6-luna"},
+                    "local": {"designation": "Felis", "model": "gemma-4-E2B-Q4_K_M.gguf"},
+                },
                 "tts_settings": {
                     "primary_tts": "google",
                     "voice_gender": "female",
@@ -347,41 +368,53 @@ class SettingsStorePatchTests(unittest.TestCase):
             local_config_path=self.local_path,
         )
 
-    def test_felis_models_are_valid_patch_values(self) -> None:
+    def test_local_models_are_valid_patch_values(self) -> None:
         for model in ("qwen3:1.7b", "qwen3:4b-instruct", "gemma-4-E2B-Q4_K_M.gguf", "gemma-4-E4B-Q4_K_M.gguf"):
             with self.subTest(model=model):
                 patch = SettingsPatch.model_validate(
-                    {"ask_apex": {"felis": {"model": model}}}
+                    {"ask_apex": {"local": {"model": model}}}
                 )
-                self.assertEqual(patch.ask_apex.felis.model, model)
+                self.assertEqual(patch.ask_apex.local.model, model)
 
-    def test_felis_context_window_patch_values(self) -> None:
+    def test_local_context_window_patch_values(self) -> None:
         patch = SettingsPatch.model_validate(
             {
                 "ask_apex": {
-                    "felis": {
+                    "local": {
                         "context_window": 32768,
                     }
                 }
             }
         )
-        self.assertEqual(patch.ask_apex.felis.context_window, 32768)
+        self.assertEqual(patch.ask_apex.local.context_window, 32768)
 
-    def test_felis_reasoning_mode_patch_values(self) -> None:
+    def test_local_reasoning_mode_patch_values(self) -> None:
         patch = SettingsPatch.model_validate(
             {
                 "ask_apex": {
-                    "felis": {
+                    "local": {
                         "reasoning_mode": "focused",
                     }
                 }
             }
         )
-        self.assertEqual(patch.ask_apex.felis.reasoning_mode, "focused")
+        self.assertEqual(patch.ask_apex.local.reasoning_mode, "focused")
         with self.assertRaises(ValidationError):
             SettingsPatch.model_validate(
-                {"ask_apex": {"felis": {"reasoning_mode": "invalid"}}}
+                {"ask_apex": {"local": {"reasoning_mode": "invalid"}}}
             )
+
+    def test_agent_designation_patch_values(self) -> None:
+        patch = SettingsPatch.model_validate(
+            {
+                "ask_apex": {
+                    "cloud": {"designation": "Atlas"},
+                    "local": {"designation": "Hermes"},
+                }
+            }
+        )
+        self.assertEqual(patch.ask_apex.cloud.designation, "Atlas")
+        self.assertEqual(patch.ask_apex.local.designation, "Hermes")
 
     def test_atomic_persistence_and_snapshot_publication(self) -> None:
         store = self._store()
@@ -535,7 +568,7 @@ class SettingsStorePatchTests(unittest.TestCase):
             store.apply_patch(
                 SettingsPatch(
                     ask_apex=AgentSettingsPatch(
-                        panthera=PantheraSettingsPatch(
+                        cloud=CloudAgentSettingsPatch(
                             model="gemini-3.6-flash"
                         )
                     )
@@ -544,17 +577,17 @@ class SettingsStorePatchTests(unittest.TestCase):
             store.apply_patch(
                 SettingsPatch(
                     ask_apex=AgentSettingsPatch(
-                        panthera=PantheraSettingsPatch(
+                        cloud=CloudAgentSettingsPatch(
                             model="grok-4.5"
                         )
                     )
                 )
             )
             self.assertEqual(
-                store.get_snapshot().ask_apex.panthera.model, "grok-4.5"
+                store.get_snapshot().ask_apex.cloud.model, "grok-4.5"
             )
             written = json.loads(self.local_path.read_text(encoding="utf-8"))
-            self.assertEqual(written["ask_apex"]["panthera"]["model"], "grok-4.5")
+            self.assertEqual(written["ask_apex"]["cloud"]["model"], "grok-4.5")
 
 
 class SettingsStoreConcurrencyTests(unittest.TestCase):
@@ -575,7 +608,7 @@ class SettingsStoreConcurrencyTests(unittest.TestCase):
                     "calendar": False,
                 },
                 "modules": {"football": False, "f1": False},
-                "ask_apex": {"enabled": True, "agent": "panthera"},
+                "ask_apex": {"enabled": True, "agent": "cloud"},
                 "tts_settings": {
                     "primary_tts": "google",
                     "voice_gender": "female",

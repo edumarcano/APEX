@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from typing import Any, Literal, TypeAlias
 
 from core.agent.model_catalog import (
-    DEFAULT_FELIS_MODEL,
-    DEFAULT_FELIS_RUNTIME,
-    DEFAULT_PANTHERA_MODEL,
+    DEFAULT_LOCAL_MODEL,
+    DEFAULT_LOCAL_RUNTIME,
+    DEFAULT_CLOUD_MODEL,
     LOCAL_MODEL_PROFILES,
     ModelProfile,
     get_model_profile,
@@ -40,13 +40,13 @@ from core.config import (
     is_dev_mode,
 )
 
-AgentKey: TypeAlias = Literal["panthera", "felis"]
+AgentKey: TypeAlias = Literal["cloud", "local"]
 AgentRuntime: TypeAlias = Literal["cloud", "local"]
 NativeEffort: TypeAlias = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
 CloudProvider: TypeAlias = Literal["openai", "openrouter", "gemini", "xai"]
 LocalRuntime: TypeAlias = Literal["ollama", "llama_cpp"]
 
-VALID_AGENT_KEYS: frozenset[str] = frozenset({"panthera", "felis"})
+VALID_AGENT_KEYS: frozenset[str] = frozenset({"cloud", "local"})
 
 _PROVIDER_DISPLAY_NAMES: dict[InferenceProvider, str] = {
     "gemini": "Google",
@@ -79,8 +79,8 @@ class AgentSpec:
 
 
 AGENT_SPECS: dict[str, AgentSpec] = {
-    "panthera": AgentSpec(
-        key="panthera",
+    "cloud": AgentSpec(
+        key="cloud",
         display_name="Apex Panthera",
         description="Cloud Agent for thoughtful answers, planning, and complex everyday work.",
         identity_instruction=(
@@ -90,8 +90,8 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         runtime="cloud",
         capability_tags=("Cloud", "Generalist", "Planning"),
     ),
-    "felis": AgentSpec(
-        key="felis",
+    "local": AgentSpec(
+        key="local",
         display_name="Apex Felis",
         description="Local Agent for private on-device work through Ollama or llama.cpp.",
         identity_instruction=(
@@ -103,7 +103,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
     ),
 }
 
-_RUNTIME_PROFILE_ORDER: tuple[str, ...] = ("panthera", "felis")
+_RUNTIME_PROFILE_ORDER: tuple[str, ...] = ("cloud", "local")
 
 
 def runtime_agent_order() -> tuple[str, ...]:
@@ -151,9 +151,38 @@ def compose_agent_system_instruction(
     *,
     model_profile: ModelProfile | None = None,
     user_designation: str = "",
+    agent_designation: str = "",
+    designation: str = "",
 ) -> str:
     """Compose identity, behavior, and optional user-addressing instructions."""
-    identity = AGENT_SPECS[agent_key].identity_instruction
+    spec = AGENT_SPECS.get(agent_key)
+    if spec is None:
+        raise ValueError(f"Unknown Agent key: {agent_key!r}")
+    resolved_designation = (designation or agent_designation).strip()
+    if not resolved_designation:
+        try:
+            from core.settings import get_settings_store
+
+            settings = get_settings_store().get_snapshot().ask_apex
+            if spec.runtime == "cloud":
+                resolved_designation = settings.cloud.designation
+            else:
+                resolved_designation = settings.local.designation
+        except Exception:
+            resolved_designation = "Panthera" if spec.runtime == "cloud" else "Felis"
+    if not resolved_designation:
+        resolved_designation = "Panthera" if spec.runtime == "cloud" else "Felis"
+
+    if spec.runtime == "cloud":
+        identity = (
+            f"You are Apex {resolved_designation}, the cloud Apex Agent. "
+            "You run through the operator's selected cloud provider and model."
+        )
+    else:
+        identity = (
+            f"You are Apex {resolved_designation}, the local Apex Agent. "
+            "You run through the operator's selected local runtime and model."
+        )
     if model_profile is not None:
         identity = (
             f"{identity} You are currently powered by {model_profile.display_name}."
@@ -198,10 +227,10 @@ def resolve_selected_model_profile(agent_key: str) -> ModelProfile:
     from core.settings import get_settings_store
 
     settings = get_settings_store().get_snapshot().ask_apex
-    if agent_key == "panthera":
-        model_id = settings.panthera.model
-    elif agent_key == "felis":
-        model_id = settings.felis.model
+    if agent_key == "cloud":
+        model_id = settings.cloud.model
+    elif agent_key == "local":
+        model_id = settings.local.model
     else:
         raise ValueError(f"Unknown Agent key: {agent_key!r}")
     profile = get_model_profile(model_id)
@@ -210,14 +239,19 @@ def resolve_selected_model_profile(agent_key: str) -> ModelProfile:
     return profile
 
 
-def resolve_panthera_provider() -> CloudProvider:
-    profile = resolve_selected_model_profile("panthera")
+def resolve_cloud_provider() -> CloudProvider:
+    profile = resolve_selected_model_profile("cloud")
     return profile.provider  # type: ignore[return-value]
 
 
-def resolve_felis_runtime() -> LocalRuntime:
-    profile = resolve_selected_model_profile("felis")
+def resolve_local_runtime() -> LocalRuntime:
+    profile = resolve_selected_model_profile("local")
     return profile.provider  # type: ignore[return-value]
+
+
+resolve_panthera_provider = resolve_cloud_provider
+resolve_felis_runtime = resolve_local_runtime
+
 
 
 
@@ -387,11 +421,11 @@ def is_sandbox_query(*, sandbox_mode: bool, dev_mode: bool | None = None) -> boo
 
 
 def local_agent_keys() -> tuple[str, ...]:
-    return ("felis",)
+    return ("local",)
 
 
 def cloud_agent_keys() -> tuple[str, ...]:
-    return ("panthera",)
+    return ("cloud",)
 
 
 def is_local_agent_key(agent_key: str) -> bool:
@@ -405,14 +439,14 @@ def is_cloud_agent_key(agent_key: str) -> bool:
 
 
 def local_context_window_for_agent(agent_key: str) -> int | None:
-    if agent_key != "felis":
+    if agent_key != "local":
         return None
-    profile = resolve_selected_model_profile("felis")
+    profile = resolve_selected_model_profile("local")
     if profile.provider != "llama_cpp":
         return None
     from core.settings import get_settings_store
 
-    return get_settings_store().get_snapshot().ask_apex.felis.context_window
+    return get_settings_store().get_snapshot().ask_apex.local.context_window
 
 
 def local_reasoning_modes_for_model(model_id: str) -> tuple[LocalReasoningMode, ...]:
@@ -431,11 +465,11 @@ def local_reasoning_modes_for_model(model_id: str) -> tuple[LocalReasoningMode, 
 
 
 def local_reasoning_modes_for_agent(agent_key: str) -> tuple[LocalReasoningMode, ...]:
-    if agent_key != "felis":
+    if agent_key != "local":
         return ()
     from core.settings import get_settings_store
 
-    model_id = get_settings_store().get_snapshot().ask_apex.felis.model
+    model_id = get_settings_store().get_snapshot().ask_apex.local.model
     return local_reasoning_modes_for_model(model_id)
 
 
@@ -445,7 +479,7 @@ def local_reasoning_mode_for_agent(agent_key: str) -> LocalReasoningMode | None:
         return None
     from core.settings import get_settings_store
 
-    value = get_settings_store().get_snapshot().ask_apex.felis.reasoning_mode
+    value = get_settings_store().get_snapshot().ask_apex.local.reasoning_mode
     if value in supported:
         return value
     if "none" in supported:
@@ -463,8 +497,8 @@ def _resolve_local_reasoning_mode(
     from core.settings import get_settings_store
 
     settings = get_settings_store().get_snapshot().ask_apex
-    if settings.felis.model == model_id and settings.felis.reasoning_mode in supported:
-        return settings.felis.reasoning_mode
+    if settings.local.model == model_id and settings.local.reasoning_mode in supported:
+        return settings.local.reasoning_mode
     if "none" in supported:
         return "none"
     return supported[0] if supported else "none"
@@ -475,10 +509,10 @@ def local_model_ref_for_agent(
     *,
     local_context_window: int | None = None,
 ) -> LocalModelRef:
-    if agent_key != "felis":
+    if agent_key != "local":
         raise ValueError(f"Agent {agent_key!r} is not a local Agent")
     profile = build_concrete_agent(
-        "felis",
+        "local",
         native_effort=None,
         local_context_window=local_context_window,
     )
@@ -511,21 +545,21 @@ def local_model_refs_for_model(model_id: str) -> frozenset[LocalModelRef]:
 
 
 def local_model_refs_for_agent(agent_key: str) -> frozenset[LocalModelRef]:
-    if agent_key != "felis":
+    if agent_key != "local":
         return frozenset()
-    model_id = resolve_selected_model_profile("felis").model_id
+    model_id = resolve_selected_model_profile("local").model_id
     return local_model_refs_for_model(model_id)
 
 
 def agent_key_for_local_model_ref(ref: LocalModelRef) -> str | None:
     if ref.provider == "llama_cpp":
         if model_id_for_llama_cpp_alias(ref.model) is not None:
-            return "felis"
+            return "local"
     for model_id, profile in LOCAL_MODEL_PROFILES.items():
         if profile.provider != ref.provider:
             continue
         if ref in local_model_refs_for_model(model_id):
-            return "felis"
+            return "local"
     return None
 
 
@@ -540,19 +574,20 @@ def resolve_agent_selection(
     agent_settings: Any,
 ) -> tuple[AgentRuntime, str, NativeEffort | None]:
     """Resolve effective runtime, Agent, and effort from Agent settings."""
-    agent = getattr(agent_settings, "agent", "panthera")
+    agent = getattr(agent_settings, "agent", "cloud")
     if agent not in VALID_AGENT_KEYS:
-        agent = "panthera"
+        agent = "cloud"
     spec = AGENT_SPECS[agent]
     if spec.runtime == "local":
         return "local", agent, None
-    effort = getattr(agent_settings.panthera, "effort", "medium")
+    effort = getattr(agent_settings.cloud, "effort", "medium")
     return "cloud", agent, effort
 
 
-def default_panthera_settings() -> dict[str, Any]:
+def default_cloud_settings() -> dict[str, Any]:
     return {
-        "model": DEFAULT_PANTHERA_MODEL,
+        "designation": "Panthera",
+        "model": DEFAULT_CLOUD_MODEL,
         "effort": "medium",
         "hosted_tools": {
             "google_search": True,
@@ -562,9 +597,15 @@ def default_panthera_settings() -> dict[str, Any]:
     }
 
 
-def default_felis_settings() -> dict[str, Any]:
+def default_local_settings() -> dict[str, Any]:
     return {
-        "model": DEFAULT_FELIS_MODEL,
-        "context_window": llama_cpp_runtime_config(DEFAULT_FELIS_MODEL).default_context_window,
+        "designation": "Felis",
+        "model": DEFAULT_LOCAL_MODEL,
+        "context_window": llama_cpp_runtime_config(DEFAULT_LOCAL_MODEL).default_context_window,
         "reasoning_mode": "none",
     }
+
+
+default_panthera_settings = default_cloud_settings
+default_felis_settings = default_local_settings
+

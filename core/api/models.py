@@ -51,7 +51,7 @@ class RuntimeMetadata(BaseModel):
         ]
         | None
     ) = None
-    synthesis_agent: Literal["panthera", "felis"] | None = None
+    synthesis_agent: Literal["cloud", "local"] | None = None
     synthesis_resolved_model: str | None = None
     synthesis_fallback_reason: str | None = None
     synthesis_fallback_steps: list[str] = Field(default_factory=list)
@@ -730,6 +730,8 @@ class AgentModelCatalogEntry(BaseModel):
 
 class AgentStatus(BaseModel):
     key: str = Field(description="Stable Agent identifier used by the HUD.")
+    role: Literal["cloud", "local"] = Field(description="Stable Agent role ('cloud' or 'local').")
+    designation: str = Field(default="", description="Configured Agent designation label.")
     display_name: str = Field(description="Human-readable Apex Agent label.")
     description: str = Field(description="Short Agent capability and role summary.")
     provider: Literal["ollama", "llama_cpp", "gemini", "openai", "openrouter", "xai"] = Field(
@@ -880,7 +882,7 @@ class ToolPreflightRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    agent: AgentKey = "panthera"
+    agent: AgentKey = "cloud"
     effort: ApexEffort | None = None
     model_id: str | None = None
     context_window: int | None = Field(default=None, ge=1)
@@ -896,22 +898,28 @@ class ToolPreflightRequest(BaseModel):
 class ToolProfileCreateRequest(BaseModel):
     """Create or duplicate a custom profile from stable capability names."""
 
-    id: str | None = Field(default=None, min_length=1, max_length=80)
-    name: str = Field(min_length=1)
-    description: str = Field(default="", max_length=240)
+    model_config = ConfigDict(extra="forbid")
+
+    id: str | None = None
+    name: str = Field(min_length=1, max_length=100)
+    description: str = Field(default="", max_length=500)
     tool_names: list[str] = Field(default_factory=list)
 
 
 class ToolProfileUpdateRequest(BaseModel):
-    """Edit the name, description, or explicit names of a custom profile."""
+    """Update a custom profile by ID."""
 
-    name: str | None = Field(default=None, min_length=1)
-    description: str | None = Field(default=None, max_length=240)
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=500)
     tool_names: list[str] | None = None
 
 
 class ToolProfileDefaultRequest(BaseModel):
-    """Assign one existing profile as an Agent default."""
+    """Update the default profile for one Agent."""
+
+    model_config = ConfigDict(extra="forbid")
 
     agent: AgentKey
     profile_id: str
@@ -958,8 +966,8 @@ class LocalUnloadResponse(BaseModel):
 
 
 class LocalLoadRequest(BaseModel):
-    agent: Literal["felis"] = Field(
-        default="felis",
+    agent: Literal["local"] = Field(
+        default="local",
         description="Local Apex Agent to pre-warm in local runtime memory.",
     )
 
@@ -969,7 +977,7 @@ class LocalLoadResponse(BaseModel):
         default="success",
         description="Outcome label for the verified local model load.",
     )
-    agent: Literal["felis"] = Field(
+    agent: Literal["local"] = Field(
         description="Local Agent confirmed resident by the local runtime.",
     )
 
@@ -994,7 +1002,7 @@ class PipelineSynthesisState(BaseModel):
     provider: Literal[
         "ollama", "llama_cpp", "raw", "demo", "openai", "openrouter"
     ] | None = None
-    agent: Literal["panthera", "felis"] | None = None
+    agent: Literal["cloud", "local"] | None = None
     loading: bool = False
     fallback_reason: str | None = None
 
