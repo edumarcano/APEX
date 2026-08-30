@@ -141,9 +141,8 @@ _PROVIDER_DISPLAY_NAMES: dict[str, str] = {
 
 
 def _model_pricing_metadata(profile: ModelProfile) -> AgentPricingMetadata:
-    agent_key = "panthera" if profile.runtime == "cloud" else "felis"
     pricing = agent_pricing(
-        agent_key,
+        "apex",
         model=profile.model_id,
         provider=profile.provider,
     )
@@ -824,7 +823,7 @@ def _prepare_agent_payload(
 
 
 def _build_hud_context(
-    payload: AgentQueryRequest, *, agent_key: str = "panthera"
+    payload: AgentQueryRequest, *, agent_key: str = "apex"
 ) -> str:
     """
     Build optional HUD context from explicit identifiers only.

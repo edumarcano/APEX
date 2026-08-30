@@ -8,16 +8,14 @@ from typing import Callable
 
 from core.agent.pricing import estimate_inference_cost
 from core.agent.catalog import (
-    AGENT_SPECS,
-    agent_key_for_local_model_ref,
     build_concrete_agent,
     compose_agent_system_instruction,
+    known_local_model_refs,
     local_model_refs_for_model,
-    resolve_selected_model_profile,
 )
 from core.agent.model_catalog import (
-    DEFAULT_FELIS_MODEL,
-    PANTHERA_BRIEFING_MODEL,
+    DEFAULT_LOCAL_MODEL,
+    FOCUSED_BRIEFING_MODEL,
     get_model_profile,
 )
 from core.agent.providers.ollama import OllamaProvider
@@ -53,8 +51,8 @@ from core.synthesis.formatting import (
     wrap_untrusted_payload,
 )
 from core.synthesis.models import (
-    FELIS_BRIEFING_CONTEXT_WINDOW,
-    LOCAL_BRIEFING_AGENTS,
+    FLASH_BRIEFING_CONTEXT_WINDOW,
+    LOCAL_BRIEFING_MODELS,
     BriefingFacts,
     BriefingMode,
     SynthesisResult,
@@ -64,8 +62,8 @@ from core.settings import get_settings_store
 _LOGGER = logging.getLogger(__name__)
 
 _LOCAL_SYNTHESIS_FINAL_ANSWER_MAX_TOKENS = 512
-_FELIS_BRIEFING_MODEL = DEFAULT_FELIS_MODEL
-_PANTHERA_BRIEFING_MODEL = PANTHERA_BRIEFING_MODEL
+_FLASH_BRIEFING_MODEL = DEFAULT_LOCAL_MODEL
+_FOCUSED_BRIEFING_MODEL = FOCUSED_BRIEFING_MODEL
 
 
 StateCallback = Callable[[str, str | None, str | None, str | None], None]
@@ -73,7 +71,7 @@ StateCallback = Callable[[str, str | None, str | None, str | None], None]
 
 @dataclass
 class WarmupHandle:
-    agent_key: str = "felis"
+    model_id: str = _FLASH_BRIEFING_MODEL
     model_ref: LocalModelRef | None = None
     event: threading.Event = field(default_factory=threading.Event)
     success: bool = False
@@ -92,35 +90,31 @@ def resident_local_model_ref() -> LocalModelRef | None:
     return get_active_local_model()
 
 
-def resident_agent_key() -> str | None:
-    tracked = resident_local_model_ref()
-    return agent_key_for_local_model_ref(tracked) if tracked is not None else None
-
-
-def _resident_felis_briefing_model() -> LocalModelRef | None:
-    """Return the resident fixed Felis briefing model, when it is loaded."""
+def _resident_flash_briefing_model() -> LocalModelRef | None:
+    """Return the resident fixed Flash briefing model, when it is loaded."""
     resident = resident_local_model_ref()
     if resident is None:
         return None
     return (
         resident
-        if resident in local_model_refs_for_model(_FELIS_BRIEFING_MODEL)
+        if resident in local_model_refs_for_model(_FLASH_BRIEFING_MODEL)
         else None
     )
 
 
-def _felis_briefing_provider() -> str:
-    """Return the provider for Felis's fixed briefing model."""
-    profile = get_model_profile(_FELIS_BRIEFING_MODEL)
+def _flash_briefing_provider() -> str:
+    """Return the provider for Flash's fixed briefing model."""
+    profile = get_model_profile(_FLASH_BRIEFING_MODEL)
     if profile is None:
-        raise RuntimeError("felis_briefing_model_invalid")
+        raise RuntimeError("flash_briefing_model_invalid")
     return profile.provider
 
 
-def _briefing_provider_for_agent(agent_key: str) -> str:
-    if agent_key == "felis":
-        return _felis_briefing_provider()
-    return resolve_selected_model_profile(agent_key).provider
+def _briefing_provider_for_model(model_id: str) -> str:
+    profile = get_model_profile(model_id)
+    if profile is None:
+        raise RuntimeError("briefing_model_invalid")
+    return profile.provider
 
 
 def _has_unrecognized_resident_model() -> bool:
@@ -133,10 +127,8 @@ def _has_unrecognized_resident_model() -> bool:
             if model["state"] != "loaded":
                 continue
             recognized = any(
-                agent_key_for_local_model_ref(
-                    LocalModelRef(provider=backend.provider, model=value)
-                )
-                is not None
+                LocalModelRef(provider=backend.provider, model=value)
+                in known_local_model_refs()
                 for value in (model["model"], model["name"])
             )
             if not recognized:
@@ -152,34 +144,34 @@ class SynthesisRouter:
         self,
         phase: str,
         provider: str | None = None,
-        agent: str | None = None,
+        model_id: str | None = None,
         reason: str | None = None,
     ) -> None:
-        self._state_callback(phase, provider, agent, reason)
+        self._state_callback(phase, provider, model_id, reason)
 
-    def start_agent_warmup(
+    def start_model_warmup(
         self,
-        agent_key: str,
+        model_id: str,
         *,
         context_window: int | None = None,
         reasoning_mode: LocalReasoningMode | None = None,
     ) -> WarmupHandle:
-        handle = WarmupHandle(agent_key=agent_key)
-        if agent_key not in LOCAL_BRIEFING_AGENTS:
-            handle.reason = "local_agent_invalid"
+        handle = WarmupHandle(model_id=model_id)
+        profile = get_model_profile(model_id)
+        if profile is None or profile.runtime != "local":
+            handle.reason = "local_model_invalid"
             handle.finished_at = time.monotonic()
             handle.event.set()
             return handle
-        if agent_key == "felis":
-            context_window = context_window or FELIS_BRIEFING_CONTEXT_WINDOW
-            reasoning_mode = reasoning_mode or "none"
+        context_window = context_window or FLASH_BRIEFING_CONTEXT_WINDOW
+        reasoning_mode = reasoning_mode or "none"
         try:
             agent = build_concrete_agent(
-                agent_key,
+                "apex",
                 native_effort=None,
                 local_context_window=context_window,
                 local_reasoning_mode=reasoning_mode,
-                model_id=_FELIS_BRIEFING_MODEL if agent_key == "felis" else None,
+                model_id=model_id,
             )
             backend = get_local_runtime_backend(agent.provider)
         except Exception:
@@ -203,7 +195,7 @@ class SynthesisRouter:
             handle.event.set()
             return handle
 
-        self._state("loading", agent.provider, agent_key, None)
+        self._state("loading", agent.provider, model_id, None)
 
         def worker() -> None:
             try:
@@ -243,18 +235,18 @@ class SynthesisRouter:
             return None
         if mode != "flash":
             return None
-        resident_ref = _resident_felis_briefing_model()
+        resident_ref = _resident_flash_briefing_model()
         if resident_ref is not None:
             self._state(
                 "ready",
-                _felis_briefing_provider(),
-                "felis",
+                _flash_briefing_provider(),
+                _FLASH_BRIEFING_MODEL,
                 None,
             )
             return None
-        return self.start_agent_warmup(
-            "felis",
-            context_window=FELIS_BRIEFING_CONTEXT_WINDOW,
+        return self.start_model_warmup(
+            _FLASH_BRIEFING_MODEL,
+            context_window=FLASH_BRIEFING_CONTEXT_WINDOW,
             reasoning_mode="none",
         )
 
@@ -281,25 +273,25 @@ class SynthesisRouter:
         result.fallback_steps = ["structured:resolved"]
         return result
 
-    def _panthera(self, source: BriefingFacts) -> SynthesisResult:
-        """Generate the Focused briefing with the fixed Panthera route."""
+    def _focused(self, source: BriefingFacts) -> SynthesisResult:
+        """Generate the Focused briefing with its fixed cloud model."""
         import os
 
         api_key = os.getenv("OPENROUTER_API_KEY")
         if not api_key:
             raise RuntimeError("openrouter_unavailable")
         agent = build_concrete_agent(
-            "panthera",
+            "apex",
             native_effort="high",
-            model_id=_PANTHERA_BRIEFING_MODEL,
+            model_id=_FOCUSED_BRIEFING_MODEL,
         )
-        self._state("generating", "openrouter", "panthera", None)
+        self._state("generating", "openrouter", _FOCUSED_BRIEFING_MODEL, None)
         turn = OpenRouterProvider(api_key).generate_turn(
             [AgentMessage(role="user", content=wrap_untrusted_payload(source, mode="focused"))],
             [],
             agent,
             system_instruction_override=compose_agent_system_instruction(
-                "panthera",
+                "apex",
                 FOCUSED_SYNTHESIS_PROMPT,
                 user_designation=get_settings_store().get_snapshot().user_designation,
             ),
@@ -311,7 +303,7 @@ class SynthesisRouter:
             briefing=briefing,
             insights=insights,
             provider="openrouter",
-            agent="panthera",
+            model_id=_FOCUSED_BRIEFING_MODEL,
             generation_ms=round(turn.provider_ms) if turn.provider_ms is not None else None,
             provider_ms=turn.provider_ms,
             resolved_model=turn.resolved_model or agent.api_model,
@@ -327,38 +319,29 @@ class SynthesisRouter:
 
     def _local_profile_for_synthesis(
         self,
-        agent_key: str,
+        model_id: str,
         *,
         resident_ref: LocalModelRef | None = None,
     ):
-        """Build the provider profile for a local briefing Agent."""
-        context_window: int | None = None
-        if AGENT_SPECS[agent_key].runtime == "local":
-            context_window = FELIS_BRIEFING_CONTEXT_WINDOW
-            if resident_ref is not None and resident_ref.provider == "llama_cpp":
-                model_id = (
-                    _FELIS_BRIEFING_MODEL
-                    if agent_key == "felis"
-                    else resolve_selected_model_profile(agent_key).model_id
-                )
-                context_window = (
-                    llama_cpp_context_window_for_runtime_model_id(
-                        model_id, resident_ref.model
-                    )
-                    or context_window
-                )
+        """Build the provider profile for a fixed local briefing model."""
+        context_window: int | None = FLASH_BRIEFING_CONTEXT_WINDOW
+        if resident_ref is not None and resident_ref.provider == "llama_cpp":
+            context_window = (
+                llama_cpp_context_window_for_runtime_model_id(model_id, resident_ref.model)
+                or context_window
+            )
         user_designation = get_settings_store().get_snapshot().user_designation
         system_instruction = compose_agent_system_instruction(
-            agent_key,
+            "apex",
             FLASH_SYNTHESIS_PROMPT,
             user_designation=user_designation,
         )
         return build_concrete_agent(
-            agent_key,
+            "apex",
             native_effort=None,
             local_context_window=context_window,
             local_reasoning_mode="none",
-            model_id=_FELIS_BRIEFING_MODEL if agent_key == "felis" else None,
+            model_id=model_id,
         ).model_copy(
             update={
                 "final_answer_max_tokens": _LOCAL_SYNTHESIS_FINAL_ANSWER_MAX_TOKENS,
@@ -369,7 +352,7 @@ class SynthesisRouter:
     def _local(
         self,
         source: BriefingFacts,
-        agent_key: str,
+        model_id: str,
         warmup_ms: int | None,
         *,
         resident_ref: LocalModelRef | None = None,
@@ -380,7 +363,7 @@ class SynthesisRouter:
         try:
             effective_ref = resident_ref or resident_local_model_ref()
             agent = self._local_profile_for_synthesis(
-                agent_key, resident_ref=effective_ref
+                model_id, resident_ref=effective_ref
             )
             if agent.provider == "ollama":
                 provider = OllamaProvider()
@@ -388,7 +371,7 @@ class SynthesisRouter:
                 provider = LlamaCppProvider()
             else:
                 raise RuntimeError("local_provider_invalid")
-            self._state("generating", agent.provider, agent_key, None)
+            self._state("generating", agent.provider, model_id, None)
             turn = provider.generate_turn(
                 [AgentMessage(role="user", content=wrap_untrusted_payload(source, mode="flash"))],
                 [],
@@ -399,7 +382,7 @@ class SynthesisRouter:
                 briefing=briefing,
                 insights=insights,
                 provider=agent.provider,  # type: ignore[arg-type]
-                agent=agent_key,  # type: ignore[arg-type]
+                model_id=model_id,
                 warmup_ms=warmup_ms,
                 generation_ms=int((time.monotonic() - started) * 1000),
                 provider_ms=turn.provider_ms,
@@ -419,32 +402,30 @@ class SynthesisRouter:
     def _synthesize_explicit_local(
         self,
         source: BriefingFacts,
-        agent_key: str,
+        model_id: str,
         warmup: WarmupHandle | None,
     ) -> SynthesisResult:
-        """Honor an explicitly selected local Agent; never silently substitute another."""
-        resident_ref = (
-            _resident_felis_briefing_model() if agent_key == "felis" else None
-        )
+        """Honor a fixed local briefing model; never silently substitute another."""
+        resident_ref = _resident_flash_briefing_model() if model_id == _FLASH_BRIEFING_MODEL else None
         if resident_ref is not None:
             try:
                 result = self._local(
                     source,
-                    agent_key,
+                    model_id,
                     None,
                     resident_ref=resident_ref,
                 )
-                self._state("complete", result.provider, result.agent, None)
+                self._state("complete", result.provider, result.model_id, None)
                 return result
             except Exception as exc:
                 reason = str(exc) if str(exc).startswith("local_") else "local_generation_failed"
                 return self._structured_fallback(source, reason)
 
         if warmup is None:
-            warmup = self.start_agent_warmup(agent_key)
-        elif warmup.agent_key != agent_key:
-            # Caller prepared a different agent; switch to the selected one.
-            warmup = self.start_agent_warmup(agent_key)
+            warmup = self.start_model_warmup(model_id)
+        elif warmup.model_id != model_id:
+            # Caller prepared a different model; switch to the selected one.
+            warmup = self.start_model_warmup(model_id)
 
         if not warmup.event.wait(LOCAL_PRIMARY_GRACE_SECONDS):
             return self._structured_fallback(
@@ -456,18 +437,18 @@ class SynthesisRouter:
             )
         self._state(
             "ready",
-            _briefing_provider_for_agent(agent_key),
-            agent_key,
+            _briefing_provider_for_model(model_id),
+            model_id,
             None,
         )
         try:
             result = self._local(
                 source,
-                agent_key,
+                model_id,
                 warmup.elapsed_ms,
                 resident_ref=warmup.model_ref,
             )
-            self._state("complete", result.provider, result.agent, None)
+            self._state("complete", result.provider, result.model_id, None)
             return result
         except Exception as exc:
             reason = str(exc) if str(exc).startswith("local_") else "local_generation_failed"
@@ -479,8 +460,8 @@ class SynthesisRouter:
         """Route Focused failure through Flash, then Structured."""
         fallback_steps: list[str] = []
         try:
-            result = self._panthera(source)
-            self._state("complete", result.provider, result.agent, None)
+            result = self._focused(source)
+            self._state("complete", result.provider, result.model_id, None)
             return result
         except Exception as exc:
             _LOGGER.error(
@@ -493,40 +474,38 @@ class SynthesisRouter:
                 if str(exc).startswith("openrouter_")
                 else "openrouter_error"
             )
-            fallback_steps.append(f"panthera:{reason}")
+            fallback_steps.append(f"focused:{reason}")
 
-        for agent_key in ("felis",):
-            result, local_reason = self._try_panthera_local_fallback(flash_source, agent_key)
+        for model_id in (_FLASH_BRIEFING_MODEL,):
+            result, local_reason = self._try_focused_local_fallback(flash_source, model_id)
             if result is not None:
-                fallback_steps.append(f"{agent_key}:resolved")
+                fallback_steps.append("flash:resolved")
                 result.fallback_reason = fallback_steps[0].split(":", 1)[1]
                 result.fallback_steps = fallback_steps
                 self._state(
-                    "complete", result.provider, result.agent, result.fallback_reason
+                    "complete", result.provider, result.model_id, result.fallback_reason
                 )
                 return result
-            fallback_steps.append(f"{agent_key}:{local_reason}")
+            fallback_steps.append(f"flash:{local_reason}")
             reason = local_reason
 
         result = self._raw(source, reason)
         fallback_steps.append("structured:resolved")
         result.fallback_steps = fallback_steps
-        self._state("complete", result.provider, result.agent, reason)
+        self._state("complete", result.provider, result.model_id, reason)
         return result
 
-    def _try_panthera_local_fallback(
-        self, source: BriefingFacts, agent_key: str
+    def _try_focused_local_fallback(
+        self, source: BriefingFacts, model_id: str
     ) -> tuple[SynthesisResult | None, str]:
-        """Attempt one ordered local fallback without substituting agents."""
-        resident_ref = (
-            _resident_felis_briefing_model() if agent_key == "felis" else None
-        )
+        """Attempt the ordered Flash fallback without substituting models."""
+        resident_ref = _resident_flash_briefing_model() if model_id == _FLASH_BRIEFING_MODEL else None
         if resident_ref is not None:
             try:
                 return (
                     self._local(
                         source,
-                        agent_key,
+                        model_id,
                         None,
                         resident_ref=resident_ref,
                     ),
@@ -539,22 +518,22 @@ class SynthesisRouter:
                     else "local_generation_failed"
                 )
 
-        warmup = self.start_agent_warmup(agent_key)
+        warmup = self.start_model_warmup(model_id)
         if not warmup.event.wait(LOCAL_FALLBACK_GRACE_SECONDS):
             return None, "local_warmup_timeout"
         if not warmup.success:
             return None, warmup.reason or "local_warmup_failed"
         self._state(
             "ready",
-            _briefing_provider_for_agent(agent_key),
-            agent_key,
+            _briefing_provider_for_model(model_id),
+            model_id,
             None,
         )
         try:
             return (
                 self._local(
                     source,
-                    agent_key,
+                    model_id,
                     warmup.elapsed_ms,
                     resident_ref=warmup.model_ref,
                 ),
@@ -575,13 +554,13 @@ class SynthesisRouter:
     ) -> SynthesisResult:
         if mode == "structured":
             result = self._raw(source, "configured_structured")
-            self._state("complete", result.provider, result.agent, result.fallback_reason)
+            self._state("complete", result.provider, result.model_id, result.fallback_reason)
             return result
 
         if mode == "focused":
             return self._synthesize_focused(source.focused_view(), source.flash_view())
 
         if mode == "flash":
-            return self._synthesize_explicit_local(source.flash_view(), "felis", warmup)
+            return self._synthesize_explicit_local(source.flash_view(), _FLASH_BRIEFING_MODEL, warmup)
 
         return self._raw(source, "invalid_briefing_mode")

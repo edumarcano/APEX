@@ -51,7 +51,7 @@ class RuntimeMetadata(BaseModel):
         ]
         | None
     ) = None
-    synthesis_agent: Literal["panthera", "felis"] | None = None
+    synthesis_model_id: str | None = None
     synthesis_resolved_model: str | None = None
     synthesis_fallback_reason: str | None = None
     synthesis_fallback_steps: list[str] = Field(default_factory=list)
@@ -1005,7 +1005,7 @@ class PipelineSynthesisState(BaseModel):
     provider: Literal[
         "ollama", "llama_cpp", "raw", "demo", "openai", "openrouter"
     ] | None = None
-    agent: Literal["panthera", "felis"] | None = None
+    model_id: str | None = None
     loading: bool = False
     fallback_reason: str | None = None
 

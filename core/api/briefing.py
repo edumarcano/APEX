@@ -727,7 +727,7 @@ def _synthesize_from_snapshot(
             synthesis_strategy=synthesis_strategy,
             briefing_mode=mode,
             synthesis_provider=synthesis_result.provider,
-            synthesis_agent=synthesis_result.agent,
+            synthesis_model_id=synthesis_result.model_id,
             synthesis_resolved_model=synthesis_result.resolved_model,
             synthesis_fallback_reason=synthesis_result.fallback_reason,
             synthesis_fallback_steps=synthesis_result.fallback_steps,
@@ -884,8 +884,8 @@ def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
     """Return status and pricing for fixed Flash, Focused, and Structured modes."""
     import os
     from core.agent.model_catalog import (
-        DEFAULT_FELIS_MODEL,
-        PANTHERA_BRIEFING_MODEL,
+        DEFAULT_LOCAL_MODEL,
+        FOCUSED_BRIEFING_MODEL,
         get_model_profile,
     )
     from core.agent.catalog import local_model_refs_for_model
@@ -894,38 +894,38 @@ def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
     from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
     from core.api.cortex import _PROFILE_STATUS_REASONS, _model_pricing_metadata
 
-    panthera_profile = get_model_profile(PANTHERA_BRIEFING_MODEL)
+    focused_profile = get_model_profile(FOCUSED_BRIEFING_MODEL)
     openrouter_configured = bool(os.getenv("OPENROUTER_API_KEY"))
-    panthera_status = "configured" if openrouter_configured else "disabled"
-    panthera_reason = (
+    focused_status = "configured" if openrouter_configured else "disabled"
+    focused_reason = (
         None
         if openrouter_configured
         else "OpenRouter API key is not configured (OPENROUTER_API_KEY)"
     )
-    panthera_pricing = (
-        _model_pricing_metadata(panthera_profile) if panthera_profile else None
+    focused_pricing = (
+        _model_pricing_metadata(focused_profile) if focused_profile else None
     )
 
-    felis_profile = get_model_profile(DEFAULT_FELIS_MODEL)
+    flash_profile = get_model_profile(DEFAULT_LOCAL_MODEL)
     llama_backend = get_local_runtime_backend("llama_cpp")
-    felis_status = "available"
-    felis_reason = None
+    flash_status = "available"
+    flash_reason = None
     if not llama_backend.enabled:
-        felis_status = "disabled"
-        felis_reason = "llama.cpp runtime is disabled in settings"
+        flash_status = "disabled"
+        flash_reason = "llama.cpp runtime is disabled in settings"
     else:
         snapshot = llama_backend.get_status_snapshot()
         if not snapshot.get("reachable"):
-            felis_status = "provider_unreachable"
-            felis_reason = "llama.cpp is unreachable"
-        elif felis_profile:
+            flash_status = "provider_unreachable"
+            flash_reason = "llama.cpp is unreachable"
+        elif flash_profile:
             installed_models = set(snapshot.get("installed_models", []))
             known_aliases = {
-                ref.model for ref in local_model_refs_for_model(felis_profile.model_id)
-            } | {felis_profile.model_id}
+                ref.model for ref in local_model_refs_for_model(flash_profile.model_id)
+            } | {flash_profile.model_id}
             if not (installed_models & known_aliases):
-                felis_status = "model_not_installed"
-                felis_reason = f"Model {felis_profile.model_id} is not installed"
+                flash_status = "model_not_installed"
+                flash_reason = f"Model {flash_profile.model_id} is not installed"
             else:
                 loaded_models = snapshot.get("loaded_models", [])
                 is_resident = any(
@@ -934,46 +934,46 @@ def build_briefing_target_statuses() -> list[BriefingTargetStatus]:
                     for m in loaded_models
                 )
                 if not is_resident:
-                    runtime_config = LLAMA_CPP_RUNTIME_CONFIGS.get(felis_profile.model_id)
+                    runtime_config = LLAMA_CPP_RUNTIME_CONFIGS.get(flash_profile.model_id)
                     ram_limit = runtime_config.ram_limit if runtime_config else 0.85
                     cpu_limit = runtime_config.cpu_limit if runtime_config else 0.90
                     gate_open, gate_reason = coordinator.check_resource_gate(
                         ram_limit, cpu_limit, vitals=coordinator.get_system_vitals()
                     )
                     if not gate_open and gate_reason is not None:
-                        felis_status = gate_reason
-                        felis_reason = _PROFILE_STATUS_REASONS.get(
+                        flash_status = gate_reason
+                        flash_reason = _PROFILE_STATUS_REASONS.get(
                             gate_reason, f"Current {gate_reason} exceeds threshold"
                         )
 
-    felis_pricing = (
-        _model_pricing_metadata(felis_profile) if felis_profile else None
+    flash_pricing = (
+        _model_pricing_metadata(flash_profile) if flash_profile else None
     )
 
     return [
         BriefingTargetStatus(
             mode="focused",
             label="Focused",
-            description=f"Panthera · {panthera_profile.display_name if panthera_profile else 'DeepSeek V4 Flash 0731'}",
-            model_id=panthera_profile.model_id if panthera_profile else PANTHERA_BRIEFING_MODEL,
-            model_display_name=panthera_profile.display_name if panthera_profile else "DeepSeek V4 Flash 0731",
+            description=f"OpenRouter · {focused_profile.display_name if focused_profile else 'DeepSeek V4 Flash 0731'}",
+            model_id=focused_profile.model_id if focused_profile else FOCUSED_BRIEFING_MODEL,
+            model_display_name=focused_profile.display_name if focused_profile else "DeepSeek V4 Flash 0731",
             provider="openrouter",
             runtime="cloud",
-            status=panthera_status,
-            reason=panthera_reason,
-            pricing=panthera_pricing,
+            status=focused_status,
+            reason=focused_reason,
+            pricing=focused_pricing,
         ),
         BriefingTargetStatus(
             mode="flash",
             label="Flash",
-            description=f"Felis · {felis_profile.display_name if felis_profile else 'Gemma 4 E2B'}",
-            model_id=felis_profile.model_id if felis_profile else DEFAULT_FELIS_MODEL,
-            model_display_name=felis_profile.display_name if felis_profile else "Gemma 4 E2B",
+            description=f"llama.cpp · {flash_profile.display_name if flash_profile else 'Gemma 4 E2B'}",
+            model_id=flash_profile.model_id if flash_profile else DEFAULT_LOCAL_MODEL,
+            model_display_name=flash_profile.display_name if flash_profile else "Gemma 4 E2B",
             provider="llama_cpp",
             runtime="local",
-            status=felis_status,
-            reason=felis_reason,
-            pricing=felis_pricing,
+            status=flash_status,
+            reason=flash_reason,
+            pricing=flash_pricing,
         ),
         BriefingTargetStatus(
             mode="structured",

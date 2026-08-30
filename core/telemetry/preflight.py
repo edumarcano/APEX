@@ -18,17 +18,13 @@ from core.agent.local_runtime.coordinator import (
 )
 from core.agent.local_runtime.registry import get_local_runtime_backend
 from core.agent.catalog import (
-    AGENT_SPECS,
     agent_has_credentials,
     build_concrete_agent,
-    cloud_agent_keys,
-    is_cloud_agent_key,
-    is_local_agent_key,
-    local_context_window_for_agent,
-    local_reasoning_mode_for_agent,
-    local_agent_keys,
-    resolve_agent_selection,
+    local_context_window_for_model,
+    local_reasoning_mode_for_model,
+    resolve_model_selection,
 )
+from core.agent.model_catalog import FOCUSED_BRIEFING_MODEL, DEFAULT_LOCAL_MODEL, get_model_profile
 from core.config import ENV_PATH, is_dev_mode
 from core.settings import get_settings_store
 from core.connectors.models import CONNECTOR_NAMES, EXTERNAL_CONNECTOR_NAMES
@@ -43,7 +39,7 @@ from core.telemetry.models import (
     PreflightWarningCode,
 )
 from core.synthesis.models import (
-    FELIS_BRIEFING_CONTEXT_WINDOW,
+    FLASH_BRIEFING_CONTEXT_WINDOW,
     VALID_BRIEFING_MODES,
 )
 from core.telemetry.service import get_telemetry_service
@@ -135,26 +131,27 @@ def _loaded_model_matches(loaded_model: object, model_name: str) -> bool:
     )
 
 
-def _evaluate_local_agent_blockers(
-    agent_key: str,
+def _evaluate_local_model_blockers(
+    model_id: str,
     *,
     context_window: int | None = None,
 ) -> tuple[list[PreflightBlocker], bool]:
     """Return local blockers and whether execution would require a cold load."""
     blockers: list[PreflightBlocker] = []
-    spec = AGENT_SPECS.get(agent_key)
-    if spec is None or spec.runtime != "local":
-        blockers.append(_blocker("invalid_input", f"Unknown local Agent: {agent_key!r}"))
+    profile = get_model_profile(model_id)
+    if profile is None or profile.runtime != "local":
+        blockers.append(_blocker("invalid_input", f"Unknown local model: {model_id!r}"))
         return blockers, False
     agent = build_concrete_agent(
-        agent_key,
+        "apex",
         native_effort=None,
         local_context_window=(
             context_window
             if context_window is not None
-            else local_context_window_for_agent(agent_key)
+            else local_context_window_for_model(model_id)
         ),
-        local_reasoning_mode=local_reasoning_mode_for_agent(agent_key),
+        local_reasoning_mode=local_reasoning_mode_for_model(model_id),
+        model_id=model_id,
     )
     backend = get_local_runtime_backend(agent.provider)
 
@@ -207,14 +204,14 @@ def _evaluate_local_agent_blockers(
 def _cloud_credential_blockers(
     *,
     involves_cloud: bool,
-    agent: str | None,
+    model_id: str | None,
     operation: str,
 ) -> list[PreflightBlocker]:
     if not involves_cloud:
         return []
 
     briefing_ops = {"activate_with_briefing", "generate_briefing"}
-    if agent == "panthera" and operation in briefing_ops:
+    if model_id == FOCUSED_BRIEFING_MODEL and operation in briefing_ops:
         if os.getenv("OPENROUTER_API_KEY"):
             return []
         return [
@@ -224,14 +221,15 @@ def _cloud_credential_blockers(
             )
         ]
 
-    if agent and agent in AGENT_SPECS:
-        if agent_has_credentials(agent):
+    profile = get_model_profile(model_id) if model_id else None
+    if profile is not None and profile.runtime == "cloud":
+        if agent_has_credentials("apex", profile):
             return []
-        env_name = AGENT_SPECS[agent].credential_env or "required credentials"
+        env_name = profile.credential_env or "required credentials"
         return [
             _blocker(
                 "missing_credentials",
-                f"{env_name} is not configured for agent {agent}.",
+                f"{env_name} is not configured for model {model_id}.",
             )
         ]
 
@@ -330,55 +328,48 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
             _blocker("invalid_input", f"Unknown briefing mode: {briefing_mode!r}")
         )
 
+    model_id: str | None = request.model_id
     if briefing_mode is not None and request.operation in {
         "activate_with_briefing",
         "generate_briefing",
     }:
-        agent = "felis" if briefing_mode == "flash" else "panthera" if briefing_mode == "focused" else None
+        model_id = DEFAULT_LOCAL_MODEL if briefing_mode == "flash" else FOCUSED_BRIEFING_MODEL if briefing_mode == "focused" else None
         involves_cloud = briefing_mode == "focused"
     else:
-        agent = (request.synthesis_agent or "").strip() or None
         if (
-            agent is None
+            model_id is None
             and request.operation == "cortex_query"
             and settings is not None
         ):
-            _mode, agent, _effort = resolve_agent_selection(settings.ask_apex)
-        if agent is None and request.operation in {
+            _mode, model_id, _effort = resolve_model_selection(settings.ask_apex)
+        if model_id is None and request.operation in {
             "activate_with_briefing",
             "generate_briefing",
         }:
-            agent = (
-                settings.briefing.default_mode
-                if settings is not None
-                and settings.briefing.default_mode != "structured"
-                else "felis"
-            )
-        cloud_agent = is_cloud_agent_key(agent) if agent else False
-        involves_cloud = bool(request.involves_cloud or cloud_agent)
+            model_id = DEFAULT_LOCAL_MODEL
+        profile = get_model_profile(model_id) if model_id else None
+        involves_cloud = bool(request.involves_cloud or (profile and profile.runtime == "cloud"))
 
-    valid_agents = set(local_agent_keys()) | set(cloud_agent_keys())
-    if agent is not None and agent not in valid_agents:
-        blockers.append(
-            _blocker("invalid_input", f"Unknown synthesis agent: {agent!r}")
-        )
+    profile = get_model_profile(model_id) if model_id else None
+    if model_id is not None and profile is None:
+        blockers.append(_blocker("invalid_input", f"Unknown model: {model_id!r}"))
 
-    local_agent = is_local_agent_key(agent) if agent else False
+    local_model = bool(profile and profile.runtime == "local")
     if not is_dev_mode():
         warnings.extend(_network_warnings())
 
     cold_local_load = False
-    if local_agent and agent is not None:
+    if local_model and model_id is not None:
         local_context_window = (
-            FELIS_BRIEFING_CONTEXT_WINDOW
+            FLASH_BRIEFING_CONTEXT_WINDOW
             if (
-                agent == "felis"
+                briefing_mode == "flash"
                 and request.operation in {"activate_with_briefing", "generate_briefing"}
             )
             else None
         )
-        local_blockers, cold_local_load = _evaluate_local_agent_blockers(
-            agent,
+        local_blockers, cold_local_load = _evaluate_local_model_blockers(
+            model_id,
             context_window=local_context_window,
         )
         blockers.extend(local_blockers)
@@ -395,20 +386,21 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
     ):
         warnings.append(_warning("rapid_connector_refresh"))
 
-    if local_agent and agent is not None:
+    if local_model and model_id is not None:
         profile = build_concrete_agent(
-            agent,
+            "apex",
             native_effort=None,
             local_context_window=(
-                FELIS_BRIEFING_CONTEXT_WINDOW
+                FLASH_BRIEFING_CONTEXT_WINDOW
                 if (
-                    agent == "felis"
+                    briefing_mode == "flash"
                     and request.operation
                     in {"activate_with_briefing", "generate_briefing"}
                 )
-                else local_context_window_for_agent(agent)
+                else local_context_window_for_model(model_id)
             ),
-            local_reasoning_mode=local_reasoning_mode_for_agent(agent),
+            local_reasoning_mode=local_reasoning_mode_for_model(model_id),
+            model_id=model_id,
         )
         if getattr(profile, "high_resource", False):
             warnings.append(_warning("high_resource_local_agent"))
@@ -416,7 +408,7 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
     blockers.extend(
         _cloud_credential_blockers(
             involves_cloud=involves_cloud,
-            agent=agent,
+            model_id=model_id,
             operation=request.operation,
         )
     )
