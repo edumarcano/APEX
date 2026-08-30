@@ -7,6 +7,7 @@ import re
 from fastapi import APIRouter, HTTPException, Query, status
 
 from core.agent.catalog import AGENT_SPECS
+from core.agent.model_catalog import get_model_profile, visible_cloud_models, visible_local_models
 from core.agent.types import (
     AgentKey,
     AgentQueryRequest,
@@ -53,6 +54,8 @@ from core.context import ContextAssembler, ContextPolicy
 from core.knowledge import get_knowledge_service
 from core.api.models import (
     AgentStatus,
+    CortexAgentResponse,
+    ModelVerificationRequest,
     ActionResponse,
     CloudAgentVerificationResponse,
     LocalLoadRequest,
@@ -294,10 +297,9 @@ def _normalize_profile_name(value: str) -> str:
     "/api/v1/cortex/tool-catalog",
     response_model=ToolCatalogResponse,
 )
-def tool_catalog(agent: AgentKey = "panthera") -> ToolCatalogResponse:
-    """Return the resolved selector catalog for one Apex Agent."""
-    _ensure_agent_api_access(agent)
-    return build_tool_catalog(agent)
+def tool_catalog(model_id: str | None = None) -> ToolCatalogResponse:
+    """Return the resolved tool catalog for the selected or requested model."""
+    return build_tool_catalog("apex", model_id=model_id)
 
 
 @router.post(
@@ -553,8 +555,8 @@ def _profile_response(
             )
             for profile in list_tool_profiles()
         ],
-        default_profile_by_agent=dict(
-            snapshot.tool_profiles.default_profile_by_agent
+        default_profile_by_runtime=dict(
+            snapshot.tool_profiles.default_profile_by_runtime
         ),
         affected_profile_id=affected_profile_id,
     )
@@ -578,10 +580,10 @@ def _persist_custom_profiles(
         SettingsPatch(
             tool_profiles=ToolProfilesPatch(
                 custom_profiles=profiles,
-                default_profile_by_agent=(
+                default_profile_by_runtime=(
                     defaults
                     if defaults is not None
-                    else dict(snapshot.tool_profiles.default_profile_by_agent)
+                    else dict(snapshot.tool_profiles.default_profile_by_runtime)
                 ),
             )
         )
@@ -690,7 +692,7 @@ def delete_tool_profile(profile_id: str) -> ToolProfilesResponse:
     snapshot = get_settings_store().get_snapshot()
     defaults = {
         agent: selected
-        for agent, selected in snapshot.tool_profiles.default_profile_by_agent.items()
+        for agent, selected in snapshot.tool_profiles.default_profile_by_runtime.items()
         if selected != normalized_id
     }
     return _persist_custom_profiles(
@@ -715,8 +717,8 @@ def set_tool_profile_default(
             detail="The requested tool profile does not exist.",
         )
     snapshot = get_settings_store().get_snapshot()
-    defaults = dict(snapshot.tool_profiles.default_profile_by_agent)
-    defaults[payload.agent] = profile_id
+    defaults = dict(snapshot.tool_profiles.default_profile_by_runtime)
+    defaults[payload.runtime] = profile_id
     return _persist_custom_profiles(
         list(snapshot.tool_profiles.custom_profiles),
         defaults,
@@ -724,26 +726,34 @@ def set_tool_profile_default(
     )
 
 
-@router.get("/api/v1/agents", response_model=list[AgentStatus])
-def list_agents() -> list[AgentStatus]:
-    """
-    Return visible Apex Agent status for cloud and local runtimes.
+@router.get("/api/v1/cortex/agent", response_model=CortexAgentResponse)
+def cortex_agent() -> CortexAgentResponse:
+    """Return the native Agent and its unified model catalog."""
+    from core.api.cortex import _profile_to_catalog_entry
+    from core.config import is_dev_mode
 
-    Local provider reachability, installed models, and host vitals come from
-    cached backend snapshots and the global coordinator, so frequent HUD
-    polling never floods a local daemon while a model is generating.
-    """
-    return build_agent_statuses()
+    settings = get_settings_store().get_snapshot().ask_apex
+    catalog = [
+        _profile_to_catalog_entry(profile)
+        for profile in (*visible_cloud_models(dev_mode=is_dev_mode()), *visible_local_models(dev_mode=is_dev_mode()))
+    ]
+    return CortexAgentResponse(
+        description=AGENT_SPECS["apex"].description,
+        selected_model=settings.selected_model,
+        model_catalog=catalog,
+    )
 
 
 @router.post(
-    "/api/v1/agents/{agent_key}/verify",
+    "/api/v1/cortex/models/verify",
     response_model=CloudAgentVerificationResponse,
 )
-def verify_agent(agent_key: str) -> CloudAgentVerificationResponse:
-    """Verify configured cloud credentials and model access without inference."""
-    _ensure_agent_api_access(agent_key)
-    return verify_cloud_agent_endpoint(agent_key)
+def verify_model(payload: ModelVerificationRequest) -> CloudAgentVerificationResponse:
+    """Verify a cloud model without generating a turn."""
+    profile = get_model_profile(payload.model_id)
+    if profile is None or profile.runtime != "cloud":
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Only cloud models can be verified.")
+    return verify_cloud_agent_endpoint(payload.model_id)
 
 
 @router.post(
@@ -768,5 +778,5 @@ def unload_local_model() -> LocalUnloadResponse:
     summary="Load Local Model Endpoint",
 )
 def load_local_model(payload: LocalLoadRequest) -> LocalLoadResponse:
-    """Pre-warm a selected local Agent and confirm it is resident."""
-    return load_local_model_endpoint(payload.agent)
+    """Pre-warm a selected local model and confirm it is resident."""
+    return load_local_model_endpoint(payload.model_id)

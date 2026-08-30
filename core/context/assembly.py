@@ -57,7 +57,11 @@ class ContextPolicy:
 
     @classmethod
     def from_settings(cls, *, agent: str, partition: str, settings) -> "ContextPolicy":
-        enabled = bool(getattr(settings.ask_apex.panthera if agent == "panthera" else settings.ask_apex.felis, "personal_context_enabled", False))
+        from core.agent.model_catalog import get_model_profile
+
+        profile = get_model_profile(settings.ask_apex.selected_model)
+        runtime_settings = settings.ask_apex.local if profile and profile.runtime == "local" else settings.ask_apex.cloud
+        enabled = bool(runtime_settings.personal_context_enabled)
         return cls(agent=agent, partition=partition, personal_context_enabled=enabled)
 
 

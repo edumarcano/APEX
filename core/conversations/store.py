@@ -92,8 +92,10 @@ class ConversationStore:
             row = conn.execute(
                 "SELECT version FROM schema_versions WHERE domain = 'conversations'"
             ).fetchone()
-            if row is not None and int(row[0]) > 1:
+            if row is not None and int(row[0]) > 2:
                 raise ConversationStoreError("Conversation schema is newer than this APEX build.")
+            if row is not None and int(row[0]) == 1:
+                self._migrate_v1_to_v2(conn)
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS conversations (
@@ -101,7 +103,7 @@ class ConversationStore:
                     title TEXT NOT NULL CHECK(length(trim(title)) > 0),
                     partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')),
                     origin TEXT NOT NULL CHECK(origin IN ('hud', 'cli')),
-                    agent TEXT NOT NULL CHECK(agent IN ('panthera', 'felis')),
+                    agent TEXT NOT NULL CHECK(agent IN ('apex')),
                     selected_tool_names_json TEXT CHECK(selected_tool_names_json IS NULL OR json_valid(selected_tool_names_json)),
                     tool_profile_id TEXT,
                     active_leaf_message_id TEXT,
@@ -120,7 +122,7 @@ class ConversationStore:
                     role TEXT NOT NULL CHECK(role IN ('user', 'agent')),
                     content TEXT NOT NULL,
                     status TEXT NOT NULL CHECK(status IN ('pending', 'completed', 'failed', 'interrupted')),
-                    agent TEXT CHECK(agent IN ('panthera', 'felis')),
+                    agent TEXT CHECK(agent IN ('apex')),
                     request_metadata_json TEXT CHECK(request_metadata_json IS NULL OR json_valid(request_metadata_json)),
                     response_metadata_json TEXT CHECK(response_metadata_json IS NULL OR json_valid(response_metadata_json)),
                     created_at TEXT NOT NULL,
@@ -136,9 +138,43 @@ class ConversationStore:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_conversation_messages_status ON conversation_messages(conversation_id, status)")
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_one_pending_agent_turn ON conversation_messages(conversation_id) WHERE role = 'agent' AND status = 'pending'")
             conn.execute(
-                "INSERT INTO schema_versions(domain, version) VALUES ('conversations', 1) "
+                "INSERT INTO schema_versions(domain, version) VALUES ('conversations', 2) "
                 "ON CONFLICT(domain) DO UPDATE SET version = excluded.version"
             )
+
+    @staticmethod
+    def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
+        """Transactionally rebuild constrained tables without changing message identity."""
+        conn.execute("PRAGMA foreign_keys=OFF")
+        try:
+            conn.execute("ALTER TABLE conversations RENAME TO conversations_v1")
+            conn.execute("ALTER TABLE conversation_messages RENAME TO conversation_messages_v1")
+            conn.executescript("""
+                CREATE TABLE conversations (
+                    id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL CHECK(length(trim(title)) > 0),
+                    partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')),
+                    origin TEXT NOT NULL CHECK(origin IN ('hud', 'cli')),
+                    agent TEXT NOT NULL CHECK(agent IN ('apex')),
+                    selected_tool_names_json TEXT CHECK(selected_tool_names_json IS NULL OR json_valid(selected_tool_names_json)),
+                    tool_profile_id TEXT, active_leaf_message_id TEXT, created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL, archived_at TEXT);
+                CREATE TABLE conversation_messages (
+                    id TEXT PRIMARY KEY NOT NULL, conversation_id TEXT NOT NULL REFERENCES conversations(id),
+                    parent_message_id TEXT, role TEXT NOT NULL CHECK(role IN ('user', 'agent')),
+                    content TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('pending', 'completed', 'failed', 'interrupted')),
+                    agent TEXT CHECK(agent IN ('apex')),
+                    request_metadata_json TEXT CHECK(request_metadata_json IS NULL OR json_valid(request_metadata_json)),
+                    response_metadata_json TEXT CHECK(response_metadata_json IS NULL OR json_valid(response_metadata_json)),
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(conversation_id, id),
+                    FOREIGN KEY(conversation_id, parent_message_id) REFERENCES conversation_messages(conversation_id, id));
+            """)
+            conn.execute("INSERT INTO conversations SELECT id,title,partition,origin,'apex',selected_tool_names_json,tool_profile_id,active_leaf_message_id,created_at,updated_at,archived_at FROM conversations_v1")
+            conn.execute("INSERT INTO conversation_messages SELECT id,conversation_id,parent_message_id,role,content,status,CASE WHEN agent IS NULL THEN NULL ELSE 'apex' END,request_metadata_json,CASE WHEN response_metadata_json IS NOT NULL AND json_valid(response_metadata_json) THEN json_set(response_metadata_json, '$.agent_used.key', 'apex') ELSE response_metadata_json END,created_at,updated_at FROM conversation_messages_v1")
+            conn.execute("DROP TABLE conversation_messages_v1")
+            conn.execute("DROP TABLE conversations_v1")
+            conn.execute("UPDATE schema_versions SET version = 2 WHERE domain = 'conversations'")
+        finally:
+            conn.execute("PRAGMA foreign_keys=ON")
 
     @staticmethod
     def _summary(row: sqlite3.Row | tuple[Any, ...]) -> ConversationSummary:

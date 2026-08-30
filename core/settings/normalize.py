@@ -10,14 +10,15 @@ from typing import Any
 from urllib.parse import urlparse
 
 from core.agent.model_catalog import (
-    DEFAULT_FELIS_MODEL,
-    DEFAULT_FELIS_RUNTIME,
+    DEFAULT_APEX_MODEL,
+    DEFAULT_LOCAL_MODEL,
+    DEFAULT_LOCAL_RUNTIME,
     get_model_profile,
-    reconcile_felis_context_window,
-    reconcile_felis_model,
-    reconcile_felis_reasoning_mode,
-    reconcile_panthera_model,
-    reconcile_panthera_reasoning,
+    reconcile_cloud_model,
+    reconcile_local_context_window,
+    reconcile_local_model,
+    reconcile_local_reasoning_mode,
+    reconcile_model_reasoning,
 )
 from core.config import is_dev_mode
 from core.settings.models import (
@@ -30,15 +31,15 @@ from core.settings.models import (
     AgentSettings,
     BriefingSettings,
     FeaturesSettings,
-    FelisSettings,
+    LocalSettings,
     FootballSettings,
     FootballTeamSettings,
     LlamaCppSettings,
     MicrosoftTodoSettings,
     MarketSettings,
     McpServerEnablementSettings,
-    PantheraHostedToolsSettings,
-    PantheraSettings,
+    CloudHostedToolsSettings,
+    CloudSettings,
     McpServersSettings,
     McpSettings,
     MCP_PROVIDER_IDS,
@@ -619,6 +620,12 @@ def _normalize_modules(
 def _normalize_agent_settings(
     value: Any, layer_name: str, errors: NormalizationIssues | None
 ) -> dict[str, Any]:
+    """Normalize v19 settings and read v18 Panthera/Felis data once.
+
+    The normalization result is always the v19 shape.  ``RuntimeSettingsStore``
+    subsequently writes that shape atomically when it encounters a local v18
+    override, so a failed rewrite never publishes a partial configuration.
+    """
     if not isinstance(value, dict):
         if value is not None:
             _record_error(errors, "ask_apex must be a JSON object")
@@ -627,38 +634,69 @@ def _normalize_agent_settings(
             )
         return {}
 
-    _record_unsupported_agent_fields(
-        value,
-        allowed={
-            "enabled",
-            "agent",
-            "sandbox_mode",
-            "panthera",
-            "felis",
-            "max_recent_conversation_messages",
-        },
-        path="ask_apex",
-        layer_name=layer_name,
-        errors=errors,
-    )
-    result: dict[str, Any] = {}
-
+    legacy = "agent" in value or "panthera" in value or "felis" in value
+    allowed = {"enabled", "selected_model", "sandbox_mode", "cloud", "local"}
+    if legacy:
+        allowed |= {"agent", "panthera", "felis", "max_recent_conversation_messages"}
+    _record_unsupported_agent_fields(value, allowed=allowed, path="ask_apex", layer_name=layer_name, errors=errors)
+    result: dict[str, Any] = {"selected_model": DEFAULT_APEX_MODEL}
     if isinstance(value.get("enabled"), bool):
         result["enabled"] = value["enabled"]
     elif value.get("enabled") is not None:
         _record_error(errors, "ask_apex.enabled must be a boolean")
+    if isinstance(value.get("sandbox_mode"), bool):
+        result["sandbox_mode"] = value["sandbox_mode"]
+    elif value.get("sandbox_mode") is not None:
+        _record_error(errors, "ask_apex.sandbox_mode must be a boolean")
 
-    agent = value.get("agent", "panthera")
-    if agent in VALID_AGENT_KEYS:
-        result["agent"] = agent
-    elif agent is not None:
-        _record_error(errors, "ask_apex.agent is not valid")
+    cloud_raw = value.get("cloud") if not legacy else value.get("panthera")
+    local_raw = value.get("local") if not legacy else value.get("felis")
+    cloud: dict[str, Any] = {}
+    if isinstance(cloud_raw, dict):
+        raw_model = cloud_raw.get("last_model", cloud_raw.get("model"))
+        if isinstance(raw_model, str):
+            cloud["last_model"] = reconcile_cloud_model(raw_model.strip(), dev_mode=is_dev_mode())
+        raw_effort = cloud_raw.get("effort")
+        if isinstance(raw_effort, str):
+            effort = reconcile_model_reasoning(cloud.get("last_model", DEFAULT_APEX_MODEL), raw_effort)
+            if effort is not None:
+                cloud["effort"] = effort
+        if isinstance(cloud_raw.get("personal_context_enabled"), bool):
+            cloud["personal_context_enabled"] = cloud_raw["personal_context_enabled"]
+        hosted = cloud_raw.get("hosted_tools")
+        if isinstance(hosted, dict):
+            cloud["hosted_tools"] = {key: hosted[key] for key in ("google_search", "google_maps", "x_search") if isinstance(hosted.get(key), bool)}
+    elif cloud_raw is not None:
+        _record_error(errors, "ask_apex.cloud must be an object")
+    if cloud:
+        result["cloud"] = cloud
 
-    if "sandbox_mode" in value:
-        if isinstance(value["sandbox_mode"], bool):
-            result["sandbox_mode"] = value["sandbox_mode"]
-        elif value["sandbox_mode"] is not None:
-            _record_error(errors, "ask_apex.sandbox_mode must be a boolean")
+    local: dict[str, Any] = {}
+    if isinstance(local_raw, dict):
+        raw_model = local_raw.get("last_model", local_raw.get("model"))
+        if isinstance(raw_model, str):
+            local["last_model"] = reconcile_local_model(raw_model.strip(), dev_mode=is_dev_mode())
+        model = local.get("last_model", DEFAULT_LOCAL_MODEL)
+        window = local_raw.get("context_window")
+        profile = get_model_profile(model)
+        if isinstance(window, int) and not isinstance(window, bool):
+            local["context_window"] = reconcile_local_context_window(profile.provider if profile else DEFAULT_LOCAL_RUNTIME, model, window)
+        reasoning = local_raw.get("reasoning_mode")
+        if isinstance(reasoning, str):
+            local["reasoning_mode"] = reconcile_local_reasoning_mode(model, reasoning)
+        if isinstance(local_raw.get("personal_context_enabled"), bool):
+            local["personal_context_enabled"] = local_raw["personal_context_enabled"]
+    elif local_raw is not None:
+        _record_error(errors, "ask_apex.local must be an object")
+    if local:
+        result["local"] = local
+
+    selected = value.get("selected_model")
+    if legacy:
+        selected = cloud.get("last_model", DEFAULT_APEX_MODEL) if value.get("agent") == "panthera" else local.get("last_model", DEFAULT_LOCAL_MODEL)
+    if isinstance(selected, str) and get_model_profile(selected):
+        result["selected_model"] = selected
+    return result
 
     panthera_raw = value.get("panthera")
     if isinstance(panthera_raw, dict):
@@ -885,28 +923,28 @@ def _normalize_tool_profiles(
                 )
             result["custom_profiles"] = profiles
 
-    defaults_raw = value.get("default_profile_by_agent", {})
+    defaults_raw = value.get("default_profile_by_runtime", value.get("default_profile_by_agent", {}))
     if defaults_raw is not None:
         if not isinstance(defaults_raw, dict):
             _record_error(
-                errors, "tool_profiles.default_profile_by_agent must be an object"
+                errors, "tool_profiles.default_profile_by_runtime must be an object"
             )
         else:
             defaults: dict[str, str] = {}
-            for agent, profile_id in defaults_raw.items():
+            for runtime, profile_id in defaults_raw.items():
                 if (
-                    isinstance(agent, str)
-                    and agent.strip().lower() in VALID_AGENT_KEYS
+                    isinstance(runtime, str)
+                    and runtime.strip().lower() in {"cloud", "local"}
                     and isinstance(profile_id, str)
                     and profile_id.strip()
                 ):
-                    defaults[agent.strip().lower()] = profile_id.strip().lower()
+                    defaults[runtime.strip().lower()] = profile_id.strip().lower()
                 else:
                     _record_error(
                         errors,
                         "tool profile defaults must map Agent names to profile IDs",
                     )
-            result["default_profile_by_agent"] = defaults
+            result["default_profile_by_runtime"] = defaults
     return result
 
 
@@ -1141,19 +1179,19 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
                 }
             )
         )
-    defaults_raw = tool_profiles_raw.get("default_profile_by_agent", {})
-    default_profile_by_agent = (
+    defaults_raw = tool_profiles_raw.get("default_profile_by_runtime", tool_profiles_raw.get("default_profile_by_agent", {}))
+    default_profile_by_runtime = (
         {
-            str(agent).strip().lower(): str(profile_id).strip().lower()
-            for agent, profile_id in defaults_raw.items()
-            if str(agent).strip().lower() in VALID_AGENT_KEYS and str(profile_id).strip()
+            str(runtime).strip().lower(): str(profile_id).strip().lower()
+            for runtime, profile_id in defaults_raw.items()
+            if str(runtime).strip().lower() in {"cloud", "local"} and str(profile_id).strip()
         }
         if isinstance(defaults_raw, dict)
         else {}
     )
     tool_profiles = ToolProfilesSettings(
         custom_profiles=tuple(custom_profiles),
-        default_profile_by_agent=default_profile_by_agent,
+        default_profile_by_runtime=default_profile_by_runtime,
     )
     engine = tts.get("primary_tts", "pyttsx3")
     if engine not in VALID_VOICE_ENGINES:
@@ -1265,10 +1303,10 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
         "modules": snapshot.modules.model_dump(),
         "ask_apex": {
             "enabled": snapshot.ask_apex.enabled,
-            "agent": snapshot.ask_apex.agent,
+            "selected_model": snapshot.ask_apex.selected_model,
             "sandbox_mode": snapshot.ask_apex.sandbox_mode,
-            "panthera": snapshot.ask_apex.panthera.model_dump(),
-            "felis": snapshot.ask_apex.felis.model_dump(),
+            "cloud": snapshot.ask_apex.cloud.model_dump(),
+            "local": snapshot.ask_apex.local.model_dump(),
         },
         "tool_profiles": snapshot.tool_profiles.model_dump(),
         "briefing": {
@@ -1344,10 +1382,10 @@ def patch_to_ondisk(patch: SettingsPatch) -> dict[str, Any]:
                 serialized["tool_names"] = list(profile.tool_names)
                 serialized_profiles.append(serialized)
             tool_profiles["custom_profiles"] = serialized_profiles
-        if patch.tool_profiles.default_profile_by_agent is not None:
-            tool_profiles["default_profile_by_agent"] = {
-                agent.strip().lower(): profile_id.strip().lower()
-                for agent, profile_id in patch.tool_profiles.default_profile_by_agent.items()
+        if patch.tool_profiles.default_profile_by_runtime is not None:
+            tool_profiles["default_profile_by_runtime"] = {
+                runtime.strip().lower(): profile_id.strip().lower()
+                for runtime, profile_id in patch.tool_profiles.default_profile_by_runtime.items()
             }
         if tool_profiles:
             ondisk["tool_profiles"] = tool_profiles

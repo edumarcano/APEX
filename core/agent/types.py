@@ -20,7 +20,7 @@ ToolSelectionFailureCode: TypeAlias = Literal[
 
 ToolCatalogGroupKind: TypeAlias = Literal["apex_family", "mcp_server"]
 
-AgentKey: TypeAlias = Literal["panthera", "felis"]
+AgentKey: TypeAlias = Literal["apex"]
 LocalReasoningMode: TypeAlias = Literal["none", "focused"]
 ApexEffort: TypeAlias = Literal[
     "none", "minimal", "low", "medium", "high", "xhigh", "max"
@@ -293,8 +293,8 @@ class AgentQueryRequest(BaseModel):
 
     prompt: str = Field(description="The user's direct operations query.")
     agent: AgentKey = Field(
-        default="panthera",
-        description="The selected Apex Agent key (cloud or local).",
+        default="apex",
+        description="The native Apex Agent identity.",
     )
     effort: ApexEffort | None = Field(
         default=None,

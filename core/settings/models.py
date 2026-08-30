@@ -14,14 +14,14 @@ from pydantic import (
 )
 
 from core.agent.model_catalog import (
-    DEFAULT_FELIS_MODEL,
-    DEFAULT_PANTHERA_MODEL,
+    DEFAULT_APEX_MODEL,
+    DEFAULT_LOCAL_MODEL,
     get_model_profile,
 )
 from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
 from core.agent.types import LocalReasoningMode
 
-AgentKey = Literal["panthera", "felis"]
+AgentKey = Literal["apex"]
 CloudProvider = Literal["openai", "openrouter", "gemini", "xai"]
 LocalRuntime = Literal["ollama", "llama_cpp"]
 AgentRuntime = Literal["cloud", "local"]
@@ -31,7 +31,7 @@ VoiceEngine = Literal["google", "pyttsx3", "kokoro"]
 VoiceGender = Literal["male", "female"]
 VoiceMode = Literal["off", "manual", "automatic"]
 
-VALID_AGENT_KEYS: frozenset[str] = frozenset({"panthera", "felis"})
+VALID_AGENT_KEYS: frozenset[str] = frozenset({"apex"})
 VALID_CLOUD_PROVIDERS: frozenset[str] = frozenset({"openai", "openrouter", "gemini", "xai"})
 VALID_LOCAL_RUNTIMES: frozenset[str] = frozenset({"ollama", "llama_cpp"})
 VALID_LOCAL_REASONING_MODES: frozenset[str] = frozenset({"none", "focused"})
@@ -45,7 +45,7 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 18
+SETTINGS_SCHEMA_VERSION: int = 19
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 LlamaCppServerState = Literal[
@@ -59,11 +59,11 @@ LlamaCppServerState = Literal[
 LlamaCppServerOwnership = Literal["none", "external", "apex"]
 
 
-def _default_felis_context_window() -> int:
-    return LLAMA_CPP_RUNTIME_CONFIGS[DEFAULT_FELIS_MODEL].default_context_window
+def _default_local_context_window() -> int:
+    return LLAMA_CPP_RUNTIME_CONFIGS[DEFAULT_LOCAL_MODEL].default_context_window
 
 
-def _validate_felis_context_window(value: int, model: str) -> int:
+def _validate_local_context_window(value: int, model: str) -> int:
     profile = get_model_profile(model)
     llama_runtime = LLAMA_CPP_RUNTIME_CONFIGS.get(model)
     if profile is None or profile.provider != "llama_cpp":
@@ -75,7 +75,7 @@ def _validate_felis_context_window(value: int, model: str) -> int:
     return value
 
 
-def _validate_felis_reasoning_mode(
+def _validate_local_reasoning_mode(
     value: LocalReasoningMode, model: str
 ) -> LocalReasoningMode:
     from core.agent.catalog import local_reasoning_modes_for_model
@@ -88,8 +88,8 @@ def _validate_felis_reasoning_mode(
     return value
 
 
-class PantheraHostedToolsSettings(BaseModel):
-    """Provider-hosted grounding toggles for Panthera's selected model."""
+class CloudHostedToolsSettings(BaseModel):
+    """Provider-hosted grounding toggles for the selected cloud model."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -98,90 +98,90 @@ class PantheraHostedToolsSettings(BaseModel):
     x_search: bool = True
 
 
-class PantheraSettings(BaseModel):
+class CloudSettings(BaseModel):
     """Cloud model, effort, and hosted-tool preferences."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    model: str = DEFAULT_PANTHERA_MODEL
-    effort: CloudEffort = "medium"
+    last_model: str = DEFAULT_APEX_MODEL
+    effort: CloudEffort = "low"
     personal_context_enabled: bool = False
-    hosted_tools: PantheraHostedToolsSettings = Field(
-        default_factory=PantheraHostedToolsSettings
+    hosted_tools: CloudHostedToolsSettings = Field(
+        default_factory=CloudHostedToolsSettings
     )
 
-    @field_validator("model")
+    @field_validator("last_model")
     @classmethod
     def _validate_model(cls, value: str) -> str:
         profile = get_model_profile(value)
         if profile is None or profile.runtime != "cloud":
-            raise ValueError(f"Unsupported Panthera model: {value!r}")
+            raise ValueError(f"Unsupported cloud model: {value!r}")
         return value
 
     @model_validator(mode="after")
-    def _validate_cloud_model(self) -> PantheraSettings:
-        profile = get_model_profile(self.model)
+    def _validate_cloud_model(self) -> CloudSettings:
+        profile = get_model_profile(self.last_model)
         if profile is None or profile.runtime != "cloud":
-            raise ValueError(f"Unsupported Panthera model: {self.model!r}")
+            raise ValueError(f"Unsupported cloud model: {self.last_model!r}")
         return self
 
 
-class FelisSettings(BaseModel):
+class LocalSettings(BaseModel):
     """Local model, context, and reasoning preferences."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    model: str = DEFAULT_FELIS_MODEL
-    context_window: StrictInt = Field(default_factory=_default_felis_context_window)
+    last_model: str = DEFAULT_LOCAL_MODEL
+    context_window: StrictInt = Field(default_factory=_default_local_context_window)
     reasoning_mode: LocalReasoningMode = "none"
     personal_context_enabled: bool = False
 
-    @field_validator("model")
+    @field_validator("last_model")
     @classmethod
     def _validate_model(cls, value: str) -> str:
         profile = get_model_profile(value)
         if profile is None or profile.runtime != "local":
-            raise ValueError(f"Unsupported Felis model: {value!r}")
+            raise ValueError(f"Unsupported local model: {value!r}")
         return value
 
     @field_validator("context_window")
     @classmethod
     def _validate_context(cls, value: int, info) -> int:
         data = info.data
-        model = data.get("model", DEFAULT_FELIS_MODEL)
-        return _validate_felis_context_window(value, model)
+        model = data.get("last_model", DEFAULT_LOCAL_MODEL)
+        return _validate_local_context_window(value, model)
 
     @field_validator("reasoning_mode")
     @classmethod
     def _validate_reasoning(cls, value: LocalReasoningMode, info) -> LocalReasoningMode:
         data = info.data
-        model = data.get("model", DEFAULT_FELIS_MODEL)
-        return _validate_felis_reasoning_mode(value, model)
+        model = data.get("last_model", DEFAULT_LOCAL_MODEL)
+        return _validate_local_reasoning_mode(value, model)
 
     @model_validator(mode="after")
-    def _validate_local_model(self) -> FelisSettings:
-        profile = get_model_profile(self.model)
+    def _validate_local_model(self) -> LocalSettings:
+        profile = get_model_profile(self.last_model)
         if profile is None or profile.runtime != "local":
-            raise ValueError(f"Unsupported Felis model: {self.model!r}")
+            raise ValueError(f"Unsupported local model: {self.last_model!r}")
         return self
 
 
 class AgentSettings(BaseModel):
-    """Agent query enablement, identity, sandbox, and nested Agent configuration."""
+    """Apex Agent query enablement, selected model, and runtime preferences."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     enabled: bool = True
-    agent: AgentKey = "panthera"
+    selected_model: str = DEFAULT_APEX_MODEL
     sandbox_mode: bool = False
-    panthera: PantheraSettings = Field(default_factory=PantheraSettings)
-    felis: FelisSettings = Field(default_factory=FelisSettings)
+    cloud: CloudSettings = Field(default_factory=CloudSettings)
+    local: LocalSettings = Field(default_factory=LocalSettings)
 
-    @field_validator("agent")
+    @field_validator("selected_model")
     @classmethod
     def _validate_agent(cls, value: str) -> str:
-        if value not in VALID_AGENT_KEYS:
-            raise ValueError(f"Unsupported Agent key: {value!r}")
+        if get_model_profile(value) is None:
+            raise ValueError(f"Unsupported model: {value!r}")
         return value
 
 
@@ -246,12 +246,12 @@ class ToolProfile(BaseModel):
 
 
 class ToolProfilesSettings(BaseModel):
-    """Backend-persisted custom profiles and per-Agent defaults."""
+    """Backend-persisted custom profiles and per-runtime defaults."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     custom_profiles: tuple[ToolProfile, ...] = ()
-    default_profile_by_agent: dict[str, str] = Field(default_factory=dict)
+    default_profile_by_runtime: dict[str, str] = Field(default_factory=dict)
 
 
 class BriefingSettings(BaseModel):
@@ -402,7 +402,7 @@ class MarketPatch(BaseModel):
     symbols: list[str] | None = None
 
 
-class PantheraHostedToolsPatch(BaseModel):
+class CloudHostedToolsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     google_search: bool | None = None
@@ -410,19 +410,19 @@ class PantheraHostedToolsPatch(BaseModel):
     x_search: bool | None = None
 
 
-class PantheraSettingsPatch(BaseModel):
+class CloudSettingsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    model: str | None = None
+    last_model: str | None = None
     effort: CloudEffort | None = None
     personal_context_enabled: bool | None = None
-    hosted_tools: PantheraHostedToolsPatch | None = None
+    hosted_tools: CloudHostedToolsPatch | None = None
 
 
-class FelisSettingsPatch(BaseModel):
+class LocalSettingsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    model: str | None = None
+    last_model: str | None = None
     context_window: StrictInt | None = None
     reasoning_mode: LocalReasoningMode | None = None
     personal_context_enabled: bool | None = None
@@ -434,10 +434,10 @@ class AgentSettingsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool | None = None
-    agent: AgentKey | None = None
+    selected_model: str | None = None
     sandbox_mode: bool | None = None
-    panthera: PantheraSettingsPatch | None = None
-    felis: FelisSettingsPatch | None = None
+    cloud: CloudSettingsPatch | None = None
+    local: LocalSettingsPatch | None = None
 
 
 class ToolProfilesPatch(BaseModel):
@@ -446,7 +446,7 @@ class ToolProfilesPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     custom_profiles: list[ToolProfile] | None = None
-    default_profile_by_agent: dict[str, str] | None = None
+    default_profile_by_runtime: dict[str, str] | None = None
 
 
 class BriefingPatch(BaseModel):

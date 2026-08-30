@@ -2,7 +2,7 @@
 
 This document explains the main names used in APEX and why they exist. The goal is to keep the naming easy to understand as the project grows.
 
-APEX currently has two Agents: **Apex Panthera** for cloud models and **Apex Felis** for local models. The model can change without changing the Agent name.
+APEX has one native assistant: **Apex Agent**. The selected model determines whether a request uses a cloud provider or a local runtime.
 
 ## APEX
 
@@ -40,11 +40,9 @@ APEX
 └── Cortex
     ├── Cortex Workspace
     ├── Cortex Engine
-    └── Apex Agents
-        ├── Apex Panthera
-        │   └── Cloud models
-        └── Apex Felis
-            └── Local models
+    └── Apex Agent
+        ├── Cloud models
+        └── Local models
 ```
 
 ### APEX
@@ -55,7 +53,7 @@ APEX
 
 **Home** is the main day-to-day workspace. It shows things such as telemetry, briefings, connector health, reminders, and system status.
 
-Briefing modes are product behaviors, not Agent identities: **Flash**, **Focused**, and **Structured** are the only canonical mode names. Panthera and Felis remain Agent names used as resolved runtime metadata.
+Briefing modes are product behaviors, not Agent identities: **Flash**, **Focused**, and **Structured** are the only canonical mode names.
 
 ### Briefing modes
 
@@ -67,21 +65,19 @@ Briefing modes describe how APEX turns the current telemetry snapshot into a bri
 
 **Structured** - the deterministic briefing. It presents the normalized facts directly without model interpretation.
 
-The names describe the kind of briefing being requested. Panthera and Felis may appear as runtime metadata when a model-backed mode is executed, but they remain Agent identities rather than briefing names.
+The names describe the kind of briefing being requested. Historical records may retain their original runtime metadata.
 
 ### Cortex
 
-**Cortex** is where the operator interacts with the Agents in more detail.
+**Cortex** is where the operator interacts with Apex Agent in more detail.
 
-The **Cortex Workspace** contains conversations, Agent and model selection, reasoning and local-model controls, tools, history, and execution details.
+The **Cortex Workspace** contains model selection, reasoning and local-model controls, tools, history, and execution details.
 
 The **Cortex Engine** is the backend that runs Agent requests, gathers context and tools, sends work to the selected model, and manages local models when needed.
 
 ### Apex Agent
 
-An **Apex Agent** is a named role in APEX. It is not the same thing as a model.
-
-An Agent can have its own instructions, tools, context rules, memory behavior, privacy rules, and other behavior. Those things can stay the same even when the model underneath the Agent changes.
+**Apex Agent** is APEX's built-in personal operations assistant. It works with briefings, trusted personal context, connected services, APEX actions, and external-worker results. Its instructions and safety policy stay consistent while a selected model supplies execution.
 
 ### Model
 

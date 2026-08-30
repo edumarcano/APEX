@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from typing import Any, Literal, TypeAlias
 
 from core.agent.model_catalog import (
-    DEFAULT_FELIS_MODEL,
-    DEFAULT_FELIS_RUNTIME,
-    DEFAULT_PANTHERA_MODEL,
+    DEFAULT_LOCAL_MODEL,
+    DEFAULT_LOCAL_RUNTIME,
+    DEFAULT_APEX_MODEL,
     LOCAL_MODEL_PROFILES,
     ModelProfile,
     get_model_profile,
@@ -40,13 +40,13 @@ from core.config import (
     is_dev_mode,
 )
 
-AgentKey: TypeAlias = Literal["panthera", "felis"]
+AgentKey: TypeAlias = Literal["apex"]
 AgentRuntime: TypeAlias = Literal["cloud", "local"]
 NativeEffort: TypeAlias = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
 CloudProvider: TypeAlias = Literal["openai", "openrouter", "gemini", "xai"]
 LocalRuntime: TypeAlias = Literal["ollama", "llama_cpp"]
 
-VALID_AGENT_KEYS: frozenset[str] = frozenset({"panthera", "felis"})
+VALID_AGENT_KEYS: frozenset[str] = frozenset({"apex"})
 
 _PROVIDER_DISPLAY_NAMES: dict[InferenceProvider, str] = {
     "gemini": "Google",
@@ -79,31 +79,17 @@ class AgentSpec:
 
 
 AGENT_SPECS: dict[str, AgentSpec] = {
-    "panthera": AgentSpec(
-        key="panthera",
-        display_name="Apex Panthera",
-        description="Cloud Agent for thoughtful answers, planning, and complex everyday work.",
-        identity_instruction=(
-            "You are Apex Panthera, the cloud Apex Agent. "
-            "You run through the operator's selected cloud provider and model."
-        ),
+    "apex": AgentSpec(
+        key="apex",
+        display_name="Apex Agent",
+        description="APEX's built-in personal operations assistant for briefings, trusted context, connected services, and APEX actions.",
+        identity_instruction="You are Apex Agent, APEX's built-in personal operations assistant.",
         runtime="cloud",
-        capability_tags=("Cloud", "Generalist", "Planning"),
-    ),
-    "felis": AgentSpec(
-        key="felis",
-        display_name="Apex Felis",
-        description="Local Agent for private on-device work through Ollama or llama.cpp.",
-        identity_instruction=(
-            "You are Apex Felis, the local Apex Agent. "
-            "You run through the operator's selected local runtime and model."
-        ),
-        runtime="local",
-        capability_tags=("Local", "Private", "On-device"),
+        capability_tags=("APEX", "Personal operations"),
     ),
 }
 
-_RUNTIME_PROFILE_ORDER: tuple[str, ...] = ("panthera", "felis")
+_RUNTIME_PROFILE_ORDER: tuple[str, ...] = ("apex",)
 
 
 def runtime_agent_order() -> tuple[str, ...]:
@@ -115,12 +101,15 @@ def is_agent_visible(key: str) -> bool:
     return key in AGENT_SPECS
 
 
-def resolve_effort_for_agent(
-    agent_key: str,
+def resolve_effort_for_model(
+    model_id: str,
     requested: str | None,
 ) -> str | None:
-    """Resolve effort for the model currently selected for an Agent."""
-    return resolve_effort(resolve_selected_model_profile(agent_key), requested)
+    """Resolve effort for a selected model."""
+    profile = get_model_profile(model_id)
+    if profile is None:
+        raise ValueError(f"Unknown model {model_id!r}")
+    return resolve_effort(profile, requested)
 
 
 def resolve_effort(
@@ -137,11 +126,13 @@ def resolve_effort(
     return model_profile.default_reasoning
 
 
-def agent_has_credentials(
-    agent_key: str, profile: ModelProfile | None = None
+def model_has_available_credentials(
+    model_id: str, profile: ModelProfile | None = None
 ) -> bool:
-    """Return whether the selected model for an Agent has credentials."""
-    resolved_profile = profile or resolve_selected_model_profile(agent_key)
+    """Return whether a model has credentials."""
+    resolved_profile = profile or get_model_profile(model_id)
+    if resolved_profile is None:
+        return False
     return model_has_credentials(resolved_profile)
 
 
@@ -153,7 +144,9 @@ def compose_agent_system_instruction(
     user_designation: str = "",
 ) -> str:
     """Compose identity, behavior, and optional user-addressing instructions."""
-    identity = AGENT_SPECS[agent_key].identity_instruction
+    if agent_key != "apex":
+        raise ValueError(f"Unknown Agent key: {agent_key!r}")
+    identity = AGENT_SPECS["apex"].identity_instruction
     if model_profile is not None:
         identity = (
             f"{identity} You are currently powered by {model_profile.display_name}."
@@ -172,10 +165,12 @@ def compose_agent_system_instruction(
 
 
 def credential_missing_message(
-    agent_key: str, profile: ModelProfile | None = None
+    model_id: str, profile: ModelProfile | None = None
 ) -> str:
     if profile is None:
-        profile = resolve_selected_model_profile(agent_key)
+        profile = get_model_profile(model_id)
+    if profile is None:
+        raise ValueError(f"Unknown model {model_id!r}")
     env_key = profile.credential_env or "API_KEY"
     provider_label = _PROVIDER_DISPLAY_NAMES[profile.provider]
     return (
@@ -186,43 +181,40 @@ def credential_missing_message(
 
 
 def credential_missing_error(
-    agent_key: str, profile: ModelProfile | None = None
+    model_id: str, profile: ModelProfile | None = None
 ) -> str:
     if profile is None:
-        profile = resolve_selected_model_profile(agent_key)
+        profile = get_model_profile(model_id)
+    if profile is None:
+        raise ValueError(f"Unknown model {model_id!r}")
     return f"{profile.credential_env} is missing from environment variables."
 
 
-def resolve_selected_model_profile(agent_key: str) -> ModelProfile:
-    """Return the model profile selected in settings for an Agent."""
+def resolve_selected_model_profile() -> ModelProfile:
+    """Return the authoritative selected model profile."""
     from core.settings import get_settings_store
 
     settings = get_settings_store().get_snapshot().ask_apex
-    if agent_key == "panthera":
-        model_id = settings.panthera.model
-    elif agent_key == "felis":
-        model_id = settings.felis.model
-    else:
-        raise ValueError(f"Unknown Agent key: {agent_key!r}")
+    model_id = settings.selected_model
     profile = get_model_profile(model_id)
     if profile is None:
-        raise ValueError(f"Unknown model {model_id!r} for Agent {agent_key!r}")
+        raise ValueError(f"Unknown selected model {model_id!r}")
     return profile
 
 
-def resolve_panthera_provider() -> CloudProvider:
-    profile = resolve_selected_model_profile("panthera")
+def resolve_cloud_provider() -> CloudProvider:
+    profile = resolve_selected_model_profile()
     return profile.provider  # type: ignore[return-value]
 
 
-def resolve_felis_runtime() -> LocalRuntime:
-    profile = resolve_selected_model_profile("felis")
+def resolve_local_runtime() -> LocalRuntime:
+    profile = resolve_selected_model_profile()
     return profile.provider  # type: ignore[return-value]
 
 
 
 def build_concrete_agent(
-    agent_key: str,
+    agent_key: str = "apex",
     *,
     native_effort: NativeEffort | None,
     local_context_window: int | None = None,
@@ -233,9 +225,11 @@ def build_concrete_agent(
     model_id: str | None = None,
 ) -> AgentModelProfile:
     """Materialize a provider-specific model configuration for an Agent."""
-    spec = AGENT_SPECS[agent_key]
+    if agent_key != "apex":
+        raise ValueError(f"Unknown Agent key: {agent_key!r}")
+    spec = AGENT_SPECS["apex"]
     if model_id is None:
-        model_profile = resolve_selected_model_profile(agent_key)
+        model_profile = resolve_selected_model_profile()
     else:
         resolved = get_model_profile(model_id)
         if resolved is None:
@@ -243,8 +237,8 @@ def build_concrete_agent(
         model_profile = resolved
 
     system_instruction = compose_agent_system_instruction(
-        agent_key,
-        AGENT_SYSTEM_PROMPT if spec.runtime == "cloud" else LOCAL_AGENT_SYSTEM_PROMPT,
+        "apex",
+        AGENT_SYSTEM_PROMPT if model_profile.runtime == "cloud" else LOCAL_AGENT_SYSTEM_PROMPT,
         model_profile=model_profile,
     )
 
@@ -386,33 +380,20 @@ def is_sandbox_query(*, sandbox_mode: bool, dev_mode: bool | None = None) -> boo
     return is_sandbox_active(sandbox_mode=sandbox_mode, dev_mode=dev_active)
 
 
+def local_context_window_for_model(model_id: str) -> int | None:
+    profile = get_model_profile(model_id)
+    if profile is None or profile.provider != "llama_cpp":
+        return None
+    from core.settings import get_settings_store
+    return get_settings_store().get_snapshot().ask_apex.local.context_window
+
+
 def local_agent_keys() -> tuple[str, ...]:
-    return ("felis",)
+    return ("apex",) if resolve_selected_model_profile().runtime == "local" else ()
 
 
 def cloud_agent_keys() -> tuple[str, ...]:
-    return ("panthera",)
-
-
-def is_local_agent_key(agent_key: str) -> bool:
-    spec = AGENT_SPECS.get(agent_key)
-    return spec is not None and spec.runtime == "local"
-
-
-def is_cloud_agent_key(agent_key: str) -> bool:
-    spec = AGENT_SPECS.get(agent_key)
-    return spec is not None and spec.runtime == "cloud"
-
-
-def local_context_window_for_agent(agent_key: str) -> int | None:
-    if agent_key != "felis":
-        return None
-    profile = resolve_selected_model_profile("felis")
-    if profile.provider != "llama_cpp":
-        return None
-    from core.settings import get_settings_store
-
-    return get_settings_store().get_snapshot().ask_apex.felis.context_window
+    return ("apex",) if resolve_selected_model_profile().runtime == "cloud" else ()
 
 
 def local_reasoning_modes_for_model(model_id: str) -> tuple[LocalReasoningMode, ...]:
@@ -430,22 +411,13 @@ def local_reasoning_modes_for_model(model_id: str) -> tuple[LocalReasoningMode, 
     return runtime.supported_reasoning_modes
 
 
-def local_reasoning_modes_for_agent(agent_key: str) -> tuple[LocalReasoningMode, ...]:
-    if agent_key != "felis":
-        return ()
-    from core.settings import get_settings_store
-
-    model_id = get_settings_store().get_snapshot().ask_apex.felis.model
-    return local_reasoning_modes_for_model(model_id)
-
-
-def local_reasoning_mode_for_agent(agent_key: str) -> LocalReasoningMode | None:
-    supported = local_reasoning_modes_for_agent(agent_key)
+def local_reasoning_mode_for_model(model_id: str) -> LocalReasoningMode | None:
+    supported = local_reasoning_modes_for_model(model_id)
     if not supported:
         return None
     from core.settings import get_settings_store
 
-    value = get_settings_store().get_snapshot().ask_apex.felis.reasoning_mode
+    value = get_settings_store().get_snapshot().ask_apex.local.reasoning_mode
     if value in supported:
         return value
     if "none" in supported:
@@ -463,29 +435,28 @@ def _resolve_local_reasoning_mode(
     from core.settings import get_settings_store
 
     settings = get_settings_store().get_snapshot().ask_apex
-    if settings.felis.model == model_id and settings.felis.reasoning_mode in supported:
-        return settings.felis.reasoning_mode
+    if settings.local.last_model == model_id and settings.local.reasoning_mode in supported:
+        return settings.local.reasoning_mode
     if "none" in supported:
         return "none"
     return supported[0] if supported else "none"
 
 
-def local_model_ref_for_agent(
-    agent_key: str,
+def local_model_ref_for_model(
+    model_id: str,
     *,
     local_context_window: int | None = None,
 ) -> LocalModelRef:
-    if agent_key != "felis":
-        raise ValueError(f"Agent {agent_key!r} is not a local Agent")
     profile = build_concrete_agent(
-        "felis",
+        "apex",
         native_effort=None,
         local_context_window=local_context_window,
+        model_id=model_id,
     )
     runtime_model_id = getattr(profile, "runtime_model_id", None)
     if not isinstance(runtime_model_id, str) or not runtime_model_id:
         raise ValueError(
-            f"Agent {agent_key!r} concrete profile is missing runtime_model_id"
+            f"Model {model_id!r} concrete profile is missing runtime_model_id"
         )
     return LocalModelRef(
         provider=profile.provider,  # type: ignore[arg-type]
@@ -510,22 +481,15 @@ def local_model_refs_for_model(model_id: str) -> frozenset[LocalModelRef]:
     )
 
 
-def local_model_refs_for_agent(agent_key: str) -> frozenset[LocalModelRef]:
-    if agent_key != "felis":
-        return frozenset()
-    model_id = resolve_selected_model_profile("felis").model_id
-    return local_model_refs_for_model(model_id)
-
-
-def agent_key_for_local_model_ref(ref: LocalModelRef) -> str | None:
+def model_id_for_local_model_ref(ref: LocalModelRef) -> str | None:
     if ref.provider == "llama_cpp":
         if model_id_for_llama_cpp_alias(ref.model) is not None:
-            return "felis"
+            return model_id_for_llama_cpp_alias(ref.model)
     for model_id, profile in LOCAL_MODEL_PROFILES.items():
         if profile.provider != ref.provider:
             continue
         if ref in local_model_refs_for_model(model_id):
-            return "felis"
+            return model_id
     return None
 
 
@@ -536,24 +500,20 @@ def known_local_model_refs() -> frozenset[LocalModelRef]:
     return frozenset(refs)
 
 
-def resolve_agent_selection(
+def resolve_model_selection(
     agent_settings: Any,
 ) -> tuple[AgentRuntime, str, NativeEffort | None]:
-    """Resolve effective runtime, Agent, and effort from Agent settings."""
-    agent = getattr(agent_settings, "agent", "panthera")
-    if agent not in VALID_AGENT_KEYS:
-        agent = "panthera"
-    spec = AGENT_SPECS[agent]
-    if spec.runtime == "local":
-        return "local", agent, None
-    effort = getattr(agent_settings.panthera, "effort", "medium")
-    return "cloud", agent, effort
+    """Resolve effective runtime, model, and saved cloud effort."""
+    model_id = getattr(agent_settings, "selected_model", DEFAULT_APEX_MODEL)
+    profile = get_model_profile(model_id) or get_model_profile(DEFAULT_APEX_MODEL)
+    assert profile is not None
+    return profile.runtime, profile.model_id, (getattr(agent_settings.cloud, "effort", "low") if profile.runtime == "cloud" else None)
 
 
-def default_panthera_settings() -> dict[str, Any]:
+def default_cloud_settings() -> dict[str, Any]:
     return {
-        "model": DEFAULT_PANTHERA_MODEL,
-        "effort": "medium",
+        "last_model": DEFAULT_APEX_MODEL,
+        "effort": "low",
         "hosted_tools": {
             "google_search": True,
             "google_maps": True,
@@ -562,9 +522,59 @@ def default_panthera_settings() -> dict[str, Any]:
     }
 
 
-def default_felis_settings() -> dict[str, Any]:
+def default_local_settings() -> dict[str, Any]:
     return {
-        "model": DEFAULT_FELIS_MODEL,
-        "context_window": llama_cpp_runtime_config(DEFAULT_FELIS_MODEL).default_context_window,
+        "last_model": DEFAULT_LOCAL_MODEL,
+        "context_window": llama_cpp_runtime_config(DEFAULT_LOCAL_MODEL).default_context_window,
         "reasoning_mode": "none",
     }
+
+
+# Transitional internal adapters keep provider modules importable while their
+# callers move to model-based routing. They are not accepted as public Agent
+# identities or API inputs.
+def agent_has_credentials(agent_key: str, profile: ModelProfile | None = None) -> bool:
+    return model_has_available_credentials(
+        profile.model_id if profile is not None else resolve_selected_model_profile().model_id,
+        profile,
+    )
+
+
+def resolve_effort_for_agent(agent_key: str, requested: str | None) -> str | None:
+    return resolve_effort_for_model(resolve_selected_model_profile().model_id, requested)
+
+
+def is_local_agent_key(agent_key: str) -> bool:
+    return agent_key == "apex" and resolve_selected_model_profile().runtime == "local"
+
+
+def is_cloud_agent_key(agent_key: str) -> bool:
+    return agent_key == "apex" and resolve_selected_model_profile().runtime == "cloud"
+
+
+def local_context_window_for_agent(agent_key: str) -> int | None:
+    return local_context_window_for_model(resolve_selected_model_profile().model_id)
+
+
+def local_reasoning_modes_for_agent(agent_key: str) -> tuple[LocalReasoningMode, ...]:
+    return local_reasoning_modes_for_model(resolve_selected_model_profile().model_id)
+
+
+def local_reasoning_mode_for_agent(agent_key: str) -> LocalReasoningMode | None:
+    return local_reasoning_mode_for_model(resolve_selected_model_profile().model_id)
+
+
+def local_model_ref_for_agent(agent_key: str, *, local_context_window: int | None = None) -> LocalModelRef:
+    return local_model_ref_for_model(resolve_selected_model_profile().model_id, local_context_window=local_context_window)
+
+
+def local_model_refs_for_agent(agent_key: str) -> frozenset[LocalModelRef]:
+    return local_model_refs_for_model(resolve_selected_model_profile().model_id)
+
+
+def agent_key_for_local_model_ref(ref: LocalModelRef) -> str | None:
+    return "apex" if model_id_for_local_model_ref(ref) is not None else None
+
+
+def resolve_agent_selection(agent_settings: Any) -> tuple[AgentRuntime, str, NativeEffort | None]:
+    return resolve_model_selection(agent_settings)

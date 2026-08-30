@@ -24,6 +24,7 @@ from core.agent.prompting import (
 from core.agent.tool_schemas import descriptor_to_openai_schema, estimate_json_tokens
 from core.agent.catalog import (
     AGENT_SPECS,
+    AgentSpec,
     AgentModelProfile,
     build_concrete_agent,
     build_agent_used_metadata,
@@ -34,7 +35,9 @@ from core.agent.catalog import (
     is_sandbox_query,
     agent_has_credentials,
     local_context_window_for_agent,
+    local_context_window_for_model,
     local_reasoning_mode_for_agent,
+    local_reasoning_mode_for_model,
     local_reasoning_modes_for_model,
     resolve_effort,
     resolve_effort_for_agent,
@@ -239,8 +242,8 @@ def _is_sandbox_agent_query(agent_key: str) -> bool:
     )
 
 
-def _panthera_hosted_tool_settings() -> tuple[bool, bool, bool]:
-    hosted = get_settings_store().get_snapshot().ask_apex.panthera.hosted_tools
+def _cloud_hosted_tool_settings() -> tuple[bool, bool, bool]:
+    hosted = get_settings_store().get_snapshot().ask_apex.cloud.hosted_tools
     return hosted.google_search, hosted.google_maps, hosted.x_search
 
 
@@ -541,7 +544,7 @@ def build_agent_statuses() -> list[AgentStatus]:
         agent_status, cloud_reason, status_source, checked_at = _resolve_cloud_agent_status(
             key
         )
-        google_search, google_maps, x_search = _panthera_hosted_tool_settings()
+        google_search, google_maps, x_search = _cloud_hosted_tool_settings()
         native_tools = effective_native_tools(
             model_profile,
             google_search_enabled=google_search,
@@ -588,31 +591,31 @@ def build_agent_statuses() -> list[AgentStatus]:
     return agents
 
 
-def verify_cloud_agent_endpoint(agent_key: str) -> CloudAgentVerificationResponse:
-    """Force one non-generative model-access check for a cloud Agent."""
+def verify_cloud_agent_endpoint(model_id: str) -> CloudAgentVerificationResponse:
+    """Force one non-generative model-access check for a cloud model."""
     if DEMO_MODE:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cloud verification is unavailable in demo mode.",
         )
-    spec = AGENT_SPECS.get(agent_key)
-    if spec is None or not is_agent_visible(agent_key):
+    model_profile = get_model_profile(model_id)
+    if model_profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Requested Agent is not available.",
         )
-    if spec.runtime != "cloud":
+    if model_profile.runtime != "cloud":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only cloud Agents support provider verification.",
         )
-    if not agent_has_credentials(agent_key):
+    if not model_has_credentials(model_profile):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Configure this Agent's provider credentials before verification.",
         )
     try:
-        result = verify_cloud_agent(agent_key)
+        result = verify_cloud_agent(model_id)
     except RuntimeError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -624,7 +627,7 @@ def verify_cloud_agent_endpoint(agent_key: str) -> CloudAgentVerificationRespons
             detail="Cloud verification cannot run for this Agent.",
         ) from exc
     return CloudAgentVerificationResponse(
-        agent=agent_key,
+        model_id=model_id,
         status=result.status,
         reason=result.reason,
         checked_at=result.checked_at,
@@ -697,26 +700,27 @@ def unload_active_local_model_endpoint() -> LocalUnloadResponse:
     return LocalUnloadResponse()
 
 
-def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
-    """Pre-warm one configured local Agent and verify residency."""
+def load_local_model_endpoint(model_id: str) -> LocalLoadResponse:
+    """Pre-warm one local model and verify residency."""
     if DEMO_MODE:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Local model pre-warming is unavailable in demo mode.",
         )
 
-    spec = AGENT_SPECS.get(agent_key)
-    if spec is None or spec.runtime != "local":
+    model_profile = get_model_profile(model_id)
+    if model_profile is None or model_profile.runtime != "local":
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Only configured local Agents can be pre-warmed.",
         )
 
     profile = build_concrete_agent(
-        agent_key,
+        "apex",
         native_effort=None,
-        local_context_window=local_context_window_for_agent(agent_key),
-        local_reasoning_mode=local_reasoning_mode_for_agent(agent_key),
+        local_context_window=local_context_window_for_model(model_id),
+        local_reasoning_mode=local_reasoning_mode_for_model(model_id),
+        model_id=model_id,
     )
     assert is_local_profile(profile)
     backend = get_local_runtime_backend(profile.provider)
@@ -771,7 +775,7 @@ def load_local_model_endpoint(agent_key: str) -> LocalLoadResponse:
     # Force a post-transition snapshot so the next Agent response reflects
     # the daemon rather than a prior polling cache.
     get_provider_snapshot(model_ref.provider, force_refresh=True)
-    return LocalLoadResponse(agent=agent_key)
+    return LocalLoadResponse(model_id=model_id)
 
 
 def _trim_agent_history(
@@ -1156,12 +1160,11 @@ def _resolve_and_validate_model_profile(
     agent_key: str,
     model_id: str | None,
 ) -> tuple[AgentSpec, ModelProfile]:
-    if agent_key not in AGENT_SPECS:
+    if agent_key != "apex":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown Agent: {agent_key!r}",
         )
-    spec = AGENT_SPECS[agent_key]
     if model_id is not None:
         model_profile = get_model_profile(model_id)
         if model_profile is None:
@@ -1169,19 +1172,15 @@ def _resolve_and_validate_model_profile(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Unknown model: {model_id!r}",
             )
-        if model_profile.runtime != spec.runtime:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Model {model_id!r} ({model_profile.runtime}) is incompatible with Agent {agent_key!r} ({spec.runtime}).",
-            )
         if model_profile.dev_only and not is_dev_mode():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Model {model_id!r} is only available in development mode.",
             )
     else:
-        model_profile = resolve_selected_model_profile(agent_key)
-    return spec, model_profile
+        model_profile = resolve_selected_model_profile()
+    spec = AGENT_SPECS["apex"]
+    return AgentSpec(spec.key, spec.display_name, spec.description, spec.identity_instruction, model_profile.runtime, spec.capability_tags), model_profile
 
 
 def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse:
@@ -1192,7 +1191,7 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
     )
 
     google_search, google_maps, x_search = (
-        _panthera_hosted_tool_settings()
+        _cloud_hosted_tool_settings()
         if spec.runtime == "cloud"
         else (False, False, False)
     )
@@ -1309,7 +1308,7 @@ def query_agent(
         else None
     )
     google_search, google_maps, x_search = (
-        _panthera_hosted_tool_settings()
+        _cloud_hosted_tool_settings()
         if spec.runtime == "cloud"
         else (False, False, False)
     )

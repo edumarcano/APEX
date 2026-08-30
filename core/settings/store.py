@@ -128,8 +128,21 @@ class RuntimeSettingsStore:
                         local_normalized = {}
                         _LOGGER.warning(warning)
                     else:
-                        local_active = True
-                        if issues.warnings:
+                        migration_failed = False
+                        if _needs_v19_rewrite(local_raw):
+                            try:
+                                self._atomic_write_local(local_normalized)
+                            except SettingsPersistenceError as exc:
+                                warning = (
+                                    "Could not migrate config.local.json; using tracked defaults: "
+                                    + str(exc)
+                                )
+                                local_normalized = {}
+                                migration_failed = True
+                            else:
+                                local_raw = copy_dict(local_normalized)
+                        local_active = not migration_failed
+                        if issues.warnings and not migration_failed:
                             warning = (
                                 "Configuration warning: "
                                 + "; ".join(issues.warnings)
@@ -371,6 +384,19 @@ class RuntimeSettingsStore:
 def copy_dict(value: dict[str, Any]) -> dict[str, Any]:
     """Return a deep-ish copy of a JSON-compatible dict."""
     return json.loads(json.dumps(value))
+
+
+def _needs_v19_rewrite(value: dict[str, Any]) -> bool:
+    """Return whether a local override still carries pre-v19 Apex keys."""
+    ask_apex = value.get("ask_apex")
+    tool_profiles = value.get("tool_profiles")
+    return (
+        isinstance(ask_apex, dict)
+        and bool({"agent", "panthera", "felis"} & set(ask_apex))
+    ) or (
+        isinstance(tool_profiles, dict)
+        and "default_profile_by_agent" in tool_profiles
+    )
 
 
 _STORE: RuntimeSettingsStore | None = None
