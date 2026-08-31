@@ -658,12 +658,12 @@ export default function SettingsPanel({
                     tone="ok"
                   />
                   <StatusRow
-                    label="Cloud agents"
+                    label="Cloud models"
                     value={providerRows.cloud.value}
                     tone={providerRows.cloud.tone}
                   />
                   <StatusRow
-                    label="Local agents"
+                    label="Local models"
                     value={providerRows.local.value}
                     tone={providerRows.local.tone}
                   />
