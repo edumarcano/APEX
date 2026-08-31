@@ -283,7 +283,7 @@ def _ensure_local_alias_configured(profile: LocalModelProfile) -> None:
 
 
 def _agent_pricing_metadata(agent_key: str) -> AgentPricingMetadata:
-    model_profile = resolve_selected_model_profile(agent_key)
+    model_profile = resolve_selected_model_profile()
     return _model_pricing_metadata(model_profile)
 
 
@@ -335,6 +335,91 @@ def _resolve_local_agent_status(
     return "available", None
 
 
+def build_model_catalog() -> list[AgentModelCatalogEntry]:
+    """Build the unified model catalog with model-specific availability state."""
+    dev_mode = is_dev_mode()
+    vitals = get_system_vitals()
+    loading_ref = get_loading_local_model()
+    local_execution_active = is_local_execution_active()
+    snapshots: dict[str, Any] = {
+        backend.provider: backend.get_status_snapshot()
+        for backend in iter_local_runtime_backends(enabled_only=True)
+    }
+    entries: list[AgentModelCatalogEntry] = []
+
+    for model_profile in (
+        *visible_cloud_models(dev_mode=dev_mode),
+        *visible_local_models(dev_mode=dev_mode),
+    ):
+        entry = _profile_to_catalog_entry(model_profile)
+        if model_profile.runtime == "cloud":
+            if not model_has_credentials(model_profile):
+                provider_label = _PROVIDER_DISPLAY_NAMES.get(
+                    model_profile.provider, model_profile.provider
+                )
+                entry = entry.model_copy(
+                    update={
+                        "status": "disabled",
+                        "reason": f"{provider_label} API key is not configured ({model_profile.credential_env or 'API_KEY'})",
+                    }
+                )
+            else:
+                cloud = cloud_status(model_profile.model_id)
+                entry = entry.model_copy(
+                    update={
+                        "status": cloud.status,
+                        "status_source": cloud.source,
+                        "status_checked_at": cloud.checked_at,
+                        "reason": cloud.reason,
+                    }
+                )
+            entries.append(entry)
+            continue
+
+        profile = build_concrete_agent(
+            "apex",
+            native_effort=None,
+            local_context_window=local_context_window_for_model(model_profile.model_id),
+            local_reasoning_mode=local_reasoning_mode_for_model(model_profile.model_id),
+            model_id=model_profile.model_id,
+        )
+        assert is_local_profile(profile)
+        backend = get_local_runtime_backend(profile.provider)
+        snapshot = snapshots.get(profile.provider)
+        if snapshot is None and backend.enabled:
+            snapshot = backend.get_status_snapshot()
+            snapshots[profile.provider] = snapshot
+        installed = snapshot["installed_models"] if snapshot else []
+        loaded_rows = snapshot["loaded_models"] if snapshot else []
+        loaded = _matching_runtime_model_row(loaded_rows, profile.runtime_model_id, state="loaded")
+        failed = _matching_runtime_model_row(loaded_rows, profile.runtime_model_id, state="failed")
+        model_ref = LocalModelRef(provider=profile.provider, model=profile.runtime_model_id)
+        availability, reason = _resolve_local_agent_status(
+            profile,
+            is_active=loaded is not None,
+            provider_reachable=bool(snapshot and snapshot["reachable"]),
+            installed_models=installed,
+            vitals=vitals,
+            backend_enabled=backend.enabled,
+            load_failed=failed is not None,
+        )
+        if availability == "available" and local_execution_active:
+            availability, reason = "busy", _BUSY_REASON
+        status_row = loaded or failed
+        entry = entry.model_copy(
+            update={
+                "status": availability,
+                "status_source": "runtime",
+                "reason": reason,
+                "active": loaded is not None,
+                "loading": loading_ref == model_ref,
+                "loaded_model": _loaded_model_status(status_row) if status_row else None,
+            }
+        )
+        entries.append(entry)
+    return entries
+
+
 def _matching_runtime_model_row(
     loaded_models: list[dict[str, Any]],
     runtime_model_id: str,
@@ -352,13 +437,15 @@ def _matching_runtime_model_row(
 
 
 def _resolve_cloud_agent_status(
-    agent_key: str,
+    model_id: str,
 ) -> tuple[AgentAvailabilityStatus, str | None, AgentStatusSource, datetime | None]:
     """Return configured or cached cloud verification state without probing."""
-    if agent_has_credentials(agent_key):
-        result = cloud_status(agent_key)
+    model_profile = get_model_profile(model_id)
+    if model_profile is None or model_profile.runtime != "cloud":
+        raise ValueError("Cloud status requires a registered cloud model.")
+    if model_has_credentials(model_profile):
+        result = cloud_status(model_id)
         return result.status, result.reason, result.source, result.checked_at
-    model_profile = resolve_selected_model_profile(agent_key)
     env_key = model_profile.credential_env or "API_KEY"
     provider_label = _PROVIDER_DISPLAY_NAMES.get(
         model_profile.provider, model_profile.provider
@@ -405,9 +492,9 @@ def build_agent_statuses() -> list[AgentStatus]:
 
     for sort_order, key in enumerate(runtime_agent_order()):
         spec = AGENT_SPECS[key]
-        model_profile = resolve_selected_model_profile(key)
+        model_profile = resolve_selected_model_profile()
 
-        if spec.runtime == "local":
+        if model_profile.runtime == "local":
             profile = build_concrete_agent(
                 key,
                 native_effort=None,
@@ -541,7 +628,7 @@ def build_agent_statuses() -> list[AgentStatus]:
             continue
 
         agent_status, cloud_reason, status_source, checked_at = _resolve_cloud_agent_status(
-            key
+            model_profile.model_id
         )
         google_search, google_maps, x_search = _cloud_hosted_tool_settings()
         native_tools = effective_native_tools(
@@ -1258,6 +1345,7 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
         agent_key,
         _explicit_selection_names(query_payload),
         tool_profile_id=payload.tool_profile_id,
+        model_id=query_payload.model_id,
     )
     return _estimate_agent_request(
         query_payload,
@@ -1335,6 +1423,7 @@ def query_agent(
         agent_key,
         _explicit_selection_names(payload),
         tool_profile_id=payload.tool_profile_id,
+        model_id=payload.model_id,
     )
     if selection.failures:
         raise HTTPException(

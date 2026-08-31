@@ -48,9 +48,10 @@ from core.agent.catalog import (
     known_local_model_refs,
     local_agent_keys,
     local_reasoning_modes_for_agent,
+    local_reasoning_modes_for_model,
     resolve_selected_model_profile,
 )
-from core.agent.model_catalog import DEFAULT_FELIS_MODEL, get_model_profile
+from core.agent.model_catalog import DEFAULT_LOCAL_MODEL, get_model_profile
 from core.agent.local_runtime.contract import (
     LocalModelRef,
     LocalModelProfile,
@@ -551,9 +552,9 @@ def _build_candidate_configuration(
 ) -> BenchmarkConfiguration:
     """Build an in-memory llama.cpp profile without changing the Agent catalog."""
     resolved_context = context or LLAMA_CPP_RUNTIME_CONFIGS[
-        DEFAULT_FELIS_MODEL
+        DEFAULT_LOCAL_MODEL
     ].default_context_window
-    supported = local_reasoning_modes_for_agent("felis")
+    supported = local_reasoning_modes_for_model(DEFAULT_LOCAL_MODEL)
     if reasoning not in supported:
         raise ValueError(
             f"llama.cpp candidate does not support reasoning mode {reasoning!r}."
@@ -565,15 +566,15 @@ def _build_candidate_configuration(
     if not alias:
         raise ValueError("The llama.cpp candidate requires a runtime alias.")
 
-    felis_profile = get_model_profile(DEFAULT_FELIS_MODEL)
-    assert felis_profile is not None
+    default_profile = get_model_profile(DEFAULT_LOCAL_MODEL)
+    assert default_profile is not None
     profile = build_llama_cpp_profile(
-        DEFAULT_FELIS_MODEL,
+        DEFAULT_LOCAL_MODEL,
         display_name="Benchmark candidate",
         api_model=model_name,
-        stability=felis_profile.stability,
-        max_tool_turns=felis_profile.max_tool_turns,
-        max_tool_calls=felis_profile.max_tool_calls,
+        stability=default_profile.stability,
+        max_tool_turns=default_profile.max_tool_turns,
+        max_tool_calls=default_profile.max_tool_calls,
         system_instruction=LOCAL_AGENT_SYSTEM_PROMPT,
         context_window=resolved_context,
         reasoning_mode=reasoning,  # type: ignore[arg-type]
@@ -587,7 +588,7 @@ def _build_candidate_configuration(
         reasoning=profile.reasoning_mode,
         profile=profile,
         agent_key=None,
-        tool_projection_agent="felis",
+        tool_projection_agent="apex",
     )
 
 

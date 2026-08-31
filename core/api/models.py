@@ -835,6 +835,34 @@ class AgentStatus(BaseModel):
         default_factory=list,
         description="Authoritative model catalog entries for this Agent's runtime.",
     )
+    status: AgentAvailabilityStatus = Field(
+        default="configured",
+        description="Current model availability derived from provider credentials or local runtime state.",
+    )
+    status_source: AgentStatusSource = Field(
+        default="configuration",
+        description="Source of the current model availability result.",
+    )
+    status_checked_at: datetime | None = Field(
+        default=None,
+        description="Time at which the model availability was last checked.",
+    )
+    reason: str | None = Field(
+        default=None,
+        description="Diagnostic explanation when the model is unavailable or degraded.",
+    )
+    active: bool = Field(
+        default=False,
+        description="Whether this local model is resident in its runtime.",
+    )
+    loading: bool = Field(
+        default=False,
+        description="Whether this local model is currently being loaded.",
+    )
+    loaded_model: LocalLoadedModelStatus | None = Field(
+        default=None,
+        description="Sanitized local runtime residency details when available.",
+    )
 
 
 class CortexAgentResponse(BaseModel):

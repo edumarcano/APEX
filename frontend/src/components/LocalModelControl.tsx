@@ -2,8 +2,7 @@ import { Loader2 } from 'lucide-react'
 import { useCallback, useState, type ReactElement } from 'react'
 
 import type { AgentStatus } from '../types/telemetry'
-import { agentShortName } from '../lib/agentDisplay'
-import { providerDisplayName } from '../lib/agents'
+import { agentShortName, providerDisplayName } from '../lib/agents'
 
 function formatCountdown(seconds: number | null): string {
   if (seconds === null) return '--:--'

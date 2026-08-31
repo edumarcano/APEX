@@ -15,15 +15,15 @@ from core.api.cortex import (
 )
 
 
-def _felis_settings_mock(*, context_window: int = 16384) -> mock.Mock:
+def _local_settings_mock(*, context_window: int = 16384) -> mock.Mock:
     settings = mock.Mock()
-    settings.ask_apex.agent = "felis"
-    settings.ask_apex.felis.model = "gemma-4-E2B-Q4_K_M.gguf"
-    settings.ask_apex.felis.context_window = context_window
-    settings.ask_apex.panthera.hosted_tools.google_search = True
-    settings.ask_apex.panthera.hosted_tools.google_maps = True
-    settings.ask_apex.panthera.hosted_tools.x_search = True
-    settings.ask_apex.panthera.model = "gpt-5.6-luna"
+    settings.ask_apex.selected_model = "gemma-4-E2B-Q4_K_M.gguf"
+    settings.ask_apex.local.last_model = "gemma-4-E2B-Q4_K_M.gguf"
+    settings.ask_apex.local.context_window = context_window
+    settings.ask_apex.cloud.hosted_tools.google_search = True
+    settings.ask_apex.cloud.hosted_tools.google_maps = True
+    settings.ask_apex.cloud.hosted_tools.x_search = True
+    settings.ask_apex.cloud.last_model = "gpt-5.6-luna"
     return settings
 
 
@@ -42,8 +42,9 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         backend = mock.Mock()
         backend.enabled = True
         backend.is_model_resident.side_effect = [False, True]
-        settings = _felis_settings_mock()
-        settings.ask_apex.felis.model = "qwen3:4b-instruct"
+        settings = _local_settings_mock()
+        settings.ask_apex.selected_model = "qwen3:4b-instruct"
+        settings.ask_apex.local.last_model = "qwen3:4b-instruct"
         with (
             mock.patch("core.api.cortex.DEMO_MODE", False),
             mock.patch("core.api.cortex.get_local_runtime_backend", return_value=backend),
@@ -60,9 +61,9 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
                 return_value=mock.Mock(get_snapshot=mock.Mock(return_value=settings)),
             ),
         ):
-            response = load_local_model_endpoint("felis")
+            response = load_local_model_endpoint("qwen3:4b-instruct")
 
-        self.assertEqual(response.agent, "felis")
+        self.assertEqual(response.model_id, "qwen3:4b-instruct")
         gate.assert_called_once()
         switch.assert_called_once()
         self.assertGreaterEqual(snapshot.call_count, 2)
@@ -74,7 +75,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             "core.api.cortex.try_begin_local_execution"
         ) as begin:
             with self.assertRaises(HTTPException) as raised:
-                load_local_model_endpoint("felis")
+                load_local_model_endpoint("gemma-4-E2B-Q4_K_M.gguf")
 
         self.assertEqual(raised.exception.status_code, 403)
         begin.assert_not_called()
@@ -88,14 +89,14 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             mock.patch("core.api.cortex.try_begin_local_execution", return_value=False),
         ):
             with self.assertRaises(HTTPException) as raised:
-                load_local_model_endpoint("felis")
+                load_local_model_endpoint("gemma-4-E2B-Q4_K_M.gguf")
 
         self.assertEqual(raised.exception.status_code, 409)
 
     def test_load_rejects_missing_configured_alias(self) -> None:
         backend = mock.Mock()
         backend.enabled = True
-        settings = _felis_settings_mock()
+        settings = _local_settings_mock()
         with (
             mock.patch("core.api.cortex.DEMO_MODE", False),
             mock.patch("core.api.cortex.get_local_runtime_backend", return_value=backend),
@@ -112,7 +113,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             mock.patch("core.api.cortex.switch_local_model") as switch,
         ):
             with self.assertRaises(HTTPException) as raised:
-                load_local_model_endpoint("felis")
+                load_local_model_endpoint("gemma-4-E2B-Q4_K_M.gguf")
 
         self.assertEqual(raised.exception.status_code, 503)
         self.assertIn("not configured", raised.exception.detail)
@@ -138,7 +139,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             mock.patch("core.api.cortex.switch_local_model") as switch,
         ):
             with self.assertRaises(HTTPException) as raised:
-                load_local_model_endpoint("felis")
+                load_local_model_endpoint("gemma-4-E2B-Q4_K_M.gguf")
 
         self.assertEqual(raised.exception.status_code, 503)
         self.assertIn("unreachable", raised.exception.detail)
@@ -161,7 +162,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             ),
         ):
             with self.assertRaises(HTTPException) as raised:
-                load_local_model_endpoint("felis")
+                load_local_model_endpoint("gemma-4-E2B-Q4_K_M.gguf")
 
         self.assertEqual(raised.exception.status_code, 503)
 
@@ -277,7 +278,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 503)
         end_execution.assert_called_once()
 
-    def test_felis_status_reports_missing_selected_alias(self) -> None:
+    def test_local_model_status_reports_missing_selected_alias(self) -> None:
         snapshot = {
             "provider": "llama_cpp",
             "reachable": True,
@@ -293,7 +294,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         llama_backend.enabled = True
         llama_backend.get_status_snapshot.return_value = snapshot
 
-        settings = _felis_settings_mock()
+        settings = _local_settings_mock()
 
         with (
             mock.patch(
@@ -327,10 +328,10 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         ):
             profiles = {profile.key: profile for profile in build_agent_statuses()}
 
-        self.assertEqual(profiles["felis"].status, "model_not_installed")
-        self.assertIn("not installed or configured", profiles["felis"].reason or "")
+        self.assertEqual(profiles["apex"].status, "model_not_installed")
+        self.assertIn("not installed or configured", profiles["apex"].reason or "")
 
-    def test_felis_status_reports_router_load_failure(self) -> None:
+    def test_local_model_status_reports_router_load_failure(self) -> None:
         snapshot = {
             "provider": "llama_cpp",
             "reachable": True,
@@ -359,7 +360,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         llama_backend.enabled = True
         llama_backend.get_status_snapshot.return_value = snapshot
 
-        settings = _felis_settings_mock()
+        settings = _local_settings_mock()
 
         with (
             mock.patch(
@@ -393,17 +394,17 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         ):
             profiles = {profile.key: profile for profile in build_agent_statuses()}
 
-        felis = profiles["felis"]
-        self.assertNotEqual(felis.status, "available")
-        self.assertEqual(felis.status, "provider_error")
-        self.assertFalse(felis.active)
+        local_status = profiles["apex"]
+        self.assertNotEqual(local_status.status, "available")
+        self.assertEqual(local_status.status, "provider_error")
+        self.assertFalse(local_status.active)
         self.assertEqual(
-            felis.reason,
+            local_status.reason,
             "llama.cpp reported that the selected model preset failed to load.",
         )
-        self.assertIsNotNone(felis.loaded_model)
-        assert felis.loaded_model is not None
-        self.assertEqual(felis.loaded_model.state, "failed")
+        self.assertIsNotNone(local_status.loaded_model)
+        assert local_status.loaded_model is not None
+        self.assertEqual(local_status.loaded_model.state, "failed")
 
     def test_query_rejects_missing_local_alias_with_provider_label(self) -> None:
         from core.agent.types import AgentQueryRequest
@@ -412,7 +413,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         backend = mock.Mock()
         backend.enabled = True
         settings = mock.Mock()
-        settings = _felis_settings_mock()
+        settings = _local_settings_mock()
         settings.ask_apex.enabled = True
         settings.user_designation = ""
         missing = {
@@ -439,7 +440,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             ),
         ):
             with self.assertRaises(HTTPException) as raised:
-                query_agent(AgentQueryRequest(prompt="hello", agent="felis"))
+                query_agent(AgentQueryRequest(prompt="hello", agent="apex"))
 
         self.assertEqual(raised.exception.status_code, 503)
         self.assertIn("gemma-4-e2b-16k", raised.exception.detail)
@@ -480,10 +481,10 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         ):
             profiles = {profile.key: profile for profile in build_agent_statuses()}
 
-        self.assertFalse(profiles["felis"].active)
-        self.assertIsNone(profiles["felis"].idle_unload_remaining_seconds)
+        self.assertFalse(profiles["apex"].active)
+        self.assertIsNone(profiles["apex"].idle_unload_remaining_seconds)
 
-    def test_felis_status_active_when_resident_model_differs_from_configured_model(self) -> None:
+    def test_local_model_status_tracks_resident_model_separately(self) -> None:
         snapshot = {
             "provider": "ollama",
             "reachable": True,
@@ -508,8 +509,9 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         backend.provider = "ollama"
         backend.enabled = True
         backend.get_status_snapshot.return_value = snapshot
-        settings = _felis_settings_mock()
-        settings.ask_apex.felis.model = "qwen3:4b-instruct"
+        settings = _local_settings_mock()
+        settings.ask_apex.selected_model = "qwen3:4b-instruct"
+        settings.ask_apex.local.last_model = "qwen3:4b-instruct"
         with (
             mock.patch(
                 "core.api.cortex.iter_local_runtime_backends",
@@ -534,13 +536,13 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         ):
             profiles = {profile.key: profile for profile in build_agent_statuses()}
 
-        felis = profiles["felis"]
-        self.assertTrue(felis.active)
-        self.assertEqual(felis.configured_model, "qwen3:4b-instruct")
-        self.assertIsNotNone(felis.loaded_model)
-        assert felis.loaded_model is not None
-        self.assertEqual(felis.loaded_model.name, "qwen3:1.7b")
-        self.assertEqual(felis.idle_unload_remaining_seconds, 60)
+        local_status = profiles["apex"]
+        self.assertTrue(local_status.active)
+        self.assertEqual(local_status.configured_model, "qwen3:4b-instruct")
+        self.assertIsNotNone(local_status.loaded_model)
+        assert local_status.loaded_model is not None
+        self.assertEqual(local_status.loaded_model.name, "qwen3:1.7b")
+        self.assertEqual(local_status.idle_unload_remaining_seconds, 60)
 
 
 if __name__ == "__main__":

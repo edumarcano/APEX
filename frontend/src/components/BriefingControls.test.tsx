@@ -19,7 +19,7 @@ function target(
   return {
     mode,
     label: mode === 'focused' ? 'Focused' : mode === 'flash' ? 'Flash' : 'Structured',
-    description: mode === 'focused' ? 'Panthera · DeepSeek V4 Flash' : mode === 'flash' ? 'Felis · Gemma 4 E2B' : 'Deterministic · no model',
+    description: mode === 'focused' ? 'OpenRouter · DeepSeek V4 Flash' : mode === 'flash' ? 'llama.cpp · Gemma 4 E2B' : 'Deterministic · no model',
     model_id: mode === 'structured' ? null : mode,
     model_display_name: mode === 'structured' ? null : mode,
     provider: mode === 'focused' ? 'openrouter' : local ? 'llama_cpp' : null,
@@ -74,9 +74,9 @@ describe('BriefingModeSelector', () => {
     expect(screen.getAllByText('No provider token charge')).toHaveLength(1)
     expect(within(listbox).getAllByRole('option')).toHaveLength(3)
     expect(within(listbox).getByText('A deeper briefing that looks across the next 1–2 weeks to find conflicts, priorities, and useful connections.')).toBeVisible()
-    expect(within(listbox).getByText('Panthera · OpenRouter · DeepSeek V4 Flash · High')).toBeVisible()
+    expect(within(listbox).getByText('OpenRouter · DeepSeek V4 Flash · High')).toBeVisible()
     expect(within(listbox).getByText('A quick local briefing for what matters right now and over the next few days.')).toBeVisible()
-    expect(within(listbox).getByText('Felis · llama.cpp · Gemma 4 E4B')).toBeVisible()
+    expect(within(listbox).getByText('llama.cpp · Gemma 4 E2B')).toBeVisible()
     expect(within(listbox).getByText('A deterministic readout of APEX telemetry with no model interpretation.')).toBeVisible()
     expect(within(listbox).getByText('Deterministic · No model')).toBeVisible()
     expect(within(listbox).queryByRole('option', { name: /^Mus\b/i })).not.toBeInTheDocument()

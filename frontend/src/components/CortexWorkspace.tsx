@@ -13,7 +13,7 @@ import type {
   ToolCatalog,
   ToolPreflightEstimate,
 } from '../types/telemetry'
-import type { PantheraHostedToolsSettings } from '../types/settings'
+import type { CloudHostedToolsSettings } from '../types/settings'
 import {
   formatContextWindowLabel,
   formatReasoningLabel,
@@ -29,7 +29,6 @@ import { CortexToolCards } from './CortexToolCards'
 import { CortexActions } from './CortexActions'
 import { CortexContext } from './CortexContext'
 import { type ApexLogoProps } from './ApexLogo'
-import { AgentSelector } from './AgentSelector'
 import { ModelSelector } from './ModelSelector'
 import { ApexAssistantThread, ApexConversationRail, type ApexAssistantComposerProps, type ApexAssistantRunConfig } from './ApexAssistantRuntime'
 import { useContextInspector } from '../hooks/useContextInspector'
@@ -39,9 +38,8 @@ const INSPECTOR_TABS = ['controls', 'context', 'actions'] as const
 interface CortexWorkspaceProps {
   activeAgent: AgentKey
   cloudEffort: CloudEffort
-  pantheraModel: string
-  felisModel?: string
-  pantheraHostedTools: PantheraHostedToolsSettings
+  selectedModel?: string
+  hostedTools?: CloudHostedToolsSettings
   devModeActive: boolean
   sandboxMode: boolean
   agentQueriesEnabled: boolean
@@ -74,18 +72,16 @@ interface CortexWorkspaceProps {
   logoProps: Omit<ApexLogoProps, 'className'>
   lifecycleBusy: boolean
   lifecycleActionPending: boolean
-  verifyingCloudAgent: AgentKey | null
-  onLoadLocalModel: () => Promise<boolean>
+  verifyingCloudModel?: string | null
+  onLoadLocalModel: (modelId: string) => Promise<boolean>
   onUnloadLocalModel: () => Promise<boolean>
-  onVerifyCloudAgent: (agent: 'panthera') => Promise<boolean>
+  onVerifyCloudAgent: (modelId: string) => Promise<boolean>
   snapshotAttached: boolean
   snapshotAvailable: boolean
   personalContextEnabled?: boolean
   onPersonalContextEnabledChange?: (enabled: boolean) => Promise<boolean>
   onSnapshotAttachedChange: (attached: boolean) => void
-  onAgentChange: (agent: AgentKey) => void
-  onPantheraModelChange: (model: string) => void
-  onFelisModelChange?: (model: string) => void
+  onModelChange?: (model: string) => void
   onEffortChange: (effort: CloudEffort) => void
   onHostedToolChange: (tool: HostedTool, enabled: boolean) => void
   onSandboxModeChange: (enabled: boolean) => void
@@ -494,18 +490,17 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
     },
   }
   return <section className={`relative z-[var(--z-bento-hud)] mx-auto flex min-h-0 w-full flex-1 flex-col ${compactLayout ? 'overflow-visible' : 'overflow-hidden'} rounded-2xl border border-white/10 bg-zinc-950/45 shadow-2xl backdrop-blur-xl`} aria-label="Cortex workspace">
-    <header className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-black/20 px-4 py-3 sm:px-5"><div className="mr-auto flex items-center gap-2"><span className="hud-icon-badge size-8 text-[#C084FC]"><BrainCircuit className="size-4" aria-hidden /></span><div><h1 className="font-orbitron text-sm font-semibold uppercase tracking-[0.16em] text-white">Cortex</h1><p className="font-mono text-[10px] text-zinc-500">Operate and configure Apex Agents</p></div></div></header>
+    <header className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-black/20 px-4 py-3 sm:px-5"><div className="mr-auto flex items-center gap-2"><span className="hud-icon-badge size-8 text-[#C084FC]"><BrainCircuit className="size-4" aria-hidden /></span><div><h1 className="font-orbitron text-sm font-semibold uppercase tracking-[0.16em] text-white">Cortex</h1><p className="font-mono text-[10px] text-zinc-500">Operate and configure the Apex Agent</p></div></div></header>
     <div className={`${compactLayout ? 'flex' : 'hidden'} shrink-0 gap-2 border-b border-white/10 bg-black/20 p-2`}><button type="button" disabled={interactionDisabled} aria-expanded={compactPanel === 'conversations'} aria-controls="cortex-conversations-compact" onClick={() => setCompactPanel((panel) => panel === 'conversations' ? null : 'conversations')} className="rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 disabled:opacity-40">Conversations</button><button type="button" disabled={interactionDisabled} aria-expanded={compactPanel === 'inspector'} aria-controls="cortex-inspector-compact" onClick={() => setCompactPanel((panel) => panel === 'inspector' ? null : 'inspector')} className="rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 disabled:opacity-40">Inspector</button></div>
     {compactPanel === 'conversations' ? <div id="cortex-conversations-compact" className={compactLayout ? '' : 'xl:hidden'}><ApexConversationRail disabled={interactionDisabled} className="block w-full border-b border-r-0" /></div> : null}
     <div className={gridClassName}><ApexConversationRail disabled={interactionDisabled} className={compactLayout ? 'hidden' : 'hidden xl:block'} /><div className="order-1 flex min-h-0 flex-col">{props.agentQueriesEnabled ? <ApexAssistantThread renderAgent={(text, metadata) => <AssistantResponseDisplay text={text} rawMetadata={metadata} onOpenRecord={openContextRecord} />} composer={assistantComposer} disabled={interactionDisabled || !props.selectionReady} logoProps={props.logoProps} /> : <footer className="border-t border-white/10 p-4 text-sm text-zinc-500">Agent queries are disabled in Settings.</footer>}</div>
-      <aside id="cortex-inspector-compact" className={`order-2 space-y-4 border-t border-white/10 bg-black/15 p-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 scrollbar-thin ${compactPanel !== 'inspector' ? (compactLayout ? 'hidden' : 'hidden xl:block') : ''}`} aria-label="Cortex inspector"><div role="tablist" aria-label="Cortex inspector sections" className="flex border-b border-white/10">{INSPECTOR_TABS.map((tab) => <button key={tab} id={`cortex-inspector-tab-${tab}`} type="button" role="tab" tabIndex={inspectorTab === tab ? 0 : -1} aria-selected={inspectorTab === tab} aria-controls={`cortex-inspector-${tab}`} onKeyDown={onInspectorTabKeyDown} onClick={() => selectInspectorTab(tab)} className={`px-2 py-2 font-mono text-[10px] uppercase tracking-wide outline-none focus-visible:ring-1 focus-visible:ring-[#7EB3FF] ${inspectorTab === tab ? 'text-[#9AC2FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>{tab}</button>)}</div>{inspectorTab === 'controls' ? <div id="cortex-inspector-controls" role="tabpanel" aria-labelledby="cortex-inspector-tab-controls" className="space-y-4"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Agent</p><AgentSelector activeAgent={props.activeAgent} onChange={props.onAgentChange} agentsStatus={props.agentsStatus} agentsStatusHydrated={props.agentsStatusHydrated} isQuerying={interactionDisabled} verifyingAgent={props.verifyingCloudAgent} onVerify={props.onVerifyCloudAgent} /></section><RuntimeControls {...props} activeStatus={activeStatus ?? null} localContextLocked={localContextLocked} /><ContextControl {...props} /></div> : null}{inspectorTab === 'context' ? <div id="cortex-inspector-context" role="tabpanel" aria-labelledby="cortex-inspector-tab-context"><CortexContext inspector={contextInspector} demoModeActive={props.demoModeActive} /></div> : null}{inspectorTab === 'actions' ? <div id="cortex-inspector-actions" role="tabpanel" aria-labelledby="cortex-inspector-tab-actions"><CortexActions actions={props.actions} demoModeActive={props.demoModeActive} /></div> : null}
+      <aside id="cortex-inspector-compact" className={`order-2 space-y-4 border-t border-white/10 bg-black/15 p-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 scrollbar-thin ${compactPanel !== 'inspector' ? (compactLayout ? 'hidden' : 'hidden xl:block') : ''}`} aria-label="Cortex inspector"><div role="tablist" aria-label="Cortex inspector sections" className="flex border-b border-white/10">{INSPECTOR_TABS.map((tab) => <button key={tab} id={`cortex-inspector-tab-${tab}`} type="button" role="tab" tabIndex={inspectorTab === tab ? 0 : -1} aria-selected={inspectorTab === tab} aria-controls={`cortex-inspector-${tab}`} onKeyDown={onInspectorTabKeyDown} onClick={() => selectInspectorTab(tab)} className={`px-2 py-2 font-mono text-[10px] uppercase tracking-wide outline-none focus-visible:ring-1 focus-visible:ring-[#7EB3FF] ${inspectorTab === tab ? 'text-[#9AC2FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>{tab}</button>)}</div>{inspectorTab === 'controls' ? <div id="cortex-inspector-controls" role="tabpanel" aria-labelledby="cortex-inspector-tab-controls" className="space-y-4"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Apex Agent</p><p className="text-[11px] text-zinc-500">Select a model to choose cloud or local execution.</p></section><RuntimeControls {...props} activeStatus={activeStatus ?? null} localContextLocked={localContextLocked} /><ContextControl {...props} /></div> : null}{inspectorTab === 'context' ? <div id="cortex-inspector-context" role="tabpanel" aria-labelledby="cortex-inspector-tab-context"><CortexContext inspector={contextInspector} demoModeActive={props.demoModeActive} /></div> : null}{inspectorTab === 'actions' ? <div id="cortex-inspector-actions" role="tabpanel" aria-labelledby="cortex-inspector-tab-actions"><CortexActions actions={props.actions} demoModeActive={props.demoModeActive} /></div> : null}
       </aside>
     </div>
   </section>
 }
 
 function RuntimeControls({
-  activeAgent,
   activeStatus,
   localContextLocked,
   ...props
@@ -514,103 +509,52 @@ function RuntimeControls({
   localContextLocked: boolean
 }): ReactElement {
   const controlsDisabled = props.isQuerying || Boolean(props.submissionPending) || Boolean(props.conversationHydrating)
-  const localModel = props.felisModel ?? 'gemma-4-E2B-Q4_K_M.gguf'
-  const onLocalModelChange = props.onFelisModelChange ?? (() => {})
-  const pantheraStatus = props.agentsStatus.find((agent) => agent.key === 'panthera')
-  const felisStatus = props.agentsStatus.find((agent) => agent.key === 'felis')
-  const catalog = resolveModelCatalog(
-    activeAgent === 'panthera' ? pantheraStatus : felisStatus,
-  )
-  const models = catalog.filter(
-    (entry) => entry.runtime === (activeAgent === 'panthera' ? 'cloud' : 'local'),
-  )
-  const hostedCapabilities = hostedCapabilitiesForModel(
-    activeAgent === 'panthera' ? props.pantheraModel : localModel,
-    catalog,
-  )
-
-  const selectedModelEntry = models.find(
-    (entry) => entry.model_id === (activeAgent === 'panthera' ? props.pantheraModel : localModel),
-  )
-  const reasoningOptions = selectedModelEntry?.reasoning_options ?? pantheraStatus?.reasoning_options ?? []
-  const supportsEffort = Boolean(reasoningOptions.length)
+  const selectedModel = props.selectedModel ?? activeStatus?.configured_model ?? ''
+  const hostedTools = props.hostedTools ?? { google_search: false, google_maps: false, x_search: false }
+  const catalog = resolveModelCatalog(activeStatus ?? undefined)
+  const selectedModelEntry = catalog.find((entry) => entry.model_id === selectedModel)
+  const selectedRuntimeStatus = activeStatus && selectedModelEntry
+    ? {
+        ...activeStatus,
+        configured_model: selectedModelEntry.model_id,
+        provider: selectedModelEntry.provider,
+        runtime: selectedModelEntry.runtime,
+        model_stability: selectedModelEntry.stability,
+        reasoning_options: selectedModelEntry.reasoning_options ?? null,
+        default_reasoning: selectedModelEntry.default_reasoning ?? null,
+        context_window: selectedModelEntry.default_context_window ?? null,
+        context_window_options: selectedModelEntry.context_options ?? null,
+        context_window_high_resource_options: selectedModelEntry.high_resource_context_options ?? null,
+        default_context_window: selectedModelEntry.default_context_window ?? null,
+        reasoning_mode: selectedModelEntry.default_reasoning_mode ?? null,
+        reasoning_mode_options: selectedModelEntry.reasoning_modes ?? null,
+        default_reasoning_mode: selectedModelEntry.default_reasoning_mode ?? null,
+        status: selectedModelEntry.status ?? activeStatus.status,
+        status_source: selectedModelEntry.status_source ?? activeStatus.status_source,
+        status_checked_at: selectedModelEntry.status_checked_at ?? activeStatus.status_checked_at,
+        active: selectedModelEntry.active ?? false,
+        loading: selectedModelEntry.loading ?? false,
+        reason: selectedModelEntry.reason ?? null,
+        loaded_model: selectedModelEntry.loaded_model ?? null,
+      }
+    : activeStatus
+  const hostedCapabilities = hostedCapabilitiesForModel(selectedModel, catalog)
+  const reasoningOptions = selectedModelEntry?.reasoning_options ?? []
+  const isLocal = selectedModelEntry?.runtime === 'local'
 
   return (
     <div className="space-y-4">
-      {activeAgent === 'panthera' ? (
-        <>
-          <ModelSelector
-            activeAgent="panthera"
-            selectedModelId={props.pantheraModel}
-            onModelChange={props.onPantheraModelChange}
-            catalog={models}
-            activeStatus={pantheraStatus ?? null}
-            disabled={controlsDisabled}
-            isQuerying={props.isQuerying}
-            verifyingAgent={props.verifyingCloudAgent}
-            onVerify={props.onVerifyCloudAgent}
-          />
-          {supportsEffort && reasoningOptions.length > 0 ? (
-            <section className="space-y-2">
-              <label htmlFor="cortex-effort" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">
-                Reasoning effort
-              </label>
-              <select
-                id="cortex-effort"
-                value={props.cloudEffort}
-                disabled={controlsDisabled}
-                onChange={(event) => props.onEffortChange(event.target.value as CloudEffort)}
-                className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]"
-              >
-                {reasoningOptions.map((effort) => (
-                  <option key={effort} value={effort}>
-                    {formatReasoningLabel(effort)}
-                  </option>
-                ))}
-              </select>
-            </section>
-          ) : null}
-        </>
-      ) : (
-        <>
-          <ModelSelector
-            activeAgent="felis"
-            selectedModelId={localModel}
-            onModelChange={onLocalModelChange}
-            catalog={models}
-            activeStatus={felisStatus ?? null}
-            disabled={controlsDisabled}
-            isQuerying={props.isQuerying}
-          />
-          {activeStatus ? (
-            <>
-              {activeStatus.reasoning_mode_options && activeStatus.reasoning_mode_options.length > 1 ? (
-                <LocalReasoningControl
-                  key={`${activeStatus.key}-reasoning`}
-                  agent={activeStatus}
-                  disabled={controlsDisabled}
-                  onChange={props.onLocalReasoningModeChange}
-                />
-              ) : null}
-              {activeStatus.context_window_options?.length ? (
-                <LocalContextControl
-                  key={`${activeStatus.key}-context`}
-                  agent={activeStatus}
-                  disabled={localContextLocked}
-                  onChange={props.onLocalContextWindowChange}
-                />
-              ) : null}
-              <LocalModelLifecycle
-                agent={activeStatus}
-                busy={props.lifecycleBusy || controlsDisabled}
-                actionPending={props.lifecycleActionPending}
-                onLoad={props.onLoadLocalModel}
-                onUnload={props.onUnloadLocalModel}
-              />
-            </>
-          ) : null}
-        </>
-      )}
+      <ModelSelector
+        selectedModelId={selectedModel}
+        onModelChange={props.onModelChange ?? (() => {})}
+        catalog={catalog}
+        disabled={controlsDisabled}
+        isQuerying={props.isQuerying}
+        verifyingModelId={props.verifyingCloudModel}
+        onVerify={props.onVerifyCloudAgent}
+      />
+      {!isLocal && reasoningOptions.length > 0 ? <section className="space-y-2"><label htmlFor="cortex-effort" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Reasoning effort</label><select id="cortex-effort" value={props.cloudEffort} disabled={controlsDisabled} onChange={(event) => props.onEffortChange(event.target.value as CloudEffort)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">{reasoningOptions.map((effort) => <option key={effort} value={effort}>{formatReasoningLabel(effort)}</option>)}</select></section> : null}
+      {isLocal && selectedRuntimeStatus ? <><LocalReasoningControl agent={selectedRuntimeStatus} disabled={controlsDisabled} onChange={props.onLocalReasoningModeChange} /><LocalContextControl agent={selectedRuntimeStatus} disabled={localContextLocked} onChange={props.onLocalContextWindowChange} /><LocalModelLifecycle agent={selectedRuntimeStatus} busy={props.lifecycleBusy || controlsDisabled} actionPending={props.lifecycleActionPending} onLoad={() => props.onLoadLocalModel(selectedModel)} onUnload={props.onUnloadLocalModel} /></> : null}
 
       {hostedCapabilities.length > 0 ? (
         <GroundingControls note="Apex Brave Search remains the standard search capability when connected.">
@@ -618,7 +562,7 @@ function RuntimeControls({
             <GroundingToggle
               label="Google Search"
               detail="Provider grounding for later requests"
-              checked={props.pantheraHostedTools.google_search}
+              checked={hostedTools.google_search}
               disabled={controlsDisabled}
               onChange={(enabled) => props.onHostedToolChange('google_search', enabled)}
             />
@@ -627,7 +571,7 @@ function RuntimeControls({
             <GroundingToggle
               label="Google Maps"
               detail="Provider grounding for later requests"
-              checked={props.pantheraHostedTools.google_maps}
+              checked={hostedTools.google_maps}
               disabled={controlsDisabled}
               onChange={(enabled) => props.onHostedToolChange('google_maps', enabled)}
             />
@@ -636,7 +580,7 @@ function RuntimeControls({
             <GroundingToggle
               label="X Search"
               detail="Provider grounding for later requests"
-              checked={props.pantheraHostedTools.x_search}
+              checked={hostedTools.x_search}
               disabled={controlsDisabled}
               onChange={(enabled) => props.onHostedToolChange('x_search', enabled)}
             />

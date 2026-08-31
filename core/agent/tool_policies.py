@@ -49,13 +49,13 @@ def hosted_tools_for_agent(
     google_maps_enabled: bool = True,
     x_search_enabled: bool = True,
 ) -> frozenset[str]:
-    """Resolve provider-hosted tools for Panthera's selected cloud model."""
-    if agent_key != "panthera":
+    """Resolve provider-hosted tools for the selected cloud model."""
+    if agent_key != "apex":
         return frozenset()
     from core.agent.catalog import resolve_selected_model_profile
 
     return hosted_tools_for_model(
-        resolve_selected_model_profile(agent_key),
+        resolve_selected_model_profile(),
         google_search_enabled=google_search_enabled,
         google_maps_enabled=google_maps_enabled,
         x_search_enabled=x_search_enabled,

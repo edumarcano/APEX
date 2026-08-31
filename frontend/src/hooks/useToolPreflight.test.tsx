@@ -15,7 +15,7 @@ describe('useToolPreflight', () => {
       Promise.resolve({
         ok: true,
         json: async () => ({
-          agent: 'felis',
+          agent: 'apex',
           selection: {
             requested_tool_names: [],
             offered_tool_names: [],
@@ -46,7 +46,8 @@ describe('useToolPreflight', () => {
 
     renderHook(() =>
       useToolPreflight({
-        agent: 'felis',
+        agent: 'apex',
+        modelId: 'gemma-4-E2B-Q4_K_M.gguf',
         selectedToolNames: noSelectedTools,
         toolProfileId: 'no_tools',
         prompt: '  typed draft  ',
@@ -68,16 +69,16 @@ describe('useToolPreflight', () => {
     })
   })
 
-  it('clears an old estimate on Agent changes and ignores the superseded response', async () => {
+  it('clears an old estimate on model changes and ignores the superseded response', async () => {
     type MockResponse = { ok: boolean; json: () => Promise<unknown> }
     let resolveFirst: ((value: MockResponse) => void) | undefined
     const firstResponse = new Promise<MockResponse>((resolve) => {
       resolveFirst = resolve
     })
-    const responseFor = (agent: 'felis' | 'panthera'): MockResponse => ({
+    const responseFor = (modelId: string): MockResponse => ({
       ok: true,
       json: async () => ({
-        agent,
+        agent: 'apex',
         selection: {
           requested_tool_names: [],
           offered_tool_names: [],
@@ -94,9 +95,9 @@ describe('useToolPreflight', () => {
           selected_tool_schemas: 0,
           current_prompt: 2,
           total: 12,
-          configured_context_window: agent === 'felis' ? 4096 : null,
-          reserved_response_tokens: agent === 'felis' ? 512 : null,
-          remaining_estimated_capacity: agent === 'felis' ? 3572 : null,
+          configured_context_window: modelId.includes('gemma') ? 4096 : null,
+          reserved_response_tokens: modelId.includes('gemma') ? 512 : null,
+          remaining_estimated_capacity: modelId.includes('gemma') ? 3572 : null,
           is_estimate: true,
         },
         warning: null,
@@ -105,37 +106,37 @@ describe('useToolPreflight', () => {
     })
     const fetchMock = vi.fn()
       .mockReturnValueOnce(firstResponse)
-      .mockResolvedValueOnce(responseFor('panthera'))
+      .mockResolvedValueOnce(responseFor('deepseek/deepseek-v4-flash-0731'))
     vi.stubGlobal('fetch', fetchMock)
 
     const hook = renderHook(
-      ({ agent }: { agent: 'felis' | 'panthera' }) =>
+      ({ modelId }: { modelId: string }) =>
         useToolPreflight({
-          agent,
+          agent: 'apex',
+          modelId,
           selectedToolNames: noSelectedTools,
           toolProfileId: 'no_tools',
           enabled: true,
         }),
-      { initialProps: { agent: 'felis' } },
+      { initialProps: { modelId: 'gemma-4-E2B-Q4_K_M.gguf' } },
     )
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
-    hook.rerender({ agent: 'panthera' })
+    hook.rerender({ modelId: 'deepseek/deepseek-v4-flash-0731' })
     await waitFor(() => {
       expect(hook.result.current.estimate).toBeNull()
       expect(hook.result.current.error).toBeNull()
     })
 
-    resolveFirst?.(responseFor('felis'))
+    resolveFirst?.(responseFor('gemma-4-E2B-Q4_K_M.gguf'))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
-    await waitFor(() => expect(hook.result.current.estimate?.agent).toBe('panthera'))
-    expect(hook.result.current.estimate?.agent).not.toBe('felis')
+    await waitFor(() => expect(hook.result.current.estimate?.agent).toBe('apex'))
   })
 
   it('clears the estimate, error, and loading state when disabled', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        agent: 'felis',
+        agent: 'apex',
         selection: {
           requested_tool_names: [],
           offered_tool_names: [],
@@ -165,7 +166,8 @@ describe('useToolPreflight', () => {
     const hook = renderHook(
       ({ enabled }: { enabled: boolean }) =>
         useToolPreflight({
-          agent: 'felis',
+          agent: 'apex',
+          modelId: 'gemma-4-E2B-Q4_K_M.gguf',
           selectedToolNames: noSelectedTools,
           toolProfileId: 'no_tools',
           enabled,

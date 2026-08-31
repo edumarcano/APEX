@@ -442,7 +442,7 @@ try:
         _agent_settings_cfg = {}
 
     MAX_RECENT_CONVERSATION_MESSAGES: Final[int] = _parse_config_int(
-        _agent_settings_cfg.get("max_recent_conversation_messages"),
+        _agent_settings_cfg.get("max_recent_conversation_messages", 6),
         key="ask_apex.max_recent_conversation_messages",
         default=6,
         min_value=2,

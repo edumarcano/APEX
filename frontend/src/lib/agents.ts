@@ -2,7 +2,6 @@ import type { BriefingMode } from '../types/settings'
 import type {
   AgentAvailabilityStatus,
   AgentKey,
-  AgentRuntime,
   AgentStability,
   AgentStatus,
   BriefingTargetStatus,
@@ -12,27 +11,15 @@ import type {
   ModelCatalogEntry,
 } from '../types/telemetry'
 
-export const AGENT_KEYS = ['panthera', 'felis'] as const satisfies readonly AgentKey[]
+export const AGENT_KEYS = ['apex'] as const satisfies readonly AgentKey[]
 
-export function isPantheraKey(value: unknown): value is 'panthera' {
-  return value === 'panthera'
-}
-
-export function isFelisKey(value: unknown): value is 'felis' {
-  return value === 'felis'
-}
-
-export function isLocalAgentKey(value: unknown): value is 'felis' {
-  return value === 'felis'
-}
-
-export function isCloudAgentKey(value: unknown): value is 'panthera' {
-  return value === 'panthera'
+export function agentShortName(displayName: string): string {
+  return displayName.replace(/^Apex\s+/i, '')
 }
 
 /** True for any selectable Cortex Agent key. */
 export function isAgentKey(value: unknown): value is AgentKey {
-  return isPantheraKey(value) || isFelisKey(value)
+  return value === 'apex'
 }
 
 /** True when the operator may switch HUD focus to this Agent identity. */
@@ -40,7 +27,7 @@ export function isAgentIdentitySelectable(_agent: Pick<AgentStatus, 'key'>): boo
   return isAgentKey(_agent.key)
 }
 
-/** True when Panthera cloud verification can run for the current route. */
+/** True when the selected model's cloud provider can run verification. */
 export function canVerifyCloudProvider(
   agent: Pick<AgentStatus, 'key' | 'runtime' | 'status'>,
 ): boolean {
@@ -100,10 +87,6 @@ export function formatContextWindowLabel(
     return `${tokens / 1000}K`
   }
   return String(tokens)
-}
-
-export function runtimeForAgentKey(agent: AgentKey): AgentRuntime {
-  return isLocalAgentKey(agent) ? 'local' : 'cloud'
 }
 
 /** Humanize reasoning level without changing its canonical meaning. */
@@ -225,7 +208,7 @@ export function resolveHomeQueryOverrides(
     const modelId = modelEntry?.model_id ?? 'gemma-4-E2B-Q4_K_M.gguf'
     const contextWindow = modelEntry?.provider === 'ollama' ? 4096 : 16384
     return {
-      agent: 'felis',
+      agent: 'apex',
       modelId,
       effort: null,
       contextWindow,
@@ -235,7 +218,7 @@ export function resolveHomeQueryOverrides(
 
   const effort = resolveLowestReasoningEffort(modelEntry.reasoning_options)
   return {
-    agent: 'panthera',
+    agent: 'apex',
     modelId: modelEntry.model_id,
     effort,
     contextWindow: null,

@@ -729,14 +729,10 @@ def set_tool_profile_default(
 @router.get("/api/v1/cortex/agent", response_model=CortexAgentResponse)
 def cortex_agent() -> CortexAgentResponse:
     """Return the native Agent and its unified model catalog."""
-    from core.api.cortex import _profile_to_catalog_entry
-    from core.config import is_dev_mode
+    from core.api.cortex import build_model_catalog
 
     settings = get_settings_store().get_snapshot().ask_apex
-    catalog = [
-        _profile_to_catalog_entry(profile)
-        for profile in (*visible_cloud_models(dev_mode=is_dev_mode()), *visible_local_models(dev_mode=is_dev_mode()))
-    ]
+    catalog = build_model_catalog()
     return CortexAgentResponse(
         description=AGENT_SPECS["apex"].description,
         selected_model=settings.selected_model,

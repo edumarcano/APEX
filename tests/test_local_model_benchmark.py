@@ -373,7 +373,7 @@ class BenchmarkUtilityTests(unittest.TestCase):
         self.assertEqual(cleaned_refs, [reference])
 
     def test_warmup_is_not_counted_as_a_measured_repetition(self) -> None:
-        default_profile = benchmark.get_model_profile(benchmark.DEFAULT_FELIS_MODEL)
+        default_profile = benchmark.get_model_profile(benchmark.DEFAULT_LOCAL_MODEL)
         assert default_profile is not None
         with (
             mock.patch.object(
@@ -387,10 +387,12 @@ class BenchmarkUtilityTests(unittest.TestCase):
             ),
         ):
             configurations = benchmark.build_configurations(
-                agents=("felis",),
+                agents=None,
                 context=16384,
                 all_contexts=False,
                 reasoning_modes=("none",),
+                candidate_model="gemma-4-E2B-Q4_K_M.gguf",
+                runtime_alias="benchmark-gemma-e2b-16k",
             )
         calls: list[str] = []
         response = AgentQueryResponse(answer="ready", agent_used={})

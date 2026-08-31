@@ -7,7 +7,7 @@ import App from './App'
 import type { AgentKey, ToolCatalog } from './types/telemetry'
 
 const appMocks = vi.hoisted(() => ({
-  initialAgent: 'panthera' as AgentKey,
+  initialAgent: 'apex' as AgentKey,
   devModeActive: false,
   refreshAgentsStatus: vi.fn().mockResolvedValue(undefined),
   queryAgent: vi.fn().mockResolvedValue(undefined),
@@ -159,7 +159,7 @@ vi.mock('./components/CortexWorkspace', () => ({
         <output data-testid="actions-pending-count">
           {actions?.pendingCount ?? 0}
         </output>
-        {activeAgent === 'felis' ? (
+        {toolCatalog?.context_window !== null ? (
           <select
             aria-label="Context window"
             value={String(selectedContextWindow ?? '')}
@@ -196,11 +196,12 @@ vi.mock('./hooks/useApexData', () => ({
     devModeActive: appMocks.devModeActive,
     agentQueriesEnabled: true,
     marketEnabled: false,
-    defaultAgent: appMocks.initialAgent,
+    defaultAgent: 'apex' as AgentKey,
     agentInitialSelection: {
-      runtime: appMocks.initialAgent === 'felis' ? 'local' : 'cloud',
-      agent: appMocks.initialAgent,
-      effort: 'focused',
+      runtime: 'cloud',
+      agent: 'apex' as AgentKey,
+      modelId: 'deepseek/deepseek-v4-flash-0731',
+      effort: 'low',
     },
     briefingDefaultMode: 'flash',
     voiceMode: 'automatic',
@@ -245,18 +246,18 @@ vi.mock('./hooks/useCortex', () => ({
     cortexError: null,
     cortexContextUsage: null,
     agentsStatus: [{
-      key: appMocks.initialAgent,
-      display_name: `Apex ${appMocks.initialAgent}`,
-      runtime: appMocks.initialAgent === 'felis' ? 'local' : 'cloud',
-      status: appMocks.initialAgent === 'felis' ? 'available' : 'configured',
+      key: 'apex' as AgentKey,
+      display_name: 'Apex Agent',
+      runtime: 'cloud',
+      status: 'configured',
       active: true,
       loading: false,
       loaded_model: null,
       model_catalog: [{
-        model_id: appMocks.initialAgent === 'felis' ? 'gemma-4-E2B-Q4_K_M.gguf' : 'gpt-5.6-luna',
-        display_name: appMocks.initialAgent === 'felis' ? 'Gemma 4 E2B' : 'GPT-5.6 Luna',
-        provider: appMocks.initialAgent === 'felis' ? 'llama_cpp' : 'openai',
-        runtime: appMocks.initialAgent === 'felis' ? 'local' : 'cloud',
+        model_id: 'deepseek/deepseek-v4-flash-0731',
+        display_name: 'DeepSeek V4 Flash',
+        provider: 'openrouter',
+        runtime: 'cloud',
         stability: 'stable',
         hosted_capabilities: [],
       }],
@@ -332,7 +333,6 @@ function deferred<T>(): Deferred<T> {
 function catalogFor(
   agent: AgentKey,
   googleSearchEnabled = false,
-  contextWindow = 16384,
 ): ToolCatalog {
   return {
     agent,
@@ -350,19 +350,18 @@ function catalogFor(
     default_profile_name: 'No APEX Tools',
     default_selected_tool_names: [],
     provider_hosted_tools: googleSearchEnabled ? ['google_search'] : [],
-    context_window: agent === 'felis' ? contextWindow : null,
-    reserved_response_tokens: agent === 'felis' ? 512 : null,
+    context_window: null,
+    reserved_response_tokens: null,
   }
 }
 
 function settingsResponse(
-  agent: AgentKey,
   googleSearchEnabled = false,
   contextWindow = 16384,
   sandboxMode = false,
 ): Response {
   return new Response(JSON.stringify({
-    schema_version: 16,
+    schema_version: 19,
     settings: {
       user_designation: '',
       features: {
@@ -378,26 +377,28 @@ function settingsResponse(
       market: { symbols: [] },
       ask_apex: {
         enabled: true,
-        agent,
+        selected_model: 'deepseek/deepseek-v4-flash-0731',
         sandbox_mode: sandboxMode,
-        panthera: {
-          model: 'gemini-3.6-flash',
-          effort: 'medium',
+        cloud: {
+          last_model: 'deepseek/deepseek-v4-flash-0731',
+          effort: 'low',
+          personal_context_enabled: false,
           hosted_tools: {
             google_search: googleSearchEnabled,
             google_maps: false,
             x_search: false,
           },
         },
-        felis: {
-          model: 'gemma-4-E2B-Q4_K_M.gguf',
+        local: {
+          last_model: 'gemma-4-E2B-Q4_K_M.gguf',
           context_window: contextWindow,
           reasoning_mode: 'none',
+          personal_context_enabled: false,
         },
       },
       tool_profiles: {
         custom_profiles: [],
-        default_profile_by_agent: {},
+        default_profile_by_runtime: {},
       },
       briefing: { default_mode: 'flash' },
       voice: { engine: 'google', gender: 'female', mode: 'automatic' },
@@ -430,29 +431,28 @@ function settingsResponse(
 
 describe('App catalog-affecting settings', () => {
   afterEach(() => {
-    appMocks.initialAgent = 'panthera'
+    appMocks.initialAgent = 'apex'
     appMocks.devModeActive = false
     appMocks.weatherSnapshot = null
     vi.restoreAllMocks()
   })
 
-  it('refreshes the current Panthera catalog after enabling Google Search', async () => {
+  it('refreshes the Apex catalog after enabling Google Search', async () => {
     const user = userEvent.setup()
     const settingsPatch = deferred<Response>()
-    const catalogRequests: AgentKey[] = []
-    let pantheraCatalogRequests = 0
+    const catalogRequests: Array<string | null> = []
+    let apexCatalogRequests = 0
 
     vi.stubGlobal(
       'fetch',
       vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const url = new URL(String(input))
         if (url.pathname.endsWith('/cortex/tool-catalog')) {
-          const agent = url.searchParams.get('agent') as AgentKey
-          catalogRequests.push(agent)
-          const googleSearchEnabled =
-            agent === 'panthera' && pantheraCatalogRequests++ > 0
+          const modelId = url.searchParams.get('model_id')
+          catalogRequests.push(modelId)
+          const googleSearchEnabled = modelId === 'deepseek/deepseek-v4-flash-0731' && apexCatalogRequests++ > 0
           return Promise.resolve(new Response(
-            JSON.stringify(catalogFor(agent, googleSearchEnabled)),
+            JSON.stringify(catalogFor('apex', googleSearchEnabled)),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           ))
         }
@@ -466,75 +466,25 @@ describe('App catalog-affecting settings', () => {
     render(<App />)
 
     await user.click(screen.getByRole('button', { name: 'Cortex' }))
-    await waitFor(() => expect(catalogRequests).toContain('panthera'))
-    await waitFor(() => expect(screen.getByTestId('active-agent')).toHaveTextContent('panthera'))
+    await waitFor(() => expect(catalogRequests).toContain('deepseek/deepseek-v4-flash-0731'))
+    await waitFor(() => expect(screen.getByTestId('active-agent')).toHaveTextContent('apex'))
     expect(screen.getByTestId('provider-hosted-tools')).toHaveTextContent('')
 
     await user.click(screen.getByRole('button', { name: 'Enable Google Search' }))
-    expect(catalogRequests.filter((agent) => agent === 'panthera')).toHaveLength(1)
+    expect(catalogRequests.filter((modelId) => modelId === 'deepseek/deepseek-v4-flash-0731')).toHaveLength(1)
 
-    settingsPatch.resolve(settingsResponse('panthera', true))
+    settingsPatch.resolve(settingsResponse(true))
 
     await waitFor(() => {
-      expect(catalogRequests.filter((agent) => agent === 'panthera')).toHaveLength(2)
+      expect(catalogRequests.filter((modelId) => modelId === 'deepseek/deepseek-v4-flash-0731')).toHaveLength(2)
       expect(screen.getByTestId('provider-hosted-tools')).toHaveTextContent('google_search')
-    })
-  })
-
-  it('refreshes the current Felis catalog after changing its context window', async () => {
-    appMocks.initialAgent = 'felis'
-    const user = userEvent.setup()
-    const settingsPatch = deferred<Response>()
-    const catalogRequests: AgentKey[] = []
-    let felisCatalogRequests = 0
-
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-        const url = new URL(String(input))
-        if (url.pathname.endsWith('/cortex/tool-catalog')) {
-          const agent = url.searchParams.get('agent') as AgentKey
-          catalogRequests.push(agent)
-          const refreshedContextWindow =
-            agent === 'felis' && felisCatalogRequests++ > 0 ? 32768 : 16384
-          return Promise.resolve(new Response(
-            JSON.stringify(catalogFor(agent, false, refreshedContextWindow)),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ))
-        }
-        if (url.pathname.endsWith('/settings') && init?.method === 'PATCH') {
-          return settingsPatch.promise
-        }
-        return Promise.resolve(new Response('{}', { status: 200 }))
-      }),
-    )
-
-    render(<App />)
-
-    await user.click(screen.getByRole('button', { name: 'Cortex' }))
-    await waitFor(() => expect(catalogRequests).toContain('felis'))
-    await waitFor(() => {
-      expect(screen.getByTestId('active-agent')).toHaveTextContent('felis')
-      expect(screen.getByTestId('catalog-context-window')).toHaveTextContent('16384')
-    })
-
-    const contextSelect = screen.getByRole('combobox', { name: 'Context window' })
-    await user.selectOptions(contextSelect, '32768')
-    expect(contextSelect).toHaveValue('32768')
-    expect(catalogRequests.filter((agent) => agent === 'felis')).toHaveLength(1)
-
-    settingsPatch.resolve(settingsResponse('felis', false, 32768))
-
-    await waitFor(() => {
-      expect(catalogRequests.filter((agent) => agent === 'felis')).toHaveLength(2)
-      expect(screen.getByTestId('catalog-context-window')).toHaveTextContent('32768')
     })
   })
 
   it('refreshes the current catalog after toggling sandbox mode', async () => {
     appMocks.devModeActive = true
     const user = userEvent.setup()
-    const catalogRequests: AgentKey[] = []
+    const catalogRequests: Array<string | null> = []
     let sandboxPatch: Record<string, unknown> | null = null
 
     vi.stubGlobal(
@@ -542,16 +492,16 @@ describe('App catalog-affecting settings', () => {
       vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const url = new URL(String(input))
         if (url.pathname.endsWith('/cortex/tool-catalog')) {
-          const agent = url.searchParams.get('agent') as AgentKey
-          catalogRequests.push(agent)
+          const modelId = url.searchParams.get('model_id')
+          catalogRequests.push(modelId)
           return Promise.resolve(new Response(
-            JSON.stringify(catalogFor(agent)),
+            JSON.stringify(catalogFor('apex')),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           ))
         }
         if (url.pathname.endsWith('/settings') && init?.method === 'PATCH') {
           sandboxPatch = JSON.parse(String(init.body)) as Record<string, unknown>
-          return Promise.resolve(settingsResponse('panthera', false, 16384, true))
+          return Promise.resolve(settingsResponse(false, 16384, true))
         }
         return Promise.resolve(new Response('{}', { status: 200 }))
       }),
@@ -560,13 +510,13 @@ describe('App catalog-affecting settings', () => {
     render(<App />)
 
     await user.click(screen.getByRole('button', { name: 'Cortex' }))
-    await waitFor(() => expect(catalogRequests).toContain('panthera'))
+    await waitFor(() => expect(catalogRequests).toContain('deepseek/deepseek-v4-flash-0731'))
 
     await user.click(screen.getByRole('checkbox', { name: 'Sandbox mode' }))
 
     await waitFor(() => {
       expect(sandboxPatch).toEqual({ ask_apex: { sandbox_mode: true } })
-      expect(catalogRequests.filter((agent) => agent === 'panthera')).toHaveLength(2)
+      expect(catalogRequests.filter((modelId) => modelId === 'deepseek/deepseek-v4-flash-0731')).toHaveLength(2)
     })
   })
 
@@ -575,7 +525,7 @@ describe('App catalog-affecting settings', () => {
     const actionProposal = {
       action_id: 'action-123',
       proposal: {
-        agent_key: 'panthera',
+        agent_key: 'apex',
         capability_name: 'remember_personal_context',
         arguments: { text: 'Prefers tea over coffee' },
         target: 'Remember personal context',
@@ -597,7 +547,7 @@ describe('App catalog-affecting settings', () => {
         const url = new URL(String(input))
         if (url.pathname.endsWith('/cortex/tool-catalog')) {
           return Promise.resolve(new Response(
-            JSON.stringify(catalogFor('panthera')),
+            JSON.stringify(catalogFor('apex')),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           ))
         }

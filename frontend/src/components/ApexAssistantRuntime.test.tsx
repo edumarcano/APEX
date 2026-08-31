@@ -9,7 +9,7 @@ const summary = {
   id: conversationId,
   title: 'HUD conversation',
   archived_at: null,
-  agent: 'panthera' as const,
+  agent: 'apex' as const,
   selected_tool_names: [],
   tool_profile_id: null,
   updated_at: '2026-08-17T12:00:00Z',
@@ -40,7 +40,7 @@ describe('ApexAssistantRuntime', () => {
         expect(payload.prompt).toBe('List my pending reminders.')
         expect(payload.user_message_id).toMatch(/^[0-9a-f-]{36}$/i)
         expect(payload.agent_message_id).toMatch(/^[0-9a-f-]{36}$/i)
-        expect(payload.agent).toBe('panthera')
+        expect(payload.agent).toBe('apex')
         return response({ answer: 'There are three active reminders.', tool_trace: [], tool_outputs: [], citations: [] })
       }
       throw new Error(`Unexpected request: ${url}`)
@@ -50,7 +50,7 @@ describe('ApexAssistantRuntime', () => {
 
     render(
       <ApexAssistantRuntime
-        config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+        config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
         beforeRun={beforeRun}
       >
         <ApexAssistantThread />
@@ -74,8 +74,8 @@ describe('ApexAssistantRuntime', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input)
       if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
-      if (url.endsWith('/api/v1/cortex/conversations')) return response([{ ...summary, agent: 'felis' }])
-      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}`)) return response({ ...summary, agent: 'felis', active_leaf_message_id: null, messages: [] })
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([summary])
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}`)) return response({ ...summary, active_leaf_message_id: null, messages: [] })
       if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}/turns`)) {
         expect(init?.method).toBe('POST')
         return turnResponse
@@ -85,13 +85,13 @@ describe('ApexAssistantRuntime', () => {
     const user = userEvent.setup()
     render(
       <ApexAssistantRuntime
-        config={{ agent: 'felis', effort: null, selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+        config={{ agent: 'apex', effort: null, selectedToolNames: [], toolProfileId: null, snapshotId: null }}
         beforeRun={async () => true}
       >
         <ApexAssistantThread
           composer={{
-            activeAgent: 'felis',
-            activeAgentName: 'Apex Felis',
+            activeAgent: 'apex',
+            activeAgentName: 'Apex Agent',
             tools: {
               catalog: null,
               selectedToolNames: [],
@@ -106,8 +106,8 @@ describe('ApexAssistantRuntime', () => {
     await waitFor(() => expect(screen.getByText('APEX is ready. Start a session with a focused question.')).toBeInTheDocument())
     await user.type(screen.getByPlaceholderText('Ask APEX…'), 'Keep this request running')
     await user.click(screen.getByRole('button', { name: 'Send' }))
-    await waitFor(() => expect(screen.getByText('Apex Felis working')).toBeInTheDocument())
-    expect(screen.queryByText('Apex Apex Felis working')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('Apex Agent working')).toBeInTheDocument())
+    expect(screen.queryByText('Apex Apex Agent working')).not.toBeInTheDocument()
     resolveTurn(response({ answer: 'Finished.', tool_trace: [], tool_outputs: [], citations: [] }))
     await waitFor(() => expect(screen.getByText('Finished.')).toBeInTheDocument())
     expect(fetchMock).toHaveBeenCalled()
@@ -134,7 +134,7 @@ describe('ApexAssistantRuntime', () => {
     })
     const { rerender } = render(
       <ApexAssistantRuntime
-        config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+        config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
         onConversationChange={() => undefined}
         onRunningChange={() => undefined}
         onResponseChange={() => undefined}
@@ -147,7 +147,7 @@ describe('ApexAssistantRuntime', () => {
     const callsBeforeRerender = { regular: regularListCalls, archived: archivedListCalls }
     rerender(
       <ApexAssistantRuntime
-        config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+        config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
         onConversationChange={() => undefined}
         onRunningChange={() => undefined}
         onResponseChange={() => undefined}
@@ -182,7 +182,7 @@ describe('ApexAssistantRuntime', () => {
       throw new Error(`Unexpected request: ${url}`)
     })
     const { rerender } = render(
-      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+      <ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
         <ApexAssistantThread />
       </ApexAssistantRuntime>,
     )
@@ -190,7 +190,7 @@ describe('ApexAssistantRuntime', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: 'Edit' }))
     expect(screen.getByPlaceholderText('Edit message…')).toHaveValue('Original prompt')
     rerender(
-      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'high', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+      <ApexAssistantRuntime config={{ agent: 'apex', effort: 'high', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
         <ApexAssistantThread />
       </ApexAssistantRuntime>,
     )
@@ -225,7 +225,7 @@ describe('ApexAssistantRuntime', () => {
     })
     const user = userEvent.setup()
     render(
-      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+      <ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
         <ApexAssistantThread />
       </ApexAssistantRuntime>,
     )
@@ -255,7 +255,7 @@ describe('ApexAssistantRuntime', () => {
     const user = userEvent.setup()
     const beforeRun = vi.fn(async () => true)
     render(
-      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }} beforeRun={beforeRun}>
+      <ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }} beforeRun={beforeRun}>
         <ApexAssistantThread />
       </ApexAssistantRuntime>,
     )
@@ -272,7 +272,7 @@ describe('ApexAssistantRuntime', () => {
   it('returns the updated conversation preferences after a PATCH', async () => {
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
     const runtimeRef: { current: ApexAssistantRuntimeHandle | null } = { current: null }
-    const updatedSummary = { ...summary, agent: 'felis' as const, selected_tool_names: ['reminders'], tool_profile_id: 'focused' }
+    const updatedSummary = { ...summary, agent: 'apex' as const, selected_tool_names: ['reminders'], tool_profile_id: 'focused' }
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input)
       if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
@@ -283,15 +283,15 @@ describe('ApexAssistantRuntime', () => {
     })
     render(
       <ApexAssistantRuntime
-        config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+        config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
         runtimeRef={runtimeRef}
       >
         <ApexAssistantThread />
       </ApexAssistantRuntime>,
     )
     await waitFor(() => expect(screen.getByText('APEX is ready. Start a session with a focused question.')).toBeInTheDocument())
-    const updated = await runtimeRef.current?.patchPreferences({ agent: 'felis', selectedToolNames: ['reminders'], toolProfileId: 'focused' })
-    expect(updated).toEqual({ conversationId, agent: 'felis', selected_tool_names: ['reminders'], tool_profile_id: 'focused' })
+    const updated = await runtimeRef.current?.patchPreferences({ agent: 'apex', selectedToolNames: ['reminders'], toolProfileId: 'focused' })
+    expect(updated).toEqual({ conversationId, agent: 'apex', selected_tool_names: ['reminders'], tool_profile_id: 'focused' })
     expect(fetchMock).toHaveBeenCalled()
   })
 
@@ -316,7 +316,7 @@ describe('ApexAssistantRuntime', () => {
     const confirmMock = vi.spyOn(globalThis, 'confirm').mockReturnValue(false)
     const user = userEvent.setup()
     render(
-      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+      <ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
         <ApexConversationRail className="block" />
       </ApexAssistantRuntime>,
     )
@@ -344,7 +344,7 @@ describe('ApexAssistantRuntime', () => {
     })
     const user = userEvent.setup()
     render(
-      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+      <ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
         <ApexConversationRail className="block" />
         <ApexAssistantThread />
       </ApexAssistantRuntime>,
@@ -373,7 +373,7 @@ describe('ApexAssistantRuntime', () => {
       throw new Error(`Unexpected request: ${url}`)
     })
     const user = userEvent.setup()
-    render(<ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}><ApexAssistantThread /></ApexAssistantRuntime>)
+    render(<ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}><ApexAssistantThread /></ApexAssistantRuntime>)
     await waitFor(() => expect(screen.getByText('Existing prompt')).toBeInTheDocument())
     await user.type(screen.getByPlaceholderText('Ask APEX…'), 'New request')
     await user.click(screen.getByRole('button', { name: 'Send' }))
@@ -398,9 +398,9 @@ describe('ApexAssistantRuntime', () => {
       ] })
       throw new Error(`Unexpected request: ${url}`)
     })
-    render(<ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }} onRunningChange={onRunningChange}><ApexAssistantThread /></ApexAssistantRuntime>)
+    render(<ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }} onRunningChange={onRunningChange}><ApexAssistantThread /></ApexAssistantRuntime>)
     await waitFor(() => expect(screen.getByText('Agent working')).toBeInTheDocument())
-    expect(onRunningChange).toHaveBeenCalledWith(true, 'panthera')
+    expect(onRunningChange).toHaveBeenCalledWith(true, 'apex')
     expect(screen.getByPlaceholderText('Ask APEX…')).toBeDisabled()
   })
 
@@ -419,7 +419,7 @@ describe('ApexAssistantRuntime', () => {
     })
     const user = userEvent.setup()
     render(
-      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }} beforeRun={async () => false}>
+      <ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }} beforeRun={async () => false}>
         <ApexAssistantThread />
       </ApexAssistantRuntime>,
     )
@@ -440,7 +440,7 @@ describe('ApexAssistantRuntime', () => {
     const user = userEvent.setup()
 
     render(
-      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+      <ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
         <ApexConversationRail className="block" />
       </ApexAssistantRuntime>,
     )
@@ -496,7 +496,7 @@ describe('ApexAssistantRuntime', () => {
 
     const user = userEvent.setup()
     render(
-      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+      <ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
         <ApexConversationRail className="block" />
         <ApexAssistantThread />
       </ApexAssistantRuntime>,
@@ -537,7 +537,7 @@ describe('ApexAssistantRuntime', () => {
 
     const user = userEvent.setup()
     render(
-      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+      <ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
         <ApexAssistantThread />
       </ApexAssistantRuntime>,
     )
@@ -569,7 +569,7 @@ describe('ApexAssistantRuntime', () => {
           active_leaf_message_id: null,
           messages: [
             { id: userMsgId, parent_message_id: null, role: 'user', content: 'What was the diagnostic result?', status: 'completed', agent: null, created_at: '2026-08-18T12:00:00Z', updated_at: '2026-08-18T12:00:00Z' },
-            { id: agentMsgId, parent_message_id: userMsgId, role: 'agent', content: 'All checks normal.', status: 'completed', agent: 'panthera', created_at: '2026-08-18T12:00:01Z', updated_at: '2026-08-18T12:00:01Z' },
+            { id: agentMsgId, parent_message_id: userMsgId, role: 'agent', content: 'All checks normal.', status: 'completed', agent: 'apex', created_at: '2026-08-18T12:00:01Z', updated_at: '2026-08-18T12:00:01Z' },
           ],
         })
       }
@@ -577,7 +577,7 @@ describe('ApexAssistantRuntime', () => {
     })
 
     render(
-      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+      <ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
         <ApexConversationRail className="block" />
         <ApexAssistantThread />
       </ApexAssistantRuntime>,
@@ -612,7 +612,7 @@ describe('ApexAssistantRuntime', () => {
           active_leaf_message_id: msg1Agent,
           messages: [
             { id: msg1User, parent_message_id: null, role: 'user', content: 'Turn 1 in Alpha', status: 'completed', agent: null, created_at: '2026-08-18T12:00:00Z', updated_at: '2026-08-18T12:00:00Z' },
-            { id: msg1Agent, parent_message_id: msg1User, role: 'agent', content: 'Reply 1 in Alpha', status: 'completed', agent: 'panthera', created_at: '2026-08-18T12:00:01Z', updated_at: '2026-08-18T12:00:01Z' },
+            { id: msg1Agent, parent_message_id: msg1User, role: 'agent', content: 'Reply 1 in Alpha', status: 'completed', agent: 'apex', created_at: '2026-08-18T12:00:01Z', updated_at: '2026-08-18T12:00:01Z' },
           ],
         })
       }
@@ -635,7 +635,7 @@ describe('ApexAssistantRuntime', () => {
 
     const user = userEvent.setup()
     render(
-      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+      <ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
         <ApexConversationRail className="block" />
         <ApexAssistantThread />
       </ApexAssistantRuntime>,
@@ -678,7 +678,7 @@ describe('ApexAssistantRuntime', () => {
           active_leaf_message_id: agentMsgId,
           // Intentionally return child agent message BEFORE parent user message to test topological sort
           messages: [
-            { id: agentMsgId, parent_message_id: userMsgId, role: 'agent', content: 'Agent reply arrived.', status: 'completed', agent: 'panthera', created_at: '2026-08-18T12:00:00Z', updated_at: '2026-08-18T12:00:00Z' },
+            { id: agentMsgId, parent_message_id: userMsgId, role: 'agent', content: 'Agent reply arrived.', status: 'completed', agent: 'apex', created_at: '2026-08-18T12:00:00Z', updated_at: '2026-08-18T12:00:00Z' },
             { id: userMsgId, parent_message_id: null, role: 'user', content: 'User prompt arrived.', status: 'completed', agent: null, created_at: '2026-08-18T12:00:00Z', updated_at: '2026-08-18T12:00:00Z' },
           ],
         })
@@ -687,7 +687,7 @@ describe('ApexAssistantRuntime', () => {
     })
 
     render(
-      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+      <ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
         <ApexConversationRail className="block" />
         <ApexAssistantThread />
       </ApexAssistantRuntime>,
@@ -715,7 +715,7 @@ describe('ApexAssistantRuntime', () => {
 
     const user = userEvent.setup()
     render(
-      <ApexAssistantRuntime config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+      <ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
         <ApexConversationRail className="block" />
         <ApexAssistantThread />
       </ApexAssistantRuntime>,
@@ -763,14 +763,14 @@ describe('ApexAssistantRuntime', () => {
       }
       if (url.endsWith(`/api/v1/cortex/conversations/${newConvId}/turns`) && init?.method === 'POST') {
         turnPayload = JSON.parse(String(init.body))
-        return response({ answer: 'Felis answer.', tool_trace: [], tool_outputs: [], citations: [] })
+        return response({ answer: 'Local model answer.', tool_trace: [], tool_outputs: [], citations: [] })
       }
       throw new Error(`Unexpected request: ${url}`)
     })
 
     render(
       <ApexAssistantRuntime
-        config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+        config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
         runtimeRef={runtimeRef}
       >
         <ApexAssistantThread />
@@ -780,7 +780,7 @@ describe('ApexAssistantRuntime', () => {
     await waitFor(() => expect(screen.getByText('APEX is ready. Start a session with a focused question.')).toBeInTheDocument())
 
     const accepted = await runtimeRef.current?.submitPrompt('Home prompt', {
-      agent: 'felis',
+      agent: 'apex',
       modelId: 'gemma-4-E2B-Q4_K_M.gguf',
       contextWindow: 16384,
       localReasoningMode: 'none',
@@ -791,13 +791,13 @@ describe('ApexAssistantRuntime', () => {
     expect(accepted).toBe(true)
     await waitFor(() => expect(conversationCreatePayload).not.toBeNull())
     expect(conversationCreatePayload).toMatchObject({
-      agent: 'felis',
+      agent: 'apex',
       selected_tool_names: ['reminders'],
     })
     await waitFor(() => expect(turnPayload).not.toBeNull())
     expect(turnPayload).toMatchObject({
       prompt: 'Home prompt',
-      agent: 'felis',
+      agent: 'apex',
       model_id: 'gemma-4-E2B-Q4_K_M.gguf',
       context_window: 16384,
       local_reasoning_mode: 'none',
@@ -820,7 +820,7 @@ describe('ApexAssistantRuntime', () => {
 
     const { container } = render(
       <ApexAssistantRuntime
-        config={{ agent: 'panthera', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+        config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
       >
         <ApexAssistantThread logoProps={{ step: 1, status: 'idle' }} />
       </ApexAssistantRuntime>,

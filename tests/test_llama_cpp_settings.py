@@ -124,11 +124,11 @@ class LlamaCppSettingsStoreTests(unittest.TestCase):
         preview = store.preview_patch(SettingsPatch(llama_cpp=LlamaCppPatch()))
         self.assertEqual(preview, before)
 
-    def test_schema_eight_local_file_loads_with_defaults(self) -> None:
+    def test_legacy_local_file_loads_with_defaults(self) -> None:
         _write_json(
             self.local_path,
             {
-                "schema_version": 8,
+                "schema_version": 18,
                 "ask_apex": {"apodemus_context_window": 8192},
             },
         )
@@ -142,8 +142,8 @@ class LlamaCppSettingsStoreTests(unittest.TestCase):
             )
         )
         snap = store.get_snapshot()
-        self.assertEqual(snap.ask_apex.felis.context_window, 16384)
-        self.assertEqual(snap.ask_apex.felis.reasoning_mode, "none")
+        self.assertEqual(snap.ask_apex.local.context_window, 16384)
+        self.assertEqual(snap.ask_apex.local.reasoning_mode, "none")
         self.assertFalse(snap.llama_cpp.enabled)
         self.assertEqual(snap.llama_cpp.host, "http://127.0.0.1:8080")
 

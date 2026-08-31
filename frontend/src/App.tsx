@@ -58,15 +58,8 @@ import {
 } from './lib/logoVisualState'
 import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
 import { DEFAULT_WEATHER_INFO, resolveWeatherFromModule } from './lib/weatherTelemetry'
+import { filterAgentSettingsForDevMode } from './lib/settings'
 import {
-  filterAgentSettingsForDevMode,
-  parseSettingsResponse,
-  resolveAppliedAgentSelection,
-  resolveInitialAgentSelection,
-} from './lib/settings'
-import {
-  isFelisKey,
-  isPantheraKey,
   resolveBriefingModeAvailability,
   resolveHomeQueryOverrides,
 } from './lib/agents'
@@ -79,11 +72,10 @@ import type {
 } from './types/telemetry'
 import type {
   BriefingMode,
-  PantheraHostedToolsSettings,
+  CloudHostedToolsSettings,
   SettingsResponse,
   VoiceMode,
 } from './types/settings'
-import { BASE_SETTINGS, buildSettingsResponse } from './test/settingsFixtures'
 
 function sameToolNames(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((name) => right.includes(name))
@@ -147,45 +139,26 @@ function isVoiceMode(value: string): value is VoiceMode {
   return (VALID_VOICE_MODES as readonly string[]).includes(value)
 }
 
-function briefingModeInvolvesCloud(mode: BriefingMode): boolean {
-  return mode === 'focused'
-}
-
-function isCloudAgentKey(
-  agent: AgentKey,
-  agentsStatus: { key: AgentKey; runtime: 'cloud' | 'local' }[],
-): boolean {
-  const match = agentsStatus.find((entry) => entry.key === agent)
-  if (match) {
-    return match.runtime === 'cloud'
-  }
-  return isPantheraKey(agent)
-}
-
-function synthesisAgentForMode(mode: BriefingMode): string | null {
-  if (mode === 'focused') return 'panthera'
-  if (mode === 'flash') return 'felis'
-  return null
-}
-
 function applyAskApexSettings(
   askApex: SettingsResponse['settings']['ask_apex'],
   setters: {
     setCloudEffort: (effort: CloudEffort) => void
-    setPantheraModel: (model: string) => void
-    setFelisModel: (model: string) => void
+    setSelectedModel: (model: string) => void
     setSandboxMode: (enabled: boolean) => void
-    setPantheraHostedTools: (tools: PantheraHostedToolsSettings) => void
-    setPersonalContextEnabled: (agent: AgentKey, enabled: boolean) => void
+    setHostedTools: (tools: CloudHostedToolsSettings) => void
+    setCloudPersonalContextEnabled: (enabled: boolean) => void
+    setLocalPersonalContextEnabled: (enabled: boolean) => void
   },
 ): void {
-  setters.setCloudEffort(askApex.panthera.effort)
-  setters.setPantheraModel(askApex.panthera.model)
-  setters.setFelisModel(askApex.felis?.model ?? 'gemma-4-E2B-Q4_K_M.gguf')
+  const cloud = askApex.cloud
+  const local = askApex.local
+  if (!cloud || !local) return
+  setters.setCloudEffort(cloud.effort)
+  setters.setSelectedModel(askApex.selected_model)
   setters.setSandboxMode(askApex.sandbox_mode)
-  setters.setPantheraHostedTools({ ...askApex.panthera.hosted_tools })
-  setters.setPersonalContextEnabled('panthera', askApex.panthera.personal_context_enabled)
-  setters.setPersonalContextEnabled('felis', askApex.felis.personal_context_enabled)
+  setters.setHostedTools({ ...cloud.hosted_tools })
+  setters.setCloudPersonalContextEnabled(cloud.personal_context_enabled)
+  setters.setLocalPersonalContextEnabled(local.personal_context_enabled)
 }
 
 interface PersistAgentSettingsOptions {
@@ -194,22 +167,22 @@ interface PersistAgentSettingsOptions {
 
 export default function App(): ReactElement {
   const [reminderPulseCount, setReminderPulseCount] = useState(0)
-  const [activeAgent, setAgent] = useState<AgentKey>('panthera')
+  const [activeAgent] = useState<AgentKey>('apex')
   const [cloudEffort, setCloudEffort] = useState<CloudEffort>('medium')
   const [briefingMode, setBriefingMode] = useState<BriefingMode>('flash')
   const briefingModeSelectionTouchedRef = useRef(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
   const [workspace, setWorkspace] = useState<'home' | 'cortex'>('home')
-  const [pantheraModel, setPantheraModel] = useState('gpt-5.6-luna')
-  const [felisModel, setFelisModel] = useState('gemma-4-E2B-Q4_K_M.gguf')
+  const [selectedModel, setSelectedModel] = useState('deepseek/deepseek-v4-flash-0731')
   const [sandboxMode, setSandboxMode] = useState(false)
-  const [pantheraHostedTools, setPantheraHostedTools] = useState<PantheraHostedToolsSettings>({
+  const [hostedTools, setHostedTools] = useState<CloudHostedToolsSettings>({
     google_search: true,
     google_maps: true,
     x_search: true,
   })
   const [snapshotAttached, setSnapshotAttached] = useState(true)
-  const [personalContextEnabled, setPersonalContextEnabled] = useState<Record<AgentKey, boolean>>({ panthera: false, felis: false })
+  const [cloudPersonalContextEnabled, setCloudPersonalContextEnabled] = useState(false)
+  const [localPersonalContextEnabled, setLocalPersonalContextEnabled] = useState(false)
   const [draftPrompt, setDraftPrompt] = useState('')
   const [submissionPending, setSubmissionPending] = useState(false)
   const submissionPendingRef = useRef(false)
@@ -254,8 +227,6 @@ export default function App(): ReactElement {
     devModeActive,
     agentQueriesEnabled,
     marketEnabled,
-    defaultAgent,
-    agentInitialSelection,
     briefingDefaultMode,
     voiceMode: bootVoiceMode,
     markReminderAsRead,
@@ -291,7 +262,7 @@ export default function App(): ReactElement {
     agentsStatus,
     agentsStatusHydrated,
     isLocalModelActionPending,
-    verifyingCloudAgent,
+    verifyingCloudModel,
     loadLocalModel,
     unloadLocalModel,
     verifyCloudAgent,
@@ -320,30 +291,14 @@ export default function App(): ReactElement {
     })
   }, [mcpRuntime.status])
 
-  const fullModelCatalog = useMemo(() => {
-    const cloud = agentsStatus.find((a) => a.key === 'panthera')?.model_catalog ?? []
-    const local = agentsStatus.find((a) => a.key === 'felis')?.model_catalog ?? []
-    return [...cloud, ...local]
-  }, [agentsStatus])
-
-  const [homeSelectedModelId, setHomeSelectedModelId] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = window.localStorage.getItem('apex_home_selected_model_id')
-      if (saved) return saved
-    }
-    return 'deepseek/deepseek-v4-flash-0731'
-  })
-
-  const handleHomeModelChange = useCallback((modelId: string) => {
-    setHomeSelectedModelId(modelId)
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('apex_home_selected_model_id', modelId)
-    }
-  }, [])
+  const fullModelCatalog = useMemo(
+    () => agentsStatus[0]?.model_catalog ?? [],
+    [agentsStatus],
+  )
 
   const homeSelectedEntry = useMemo(
-    () => fullModelCatalog.find((entry) => entry.model_id === homeSelectedModelId) ?? fullModelCatalog[0],
-    [fullModelCatalog, homeSelectedModelId],
+    () => fullModelCatalog.find((entry) => entry.model_id === selectedModel) ?? fullModelCatalog[0],
+    [fullModelCatalog, selectedModel],
   )
   const homeOverrides = useMemo(
     () => resolveHomeQueryOverrides(homeSelectedEntry),
@@ -351,11 +306,20 @@ export default function App(): ReactElement {
   )
 
   const effectiveWorkspaceAgent = workspace === 'home' ? homeOverrides.agent : activeAgent
-  const toolCatalogState = useToolCatalog(effectiveWorkspaceAgent, mcpAvailabilityVersion)
+  const effectiveWorkspaceModel = workspace === 'home' ? homeOverrides.modelId : selectedModel
+  const effectiveWorkspaceRuntime = (workspace === 'home' ? homeSelectedEntry : fullModelCatalog.find(
+    (entry) => entry.model_id === selectedModel,
+  ))?.runtime ?? 'cloud'
+  const toolCatalogState = useToolCatalog(
+    effectiveWorkspaceAgent,
+    effectiveWorkspaceModel,
+    effectiveWorkspaceRuntime,
+    mcpAvailabilityVersion,
+  )
   const toolPreflightState = useToolPreflight({
     agent: effectiveWorkspaceAgent,
-    modelId: workspace === 'home' ? homeOverrides.modelId : null,
-    effort: workspace === 'home' ? homeOverrides.effort : (isCloudAgentKey(activeAgent, agentsStatus) ? cloudEffort : null),
+    modelId: workspace === 'home' ? homeOverrides.modelId : selectedModel,
+    effort: workspace === 'home' ? homeOverrides.effort : (homeSelectedEntry?.runtime === 'cloud' ? cloudEffort : null),
     contextWindow: workspace === 'home' ? homeOverrides.contextWindow : null,
     localReasoningMode: workspace === 'home' ? homeOverrides.localReasoningMode : null,
     selectedToolNames: toolCatalogState.selectedToolNames,
@@ -371,7 +335,6 @@ export default function App(): ReactElement {
     ),
   })
 
-  const agentSelectionHydratedRef = useRef(false)
   const conversationHydrationRef = useRef<string | null>(null)
   const conversationHydrationTargetRef = useRef<{
     conversationId: string
@@ -394,12 +357,6 @@ export default function App(): ReactElement {
     }
     if (conversationHydrationRef.current === assistantConversationId) {
       queueMicrotask(() => setConversationHydrating(false))
-      return
-    }
-    if (assistantConversationPreferences.agent !== activeAgent) {
-      activeAgentRef.current = assistantConversationPreferences.agent
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Conversation hydration selects the durable Agent before catalog hydration.
-      setAgent(assistantConversationPreferences.agent)
       return
     }
     if (
@@ -490,25 +447,6 @@ export default function App(): ReactElement {
     toolCatalogState.selectedToolNames,
   ])
 
-  // Hydrate backend defaults once; later agent changes belong to the active session.
-  useEffect(() => {
-    const selection = resolveInitialAgentSelection(
-      agentSelectionHydratedRef.current,
-      agentInitialSelection,
-      defaultAgent,
-    )
-    if (selection) {
-      setAgent(selection.agent)
-      if (selection.effort) {
-        setCloudEffort(selection.effort)
-      }
-      if (selection.sandboxMode !== undefined) {
-        setSandboxMode(selection.sandboxMode)
-      }
-      agentSelectionHydratedRef.current = true
-    }
-  }, [agentInitialSelection, defaultAgent])
-
   useEffect(() => {
     if (
       !briefingModeSelectionTouchedRef.current &&
@@ -524,39 +462,31 @@ export default function App(): ReactElement {
   }, [bootVoiceMode, briefingDefaultMode])
 
   const handleSettingsApplied = useCallback(
-    (response: SettingsResponse, selectedAgent?: AgentKey) => {
-      const selection = resolveAppliedAgentSelection(
-        response,
-        selectedAgent ?? activeAgent,
-        agentSelectionHydratedRef.current || selectedAgent !== undefined,
-      )
+    (response: SettingsResponse) => {
       applyBootSettings({
         agentQueriesEnabled: response.settings.ask_apex.enabled,
-        agentInitialSelection: selection,
+        agentInitialSelection: {
+          runtime: response.settings.ask_apex.selected_model === response.settings.ask_apex.local.last_model ? 'local' : 'cloud',
+          agent: 'apex',
+          modelId: response.settings.ask_apex.selected_model,
+          effort: null,
+        },
         marketEnabled: response.settings.features.market,
       })
-      activeAgentRef.current = selection.agent
-      setAgent(selection.agent)
-      if (selection.effort) {
-        setCloudEffort(selection.effort)
-      }
-      if (selection.sandboxMode !== undefined) {
-        setSandboxMode(selection.sandboxMode)
-      }
       applyAskApexSettings(response.settings.ask_apex, {
         setCloudEffort,
-        setPantheraModel,
-        setFelisModel,
+        setSelectedModel,
         setSandboxMode,
-        setPantheraHostedTools,
-        setPersonalContextEnabled: (agent, enabled) => setPersonalContextEnabled((previous) => ({ ...previous, [agent]: enabled })),
+        setHostedTools,
+        setCloudPersonalContextEnabled,
+        setLocalPersonalContextEnabled,
       })
       if (!briefingModeSelectionTouchedRef.current) {
         setBriefingMode(response.settings.briefing.default_mode)
       }
       setVoiceMode(response.settings.voice.mode)
     },
-    [activeAgent, applyBootSettings],
+    [applyBootSettings],
   )
 
   const handleSettingsPanelApplied = useCallback(
@@ -584,21 +514,15 @@ export default function App(): ReactElement {
         const settingsValues = settings as Record<string, unknown>
         const agentSettings = settingsValues.ask_apex
         if (agentSettings && typeof agentSettings === 'object') {
-          const parsed = parseSettingsResponse(buildSettingsResponse({
-            ...BASE_SETTINGS,
-            ask_apex: {
-              ...BASE_SETTINGS.ask_apex,
-              ...(agentSettings as SettingsResponse['settings']['ask_apex']),
-            },
-          }))
-          if (parsed) {
-            applyAskApexSettings(parsed.settings.ask_apex, {
+          const parsed = agentSettings as SettingsResponse['settings']['ask_apex']
+          if (parsed.cloud && parsed.local) {
+            applyAskApexSettings(parsed, {
               setCloudEffort,
-              setPantheraModel,
-              setFelisModel,
+              setSelectedModel,
               setSandboxMode,
-              setPantheraHostedTools,
-              setPersonalContextEnabled: (agent, enabled) => setPersonalContextEnabled((previous) => ({ ...previous, [agent]: enabled })),
+              setHostedTools,
+              setCloudPersonalContextEnabled,
+              setLocalPersonalContextEnabled,
             })
           }
         }
@@ -632,7 +556,7 @@ export default function App(): ReactElement {
     pipelineState?.system_load_throttled ?? system_load_throttled
   const liveSynthesis = pipelineState?.synthesis
   const localLifecycleBusy =
-    isFelisKey(activeQueryAgent) ||
+    activeQueryAgent === 'apex' && homeSelectedEntry?.runtime === 'local' ||
     liveSynthesis?.phase === 'loading' ||
     liveSynthesis?.phase === 'generating'
 
@@ -657,11 +581,11 @@ export default function App(): ReactElement {
     loadingLocalAgent !== null ||
     (liveSynthesis?.loading === true &&
       (liveSynthesis.provider === 'llama_cpp' ||
-        (liveSynthesis.agent !== undefined && isFelisKey(liveSynthesis.agent))))
+        liveSynthesis.model_id !== null))
   const isLocalModelLoaded = activeLocalModel !== null
   const loadingDisplayName =
     loadingLocalAgent?.display_name ??
-    (liveSynthesis?.agent ? `Apex ${liveSynthesis.agent}` : null)
+    (liveSynthesis?.model_id ?? null)
   const outerShellActivity = resolveOuterShellActivity({
     activeStep,
     isBriefingRunning,
@@ -761,8 +685,6 @@ export default function App(): ReactElement {
   const handleStartWithBriefing = useCallback(async (): Promise<void> => {
     const resolution = await preflight.requestOperation('activate_with_briefing', {
       briefing_mode: briefingMode,
-      synthesis_agent: synthesisAgentForMode(briefingMode),
-      involves_cloud: briefingModeInvolvesCloud(briefingMode),
     })
     if (resolution !== 'proceed') {
       return
@@ -971,8 +893,6 @@ export default function App(): ReactElement {
     }
     const resolution = await preflight.requestOperation('generate_briefing', {
       briefing_mode: briefingMode,
-      synthesis_agent: synthesisAgentForMode(briefingMode),
-      involves_cloud: briefingModeInvolvesCloud(briefingMode),
     })
     if (resolution !== 'proceed') {
       return
@@ -983,8 +903,6 @@ export default function App(): ReactElement {
   const handleRefreshAllAndGenerate = useCallback(async (): Promise<void> => {
     const resolution = await preflight.requestOperation('generate_briefing', {
       briefing_mode: briefingMode,
-      synthesis_agent: synthesisAgentForMode(briefingMode),
-      involves_cloud: briefingModeInvolvesCloud(briefingMode),
       force: true,
     })
     if (resolution !== 'proceed') {
@@ -1046,21 +964,19 @@ export default function App(): ReactElement {
     setSubmissionPending(true)
     try {
       const resolution = await preflight.requestOperation('cortex_query', {
-        synthesis_agent: config.agent,
-        involves_cloud: isCloudAgentKey(config.agent, agentsStatus),
+        model_id: config.modelId ?? selectedModel,
       })
       return resolution === 'proceed'
     } finally {
       submissionPendingRef.current = false
       setSubmissionPending(false)
     }
-  }, [agentsStatus, preflight])
+  }, [preflight, selectedModel])
 
   const refreshToolCatalog = toolCatalogState.refreshCatalog
   const persistAgentSettings = useCallback(
     async (
       agentSettings: Record<string, unknown>,
-      selectedAgent?: AgentKey,
       options: PersistAgentSettingsOptions = {},
     ): Promise<boolean> => {
       const payload = devModeActive ? filterAgentSettingsForDevMode(agentSettings) : agentSettings
@@ -1077,15 +993,17 @@ export default function App(): ReactElement {
           return false
         }
         const body: unknown = await response.json()
-        const parsed = parseSettingsResponse(body)
-        if (parsed) {
-          handleSettingsApplied(parsed, selectedAgent)
+        const settings = body && typeof body === 'object'
+          ? (body as { settings?: SettingsResponse['settings'] }).settings
+          : undefined
+        if (settings?.ask_apex?.cloud && settings.ask_apex.local) {
+          handleSettingsApplied({ settings } as SettingsResponse)
           await refreshAgentsStatus()
           if (options.refreshToolCatalog) {
             await refreshToolCatalog()
           }
         }
-        return parsed !== null
+        return settings !== undefined
       } catch {
         // The session selection remains usable if local preference persistence fails.
         return false
@@ -1098,6 +1016,18 @@ export default function App(): ReactElement {
       refreshToolCatalog,
     ],
   )
+
+  const handleHomeModelChange = useCallback((modelId: string): void => {
+    const model = fullModelCatalog.find((entry) => entry.model_id === modelId)
+    if (!model) return
+    setSelectedModel(modelId)
+    if (model.runtime === 'cloud') {
+      void persistAgentSettings({ selected_model: modelId, cloud: { last_model: modelId } }, { refreshToolCatalog: true })
+    } else {
+      void persistAgentSettings({ selected_model: modelId, local: { last_model: modelId } }, { refreshToolCatalog: true })
+    }
+    window.localStorage.removeItem('apex_home_selected_model_id')
+  }, [fullModelCatalog, persistAgentSettings])
 
   const persistBriefingMode = useCallback(async (mode: BriefingMode): Promise<void> => {
     try {
@@ -1258,16 +1188,9 @@ export default function App(): ReactElement {
     void persistBriefingMode(mode)
   }, [persistBriefingMode])
 
-  const handleAgentChange = useCallback((agent: AgentKey): void => {
-    activeAgentRef.current = agent
-    setAgent(agent)
-    void persistAgentSettings({ agent }, agent, { refreshToolCatalog: false })
-  }, [persistAgentSettings])
-
-  const handlePantheraModelChange = useCallback((model: string): void => {
-    setPantheraModel(model)
-    const pantheraStatus = agentsStatus.find((agent) => agent.key === 'panthera')
-    const entry = (pantheraStatus?.model_catalog ?? []).find((m) => m.model_id === model)
+  const handleModelChange = useCallback((model: string): void => {
+    setSelectedModel(model)
+    const entry = fullModelCatalog.find((item) => item.model_id === model)
     let nextEffort = cloudEffort
     if (entry?.reasoning_options && entry.reasoning_options.length > 0) {
       if (!entry.reasoning_options.includes(cloudEffort)) {
@@ -1275,49 +1198,42 @@ export default function App(): ReactElement {
         setCloudEffort(nextEffort)
       }
     }
+    const runtimePatch = entry?.runtime === 'local'
+      ? { local: { last_model: model } }
+      : { cloud: { last_model: model, effort: nextEffort } }
     void persistAgentSettings({
-      panthera: { model, effort: nextEffort },
-    }, activeAgent, { refreshToolCatalog: true })
-  }, [activeAgent, agentsStatus, cloudEffort, persistAgentSettings])
-
-  const handleFelisModelChange = useCallback((model: string): void => {
-    setFelisModel(model)
-    void persistAgentSettings({
-      felis: { model },
-    }, activeAgent, { refreshToolCatalog: true })
-  }, [activeAgent, persistAgentSettings])
+      selected_model: model, ...runtimePatch,
+    }, { refreshToolCatalog: true })
+  }, [cloudEffort, fullModelCatalog, persistAgentSettings])
 
   const handleEffortChange = useCallback((effort: CloudEffort): void => {
     setCloudEffort(effort)
     void persistAgentSettings(
-      { panthera: { effort } },
-      activeAgent,
+      { cloud: { effort } },
       { refreshToolCatalog: false },
     )
-  }, [activeAgent, persistAgentSettings])
+  }, [persistAgentSettings])
 
   const handleHostedToolChange = useCallback((tool: HostedTool, enabled: boolean): void => {
-    setPantheraHostedTools((current) => ({ ...current, [tool]: enabled }))
+    setHostedTools((current) => ({ ...current, [tool]: enabled }))
     void persistAgentSettings(
-      { panthera: { hosted_tools: { [tool]: enabled } } },
-      activeAgent,
+      { cloud: { hosted_tools: { [tool]: enabled } } },
       { refreshToolCatalog: true },
     )
-  }, [activeAgent, persistAgentSettings])
+  }, [persistAgentSettings])
 
   const handleSandboxModeChange = useCallback((enabled: boolean): void => {
     setSandboxMode(enabled)
-    void persistAgentSettings({ sandbox_mode: enabled }, activeAgent, { refreshToolCatalog: true })
-  }, [activeAgent, persistAgentSettings])
+    void persistAgentSettings({ sandbox_mode: enabled }, { refreshToolCatalog: true })
+  }, [persistAgentSettings])
 
   const handleLocalContextWindowChange = useCallback((
     contextWindow: number,
   ): Promise<boolean> => {
     return persistAgentSettings(
       {
-        felis: { context_window: contextWindow },
+        local: { context_window: contextWindow },
       },
-      'felis',
       { refreshToolCatalog: true },
     )
   }, [persistAgentSettings])
@@ -1327,9 +1243,8 @@ export default function App(): ReactElement {
   ): Promise<boolean> => {
     return persistAgentSettings(
       {
-        felis: { reasoning_mode: reasoningMode },
+        local: { reasoning_mode: reasoningMode },
       },
-      'felis',
       { refreshToolCatalog: false },
     )
   }, [persistAgentSettings])
@@ -1339,7 +1254,7 @@ export default function App(): ReactElement {
     selectedToolNames: string[],
     toolProfileId: string | null,
   ): Promise<boolean> => {
-    const selectedEntry = fullModelCatalog.find((entry) => entry.model_id === homeSelectedModelId)
+    const selectedEntry = fullModelCatalog.find((entry) => entry.model_id === selectedModel)
       ?? fullModelCatalog[0]
     const overrides = resolveHomeQueryOverrides(selectedEntry)
     const accepted = await assistantRuntimeRef.current?.submitPrompt(query, {
@@ -1355,7 +1270,7 @@ export default function App(): ReactElement {
       setWorkspace('cortex')
     }
     return accepted
-  }, [fullModelCatalog, homeSelectedModelId])
+  }, [fullModelCatalog, selectedModel])
 
   const handleAssistantConversationChange = useCallback((summary: {
     id: string
@@ -1451,7 +1366,7 @@ export default function App(): ReactElement {
           key={`${demoModeActive ? 'demo' : devModeActive && sandboxMode ? 'sandbox' : 'production'}`}
           config={{
             agent: activeAgent,
-            effort: isCloudAgentKey(activeAgent, agentsStatus) ? cloudEffort : null,
+            effort: homeSelectedEntry?.runtime === 'cloud' ? cloudEffort : null,
             selectedToolNames: toolCatalogState.selectedToolNames,
             toolProfileId: toolCatalogState.activeToolProfileId,
             snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
@@ -1601,7 +1516,7 @@ export default function App(): ReactElement {
                   }
                   synthesisLabel={
                     briefing.synthesisProvider
-                      ? [briefing.synthesisProvider, briefing.synthesisAgent]
+                      ? [briefing.synthesisProvider, briefing.synthesisModelId]
                           .filter(Boolean)
                           .join(' / ')
                       : null
@@ -1652,7 +1567,7 @@ export default function App(): ReactElement {
                 <HomeCommandRail
                   activated={activated}
                   agentQueriesEnabled={Boolean(agentQueriesEnabled)}
-                  selectedModelId={homeSelectedModelId}
+                  selectedModelId={selectedModel}
                   onModelChange={handleHomeModelChange}
                   modelCatalog={fullModelCatalog}
                   agentsStatus={agentsStatus}
@@ -1890,9 +1805,8 @@ export default function App(): ReactElement {
           <CortexWorkspace
             activeAgent={activeAgent}
             cloudEffort={cloudEffort}
-            pantheraModel={pantheraModel}
-            felisModel={felisModel}
-            pantheraHostedTools={pantheraHostedTools}
+            selectedModel={selectedModel}
+            hostedTools={hostedTools}
             devModeActive={devModeActive}
             sandboxMode={sandboxMode}
             agentQueriesEnabled={Boolean(agentQueriesEnabled)}
@@ -1925,18 +1839,16 @@ export default function App(): ReactElement {
             logoProps={cortexLogoProps}
             lifecycleBusy={localLifecycleBusy}
             lifecycleActionPending={isLocalModelActionPending}
-            verifyingCloudAgent={verifyingCloudAgent}
+            verifyingCloudModel={verifyingCloudModel}
             onLoadLocalModel={loadLocalModel}
             onUnloadLocalModel={unloadLocalModel}
             onVerifyCloudAgent={verifyCloudAgent}
             snapshotAttached={snapshotAttached}
             snapshotAvailable={telemetry.snapshot !== null}
             onSnapshotAttachedChange={setSnapshotAttached}
-            personalContextEnabled={personalContextEnabled[activeAgent]}
-            onPersonalContextEnabledChange={(enabled) => persistAgentSettings({ [activeAgent]: { personal_context_enabled: enabled } })}
-            onAgentChange={handleAgentChange}
-            onPantheraModelChange={handlePantheraModelChange}
-            onFelisModelChange={handleFelisModelChange}
+            personalContextEnabled={homeSelectedEntry?.runtime === 'local' ? localPersonalContextEnabled : cloudPersonalContextEnabled}
+            onPersonalContextEnabledChange={(enabled) => persistAgentSettings(homeSelectedEntry?.runtime === 'local' ? { local: { personal_context_enabled: enabled } } : { cloud: { personal_context_enabled: enabled } })}
+            onModelChange={handleModelChange}
             onEffortChange={handleEffortChange}
             onHostedToolChange={handleHostedToolChange}
             onSandboxModeChange={handleSandboxModeChange}
@@ -1946,7 +1858,7 @@ export default function App(): ReactElement {
             demoModeActive={demoModeActive}
             assistantRunConfig={{
               agent: activeAgent,
-              effort: isCloudAgentKey(activeAgent, agentsStatus) ? cloudEffort : null,
+              effort: homeSelectedEntry?.runtime === 'cloud' ? cloudEffort : null,
               selectedToolNames: toolCatalogState.selectedToolNames,
               toolProfileId: toolCatalogState.activeToolProfileId,
               snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,

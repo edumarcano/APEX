@@ -50,15 +50,20 @@ def _route_cache_key(
     model: str | None = None,
 ) -> str:
     if provider is None or model is None:
-        model_profile = resolve_selected_model_profile(agent_key)
+        model_profile = resolve_selected_model_profile()
         provider = model_profile.provider
         model = model_profile.model_id
     return f"{agent_key}:{provider}:{model}"
 
 
-def cloud_status(agent_key: str) -> CloudStatusRecord:
+def cloud_status(model_id: str) -> CloudStatusRecord:
     """Return the configured fallback or a non-expired sanitized status."""
-    cache_key = _route_cache_key(agent_key)
+    profile = get_model_profile(model_id)
+    if profile is None or profile.runtime != "cloud":
+        raise ValueError("Cloud status requires a registered cloud model.")
+    cache_key = _route_cache_key(
+        "apex", provider=profile.provider, model=profile.model_id
+    )
     now = _now()
     with _LOCK:
         cached = _CACHE.get(cache_key)

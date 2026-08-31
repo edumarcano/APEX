@@ -7,12 +7,8 @@ import {
   type ReactElement,
 } from 'react'
 
-import type {
-  AgentAvailabilityStatus,
-  AgentKey,
-  AgentStatus,
-  ModelCatalogEntry,
-} from '../types/telemetry'
+import type { AgentAvailabilityStatus, ModelCatalogEntry } from '../types/telemetry'
+import type { AgentKey, AgentStatus } from '../types/telemetry'
 import {
   formatContextWindowLabel,
   providerDisplayName,
@@ -23,15 +19,16 @@ import { ModelMark } from './ModelMark'
 import { StabilityBadge } from './StabilityBadge'
 
 interface ModelSelectorProps {
-  activeAgent: AgentKey
   selectedModelId: string
   onModelChange: (modelId: string) => void
   catalog: ModelCatalogEntry[]
-  activeStatus: AgentStatus | null
   disabled?: boolean
   isQuerying?: boolean
-  verifyingAgent?: AgentKey | null
-  onVerify?: (agent: 'panthera') => Promise<boolean>
+  verifyingModelId?: string | null
+  onVerify?: (modelId: string) => Promise<boolean>
+  /** @deprecated Ignored legacy test props. */
+  activeAgent?: AgentKey
+  activeStatus?: AgentStatus | null
 }
 
 const STATUS_LABELS: Record<AgentAvailabilityStatus, string> = {
@@ -103,24 +100,26 @@ function capabilityTags(entry: ModelCatalogEntry): string[] {
 }
 
 export function ModelSelector({
-  activeAgent,
   selectedModelId,
   onModelChange,
   catalog,
-  activeStatus,
   disabled = false,
   isQuerying = false,
-  verifyingAgent,
+  verifyingModelId,
   onVerify,
 }: ModelSelectorProps): ReactElement {
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
 
-  const runtimeTarget = activeAgent === 'panthera' ? 'cloud' : 'local'
-  const availableModels = useMemo(
-    () => catalog.filter((entry) => entry.runtime === runtimeTarget),
-    [catalog, runtimeTarget],
+  const availableModels = useMemo(() => catalog, [catalog])
+  const cloudModels = useMemo(
+    () => availableModels.filter((model) => model.runtime === 'cloud'),
+    [availableModels],
+  )
+  const localModels = useMemo(
+    () => availableModels.filter((model) => model.runtime === 'local'),
+    [availableModels],
   )
 
   const selectedModel = useMemo(
@@ -156,32 +155,32 @@ export function ModelSelector({
     window.setTimeout(() => triggerRef.current?.focus(), 0)
   }
 
-  const isCloud = activeAgent === 'panthera'
-  const isVerifying = verifyingAgent === 'panthera' || activeStatus?.status === 'verifying'
-  const canVerify = isCloud && onVerify && activeStatus?.status !== 'disabled'
+  const isCloud = selectedModel?.runtime === 'cloud'
+  const isVerifying = verifyingModelId === selectedModel?.model_id || selectedModel?.status === 'verifying'
+  const canVerify = isCloud && onVerify && selectedModel?.status !== 'disabled'
 
   // Model-level readiness/residency status label
   const readinessLabel = isCloud
-    ? STATUS_LABELS[activeStatus?.status ?? 'configured'] ?? 'Ready'
-    : activeStatus?.loading
+    ? STATUS_LABELS[selectedModel?.status ?? 'configured'] ?? 'Ready'
+    : selectedModel?.loading
       ? 'Loading…'
-      : activeStatus?.active
+      : selectedModel?.active
         ? 'Loaded'
         : 'Unloaded'
 
   const readinessClass = isCloud
-    ? statusClass(activeStatus?.status ?? 'configured')
-    : activeStatus?.loading
+    ? statusClass(selectedModel?.status ?? 'configured')
+    : selectedModel?.loading
       ? 'text-amber-200'
-      : activeStatus?.active
+      : selectedModel?.active
         ? 'text-emerald-300'
         : 'text-zinc-400'
 
   const readinessDot = isCloud
-    ? statusDotClass(activeStatus?.status ?? 'configured')
-    : activeStatus?.loading
+    ? statusDotClass(selectedModel?.status ?? 'configured')
+    : selectedModel?.loading
       ? 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.7)]'
-      : activeStatus?.active
+      : selectedModel?.active
         ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]'
         : 'bg-zinc-500'
 
@@ -270,7 +269,7 @@ export function ModelSelector({
               type="button"
               disabled={isVerifying || isQuerying}
               onClick={() => {
-                if (onVerify) void onVerify('panthera')
+                if (onVerify && selectedModel) void onVerify(selectedModel.model_id)
               }}
               className="inline-flex items-center gap-1 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-zinc-300 hover:border-[#7EB3FF]/60 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
             >
@@ -305,7 +304,7 @@ export function ModelSelector({
       {isOpen ? (
         <div
           role="listbox"
-          aria-label={`Select model for ${activeAgent}`}
+          aria-label="Select Apex Agent model"
           className="absolute left-0 right-0 top-full z-50 mt-2 max-h-[min(62vh,34rem)] overflow-y-auto rounded-xl border border-white/15 bg-zinc-950/95 p-2.5 shadow-2xl backdrop-blur-xl scrollbar-thin"
         >
           <div className="border-b border-white/10 px-2 pb-2 pt-1">
@@ -313,13 +312,20 @@ export function ModelSelector({
               Select Model
             </p>
             <p className="mt-0.5 text-[10px] text-zinc-500">
-              Choose the intelligence profile for {activeAgent === 'panthera' ? 'Panthera' : 'Felis'}.
+              Choose the model for the Apex Agent.
             </p>
           </div>
 
-          <div className="space-y-1.5 py-2">
-            {availableModels.map((model) => {
+          <div className="space-y-3 py-2">
+            {([
+              ['Cloud models', cloudModels],
+              ['Local models', localModels],
+            ] as const).map(([label, models]) => models.length > 0 ? (
+              <section key={label} role="group" aria-label={label} className="space-y-1.5">
+                <p className="px-1 font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-500">{label}</p>
+                {models.map((model) => {
               const selected = model.model_id === selectedModelId
+              const unavailable = model.status === 'disabled' || model.credentials_configured === false
               const provLabel =
                 model.runtime === 'local'
                   ? runtimeDisplayName(model.provider as 'ollama' | 'llama_cpp')
@@ -332,9 +338,13 @@ export function ModelSelector({
                   type="button"
                   role="option"
                   aria-selected={selected}
+                  aria-disabled={unavailable}
+                  disabled={unavailable}
                   onClick={() => selectModel(model.model_id)}
                   className={`w-full rounded-lg border p-2.5 text-left transition-all focus-visible:outline-none ${
-                    selected
+                    unavailable
+                      ? 'cursor-not-allowed border-white/5 bg-white/[0.01] opacity-45'
+                      : selected
                       ? 'border-[#7E22CE]/65 bg-[#7E22CE]/15 ring-1 ring-[#7E22CE]/35'
                       : 'border-white/5 bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.04]'
                   }`}
@@ -384,7 +394,9 @@ export function ModelSelector({
                   ) : null}
                 </button>
               )
-            })}
+                })}
+              </section>
+            ) : null)}
           </div>
         </div>
       ) : null}

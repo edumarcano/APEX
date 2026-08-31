@@ -16,7 +16,7 @@ from core.agent.tool_profiles import (
 from core.agent.tool_schemas import (
     descriptor_to_openai_schema,
     estimate_json_tokens,
-    project_descriptor_for_agent,
+    project_descriptor_for_model,
 )
 from core.agent.types import (
     ToolSelectionDiagnostics,
@@ -148,13 +148,14 @@ def resolve_selected_tools(
     selected_tool_names: list[str] | None = None,
     *,
     tool_profile_id: str | None = None,
+    model_id: str | None = None,
 ) -> ResolvedToolSelection:
     """Resolve explicit names through policy, exposure, runtime, and MCP state.
 
     No requested name is silently dropped.  Every invalid, unauthorized, or
     unavailable name is represented by a structured failure in the result.
     """
-    catalog = build_tool_catalog(agent_key)
+    catalog = build_tool_catalog(agent_key, model_id=model_id)
     requested, active_profile_id, active_profile_name, profile_failure = _requested_names(
         agent_key,
         selected_tool_names,
@@ -236,7 +237,9 @@ def resolve_selected_tools(
                     )
                 )
                 continue
-        descriptors.append(project_descriptor_for_agent(agent_key, descriptor))
+        from core.agent.catalog import resolve_selected_model_profile
+        resolved_model_id = model_id or resolve_selected_model_profile().model_id
+        descriptors.append(project_descriptor_for_model(resolved_model_id, descriptor))
 
     selected_schema_tokens = (
         estimate_json_tokens(

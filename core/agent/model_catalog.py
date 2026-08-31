@@ -142,7 +142,7 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
 }
 
-# Local models available under Felis
+# Local models available to Apex Agent.
 LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
     "gemma-4-E2B-Q4_K_M.gguf": ModelProfile(
         model_id="gemma-4-E2B-Q4_K_M.gguf",
@@ -221,10 +221,6 @@ FOCUSED_BRIEFING_MODEL = "deepseek/deepseek-v4-flash-0731"
 DEFAULT_LOCAL_MODEL = "gemma-4-E2B-Q4_K_M.gguf"
 DEFAULT_LOCAL_RUNTIME: LocalRuntime = "llama_cpp"
 
-DEFAULT_PANTHERA_MODEL = DEFAULT_CLOUD_MODEL
-DEFAULT_FELIS_MODEL = DEFAULT_LOCAL_MODEL
-DEFAULT_FELIS_RUNTIME = DEFAULT_LOCAL_RUNTIME
-PANTHERA_BRIEFING_MODEL = FOCUSED_BRIEFING_MODEL
 
 
 def get_model_profile(model_id: str) -> ModelProfile | None:

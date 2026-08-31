@@ -1,5 +1,4 @@
 import type {
-  AgentKey,
   CloudEffort,
   LocalReasoningMode,
   TtsEngine,
@@ -54,21 +53,21 @@ export interface MarketSettings {
   symbols: string[]
 }
 
-export interface PantheraHostedToolsSettings {
+export interface CloudHostedToolsSettings {
   google_search: boolean
   google_maps: boolean
   x_search: boolean
 }
 
-export interface PantheraSettings {
-  model: string
+export interface CloudSettings {
+  last_model: string
   effort: CloudEffort
   personal_context_enabled: boolean
-  hosted_tools: PantheraHostedToolsSettings
+  hosted_tools: CloudHostedToolsSettings
 }
 
-export interface FelisSettings {
-  model: string
+export interface LocalSettings {
+  last_model: string
   context_window: number
   reasoning_mode: LocalReasoningMode
   personal_context_enabled: boolean
@@ -76,10 +75,10 @@ export interface FelisSettings {
 
 export interface AgentSettings {
   enabled: boolean
-  agent: AgentKey
+  selected_model: string
   sandbox_mode: boolean
-  panthera: PantheraSettings
-  felis: FelisSettings
+  cloud: CloudSettings
+  local: LocalSettings
 }
 
 export interface ToolProfileSettings {
@@ -93,7 +92,9 @@ export interface ToolProfileSettings {
 
 export interface ToolProfilesSettings {
   custom_profiles: ToolProfileSettings[]
-  default_profile_by_agent: Record<string, string>
+  default_profile_by_runtime: Record<string, string>
+  /** @deprecated Transitional field for legacy fixture parsing. */
+  default_profile_by_agent?: Record<string, string>
 }
 
 export interface BriefingSettings {
@@ -157,21 +158,21 @@ export interface MarketPatch {
   symbols?: string[]
 }
 
-export interface PantheraHostedToolsPatch {
+export interface CloudHostedToolsPatch {
   google_search?: boolean
   google_maps?: boolean
   x_search?: boolean
 }
 
-export interface PantheraSettingsPatch {
-  model?: string
+export interface CloudSettingsPatch {
+  last_model?: string
   effort?: CloudEffort
   personal_context_enabled?: boolean
-  hosted_tools?: PantheraHostedToolsPatch
+  hosted_tools?: CloudHostedToolsPatch
 }
 
-export interface FelisSettingsPatch {
-  model?: string
+export interface LocalSettingsPatch {
+  last_model?: string
   context_window?: number
   reasoning_mode?: LocalReasoningMode
   personal_context_enabled?: boolean
@@ -179,14 +180,16 @@ export interface FelisSettingsPatch {
 
 export interface AgentSettingsPatch {
   enabled?: boolean
-  agent?: AgentKey
+  selected_model?: string
   sandbox_mode?: boolean
-  panthera?: PantheraSettingsPatch
-  felis?: FelisSettingsPatch
+  cloud?: CloudSettingsPatch
+  local?: LocalSettingsPatch
 }
 
 export interface ToolProfilesPatch {
   custom_profiles?: ToolProfileSettings[]
+  default_profile_by_runtime?: Record<string, string>
+  /** @deprecated Legacy fields are rejected by the backend. */
   default_profile_by_agent?: Record<string, string>
 }
 

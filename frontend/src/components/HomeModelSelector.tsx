@@ -37,7 +37,8 @@ export interface HomeModelSelectorProps {
   selectedModelId: string
   onModelChange: (modelId: string) => void
   catalog: ModelCatalogEntry[]
-  agentsStatus: AgentStatus[]
+  /** @deprecated Ignored while callers migrate to per-model availability. */
+  agentsStatus?: AgentStatus[]
   disabled?: boolean
   isQuerying?: boolean
   className?: string
@@ -78,7 +79,6 @@ export function HomeModelSelector({
   selectedModelId,
   onModelChange,
   catalog,
-  agentsStatus,
   disabled = false,
   isQuerying = false,
   className = '',
@@ -88,15 +88,6 @@ export function HomeModelSelector({
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([])
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState<CSSProperties | null>(null)
-
-  const pantheraStatus = useMemo(
-    () => agentsStatus.find((agent) => agent.key === 'panthera'),
-    [agentsStatus],
-  )
-  const felisStatus = useMemo(
-    () => agentsStatus.find((agent) => agent.key === 'felis'),
-    [agentsStatus],
-  )
 
   const selectedModel = useMemo(
     () => catalog.find((entry) => entry.model_id === selectedModelId) ?? catalog[0] ?? null,
@@ -119,15 +110,9 @@ export function HomeModelSelector({
 
   const selectedStatus: AgentAvailabilityStatus = useMemo(() => {
     if (!selectedModel) return 'unknown'
-    if (selectedModel.runtime === 'cloud') {
-      if (selectedModel.credentials_configured === false) return 'unauthorized'
-      if (pantheraStatus?.status === 'disabled') return 'disabled'
-      if (pantheraStatus?.status === 'verified' && pantheraStatus.configured_model === selectedModel.model_id) return 'verified'
-      return 'configured'
-    }
-    if (felisStatus?.status) return felisStatus.status
-    return 'available'
-  }, [selectedModel, pantheraStatus, felisStatus])
+    if (selectedModel.credentials_configured === false) return 'unauthorized'
+    return selectedModel.status ?? (selectedModel.runtime === 'local' ? 'available' : 'configured')
+  }, [selectedModel])
 
   const close = useCallback((focusTrigger = false): void => {
     setOpen(false)
@@ -260,7 +245,7 @@ export function HomeModelSelector({
                 <li role="presentation">
                   <div className="flex items-center gap-2 px-2 py-1.5 font-mono text-[9px] uppercase tracking-widest text-[#6EA8FF]/90" aria-hidden>
                     <Network className="size-3.5 text-[#6EA8FF]" />
-                    Apex Panthera · Cloud
+                    Cloud models
                   </div>
                   <ul role="group" aria-label="Cloud models" className="space-y-1">
                     {cloudModels.map((entry) => {
@@ -268,8 +253,7 @@ export function HomeModelSelector({
                       const isSelected = selectedModel?.model_id === entry.model_id
                       const provider = providerDisplayName(entry.provider)
                       const isUnauthorized = entry.credentials_configured === false
-                      const isGloballyDisabled = pantheraStatus?.status === 'disabled'
-                      const isModelDisabled = isUnauthorized || isGloballyDisabled
+                      const isModelDisabled = isUnauthorized || entry.status === 'disabled'
                       const lowestEffort = resolveLowestReasoningEffort(entry.reasoning_options)
                       const reasoningLabel = lowestEffort && lowestEffort !== 'none'
                         ? `${formatReasoningLabel(lowestEffort)} reasoning`
@@ -306,7 +290,7 @@ export function HomeModelSelector({
                                 <StabilityBadge stability={entry.stability} />
                               </span>
                               <span className="mt-0.5 block truncate text-[10px] text-zinc-500">
-                                Panthera · {provider} · {isUnauthorized ? 'Missing API key' : reasoningLabel}
+                                {provider} · {isUnauthorized ? 'Missing API key' : reasoningLabel}
                               </span>
                               <span className="mt-1 block font-mono text-[9px] text-zinc-400">
                                 {modelCost(entry)}
@@ -328,14 +312,14 @@ export function HomeModelSelector({
                   {cloudModels.length > 0 ? <div className="mx-2 my-1 border-t border-white/10" aria-hidden /> : null}
                   <div className="flex items-center gap-2 px-2 py-1.5 font-mono text-[9px] uppercase tracking-widest text-amber-400/90" aria-hidden>
                     <Gpu className="size-3.5 text-amber-400" />
-                    Apex Felis · Local
+                    Local models
                   </div>
                   <ul role="group" aria-label="Local models" className="space-y-1">
                     {localModels.map((entry) => {
                       const index = allOrderedModels.findIndex((item) => item.model_id === entry.model_id)
                       const isSelected = selectedModel?.model_id === entry.model_id
                       const runtimeName = runtimeDisplayName(entry.provider as LocalRuntime)
-                      const isModelDisabled = !felisStatus?.status || !['available', 'configured', 'verified'].includes(felisStatus.status)
+                      const isModelDisabled = entry.status === 'disabled'
                       return (
                         <li key={entry.model_id} role="presentation" className="group/model-option relative">
                           <button
@@ -368,7 +352,7 @@ export function HomeModelSelector({
                                 <StabilityBadge stability={entry.stability} />
                               </span>
                               <span className="mt-0.5 block truncate text-[10px] text-zinc-500">
-                                Felis · {runtimeName} · {entry.provider === 'ollama' ? '4K context' : '16K context'}
+                                {runtimeName} · {entry.provider === 'ollama' ? '4K context' : '16K context'}
                               </span>
                               <span className="mt-1 block font-mono text-[9px] text-zinc-400">
                                 {modelCost(entry)}

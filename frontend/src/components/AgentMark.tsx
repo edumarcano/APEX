@@ -1,11 +1,12 @@
-import { Gpu, Network } from 'lucide-react'
+import { BrainCircuit } from 'lucide-react'
 import type { ReactElement } from 'react'
 
 import type { AgentKey } from '../types/telemetry'
 
-const AGENT_MARKS: Record<string, { icon: typeof Network; label: string; className: string }> = {
-  panthera: { icon: Network, label: 'Panthera agent mark', className: 'border-[#1F6FE5]/35 bg-[#1F6FE5]/15 text-[#6EA8FF]' },
-  felis: { icon: Gpu, label: 'Felis agent mark', className: 'border-amber-300/25 bg-amber-400/10 text-amber-200' },
+const APEX_MARK = {
+  icon: BrainCircuit,
+  label: 'Apex Agent mark',
+  className: 'border-[#7E22CE]/35 bg-[#7E22CE]/15 text-[#D8B4FE]',
 }
 
 interface AgentMarkProps {
@@ -13,8 +14,8 @@ interface AgentMarkProps {
   size?: 'compact' | 'card'
 }
 
-export function AgentMark({ agent, size = 'compact' }: AgentMarkProps): ReactElement {
-  const mark = AGENT_MARKS[agent]
+export function AgentMark({ size = 'compact' }: AgentMarkProps): ReactElement {
+  const mark = APEX_MARK
   const Icon = mark.icon
   return (
     <span

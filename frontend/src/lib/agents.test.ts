@@ -6,8 +6,6 @@ import {
   formatContextWindowLabel,
   formatReasoningLabel,
   isAgentKey,
-  isFelisKey,
-  isPantheraKey,
   providerDisplayName,
   resolveBriefingModeAvailability,
   resolveHomeQueryOverrides,
@@ -17,12 +15,11 @@ import {
 import type { BriefingTargetStatus, ModelCatalogEntry } from '../types/telemetry'
 
 describe('agents helpers', () => {
-  it('exposes only Panthera and Felis agent keys', () => {
-    expect(AGENT_KEYS).toEqual(['panthera', 'felis'])
-    expect(isFelisKey('felis')).toBe(true)
-    expect(isPantheraKey('panthera')).toBe(true)
-    expect(isAgentKey('panthera')).toBe(true)
-    expect(isAgentKey('felis')).toBe(true)
+  it('exposes only the singular Apex Agent key', () => {
+    expect(AGENT_KEYS).toEqual(['apex'])
+    expect(isAgentKey('apex')).toBe(true)
+    expect(isAgentKey('panthera')).toBe(false)
+    expect(isAgentKey('felis')).toBe(false)
     expect(isAgentKey('lynx')).toBe(false)
     expect(isAgentKey('apodemus')).toBe(false)
     expect(isAgentKey('unknown')).toBe(false)
@@ -60,24 +57,24 @@ describe('agents helpers', () => {
     expect(usesSandboxHistory(true, true)).toBe(true)
   })
 
-  it('allows cloud verification only when Panthera is not disabled', () => {
+  it('allows cloud verification only for an enabled cloud model', () => {
     expect(
       canVerifyCloudProvider({
-        key: 'panthera',
+        key: 'apex',
         runtime: 'cloud',
         status: 'configured',
       }),
     ).toBe(true)
     expect(
       canVerifyCloudProvider({
-        key: 'panthera',
+        key: 'apex',
         runtime: 'cloud',
         status: 'disabled',
       }),
     ).toBe(false)
     expect(
       canVerifyCloudProvider({
-        key: 'felis',
+        key: 'apex',
         runtime: 'local',
         status: 'available',
       }),
@@ -85,9 +82,9 @@ describe('agents helpers', () => {
   })
 
   it('uses briefing targets as the sole source of model-mode availability', () => {
-    const panthera: BriefingTargetStatus = {
+    const focused: BriefingTargetStatus = {
       mode: 'focused',
-      label: 'Apex Panthera',
+      label: 'Focused',
       description: 'Cloud briefing',
       model_id: 'gpt-5.6-luna',
       model_display_name: 'GPT-5.6 Luna',
@@ -102,11 +99,11 @@ describe('agents helpers', () => {
       status: 'available',
       reason: null,
     })
-    expect(resolveBriefingModeAvailability('focused', [panthera])).toEqual({
+    expect(resolveBriefingModeAvailability('focused', [focused])).toEqual({
       status: 'configured',
       reason: 'Credentials configured',
     })
-    expect(resolveBriefingModeAvailability('flash', [panthera])).toEqual({
+    expect(resolveBriefingModeAvailability('flash', [focused])).toEqual({
       status: 'unknown',
       reason: 'Mode status unavailable',
     })
@@ -134,7 +131,7 @@ describe('agents helpers', () => {
       hosted_capabilities: [],
     }
     expect(resolveHomeQueryOverrides(cloudEntry)).toEqual({
-      agent: 'panthera',
+      agent: 'apex',
       modelId: 'deepseek/deepseek-v4-flash-0731',
       effort: 'none',
       contextWindow: null,
@@ -153,7 +150,7 @@ describe('agents helpers', () => {
       hosted_capabilities: [],
     }
     expect(resolveHomeQueryOverrides(localEntry)).toEqual({
-      agent: 'felis',
+      agent: 'apex',
       modelId: 'gemma-4-E2B-Q4_K_M.gguf',
       effort: null,
       contextWindow: 16384,

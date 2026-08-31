@@ -36,7 +36,7 @@ OPENROUTER_PRIVACY_POLICY: dict[str, Any] = {
 
 
 class OpenRouterModelProfile:
-    """Concrete Panthera profile for OpenRouter Chat Completions."""
+    """Concrete Apex Agent profile for OpenRouter Chat Completions."""
 
     provider: Literal["openrouter"] = "openrouter"
 

@@ -1,4 +1,4 @@
-"""DEV_MODE sandbox policy overlay for Panthera and Felis."""
+"""DEV_MODE sandbox policy overlay for Apex Agent."""
 
 from __future__ import annotations
 

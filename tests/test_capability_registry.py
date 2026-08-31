@@ -380,7 +380,7 @@ class CapabilityRegistryTests(unittest.TestCase):
                 )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Hide this", agent="panthera"),
+            AgentQueryRequest(prompt="Hide this", agent="apex"),
             Provider(),
             build_panthera_profile(model=GEMINI_FLASH_MODEL),
             selected_tools=[get_capability_descriptor("hidden_tool")],  # type: ignore[list-item]
@@ -459,7 +459,7 @@ class CapabilityRegistryTests(unittest.TestCase):
                 )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Call missing", agent="panthera"),
+            AgentQueryRequest(prompt="Call missing", agent="apex"),
             Provider(),
             build_panthera_profile(model=GEMINI_FLASH_MODEL),
         )

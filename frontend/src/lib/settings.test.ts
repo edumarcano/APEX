@@ -24,10 +24,10 @@ import {
 
 describe('assistant boot hydration', () => {
   it('does not reapply the saved selection after initial hydration', () => {
-    const saved = { agent: 'panthera' as const, effort: 'medium' as const }
+    const saved = { agent: 'apex' as const, effort: 'medium' as const }
 
-    expect(resolveInitialAgentSelection(false, saved, 'panthera')).toEqual(saved)
-    expect(resolveInitialAgentSelection(true, saved, 'panthera')).toBeNull()
+    expect(resolveInitialAgentSelection(false, saved, 'apex')).toEqual(saved)
+    expect(resolveInitialAgentSelection(true, saved, 'apex')).toBeNull()
   })
 
   it('preserves a selected session agent after a DEV_MODE settings response', () => {
@@ -35,16 +35,11 @@ describe('assistant boot hydration', () => {
     response.dev_mode_active = true
     response.settings.ask_apex.sandbox_mode = true
 
-    expect(resolveAppliedAgentSelection(response, 'panthera', true)).toEqual({
+    expect(resolveAppliedAgentSelection(response, 'apex', true)).toEqual({
       runtime: 'cloud',
-      agent: 'panthera',
-      effort: 'medium',
-      sandboxMode: true,
-    })
-    expect(resolveAppliedAgentSelection(response, 'felis', true)).toEqual({
-      runtime: 'local',
-      agent: 'felis',
-      effort: null,
+      agent: 'apex',
+      modelId: 'deepseek/deepseek-v4-flash-0731',
+      effort: 'low',
       sandboxMode: true,
     })
   })
@@ -53,25 +48,27 @@ describe('assistant boot hydration', () => {
     const response = buildSettingsResponse(undefined, { dev_mode_active: true })
     response.settings.ask_apex.sandbox_mode = false
 
-    expect(resolveAppliedAgentSelection(response, 'panthera', false)).toEqual({
+    expect(resolveAppliedAgentSelection(response, 'apex', false)).toEqual({
       runtime: 'cloud',
-      agent: 'panthera',
-      effort: 'medium',
+      agent: 'apex',
+      modelId: 'deepseek/deepseek-v4-flash-0731',
+      effort: 'low',
       sandboxMode: false,
     })
     expect(defaultSandboxMode(undefined)).toBe(true)
   })
 
-  it('keeps nested Panthera and Felis preferences while filtering DEV_MODE identity fields', () => {
+  it('keeps nested cloud and local preferences while filtering DEV_MODE selection fields', () => {
     expect(filterAgentSettingsForDevMode({
-      agent: 'felis',
+      selected_model: 'gemma-4-E2B-Q4_K_M.gguf',
       sandbox_mode: true,
-      panthera: { effort: 'high', hosted_tools: { google_search: false } },
-      felis: { context_window: 32768, reasoning_mode: 'focused' },
+      cloud: { effort: 'high', hosted_tools: { google_search: false } },
+      local: { context_window: 32768, reasoning_mode: 'focused' },
     })).toEqual({
+      selected_model: 'gemma-4-E2B-Q4_K_M.gguf',
       sandbox_mode: true,
-      panthera: { effort: 'high', hosted_tools: { google_search: false } },
-      felis: { context_window: 32768, reasoning_mode: 'focused' },
+      cloud: { effort: 'high', hosted_tools: { google_search: false } },
+      local: { context_window: 32768, reasoning_mode: 'focused' },
     })
   })
 
@@ -94,13 +91,13 @@ describe('settings response parsing', () => {
     ['market boolean', ['settings', 'features', 'market'], 'yes'],
     ['module boolean', ['settings', 'modules', 'f1'], 1],
     ['Agent queries enabled', ['settings', 'ask_apex', 'enabled'], null],
-    ['Agent key', ['settings', 'ask_apex', 'agent'], 'invalid'],
+    ['selected model', ['settings', 'ask_apex', 'selected_model'], ''],
     ['sandbox mode', ['settings', 'ask_apex', 'sandbox_mode'], 'yes'],
-    ['panthera model', ['settings', 'ask_apex', 'panthera', 'model'], ''],
-    ['panthera effort', ['settings', 'ask_apex', 'panthera', 'effort'], 'invalid'],
-    ['felis model', ['settings', 'ask_apex', 'felis', 'model'], ''],
-    ['felis context window', ['settings', 'ask_apex', 'felis', 'context_window'], 0],
-    ['felis reasoning mode', ['settings', 'ask_apex', 'felis', 'reasoning_mode'], 'invalid'],
+    ['cloud model', ['settings', 'ask_apex', 'cloud', 'last_model'], ''],
+    ['cloud effort', ['settings', 'ask_apex', 'cloud', 'effort'], 'invalid'],
+    ['local model', ['settings', 'ask_apex', 'local', 'last_model'], ''],
+    ['local context window', ['settings', 'ask_apex', 'local', 'context_window'], 0],
+    ['local reasoning mode', ['settings', 'ask_apex', 'local', 'reasoning_mode'], 'invalid'],
     ['briefing mode', ['settings', 'briefing', 'default_mode'], 'invalid'],
     ['voice engine', ['settings', 'voice', 'engine'], 'invalid'],
     ['voice gender', ['settings', 'voice', 'gender'], 'invalid'],
@@ -147,22 +144,16 @@ describe('settings cloning and mutations', () => {
     expect(clone.features).not.toBe(BASE_SETTINGS.features)
     expect(clone.modules).not.toBe(BASE_SETTINGS.modules)
     expect(clone.ask_apex).not.toBe(BASE_SETTINGS.ask_apex)
-    expect(clone.ask_apex.panthera).not.toBe(BASE_SETTINGS.ask_apex.panthera)
-    expect(clone.ask_apex.felis).not.toBe(BASE_SETTINGS.ask_apex.felis)
+    expect(clone.ask_apex.cloud).not.toBe(BASE_SETTINGS.ask_apex.cloud)
+    expect(clone.ask_apex.local).not.toBe(BASE_SETTINGS.ask_apex.local)
     expect(clone.briefing).not.toBe(BASE_SETTINGS.briefing)
     expect(clone.voice).not.toBe(BASE_SETTINGS.voice)
     expect(clone.mcp).not.toBe(BASE_SETTINGS.mcp)
     expect(clone.mcp.servers.github).not.toBe(BASE_SETTINGS.mcp.servers.github)
   })
 
-  it('resolves the active Agent from settings', () => {
-    expect(resolveAgentKey(BASE_SETTINGS.ask_apex)).toBe('panthera')
-    expect(
-      resolveAgentKey({
-        ...BASE_SETTINGS.ask_apex,
-        agent: 'felis',
-      }),
-    ).toBe('felis')
+  it('resolves the singular Apex Agent from settings', () => {
+    expect(resolveAgentKey(BASE_SETTINGS.ask_apex)).toBe('apex')
   })
 
   it('includes football teams and market symbols in settings patches', () => {
@@ -181,8 +172,8 @@ describe('settings cloning and mutations', () => {
     draft.user_designation = 'Chief'
     draft.features.weather = false
     draft.features.market = false
-    draft.ask_apex.agent = 'felis'
-    draft.ask_apex.felis.context_window = 32768
+    draft.ask_apex.selected_model = 'gemma-4-E2B-Q4_K_M.gguf'
+    draft.ask_apex.local.context_window = 32768
     draft.briefing.default_mode = 'flash'
     draft.voice.gender = 'male'
     draft.voice.mode = 'manual'
@@ -193,9 +184,9 @@ describe('settings cloning and mutations', () => {
       user_designation: 'Chief',
       features: { weather: false, market: false },
       ask_apex: {
-        agent: 'felis',
-        felis: {
-          ...BASE_SETTINGS.ask_apex.felis,
+        selected_model: 'gemma-4-E2B-Q4_K_M.gguf',
+        local: {
+          ...BASE_SETTINGS.ask_apex.local,
           context_window: 32768,
         },
       },

@@ -21,7 +21,7 @@ class LocalEffortRejectionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             ToolPreflightRequest.model_validate({"history": [], "prompt": "status"})
 
-    def test_local_agent_rejects_effort_with_400(self) -> None:
+    def test_local_model_rejects_effort_with_400(self) -> None:
         with mock.patch("core.api.cortex.DEMO_MODE", False), mock.patch(
             "core.api.cortex.is_dev_mode", return_value=True
         ), mock.patch(
@@ -32,7 +32,8 @@ class LocalEffortRejectionTests(unittest.TestCase):
                 query_agent(
                     AgentQueryRequest(
                         prompt="hello",
-                        agent="felis",
+                        agent="apex",
+                        model_id="gemma-4-E2B-Q4_K_M.gguf",
                         effort="medium",
                     )
                 )
@@ -51,7 +52,7 @@ class SandboxPolicyTests(unittest.TestCase):
             )
             self.assertEqual(response.status_code, 404)
 
-    def test_sandbox_panthera_rejects_production_history_and_uses_safe_tools(self) -> None:
+    def test_sandbox_cloud_model_rejects_production_history_and_uses_safe_tools(self) -> None:
         captured: dict[str, object] = {}
         selected_model = get_model_profile("gpt-5.6-luna")
         assert selected_model is not None
@@ -97,7 +98,8 @@ class SandboxPolicyTests(unittest.TestCase):
             query_agent(
                 AgentQueryRequest(
                     prompt="hello",
-                    agent="panthera",
+                    agent="apex",
+                    model_id="gpt-5.6-luna",
                     snapshot_id="snap-1",
                     history=[
                         AgentMessage(role="user", content="prior production turn")
@@ -111,7 +113,7 @@ class SandboxPolicyTests(unittest.TestCase):
         self.assertFalse(captured["disable_tools"])
         self.assertFalse(captured["disable_hud_context"])
 
-    def test_sandbox_felis_rejects_production_history(self) -> None:
+    def test_sandbox_local_model_rejects_production_history(self) -> None:
         captured: dict[str, object] = {}
 
         def capture_execution(payload, *_args, **kwargs):
@@ -151,7 +153,8 @@ class SandboxPolicyTests(unittest.TestCase):
             query_agent(
                 AgentQueryRequest(
                     prompt="hello",
-                    agent="felis",
+                    agent="apex",
+                    model_id="gemma-4-E2B-Q4_K_M.gguf",
                     history=[
                         AgentMessage(role="user", content="prior production turn")
                     ],
@@ -200,26 +203,26 @@ class SandboxPolicyTests(unittest.TestCase):
             ],
         )
 
-    def test_hosted_tool_policy_matches_panthera_models_and_toggles(self) -> None:
+    def test_hosted_tool_policy_matches_selected_models_and_toggles(self) -> None:
         with mock.patch(
             "core.agent.catalog.resolve_selected_model_profile"
         ) as resolve_profile:
             resolve_profile.return_value = get_model_profile("gemini-3.6-flash")
             self.assertEqual(
                 hosted_tools_for_agent(
-                    "panthera", google_search_enabled=True
+                    "apex", google_search_enabled=True
                 ),
                 frozenset({"google_search", "google_maps"}),
             )
             self.assertEqual(
                 hosted_tools_for_agent(
-                    "panthera", google_search_enabled=False
+                    "apex", google_search_enabled=False
                 ),
                 frozenset({"google_maps"}),
             )
             self.assertEqual(
                 hosted_tools_for_agent(
-                    "panthera",
+                    "apex",
                     google_search_enabled=False,
                     google_maps_enabled=False,
                 ),
@@ -229,13 +232,13 @@ class SandboxPolicyTests(unittest.TestCase):
             resolve_profile.return_value = get_model_profile("grok-4.3")
             self.assertEqual(
                 hosted_tools_for_agent(
-                    "panthera", x_search_enabled=True
+                    "apex", x_search_enabled=True
                 ),
                 frozenset({"x_search"}),
             )
             self.assertEqual(
                 hosted_tools_for_agent(
-                    "panthera",
+                    "apex",
                     x_search_enabled=False,
                 ),
                 frozenset(),
@@ -244,7 +247,7 @@ class SandboxPolicyTests(unittest.TestCase):
             resolve_profile.return_value = get_model_profile("grok-4.5")
             self.assertEqual(
                 hosted_tools_for_agent(
-                    "panthera",
+                    "apex",
                     x_search_enabled=False,
                 ),
                 frozenset(),

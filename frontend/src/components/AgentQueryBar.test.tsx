@@ -10,9 +10,9 @@ import type {
 
 import { AgentQueryBar, CortexQueryRim } from './AgentQueryBar'
 
-const felis: AgentStatus = {
-  key: 'felis',
-  display_name: 'Apex Felis',
+const apex: AgentStatus = {
+  key: 'apex',
+  display_name: 'Apex Agent',
   description: 'Balanced local profile.',
   configured_model: 'gemma-4-E2B-Q4_K_M.gguf',
   sort_order: 2,
@@ -55,7 +55,7 @@ const felis: AgentStatus = {
 }
 
 const catalog: ToolCatalog = {
-  agent: 'felis',
+  agent: 'apex',
   groups: [],
   tools: [],
   profiles: [],
@@ -68,7 +68,7 @@ const catalog: ToolCatalog = {
 }
 
 const overflowPreflight: ToolPreflightEstimate = {
-  agent: 'felis',
+  agent: 'apex',
   selection: {
     requested_tool_names: ['get_weather_forecast'],
     offered_tool_names: ['get_weather_forecast'],
@@ -100,9 +100,9 @@ function renderBar(
 ): ReturnType<typeof render> {
   return render(
     <AgentQueryBar
-      activeAgent="felis"
+      activeAgent="apex"
       onSubmit={onSubmit}
-      agentsStatus={[felis]}
+      agentsStatus={[apex]}
       catalog={catalog}
       selectedToolNames={['get_weather_forecast']}
       activeToolProfileId="custom_weather"
@@ -137,7 +137,7 @@ describe('AgentQueryBar unified tool selection', () => {
 
     expect(onSubmit).toHaveBeenCalledWith(
       'Check status',
-      'felis',
+      'apex',
       ['get_weather_forecast'],
       'custom_weather',
     )
@@ -208,9 +208,9 @@ describe('AgentQueryBar unified tool selection', () => {
 
     view.rerender(
       <AgentQueryBar
-        activeAgent="felis"
+        activeAgent="apex"
         onSubmit={onSubmit}
-        agentsStatus={[felis]}
+        agentsStatus={[apex]}
         catalog={catalog}
         selectedToolNames={['get_weather_forecast']}
         activeToolProfileId="custom_weather"
@@ -223,7 +223,7 @@ describe('AgentQueryBar unified tool selection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send query' }))
     expect(onSubmit).toHaveBeenCalledWith(
       'Shorten this prompt',
-      'felis',
+      'apex',
       ['get_weather_forecast'],
       'custom_weather',
     )

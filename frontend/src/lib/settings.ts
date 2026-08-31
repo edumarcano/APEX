@@ -1,8 +1,4 @@
-import {
-  isPantheraKey,
-  runtimeForAgentKey,
-  usesSandboxHistory,
-} from './agents'
+import { usesSandboxHistory } from './agents'
 import type {
   AgentKey,
   AgentInitialSelection,
@@ -33,9 +29,7 @@ import type {
 } from '../types/settings'
 import { MCP_PROVIDER_IDS } from './mcpProviders'
 
-const VALID_AGENT_KEYS: readonly AgentKey[] = ['panthera', 'felis']
-
-export { isLocalAgentKey, isPantheraKey, isFelisKey } from './agents'
+const VALID_AGENT_KEYS: readonly AgentKey[] = ['apex']
 
 export function resolveInitialAgentSelection(
   alreadyHydrated: boolean,
@@ -60,15 +54,16 @@ export function resolveAppliedAgentSelection(
   selectionHydrated: boolean,
 ): AgentInitialSelection {
   const { ask_apex: settings } = response.settings
-  const agent = selectionHydrated ? currentAgent : settings.agent
+  const agent = currentAgent
   const sandboxMode = response.dev_mode_active
     ? (selectionHydrated ? undefined : defaultSandboxMode(settings.sandbox_mode))
     : false
 
   return {
-    runtime: runtimeForAgentKey(agent),
+    runtime: settings.selected_model === settings.local.last_model ? 'local' : 'cloud',
     agent,
-    effort: isPantheraKey(agent) ? settings.panthera.effort : null,
+    modelId: settings.selected_model,
+    effort: settings.cloud.effort,
     ...(response.dev_mode_active
       ? { sandboxMode: sandboxMode ?? settings.sandbox_mode }
       : {}),
@@ -86,11 +81,11 @@ export function resolveHistoryPartition(
   return usesSandboxHistory(devModeActive, sandboxMode) ? 'sandbox' : 'production'
 }
 
-const DEV_MODE_AGENT_SETTINGS_KEYS = new Set(['panthera', 'felis', 'sandbox_mode'])
+const DEV_MODE_AGENT_SETTINGS_KEYS = new Set(['selected_model', 'cloud', 'local', 'sandbox_mode'])
 
 /**
  * Keep session-only agent selection out of persisted DEV_MODE settings,
- * while allowing nested Panthera and Felis preferences to remain configurable.
+ * while allowing nested cloud and local preferences to remain configurable.
  */
 export function filterAgentSettingsForDevMode(
   agentSettings: Record<string, unknown>,
@@ -170,7 +165,7 @@ function isVoiceMode(value: unknown): value is VoiceMode {
   )
 }
 
-function parsePantheraHostedTools(value: unknown): RuntimeSettings['ask_apex']['panthera']['hosted_tools'] | null {
+function parseHostedTools(value: unknown): RuntimeSettings['ask_apex']['cloud']['hosted_tools'] | null {
   if (!isRecord(value)) {
     return null
   }
@@ -188,35 +183,35 @@ function parsePantheraHostedTools(value: unknown): RuntimeSettings['ask_apex']['
   }
 }
 
-function parsePantheraSettings(value: unknown): RuntimeSettings['ask_apex']['panthera'] | null {
+function parseCloudSettings(value: unknown): RuntimeSettings['ask_apex']['cloud'] | null {
   if (!isRecord(value)) {
     return null
   }
-  if (typeof value.model !== 'string' || !value.model.trim()) {
+  if (typeof value.last_model !== 'string' || !value.last_model.trim()) {
     return null
   }
   if (!isCloudEffort(value.effort)) {
     return null
   }
-  const hostedTools = parsePantheraHostedTools(value.hosted_tools)
+  const hostedTools = parseHostedTools(value.hosted_tools)
   if (!hostedTools) {
     return null
   }
   return {
-    model: value.model.trim(),
+    last_model: value.last_model.trim(),
     effort: value.effort,
     personal_context_enabled: value.personal_context_enabled === true,
     hosted_tools: hostedTools,
   }
 }
 
-function parseFelisSettings(value: unknown): RuntimeSettings['ask_apex']['felis'] | null {
+function parseLocalSettings(value: unknown): RuntimeSettings['ask_apex']['local'] | null {
   if (!isRecord(value)) {
     return null
   }
   if (
-    typeof value.model !== 'string' ||
-    !value.model.trim() ||
+    typeof value.last_model !== 'string' ||
+    !value.last_model.trim() ||
     typeof value.context_window !== 'number' ||
     !Number.isInteger(value.context_window) ||
     value.context_window <= 0 ||
@@ -225,7 +220,7 @@ function parseFelisSettings(value: unknown): RuntimeSettings['ask_apex']['felis'
     return null
   }
   return {
-    model: value.model.trim(),
+    last_model: value.last_model.trim(),
     context_window: value.context_window,
     reasoning_mode: value.reasoning_mode,
     personal_context_enabled: value.personal_context_enabled === true,
@@ -333,7 +328,7 @@ function parseMcpSettings(value: unknown): McpSettings | null {
 
 function parseToolProfiles(value: unknown): ToolProfilesSettings {
   if (!isRecord(value)) {
-    return { custom_profiles: [], default_profile_by_agent: {} }
+    return { custom_profiles: [], default_profile_by_runtime: {} }
   }
   const custom_profiles = Array.isArray(value.custom_profiles)
     ? value.custom_profiles.flatMap((profile): ToolProfileSettings[] => {
@@ -359,14 +354,14 @@ function parseToolProfiles(value: unknown): ToolProfilesSettings {
       }]
     })
     : []
-  const defaults = isRecord(value.default_profile_by_agent)
+  const defaults = isRecord(value.default_profile_by_runtime)
     ? Object.fromEntries(
-      Object.entries(value.default_profile_by_agent).filter(
-        ([agent, profileId]) => typeof agent === 'string' && typeof profileId === 'string',
+      Object.entries(value.default_profile_by_runtime).filter(
+        ([runtime, profileId]) => typeof runtime === 'string' && typeof profileId === 'string',
       ),
     ) as Record<string, string>
     : {}
-  return { custom_profiles, default_profile_by_agent: defaults }
+  return { custom_profiles, default_profile_by_runtime: defaults }
 }
 
 function parseFootballSettings(value: unknown): FootballSettings {
@@ -450,15 +445,18 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   if (typeof value.ask_apex.enabled !== 'boolean') {
     return null
   }
-  if (!isAgentKey(value.ask_apex.agent)) {
+  if (!isAgentKey('apex')) {
     return null
   }
   if (typeof value.ask_apex.sandbox_mode !== 'boolean') {
     return null
   }
-  const panthera = parsePantheraSettings(value.ask_apex.panthera)
-  const felis = parseFelisSettings(value.ask_apex.felis)
-  if (!panthera || !felis) {
+  if (typeof value.ask_apex.selected_model !== 'string' || !value.ask_apex.selected_model.trim()) {
+    return null
+  }
+  const cloud = parseCloudSettings(value.ask_apex.cloud)
+  const local = parseLocalSettings(value.ask_apex.local)
+  if (!cloud || !local) {
     return null
   }
   if (!isBriefingMode(value.briefing.default_mode)) {
@@ -481,10 +479,10 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     market,
     ask_apex: {
       enabled: value.ask_apex.enabled,
-      agent: value.ask_apex.agent,
+      selected_model: value.ask_apex.selected_model.trim(),
       sandbox_mode: value.ask_apex.sandbox_mode,
-      panthera,
-      felis,
+      cloud,
+      local,
     },
     ...(hasToolProfiles ? { tool_profiles } : {}),
     briefing: {
@@ -502,7 +500,8 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
 }
 
 export function resolveAgentKey(settings: RuntimeSettings['ask_apex']): AgentKey {
-  return settings.agent
+  void settings
+  return 'apex'
 }
 
 export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings {
@@ -518,11 +517,11 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
     },
     ask_apex: {
       ...settings.ask_apex,
-      panthera: {
-        ...settings.ask_apex.panthera,
-        hosted_tools: { ...settings.ask_apex.panthera.hosted_tools },
+      cloud: {
+        ...settings.ask_apex.cloud,
+        hosted_tools: { ...settings.ask_apex.cloud.hosted_tools },
       },
-      felis: { ...settings.ask_apex.felis },
+      local: { ...settings.ask_apex.local },
     },
     ...(settings.tool_profiles
       ? {
@@ -531,8 +530,8 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
               ...profile,
               tool_names: [...profile.tool_names],
             })),
-            default_profile_by_agent: {
-              ...settings.tool_profiles.default_profile_by_agent,
+            default_profile_by_runtime: {
+              ...settings.tool_profiles.default_profile_by_runtime,
             },
           },
         }
@@ -654,14 +653,14 @@ export function diffSettingsPatch(
   if (JSON.stringify(baseline.tool_profiles) !== JSON.stringify(draft.tool_profiles)) {
     const draftProfiles = draft.tool_profiles ?? {
       custom_profiles: [],
-      default_profile_by_agent: {},
+      default_profile_by_runtime: {},
     }
     patch.tool_profiles = {
       custom_profiles: draftProfiles.custom_profiles.map((profile) => ({
         ...profile,
         tool_names: [...profile.tool_names],
       })),
-      default_profile_by_agent: { ...draftProfiles.default_profile_by_agent },
+      default_profile_by_runtime: { ...draftProfiles.default_profile_by_runtime },
     }
   }
 

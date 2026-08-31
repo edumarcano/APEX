@@ -144,13 +144,13 @@ interface SessionSelection {
 }
 
 interface PendingSelection {
-  agent: AgentKey
+  key: string
   selection: SessionSelection | null
 }
 
-function readSessionSelection(agent: AgentKey): SessionSelection | null {
+function readSessionSelection(runtime: 'cloud' | 'local'): SessionSelection | null {
   try {
-    const raw = globalThis.sessionStorage?.getItem(`${SESSION_PREFIX}${agent}`)
+    const raw = globalThis.sessionStorage?.getItem(`${SESSION_PREFIX}${runtime}`)
     if (!raw) return null
     const parsed: unknown = JSON.parse(raw)
     if (
@@ -167,10 +167,10 @@ function readSessionSelection(agent: AgentKey): SessionSelection | null {
   }
 }
 
-function writeSessionSelection(agent: AgentKey, selection: SessionSelection): void {
+function writeSessionSelection(runtime: 'cloud' | 'local', selection: SessionSelection): void {
   try {
     globalThis.sessionStorage?.setItem(
-      `${SESSION_PREFIX}${agent}`,
+      `${SESSION_PREFIX}${runtime}`,
       JSON.stringify(selection),
     )
   } catch {
@@ -219,23 +219,27 @@ export interface UseToolCatalogResult {
 
 export function useToolCatalog(
   activeAgent: AgentKey,
+  modelId: string,
+  runtime: 'cloud' | 'local',
   availabilityVersion: string | null = null,
 ): UseToolCatalogResult {
   const [catalog, setCatalog] = useState<ToolCatalog | null>(null)
+  const [catalogKey, setCatalogKey] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedToolNames, setSelectedToolNamesState] = useState<string[]>([])
   const [activeToolProfileId, setActiveToolProfileId] = useState<string | null>(null)
   const [selectionReady, setSelectionReady] = useState(false)
   const pendingSelection = useRef<PendingSelection | null>(null)
-  const hydratedAgent = useRef<AgentKey | null>(null)
-  const activeAgentRef = useRef(activeAgent)
-  const requestGenerations = useRef(new Map<AgentKey, number>())
+  const activeKey = `${activeAgent}:${modelId}`
+  const hydratedKey = useRef<string | null>(null)
+  const activeKeyRef = useRef(activeKey)
+  const requestGenerations = useRef(new Map<string, number>())
   const refreshedAvailabilityVersion = useRef<string | null>(null)
 
   useEffect(() => {
-    activeAgentRef.current = activeAgent
-  }, [activeAgent])
+    activeKeyRef.current = activeKey
+  }, [activeKey])
 
   const setSelection = useCallback(
     (names: string[], profileId: string | null = null): void => {
@@ -244,52 +248,55 @@ export function useToolCatalog(
       ]
       setSelectedToolNamesState(normalized)
       setActiveToolProfileId(profileId)
-      writeSessionSelection(activeAgent, { names: normalized, profileId })
+      writeSessionSelection(runtime, { names: normalized, profileId })
     },
-    [activeAgent],
+    [runtime],
   )
 
   const refreshCatalog = useCallback(async (): Promise<void> => {
-    const requestedAgent = activeAgent
-    if (activeAgentRef.current !== requestedAgent) return
-    const requestId = (requestGenerations.current.get(requestedAgent) ?? 0) + 1
-    requestGenerations.current.set(requestedAgent, requestId)
+    const requestedKey = activeKey
+    if (activeKeyRef.current !== requestedKey) return
+    const requestId = (requestGenerations.current.get(requestedKey) ?? 0) + 1
+    requestGenerations.current.set(requestedKey, requestId)
     const isCurrentRequest = (): boolean =>
-      activeAgentRef.current === requestedAgent &&
-      requestGenerations.current.get(requestedAgent) === requestId
+      activeKeyRef.current === requestedKey &&
+      requestGenerations.current.get(requestedKey) === requestId
     setIsLoading(true)
     setError(null)
     try {
-      const response = await fetch(API_ENDPOINTS.cortexToolCatalog(requestedAgent))
+      const response = await fetch(API_ENDPOINTS.cortexToolCatalog(modelId))
       if (!response.ok) {
         throw new Error(`Tool catalog unavailable (${response.status})`)
       }
-      const parsed = parseCatalog(await response.json(), requestedAgent)
+      const parsed = parseCatalog(await response.json(), activeAgent)
       if (!parsed) throw new Error('APEX returned an invalid tool catalog.')
       if (isCurrentRequest()) {
         setCatalog(parsed)
+        setCatalogKey(requestedKey)
       }
     } catch (fetchError) {
       if (isCurrentRequest()) {
         setError(fetchError instanceof Error ? fetchError.message : 'Tool catalog unavailable.')
         setCatalog(null)
+        setCatalogKey(null)
       }
     } finally {
       if (isCurrentRequest()) setIsLoading(false)
     }
-  }, [activeAgent])
+  }, [activeAgent, activeKey, modelId])
 
   useEffect(() => {
-    const stored = readSessionSelection(activeAgent)
-    pendingSelection.current = { agent: activeAgent, selection: stored }
-    hydratedAgent.current = null
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Agent changes reset the visible selection while the new catalog hydrates.
+    const stored = readSessionSelection(runtime)
+    pendingSelection.current = { key: activeKey, selection: stored }
+    hydratedKey.current = null
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Model changes reset the visible selection while the new catalog hydrates.
     setCatalog(null)
+    setCatalogKey(null)
     setSelectionReady(false)
     setSelectedToolNamesState(stored?.names ?? [])
     setActiveToolProfileId(stored?.profileId ?? null)
     void refreshCatalog()
-  }, [activeAgent, refreshCatalog])
+  }, [activeKey, refreshCatalog, runtime])
 
   useEffect(() => {
     if (
@@ -303,12 +310,12 @@ export function useToolCatalog(
   }, [availabilityVersion, refreshCatalog])
 
   useEffect(() => {
-    if (!catalog || catalog.agent !== activeAgent || hydratedAgent.current === activeAgent) {
+    if (!catalog || catalogKey !== activeKey || catalog.agent !== activeAgent || hydratedKey.current === activeKey) {
       return
     }
-    hydratedAgent.current = activeAgent
+    hydratedKey.current = activeKey
     const pending = pendingSelection.current
-    const stored = pending?.agent === activeAgent ? pending.selection : null
+    const stored = pending?.key === activeKey ? pending.selection : null
     const storedProfile = stored?.profileId
       ? catalog.profiles.find((item) => item.id === stored.profileId)
       : null
@@ -336,12 +343,12 @@ export function useToolCatalog(
     const normalizedNames = normalizeNames(names)
     setSelectedToolNamesState(normalizedNames)
     setActiveToolProfileId(profileId)
-    writeSessionSelection(activeAgent, { names: normalizedNames, profileId })
+    writeSessionSelection(runtime, { names: normalizedNames, profileId })
     setSelectionReady(true)
-  }, [activeAgent, catalog])
+  }, [activeAgent, activeKey, catalog, catalogKey, runtime])
 
   useEffect(() => {
-    if (!catalog || catalog.agent !== activeAgent || hydratedAgent.current !== activeAgent) {
+    if (!catalog || catalogKey !== activeKey || catalog.agent !== activeAgent || hydratedKey.current !== activeKey) {
       return
     }
     const activeProfile = activeToolProfileId
@@ -361,10 +368,10 @@ export function useToolCatalog(
         : null
       if (!expectedNames || !sameNames(expectedNames, selectedToolNames)) {
         setActiveToolProfileId(null)
-        writeSessionSelection(activeAgent, { names: selectedToolNames, profileId: null })
+        writeSessionSelection(runtime, { names: selectedToolNames, profileId: null })
       }
     }
-  }, [activeAgent, activeToolProfileId, catalog, selectedToolNames, setSelection])
+  }, [activeAgent, activeKey, activeToolProfileId, catalog, catalogKey, runtime, selectedToolNames, setSelection])
 
   const applyToolProfile = useCallback(
     (profileId: string): void => {
@@ -381,7 +388,7 @@ export function useToolCatalog(
     [catalog, setSelection],
   )
 
-  const effectiveCatalog = catalog?.agent === activeAgent ? catalog : null
+  const effectiveCatalog = catalogKey === activeKey && catalog?.agent === activeAgent ? catalog : null
   const effectiveSelectionReady =
     selectionReady && effectiveCatalog !== null
 

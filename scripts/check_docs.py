@@ -462,16 +462,16 @@ def check_default_briefing_provider(
     import json
 
     from core.agent.model_catalog import (
-        DEFAULT_FELIS_MODEL,
-        PANTHERA_BRIEFING_MODEL,
+        DEFAULT_LOCAL_MODEL,
+        FOCUSED_BRIEFING_MODEL,
         get_model_profile,
     )
     from core.synthesis.models import VALID_BRIEFING_MODES
 
     def provider_for_mode(mode: str) -> str:
         model_id = {
-            "focused": PANTHERA_BRIEFING_MODEL,
-            "flash": DEFAULT_FELIS_MODEL,
+            "focused": FOCUSED_BRIEFING_MODEL,
+            "flash": DEFAULT_LOCAL_MODEL,
         }.get(mode)
         profile = get_model_profile(model_id) if model_id is not None else None
         if profile is None:
@@ -575,11 +575,10 @@ def public_openapi_routes() -> set[tuple[str, str]]:
 
 
 def current_agent_profiles() -> dict[str, str]:
-    from core.agent.model_catalog import DEFAULT_FELIS_MODEL, DEFAULT_PANTHERA_MODEL
+    from core.agent.model_catalog import DEFAULT_APEX_MODEL
 
     return {
-        "panthera": DEFAULT_PANTHERA_MODEL,
-        "felis": DEFAULT_FELIS_MODEL,
+        "apex": DEFAULT_APEX_MODEL,
     }
 
 
