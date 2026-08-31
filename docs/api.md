@@ -44,8 +44,8 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | PATCH | `/api/v1/cortex/tool-profiles/{profile_id}` | Edit a saved tool profile |
 | DELETE | `/api/v1/cortex/tool-profiles/{profile_id}` | Delete a saved tool profile |
 | POST | `/api/v1/cortex/tool-profiles/default` | Assign an Agent default profile |
-| GET | `/api/v1/agents` | Backend-owned Agent catalog and availability |
-| POST | `/api/v1/agents/{agent_key}/verify` | Explicit non-generative cloud access check |
+| GET | `/api/v1/cortex/agent` | Apex Agent and unified model catalog |
+| POST | `/api/v1/cortex/models/verify` | Explicit non-generative cloud model access check |
 | POST | `/api/v1/cortex/local-model/load` | Pre-warm a selected local model |
 | POST | `/api/v1/cortex/local-model/unload` | Unload the active local model |
 | GET | `/api/v1/cortex/conversations` | List durable Cortex conversations |
@@ -94,15 +94,15 @@ Optional external services are deliberately excluded.
 
 ### GET `/api/v1/config`
 
-Returns boot-time HUD values such as Agent query enablement, the effective model selection, briefing and voice defaults, market enablement, message limits, runtime modes, and initial synthesis hints. `agent_initial_selection` reflects the Agent (Panthera or Felis) implied by the saved model selection.
+Returns boot-time HUD values such as Agent query enablement, the effective model selection, briefing and voice defaults, market enablement, message limits, runtime modes, and initial synthesis hints. `cortex_initial_selection` identifies Apex Agent and the saved model/runtime selection.
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `18`.
+Returns the resolved settings envelope. The current contract version is `19`.
 
 ```json
 {
-  "schema_version": 18,
+  "schema_version": 19,
   "settings": {
     "user_designation": "",
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": false },
@@ -111,16 +111,16 @@ Returns the resolved settings envelope. The current contract version is `18`.
     "market": { "symbols": [] },
     "ask_apex": {
       "enabled": true,
-      "agent": "panthera",
+      "selected_model": "deepseek/deepseek-v4-flash-0731",
       "sandbox_mode": false,
-      "panthera": {
-        "model": "gpt-5.6-luna",
-        "effort": "medium",
+      "cloud": {
+        "last_model": "deepseek/deepseek-v4-flash-0731",
+        "effort": "low",
         "personal_context_enabled": false,
         "hosted_tools": { "google_search": true, "google_maps": true, "x_search": true }
       },
-      "felis": {
-        "model": "gemma-4-E2B-Q4_K_M.gguf",
+      "local": {
+        "last_model": "gemma-4-E2B-Q4_K_M.gguf",
         "context_window": 16384,
         "reasoning_mode": "none",
         "personal_context_enabled": false

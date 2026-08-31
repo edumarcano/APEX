@@ -118,7 +118,7 @@ Weather resolves the prompt-specified location or `TARGET_LOCATION` through Open
 
 APEX has two Apex Agents: **Panthera** for cloud work and **Felis** for local work. Model selection sits underneath the Agent. The selected model determines Panthera's provider or Felis's local runtime and controls which reasoning, hosted-tool, context, or local-runtime options are available.
 
-Current default model mappings used by documentation checks are `panthera -> gpt-5.6-luna`; `felis -> gemma-4-E2B-Q4_K_M.gguf`; legacy Agent settings are not migrated at runtime, so update them to the Panthera/Felis model-first format.
+Current default model mapping used by documentation checks is `apex -> deepseek/deepseek-v4-flash-0731`; settings migrations preserve prior cloud and local choices while selecting the corresponding model directly.
 
 ## Model stability
 
