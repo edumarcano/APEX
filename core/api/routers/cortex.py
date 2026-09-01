@@ -6,7 +6,7 @@ import re
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from core.agent.catalog import AGENT_SPECS
+from core.agent.catalog import AGENT_SPECS, resolve_effort
 from core.agent.model_catalog import get_model_profile, visible_cloud_models, visible_local_models
 from core.agent.types import (
     AgentKey,
@@ -22,6 +22,7 @@ from core.settings import (
     ToolProfilesPatch,
     get_settings_store,
 )
+from core.config import is_dev_mode
 from core.api.cortex import (
     build_agent_statuses,
     build_tool_catalog,
@@ -78,6 +79,36 @@ from core.api.models import (
 
 router = APIRouter(tags=["cortex"])
 _PROFILE_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,79}$")
+
+
+def _resolved_turn_metadata(payload: ConversationTurnRequest) -> dict[str, object]:
+    """Capture model routing inputs before persisting a replayable turn."""
+    settings = get_settings_store().get_snapshot().ask_apex
+    model_id = payload.model_id or settings.selected_model
+    profile = get_model_profile(model_id)
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown model: {model_id!r}")
+    if profile.dev_only and not is_dev_mode():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Model {model_id!r} is only available in development mode.")
+    if profile.runtime == "cloud":
+        return {
+            "resolved_model": profile.model_id,
+            "runtime": profile.runtime,
+            "provider": profile.provider,
+            "effective_effort": resolve_effort(profile, payload.effort),
+            "effective_context_window": None,
+            "effective_local_reasoning_mode": None,
+        }
+    if payload.effort is not None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Effort cannot be set for local models.")
+    return {
+        "resolved_model": profile.model_id,
+        "runtime": profile.runtime,
+        "provider": profile.provider,
+        "effective_effort": None,
+        "effective_context_window": payload.context_window or settings.local.context_window,
+        "effective_local_reasoning_mode": payload.local_reasoning_mode or settings.local.reasoning_mode,
+    }
 
 
 def _context_entity(entity_id, *, partition: str) -> ContextEntityResponse | None:
@@ -448,6 +479,7 @@ def conversation_turn(conversation_id: str, payload: ConversationTurnRequest) ->
             "tool_profile_id": tool_profile_id,
             "snapshot_id": payload.snapshot_id,
             "briefing_id": payload.briefing_id,
+            **_resolved_turn_metadata(payload),
         }
         user, agent_message, history, replayed = service.begin_turn(
             parsed_id,

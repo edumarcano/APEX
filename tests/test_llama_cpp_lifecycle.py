@@ -28,10 +28,10 @@ def _load_fixture(name: str) -> dict:
     return json.loads((_FIXTURES / name).read_text(encoding="utf-8"))
 
 
-def _felis_profile(*, context_window: int = 16384):
+def _apex_local_profile(*, context_window: int = 16384):
     return build_llama_cpp_profile(
         "gemma-4-E2B-Q4_K_M.gguf",
-        display_name="Apex Felis",
+        display_name="Apex Agent",
         api_model="gemma-4-E2B-Q4_K_M.gguf",
         stability="stable",
         max_tool_turns=3,
@@ -329,7 +329,7 @@ class LlamaCppLifecycleTests(unittest.TestCase):
             "core.agent.providers.llama_cpp_supervisor.get_llama_cpp_server_supervisor",
             return_value=mock_sup,
         ):
-            self.assertTrue(self.backend.load_model(_felis_profile()))
+            self.assertTrue(self.backend.load_model(_apex_local_profile()))
 
         self.assertTrue(
             any(

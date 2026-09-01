@@ -21,7 +21,7 @@ from core.agent.capabilities import (
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.providers.gemini import _descriptors_to_gemini_tools
-from tests.support.agent_fixtures import GEMINI_FLASH_MODEL, build_panthera_profile
+from tests.support.agent_fixtures import GEMINI_FLASH_MODEL, build_cloud_profile
 from core.agent.providers.ollama import _descriptor_to_openai_schema
 from core.agent.tools import register_native_capabilities
 from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
@@ -382,7 +382,7 @@ class CapabilityRegistryTests(unittest.TestCase):
         response = run_agent_loop(
             AgentQueryRequest(prompt="Hide this", agent="apex"),
             Provider(),
-            build_panthera_profile(model=GEMINI_FLASH_MODEL),
+            build_cloud_profile(model=GEMINI_FLASH_MODEL),
             selected_tools=[get_capability_descriptor("hidden_tool")],  # type: ignore[list-item]
         )
 
@@ -461,7 +461,7 @@ class CapabilityRegistryTests(unittest.TestCase):
         response = run_agent_loop(
             AgentQueryRequest(prompt="Call missing", agent="apex"),
             Provider(),
-            build_panthera_profile(model=GEMINI_FLASH_MODEL),
+            build_cloud_profile(model=GEMINI_FLASH_MODEL),
         )
 
         self.assertEqual(response.answer, "Recovered.")

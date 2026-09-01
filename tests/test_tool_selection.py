@@ -16,7 +16,7 @@ from core.agent.catalog import build_concrete_agent
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.tool_catalog import build_tool_catalog
-from tests.support.agent_fixtures import panthera_settings
+from tests.support.agent_fixtures import cloud_settings
 from core.agent.tool_schemas import (
     _COMPACT_BRAVE_SEARCH_SCHEMA,
     project_descriptor_for_model,
@@ -194,7 +194,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertEqual(selection.diagnostics.rejected_tools[0].code, "invalid")
 
     def test_agent_policy_intersects_explicit_selection(self) -> None:
-        agent_settings = panthera_settings().model_copy(update={"sandbox_mode": True})
+        agent_settings = cloud_settings().model_copy(update={"sandbox_mode": True})
         snapshot = MagicMock()
         snapshot.ask_apex = agent_settings
         with patch("core.settings.get_settings_store") as store, patch(
@@ -206,7 +206,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertEqual(selection.diagnostics.rejected_tools[0].code, "policy")
 
     def test_sandbox_catalog_disables_personal_native_tools(self) -> None:
-        agent_settings = panthera_settings().model_copy(update={"sandbox_mode": True})
+        agent_settings = cloud_settings().model_copy(update={"sandbox_mode": True})
         snapshot = MagicMock()
         snapshot.ask_apex = agent_settings
         with patch("core.settings.get_settings_store") as store, patch(
@@ -231,7 +231,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
     def test_sandbox_catalog_disables_configured_undiscovered_personal_mcp_tools(
         self,
     ) -> None:
-        agent_settings = panthera_settings().model_copy(update={"sandbox_mode": True})
+        agent_settings = cloud_settings().model_copy(update={"sandbox_mode": True})
         snapshot = MagicMock()
         snapshot.ask_apex = agent_settings
         server = SimpleNamespace(

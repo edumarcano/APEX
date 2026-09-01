@@ -550,7 +550,7 @@ export default function SettingsPanel({
                           id="settings-llama-cpp-preset"
                           type="text"
                           value={draft.llama_cpp.preset_path}
-                          placeholder="C:\path\to\llama-cpp-apex-agents.preset.ini"
+                          placeholder="C:\path\to\llama-cpp-apex-local-models.preset.ini"
                           onChange={(event) =>
                             setDraft((prev) => ({
                               ...prev,

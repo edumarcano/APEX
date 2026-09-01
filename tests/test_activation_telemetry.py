@@ -138,17 +138,9 @@ class TelemetryApiTests(unittest.TestCase):
                 "modules": {"football": False, "f1": False},
                 "ask_apex": {
                     "enabled": True,
-                    "agent": "felis",
-                    "panthera": {
-                        "provider": "openai",
-                        "model": "gpt-5.6-luna",
-                        "effort": "focused",
-                    },
-                    "felis": {
-                        "runtime": "ollama",
-                        "model": "qwen3:1.7b",
-                        "reasoning_mode": "none",
-                    },
+                    "selected_model": "qwen3:1.7b",
+                    "cloud": {"last_model": "gpt-5.6-luna", "effort": "low"},
+                    "local": {"last_model": "qwen3:1.7b", "reasoning_mode": "none"},
                 },
                 "tts_settings": {
                     "primary_tts": "pyttsx3",
@@ -789,17 +781,9 @@ class TriggerWithoutGateTests(unittest.TestCase):
                 "modules": {"football": False, "f1": False},
                 "ask_apex": {
                     "enabled": True,
-                    "agent": "felis",
-                    "panthera": {
-                        "provider": "openai",
-                        "model": "gpt-5.6-luna",
-                        "effort": "focused",
-                    },
-                    "felis": {
-                        "runtime": "ollama",
-                        "model": "qwen3:1.7b",
-                        "reasoning_mode": "none",
-                    },
+                    "selected_model": "qwen3:1.7b",
+                    "cloud": {"last_model": "gpt-5.6-luna", "effort": "low"},
+                    "local": {"last_model": "qwen3:1.7b", "reasoning_mode": "none"},
                 },
                 "tts_settings": {
                     "primary_tts": "pyttsx3",

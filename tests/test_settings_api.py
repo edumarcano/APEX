@@ -81,18 +81,18 @@ class SettingsApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/settings")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["schema_version"], 18)
+        self.assertEqual(payload["schema_version"], 19)
         self.assertTrue(payload["settings"]["features"]["market"])
         self.assertTrue(payload["settings"]["features"]["weather"])
         self.assertEqual(payload["settings"]["briefing"]["default_mode"], "flash")
         self.assertEqual(payload["settings"]["voice"]["mode"], "automatic")
         self.assertTrue(payload["settings"]["modules"]["f1"])
-        self.assertEqual(payload["settings"]["ask_apex"]["agent"], "panthera")
-        self.assertEqual(payload["settings"]["ask_apex"]["panthera"]["model"], "gpt-5.6-luna")
-        self.assertNotIn("provider", payload["settings"]["ask_apex"]["panthera"])
-        self.assertNotIn("runtime", payload["settings"]["ask_apex"]["felis"])
-        self.assertTrue(payload["settings"]["ask_apex"]["panthera"]["hosted_tools"]["google_maps"])
-        self.assertTrue(payload["settings"]["ask_apex"]["panthera"]["hosted_tools"]["x_search"])
+        ask_apex = payload["settings"]["ask_apex"]
+        self.assertEqual(ask_apex["selected_model"], "gpt-5.6-luna")
+        self.assertEqual(ask_apex["cloud"]["last_model"], "gpt-5.6-luna")
+        self.assertEqual(ask_apex["local"]["last_model"], "gemma-4-E2B-Q4_K_M.gguf")
+        self.assertTrue(ask_apex["cloud"]["hosted_tools"]["google_maps"])
+        self.assertTrue(ask_apex["cloud"]["hosted_tools"]["x_search"])
         self.assertEqual(payload["settings"]["voice"]["engine"], "google")
         self.assertFalse(payload["settings"]["mcp"]["enabled"])
         self.assertFalse(payload["settings"]["mcp"]["servers"]["github"]["enabled"])
@@ -153,14 +153,15 @@ class SettingsApiTests(unittest.TestCase):
         reloaded = self.client.get("/api/v1/settings")
         self.assertEqual(reloaded.json()["settings"]["briefing"]["default_mode"], "focused")
 
-    def test_dev_flash_synthesis_reports_felis(self) -> None:
+    def test_dev_flash_synthesis_reports_its_fixed_runtime_and_model(self) -> None:
         with mock.patch("core.api.routers.system.is_dev_mode", return_value=True), mock.patch(
             "core.api.routers.system.DEV_AI_SYNTHESIS", "flash"
         ), mock.patch("core.api.routers.system.DEMO_MODE", False):
             response = self.client.get("/api/v1/config")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["synthesis_agent"], "felis")
+        self.assertEqual(response.json()["synthesis_strategy"], "local")
+        self.assertEqual(response.json()["synthesis_model_id"], "gemma-4-E2B-Q4_K_M.gguf")
 
     def test_partial_patch_persists_and_returns_resolved(self) -> None:
         response = self.client.patch(
@@ -184,8 +185,8 @@ class SettingsApiTests(unittest.TestCase):
         for payload in (
             {"features": {"weather": True, "unknown": True}},
             {"briefing": {"default_mode": "acinonyx"}},
-            {"ask_apex": {"panthera": {"provider": "gemini"}}},
-            {"ask_apex": {"felis": {"runtime": "ollama"}}},
+            {"ask_apex": {"cloud": {"provider": "gemini"}}},
+            {"ask_apex": {"local": {"runtime": "ollama"}}},
         ):
             with self.subTest(payload=payload):
                 response = self.client.patch("/api/v1/settings", json=payload)
@@ -326,7 +327,7 @@ class SettingsApiTests(unittest.TestCase):
     def test_invalid_profile_rejected(self) -> None:
         response = self.client.patch(
             "/api/v1/settings",
-            json={"ask_apex": {"agent": "not-an-agent"}},
+            json={"ask_apex": {"selected_model": "not-a-model"}},
         )
         self.assertEqual(response.status_code, 422)
 
@@ -348,14 +349,14 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 500)
         self.assertIn("config.local.json", response.json()["detail"])
 
-    def test_config_boot_reads_store_including_local_agent(self) -> None:
+    def test_config_boot_reads_store_including_selected_local_model(self) -> None:
         self.store.apply_patch(
             SettingsPatch.model_validate(
                 {
                     "ask_apex": {
                         "enabled": False,
-                        "agent": "felis",
-                        "felis": {"model": "qwen3:1.7b"},
+                        "selected_model": "qwen3:1.7b",
+                        "local": {"last_model": "qwen3:1.7b"},
                     }
                 }
             )
@@ -364,8 +365,9 @@ class SettingsApiTests(unittest.TestCase):
             response = self.client.get("/api/v1/config")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["default_agent"], "felis")
-        self.assertEqual(payload["agent_initial_selection"]["agent"], "felis")
+        self.assertEqual(payload["cortex_initial_selection"]["agent"], "apex")
+        self.assertEqual(payload["cortex_initial_selection"]["model_id"], "qwen3:1.7b")
+        self.assertEqual(payload["cortex_initial_selection"]["runtime"], "local")
         self.assertFalse(payload["ask_apex_enabled"])
         self.assertIn("max_recent_conversation_messages", payload)
         self.assertIn("dev_mode_active", payload)
@@ -378,26 +380,25 @@ class SettingsApiTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 422)
 
-    def test_unavailable_model_remains_valid_panthera_selection(self) -> None:
+    def test_unavailable_dev_model_remains_a_valid_selected_model(self) -> None:
         with mock.patch("core.settings.normalize.is_dev_mode", return_value=True):
             response = self.client.patch(
                 "/api/v1/settings",
                 json={
                     "ask_apex": {
-                        "panthera": {
-                            "model": "gemini-3.6-flash",
-                        }
+                        "selected_model": "gemini-3.6-flash",
+                        "cloud": {"last_model": "gemini-3.6-flash"},
                     }
                 },
             )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            response.json()["settings"]["ask_apex"]["panthera"]["model"],
+            response.json()["settings"]["ask_apex"]["selected_model"],
             "gemini-3.6-flash",
         )
         with mock.patch("core.agent.catalog.is_dev_mode", return_value=False):
             config_payload = self.client.get("/api/v1/config").json()
-        self.assertEqual(config_payload["default_agent"], "panthera")
+        self.assertEqual(config_payload["cortex_initial_selection"]["agent"], "apex")
 
 if __name__ == "__main__":
     unittest.main()

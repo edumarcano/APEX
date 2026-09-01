@@ -418,6 +418,16 @@ class CloudSettingsPatch(BaseModel):
     personal_context_enabled: bool | None = None
     hosted_tools: CloudHostedToolsPatch | None = None
 
+    @field_validator("last_model")
+    @classmethod
+    def _validate_model(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        profile = get_model_profile(value)
+        if profile is None or profile.runtime != "cloud":
+            raise ValueError(f"Unsupported cloud model: {value!r}")
+        return value
+
 
 class LocalSettingsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -426,6 +436,16 @@ class LocalSettingsPatch(BaseModel):
     context_window: StrictInt | None = None
     reasoning_mode: LocalReasoningMode | None = None
     personal_context_enabled: bool | None = None
+
+    @field_validator("last_model")
+    @classmethod
+    def _validate_model(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        profile = get_model_profile(value)
+        if profile is None or profile.runtime != "local":
+            raise ValueError(f"Unsupported local model: {value!r}")
+        return value
 
 
 class AgentSettingsPatch(BaseModel):
@@ -438,6 +458,13 @@ class AgentSettingsPatch(BaseModel):
     sandbox_mode: bool | None = None
     cloud: CloudSettingsPatch | None = None
     local: LocalSettingsPatch | None = None
+
+    @field_validator("selected_model")
+    @classmethod
+    def _validate_model(cls, value: str | None) -> str | None:
+        if value is not None and get_model_profile(value) is None:
+            raise ValueError(f"Unsupported model: {value!r}")
+        return value
 
 
 class ToolProfilesPatch(BaseModel):

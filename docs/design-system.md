@@ -155,17 +155,17 @@ Use uppercase text and wide tracking primarily for short operational labels. Avo
 
 ### Unified Tools selector
 
-The Tools control is shared by Panthera and Felis. Its collapsed state shows the active profile or `Custom`, selected-tool count, and cumulative estimated schema tokens. Its expanded surface provides profile selection, search, APEX-family and MCP-server toggles, individual tool overrides, disabled availability reasons, group subtotals, select-all/clear actions, and the estimated next-request breakdown. Selection changes only which tools are offered to the Agent; MCP settings remain a separate permission boundary.
+The Tools control belongs to Apex Agent and is scoped to the selected runtime. Its collapsed state shows the active profile or `Custom`, selected-tool count, and cumulative estimated schema tokens. Its expanded surface provides profile selection, search, APEX-family and MCP-server toggles, individual tool overrides, disabled availability reasons, group subtotals, select-all/clear actions, and the estimated next-request breakdown. Selection changes only which tools are offered to the Agent; MCP settings remain a separate permission boundary.
 
 The local context meter uses monospace tabular numerals and displays used/available tokens. Neutral text is the default; amber is reserved for at least 80% utilization. Token estimates are diagnostics, not progress animation, and must remain readable without color.
 
 ### Cortex Agent and model selector
 
-Cortex shows Panthera or Felis first, with model selection and model-supported controls underneath the selected Agent. The Agent card can show the selected model, its provider or local runtime, availability, and compact pricing, while the model catalog stays in the Agent's popover. Provider and runtime are displayed as information derived from the model, not as separate routing controls.
+Cortex shows Apex Agent with one model selector grouped by Cloud and Local. Model-supported controls appear below the selected model. The Agent card can show provider or local runtime, availability, and compact pricing, while the catalog stays in the model selector. Provider and runtime are information derived from the model, not separate routing controls.
 
 The selected model determines which reasoning controls, hosted tools, local context options, and lifecycle controls make sense. Home may offer a smaller Agent trigger, but those detailed model controls stay in Cortex. The composer shows only the short Agent name and a send control.
 
-Treat `Configured` as credentials present but not provider-verified. Display verification and runtime-failure states with text and iconography, not color alone. `Verify access` remains a secondary action inside an expanded Panthera card and must not be nested inside its Agent-selection button.
+Treat `Configured` as credentials present but not provider-verified. Display verification and runtime-failure states with text and iconography, not color alone. `Verify access` remains a secondary action for the selected cloud model and must not be nested inside its model-selection button.
 
 Stability belongs to the model. **Preview** uses amber, **Experimental** uses cyan, and **Stable** has no stability badge. Do not infer model stability from the provider, runtime, or Agent name.
 

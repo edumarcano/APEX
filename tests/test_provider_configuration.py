@@ -12,25 +12,12 @@ from core.agent.providers.ollama import OllamaProvider
 from core.agent.types import AgentMessage
 from core.config import GEMINI_AGENT_MAX_TOOL_CALLS, GEMINI_AGENT_MAX_TURNS
 
-_MODEL_PROFILES = {
-    "panthera": ("panthera", "gpt-5.6-luna"),
-    "neofelis": ("panthera", "gemini-3.6-flash"),
-    "acinonyx": ("panthera", "gemini-3.5-flash-lite"),
-    "sorex": ("felis", "qwen3:1.7b"),
-    "mus": ("felis", "qwen3:4b-instruct"),
-    "apodemus": ("felis", "gemma-4-E2B-Q4_K_M.gguf"),
-    "neotoma": ("felis", "gemma-4-E4B-Q4_K_M.gguf"),
-    "unnamed-experimental-agent": ("felis", "Qwen3.5-4B-Q4_K_M.gguf"),
-}
-
-
-def _concrete_profile(key: str):
-    agent_key, model_id = _MODEL_PROFILES.get(key, (key, "gpt-5.6-luna"))
+def _concrete_profile(model_id: str):
     model_profile = get_model_profile(model_id)
     assert model_profile is not None
     native = resolve_effort(model_profile, None)
     return build_concrete_agent(
-        agent_key,
+        "apex",
         native_effort=native,
         model_id=model_id,
     )
@@ -86,7 +73,7 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
         mock_client.models.generate_content.return_value = mock_response
 
         provider = GeminiProvider(api_key="test-api-key")
-        profile = _concrete_profile("neofelis")
+        profile = _concrete_profile("gemini-3.6-flash")
         messages = [AgentMessage(role="user", content="Hello")]
 
         provider.generate_turn(messages=messages, tools=[], profile=profile)
@@ -112,7 +99,7 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
         mock_get_session.return_value = mock_session
 
         provider = OllamaProvider()
-        profile = _concrete_profile("sorex")
+        profile = _concrete_profile("qwen3:1.7b")
         provider.generate_turn(
             [AgentMessage(role="user", content="Hello")],
             [],

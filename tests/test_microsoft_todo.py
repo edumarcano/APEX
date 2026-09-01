@@ -552,7 +552,7 @@ class MicrosoftTodoCapabilityTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"MICROSOFT_TODO_CLIENT_ID": ""}):
             tool = next(
                 item
-                for item in build_tool_catalog("panthera").tools
+                for item in build_tool_catalog("apex").tools
                 if item.name == "list_microsoft_todo_lists"
             )
         self.assertFalse(tool.available)

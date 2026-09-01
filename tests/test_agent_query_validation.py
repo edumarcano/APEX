@@ -183,7 +183,7 @@ class SandboxPolicyTests(unittest.TestCase):
             )
 
         filtered = filter_agent_capabilities(
-            "panthera",
+            "apex",
             [
                 descriptor("get_weather_forecast"),
                 descriptor("get_active_reminders"),

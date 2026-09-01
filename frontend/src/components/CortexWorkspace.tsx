@@ -39,6 +39,8 @@ interface CortexWorkspaceProps {
   activeAgent: AgentKey
   cloudEffort: CloudEffort
   selectedModel?: string
+  localContextWindow: number
+  localReasoningMode: LocalReasoningMode
   hostedTools?: CloudHostedToolsSettings
   devModeActive: boolean
   sandboxMode: boolean
@@ -522,11 +524,15 @@ function RuntimeControls({
         model_stability: selectedModelEntry.stability,
         reasoning_options: selectedModelEntry.reasoning_options ?? null,
         default_reasoning: selectedModelEntry.default_reasoning ?? null,
-        context_window: selectedModelEntry.default_context_window ?? null,
+        context_window: selectedModelEntry.runtime === 'local'
+          ? props.localContextWindow
+          : selectedModelEntry.default_context_window ?? null,
         context_window_options: selectedModelEntry.context_options ?? null,
         context_window_high_resource_options: selectedModelEntry.high_resource_context_options ?? null,
         default_context_window: selectedModelEntry.default_context_window ?? null,
-        reasoning_mode: selectedModelEntry.default_reasoning_mode ?? null,
+        reasoning_mode: selectedModelEntry.runtime === 'local'
+          ? props.localReasoningMode
+          : selectedModelEntry.default_reasoning_mode ?? null,
         reasoning_mode_options: selectedModelEntry.reasoning_modes ?? null,
         default_reasoning_mode: selectedModelEntry.default_reasoning_mode ?? null,
         status: selectedModelEntry.status ?? activeStatus.status,

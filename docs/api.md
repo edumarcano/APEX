@@ -141,7 +141,7 @@ Returns the resolved settings envelope. The current contract version is `19`.
 }
 ```
 
-`football.teams`, `market.symbols`, `tool_profiles`, and `microsoft_todo.reminder_list_id` are returned in the resolved settings snapshot. Panthera and Felis settings persist only the selected model; the model catalog derives the cloud provider or local runtime. The selected provider/runtime remains in Agent execution metadata and historical records. The optional list ID is opaque, bounded to 512 characters, and is never selected or cleared automatically. OpenAPI contains the complete shape. Tool profiles persist through the same settings store, but the dedicated `/api/v1/cortex/tool-profiles` routes are the canonical mutation workflow for built-in/custom profiles and per-Agent defaults.
+`football.teams`, `market.symbols`, `tool_profiles`, and `microsoft_todo.reminder_list_id` are returned in the resolved settings snapshot. Apex Agent settings persist the selected model and independent cloud/local controls; the model catalog derives provider or local runtime. The selected provider/runtime remains in execution metadata and historical records. The optional list ID is opaque, bounded to 512 characters, and is never selected or cleared automatically. OpenAPI contains the complete shape. Tool profiles persist through the same settings store, but the dedicated `/api/v1/cortex/tool-profiles` routes are the canonical mutation workflow for built-in/custom profiles and per-runtime defaults.
 
 `settings.briefing.default_mode` remains a persisted compatibility field. The Home command rail is the visible control for changing it and writes the selected mode immediately; the value is returned by `/api/v1/config` on the next startup.
 
@@ -160,7 +160,7 @@ Accepts a strict partial patch for the optional user designation, connectors, sp
 
 The store validates and transactionally replaces `config.local.json` before publishing the new snapshot. A permanent write failure returns `500` and leaves active settings unchanged. MCP changes reconcile only after persistence succeeds. llama.cpp managed-server transitions run after persistence; changes while a managed server is starting return `409`.
 
-`ask_apex.felis.reasoning_mode` accepts `none` or `focused` for llama.cpp models and only `none` for Ollama models. `focused` is request-level and does not trigger a local model unload/reload; unsupported model/mode combinations return `422`.
+`ask_apex.local.reasoning_mode` accepts `none` or `focused` for llama.cpp models and only `none` for Ollama models. `focused` is request-level and does not trigger a local model unload/reload; unsupported model/mode combinations return `422`.
 
 Environment modes, prompt text, credentials, endpoints, commands, allowlists, and tool risks are not patchable. The optional `user_designation` is the only personalization field and is persisted to the gitignored local settings overlay. Machine-local llama.cpp `executable_path` and `preset_path` also persist only to `config.local.json`.
 
@@ -230,7 +230,7 @@ Runs the full compatibility workflow: force-refresh telemetry, generate with an 
 { "mode": "flash" }
 ```
 
-The body is optional. Valid modes are `focused`, `flash`, and `structured`. The `flash` briefing mode always uses the fixed `gemma-4-E2B-Q4_K_M.gguf` llama.cpp profile with no reasoning; Cortex's interactive Felis model and runtime settings do not affect it.
+The body is optional. Valid modes are `focused`, `flash`, and `structured`. The `flash` briefing mode always uses the fixed `gemma-4-E2B-Q4_K_M.gguf` llama.cpp profile with no reasoning; interactive model settings do not affect it.
 
 - `200` — transcript, compatibility telemetry strings, typed digest, and runtime metadata.
 - `409` — another full trigger owns execution.
@@ -257,7 +257,7 @@ Returns up to 50 newest briefing records with transcript, digest, runtime metada
 
 ### GET `/api/v1/briefings/targets`
 
-Returns live availability and metadata for fixed briefing-generation targets in this order: `flash` (Felis local model), `focused` (Panthera DeepSeek V4 Flash), and `structured` (deterministic, no model). Removed Agent-named identifiers are rejected.
+Returns live availability and metadata for fixed briefing-generation targets in this order: `flash` (local Gemma), `focused` (OpenRouter DeepSeek V4 Flash), and `structured` (deterministic, no model). Removed Agent-named identifiers are rejected.
 
 ## Reminders
 
@@ -312,7 +312,7 @@ Archives one explicitly reviewed uncertain local row after the operator has insp
 
 ### GET `/api/v1/cortex/tool-catalog`
 
-Returns the current catalog for one Agent (`?agent=panthera`). Individual entries
+Returns the current catalog for one selected model (`?model_id=...`; omitted uses the saved selection). Individual entries
 include the stable capability name, model-facing label and description, native or
 MCP origin, source/server, risk, availability reason, Agent-policy result, and
 estimated schema tokens. Groups contain curated APEX families or MCP servers with
@@ -372,13 +372,13 @@ Assigns an existing built-in or custom profile as the default for one Agent.
 
 ### GET `/api/v1/agents`
 
-Returns visible Apex Agents in stable product order. The response contains exactly Panthera and Felis. Each entry supplies its full display name, description, selected provider and configured model, runtime, model stability, selectable reasoning options and defaults, selectable local context and reasoning options and defaults when applicable, ordered capability tags, effective provider-grounding state, model catalog, versioned pricing metadata, and availability/lifecycle diagnostics.
+Returns the single Apex Agent and its ordered model catalog. Each entry supplies model/provider/runtime, stability, supported reasoning and local controls, grounded-tool state, pricing, and availability/lifecycle diagnostics.
 
 Development-only models appear in each Agent's `model_catalog` list only when `DEV_MODE` is active. They are not separate Apex Agents.
 
-Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Provider account tier remains null unless a provider explicitly reports it. Local availability distinguishes an unreachable local runtime, missing model, loading model, busy execution slot, and active model reported by the local provider. Unreachable local backends use the generic provider-unreachable path with a sanitized reason. The `active` flag reflects provider residency rather than APEX's in-process lifecycle tracker. Felis publishes its selected context and reasoning values, options, and defaults when the selected model supports them. Loaded-model payloads may include provider, runtime alias, state, and selected or reported context when available.
+Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Local availability distinguishes an unreachable runtime, missing model, loading model, busy execution slot, and provider-reported residency. Local catalog entries publish model-specific context and reasoning values, options, and defaults.
 
-Registered cloud models under Panthera include `deepseek/deepseek-v4-flash-0731`, `gpt-5.6-luna`, and development-only `gemini-3.5-flash-lite`, `gemini-3.6-flash`, `grok-4.3`, and `grok-4.5`. Registered local models under Felis include `gemma-4-E2B-Q4_K_M.gguf`, `gemma-4-E4B-Q4_K_M.gguf`, `Qwen3.5-4B-Q4_K_M.gguf`, and development-only `qwen3:1.7b` and `qwen3:4b-instruct`.
+Registered cloud models include `deepseek/deepseek-v4-flash-0731`, `gpt-5.6-luna`, and development-only Gemini and Grok models. Registered local models include Gemma and Qwen GGUF profiles plus development-only Ollama profiles.
 
 ### POST `/api/v1/agents/{agent_key}/verify`
 
@@ -394,10 +394,10 @@ Runs one user-triggered, non-generative metadata check for a visible credential-
 Pre-warms one installed local Agent before a request:
 
 ```json
-{ "agent": "felis" }
+{ "model_id": "gemma-4-E2B-Q4_K_M.gguf" }
 ```
 
-`agent` must be `felis`. The route uses the same execution lock, resource gates, model-switch policy, and warmup options as a normal local turn. It returns success only after the local runtime confirms the selected model through residency verification. Demo mode rejects pre-warming without contacting the local provider.
+`model_id` must be a registered local model. The route uses the same execution lock, resource gates, model-switch policy, and warmup options as a normal local turn. It returns success only after the local runtime confirms residency. Demo mode rejects pre-warming without contacting the local provider.
 
 - `403` — demo mode disallows model calls.
 - `409` — a local generation or lifecycle action is active.
@@ -446,7 +446,7 @@ APEX owns Cortex conversation history in `apex_memory.db`. Conversations contain
 ```json
 {
   "prompt": "What should I prioritize this afternoon?",
-  "agent": "panthera",
+  "agent": "apex",
   "effort": "medium",
   "model_id": null,
   "context_window": null,
@@ -460,11 +460,11 @@ APEX owns Cortex conversation history in `apex_memory.db`. Conversations contain
 }
 ```
 
-`model_id`, `context_window`, and `local_reasoning_mode` are optional per-turn overrides. When supplied, the turn uses those values instead of the saved Cortex presets for Panthera or Felis; the saved presets are unchanged. The Home workspace sends these fields for every query: cloud models receive the lowest supported reasoning effort, and local models receive `context_window: 16384` with reasoning disabled. These overrides are ephemeral and never written back to settings.
+`model_id`, `context_window`, and `local_reasoning_mode` are optional per-turn overrides. When supplied, the turn uses those values instead of saved model preferences. The Home workspace sends these fields for every query: cloud models receive the lowest supported reasoning effort, and local models receive `context_window: 16384` with reasoning disabled. These overrides are ephemeral and never written back to settings.
 
 `snapshot_id` and `briefing_id` are optional explicit context. When absent, APEX injects no HUD context. Unknown briefing IDs and stale snapshot IDs are omitted rather than replaced with the latest data. The server derives `sandbox` only when both `DEV_MODE` and the saved sandbox setting are active; clients cannot select or cross partitions. Sandbox turns reject saved `briefing_id` attachments and accept only the process-current masked development briefing identified by its matching `snapshot_id`.
 
-The effective exposure is `selected tools ∩ Agent policy ∩ runtime availability ∩ persistent MCP allowlists`. An explicit empty `selected_tool_names` list means `No APEX Tools`; omitted selection preserves the migration default of `All APEX Tools` for Panthera and `No APEX Tools` for Felis. Invalid, unauthorized, disconnected, risk-rejected, or unavailable selected names are returned as structured per-tool failures; they are never silently dropped. Panthera can receive the approved APEX capability registry, including Brave Search when connected, and optional provider-hosted Google Search, Google Maps, or X Search when the selected model and persisted hosted-tool settings allow them. Sandbox queries use a restricted non-personal allowlist. Provider-hosted grounding is separate from APEX/MCP schema profiles and is reported in the tool catalog. OpenAI and SpaceXAI general native web search are never attached. `effort` is optional for Panthera when the selected model exposes model-native reasoning levels and is rejected for Felis. Responses contain synthesized text, resolved Agent and model metadata, requested/offered/rejected tool names, selected schema-token estimate, active profile metadata, sanitized APEX/provider tool trace, citations, client-display-approved structured outputs, optional stable error, local context usage, normalized token usage, timing, and a versioned cost estimate. The provider-hosted-tool portion of a cost estimate is separate from token cost; MCP service fees are not estimated.
+The effective exposure is `selected tools ∩ Apex Agent policy ∩ runtime availability ∩ persistent MCP allowlists`. An explicit empty `selected_tool_names` list means `No APEX Tools`; omitted selection preserves runtime defaults of All APEX Tools for cloud and No APEX Tools for local. Invalid, unauthorized, disconnected, risk-rejected, or unavailable selected names are returned as structured per-tool failures. Cloud models can receive approved APEX capabilities and optional provider-hosted grounding where supported. `effort` is accepted only for models with reasoning levels. Responses contain Apex Agent and resolved model metadata, tool trace, usage, timing, and cost evidence.
 
 - `400` — selected tools are invalid, outside policy, or unavailable.
 - A provider-authoritative local context overflow is returned as an actionable
@@ -474,7 +474,7 @@ The effective exposure is `selected tools ∩ Agent policy ∩ runtime availabil
 - `429` — another local generation owns the execution slot.
 - `503` — selected provider/model unavailable, cold-load gate failed, or model load failed.
 
-Cortex Engine Agent loops are bounded by the selected model profile. The default Panthera model can use up to 6 model turns and 10 tool calls; other cloud models can use up to 4 turns and 6 calls; the lightweight Ollama development model uses up to 2/3 turns/calls, while the default Felis llama.cpp models use up to 4 turns/4 calls. The last model turn is answer-only, leaving Felis up to three tool-calling turns for workflows that need list resolution, task lookup, and an approval-gated action proposal.
+Cortex Engine loops are bounded by the selected model profile. The final model turn is answer-only, leaving bounded tool-calling turns for workflows that need list resolution, task lookup, and approval-gated proposals.
 
 ### POST `/api/v1/cortex/context/captures`
 
@@ -609,3 +609,72 @@ The endpoint does not generate or persist a briefing. Voice mode determines whet
 - `503` indicates a required local/provider dependency could not perform the selected operation.
 
 Compatibility fields and aliases remain documented where clients can still use them. New integrations should prefer canonical routes and the generated OpenAPI contract.
+
+## Current route inventory
+
+APEX API contract version 19.
+
+| Method | Path | Purpose |
+|---|---|---|
+| DELETE | `/api/v1/cortex/conversations/{conversation_id}` | API route |
+| DELETE | `/api/v1/cortex/tool-profiles/{profile_id}` | API route |
+| DELETE | `/api/v1/microsoft-todo/auth` | API route |
+| GET | `/` | API route |
+| GET | `/api/v1/actions` | API route |
+| GET | `/api/v1/actions/{action_id}` | API route |
+| GET | `/api/v1/briefings/history` | API route |
+| GET | `/api/v1/briefings/targets` | API route |
+| GET | `/api/v1/config` | API route |
+| GET | `/api/v1/cortex/agent` | API route |
+| GET | `/api/v1/cortex/context` | API route |
+| GET | `/api/v1/cortex/context/entities` | API route |
+| GET | `/api/v1/cortex/context/{record_id}` | API route |
+| GET | `/api/v1/cortex/conversations` | API route |
+| GET | `/api/v1/cortex/conversations/{conversation_id}` | API route |
+| GET | `/api/v1/cortex/retrieval/status` | API route |
+| GET | `/api/v1/cortex/tool-catalog` | API route |
+| GET | `/api/v1/cortex/tool-profiles` | API route |
+| GET | `/api/v1/diagnostics` | API route |
+| GET | `/api/v1/health/live` | API route |
+| GET | `/api/v1/health/ready` | API route |
+| GET | `/api/v1/llama-cpp/status` | API route |
+| GET | `/api/v1/market` | API route |
+| GET | `/api/v1/mcp/status` | API route |
+| GET | `/api/v1/microsoft-todo/lists` | API route |
+| GET | `/api/v1/microsoft-todo/status` | API route |
+| GET | `/api/v1/reminders` | API route |
+| GET | `/api/v1/reminders/completed` | API route |
+| GET | `/api/v1/reminders/task` | API route |
+| GET | `/api/v1/settings` | API route |
+| GET | `/api/v1/status` | API route |
+| GET | `/api/v1/telemetry/latest` | API route |
+| PATCH | `/api/v1/cortex/conversations/{conversation_id}` | API route |
+| PATCH | `/api/v1/cortex/tool-profiles/{profile_id}` | API route |
+| PATCH | `/api/v1/settings` | API route |
+| POST | `/api/v1/actions/{action_id}/approve` | API route |
+| POST | `/api/v1/actions/{action_id}/reject` | API route |
+| POST | `/api/v1/actions/{action_id}/verify` | API route |
+| POST | `/api/v1/briefings/generate` | API route |
+| POST | `/api/v1/cortex/context/actions` | API route |
+| POST | `/api/v1/cortex/context/captures` | API route |
+| POST | `/api/v1/cortex/conversations` | API route |
+| POST | `/api/v1/cortex/conversations/{conversation_id}/turns` | API route |
+| POST | `/api/v1/cortex/local-model/load` | API route |
+| POST | `/api/v1/cortex/local-model/unload` | API route |
+| POST | `/api/v1/cortex/models/verify` | API route |
+| POST | `/api/v1/cortex/retrieval/prepare` | API route |
+| POST | `/api/v1/cortex/tool-preflight` | API route |
+| POST | `/api/v1/cortex/tool-profiles` | API route |
+| POST | `/api/v1/cortex/tool-profiles/default` | API route |
+| POST | `/api/v1/microsoft-todo/auth/start` | API route |
+| POST | `/api/v1/preflight` | API route |
+| POST | `/api/v1/reminders` | API route |
+| POST | `/api/v1/reminders/complete` | API route |
+| POST | `/api/v1/reminders/delete` | API route |
+| POST | `/api/v1/reminders/dismiss` | API route |
+| POST | `/api/v1/reminders/reopen` | API route |
+| POST | `/api/v1/reminders/sync` | API route |
+| POST | `/api/v1/reminders/update` | API route |
+| POST | `/api/v1/telemetry/refresh` | API route |
+| POST | `/api/v1/trigger` | API route |
+| POST | `/api/v1/voice/speak` | API route |

@@ -170,7 +170,7 @@ class CloudAgentVerificationTests(unittest.TestCase):
 
     def test_metadata_probe_does_not_clear_recent_account_failure(self) -> None:
         record_cloud_request_failure(
-            "panthera",
+            "apex",
             _ProviderError(429, "insufficient_quota"),
             provider="openai",
             model="gpt-5.6-luna",
@@ -194,7 +194,7 @@ class CloudAgentVerificationTests(unittest.TestCase):
 
         openai_profile = get_model_profile("gpt-5.6-luna")
         record_cloud_request_failure(
-            "panthera",
+            "apex",
             _ProviderError(429, "insufficient_quota"),
             provider="openai",
             model="gpt-5.6-luna",
@@ -244,7 +244,7 @@ class CloudAgentVerificationTests(unittest.TestCase):
         from core.agent.providers.cloud_verification import record_cloud_request_success
 
         record_cloud_request_success(
-            "panthera",
+            "apex",
             provider="openai",
             model="gpt-5.6-luna",
         )

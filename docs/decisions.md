@@ -166,11 +166,11 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 ## Local inference
 
-### Keep Panthera and Felis as the two Agent roles
+### Use one Apex Agent with model-routed execution
 
-**Decision.** APEX has two Apex Agents: Panthera for cloud work and Felis for local work. Models sit underneath those names, and the selected model determines the cloud provider or local runtime. The Agents do not have their own version numbers.
+**Decision.** APEX has one native Apex Agent. The selected model determines cloud provider or local runtime, capabilities, controls, availability, and lifecycle behavior.
 
-**Why.** The earlier Agent roster grew alongside the model list, which made model choices look like permanent product identities. The distinction that matters is simpler: Panthera is the cloud role and Felis is the local role.
+**Why.** Cloud and local execution are runtime details, not enduring product identities. A singular assistant keeps Home, Cortex, persistence, and external-worker integration aligned.
 
 **Trade-off.** The model catalog can grow without adding Agents, but model metadata, settings, and documentation still need to stay in sync.
 
@@ -216,7 +216,7 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 ### Use stable runtime aliases for llama.cpp models
 
-**Decision.** Felis loads llama.cpp models through stable model-based aliases such as `gemma-4-e2b-16k` instead of exposing raw GGUF paths or an arbitrary context slider.
+**Decision.** Apex Agent loads llama.cpp models through stable model-based aliases such as `gemma-4-e2b-16k` instead of exposing raw GGUF paths or an arbitrary context slider.
 
 **Why.** A small set of tested context sizes keeps loading, memory checks, and documentation predictable while model paths remain behind stable aliases.
 
@@ -224,9 +224,9 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 ### Make local reasoning capability-driven and private
 
-**Decision.** Felis reasoning preferences default to `none`. llama.cpp models that support reasoning expose `none` and `focused`; Ollama development models expose only `none`. For llama.cpp, `none` sends `reasoning_effort: "none"`, while `focused` lets the model use its native reasoning behavior. Hidden reasoning fields and think-style tags are removed before display.
+**Decision.** Local reasoning preferences default to `none`. llama.cpp models that support reasoning expose `none` and `focused`; Ollama development models expose only `none`. For llama.cpp, `none` sends `reasoning_effort: "none"`, while `focused` lets the model use its native reasoning behavior. Hidden reasoning fields and think-style tags are removed before display.
 
-**Why.** Local models do not all support the same reasoning controls as cloud models. The HUD only shows options the selected Felis model actually supports, and hidden reasoning stays out of the visible response.
+**Why.** Local models do not all support the same reasoning controls as cloud models. The HUD only shows options the selected model actually supports, and hidden reasoning stays out of the visible response.
 
 **Trade-off.** Focused mode has no separate reasoning-token budget or telemetry in APEX. llama.cpp runtime data only gives conservative completion headroom, and model-specific sampling stays unchanged until benchmarks justify tuning it.
 

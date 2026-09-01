@@ -148,6 +148,8 @@ function applyAskApexSettings(
     setHostedTools: (tools: CloudHostedToolsSettings) => void
     setCloudPersonalContextEnabled: (enabled: boolean) => void
     setLocalPersonalContextEnabled: (enabled: boolean) => void
+    setLocalContextWindow: (contextWindow: number) => void
+    setLocalReasoningMode: (reasoningMode: LocalReasoningMode) => void
   },
 ): void {
   const cloud = askApex.cloud
@@ -159,6 +161,8 @@ function applyAskApexSettings(
   setters.setHostedTools({ ...cloud.hosted_tools })
   setters.setCloudPersonalContextEnabled(cloud.personal_context_enabled)
   setters.setLocalPersonalContextEnabled(local.personal_context_enabled)
+  setters.setLocalContextWindow(local.context_window)
+  setters.setLocalReasoningMode(local.reasoning_mode)
 }
 
 interface PersistAgentSettingsOptions {
@@ -183,6 +187,8 @@ export default function App(): ReactElement {
   const [snapshotAttached, setSnapshotAttached] = useState(true)
   const [cloudPersonalContextEnabled, setCloudPersonalContextEnabled] = useState(false)
   const [localPersonalContextEnabled, setLocalPersonalContextEnabled] = useState(false)
+  const [localContextWindow, setLocalContextWindow] = useState(16384)
+  const [localReasoningMode, setLocalReasoningMode] = useState<LocalReasoningMode>('none')
   const [draftPrompt, setDraftPrompt] = useState('')
   const [submissionPending, setSubmissionPending] = useState(false)
   const submissionPendingRef = useRef(false)
@@ -480,6 +486,8 @@ export default function App(): ReactElement {
         setHostedTools,
         setCloudPersonalContextEnabled,
         setLocalPersonalContextEnabled,
+        setLocalContextWindow,
+        setLocalReasoningMode,
       })
       if (!briefingModeSelectionTouchedRef.current) {
         setBriefingMode(response.settings.briefing.default_mode)
@@ -523,6 +531,8 @@ export default function App(): ReactElement {
               setHostedTools,
               setCloudPersonalContextEnabled,
               setLocalPersonalContextEnabled,
+              setLocalContextWindow,
+              setLocalReasoningMode,
             })
           }
         }
@@ -1175,11 +1185,11 @@ export default function App(): ReactElement {
   const setDefaultToolProfile = useCallback(
     (profileId: string): void => {
       void mutateToolProfile(API_ENDPOINTS.cortexToolProfileDefault, 'POST', {
-        agent: activeAgent,
+        runtime: fullModelCatalog.find((entry) => entry.model_id === selectedModel)?.runtime ?? 'cloud',
         profile_id: profileId,
-      }, 'Set as the default profile for this Agent.')
+      }, 'Set as the default profile for this runtime.')
     },
-    [activeAgent, mutateToolProfile],
+    [fullModelCatalog, mutateToolProfile, selectedModel],
   )
 
   const handleBriefingModeChange = useCallback((mode: BriefingMode): void => {
@@ -1806,6 +1816,8 @@ export default function App(): ReactElement {
             activeAgent={activeAgent}
             cloudEffort={cloudEffort}
             selectedModel={selectedModel}
+            localContextWindow={localContextWindow}
+            localReasoningMode={localReasoningMode}
             hostedTools={hostedTools}
             devModeActive={devModeActive}
             sandboxMode={sandboxMode}
@@ -1859,6 +1871,9 @@ export default function App(): ReactElement {
             assistantRunConfig={{
               agent: activeAgent,
               effort: homeSelectedEntry?.runtime === 'cloud' ? cloudEffort : null,
+              modelId: selectedModel,
+              contextWindow: homeSelectedEntry?.runtime === 'local' ? localContextWindow : null,
+              localReasoningMode: homeSelectedEntry?.runtime === 'local' ? localReasoningMode : null,
               selectedToolNames: toolCatalogState.selectedToolNames,
               toolProfileId: toolCatalogState.activeToolProfileId,
               snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,

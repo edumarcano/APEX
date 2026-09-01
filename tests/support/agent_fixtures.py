@@ -19,7 +19,7 @@ GEMMA_E2B_ALIAS = "gemma-4-e2b-16k"
 GEMMA_E4B_ALIAS = "gemma-4-e4b-16k"
 
 
-def panthera_settings(
+def cloud_settings(
     *,
     model: str = "gpt-5.6-luna",
     effort: str = "medium",
@@ -41,7 +41,7 @@ def panthera_settings(
     )
 
 
-def felis_settings(
+def local_settings(
     *,
     model: str = GEMMA_E2B_MODEL,
     context_window: int | None = None,
@@ -56,7 +56,7 @@ def felis_settings(
     return AgentSettings(selected_model=model, local=LocalSettings(**kwargs))
 
 
-def build_felis_profile(
+def build_local_profile(
     *,
     model: str = GEMMA_E2B_MODEL,
     context_window: int | None = None,
@@ -74,7 +74,7 @@ def build_felis_profile(
     )
 
 
-def build_panthera_profile(
+def build_cloud_profile(
     *,
     model: str = "gpt-5.6-luna",
     effort: str | None = "medium",
