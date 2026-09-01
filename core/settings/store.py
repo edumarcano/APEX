@@ -392,7 +392,7 @@ def _needs_v19_rewrite(value: dict[str, Any]) -> bool:
     tool_profiles = value.get("tool_profiles")
     return (
         isinstance(ask_apex, dict)
-        and bool({"agent", "panthera", "felis"} & set(ask_apex))
+        and bool({"agent", "panthera", "felis", "apodemus_context_window"} & set(ask_apex))
     ) or (
         isinstance(tool_profiles, dict)
         and "default_profile_by_agent" in tool_profiles

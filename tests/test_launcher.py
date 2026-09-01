@@ -91,8 +91,10 @@ class LauncherHelperTests(unittest.TestCase):
             handle.poll.return_value = None
             return handle
 
-        with mock.patch.object(launcher.subprocess, "Popen", side_effect=_fake_popen):
-            uvicorn_proc, static_proc = launcher.launch_background_servers()
+        with mock.patch.object(
+            launcher, "_can_bind_frontend_port", return_value=True
+        ), mock.patch.object(launcher.subprocess, "Popen", side_effect=_fake_popen):
+            uvicorn_proc, static_proc, frontend_url = launcher.launch_background_servers()
 
         self.assertEqual(len(created), 2)
         uvicorn_cmd = created[0]["cmd"]
@@ -114,6 +116,8 @@ class LauncherHelperTests(unittest.TestCase):
         self.assertIn(str(launcher.ROOT_DIR), uvicorn_env["PYTHONPATH"])
         self.assertIn(str(launcher.ROOT_DIR), static_env["PYTHONPATH"])
         self.assertNotIn("GEMINI_API_KEY", static_env)
+        self.assertEqual(frontend_url, launcher.FRONTEND_URL)
+        self.assertIn(frontend_url, uvicorn_env["APEX_ALLOWED_ORIGINS"])
         self.assertIsNotNone(uvicorn_proc)
         self.assertIsNotNone(static_proc)
 
@@ -138,7 +142,7 @@ class LauncherHelperTests(unittest.TestCase):
         static_proc.poll.return_value = None
 
         with mock.patch.object(
-            launcher, "launch_background_servers", return_value=(uvicorn_proc, static_proc)
+            launcher, "launch_background_servers", return_value=(uvicorn_proc, static_proc, launcher.FRONTEND_URL)
         ), mock.patch.object(launcher, "register_shutdown_hooks"), mock.patch.object(
             launcher, "_http_ok", return_value=False
         ), mock.patch.object(
@@ -163,7 +167,7 @@ class LauncherHelperTests(unittest.TestCase):
         browser_proc.poll.side_effect = [None, 0]
 
         with mock.patch.object(
-            launcher, "launch_background_servers", return_value=(uvicorn_proc, static_proc)
+            launcher, "launch_background_servers", return_value=(uvicorn_proc, static_proc, launcher.FRONTEND_URL)
         ), mock.patch.object(launcher, "register_shutdown_hooks"), mock.patch.object(
             launcher, "_http_ok", return_value=True
         ), mock.patch.object(
@@ -186,7 +190,7 @@ class LauncherHelperTests(unittest.TestCase):
         static_proc.poll.return_value = None
 
         with mock.patch.object(
-            launcher, "launch_background_servers", return_value=(uvicorn_proc, static_proc)
+            launcher, "launch_background_servers", return_value=(uvicorn_proc, static_proc, launcher.FRONTEND_URL)
         ), mock.patch.object(launcher, "register_shutdown_hooks"), mock.patch.object(
             launcher, "launch_kiosk_browser"
         ) as launch_browser, mock.patch.object(
@@ -207,7 +211,7 @@ class LauncherHelperTests(unittest.TestCase):
         static_proc.poll.return_value = None
 
         with mock.patch.object(
-            launcher, "launch_background_servers", return_value=(uvicorn_proc, static_proc)
+            launcher, "launch_background_servers", return_value=(uvicorn_proc, static_proc, launcher.FRONTEND_URL)
         ), mock.patch.object(launcher, "register_shutdown_hooks"), mock.patch.object(
             launcher, "wait_for_services", return_value=None
         ), mock.patch.object(
@@ -221,6 +225,26 @@ class LauncherHelperTests(unittest.TestCase):
         terminate.assert_any_call(browser_proc)
         terminate.assert_any_call(uvicorn_proc)
         terminate.assert_any_call(static_proc)
+
+    def test_launch_background_servers_uses_available_fallback_port(self) -> None:
+        created: list[list[str]] = []
+        real_popen = subprocess.Popen
+
+        def _fake_popen(cmd: list[str], **_kwargs: object) -> mock.Mock:
+            created.append(cmd)
+            handle = mock.Mock(spec=real_popen)
+            handle.poll.return_value = None
+            return handle
+
+        with mock.patch.object(
+            launcher,
+            "_can_bind_frontend_port",
+            side_effect=lambda port: port == 5501,
+        ), mock.patch.object(launcher.subprocess, "Popen", side_effect=_fake_popen):
+            _uvicorn, _static, frontend_url = launcher.launch_background_servers()
+
+        self.assertEqual(frontend_url, "http://127.0.0.1:5501")
+        self.assertIn("5501", created[1])
 
 
 if __name__ == "__main__":

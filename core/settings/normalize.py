@@ -633,10 +633,21 @@ def _normalize_agent_settings(
             )
         return {}
 
-    legacy = "agent" in value or "panthera" in value or "felis" in value
+    legacy = (
+        "agent" in value
+        or "panthera" in value
+        or "felis" in value
+        or "apodemus_context_window" in value
+    )
     allowed = {"enabled", "selected_model", "sandbox_mode", "cloud", "local"}
     if legacy:
-        allowed |= {"agent", "panthera", "felis", "max_recent_conversation_messages"}
+        allowed |= {
+            "agent",
+            "panthera",
+            "felis",
+            "apodemus_context_window",
+            "max_recent_conversation_messages",
+        }
     _record_unsupported_agent_fields(value, allowed=allowed, path="ask_apex", layer_name=layer_name, errors=errors)
     result: dict[str, Any] = {"selected_model": DEFAULT_APEX_MODEL}
     if isinstance(value.get("enabled"), bool):
@@ -650,6 +661,8 @@ def _normalize_agent_settings(
 
     cloud_raw = value.get("cloud") if not legacy else value.get("panthera")
     local_raw = value.get("local") if not legacy else value.get("felis")
+    if local_raw is None and "apodemus_context_window" in value:
+        local_raw = {}
     cloud: dict[str, Any] = {}
     if isinstance(cloud_raw, dict):
         raw_model = cloud_raw.get("last_model", cloud_raw.get("model"))
@@ -677,6 +690,8 @@ def _normalize_agent_settings(
             local["last_model"] = reconcile_local_model(raw_model.strip(), dev_mode=is_dev_mode())
         model = local.get("last_model", DEFAULT_LOCAL_MODEL)
         window = local_raw.get("context_window")
+        if window is None and "apodemus_context_window" in value:
+            window = value["apodemus_context_window"]
         profile = get_model_profile(model)
         if isinstance(window, int) and not isinstance(window, bool):
             local["context_window"] = reconcile_local_context_window(profile.provider if profile else DEFAULT_LOCAL_RUNTIME, model, window)

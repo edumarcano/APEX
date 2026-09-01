@@ -124,7 +124,7 @@ class LlamaCppSettingsStoreTests(unittest.TestCase):
         preview = store.preview_patch(SettingsPatch(llama_cpp=LlamaCppPatch()))
         self.assertEqual(preview, before)
 
-    def test_legacy_local_file_loads_with_defaults(self) -> None:
+    def test_legacy_local_context_setting_is_migrated(self) -> None:
         _write_json(
             self.local_path,
             {
@@ -132,20 +132,14 @@ class LlamaCppSettingsStoreTests(unittest.TestCase):
                 "ask_apex": {"apodemus_context_window": 8192},
             },
         )
-        with self.assertLogs("core.settings.normalize", level=logging.WARNING) as logs:
-            store = self._store()
-        self.assertTrue(
-            any(
-                "ask_apex.apodemus_context_window" in message
-                and "reset local settings" in message
-                for message in logs.output
-            )
-        )
+        store = self._store()
         snap = store.get_snapshot()
         self.assertEqual(snap.ask_apex.local.context_window, 16384)
         self.assertEqual(snap.ask_apex.local.reasoning_mode, "none")
         self.assertFalse(snap.llama_cpp.enabled)
         self.assertEqual(snap.llama_cpp.host, "http://127.0.0.1:8080")
+        persisted = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertNotIn("apodemus_context_window", persisted["ask_apex"])
 
 
 class LlamaCppHostNormalizationTests(unittest.TestCase):
