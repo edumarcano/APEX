@@ -58,7 +58,6 @@ function compactRate(value: number): string {
 function modelCost(entry: ModelCatalogEntry): string {
   if (entry.runtime === 'local') return 'No provider token charge'
   if (entry.pricing) {
-    if (entry.pricing.billing_basis === 'free_tier') return 'Free tier'
     if (entry.pricing.billing_basis === 'local') return 'No provider token charge'
     return `In ${compactRate(entry.pricing.input_per_million)} · Out ${compactRate(entry.pricing.output_per_million)} / 1M`
   }

@@ -213,7 +213,7 @@ export type AgentStatusSource = 'configuration' | 'verification' | 'request' | '
 export interface AgentPricingMetadata {
   currency: 'USD'
   pricing_version: string
-  billing_basis: 'free_tier' | 'standard' | 'local'
+  billing_basis: 'standard' | 'local'
   input_per_million: number
   output_per_million: number
   cached_input_per_million: number | null

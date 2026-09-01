@@ -25,7 +25,7 @@ def _concrete_profile(model_id: str):
 
 class GeminiProviderTemperatureTests(unittest.TestCase):
     def test_cloud_agents_apply_quota_aware_loop_caps(self) -> None:
-        for model_id in ("gpt-5.6-luna", "gemini-3.6-flash", "gemini-3.5-flash-lite"):
+        for model_id in ("gpt-5.6-luna", "deepseek/deepseek-v4-flash-0731", "gemini-3.7-flash"):
             with self.subTest(model=model_id):
                 profile = get_model_profile(model_id)
                 assert profile is not None
@@ -73,7 +73,7 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
         mock_client.models.generate_content.return_value = mock_response
 
         provider = GeminiProvider(api_key="test-api-key")
-        profile = _concrete_profile("gemini-3.6-flash")
+        profile = _concrete_profile("gemini-3.7-flash")
         messages = [AgentMessage(role="user", content="Hello")]
 
         provider.generate_turn(messages=messages, tools=[], profile=profile)
@@ -82,7 +82,7 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
         _args, kwargs = mock_client.models.generate_content.call_args
         config = kwargs["config"]
         self.assertFalse(hasattr(config, "temperature") and config.temperature is not None)
-        self.assertEqual(kwargs["model"], "gemini-3.6-flash")
+        self.assertEqual(kwargs["model"], "gemini-3.7-flash")
 
     @patch("core.agent.providers.ollama.get_http_session")
     def test_ollama_provider_retains_temperature(

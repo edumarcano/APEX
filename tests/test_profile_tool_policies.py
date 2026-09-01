@@ -287,7 +287,7 @@ class SandboxContextTests(unittest.TestCase):
                     message=AgentMessage(role="agent", content="Cannot access that tool.")
                 )
 
-        profile = build_cloud_profile(model="gemini-3.5-flash-lite")
+        profile = build_cloud_profile(model="gemini-3.7-flash")
         response = run_agent_loop(
             AgentQueryRequest(
                 prompt="Read reminders",

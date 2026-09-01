@@ -385,15 +385,15 @@ class SettingsApiTests(unittest.TestCase):
                 "/api/v1/settings",
                 json={
                     "ask_apex": {
-                        "selected_model": "gemini-3.6-flash",
-                        "cloud": {"last_model": "gemini-3.6-flash"},
+                        "selected_model": "qwen3:1.7b",
+                        "local": {"last_model": "qwen3:1.7b"},
                     }
                 },
             )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.json()["settings"]["ask_apex"]["selected_model"],
-            "gemini-3.6-flash",
+            "qwen3:1.7b",
         )
         with mock.patch("core.agent.catalog.is_dev_mode", return_value=False):
             config_payload = self.client.get("/api/v1/config").json()

@@ -37,14 +37,6 @@ class ModelProfile:
     dev_only: bool = False
     maximum_context_window: int | None = None
 
-    def __post_init__(self) -> None:
-        if self.provider == "gemini":
-            from core.agent.pricing import is_free_tier_model
-
-            if is_free_tier_model(self.model_id):
-                object.__setattr__(self, "credential_env", "GEMINI_SANDBOX_API_KEY")
-
-
 # Cloud models available to Apex Agent.
 CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
     "deepseek/deepseek-v4-flash-0731": ModelProfile(
@@ -76,36 +68,19 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_encrypted_reasoning=True,
         hosted_capabilities=frozenset(),
     ),
-    "gemini-3.5-flash-lite": ModelProfile(
-        model_id="gemini-3.5-flash-lite",
-        display_name="Gemini 3.5 Flash Lite",
-        provider="gemini",
-        runtime="cloud",
-        stability="stable",
-        credential_env="GEMINI_SANDBOX_API_KEY",
-        max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
-        max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
-        reasoning_options=("minimal", "low", "medium", "high"),
-        default_reasoning="medium",
-        supports_encrypted_reasoning=True,
-        hosted_capabilities=frozenset(),
-        dev_only=True,
-        maximum_context_window=1_048_576,
-    ),
-    "gemini-3.6-flash": ModelProfile(
-        model_id="gemini-3.6-flash",
-        display_name="Gemini 3.6 Flash",
+    "gemini-3.7-flash": ModelProfile(
+        model_id="gemini-3.7-flash",
+        display_name="Gemini 3.7 Flash",
         provider="gemini",
         runtime="cloud",
         stability="stable",
         credential_env="GEMINI_API_KEY",
         max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
         max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
-        reasoning_options=("minimal", "low", "medium", "high"),
+        reasoning_options=("low", "medium", "high"),
         default_reasoning="medium",
         supports_encrypted_reasoning=True,
         hosted_capabilities=frozenset({"google_search", "google_maps"}),
-        dev_only=True,
         maximum_context_window=1_048_576,
     ),
 }

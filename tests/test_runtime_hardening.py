@@ -151,9 +151,9 @@ class StableAgentErrorTests(unittest.TestCase):
         cloud_profile = build_concrete_agent(
             "apex",
             native_effort=resolve_effort(
-                get_model_profile("gemini-3.6-flash"), None
+                get_model_profile("gemini-3.7-flash"), None
             ),
-            model_id="gemini-3.6-flash",
+            model_id="gemini-3.7-flash",
         )
         response = run_agent_loop(
             AgentQueryRequest(prompt="Check weather", agent="apex"),
