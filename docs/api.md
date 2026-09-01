@@ -126,7 +126,7 @@ Returns the resolved settings envelope. The current contract version is `19`.
         "personal_context_enabled": false
       }
     },
-    "tool_profiles": { "custom_profiles": [], "default_profile_by_agent": {} },
+    "tool_profiles": { "custom_profiles": [], "default_profile_by_runtime": {} },
     "briefing": { "default_mode": "flash" },
     "voice": { "engine": "google", "gender": "female", "mode": "automatic" },
     "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } },
@@ -364,34 +364,40 @@ in the profile.
 
 ### DELETE `/api/v1/cortex/tool-profiles/{profile_id}`
 
-Deletes a saved custom profile and clears Agent defaults that pointed to it.
+Deletes a saved custom profile and clears runtime defaults that pointed to it.
 
 ### POST `/api/v1/cortex/tool-profiles/default`
 
-Assigns an existing built-in or custom profile as the default for one Agent.
+Assigns an existing built-in or custom profile as the default for one runtime (`cloud` or `local`).
 
-### GET `/api/v1/agents`
+### GET `/api/v1/cortex/agent`
 
 Returns the single Apex Agent and its ordered model catalog. Each entry supplies model/provider/runtime, stability, supported reasoning and local controls, grounded-tool state, pricing, and availability/lifecycle diagnostics.
 
-Development-only models appear in each Agent's `model_catalog` list only when `DEV_MODE` is active. They are not separate Apex Agents.
+Development-only models appear in the `model_catalog` list only when `DEV_MODE` is active. They are not separate Apex Agents.
 
 Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Local availability distinguishes an unreachable runtime, missing model, loading model, busy execution slot, and provider-reported residency. Local catalog entries publish model-specific context and reasoning values, options, and defaults.
 
 Registered cloud models include `deepseek/deepseek-v4-flash-0731`, `gpt-5.6-luna`, and development-only Gemini and Grok models. Registered local models include Gemma and Qwen GGUF profiles plus development-only Ollama profiles.
 
-### POST `/api/v1/agents/{agent_key}/verify`
+### POST `/api/v1/cortex/models/verify`
 
-Runs one user-triggered, non-generative metadata check for a visible credential-backed cloud Agent. Google uses the Gemini API model metadata endpoint, OpenAI uses the OpenAI API, and SpaceXAI uses the xAI API with `GET /v1/models/{model}`. OpenRouter uses authenticated `GET /api/v1/endpoints/zdr` and verifies that the selected model has a ZDR route. The five-second probe sends no prompt, context, or provider tool call. Results are sanitized and cached; polling never triggers a probe.
+Runs one user-triggered, non-generative metadata check for a visible credential-backed cloud model:
 
-- `400` — the Agent is local or has no supported verification path.
+```json
+{ "model_id": "deepseek/deepseek-v4-flash-0731" }
+```
+
+Google uses the Gemini API model metadata endpoint, OpenAI uses the OpenAI API, and SpaceXAI uses the xAI API with `GET /v1/models/{model}`. OpenRouter uses authenticated `GET /api/v1/endpoints/zdr` and verifies that the selected model has a ZDR route. The five-second probe sends no prompt, context, or provider tool call. Results are sanitized and cached; polling never triggers a probe.
+
+- `400` / `422` — the model is local or has no supported verification path.
 - `403` — demo mode disallows provider contact.
-- `404` — the Agent is not visible.
-- `409` — credentials are missing or that Agent already has a verification in progress.
+- `404` — the model is not registered or visible.
+- `409` — credentials are missing or that model already has a verification in progress.
 
 ### POST `/api/v1/cortex/local-model/load`
 
-Pre-warms one installed local Agent before a request:
+Pre-warms one installed local model before a request:
 
 ```json
 { "model_id": "gemma-4-E2B-Q4_K_M.gguf" }

@@ -36,7 +36,7 @@ APEX collects enabled weather, calendar, inbox, news, sports, reminder, and mark
 
 A briefing uses Flash, Focused, or Structured. Flash uses a fixed local Gemma E2B route for immediate orientation; Focused uses the fixed OpenRouter DeepSeek V4 Flash route with High reasoning; Structured renders facts without a model. Focused falls back through Flash and then Structured. All routes derive from one bounded fact snapshot, and a provider failure ends in a useful deterministic result instead of a blank screen.
 
-### Operates Apex Agents
+### Operates the Apex Agent
 
 Agent queries can use approved read tools for live data, briefing history, Gmail, Microsoft To Do, and optional MCP (Model Context Protocol) providers. Reads run directly. Supported native writes create action proposals that require local approval and verification before they are considered complete.
 
@@ -45,13 +45,13 @@ After a Microsoft To Do list is selected, its incomplete tasks become the Home r
 <p align="center">
   <img
   src="docs/assets/apex-cortex.png"
-  alt="APEX Cortex workspace showing a persistent conversation, briefing-history tool result, Agent and model controls, and personal context settings"
+  alt="APEX Cortex workspace showing a persistent conversation, briefing-history tool result, model controls, and personal context settings"
   width="900"
 >
 </p>
 
 <p align="center">
-  <em>The Cortex workspace using an Apex Agent to review persisted briefing history, with conversation, model, tool, and personal context controls available alongside the chat.</em>
+  <em>The Cortex workspace using the Apex Agent to review persisted briefing history, with conversation, model, tool, and personal context controls available alongside the chat.</em>
 </p>
 
 ### Keeps runtime control visible
