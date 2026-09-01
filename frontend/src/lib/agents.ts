@@ -68,11 +68,8 @@ export function formatContextWindowLabel(
   if (typeof tokens !== 'number' || !Number.isFinite(tokens) || tokens <= 0) {
     return null
   }
-  if (tokens % 1048576 === 0) {
-    return `${tokens / 1048576}M`
-  }
-  if (tokens % 1000000 === 0) {
-    return `${tokens / 1000000}M`
+  if (tokens >= 1_000_000) {
+    return '1M'
   }
   if (tokens === 131072) {
     return '132K'
