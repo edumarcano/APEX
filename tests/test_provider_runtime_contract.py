@@ -67,7 +67,7 @@ def _concrete_profile(model_id: str = "gpt-5.6-luna"):
 class ProviderContractTests(unittest.TestCase):
     def test_resolve_inference_provider_for_existing_profiles(self) -> None:
         self.assertEqual(
-            resolve_inference_provider(_concrete_profile("gemini-3.6-flash")), "gemini"
+            resolve_inference_provider(_concrete_profile("gemini-3.7-flash")), "gemini"
         )
         self.assertEqual(
             resolve_inference_provider(_concrete_profile("gpt-5.6-luna")), "openai"
@@ -231,7 +231,7 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(merged.total_tokens, 22)
 
     def test_loop_aggregates_usage_timing_cost_and_apex_origin(self) -> None:
-        profile = _concrete_profile("gemini-3.6-flash")
+        profile = _concrete_profile("gemini-3.7-flash")
 
         class Provider:
             def __init__(self) -> None:
@@ -258,13 +258,13 @@ class ProviderContractTests(unittest.TestCase):
                                 )
                             ],
                         ),
-                        resolved_model="gemini-3.6-flash-rev",
+                        resolved_model="gemini-3.7-flash-rev",
                         usage=TokenUsage(input_tokens=100, output_tokens=20, total_tokens=120),
                         provider_ms=12.5,
                     )
                 return ProviderTurnResult(
                     message=AgentMessage(role="agent", content="Clear skies."),
-                    resolved_model="gemini-3.6-flash-rev",
+                    resolved_model="gemini-3.7-flash-rev",
                     usage=TokenUsage(input_tokens=140, output_tokens=30, total_tokens=170),
                     provider_ms=8.0,
                 )
@@ -277,7 +277,7 @@ class ProviderContractTests(unittest.TestCase):
         )
 
         self.assertEqual(response.answer, "Clear skies.")
-        self.assertEqual(response.resolved_model, "gemini-3.6-flash-rev")
+        self.assertEqual(response.resolved_model, "gemini-3.7-flash-rev")
         assert response.usage is not None
         self.assertEqual(response.usage.input_tokens, 240)
         self.assertEqual(response.usage.output_tokens, 50)
@@ -315,7 +315,7 @@ class ProviderContractTests(unittest.TestCase):
         response = run_agent_loop(
             AgentQueryRequest(prompt="Search?", agent="apex"),
             Provider(),
-            _concrete_profile("gemini-3.6-flash"),
+            _concrete_profile("gemini-3.7-flash"),
         )
 
         trace = response.tool_trace[0]
@@ -455,21 +455,21 @@ class PricingRegistryTests(unittest.TestCase):
         # cached at $0.04, and 1M output at $1.80.
         self.assertAlmostEqual(estimate.token_cost or 0.0, 2.056, places=4)
 
-    def test_gemini_flash_lite_uses_free_tier_billing(self) -> None:
+    def test_gemini_flash_uses_standard_billing(self) -> None:
         pricing = agent_pricing(
             "apex",
-            model="gemini-3.5-flash-lite",
+            model="gemini-3.7-flash",
             provider="gemini",
         )
 
-        self.assertEqual(pricing.billing_basis, "free_tier")
-        self.assertEqual(pricing.rates.input_per_million, 0.0)
-        self.assertEqual(pricing.rates.output_per_million, 0.0)
-        self.assertEqual(pricing.rates.cached_input_per_million, 0.0)
+        self.assertEqual(pricing.billing_basis, "standard")
+        self.assertEqual(pricing.rates.input_per_million, 0.75)
+        self.assertEqual(pricing.rates.output_per_million, 3.75)
+        self.assertEqual(pricing.rates.cached_input_per_million, 0.075)
 
     def test_token_cost_excludes_mcp_and_marks_unknown_hosted_partial(self) -> None:
         estimate = estimate_inference_cost(
-            model="gemini-3.6-flash",
+            model="gemini-3.7-flash",
             usage=TokenUsage(input_tokens=1_000_000, output_tokens=1_000_000),
             hosted_tool_events=[
                 ProviderToolEvent(name="google_search", status="ok", billable_units=2),
@@ -505,7 +505,7 @@ class PricingRegistryTests(unittest.TestCase):
 
     def test_cached_and_reasoning_tokens_are_not_charged_twice(self) -> None:
         estimate = estimate_inference_cost(
-            model="gemini-3.6-flash",
+            model="gemini-3.7-flash",
             usage=TokenUsage(
                 input_tokens=1_000_000,
                 cached_input_tokens=400_000,
@@ -516,17 +516,6 @@ class PricingRegistryTests(unittest.TestCase):
         # 0.6M uncached at 0.75 + 0.4M cached at 0.075 + 1M reasoning and 1M
         # output at the 3.75 output rate.
         self.assertAlmostEqual(estimate.token_cost or 0.0, 7.98, places=4)
-
-    def test_experimental_gemini_model_pricing_uses_free_tier(self) -> None:
-        estimate = estimate_inference_cost(
-            model="gemini-3.5-flash-lite",
-            configured_model="gemini-3.5-flash-lite",
-            provider="gemini",
-            agent_key="apex",
-            usage=TokenUsage(input_tokens=1000, output_tokens=200),
-        )
-        self.assertEqual(estimate.token_cost, 0.0)
-        self.assertEqual(estimate.completeness, "complete")
 
     def test_long_context_rates_apply_after_the_provider_threshold(self) -> None:
         estimate = estimate_inference_cost(
@@ -584,7 +573,7 @@ class RetryHelperTests(unittest.TestCase):
             cached_content_token_count=None,
             thoughts_token_count=None,
         )
-        mock_response.model_version = "gemini-3.6-flash"
+        mock_response.model_version = "gemini-3.7-flash"
         mock_client.models.generate_content.side_effect = [
             APIError(429, {"error": {"message": "rate limited"}}),
             mock_response,
@@ -593,11 +582,11 @@ class RetryHelperTests(unittest.TestCase):
         result = GeminiProvider(api_key="test").generate_turn(
             [AgentMessage(role="user", content="Hello")],
             [],
-            _concrete_profile("gemini-3.6-flash"),
+            _concrete_profile("gemini-3.7-flash"),
         )
         self.assertEqual(result.message.content, "Recovered")
         self.assertEqual(result.retry_count, 1)
-        self.assertEqual(result.resolved_model, "gemini-3.6-flash")
+        self.assertEqual(result.resolved_model, "gemini-3.7-flash")
         assert result.usage is not None
         self.assertEqual(result.usage.input_tokens, 11)
         self.assertEqual(result.usage.output_tokens, 3)

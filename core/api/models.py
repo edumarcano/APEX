@@ -599,7 +599,7 @@ AgentStatusSource = Literal["configuration", "verification", "request", "runtime
 class AgentPricingMetadata(BaseModel):
     currency: Literal["USD"] = "USD"
     pricing_version: str
-    billing_basis: Literal["free_tier", "standard", "local"]
+    billing_basis: Literal["standard", "local"]
     input_per_million: float = Field(ge=0)
     output_per_million: float = Field(ge=0)
     cached_input_per_million: float | None = Field(default=None, ge=0)

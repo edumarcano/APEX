@@ -207,7 +207,7 @@ class SandboxPolicyTests(unittest.TestCase):
         with mock.patch(
             "core.agent.catalog.resolve_selected_model_profile"
         ) as resolve_profile:
-            resolve_profile.return_value = get_model_profile("gemini-3.6-flash")
+            resolve_profile.return_value = get_model_profile("gemini-3.7-flash")
             self.assertEqual(
                 hosted_tools_for_agent(
                     "apex", google_search_enabled=True

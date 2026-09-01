@@ -238,7 +238,7 @@ class CloudAgentVerificationTests(unittest.TestCase):
         ):
             verify_cloud_agent("gpt-5.6-luna")
             self.assertEqual(cloud_status("gpt-5.6-luna").status, "verified")
-            self.assertEqual(cloud_status("gemini-3.6-flash").status, "configured")
+            self.assertEqual(cloud_status("gemini-3.7-flash").status, "configured")
 
     def test_request_cache_records_the_route_that_actually_ran(self) -> None:
         from core.agent.providers.cloud_verification import record_cloud_request_success
@@ -249,7 +249,7 @@ class CloudAgentVerificationTests(unittest.TestCase):
             model="gpt-5.6-luna",
         )
         self.assertEqual(cloud_status("gpt-5.6-luna").status, "verified")
-        self.assertEqual(cloud_status("gemini-3.6-flash").status, "configured")
+        self.assertEqual(cloud_status("gemini-3.7-flash").status, "configured")
 
     def test_endpoint_returns_sanitized_result(self) -> None:
         result = mock.Mock(status="verified", reason=None)

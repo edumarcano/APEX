@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Cloud, Gpu, Loader2, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { Check, ChevronDown, Cloud, Gpu, Loader2, ShieldCheck } from 'lucide-react'
 import {
   useEffect,
   useMemo,
@@ -74,7 +74,6 @@ function formatPricing(entry: ModelCatalogEntry | null | undefined): string {
     return 'Standard pricing'
   }
   const { billing_basis, input_per_million, output_per_million } = entry.pricing
-  if (billing_basis === 'free_tier') return 'Free tier'
   if (billing_basis === 'local') return 'Local · No provider charge'
   return `$${input_per_million.toFixed(2)}/M in · $${output_per_million.toFixed(2)}/M out`
 }
@@ -184,7 +183,6 @@ export function ModelSelector({
         : 'bg-zinc-500'
 
   const selectedCapabilities = selectedModel ? capabilityTags(selectedModel) : []
-  const isFreeTier = selectedModel?.pricing?.billing_basis === 'free_tier'
   const providerLabel = selectedModel
     ? selectedModel.runtime === 'local'
       ? runtimeDisplayName(selectedModel.provider as 'ollama' | 'llama_cpp')
@@ -277,13 +275,6 @@ export function ModelSelector({
             </button>
           ) : null}
         </div>
-
-        {isFreeTier ? (
-          <div className="mt-2 flex items-center gap-1.5 rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-300">
-            <ShieldAlert className="size-3 shrink-0 text-amber-400" aria-hidden />
-            <span>Free tier · Content may be used to improve Google products</span>
-          </div>
-        ) : null}
 
         {selectedCapabilities.length > 0 ? (
           <div className="mt-2 flex flex-wrap gap-1">

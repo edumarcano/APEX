@@ -286,7 +286,7 @@ class ContextAssemblyTests(unittest.TestCase):
             store.apply_patch(
                 SettingsPatch(
                     ask_apex=AgentSettingsPatch(
-                        selected_model="gemini-3.6-flash",
+                        selected_model="gemini-3.7-flash",
                         cloud=CloudSettingsPatch(
                             personal_context_enabled=True
                         )
@@ -305,7 +305,7 @@ class ContextAssemblyTests(unittest.TestCase):
             store.apply_patch(
                 SettingsPatch(
                     ask_apex=AgentSettingsPatch(
-                        selected_model="gemini-3.6-flash",
+                        selected_model="gemini-3.7-flash",
                         cloud=CloudSettingsPatch(
                             personal_context_enabled=False
                         )

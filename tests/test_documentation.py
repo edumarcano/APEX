@@ -81,10 +81,10 @@ class DocumentationCheckerTests(unittest.TestCase):
         source = Path("virtual-readme.md")
         issues = check_agent_profiles(
             [source],
-            {"catalog-one": "gemini-3.6-flash"},
+            {"catalog-one": "gemini-3.7-flash"},
             {
                 source: (
-                    "| `catalog-one` | Gemini `gemini-3.6-flash` |\n"
+                    "| `catalog-one` | Gemini `gemini-3.7-flash` |\n"
                     "old uses gemini-3.1-flash\n"
                 )
             },
@@ -99,11 +99,11 @@ class DocumentationCheckerTests(unittest.TestCase):
             [source],
             {
                 "catalog-one": "gpt-5.6-luna",
-                "catalog-two": "gemini-3.6-flash",
+                "catalog-two": "gemini-3.7-flash",
             },
             {
                 source: (
-                    "| `catalog-one` | Gemini `gemini-3.6-flash` |\n"
+                    "| `catalog-one` | Gemini `gemini-3.7-flash` |\n"
                     "| `catalog-two` | OpenAI `gpt-5.6-luna` |\n"
                 )
             },
@@ -111,7 +111,7 @@ class DocumentationCheckerTests(unittest.TestCase):
 
         self.assertEqual({issue.target for issue in issues}, {
             "catalog-one -> gpt-5.6-luna",
-            "catalog-two -> gemini-3.6-flash",
+            "catalog-two -> gemini-3.7-flash",
         })
 
     def test_reports_unknown_suffixless_grok_model(self) -> None:

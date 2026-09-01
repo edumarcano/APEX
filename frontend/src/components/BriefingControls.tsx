@@ -106,7 +106,6 @@ function modeCost(mode: BriefingMode, targets?: BriefingTargetStatus[]): string 
   const target = targets?.find((entry) => entry.mode === mode)
   if (target?.pricing) {
     if (target.pricing.billing_basis === 'local') return 'No provider token charge'
-    if (target.pricing.billing_basis === 'free_tier') return 'Free tier'
     return `In ${compactRate(target.pricing.input_per_million)} · Out ${compactRate(target.pricing.output_per_million)} / 1M`
   }
   return 'Pricing unavailable'

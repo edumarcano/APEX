@@ -17,12 +17,12 @@ class ApexAgentCatalogTests(unittest.TestCase):
 
     def test_selected_cloud_model_resolves_runtime_and_effort(self) -> None:
         settings = AgentSettings(
-            selected_model="gemini-3.6-flash",
-            cloud=CloudSettings(last_model="gemini-3.6-flash", effort="high"),
+            selected_model="gemini-3.7-flash",
+            cloud=CloudSettings(last_model="gemini-3.7-flash", effort="high"),
         )
         self.assertEqual(
             resolve_model_selection(settings),
-            ("cloud", "gemini-3.6-flash", "high"),
+            ("cloud", "gemini-3.7-flash", "high"),
         )
 
     def test_selected_local_model_has_no_cloud_effort(self) -> None:
@@ -38,7 +38,7 @@ class ApexAgentCatalogTests(unittest.TestCase):
     def test_visible_catalogs_are_ordered_by_runtime(self) -> None:
         self.assertEqual(
             [profile.model_id for profile in visible_cloud_models()],
-            ["deepseek/deepseek-v4-flash-0731", "gpt-5.6-luna"],
+            ["deepseek/deepseek-v4-flash-0731", "gpt-5.6-luna", "gemini-3.7-flash"],
         )
         self.assertEqual(
             [profile.model_id for profile in visible_local_models()],
@@ -53,7 +53,7 @@ class ApexAgentCatalogTests(unittest.TestCase):
         expected = {
             "gpt-5.6-luna": "OPENAI_API_KEY",
             "deepseek/deepseek-v4-flash-0731": "OPENROUTER_API_KEY",
-            "gemini-3.6-flash": "GEMINI_API_KEY",
+            "gemini-3.7-flash": "GEMINI_API_KEY",
         }
         self.assertEqual(
             {model_id: get_model_profile(model_id).credential_env for model_id in expected},
