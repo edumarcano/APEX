@@ -33,6 +33,8 @@ describe('agents helpers', () => {
     expect(formatContextWindowLabel(8192)).toBe('8K')
     expect(formatContextWindowLabel(32768)).toBe('32K')
     expect(formatContextWindowLabel(131072)).toBe('132K')
+    expect(formatContextWindowLabel(1048576)).toBe('1M')
+    expect(formatContextWindowLabel(1310720)).toBe('1M')
     expect(formatContextWindowLabel(null)).toBeNull()
   })
 
