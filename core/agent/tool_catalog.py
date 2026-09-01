@@ -19,11 +19,11 @@ from core.agent.capabilities import (
     namespaced_capability_name,
 )
 from core.agent.sandbox_policy import is_sandbox_active, is_sandbox_capability_allowed
-from core.agent.tool_policies import filter_agent_capabilities, hosted_tools_for_agent
+from core.agent.tool_policies import filter_agent_capabilities, hosted_tools_for_model
 from core.agent.tool_schemas import (
     descriptor_to_openai_schema,
     estimate_json_tokens,
-    project_descriptor_for_agent,
+    project_descriptor_for_model,
 )
 from core.agent.types import (
     AgentKey,
@@ -325,14 +325,14 @@ def _profile_metadata() -> list[ToolProfileMetadata]:
     ]
 
 
-def _default_profile(agent_key: str) -> tuple[str, str]:
-    from core.agent.tool_profiles import default_profile_for_agent
+def _default_profile(runtime: str) -> tuple[str, str]:
+    from core.agent.tool_profiles import default_profile_for_runtime
 
-    profile = default_profile_for_agent(agent_key)
+    profile = default_profile_for_runtime(runtime)
     return profile.id, profile.name
 
 
-def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
+def build_tool_catalog(agent_key: str = "apex", *, model_id: str | None = None) -> ToolCatalogResponse:
     """Build the complete provider-neutral catalog for one Apex Agent."""
     from core.agent.catalog import AGENT_SPECS
 
@@ -340,19 +340,24 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
         raise ValueError(f"Unknown Agent: {agent_key!r}")
 
     from core.settings import get_settings_store
+    from core.agent.model_catalog import get_model_profile
 
     settings = get_settings_store().get_snapshot()
+    resolved_model_id = model_id or settings.ask_apex.selected_model
+    model_profile = get_model_profile(resolved_model_id)
+    if model_profile is None:
+        raise ValueError(f"Unknown model: {resolved_model_id!r}")
     sandbox_active = is_sandbox_active(
         sandbox_mode=settings.ask_apex.sandbox_mode,
         dev_mode=is_dev_mode(),
     )
     google_search, google_maps, x_search = (
-        settings.ask_apex.panthera.hosted_tools.google_search,
-        settings.ask_apex.panthera.hosted_tools.google_maps,
-        settings.ask_apex.panthera.hosted_tools.x_search,
+        settings.ask_apex.cloud.hosted_tools.google_search,
+        settings.ask_apex.cloud.hosted_tools.google_maps,
+        settings.ask_apex.cloud.hosted_tools.x_search,
     )
-    hosted_tools = hosted_tools_for_agent(
-        agent_key,
+    hosted_tools = hosted_tools_for_model(
+        model_profile,
         google_search_enabled=google_search,
         google_maps_enabled=google_maps,
         x_search_enabled=x_search,
@@ -425,7 +430,7 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
                 else "This action capability has no registered executor and verifier."
             )
 
-        projected = project_descriptor_for_agent(agent_key, descriptor)
+        projected = project_descriptor_for_model(resolved_model_id, descriptor)
         schema_tokens = estimate_json_tokens(
             descriptor_to_openai_schema(projected)
         )
@@ -573,7 +578,7 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
             )
         )
 
-    profile_id, profile_name = _default_profile(agent_key)
+    profile_id, profile_name = _default_profile(model_profile.runtime)
     default_tools = [
         tool.name
         for tool in catalog_tools.values()
@@ -588,18 +593,17 @@ def build_tool_catalog(agent_key: str = "panthera") -> ToolCatalogResponse:
 
     context_window: int | None = None
     reserved_response_tokens: int | None = None
-    if AGENT_SPECS[agent_key].runtime == "local":
+    if model_profile.runtime == "local":
         from core.agent.catalog import (
             build_concrete_agent,
-            local_context_window_for_agent,
-            local_reasoning_mode_for_agent,
         )
 
         profile = build_concrete_agent(
             agent_key,
             native_effort=None,
-            local_context_window=local_context_window_for_agent(agent_key),
-            local_reasoning_mode=local_reasoning_mode_for_agent(agent_key),
+            local_context_window=settings.ask_apex.local.context_window,
+            local_reasoning_mode=settings.ask_apex.local.reasoning_mode,
+            model_id=resolved_model_id,
         )
         context_window = profile.context_window
         reserved_response_tokens = profile.final_answer_max_tokens

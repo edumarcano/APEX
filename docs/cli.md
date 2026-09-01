@@ -8,9 +8,9 @@ Use the HUD when a visual workspace is more useful. Use the CLI for a quick chec
 
 ```powershell
 uv run apex status
-uv run apex agents
+uv run apex models
 uv run apex ask "What needs my attention?"
-uv run apex ask "Review my plan" --agent panthera --effort focused --profile daily_planning
+uv run apex ask "Review my plan" --model deepseek/deepseek-v4-flash-0731 --effort high --profile daily_planning
 uv run apex briefing
 uv run apex briefing --mode structured
 uv run apex context status
@@ -22,7 +22,7 @@ uv run apex actions reject <action-id>
 uv run apex actions verify <action-id>
 ```
 
-`status` checks backend readiness, including configuration and database access, and shows the effective saved Agent and runtime that an `ask` command will use when `--agent` is omitted. `agents` lists the visible Agents and their current availability. Each `ask` invocation creates one persisted CLI conversation and submits one turn; it does not attach the current HUD snapshot. When `--profile` is omitted, the backend chooses the saved default profile for the selected Agent.
+`status` checks backend readiness, including configuration and database access, and shows Apex Agent, its selected model, runtime, and saved cloud reasoning preference. `models` lists the unified model catalog and model-specific availability. Each `ask` invocation creates one persisted CLI conversation and submits one turn; it does not attach the current HUD snapshot. `--model` is optional; omitting it uses the persisted selected model. When `--profile` is omitted, the backend chooses the saved default profile for the selected model runtime.
 
 `context status` shows local retrieval mode, indexing counts, and pending indexed items,
 and any safe degraded category. `context prepare` explicitly prepares the local

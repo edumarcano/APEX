@@ -12,13 +12,12 @@ export interface PipelineState {
 }
 
 export type SynthesisProvider = 'gemini' | 'ollama' | 'llama_cpp' | 'openai' | 'openrouter' | 'xai' | 'raw' | 'demo'
-export type SynthesisAgent = 'panthera' | 'felis'
 export type SynthesisStrategy = 'cloud' | 'local' | 'raw' | 'demo'
 
 export interface SynthesisLiveState {
   phase: 'idle' | 'loading' | 'ready' | 'generating' | 'fallback' | 'complete'
   provider: SynthesisProvider | null
-  agent: SynthesisAgent | null
+  model_id: string | null
   loading: boolean
   fallback_reason: string | null
 }
@@ -94,7 +93,7 @@ export type CloudProvider = 'openai' | 'openrouter' | 'gemini' | 'xai'
 export type LocalRuntime = 'ollama' | 'llama_cpp'
 export type HostedTool = 'google_search' | 'google_maps' | 'x_search'
 
-export type AgentKey = 'panthera' | 'felis'
+export type AgentKey = 'apex'
 
 export type ToolCatalogGroupKind = 'apex_family' | 'mcp_server'
 
@@ -243,6 +242,14 @@ export interface ModelCatalogEntry {
   supports_encrypted_reasoning?: boolean
   dev_only?: boolean
   credentials_configured?: boolean
+  status?: AgentAvailabilityStatus
+  status_source?: AgentStatusSource
+  status_checked_at?: string | null
+  reason?: string | null
+  active?: boolean
+  loading?: boolean
+  idle_unload_remaining_seconds?: number | null
+  loaded_model?: LocalLoadedModelStatus | null
 }
 
 export interface LocalLoadedModelStatus {
@@ -294,6 +301,7 @@ export interface AgentStatus {
 export interface AgentInitialSelection {
   runtime: AgentRuntime
   agent: AgentKey
+  modelId: string
   effort: CloudEffort | null
   sandboxMode?: boolean
 }
@@ -396,7 +404,7 @@ export interface PreflightRequest {
   operation: PreflightOperation
   connectors?: string[] | null
   briefing_mode?: BriefingMode | null
-  synthesis_agent?: string | null
+  model_id?: string | null
   force?: boolean
   involves_cloud?: boolean
   acknowledged_warnings?: string[]
@@ -489,6 +497,6 @@ export interface ApexDataState {
   marketEnabled: boolean
   synthesisStrategy: SynthesisStrategy
   synthesisProvider: SynthesisProvider | null
-  synthesisAgent: SynthesisAgent | null
+  synthesisModelId: string | null
   synthesisFallbackReason: string | null
 }

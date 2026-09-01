@@ -148,17 +148,17 @@ class StableAgentErrorTests(unittest.TestCase):
         def failing_dispatcher(_name: str, _arguments: dict[str, object]) -> object:
             raise RuntimeError("private-dispatcher-detail")
 
-        panthera_profile = build_concrete_agent(
-            "panthera",
+        cloud_profile = build_concrete_agent(
+            "apex",
             native_effort=resolve_effort(
                 get_model_profile("gemini-3.6-flash"), None
             ),
             model_id="gemini-3.6-flash",
         )
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Check weather", agent="panthera"),
+            AgentQueryRequest(prompt="Check weather", agent="apex"),
             provider,
-            panthera_profile,
+            cloud_profile,
             tools_dispatcher=failing_dispatcher,
             selected_tools=[get_capability_descriptor("get_weather_forecast")],  # type: ignore[list-item]
         )

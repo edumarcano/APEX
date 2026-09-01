@@ -1,4 +1,4 @@
-"""Process-current masked briefing context authorized for Acinonyx."""
+"""Process-current masked briefing context for sandboxed Apex Agent turns."""
 
 from __future__ import annotations
 

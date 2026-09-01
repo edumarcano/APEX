@@ -36,8 +36,8 @@ interface BriefingOption {
 }
 
 const ALL_OPTIONS: readonly BriefingOption[] = [
-  { key: 'focused', label: 'Focused', description: 'Panthera · DeepSeek V4 Flash' },
-  { key: 'flash', label: 'Flash', description: 'Felis · Gemma 4 E2B' },
+  { key: 'focused', label: 'Focused', description: 'OpenRouter · DeepSeek V4 Flash' },
+  { key: 'flash', label: 'Flash', description: 'llama.cpp · Gemma 4 E2B' },
   { key: 'structured', label: 'Structured', description: 'Deterministic · no model' },
 ]
 
@@ -86,8 +86,8 @@ const MODE_SUMMARIES: Record<BriefingMode, string> = {
 }
 
 const MODE_EXPANDED_SUBTEXTS: Record<BriefingMode, string> = {
-  focused: 'Panthera · OpenRouter · DeepSeek V4 Flash · High',
-  flash: 'Felis · llama.cpp · Gemma 4 E4B',
+  focused: 'OpenRouter · DeepSeek V4 Flash · High',
+  flash: 'llama.cpp · Gemma 4 E2B',
   structured: 'Deterministic · No model',
 }
 

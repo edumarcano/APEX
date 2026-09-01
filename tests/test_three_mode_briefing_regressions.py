@@ -85,7 +85,7 @@ class BriefingProjectionRegressionTests(unittest.TestCase):
         self.assertIn("SPORTS [TRUNCATED]", briefing)
         self.assertNotIn("Event 23", briefing)
 
-    def test_global_config_derives_strategy_and_agent_from_one_mode(self) -> None:
+    def test_global_config_derives_strategy_and_model_from_one_mode(self) -> None:
         from core.api.routers.system import get_global_config
 
         snapshot = SimpleNamespace(
@@ -95,13 +95,14 @@ class BriefingProjectionRegressionTests(unittest.TestCase):
             voice=SimpleNamespace(mode="off"),
         )
         with patch("core.api.routers.system.get_settings_store", return_value=SimpleNamespace(get_snapshot=lambda: snapshot)), patch(
-            "core.api.routers.system.resolve_agent_selection", return_value=("local", "felis", "none")
+            "core.api.routers.system.resolve_model_selection", return_value=("local", "gemma-4-E2B-Q4_K_M.gguf", None)
         ), patch("core.api.routers.system.is_dev_mode", return_value=False), patch(
             "core.api.routers.system.DEMO_MODE", False
         ):
             config = get_global_config()
         self.assertEqual(config["synthesis_strategy"], "local")
-        self.assertEqual(config["synthesis_agent"], "felis")
+        self.assertEqual(config["synthesis_model_id"], "gemma-4-E2B-Q4_K_M.gguf")
+        self.assertEqual(config["cortex_initial_selection"]["agent"], "apex")
 
     def test_reminders_are_ordered_for_flash_by_urgency_then_importance(self) -> None:
         from core.api.briefing import _build_synthesis_input
@@ -176,12 +177,12 @@ class BriefingProjectionRegressionTests(unittest.TestCase):
 class BriefingRouterContractTests(unittest.TestCase):
     def test_focused_falls_back_through_flash_then_structured(self) -> None:
         router = SynthesisRouter()
-        local = SynthesisResult(briefing="Local orientation.", provider="llama_cpp", agent="felis")
-        with patch.object(router, "_panthera", side_effect=RuntimeError("openrouter_unavailable")), patch.object(
-            router, "_try_panthera_local_fallback", return_value=(local, "")
+        local = SynthesisResult(briefing="Local orientation.", provider="llama_cpp", model_id="gemma-4-E2B-Q4_K_M.gguf")
+        with patch.object(router, "_focused", side_effect=RuntimeError("openrouter_unavailable")), patch.object(
+            router, "_try_focused_local_fallback", return_value=(local, "")
         ) as fallback:
             result = router.synthesize_mode(rich_facts(), "focused")
-        self.assertEqual(result.agent, "felis")
+        self.assertEqual(result.model_id, "gemma-4-E2B-Q4_K_M.gguf")
         self.assertEqual(result.fallback_reason, "openrouter_unavailable")
         self.assertEqual(len(fallback.call_args.args[0].calendar_events), 2)
 
@@ -194,7 +195,7 @@ class BriefingRouterContractTests(unittest.TestCase):
         with patch.dict("os.environ", {"OPENROUTER_API_KEY": "test"}, clear=False), patch(
             "core.synthesis.router.OpenRouterProvider.generate_turn", return_value=turn
         ) as generate:
-            result = router._panthera(rich_facts().focused_view())
+            result = router._focused(rich_facts().focused_view())
         _messages, tools, profile = generate.call_args.args
         self.assertEqual(tools, [])
         self.assertEqual(profile.reasoning_effort, "high")
@@ -203,10 +204,10 @@ class BriefingRouterContractTests(unittest.TestCase):
 
     def test_structured_bypasses_model_and_warmup(self) -> None:
         router = SynthesisRouter()
-        with patch.object(router, "_panthera") as panthera, patch.object(router, "_local") as local:
+        with patch.object(router, "_focused") as focused, patch.object(router, "_local") as local:
             result = router.synthesize_mode(rich_facts(), "structured")
         self.assertEqual(result.provider, "raw")
-        panthera.assert_not_called()
+        focused.assert_not_called()
         local.assert_not_called()
 
     def test_f1_upcoming_uses_an_iso_timestamp_inside_focused_horizon(self) -> None:
@@ -227,7 +228,7 @@ class BriefingRouterContractTests(unittest.TestCase):
         targets = build_briefing_target_statuses()
         self.assertEqual([t.mode for t in targets], ["focused", "flash", "structured"])
         flash_target = next(t for t in targets if t.mode == "flash")
-        self.assertTrue(flash_target.description.startswith("Felis · Gemma"))
+        self.assertTrue(flash_target.description.startswith("llama.cpp · Gemma"))
 
     def test_structured_mode_delivery_policy_is_visual_first(self) -> None:
         from core.api.briefing import _synthesize_from_snapshot

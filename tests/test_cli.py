@@ -58,7 +58,7 @@ class CliTests(unittest.TestCase):
             code = cli.main(argv)
         return code, output.getvalue(), errors.getvalue(), session
 
-    def test_status_and_agents_use_existing_read_routes(self) -> None:
+    def test_status_and_models_use_current_read_routes(self) -> None:
         status_code, status_output, _, status_session = self._run(
             ["status"],
             [
@@ -66,10 +66,10 @@ class CliTests(unittest.TestCase):
                 _Response(
                     200,
                     {
-                        "default_agent": "apodemus",
-                        "agent_initial_selection": {
+                        "cortex_initial_selection": {
                             "runtime": "local",
-                            "agent": "apodemus",
+                            "agent": "apex",
+                            "model_id": "gemma-4-E2B-Q4_K_M.gguf",
                             "effort": None,
                         },
                     },
@@ -78,7 +78,8 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(status_code, 0)
         self.assertIn("ready", status_output.lower())
-        self.assertIn("apodemus", status_output.lower())
+        self.assertIn("apex", status_output.lower())
+        self.assertIn("gemma-4-e2b", status_output.lower())
         self.assertEqual(status_session.calls[0]["method"], "GET")
         self.assertEqual(status_session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/health/ready")
         self.assertEqual(status_session.calls[1]["url"], f"{cli.API_ROOT}/api/v1/config")
@@ -87,16 +88,15 @@ class CliTests(unittest.TestCase):
         self.assertTrue(status_session.closed)
 
         agent_code, agent_output, _, agent_session = self._run(
-            ["agents"],
-            [_Response(200, [{
-                "key": "panthera", "display_name": "Apex Panthera",
-                "runtime": "cloud", "provider": "openai",
-                "configured_model": "model", "status": "available",
-            }])],
+            ["models"],
+            [_Response(200, {"key": "apex", "model_catalog": [{
+                "model_id": "deepseek/deepseek-v4-flash-0731", "display_name": "DeepSeek V4 Flash",
+                "runtime": "cloud", "provider": "openrouter", "status": "available",
+            }]})],
         )
         self.assertEqual(agent_code, 0)
-        self.assertIn("Panthera", agent_output)
-        self.assertEqual(agent_session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/agents")
+        self.assertIn("DeepSeek", agent_output)
+        self.assertEqual(agent_session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/agent")
 
     def test_ask_preserves_backend_defaults_and_sends_explicit_options(self) -> None:
         conversation = _Response(201, {"id": "conversation-1"})
@@ -109,12 +109,12 @@ class CliTests(unittest.TestCase):
         self.assertEqual(session.calls[1]["json"]["prompt"], "Hello")
 
         code, _, _, session = self._run(
-            ["ask", "Plan", "--agent", "panthera", "--effort", "focused", "--profile", "daily_planning"],
+            ["ask", "Plan", "--model", "deepseek/deepseek-v4-flash-0731", "--effort", "high", "--profile", "daily_planning"],
             [_Response(201, {"id": "conversation-2"}), response],
         )
         self.assertEqual(code, 0)
         self.assertEqual({key: value for key, value in session.calls[1]["json"].items() if key not in {"user_message_id", "agent_message_id"}}, {
-            "prompt": "Plan", "agent": "panthera", "effort": "focused",
+            "prompt": "Plan", "model_id": "deepseek/deepseek-v4-flash-0731", "effort": "high",
             "tool_profile_id": "daily_planning",
         })
         self.assertEqual(session.calls[1]["timeout"], (3.0, 600.0))
@@ -211,11 +211,11 @@ class CliTests(unittest.TestCase):
                 _Response(
                     200,
                     {
-                        "default_agent": "panthera",
-                        "agent_initial_selection": {
+                        "cortex_initial_selection": {
                             "runtime": "cloud",
-                            "agent": "panthera",
-                            "effort": "focused",
+                            "agent": "apex",
+                            "model_id": "deepseek/deepseek-v4-flash-0731",
+                            "effort": "high",
                         },
                     },
                 ),
@@ -224,7 +224,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         status_payload = json.loads(output)
         self.assertEqual(status_payload["status"], "ready")
-        self.assertEqual(status_payload["agent"]["key"], "panthera")
+        self.assertEqual(status_payload["agent"]["key"], "apex")
 
         code, output, errors, _ = self._run(
             ["--json", "status"],

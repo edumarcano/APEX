@@ -26,20 +26,16 @@ export const BASE_SETTINGS: RuntimeSettings = {
   },
   ask_apex: {
     enabled: true,
-    agent: 'panthera',
+    selected_model: 'deepseek/deepseek-v4-flash-0731',
     sandbox_mode: false,
-    panthera: {
-      model: 'gpt-5.6-luna',
-      effort: 'medium',
+    cloud: {
+      last_model: 'deepseek/deepseek-v4-flash-0731',
+      effort: 'low',
       personal_context_enabled: false,
-      hosted_tools: {
-        google_search: true,
-        google_maps: true,
-        x_search: true,
-      },
+      hosted_tools: { google_search: true, google_maps: true, x_search: true },
     },
-    felis: {
-      model: 'gemma-4-E2B-Q4_K_M.gguf',
+    local: {
+      last_model: 'gemma-4-E2B-Q4_K_M.gguf',
       context_window: 16384,
       reasoning_mode: 'none',
       personal_context_enabled: false,

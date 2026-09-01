@@ -139,26 +139,30 @@ def get_tool_profile(profile_id: str | None) -> ToolProfile | None:
     )
 
 
-def default_profile_for_agent(agent_key: str) -> ToolProfile:
-    """Return the configured default, preserving cloud/local migration defaults."""
+def default_profile_for_runtime(runtime: str) -> ToolProfile:
+    """Return the configured default for a cloud or local model runtime."""
     try:
         snapshot = get_settings_store().get_snapshot()
         defaults = getattr(
             getattr(snapshot, "tool_profiles", None),
-            "default_profile_by_agent",
+            "default_profile_by_runtime",
             {},
         )
-        configured_id = defaults.get(agent_key) if isinstance(defaults, dict) else None
+        configured_id = defaults.get(runtime) if isinstance(defaults, dict) else None
         configured = get_tool_profile(configured_id)
         if configured is not None:
             return configured
     except Exception:
         pass
-    from core.agent.catalog import is_local_agent_key
-
-    if is_local_agent_key(agent_key):
+    if runtime == "local":
         return _BUILT_IN_BY_ID["no_tools"]
     return _BUILT_IN_BY_ID["all_allowed"]
+
+
+def default_profile_for_agent(agent_key: str) -> ToolProfile:
+    """Compatibility wrapper for the sole public Apex Agent."""
+    from core.agent.catalog import resolve_selected_model_profile
+    return default_profile_for_runtime(resolve_selected_model_profile().runtime)
 
 
 def resolve_profile_names(

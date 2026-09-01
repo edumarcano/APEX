@@ -9,7 +9,6 @@ import type {
   ConnectorHealthEntry,
   PipelineState,
   SynthesisLiveState,
-  SynthesisAgent,
   SynthesisProvider,
   SynthesisStrategy,
   SystemState,
@@ -246,10 +245,6 @@ const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = [
   'raw',
   'demo',
 ]
-const VALID_SYNTHESIS_PROFILES: readonly SynthesisAgent[] = [
-  'panthera',
-  'felis',
-]
 const VALID_SYNTHESIS_STRATEGIES: readonly SynthesisStrategy[] = ['cloud', 'local', 'raw', 'demo']
 const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = [
   'none',
@@ -272,10 +267,11 @@ function parseAgentInitialSelection(value: unknown): AgentInitialSelection | und
   const record = value as Record<string, unknown>
   const runtime = record.runtime
   const agent = record.agent
+  const modelId = record.model_id
   if (runtime !== 'cloud' && runtime !== 'local') {
     return undefined
   }
-  if (!isAgentKey(agent)) {
+  if (!isAgentKey(agent) || typeof modelId !== 'string' || modelId.length === 0) {
     return undefined
   }
   const effort =
@@ -288,6 +284,7 @@ function parseAgentInitialSelection(value: unknown): AgentInitialSelection | und
   return {
     runtime,
     agent,
+    modelId,
     effort,
   }
 }
@@ -318,7 +315,7 @@ function parsePipelineStatus(body: unknown): PipelineState | null {
       synthesis = {
         phase: phase as SynthesisLiveState['phase'],
         provider: parseEnum(item.provider, VALID_SYNTHESIS_PROVIDERS),
-        agent: parseEnum(item.agent, VALID_SYNTHESIS_PROFILES),
+        model_id: typeof item.model_id === 'string' ? item.model_id : null,
         loading: item.loading === true,
         fallback_reason: typeof item.fallback_reason === 'string' ? item.fallback_reason : null,
       }
@@ -404,7 +401,7 @@ export function useApexData(): UseApexDataReturn {
     marketEnabled: true,
     synthesisStrategy: 'local',
     synthesisProvider: 'llama_cpp',
-    synthesisAgent: 'felis',
+    synthesisModelId: 'gemma-4-E2B-Q4_K_M.gguf',
     synthesisFallbackReason: null,
   })
 
@@ -745,7 +742,7 @@ export function useApexData(): UseApexDataReturn {
       const active_tts_engine = parseTtsEngine(metadata?.active_tts_engine)
       const system_load_throttled = metadata?.system_load_throttled === true
       const synthesisProvider = parseEnum(metadata?.synthesis_provider, VALID_SYNTHESIS_PROVIDERS)
-      const synthesisAgent = parseEnum(metadata?.synthesis_agent, VALID_SYNTHESIS_PROFILES)
+      const synthesisModelId = typeof metadata?.synthesis_model_id === 'string' ? metadata.synthesis_model_id : null
       const synthesisFallbackReason =
         typeof metadata?.synthesis_fallback_reason === 'string'
           ? metadata.synthesis_fallback_reason
@@ -812,7 +809,7 @@ export function useApexData(): UseApexDataReturn {
         active_tts_engine,
         system_load_throttled,
         synthesisProvider,
-        synthesisAgent,
+        synthesisModelId,
         synthesisFallbackReason,
       }))
     } catch (err) {
@@ -863,14 +860,13 @@ export function useApexData(): UseApexDataReturn {
         let briefingDefaultMode: ApexDataState['briefingDefaultMode']
         let voiceMode: ApexDataState['voiceMode']
         let synthesisStrategy: SynthesisStrategy | undefined
-        let synthesisAgent: SynthesisAgent | null | undefined
+        let synthesisModelId: string | null | undefined
         if (configResp.ok) {
           try {
             const configBody: unknown = await configResp.json()
             if (configBody && typeof configBody === 'object') {
               const body = configBody as {
-                default_agent?: unknown
-                agent_initial_selection?: unknown
+                cortex_initial_selection?: unknown
                 ask_apex_enabled?: unknown
                 market_enabled?: unknown
                 demo_mode_active?: unknown
@@ -878,17 +874,13 @@ export function useApexData(): UseApexDataReturn {
                 briefing_default_mode?: unknown
                 voice_mode?: unknown
                 synthesis_strategy?: unknown
-                synthesis_agent?: unknown
+                synthesis_model_id?: unknown
               }
               agentInitialSelection = parseAgentInitialSelection(
-                body.agent_initial_selection,
+                body.cortex_initial_selection,
               )
               if (agentInitialSelection) {
                 defaultAgent = agentInitialSelection.agent
-              } else {
-                defaultAgent = isAgentKey(body.default_agent)
-                  ? body.default_agent
-                  : undefined
               }
               if (typeof body.ask_apex_enabled === 'boolean') {
                 agentQueriesEnabled = body.ask_apex_enabled
@@ -909,7 +901,7 @@ export function useApexData(): UseApexDataReturn {
               ] as const) ?? undefined
               voiceMode = parseEnum(body.voice_mode, ['off', 'manual', 'automatic'] as const) ?? undefined
               synthesisStrategy = parseEnum(body.synthesis_strategy, VALID_SYNTHESIS_STRATEGIES) ?? undefined
-              synthesisAgent = parseEnum(body.synthesis_agent, VALID_SYNTHESIS_PROFILES)
+              synthesisModelId = typeof body.synthesis_model_id === 'string' ? body.synthesis_model_id : null
             }
           } catch {
             // Config hydration is best-effort; preserve dormant idle state on parse failure.
@@ -948,7 +940,7 @@ export function useApexData(): UseApexDataReturn {
                 ...(voiceMode !== undefined ? { voiceMode } : {}),
                 ...modePatch,
                 ...(synthesisStrategy !== undefined ? { synthesisStrategy } : {}),
-                ...(synthesisAgent !== undefined ? { synthesisAgent } : {}),
+                ...(synthesisModelId !== undefined ? { synthesisModelId } : {}),
                 synthesisProvider:
                   synthesisStrategy === 'raw'
                     ? 'raw'
@@ -1001,7 +993,7 @@ export function useApexData(): UseApexDataReturn {
             ...(voiceMode !== undefined ? { voiceMode } : {}),
             ...modePatch,
             ...(synthesisStrategy !== undefined ? { synthesisStrategy } : {}),
-            ...(synthesisAgent !== undefined ? { synthesisAgent } : {}),
+            ...(synthesisModelId !== undefined ? { synthesisModelId } : {}),
             synthesisProvider:
               synthesisStrategy === 'raw'
                 ? 'raw'

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { AgentStatus, AgentKey, ToolCatalog, ModelCatalogEntry } from '../types/telemetry'
+import type { AgentStatus, ToolCatalog, ModelCatalogEntry } from '../types/telemetry'
 
 import { HomeCommandRail } from './HomeCommandRail'
 
@@ -31,14 +31,13 @@ const mockCatalog: ModelCatalogEntry[] = [
   },
 ]
 
-function profile(key: AgentKey, status: AgentStatus['status'] = 'available'): AgentStatus {
-  const local = key === 'felis'
+function profile(local = false, status: AgentStatus['status'] = 'available'): AgentStatus {
   return {
-    key,
-    display_name: key === 'panthera' ? 'Apex Panthera' : 'Apex Felis',
-    description: `${key} profile.`,
+    key: 'apex',
+    display_name: 'Apex Agent',
+    description: 'Apex Agent.',
     configured_model: local ? 'gemma-4-E2B-Q4_K_M.gguf' : 'gpt-5.6-luna',
-    sort_order: key === 'panthera' ? 1 : 2,
+    sort_order: 1,
     capabilities: [],
     native_tools: {},
     provider: local ? 'llama_cpp' : 'openai',
@@ -71,7 +70,7 @@ function profile(key: AgentKey, status: AgentStatus['status'] = 'available'): Ag
 
 function renderRail(overrides: Partial<ComponentProps<typeof HomeCommandRail>> = {}) {
   const toolCatalog: ToolCatalog = {
-    agent: 'panthera',
+    agent: 'apex',
     groups: [],
     tools: [],
     profiles: [],
@@ -88,7 +87,7 @@ function renderRail(overrides: Partial<ComponentProps<typeof HomeCommandRail>> =
     selectedModelId: 'gpt-5.6-luna',
     onModelChange: vi.fn(),
     modelCatalog: mockCatalog,
-    agentsStatus: [profile('panthera'), profile('felis')],
+    agentsStatus: [profile()],
     isCortexQuerying: false,
     onAgentSubmit: vi.fn().mockResolvedValue(true),
     toolCatalog,
@@ -159,7 +158,7 @@ describe('HomeCommandRail', () => {
     const user = userEvent.setup()
     renderRail({ onAgentSubmit, selectedModelId: 'gpt-5.6-luna' })
 
-    expect(screen.queryByLabelText('Active profile Panthera')).toBeNull()
+    expect(screen.queryByLabelText('Active profile Apex Agent')).toBeNull()
     await user.type(screen.getByLabelText('Agent query'), 'Summarize my day')
     await user.click(screen.getByRole('button', { name: 'Send query' }))
 
@@ -179,9 +178,9 @@ describe('HomeCommandRail', () => {
 
   it('shows the resident local runtime beneath command rows and keeps its unload action separate from synthesis', async () => {
     const onUnloadLocalModel = vi.fn(async () => true)
-    const activeFelis = { ...profile('felis'), active: true, display_name: 'Apex Felis' }
+    const activeLocalModel = { ...profile(true), active: true, display_name: 'Apex Agent' }
     const user = userEvent.setup()
-    renderRail({ activeLocalModel: activeFelis, onUnloadLocalModel })
+    renderRail({ activeLocalModel, agentsStatus: [profile(true)], selectedModelId: 'gemma-4-E2B-Q4_K_M.gguf', onUnloadLocalModel })
 
     expect(document.querySelector('[data-slot="home-agent-row"]')).toBeVisible()
     expect(document.querySelector('[data-slot="home-briefing-row"]')).toBeVisible()
@@ -195,14 +194,14 @@ describe('HomeCommandRail', () => {
   })
 
   it('includes active local model in the local runtime strip', () => {
-    const activeFelis = {
-      ...profile('felis'),
+    const activeLocalModel = {
+      ...profile(true),
       active: true,
-      display_name: 'Apex Felis',
+      display_name: 'Apex Agent',
       loaded_model: {
         provider: 'llama_cpp' as const,
-        name: 'felis-16k',
-        model: 'felis-16k',
+        name: 'gemma-4-e2b-local',
+        model: 'gemma-4-e2b-local',
         state: 'loaded' as const,
         context_window: 16384,
         size_bytes: null,
@@ -212,13 +211,13 @@ describe('HomeCommandRail', () => {
         expires_at: null,
       },
     }
-    renderRail({ activeLocalModel: activeFelis })
+    renderRail({ activeLocalModel })
 
-    expect(screen.getByText('felis-16k · llama.cpp · Loaded')).toBeVisible()
+    expect(screen.getByText('gemma-4-e2b-local · llama.cpp · Loaded')).toBeVisible()
   })
 
   it('keeps the local runtime strip visible and disables unloading while a model is loading', () => {
-    renderRail({ activeLocalModel: null, loadingLocalAgent: profile('felis') })
+    renderRail({ activeLocalModel: null, agentsStatus: [profile(true)], loadingLocalAgent: profile(true), selectedModelId: 'gemma-4-E2B-Q4_K_M.gguf' })
 
     expect(screen.getByText('gemma-4-E2B-Q4_K_M.gguf · llama.cpp · Loading')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Unload gemma-4-E2B-Q4_K_M.gguf' })).toBeDisabled()
@@ -226,10 +225,10 @@ describe('HomeCommandRail', () => {
 
   it('renders local model control during standby below briefing mode selector when a model is active', async () => {
     const onUnloadLocalModel = vi.fn(async () => true)
-    const activeFelis = {
-      ...profile('felis'),
+    const activeLocalModel = {
+      ...profile(true),
       active: true,
-      display_name: 'Apex Felis',
+      display_name: 'Apex Agent',
       loaded_model: {
         provider: 'llama_cpp' as const,
         name: 'gemma-4-E2B-Q4_K_M.gguf',
@@ -244,7 +243,7 @@ describe('HomeCommandRail', () => {
       },
     }
     const user = userEvent.setup()
-    renderRail({ activated: false, activeLocalModel: activeFelis, onUnloadLocalModel })
+    renderRail({ activated: false, activeLocalModel, onUnloadLocalModel })
 
     expect(document.querySelector('[data-slot="home-standby-controls"]')).toBeVisible()
     const runtime = document.querySelector<HTMLElement>('[data-slot="home-local-runtime"]')

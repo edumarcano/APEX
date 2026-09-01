@@ -159,7 +159,7 @@ describe('usePreflight', () => {
     expect(resolution).toBe('cancelled')
   })
 
-  it('passes profile and cloud metadata for assistant preflight', async () => {
+  it('passes the selected cloud model for assistant preflight', async () => {
     vi.mocked(fetch).mockResolvedValue(
       jsonResponse({ warnings: [], blockers: [], can_proceed: true }),
     )
@@ -167,16 +167,14 @@ describe('usePreflight', () => {
 
     await act(async () => {
       await result.current.requestOperation('cortex_query', {
-        synthesis_agent: 'panthera',
-        involves_cloud: true,
+        model_id: 'deepseek/deepseek-v4-flash-0731',
       })
     })
 
     const body = JSON.parse(String((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body))
     expect(body).toMatchObject({
       operation: 'cortex_query',
-      synthesis_agent: 'panthera',
-      involves_cloud: true,
+      model_id: 'deepseek/deepseek-v4-flash-0731',
     })
   })
 

@@ -16,10 +16,10 @@ from core.agent.catalog import build_concrete_agent
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.tool_catalog import build_tool_catalog
-from tests.support.agent_fixtures import panthera_settings
+from tests.support.agent_fixtures import cloud_settings
 from core.agent.tool_schemas import (
     _COMPACT_BRAVE_SEARCH_SCHEMA,
-    project_descriptor_for_agent,
+    project_descriptor_for_model,
 )
 from core.agent.tool_profiles import resolve_profile_names
 from core.agent.tool_selection import resolve_selected_tools
@@ -107,7 +107,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self._temp_dir.cleanup()
 
     def test_catalog_groups_native_and_configured_mcp_tools(self) -> None:
-        catalog = build_tool_catalog("panthera")
+        catalog = build_tool_catalog("apex", model_id="deepseek/deepseek-v4-flash-0731")
         self.assertEqual(catalog.default_profile_id, "all_allowed")
         self.assertTrue(any(group.kind == "apex_family" for group in catalog.groups))
         self.assertTrue(any(group.kind == "mcp_server" for group in catalog.groups))
@@ -117,7 +117,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         )
 
     def test_microsoft_todo_actions_are_in_the_todo_family(self) -> None:
-        catalog = build_tool_catalog("panthera")
+        catalog = build_tool_catalog("apex", model_id="deepseek/deepseek-v4-flash-0731")
         groups_by_id = {group.id: group for group in catalog.groups}
         todo_tools = {
             tool.name for tool in groups_by_id["family:microsoft_todo"].tools
@@ -145,7 +145,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
     def test_catalog_groups_render_each_capability_once_without_duplicate_mcp_families(
         self,
     ) -> None:
-        catalog = build_tool_catalog("panthera")
+        catalog = build_tool_catalog("apex", model_id="deepseek/deepseek-v4-flash-0731")
         rendered = [tool.name for group in catalog.groups for tool in group.tools]
         self.assertEqual(len(rendered), len(set(rendered)))
         self.assertEqual(set(rendered), {tool.name for tool in catalog.tools})
@@ -175,7 +175,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             "core.agent.tool_catalog._native_availability",
             return_value=(True, None),
         ):
-            selection = resolve_selected_tools("felis", ["get_weather_forecast"])
+            selection = resolve_selected_tools("apex", ["get_weather_forecast"], model_id="gemma-4-E2B-Q4_K_M.gguf")
         self.assertEqual(
             selection.diagnostics.offered_tool_names,
             ["get_weather_forecast"],
@@ -183,30 +183,30 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertEqual(selection.diagnostics.rejected_tools, [])
 
     def test_empty_selection_is_tool_free_and_has_zero_schema_tokens(self) -> None:
-        selection = resolve_selected_tools("panthera", [])
+        selection = resolve_selected_tools("apex", [], model_id="deepseek/deepseek-v4-flash-0731")
         self.assertEqual(selection.descriptors, ())
         self.assertEqual(selection.diagnostics.offered_tool_names, [])
         self.assertEqual(selection.diagnostics.selected_schema_tokens, 0)
 
     def test_invalid_selection_is_structured_and_not_silently_dropped(self) -> None:
-        selection = resolve_selected_tools("felis", ["not_registered"])
+        selection = resolve_selected_tools("apex", ["not_registered"], model_id="gemma-4-E2B-Q4_K_M.gguf")
         self.assertEqual(selection.diagnostics.rejected_tool_names, ["not_registered"])
         self.assertEqual(selection.diagnostics.rejected_tools[0].code, "invalid")
 
     def test_agent_policy_intersects_explicit_selection(self) -> None:
-        agent_settings = panthera_settings().model_copy(update={"sandbox_mode": True})
+        agent_settings = cloud_settings().model_copy(update={"sandbox_mode": True})
         snapshot = MagicMock()
         snapshot.ask_apex = agent_settings
         with patch("core.settings.get_settings_store") as store, patch(
             "core.agent.tool_catalog.is_dev_mode", return_value=True
         ):
             store.return_value.get_snapshot.return_value = snapshot
-            selection = resolve_selected_tools("panthera", ["get_active_reminders"])
+            selection = resolve_selected_tools("apex", ["get_active_reminders"], model_id="deepseek/deepseek-v4-flash-0731")
         self.assertEqual(selection.descriptors, ())
         self.assertEqual(selection.diagnostics.rejected_tools[0].code, "policy")
 
     def test_sandbox_catalog_disables_personal_native_tools(self) -> None:
-        agent_settings = panthera_settings().model_copy(update={"sandbox_mode": True})
+        agent_settings = cloud_settings().model_copy(update={"sandbox_mode": True})
         snapshot = MagicMock()
         snapshot.ask_apex = agent_settings
         with patch("core.settings.get_settings_store") as store, patch(
@@ -216,7 +216,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             return_value=(True, None),
         ):
             store.return_value.get_snapshot.return_value = snapshot
-            catalog = build_tool_catalog("panthera")
+            catalog = build_tool_catalog("apex", model_id="deepseek/deepseek-v4-flash-0731")
 
         reminders = next(
             tool for tool in catalog.tools if tool.name == "get_active_reminders"
@@ -231,7 +231,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
     def test_sandbox_catalog_disables_configured_undiscovered_personal_mcp_tools(
         self,
     ) -> None:
-        agent_settings = panthera_settings().model_copy(update={"sandbox_mode": True})
+        agent_settings = cloud_settings().model_copy(update={"sandbox_mode": True})
         snapshot = MagicMock()
         snapshot.ask_apex = agent_settings
         server = SimpleNamespace(
@@ -253,7 +253,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             return_value=(False, "The MCP tool was not discovered."),
         ):
             store.return_value.get_snapshot.return_value = snapshot
-            catalog = build_tool_catalog("panthera")
+            catalog = build_tool_catalog("apex", model_id="deepseek/deepseek-v4-flash-0731")
 
         github_tool = next(
             tool
@@ -265,7 +265,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertIn("selected Agent policy", github_tool.unavailable_reason or "")
 
     def test_disconnected_mcp_selection_reports_runtime_reason(self) -> None:
-        selection = resolve_selected_tools("panthera", ["brave_brave_web_search"])
+        selection = resolve_selected_tools("apex", ["brave_brave_web_search"], model_id="deepseek/deepseek-v4-flash-0731")
         self.assertEqual(selection.descriptors, ())
         self.assertIn(
             selection.diagnostics.rejected_tools[0].code,
@@ -274,8 +274,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
 
     def test_local_projection_is_shared_by_selection_and_model_schema(self) -> None:
         descriptor = _brave_descriptor()
-        with patch("core.agent.catalog.resolve_felis_runtime", return_value="ollama"):
-            projected = project_descriptor_for_agent("felis", descriptor)
+        projected = project_descriptor_for_model("qwen3:1.7b", descriptor)
         self.assertEqual(projected.input_schema, _COMPACT_BRAVE_SEARCH_SCHEMA)
         self.assertIn("Read-only", projected.description)
         self.assertIn("without asking for confirmation", projected.description)
@@ -294,30 +293,28 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             expose_to_client_display=True,
         )
 
-        projected = project_descriptor_for_agent("felis", descriptor)
+        projected = project_descriptor_for_model("gemma-4-E2B-Q4_K_M.gguf", descriptor)
         self.assertIn("Read-only", projected.description)
         self.assertIn("without asking for confirmation", projected.description)
         self.assertIn("Retrieve upcoming events.", projected.description)
 
-        cloud_projection = project_descriptor_for_agent("panthera", descriptor)
+        cloud_projection = project_descriptor_for_model("deepseek/deepseek-v4-flash-0731", descriptor)
         self.assertEqual(cloud_projection.description, descriptor.description)
 
-    def test_brave_projection_is_compact_for_ollama_felis_only(self) -> None:
+    def test_brave_projection_is_compact_for_ollama_models_only(self) -> None:
         descriptor = _brave_descriptor()
 
-        with patch("core.agent.catalog.resolve_felis_runtime", return_value="ollama"):
-            projected = project_descriptor_for_agent("felis", descriptor)
-            self.assertEqual(projected.input_schema, _COMPACT_BRAVE_SEARCH_SCHEMA)
-            self.assertIn("Read-only", projected.description)
-            self.assertIn("Search the public web", projected.description)
+        projected = project_descriptor_for_model("qwen3:1.7b", descriptor)
+        self.assertEqual(projected.input_schema, _COMPACT_BRAVE_SEARCH_SCHEMA)
+        self.assertIn("Read-only", projected.description)
+        self.assertIn("Search the public web", projected.description)
 
-        with patch("core.agent.catalog.resolve_felis_runtime", return_value="llama_cpp"):
-            llama_projection = project_descriptor_for_agent("felis", descriptor)
-            self.assertEqual(llama_projection.input_schema, descriptor.input_schema)
-            self.assertIn("Read-only", llama_projection.description)
-            self.assertIn("Search the full public web.", llama_projection.description)
+        llama_projection = project_descriptor_for_model("gemma-4-E2B-Q4_K_M.gguf", descriptor)
+        self.assertEqual(llama_projection.input_schema, descriptor.input_schema)
+        self.assertIn("Read-only", llama_projection.description)
+        self.assertIn("Search the full public web.", llama_projection.description)
 
-        cloud = project_descriptor_for_agent("panthera", descriptor)
+        cloud = project_descriptor_for_model("deepseek/deepseek-v4-flash-0731", descriptor)
         self.assertEqual(cloud.input_schema, descriptor.input_schema)
         self.assertEqual(cloud.description, descriptor.description)
         self.assertNotIn("Read-only", cloud.description)
@@ -328,15 +325,15 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             "core.agent.tool_catalog._native_availability",
             return_value=(True, None),
         ):
-            selection = resolve_selected_tools("felis", ["get_weather_forecast"])
+            selection = resolve_selected_tools("apex", ["get_weather_forecast"], model_id="qwen3:1.7b")
             response = run_agent_loop(
                 AgentQueryRequest(
                     prompt="Forecast",
-                    agent="felis",
+                    agent="apex",
                     selected_tool_names=["get_weather_forecast"],
                 ),
                 provider,
-                build_concrete_agent("felis", native_effort=None, model_id="qwen3:1.7b"),
+                build_concrete_agent("apex", native_effort=None, model_id="qwen3:1.7b"),
                 selected_tools=list(selection.descriptors),
                 tool_selection=selection.diagnostics,
             )
@@ -352,7 +349,8 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         ):
             result = build_tool_preflight(
                 ToolPreflightRequest(
-                    agent="felis",
+                    agent="apex",
+                    model_id="gemma-4-E2B-Q4_K_M.gguf",
                     prompt="Give me a short answer.",
                     selected_tool_names=["get_weather_forecast"],
                 )
@@ -382,7 +380,8 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         ):
             result = build_tool_preflight(
                 ToolPreflightRequest(
-                    agent="felis",
+                    agent="apex",
+                    model_id="gemma-4-E2B-Q4_K_M.gguf",
                     prompt="Current question",
                     conversation_id="00000000-0000-4000-8000-000000000001",
                 )
@@ -398,7 +397,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         ):
             result = build_tool_preflight(
                 ToolPreflightRequest(
-                    agent="felis",
+                    agent="apex",
                     prompt="This typed prompt must be counted.",
                     selected_tool_names=["not_registered"],
                 )
@@ -410,14 +409,14 @@ class UnifiedToolSelectionTests(unittest.TestCase):
 
     def test_preflight_profile_only_resolution_preserves_empty_and_dynamic_profiles(self) -> None:
         no_tools = build_tool_preflight(
-            ToolPreflightRequest(agent="panthera", tool_profile_id="no_tools")
+            ToolPreflightRequest(agent="apex", model_id="deepseek/deepseek-v4-flash-0731", tool_profile_id="no_tools")
         )
         self.assertTrue(no_tools.can_proceed)
         self.assertEqual(no_tools.selection.requested_tool_names, [])
         self.assertEqual(no_tools.selection.active_profile_id, "no_tools")
 
         all_allowed = build_tool_preflight(
-            ToolPreflightRequest(agent="panthera", tool_profile_id="all_allowed")
+            ToolPreflightRequest(agent="apex", model_id="deepseek/deepseek-v4-flash-0731", tool_profile_id="all_allowed")
         )
         self.assertTrue(all_allowed.can_proceed)
         self.assertEqual(
@@ -427,7 +426,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
 
         explicit_empty = build_tool_preflight(
             ToolPreflightRequest(
-                agent="panthera",
+                agent="apex",
                 selected_tool_names=[],
                 tool_profile_id="all_allowed",
             )
@@ -439,7 +438,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
     def test_unknown_profile_is_a_structured_preflight_rejection(self) -> None:
         result = build_tool_preflight(
             ToolPreflightRequest(
-                agent="panthera",
+                agent="apex",
                 tool_profile_id="missing_profile",
             )
         )
@@ -447,14 +446,14 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertEqual(result.selection.rejected_tools[0].code, "profile-invalid")
 
     def test_namespaced_catalog_groups_do_not_collide(self) -> None:
-        catalog = build_tool_catalog("panthera")
+        catalog = build_tool_catalog("apex", model_id="deepseek/deepseek-v4-flash-0731")
         group_ids = {group.id for group in catalog.groups}
         self.assertTrue(all(group_id.startswith(("family:", "mcp:")) for group_id in group_ids))
         self.assertEqual(len(group_ids), len(catalog.groups))
 
     def test_native_catalog_uses_configuration_without_authenticating(self) -> None:
         with patch.dict("os.environ", {"TARGET_LOCATION": ""}, clear=False):
-            catalog = build_tool_catalog("panthera")
+            catalog = build_tool_catalog("apex", model_id="deepseek/deepseek-v4-flash-0731")
         weather = next(
             tool for tool in catalog.tools if tool.name == "get_weather_forecast"
         )
@@ -478,7 +477,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             patch("core.telemetry.service.get_telemetry_service") as get_service,
         ):
             get_service.return_value.latest.return_value = healthy_snapshot
-            selection = resolve_selected_tools("felis", ["get_weather_forecast"])
+            selection = resolve_selected_tools("apex", ["get_weather_forecast"], model_id="gemma-4-E2B-Q4_K_M.gguf")
 
         self.assertEqual(
             selection.diagnostics.offered_tool_names,
@@ -542,9 +541,10 @@ class UnifiedToolSelectionTests(unittest.TestCase):
                 return_value=store,
             ):
                 selection = resolve_selected_tools(
-                    "panthera",
+                    "apex",
                     None,
                     tool_profile_id="stale_custom",
+                    model_id="deepseek/deepseek-v4-flash-0731",
                 )
         self.assertEqual(
             selection.diagnostics.active_profile_id,
@@ -588,12 +588,12 @@ class UnifiedToolSelectionTests(unittest.TestCase):
                 )
                 defaults = set_tool_profile_default(
                     ToolProfileDefaultRequest(
-                        agent="panthera",
+                        runtime="cloud",
                         profile_id="route_profile",
                     )
                 )
                 self.assertEqual(
-                    defaults.default_profile_by_agent["panthera"],
+                    defaults.default_profile_by_runtime["cloud"],
                     "route_profile",
                 )
                 deleted = delete_tool_profile("route_profile")
@@ -637,7 +637,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
                     )
                 )
                 resolved_dynamic_names = resolve_profile_names(
-                    "panthera",
+                    "apex",
                     "all_allowed",
                     available_names={
                         "get_active_reminders",

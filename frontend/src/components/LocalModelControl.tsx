@@ -2,8 +2,7 @@ import { Loader2 } from 'lucide-react'
 import { useCallback, useState, type ReactElement } from 'react'
 
 import type { AgentStatus } from '../types/telemetry'
-import { agentShortName } from '../lib/agentDisplay'
-import { providerDisplayName } from '../lib/agents'
+import { agentShortName, providerDisplayName } from '../lib/agents'
 
 function formatCountdown(seconds: number | null): string {
   if (seconds === null) return '--:--'
@@ -19,7 +18,7 @@ function localRuntimeLabel(agent: AgentStatus, runtimeState: string): string {
     agentShortName(agent.display_name)
   const parts = [
     modelName,
-    providerDisplayName(agent.provider),
+    providerDisplayName(agent.loaded_model?.provider ?? agent.provider),
     runtimeState,
   ]
   return parts.join(' · ')

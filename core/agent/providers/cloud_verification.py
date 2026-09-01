@@ -10,7 +10,7 @@ from typing import Literal
 
 import requests
 
-from core.agent.catalog import AGENT_SPECS, resolve_selected_model_profile
+from core.agent.model_catalog import get_model_profile
 
 CloudStatus = Literal[
     "configured",
@@ -50,15 +50,20 @@ def _route_cache_key(
     model: str | None = None,
 ) -> str:
     if provider is None or model is None:
-        model_profile = resolve_selected_model_profile(agent_key)
+        model_profile = resolve_selected_model_profile()
         provider = model_profile.provider
         model = model_profile.model_id
     return f"{agent_key}:{provider}:{model}"
 
 
-def cloud_status(agent_key: str) -> CloudStatusRecord:
+def cloud_status(model_id: str) -> CloudStatusRecord:
     """Return the configured fallback or a non-expired sanitized status."""
-    cache_key = _route_cache_key(agent_key)
+    profile = get_model_profile(model_id)
+    if profile is None or profile.runtime != "cloud":
+        raise ValueError("Cloud status requires a registered cloud model.")
+    cache_key = _route_cache_key(
+        "apex", provider=profile.provider, model=profile.model_id
+    )
     now = _now()
     with _LOCK:
         cached = _CACHE.get(cache_key)
@@ -71,12 +76,11 @@ def cloud_status(agent_key: str) -> CloudStatusRecord:
     return CloudStatusRecord("configured", None, now, now, "configuration")
 
 
-def verify_cloud_agent(agent_key: str) -> CloudStatusRecord:
+def verify_cloud_agent(model_id: str) -> CloudStatusRecord:
     """Force a bounded model-metadata probe and cache its sanitized result."""
-    spec = AGENT_SPECS.get(agent_key)
-    if spec is None or spec.runtime != "cloud":
-        raise ValueError("Cloud verification requires a credential-backed cloud Agent.")
-    model_profile = resolve_selected_model_profile(agent_key)
+    model_profile = get_model_profile(model_id)
+    if model_profile is None or model_profile.runtime != "cloud":
+        raise ValueError("Cloud verification requires a credential-backed cloud model.")
     if model_profile.credential_env is None:
         raise ValueError("Cloud verification requires configured credentials.")
     api_key = os.getenv(model_profile.credential_env)
@@ -84,7 +88,7 @@ def verify_cloud_agent(agent_key: str) -> CloudStatusRecord:
         raise ValueError("Cloud verification requires configured credentials.")
 
     cache_key = _route_cache_key(
-        agent_key,
+        "apex",
         provider=model_profile.provider,
         model=model_profile.model_id,
     )
@@ -122,10 +126,7 @@ def record_cloud_request_success(
     model: str,
 ) -> None:
     """A completed inference is stronger evidence than a metadata probe."""
-    spec = AGENT_SPECS.get(agent_key)
-    if spec is None or spec.runtime != "cloud":
-        return
-    cache_key = _route_cache_key(agent_key, provider=provider, model=model)
+    cache_key = _route_cache_key("apex", provider=provider, model=model)
     record = _record("verified", None, "request")
     with _LOCK:
         _CACHE[cache_key] = record
@@ -139,13 +140,10 @@ def record_cloud_request_failure(
     model: str,
 ) -> None:
     """Remember only conservative provider failure categories, never raw content."""
-    spec = AGENT_SPECS.get(agent_key)
-    if spec is None or spec.runtime != "cloud":
-        return
     status, reason = classify_provider_failure(exc)
     if status is None:
         return
-    cache_key = _route_cache_key(agent_key, provider=provider, model=model)
+    cache_key = _route_cache_key("apex", provider=provider, model=model)
     record = _record(status, reason, "request")
     with _LOCK:
         _CACHE[cache_key] = record

@@ -246,12 +246,13 @@ export default function SettingsPanel({
   }, [save, mcpRuntime])
 
   const providerRows = useMemo(() => {
-    const cloud = agentsStatus.filter((agent) => agent.runtime === 'cloud')
-    const local = agentsStatus.filter((agent) => agent.runtime === 'local')
-    const configuredCloud = cloud.filter((agent) => agent.status !== 'disabled').length
-    const verifiedCloud = cloud.filter((agent) => agent.status === 'verified').length
-    const localAvailable = local.some((agent) => agent.status === 'available')
-    const activeLocal = local.find((agent) => agent.active && agent.loaded_model)
+    const models = agentsStatus.flatMap((agent) => agent.model_catalog)
+    const cloud = models.filter((model) => model.runtime === 'cloud')
+    const local = models.filter((model) => model.runtime === 'local')
+    const configuredCloud = cloud.filter((model) => model.status !== 'disabled').length
+    const verifiedCloud = cloud.filter((model) => model.status === 'verified').length
+    const localAvailable = local.some((model) => model.status === 'available')
+    const activeLocal = local.find((model) => model.active && model.loaded_model)
 
     return {
       cloud: !agentsStatusHydrated
@@ -265,9 +266,9 @@ export default function SettingsPanel({
           ? { value: 'Reachable', tone: 'ok' as const }
           : {
               value: local.some(
-                (p) =>
-                  p.status === 'ollama_unreachable' ||
-                  p.status === 'provider_unreachable',
+                (model) =>
+                  model.status === 'ollama_unreachable' ||
+                  model.status === 'provider_unreachable',
               )
                 ? 'Unreachable'
                 : 'Unavailable',
@@ -550,7 +551,7 @@ export default function SettingsPanel({
                           id="settings-llama-cpp-preset"
                           type="text"
                           value={draft.llama_cpp.preset_path}
-                          placeholder="C:\path\to\llama-cpp-apex-agents.preset.ini"
+                          placeholder="C:\path\to\llama-cpp-apex-local-models.preset.ini"
                           onChange={(event) =>
                             setDraft((prev) => ({
                               ...prev,
@@ -658,12 +659,12 @@ export default function SettingsPanel({
                     tone="ok"
                   />
                   <StatusRow
-                    label="Cloud agents"
+                    label="Cloud models"
                     value={providerRows.cloud.value}
                     tone={providerRows.cloud.tone}
                   />
                   <StatusRow
-                    label="Local agents"
+                    label="Local models"
                     value={providerRows.local.value}
                     tone={providerRows.local.tone}
                   />

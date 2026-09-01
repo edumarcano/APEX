@@ -7,19 +7,18 @@ from pydantic import BaseModel, Field
 
 from core.agent.types import CostEstimate, TokenUsage
 
-FELIS_BRIEFING_CONTEXT_WINDOW = 16_384
+FLASH_BRIEFING_CONTEXT_WINDOW = 16_384
 
 SynthesisProvider = Literal[
     "gemini", "ollama", "llama_cpp", "raw", "demo", "openai", "openrouter"
 ]
-SynthesisAgent = Literal["panthera", "felis"]
 BriefingMode = Literal["flash", "focused", "structured"]
 SynthesisPhase = Literal["idle", "loading", "ready", "generating", "fallback", "complete"]
 
 VALID_BRIEFING_MODES: frozenset[str] = frozenset(
     {"flash", "focused", "structured"}
 )
-LOCAL_BRIEFING_AGENTS: frozenset[str] = frozenset({"felis"})
+LOCAL_BRIEFING_MODELS: frozenset[str] = frozenset({"gemma-4-E2B-Q4_K_M.gguf"})
 
 
 def strategy_to_briefing_mode(strategy: str) -> BriefingMode:
@@ -223,7 +222,7 @@ class SynthesisResult(BaseModel):
     briefing: str
     insights: list[str] = Field(default_factory=list)
     provider: SynthesisProvider
-    agent: SynthesisAgent | None = None
+    model_id: str | None = None
     fallback_reason: str | None = None
     fallback_steps: list[str] = Field(default_factory=list)
     warmup_ms: int | None = None

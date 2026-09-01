@@ -4,7 +4,6 @@ import type {
   ConnectorHealthEntry,
   PipelineState,
   SynthesisLiveState,
-  SynthesisAgent,
   SynthesisProvider,
   SystemState,
   TtsEngine,
@@ -37,7 +36,7 @@ export type BriefingPipelineState = {
   active_tts_engine: TtsEngine
   system_load_throttled: boolean
   synthesisProvider: SynthesisProvider | null
-  synthesisAgent: SynthesisAgent | null
+  synthesisModelId: string | null
   synthesisFallbackReason: string | null
   demoModeActive: boolean
   devModeActive: boolean
@@ -58,10 +57,6 @@ const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = [
   'openrouter',
   'raw',
   'demo',
-]
-const VALID_SYNTHESIS_PROFILES: readonly SynthesisAgent[] = [
-  'panthera',
-  'felis',
 ]
 
 function parseEnum<T extends string>(value: unknown, values: readonly T[]): T | null {
@@ -136,7 +131,7 @@ function parsePipelineStatus(body: unknown): PipelineState | null {
       synthesis = {
         phase: phase as SynthesisLiveState['phase'],
         provider: parseEnum(item.provider, VALID_SYNTHESIS_PROVIDERS),
-        agent: parseEnum(item.agent, VALID_SYNTHESIS_PROFILES),
+        model_id: typeof item.model_id === 'string' ? item.model_id : null,
         loading: item.loading === true,
         fallback_reason: typeof item.fallback_reason === 'string' ? item.fallback_reason : null,
       }
@@ -179,7 +174,7 @@ const INITIAL_STATE: BriefingPipelineState = {
   active_tts_engine: 'google',
   system_load_throttled: false,
   synthesisProvider: null,
-  synthesisAgent: null,
+  synthesisModelId: null,
   synthesisFallbackReason: null,
   demoModeActive: false,
   devModeActive: false,
@@ -228,7 +223,7 @@ export function useBriefingPipeline(): UseBriefingPipelineReturn {
     const active_tts_engine = parseTtsEngine(metadata?.active_tts_engine)
     const system_load_throttled = metadata?.system_load_throttled === true
     const synthesisProvider = parseEnum(metadata?.synthesis_provider, VALID_SYNTHESIS_PROVIDERS)
-    const synthesisAgent = parseEnum(metadata?.synthesis_agent, VALID_SYNTHESIS_PROFILES)
+    const synthesisModelId = typeof metadata?.synthesis_model_id === 'string' ? metadata.synthesis_model_id : null
     const synthesisFallbackReason =
       typeof metadata?.synthesis_fallback_reason === 'string' ? metadata.synthesis_fallback_reason : null
 
@@ -269,7 +264,7 @@ export function useBriefingPipeline(): UseBriefingPipelineReturn {
       active_tts_engine,
       system_load_throttled,
       synthesisProvider,
-      synthesisAgent,
+      synthesisModelId,
       synthesisFallbackReason,
     }))
     return true

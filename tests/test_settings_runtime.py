@@ -107,7 +107,7 @@ class AssistantGateTests(unittest.TestCase):
         _write_json(
             self.config_path,
             {
-                "ask_apex": {"enabled": True, "runtime": "cloud", "cloud_agent": "panthera"},
+                "ask_apex": {"enabled": True},
             },
         )
         reset_settings_store_for_tests()
@@ -134,7 +134,7 @@ class AssistantGateTests(unittest.TestCase):
                 AgentQueryRequest(
                     prompt="hello",
                     history=[],
-                    agent="panthera",
+                    agent="apex",
                 )
             )
         self.assertEqual(ctx.exception.status_code, 403)

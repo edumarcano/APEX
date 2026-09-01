@@ -57,7 +57,7 @@ function resolveSignalState(
   isTelemetryCollecting: boolean = false,
 ): SignalState {
   if (isLocalModelLoading) {
-    const name = loadingDisplayName?.trim() || 'model'
+    const name = loadingDisplayName?.trim() || 'local model'
     return {
       label: `Loading ${name}`,
       tone: 'rust',

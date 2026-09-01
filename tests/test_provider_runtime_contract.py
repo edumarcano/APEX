@@ -49,19 +49,12 @@ from core.agent.types import AgentMessage, AgentQueryRequest, TokenUsage, ToolCa
 
 from core.agent.model_catalog import get_model_profile
 
-def _concrete_profile(key_or_model: str = "gpt-5.6-luna"):
-    if key_or_model == "panthera":
-        model_id = "gpt-5.6-luna"
-    elif key_or_model == "felis":
-        model_id = "gemma-4-E2B-Q4_K_M.gguf"
-    else:
-        model_id = key_or_model
+def _concrete_profile(model_id: str = "gpt-5.6-luna"):
     model_profile = get_model_profile(model_id)
     assert model_profile is not None
     native = resolve_effort(model_profile, None)
-    agent_key = "felis" if model_profile.runtime == "local" else "panthera"
     return build_concrete_agent(
-        agent_key,
+        "apex",
         native_effort=native,
         local_reasoning_mode=(
             "none"
@@ -95,14 +88,10 @@ class ProviderContractTests(unittest.TestCase):
         )
 
     def test_local_profile_markers_and_runtime_ids(self) -> None:
-        local_keys = [
-            key for key, spec in AGENT_SPECS.items() if spec.runtime == "local"
-        ]
-        self.assertTrue(local_keys)
-
-        for agent_key in local_keys:
-            with self.subTest(agent=agent_key):
-                profile = _concrete_profile(agent_key)
+        local_model_ids = ("qwen3:1.7b", "gemma-4-E2B-Q4_K_M.gguf")
+        for model_id in local_model_ids:
+            with self.subTest(model=model_id):
+                profile = _concrete_profile(model_id)
                 self.assertIsInstance(profile, LocalModelProfile)
                 self.assertTrue(is_local_inference_provider(profile.provider))
                 self.assertTrue(profile.runtime_model_id)
@@ -127,7 +116,7 @@ class ProviderContractTests(unittest.TestCase):
                 self.assertIn(profile.reasoning_mode, profile.supported_reasoning_modes)
                 for context_window in profile.allowed_context_windows:
                     selected = build_concrete_agent(
-                        agent_key,
+                        "apex",
                         native_effort=None,
                         local_context_window=context_window,
                         local_reasoning_mode=profile.reasoning_mode,
@@ -158,7 +147,7 @@ class ProviderContractTests(unittest.TestCase):
             self.assertTrue(refs)
             selected = next(iter(refs))
             self.assertEqual(selected.provider, profile.provider)
-            self.assertEqual(agent_key_for_local_model_ref(selected), "felis")
+            self.assertEqual(agent_key_for_local_model_ref(selected), "apex")
 
         known = known_local_model_refs()
         self.assertTrue(known)
@@ -170,7 +159,7 @@ class ProviderContractTests(unittest.TestCase):
 
     def test_local_reasoning_mode_reaches_llama_cpp_profile(self) -> None:
         focused = build_concrete_agent(
-            "felis",
+            "apex",
             native_effort=None,
             local_reasoning_mode="focused",
             model_id="gemma-4-E2B-Q4_K_M.gguf",
@@ -181,7 +170,7 @@ class ProviderContractTests(unittest.TestCase):
         for model_id in ("gemma-4-E2B-Q4_K_M.gguf", "gemma-4-E4B-Q4_K_M.gguf", "Qwen3.5-4B-Q4_K_M.gguf"):
             with self.subTest(model=model_id):
                 profile = build_concrete_agent(
-                    "felis",
+                    "apex",
                     native_effort=None,
                     local_reasoning_mode="focused",
                     model_id=model_id,
@@ -225,7 +214,7 @@ class ProviderContractTests(unittest.TestCase):
 
         provider = Provider()
         response = run_agent_loop(
-            AgentQueryRequest(prompt="hello", agent="felis"),
+            AgentQueryRequest(prompt="hello", agent="apex"),
             provider,
             profile,  # type: ignore[arg-type]
         )
@@ -285,7 +274,7 @@ class ProviderContractTests(unittest.TestCase):
                 )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Weather?", agent="panthera"),
+            AgentQueryRequest(prompt="Weather?", agent="apex"),
             Provider(),
             profile,
             tools_dispatcher=lambda _name, _args: {"summary": "clear"},
@@ -303,12 +292,7 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(response.cost_estimate.pricing_version, PRICING_VERSION)
         self.assertEqual(response.cost_estimate.completeness, "complete")
         self.assertEqual(response.tool_trace[0]["origin"], "apex")
-        gemini_keys = {
-            key
-            for key in AGENT_SPECS
-            if key == "panthera"
-        }
-        self.assertEqual(gemini_keys, {"panthera"})
+        self.assertEqual(set(AGENT_SPECS), {"apex"})
 
     def test_provider_tool_events_reach_the_trace_with_numeric_durations(self) -> None:
         class Provider:
@@ -333,7 +317,7 @@ class ProviderContractTests(unittest.TestCase):
                 )
 
         response = run_agent_loop(
-            AgentQueryRequest(prompt="Search?", agent="panthera"),
+            AgentQueryRequest(prompt="Search?", agent="apex"),
             Provider(),
             _concrete_profile("gemini-3.6-flash"),
         )
@@ -477,7 +461,7 @@ class PricingRegistryTests(unittest.TestCase):
 
     def test_gemini_flash_lite_uses_free_tier_billing(self) -> None:
         pricing = agent_pricing(
-            "panthera",
+            "apex",
             model="gemini-3.5-flash-lite",
             provider="gemini",
         )
@@ -542,7 +526,7 @@ class PricingRegistryTests(unittest.TestCase):
             model="gemini-3.5-flash-lite",
             configured_model="gemini-3.5-flash-lite",
             provider="gemini",
-            agent_key="panthera",
+            agent_key="apex",
             usage=TokenUsage(input_tokens=1000, output_tokens=200),
         )
         self.assertEqual(estimate.token_cost, 0.0)
@@ -820,7 +804,7 @@ class ResponsesAdapterTests(unittest.TestCase):
         self.assertIsNone(result.usage)
 
     @patch("core.agent.providers.responses_api.OpenAI")
-    def test_grok_4_3_delphinus_omits_encrypted_reasoning_include(
+    def test_grok_4_3_omits_encrypted_reasoning_include(
         self, mock_openai_cls: MagicMock
     ) -> None:
         mock_client = MagicMock()
@@ -831,18 +815,18 @@ class ResponsesAdapterTests(unittest.TestCase):
         mock_response.usage = None
         mock_client.responses.create.return_value = mock_response
 
-        delphinus_profile = _concrete_profile("grok-4.3")
+        grok_43_profile = _concrete_profile("grok-4.3")
         XAIProvider(api_key="test").generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
-            delphinus_profile,  # type: ignore[arg-type]
+            grok_43_profile,  # type: ignore[arg-type]
         )
         kwargs = mock_client.responses.create.call_args.kwargs
         self.assertEqual(kwargs["reasoning"], {"effort": "medium"})
         self.assertNotIn("include", kwargs)
 
     @patch("core.agent.providers.responses_api.OpenAI")
-    def test_grok_4_5_orcinus_includes_encrypted_reasoning_include(
+    def test_grok_4_5_includes_encrypted_reasoning_include(
         self, mock_openai_cls: MagicMock
     ) -> None:
         mock_client = MagicMock()
@@ -853,11 +837,11 @@ class ResponsesAdapterTests(unittest.TestCase):
         mock_response.usage = None
         mock_client.responses.create.return_value = mock_response
 
-        orcinus_profile = _concrete_profile("grok-4.5")
+        grok_45_profile = _concrete_profile("grok-4.5")
         XAIProvider(api_key="test").generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
-            orcinus_profile,  # type: ignore[arg-type]
+            grok_45_profile,  # type: ignore[arg-type]
         )
         kwargs = mock_client.responses.create.call_args.kwargs
         self.assertEqual(kwargs["reasoning"], {"effort": "high"})
@@ -883,13 +867,13 @@ class ResponsesAdapterTests(unittest.TestCase):
             },
         )
 
-        delphinus_profile = _concrete_profile("grok-4.3")
+        grok_43_profile = _concrete_profile("grok-4.3")
         with self.assertLogs("core.agent.providers.responses_api", level="WARNING") as log_cm:
             with self.assertRaises(APIStatusError):
                 XAIProvider(api_key="test").generate_turn(
                     [AgentMessage(role="user", content="Hi")],
                     [],
-                    delphinus_profile,  # type: ignore[arg-type]
+                    grok_43_profile,  # type: ignore[arg-type]
                 )
 
         self.assertTrue(
@@ -901,10 +885,9 @@ class ResponsesAdapterTests(unittest.TestCase):
 
 
 class PublicRosterTests(unittest.TestCase):
-    def test_unified_registry_exposes_panthera_and_felis(self) -> None:
-        self.assertEqual(set(AGENT_SPECS), {"panthera", "felis"})
-        self.assertEqual(AGENT_SPECS["panthera"].runtime, "cloud")
-        self.assertEqual(AGENT_SPECS["felis"].runtime, "local")
+    def test_registry_exposes_the_singular_apex_agent(self) -> None:
+        self.assertEqual(set(AGENT_SPECS), {"apex"})
+        self.assertEqual(AGENT_SPECS["apex"].display_name, "Apex Agent")
 
 
 if __name__ == "__main__":

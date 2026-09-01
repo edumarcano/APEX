@@ -66,11 +66,11 @@ _LOCAL_READ_ONLY_TOOL_GUIDANCE = (
 )
 
 
-def project_descriptor_for_agent(
-    agent_key: str,
+def project_descriptor_for_model(
+    model_id: str,
     descriptor: CapabilityDescriptor,
 ) -> CapabilityDescriptor:
-    """Return an Agent-specific model schema without mutating registry state.
+    """Return a model-specific schema without mutating registry state.
 
     Local models benefit from a compact Brave search contract and explicit
     read-only guidance. The projection belongs to the shared schema boundary so
@@ -79,10 +79,13 @@ def project_descriptor_for_agent(
     """
     projected = descriptor
     uses_compact_brave = False
-    if agent_key == "felis" and descriptor.name == "brave_brave_web_search":
-        import core.agent.catalog as catalog
+    from core.agent.model_catalog import get_model_profile
 
-        uses_compact_brave = catalog.resolve_felis_runtime() == "ollama"
+    profile = get_model_profile(model_id)
+    if profile is None:
+        raise ValueError(f"Unknown model {model_id!r}")
+    if profile.provider == "ollama" and descriptor.name == "brave_brave_web_search":
+        uses_compact_brave = True
     if uses_compact_brave:
         projected = descriptor.model_copy(
             update={
@@ -94,9 +97,7 @@ def project_descriptor_for_agent(
             }
         )
 
-    from core.agent.catalog import is_local_agent_key
-
-    if is_local_agent_key(agent_key) and projected.risk == "read":
+    if profile.runtime == "local" and projected.risk == "read":
         projected = projected.model_copy(
             update={
                 "description": (
@@ -106,6 +107,21 @@ def project_descriptor_for_agent(
             }
         )
     return projected
+
+
+def project_descriptor_for_agent(
+    agent_key: str,
+    descriptor: CapabilityDescriptor,
+) -> CapabilityDescriptor:
+    """Compatibility wrapper for callers that use the saved selection."""
+    if agent_key != "apex":
+        raise ValueError(f"Unknown Agent key: {agent_key!r}")
+    from core.agent.catalog import resolve_selected_model_profile
+
+    return project_descriptor_for_model(
+        resolve_selected_model_profile().model_id,
+        descriptor,
+    )
 
 
 def estimate_json_tokens(

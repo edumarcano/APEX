@@ -112,18 +112,18 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json_option(status)
     status.set_defaults(handler=_status)
 
-    agents = commands.add_parser("agents", help="List visible Apex Agents.")
-    _add_json_option(agents)
-    agents.set_defaults(handler=_agents)
+    models = commands.add_parser("models", help="List models available to Apex Agent.")
+    _add_json_option(models)
+    models.set_defaults(handler=_models)
 
     ask = commands.add_parser("ask", help="Run one Agent turn.")
     _add_json_option(ask)
-    ask.add_argument("prompt", help="Prompt for the selected Agent.")
-    ask.add_argument("--agent", help="Apex Agent key. Defaults to the backend selection.")
+    ask.add_argument("prompt", help="Prompt for Apex Agent.")
+    ask.add_argument("--model", help="Model ID. Defaults to the backend selection.")
     ask.add_argument(
         "--effort",
-        choices=("light", "focused", "extended"),
-        help="Cloud Agent effort override.",
+        choices=("none", "minimal", "low", "medium", "high", "xhigh", "max"),
+        help="Cloud model reasoning effort override.",
     )
     ask.add_argument("--profile", help="Saved or built-in tool profile ID.")
     ask.set_defaults(handler=_ask)
@@ -201,26 +201,24 @@ def _status(_args: argparse.Namespace, client: ApiClient, json_mode: bool) -> in
         client.request("GET", "/api/v1/config"), "runtime configuration"
     )
     payload = dict(readiness)
-    selection = config.get("agent_initial_selection")
+    selection = config.get("cortex_initial_selection")
     if isinstance(selection, dict):
         agent = selection.get("agent")
         runtime = selection.get("runtime")
         effort = selection.get("effort")
         payload["agent"] = {
-            "key": agent if isinstance(agent, str) else config.get("default_agent"),
+            "key": agent if isinstance(agent, str) else "apex",
             "runtime": runtime if isinstance(runtime, str) else None,
             "effort": effort if isinstance(effort, str) else None,
+            "model_id": selection.get("model_id") if isinstance(selection.get("model_id"), str) else None,
         }
-    elif isinstance(config.get("default_agent"), str):
-        payload["agent"] = {"key": config["default_agent"]}
     _emit(payload, json_mode, _render_status)
     return 0
 
 
-def _agents(_args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
-    payload = client.request("GET", "/api/v1/agents")
-    _require_list(payload, "Agent list")
-    _emit(payload, json_mode, _render_agents)
+def _models(_args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    payload = _require_mapping(client.request("GET", "/api/v1/cortex/agent"), "model catalog")
+    _emit(payload, json_mode, _render_models)
     return 0
 
 
@@ -229,8 +227,8 @@ def _ask(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
     if not prompt:
         raise CliError("invalid_input", "Prompt must contain non-whitespace text.")
     request_payload: dict[str, object] = {"prompt": prompt}
-    if args.agent is not None:
-        request_payload["agent"] = args.agent
+    if args.model is not None:
+        request_payload["model_id"] = args.model
     if args.effort is not None:
         request_payload["effort"] = args.effort
     if args.profile is not None:
@@ -406,27 +404,29 @@ def _render_status(payload: object) -> None:
         if isinstance(agent.get("runtime"), str):
             description += f" ({agent['runtime']})"
         print(f"Agent: {description}")
+        if isinstance(agent.get("model_id"), str):
+            print(f"Model: {agent['model_id']}")
 
 
-def _render_agents(payload: object) -> None:
-    if not isinstance(payload, list):
-        print("APEX returned an unexpected Agent list.")
+def _render_models(payload: object) -> None:
+    if not isinstance(payload, dict):
+        print("APEX returned an unexpected model catalog.")
         return
-    if not payload:
-        print("No Apex Agents are available.")
+    catalog = payload.get("model_catalog")
+    if not isinstance(catalog, list):
+        print("APEX returned an invalid model catalog.")
         return
-    for agent in payload:
-        if not isinstance(agent, dict):
+    print("Apex Agent")
+    for model in catalog:
+        if not isinstance(model, dict):
             continue
-        name = agent.get("display_name", agent.get("key", "Unknown Agent"))
-        key = agent.get("key", "unknown")
-        print(f"{name} ({key})")
+        name = model.get("display_name", model.get("model_id", "Unknown model"))
+        print(f"{name} ({model.get('model_id', 'unknown')})")
         print(
             "  "
-            f"{agent.get('runtime', 'unknown')} | {agent.get('provider', 'unknown')} | "
-            f"{agent.get('configured_model', 'unknown')}"
+            f"{model.get('runtime', 'unknown')} | {model.get('provider', 'unknown')}"
         )
-        print(f"  Status: {agent.get('status', 'unknown')}")
+        print(f"  Status: {model.get('status', 'unknown')}")
 
 
 def _render_ask(payload: object) -> None:

@@ -442,7 +442,7 @@ try:
         _agent_settings_cfg = {}
 
     MAX_RECENT_CONVERSATION_MESSAGES: Final[int] = _parse_config_int(
-        _agent_settings_cfg.get("max_recent_conversation_messages"),
+        _agent_settings_cfg.get("max_recent_conversation_messages", 6),
         key="ask_apex.max_recent_conversation_messages",
         default=6,
         min_value=2,
@@ -477,10 +477,10 @@ except Exception as exc:
     GEMINI_AGENT_MAX_TURNS = 6
     GEMINI_AGENT_MAX_TOOL_CALLS = 10
 
-_DEFAULT_SOREX_RAM: Final[float] = 88.0
-_DEFAULT_SOREX_CPU: Final[float] = 95.0
-_DEFAULT_MUS_RAM: Final[float] = 78.0
-_DEFAULT_MUS_CPU: Final[float] = 90.0
+_DEFAULT_QWEN_17B_RAM: Final[float] = 88.0
+_DEFAULT_QWEN_17B_CPU: Final[float] = 95.0
+_DEFAULT_QWEN_4B_RAM: Final[float] = 78.0
+_DEFAULT_QWEN_4B_CPU: Final[float] = 90.0
 
 try:
     _ollama_cfg = _CONFIG_DATA.get("ollama", {})
@@ -533,8 +533,8 @@ try:
 
     _ollama_resource_limits: dict[str, tuple[float, float]] = {}
     for model_id, default_ram, default_cpu in (
-        ("qwen3:1.7b", _DEFAULT_SOREX_RAM, _DEFAULT_SOREX_CPU),
-        ("qwen3:4b-instruct", _DEFAULT_MUS_RAM, _DEFAULT_MUS_CPU),
+        ("qwen3:1.7b", _DEFAULT_QWEN_17B_RAM, _DEFAULT_QWEN_17B_CPU),
+        ("qwen3:4b-instruct", _DEFAULT_QWEN_4B_RAM, _DEFAULT_QWEN_4B_CPU),
     ):
         gate = _resource_gates.get(model_id)
         _ollama_resource_limits[model_id] = _parse_resource_gate(
@@ -555,8 +555,8 @@ except Exception as exc:
     OLLAMA_SINGLE_LOADED_MODEL = True
     OLLAMA_MANUAL_UNLOAD_ENABLED = True
     OLLAMA_RESOURCE_GATES = {
-        "qwen3:1.7b": (_DEFAULT_SOREX_RAM, _DEFAULT_SOREX_CPU),
-        "qwen3:4b-instruct": (_DEFAULT_MUS_RAM, _DEFAULT_MUS_CPU),
+        "qwen3:1.7b": (_DEFAULT_QWEN_17B_RAM, _DEFAULT_QWEN_17B_CPU),
+        "qwen3:4b-instruct": (_DEFAULT_QWEN_4B_RAM, _DEFAULT_QWEN_4B_CPU),
     }
 
 _DEFAULT_LLAMA_CPP_RAM: Final[float] = 82.0

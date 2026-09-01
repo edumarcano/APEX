@@ -74,7 +74,7 @@ class PipelineState:
         self,
         phase: str,
         provider: str | None,
-        agent: str | None,
+        model_id: str | None,
         fallback_reason: str | None,
     ) -> None:
         """Update live synthesis routing state without changing the pipeline step."""
@@ -82,7 +82,7 @@ class PipelineState:
             self._synthesis = {
                 "phase": phase,
                 "provider": provider,
-                "agent": agent,
+                "model_id": model_id,
                 "loading": phase == "loading",
                 "fallback_reason": fallback_reason,
             }
@@ -100,7 +100,7 @@ class PipelineState:
             self._synthesis = {
                 "phase": "idle",
                 "provider": None,
-                "agent": None,
+                "model_id": None,
                 "loading": False,
                 "fallback_reason": None,
             }

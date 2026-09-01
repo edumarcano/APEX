@@ -36,7 +36,7 @@ class ConversationService:
 
     @staticmethod
     def default_agent() -> str:
-        return get_settings_store().get_snapshot().ask_apex.agent
+        return "apex"
 
     def create(self, request: ConversationCreateRequest):
         return self.store.create(

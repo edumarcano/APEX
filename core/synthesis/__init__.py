@@ -13,7 +13,6 @@ from core.synthesis.models import (
     WeatherDayFact,
     WeatherHourFact,
     BriefingMode,
-    SynthesisAgent,
     SynthesisResult,
     strategy_to_briefing_mode,
 )
@@ -22,7 +21,6 @@ from core.synthesis.router import SynthesisRouter, WarmupHandle
 __all__ = [
     "BriefingMode",
     "BriefingFacts",
-    "SynthesisAgent",
     "CalendarFact",
     "ConnectorHealthFact",
     "F1Fact",

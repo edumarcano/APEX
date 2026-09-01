@@ -109,7 +109,7 @@ class MicrosoftTodoTaskMutationTests(unittest.TestCase):
         target = {"list_id": "list-1", "task_id": "task-1", "last_modified_at": "2026-08-13T12:00:00Z"}
         target.update(arguments)
         return self.service.propose(
-            agent_key="panthera", capability_name=capability, arguments=target,
+            agent_key="apex", capability_name=capability, arguments=target,
             target=capability, risk="destructive" if capability.startswith("delete_") else "write",
             summary=f"Approve {capability}",
         )
@@ -159,13 +159,13 @@ class MicrosoftTodoTaskMutationTests(unittest.TestCase):
         response = run_agent_loop(
             AgentQueryRequest(
                 prompt="Rename my task",
-                agent="panthera",
+                agent="apex",
                 selected_tool_names=[capability],
             ),
             provider,
-            build_concrete_agent("panthera", native_effort=None),
+            build_concrete_agent("apex", native_effort=None),
             selected_tools=[descriptor],
-            agent_key="panthera",
+            agent_key="apex",
         )
 
         output = response.tool_outputs[0]["output"]

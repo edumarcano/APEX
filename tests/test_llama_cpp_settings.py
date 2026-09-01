@@ -36,7 +36,7 @@ class LlamaCppSettingsStoreTests(unittest.TestCase):
                     "host": "http://127.0.0.1:8080",
                     "request_timeout_seconds": 180,
                     "resource_gates": {
-                        "apodemus": {"ram_limit": 82.0, "cpu_limit": 92.0}
+                        "gemma-4-E2B-Q4_K_M.gguf": {"ram_limit": 82.0, "cpu_limit": 92.0}
                     },
                 }
             },
@@ -85,7 +85,7 @@ class LlamaCppSettingsStoreTests(unittest.TestCase):
                     "enabled": True,
                     "host": "http://127.0.0.1:8080",
                     "request_timeout_seconds": 240,
-                    "resource_gates": {"apodemus": {"ram_limit": 70.0, "cpu_limit": 80.0}},
+                    "resource_gates": {"gemma-4-E2B-Q4_K_M.gguf": {"ram_limit": 70.0, "cpu_limit": 80.0}},
                 },
                 "features": {"weather": True},
             },
@@ -95,7 +95,7 @@ class LlamaCppSettingsStoreTests(unittest.TestCase):
         local = json.loads(self.local_path.read_text(encoding="utf-8"))
         self.assertEqual(local["llama_cpp"]["request_timeout_seconds"], 240)
         self.assertEqual(
-            local["llama_cpp"]["resource_gates"]["apodemus"]["ram_limit"], 70.0
+            local["llama_cpp"]["resource_gates"]["gemma-4-E2B-Q4_K_M.gguf"]["ram_limit"], 70.0
         )
         self.assertFalse(local["features"]["weather"])
 
@@ -124,28 +124,22 @@ class LlamaCppSettingsStoreTests(unittest.TestCase):
         preview = store.preview_patch(SettingsPatch(llama_cpp=LlamaCppPatch()))
         self.assertEqual(preview, before)
 
-    def test_schema_eight_local_file_loads_with_defaults(self) -> None:
+    def test_stale_local_agent_settings_are_ignored(self) -> None:
         _write_json(
             self.local_path,
             {
-                "schema_version": 8,
-                "ask_apex": {"apodemus_context_window": 8192},
+                "ask_apex": {"obsolete_agent": "retired"},
             },
         )
-        with self.assertLogs("core.settings.normalize", level=logging.WARNING) as logs:
-            store = self._store()
-        self.assertTrue(
-            any(
-                "ask_apex.apodemus_context_window" in message
-                and "reset local settings" in message
-                for message in logs.output
-            )
-        )
+        store = self._store()
         snap = store.get_snapshot()
-        self.assertEqual(snap.ask_apex.felis.context_window, 16384)
-        self.assertEqual(snap.ask_apex.felis.reasoning_mode, "none")
+        self.assertEqual(snap.ask_apex.local.context_window, 16384)
+        self.assertEqual(snap.ask_apex.local.reasoning_mode, "none")
         self.assertFalse(snap.llama_cpp.enabled)
         self.assertEqual(snap.llama_cpp.host, "http://127.0.0.1:8080")
+        self.assertFalse(store.local_override_active)
+        persisted = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertEqual(persisted["ask_apex"], {"obsolete_agent": "retired"})
 
 
 class LlamaCppHostNormalizationTests(unittest.TestCase):
@@ -284,7 +278,7 @@ class LlamaCppRuntimeIntegrationTests(unittest.TestCase):
                 "llama_cpp": {
                     "enabled": False,
                     "host": "http://127.0.0.1:8080",
-                    "resource_gates": {"apodemus": {"ram_limit": 82.0, "cpu_limit": 92.0}},
+                    "resource_gates": {"gemma-4-E2B-Q4_K_M.gguf": {"ram_limit": 82.0, "cpu_limit": 92.0}},
                 }
             },
         )

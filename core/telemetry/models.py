@@ -150,7 +150,7 @@ class PreflightRequest(BaseModel):
     operation: PreflightOperation
     connectors: list[str] | None = None
     briefing_mode: str | None = None
-    synthesis_agent: str | None = None
+    model_id: str | None = None
     force: bool = False
     involves_cloud: bool = False
     acknowledged_warnings: list[str] = Field(default_factory=list)

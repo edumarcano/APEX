@@ -600,13 +600,13 @@ class LlamaCppManagedSettingsPersistenceTests(unittest.TestCase):
 
 
 class LlamaCppStatusApiPrivacyTests(unittest.TestCase):
-    def test_public_agent_status_omits_local_paths(self) -> None:
+    def test_public_model_catalog_omits_local_paths(self) -> None:
         from core.api.app import app
 
         reset_settings_store_for_tests()
         reset_llama_cpp_server_supervisor_for_tests()
         client = TestClient(app)
-        agents = client.get("/api/v1/agents")
+        agents = client.get("/api/v1/cortex/agent")
         self.assertEqual(agents.status_code, 200)
         blob = agents.text
         self.assertNotIn("executable_path", blob)

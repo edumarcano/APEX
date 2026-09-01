@@ -6,7 +6,7 @@ import { useActions } from './useActions'
 const ACTION = {
   action_id: 'action-1',
   proposal: {
-    agent_key: 'panthera', capability_name: 'create_microsoft_todo_task',
+    agent_key: 'apex', capability_name: 'create_microsoft_todo_task',
     arguments: { list_id: 'list-1', title: 'Plan branch six' }, target: 'Create Microsoft To Do Task',
     risk: 'write', summary: 'Approve Create Microsoft To Do Task',
     proposed_at: '2026-08-13T12:00:00Z', expires_at: '2026-08-14T12:00:00Z', proposal_hash: 'a'.repeat(64),

@@ -12,7 +12,8 @@ from unittest import mock
 from fastapi.testclient import TestClient
 
 from core.agent.types import AgentQueryRequest
-from core.api.cortex import _build_hud_context, build_agent_statuses
+from core.api.cortex import _build_hud_context
+from core.api.routers.cortex import cortex_agent
 from core.agent.providers.cloud_verification import clear_cloud_status_cache
 from core.connectors.models import ConnectorResult, utc_now_iso
 from core.settings.store import RuntimeSettingsStore, reset_settings_store_for_tests
@@ -36,7 +37,7 @@ def _result(name: str, display_text: str) -> ConnectorResult:
     )
 
 
-class ProfileBusyStatusTests(unittest.TestCase):
+class CortexAgentCatalogTests(unittest.TestCase):
     def setUp(self) -> None:
         clear_cloud_status_cache()
         self.addCleanup(clear_cloud_status_cache)
@@ -58,15 +59,13 @@ class ProfileBusyStatusTests(unittest.TestCase):
                 "modules": {"f1": True, "football": False},
                 "ask_apex": {
                     "enabled": True,
-                    "agent": "felis",
-                    "panthera": {
-                        "provider": "openai",
-                        "model": "gpt-5.6-luna",
-                        "effort": "focused",
+                    "selected_model": "qwen3:1.7b",
+                    "cloud": {
+                        "last_model": "gpt-5.6-luna",
+                        "effort": "low",
                     },
-                    "felis": {
-                        "runtime": "ollama",
-                        "model": "qwen3:1.7b",
+                    "local": {
+                        "last_model": "qwen3:1.7b",
                         "reasoning_mode": "none",
                     },
                 },
@@ -88,105 +87,12 @@ class ProfileBusyStatusTests(unittest.TestCase):
         self.addCleanup(reset_settings_store_for_tests)
         self.addCleanup(self._tmp.cleanup)
 
-    def test_local_agents_busy_when_execution_active(self) -> None:
-        snapshot = {
-            "provider": "llama_cpp",
-            "reachable": True,
-            "installed_models": [
-                "gemma-4-E2B-Q4_K_M.gguf",
-                "gemma-4-e2b-16k",
-                "qwen3:1.7b",
-                "qwen3:4b-instruct",
-            ],
-            "loaded_models": [],
-            "sampled_at": 0.0,
-        }
-        backend = mock.Mock()
-        backend.provider = "llama_cpp"
-        backend.enabled = True
-        backend.get_status_snapshot.return_value = snapshot
-        with (
-            mock.patch(
-                "core.api.cortex.iter_local_runtime_backends",
-                return_value=(backend,),
-            ),
-            mock.patch("core.api.cortex.get_local_runtime_backend", return_value=backend),
-            mock.patch(
-                "core.api.cortex.get_system_vitals",
-                return_value={"cpu": 10.0, "ram": 10.0},
-            ),
-            mock.patch(
-                "core.api.cortex.is_local_execution_active",
-                return_value=True,
-            ),
-            mock.patch(
-                "core.api.cortex.get_active_local_model",
-                return_value=None,
-            ),
-            mock.patch(
-                "core.api.cortex.get_loading_local_model",
-                return_value=None,
-            ),
-            mock.patch(
-                "core.api.cortex.get_idle_unload_remaining_seconds",
-                return_value=None,
-            ),
-            mock.patch("core.api.cortex.is_dev_mode", return_value=True),
-            mock.patch("core.agent.catalog.is_dev_mode", return_value=True),
-            mock.patch.dict(
-                "os.environ",
-                {"OPENAI_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"},
-            ),
-        ):
-            profiles = build_agent_statuses()
-
-        by_key = {entry.key: entry for entry in profiles}
-        self.assertEqual(by_key["felis"].status, "busy")
-        self.assertEqual(
-            by_key["felis"].reason,
-            "Briefing synthesis is using local inference.",
-        )
-        self.assertEqual(by_key["panthera"].status, "configured")
-        self.assertIsNone(by_key["panthera"].reason)
-
-    def test_cloud_available_during_local_execution(self) -> None:
-        backend = mock.Mock()
-        backend.provider = "ollama"
-        backend.enabled = False
-        with (
-            mock.patch(
-                "core.api.cortex.iter_local_runtime_backends",
-                return_value=(),
-            ),
-            mock.patch("core.api.cortex.get_local_runtime_backend", return_value=backend),
-            mock.patch(
-                "core.api.cortex.get_system_vitals",
-                return_value={"cpu": 10.0, "ram": 10.0},
-            ),
-            mock.patch(
-                "core.api.cortex.is_local_execution_active",
-                return_value=True,
-            ),
-            mock.patch(
-                "core.api.cortex.get_active_local_model",
-                return_value=None,
-            ),
-            mock.patch(
-                "core.api.cortex.get_loading_local_model",
-                return_value=None,
-            ),
-            mock.patch(
-                "core.api.cortex.get_idle_unload_remaining_seconds",
-                return_value=None,
-            ),
-            mock.patch("core.api.cortex.is_dev_mode", return_value=True),
-            mock.patch("core.agent.catalog.is_dev_mode", return_value=True),
-            mock.patch("core.api.cortex.agent_has_credentials", return_value=True),
-        ):
-            profiles = build_agent_statuses()
-        cloud = [entry for entry in profiles if entry.runtime == "cloud"]
-        self.assertTrue(cloud)
-        self.assertTrue(all(entry.status == "configured" for entry in cloud))
+    def test_exposes_one_native_agent_with_both_model_runtimes(self) -> None:
+        response = cortex_agent()
+        self.assertEqual(response.key, "apex")
+        self.assertEqual(response.display_name, "Apex Agent")
+        self.assertTrue(any(model.runtime == "cloud" for model in response.model_catalog))
+        self.assertTrue(any(model.runtime == "local" for model in response.model_catalog))
 
 
 class HudContextTests(unittest.TestCase):
@@ -299,15 +205,13 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
                 "modules": {"f1": True, "football": False},
                 "ask_apex": {
                     "enabled": True,
-                    "agent": "felis",
-                    "panthera": {
-                        "provider": "openai",
-                        "model": "gpt-5.6-luna",
-                        "effort": "focused",
+                    "selected_model": "qwen3:1.7b",
+                    "cloud": {
+                        "last_model": "gpt-5.6-luna",
+                        "effort": "low",
                     },
-                    "felis": {
-                        "runtime": "ollama",
-                        "model": "qwen3:1.7b",
+                    "local": {
+                        "last_model": "qwen3:1.7b",
                         "reasoning_mode": "none",
                     },
                 },

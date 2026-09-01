@@ -6,7 +6,8 @@ import re
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from core.agent.catalog import AGENT_SPECS
+from core.agent.catalog import AGENT_SPECS, resolve_effort
+from core.agent.model_catalog import get_model_profile, visible_cloud_models, visible_local_models
 from core.agent.types import (
     AgentKey,
     AgentQueryRequest,
@@ -21,6 +22,7 @@ from core.settings import (
     ToolProfilesPatch,
     get_settings_store,
 )
+from core.config import is_dev_mode
 from core.api.cortex import (
     build_agent_statuses,
     build_tool_catalog,
@@ -53,6 +55,8 @@ from core.context import ContextAssembler, ContextPolicy
 from core.knowledge import get_knowledge_service
 from core.api.models import (
     AgentStatus,
+    CortexAgentResponse,
+    ModelVerificationRequest,
     ActionResponse,
     CloudAgentVerificationResponse,
     LocalLoadRequest,
@@ -75,6 +79,36 @@ from core.api.models import (
 
 router = APIRouter(tags=["cortex"])
 _PROFILE_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,79}$")
+
+
+def _resolved_turn_metadata(payload: ConversationTurnRequest) -> dict[str, object]:
+    """Capture model routing inputs before persisting a replayable turn."""
+    settings = get_settings_store().get_snapshot().ask_apex
+    model_id = payload.model_id or settings.selected_model
+    profile = get_model_profile(model_id)
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown model: {model_id!r}")
+    if profile.dev_only and not is_dev_mode():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Model {model_id!r} is only available in development mode.")
+    if profile.runtime == "cloud":
+        return {
+            "resolved_model": profile.model_id,
+            "runtime": profile.runtime,
+            "provider": profile.provider,
+            "effective_effort": resolve_effort(profile, payload.effort),
+            "effective_context_window": None,
+            "effective_local_reasoning_mode": None,
+        }
+    if payload.effort is not None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Effort cannot be set for local models.")
+    return {
+        "resolved_model": profile.model_id,
+        "runtime": profile.runtime,
+        "provider": profile.provider,
+        "effective_effort": None,
+        "effective_context_window": payload.context_window or settings.local.context_window,
+        "effective_local_reasoning_mode": payload.local_reasoning_mode or settings.local.reasoning_mode,
+    }
 
 
 def _context_entity(entity_id, *, partition: str) -> ContextEntityResponse | None:
@@ -294,10 +328,9 @@ def _normalize_profile_name(value: str) -> str:
     "/api/v1/cortex/tool-catalog",
     response_model=ToolCatalogResponse,
 )
-def tool_catalog(agent: AgentKey = "panthera") -> ToolCatalogResponse:
-    """Return the resolved selector catalog for one Apex Agent."""
-    _ensure_agent_api_access(agent)
-    return build_tool_catalog(agent)
+def tool_catalog(model_id: str | None = None) -> ToolCatalogResponse:
+    """Return the resolved tool catalog for the selected or requested model."""
+    return build_tool_catalog("apex", model_id=model_id)
 
 
 @router.post(
@@ -446,6 +479,7 @@ def conversation_turn(conversation_id: str, payload: ConversationTurnRequest) ->
             "tool_profile_id": tool_profile_id,
             "snapshot_id": payload.snapshot_id,
             "briefing_id": payload.briefing_id,
+            **_resolved_turn_metadata(payload),
         }
         user, agent_message, history, replayed = service.begin_turn(
             parsed_id,
@@ -553,8 +587,8 @@ def _profile_response(
             )
             for profile in list_tool_profiles()
         ],
-        default_profile_by_agent=dict(
-            snapshot.tool_profiles.default_profile_by_agent
+        default_profile_by_runtime=dict(
+            snapshot.tool_profiles.default_profile_by_runtime
         ),
         affected_profile_id=affected_profile_id,
     )
@@ -578,10 +612,10 @@ def _persist_custom_profiles(
         SettingsPatch(
             tool_profiles=ToolProfilesPatch(
                 custom_profiles=profiles,
-                default_profile_by_agent=(
+                default_profile_by_runtime=(
                     defaults
                     if defaults is not None
-                    else dict(snapshot.tool_profiles.default_profile_by_agent)
+                    else dict(snapshot.tool_profiles.default_profile_by_runtime)
                 ),
             )
         )
@@ -690,7 +724,7 @@ def delete_tool_profile(profile_id: str) -> ToolProfilesResponse:
     snapshot = get_settings_store().get_snapshot()
     defaults = {
         agent: selected
-        for agent, selected in snapshot.tool_profiles.default_profile_by_agent.items()
+        for agent, selected in snapshot.tool_profiles.default_profile_by_runtime.items()
         if selected != normalized_id
     }
     return _persist_custom_profiles(
@@ -715,8 +749,8 @@ def set_tool_profile_default(
             detail="The requested tool profile does not exist.",
         )
     snapshot = get_settings_store().get_snapshot()
-    defaults = dict(snapshot.tool_profiles.default_profile_by_agent)
-    defaults[payload.agent] = profile_id
+    defaults = dict(snapshot.tool_profiles.default_profile_by_runtime)
+    defaults[payload.runtime] = profile_id
     return _persist_custom_profiles(
         list(snapshot.tool_profiles.custom_profiles),
         defaults,
@@ -724,26 +758,30 @@ def set_tool_profile_default(
     )
 
 
-@router.get("/api/v1/agents", response_model=list[AgentStatus])
-def list_agents() -> list[AgentStatus]:
-    """
-    Return visible Apex Agent status for cloud and local runtimes.
+@router.get("/api/v1/cortex/agent", response_model=CortexAgentResponse)
+def cortex_agent() -> CortexAgentResponse:
+    """Return the native Agent and its unified model catalog."""
+    from core.api.cortex import build_model_catalog
 
-    Local provider reachability, installed models, and host vitals come from
-    cached backend snapshots and the global coordinator, so frequent HUD
-    polling never floods a local daemon while a model is generating.
-    """
-    return build_agent_statuses()
+    settings = get_settings_store().get_snapshot().ask_apex
+    catalog = build_model_catalog()
+    return CortexAgentResponse(
+        description=AGENT_SPECS["apex"].description,
+        selected_model=settings.selected_model,
+        model_catalog=catalog,
+    )
 
 
 @router.post(
-    "/api/v1/agents/{agent_key}/verify",
+    "/api/v1/cortex/models/verify",
     response_model=CloudAgentVerificationResponse,
 )
-def verify_agent(agent_key: str) -> CloudAgentVerificationResponse:
-    """Verify configured cloud credentials and model access without inference."""
-    _ensure_agent_api_access(agent_key)
-    return verify_cloud_agent_endpoint(agent_key)
+def verify_model(payload: ModelVerificationRequest) -> CloudAgentVerificationResponse:
+    """Verify a cloud model without generating a turn."""
+    profile = get_model_profile(payload.model_id)
+    if profile is None or profile.runtime != "cloud":
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Only cloud models can be verified.")
+    return verify_cloud_agent_endpoint(payload.model_id)
 
 
 @router.post(
@@ -768,5 +806,5 @@ def unload_local_model() -> LocalUnloadResponse:
     summary="Load Local Model Endpoint",
 )
 def load_local_model(payload: LocalLoadRequest) -> LocalLoadResponse:
-    """Pre-warm a selected local Agent and confirm it is resident."""
-    return load_local_model_endpoint(payload.agent)
+    """Pre-warm a selected local model and confirm it is resident."""
+    return load_local_model_endpoint(payload.model_id)

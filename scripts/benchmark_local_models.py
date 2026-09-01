@@ -42,15 +42,12 @@ from core.agent.capabilities import (
     get_capability_descriptor,
 )
 from core.agent.catalog import (
-    AGENT_SPECS,
     build_concrete_agent,
     compose_agent_system_instruction,
     known_local_model_refs,
-    local_agent_keys,
-    local_reasoning_modes_for_agent,
-    resolve_selected_model_profile,
+    local_reasoning_modes_for_model,
 )
-from core.agent.model_catalog import DEFAULT_FELIS_MODEL, get_model_profile
+from core.agent.model_catalog import DEFAULT_LOCAL_MODEL, get_model_profile
 from core.agent.local_runtime.contract import (
     LocalModelRef,
     LocalModelProfile,
@@ -129,9 +126,9 @@ class BenchmarkAbort(RuntimeError):
 class BenchmarkConfiguration:
     """One model/context/reasoning configuration to compare."""
 
-    agent: str
+    model_id: str
     provider: str
-    model: str
+    api_model: str
     runtime_alias: str
     context: int
     reasoning: str
@@ -469,13 +466,14 @@ def load_benchmark_cases(path: Path = _CASES_PATH) -> dict[str, list[dict[str, A
 
 
 def _context_values(
-    agent_key: str,
+    model_id: str,
     *,
     context: int | None,
     all_contexts: bool,
 ) -> tuple[int, ...]:
-    model_profile = resolve_selected_model_profile(agent_key)
-    model_id = model_profile.model_id
+    model_profile = get_model_profile(model_id)
+    if model_profile is None or model_profile.runtime != "local":
+        raise ValueError(f"{model_id!r} is not a registered local model.")
     if model_profile.provider == "llama_cpp":
         runtime = LLAMA_CPP_RUNTIME_CONFIGS[model_id]
         if all_contexts:
@@ -513,32 +511,33 @@ def _normalize_reasoning_modes(reasoning_modes: Sequence[str] | None) -> tuple[s
 
 
 def _build_registered_configuration(
-    agent_key: str,
+    model_id: str,
     *,
     context: int,
     reasoning: str,
 ) -> BenchmarkConfiguration:
-    supported = local_reasoning_modes_for_agent(agent_key)
+    supported = local_reasoning_modes_for_model(model_id)
     if reasoning not in supported:
         raise ValueError(
-            f"Agent {agent_key!r} does not support reasoning mode {reasoning!r}."
+            f"Model {model_id!r} does not support reasoning mode {reasoning!r}."
         )
     profile = build_concrete_agent(
-        agent_key,
+        "apex",
         native_effort=None,
         local_context_window=context,
         local_reasoning_mode=reasoning,  # type: ignore[arg-type]
+        model_id=model_id,
     )
     return BenchmarkConfiguration(
-        agent=agent_key,
+        model_id=model_id,
         provider=profile.provider,
-        model=profile.api_model,
+        api_model=profile.api_model,
         runtime_alias=profile.runtime_model_id,
         context=profile.context_window,
         reasoning=profile.reasoning_mode,
         profile=profile,
-        agent_key=agent_key,
-        tool_projection_agent=agent_key,
+        agent_key="apex",
+        tool_projection_agent="apex",
     )
 
 
@@ -551,9 +550,9 @@ def _build_candidate_configuration(
 ) -> BenchmarkConfiguration:
     """Build an in-memory llama.cpp profile without changing the Agent catalog."""
     resolved_context = context or LLAMA_CPP_RUNTIME_CONFIGS[
-        DEFAULT_FELIS_MODEL
+        DEFAULT_LOCAL_MODEL
     ].default_context_window
-    supported = local_reasoning_modes_for_agent("felis")
+    supported = local_reasoning_modes_for_model(DEFAULT_LOCAL_MODEL)
     if reasoning not in supported:
         raise ValueError(
             f"llama.cpp candidate does not support reasoning mode {reasoning!r}."
@@ -565,42 +564,42 @@ def _build_candidate_configuration(
     if not alias:
         raise ValueError("The llama.cpp candidate requires a runtime alias.")
 
-    felis_profile = get_model_profile(DEFAULT_FELIS_MODEL)
-    assert felis_profile is not None
+    default_profile = get_model_profile(DEFAULT_LOCAL_MODEL)
+    assert default_profile is not None
     profile = build_llama_cpp_profile(
-        DEFAULT_FELIS_MODEL,
+        DEFAULT_LOCAL_MODEL,
         display_name="Benchmark candidate",
         api_model=model_name,
-        stability=felis_profile.stability,
-        max_tool_turns=felis_profile.max_tool_turns,
-        max_tool_calls=felis_profile.max_tool_calls,
+        stability=default_profile.stability,
+        max_tool_turns=default_profile.max_tool_turns,
+        max_tool_calls=default_profile.max_tool_calls,
         system_instruction=LOCAL_AGENT_SYSTEM_PROMPT,
         context_window=resolved_context,
         reasoning_mode=reasoning,  # type: ignore[arg-type]
     ).model_copy(update={"runtime_model_id": alias})
     return BenchmarkConfiguration(
-        agent="candidate",
+        model_id="candidate",
         provider="llama_cpp",
-        model=model_name,
+        api_model=model_name,
         runtime_alias=alias,
         context=profile.context_window,
         reasoning=profile.reasoning_mode,
         profile=profile,
-        agent_key=None,
-        tool_projection_agent="felis",
+        agent_key="apex",
+        tool_projection_agent="apex",
     )
 
 
 def build_configurations(
     *,
-    agents: Sequence[str] | None,
+    models: Sequence[str] | None,
     context: int | None,
     all_contexts: bool,
     reasoning_modes: Sequence[str] | None,
     candidate_model: str | None = None,
     runtime_alias: str | None = None,
 ) -> tuple[BenchmarkConfiguration, ...]:
-    """Resolve registered Agents and at most one ad-hoc candidate."""
+    """Resolve registered local models and at most one ad-hoc candidate."""
     if candidate_model and all_contexts:
         raise ValueError(
             "--all-contexts cannot be used with a one-off candidate because its "
@@ -612,41 +611,41 @@ def build_configurations(
         raise ValueError("--runtime-alias is only valid with --llama-candidate.")
 
     modes = _normalize_reasoning_modes(reasoning_modes)
-    selected_agents: list[str]
-    if agents is None:
+    selected_models: list[str]
+    if models is None:
         if candidate_model:
-            selected_agents = []
+            selected_models = []
         else:
-            felis_profile = resolve_selected_model_profile("felis")
-            if get_local_runtime_backend(felis_profile.provider).enabled:
-                selected_agents = ["felis"]
+            selected_model = DEFAULT_LOCAL_MODEL
+            profile = get_model_profile(selected_model)
+            if profile is not None and get_local_runtime_backend(profile.provider).enabled:
+                selected_models = [selected_model]
             else:
-                selected_agents = []
+                selected_models = []
     else:
-        selected_agents = []
-        for raw_key in agents:
-            key = raw_key.strip().lower()
-            if key not in selected_agents:
-                selected_agents.append(key)
+        selected_models = []
+        for raw_model in models:
+            model_id = raw_model.strip()
+            if model_id not in selected_models:
+                selected_models.append(model_id)
 
     configurations: list[BenchmarkConfiguration] = []
-    for raw_agent_key in selected_agents:
-        agent_key = raw_agent_key
-        spec = AGENT_SPECS.get(agent_key)
-        if spec is None or spec.runtime != "local":
+    for model_id in selected_models:
+        profile = get_model_profile(model_id)
+        if profile is None or profile.runtime != "local":
             raise ValueError(
-                f"{agent_key!r} is not a registered local Agent. "
-                "Use a local Ollama or llama.cpp Agent."
+                f"{model_id!r} is not a registered local model. "
+                "Use a local Ollama or llama.cpp model ID."
             )
         for context_value in _context_values(
-            agent_key,
+            model_id,
             context=context,
             all_contexts=all_contexts,
         ):
             for reasoning in modes:
                 configurations.append(
                     _build_registered_configuration(
-                        agent_key,
+                        model_id,
                         context=context_value,
                         reasoning=reasoning,
                     )
@@ -665,7 +664,7 @@ def build_configurations(
 
     if not configurations:
         raise ValueError(
-            "Select at least one local Agent with --agents or provide "
+            "Select at least one local model with --models or provide "
             "--llama-candidate."
         )
     return tuple(configurations)
@@ -1150,7 +1149,7 @@ class BenchmarkRunner:
     ) -> tuple[AgentQueryResponse, float]:
         request = AgentQueryRequest(
             prompt=prompt,
-            agent="felis",
+            agent="apex",
             selected_tool_names=[descriptor.name for descriptor in descriptors],
         )
         started = time.perf_counter()
@@ -1441,9 +1440,9 @@ class BenchmarkRunner:
         configuration: BenchmarkConfiguration,
     ) -> dict[str, Any]:
         run: dict[str, Any] = {
-            "agent": configuration.agent,
+            "model_id": configuration.model_id,
             "provider": configuration.provider,
-            "model": configuration.model,
+            "api_model": configuration.api_model,
             "runtime_alias": configuration.runtime_alias,
             "context": configuration.context,
             "reasoning": configuration.reasoning,
@@ -1737,7 +1736,7 @@ def render_markdown(result: Mapping[str, Any]) -> str:
         [
             "## Performance",
             "",
-            "| Agent | Status | Provider | Context | Reasoning | Load | Median latency | Effective output | Peak private memory | Commit delta | Failures |",
+            "| Model | Status | Provider | Context | Reasoning | Load | Median latency | Effective output | Peak private memory | Commit delta | Failures |",
             "| --- | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
@@ -1745,9 +1744,9 @@ def render_markdown(result: Mapping[str, Any]) -> str:
         performance = run.get("performance") or {}
         resources = run.get("resources") or {}
         lines.append(
-            "| {agent} | {status} | {provider} | {context} | {reasoning} | {load} | {latency} | "
+            "| {model} | {status} | {provider} | {context} | {reasoning} | {load} | {latency} | "
             "{generation} | {private} | {commit} | {failures} |".format(
-                agent=run.get("agent", "?"),
+                model=run.get("model_id", "?"),
                 status=run.get("status", "?"),
                 provider=run.get("provider", "?"),
                 context=run.get("context", "?"),
@@ -1772,7 +1771,7 @@ def render_markdown(result: Mapping[str, Any]) -> str:
             "",
             "## APEX tasks",
             "",
-            "| Agent | Task success | Tool selection | Schema validity | Multi-tool completion | Unnecessary tools | Failure rate |",
+            "| Model | Task success | Tool selection | Schema validity | Multi-tool completion | Unnecessary tools | Failure rate |",
             "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
@@ -1781,8 +1780,8 @@ def render_markdown(result: Mapping[str, Any]) -> str:
         if not metrics:
             continue
         lines.append(
-            "| {agent} | {task} | {selection} | {schema} | {multi} | {unnecessary} | {failure} |".format(
-                agent=run.get("agent", "?"),
+            "| {model} | {task} | {selection} | {schema} | {multi} | {unnecessary} | {failure} |".format(
+                model=run.get("model_id", "?"),
                 task=_display_rate(metrics.get("task_success_rate")),
                 selection=_display_rate(metrics.get("tool_selection_rate")),
                 schema=_display_rate(metrics.get("schema_validity_rate")),
@@ -1849,12 +1848,12 @@ def render_terminal_summary(result: Mapping[str, Any]) -> str:
         f"Repetitions: {result.get('repetitions', '?')}",
         "",
         "PERFORMANCE",
-        "Agent / context              Status             Load       Median latency   Effective output   Failures",
+        "Model / context              Status             Load       Median latency   Effective output   Failures",
     ]
     for run in result.get("runs", []):
         performance = run.get("performance") or {}
         lines.append(
-            f"{str(run.get('agent', '?')) + ' ' + str(run.get('context', '?')):28}"
+                f"{str(run.get('model_id', '?')) + ' ' + str(run.get('context', '?')):28}"
             f"{str(run.get('status', '?')):19}"
             f"{_display_seconds(run.get('load_seconds')):11}"
             f"{_display_seconds(performance.get('median_latency_seconds')):18}"
@@ -1862,13 +1861,13 @@ def render_terminal_summary(result: Mapping[str, Any]) -> str:
             f"{performance.get('failures', '—')}"
         )
 
-    lines.extend(["", "APEX TASKS", "Agent / context              Task success   Multi-tool   Failures"])
+    lines.extend(["", "APEX TASKS", "Model / context              Task success   Multi-tool   Failures"])
     for run in result.get("runs", []):
         metrics = (run.get("tool_suite") or {}).get("metrics") or {}
         if not metrics:
             continue
         lines.append(
-            f"{str(run.get('agent', '?')) + ' ' + str(run.get('context', '?')):28}"
+                f"{str(run.get('model_id', '?')) + ' ' + str(run.get('context', '?')):28}"
             f"{_display_rate(metrics.get('task_success_rate')):16}"
             f"{_display_rate(metrics.get('multi_tool_completion_rate')):13}"
             f"{_display_rate(metrics.get('failure_rate'))}"
@@ -1888,18 +1887,18 @@ def render_terminal_summary(result: Mapping[str, Any]) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Compare configured local APEX Agents one model at a time."
+        description="Compare configured local APEX models one model at a time."
     )
     parser.add_argument(
-        "--agents",
+        "--models",
         nargs="+",
-        help="Registered local Agent keys, such as felis.",
+        help="Registered local model IDs, such as gemma-4-E2B-Q4_K_M.gguf.",
     )
     context_group = parser.add_mutually_exclusive_group()
     context_group.add_argument(
         "--context",
         type=int,
-        help="One context window to use for each compatible local Agent.",
+        help="One context window to use for each compatible local model.",
     )
     context_group.add_argument(
         "--all-contexts",
@@ -1928,7 +1927,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--llama-candidate",
-        help="One-off llama.cpp model filename or path, without an Agent identity.",
+        help="One-off llama.cpp model filename or path, without changing the Apex Agent identity.",
     )
     parser.add_argument(
         "--runtime-alias",
@@ -1950,7 +1949,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         configurations = build_configurations(
-            agents=args.agents,
+            models=args.models,
             context=args.context,
             all_contexts=args.all_contexts,
             reasoning_modes=args.reasoning,

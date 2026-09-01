@@ -118,8 +118,7 @@ export function HomeCommandRail({
   onUnloadLocalModel,
 }: HomeCommandRailProps): ReactElement {
   const showAgentControls = activated && agentQueriesEnabled
-  const selectedModel = modelCatalog.find((entry) => entry.model_id === selectedModelId)
-  const inferredAgent: AgentKey = selectedModel?.runtime === 'local' ? 'felis' : 'panthera'
+  const inferredAgent: AgentKey = 'apex'
 
   return (
     <section
@@ -161,7 +160,6 @@ export function HomeCommandRail({
                   selectedModelId={selectedModelId}
                   onModelChange={onModelChange}
                   catalog={modelCatalog}
-                  agentsStatus={agentsStatus}
                   disabled={isCortexQuerying || submissionPending}
                   isQuerying={isCortexQuerying || submissionPending}
                 />

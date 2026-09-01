@@ -46,9 +46,9 @@ class BenchmarkUtilityTests(unittest.TestCase):
         self.assertFalse(benchmark.requires_model_reload(same_alias, same_alias))
         self.assertTrue(benchmark.requires_model_reload(same_alias, changed_alias))
 
-    def test_candidate_profile_is_not_added_to_agent_catalog(self) -> None:
+    def test_candidate_profile_is_not_added_to_model_catalog(self) -> None:
         configurations = benchmark.build_configurations(
-            agents=None,
+            models=None,
             context=16384,
             all_contexts=False,
             reasoning_modes=("none",),
@@ -58,10 +58,10 @@ class BenchmarkUtilityTests(unittest.TestCase):
 
         self.assertEqual(len(configurations), 1)
         candidate = configurations[0]
-        self.assertEqual(candidate.agent, "candidate")
-        self.assertIsNone(candidate.agent_key)
+        self.assertEqual(candidate.model_id, "candidate")
+        self.assertEqual(candidate.agent_key, "apex")
         self.assertEqual(candidate.runtime_alias, "benchmark-gemma-e4b-16k")
-        self.assertNotIn("benchmark-gemma-e4b-16k", benchmark.AGENT_SPECS)
+        self.assertIsNone(benchmark.get_model_profile("benchmark-gemma-e4b-16k"))
 
     def test_unknown_resident_aborts_before_any_unload(self) -> None:
         backend = mock.Mock()
@@ -154,15 +154,15 @@ class BenchmarkUtilityTests(unittest.TestCase):
             cpu_limit=95.0,
         )
         configuration = benchmark.BenchmarkConfiguration(
-            agent="felis",
+            model_id="gemma-4-E2B-Q4_K_M.gguf",
             provider="llama_cpp",
-            model="model.gguf",
+            api_model="model.gguf",
             runtime_alias="gemma-4-e2b-32k",
             context=32768,
             reasoning="none",
             profile=profile,
-            agent_key="felis",
-            tool_projection_agent="felis",
+            agent_key="apex",
+            tool_projection_agent="apex",
         )
         runner = benchmark.BenchmarkRunner.__new__(benchmark.BenchmarkRunner)
         runner._allowed_refs = frozenset({first, second})
@@ -212,15 +212,15 @@ class BenchmarkUtilityTests(unittest.TestCase):
             cpu_limit=95.0,
         )
         configuration = benchmark.BenchmarkConfiguration(
-            agent="felis",
+            model_id="gemma-4-E2B-Q4_K_M.gguf",
             provider="llama_cpp",
-            model="model.gguf",
+            api_model="model.gguf",
             runtime_alias="gemma-4-e4b-16k",
             context=16384,
             reasoning="none",
             profile=profile,
-            agent_key="felis",
-            tool_projection_agent="felis",
+            agent_key="apex",
+            tool_projection_agent="apex",
         )
         runner = benchmark.BenchmarkRunner.__new__(benchmark.BenchmarkRunner)
         runner.resource_recovery_timeout_seconds = 5.0
@@ -257,15 +257,15 @@ class BenchmarkUtilityTests(unittest.TestCase):
             cpu_limit=95.0,
         )
         configuration = benchmark.BenchmarkConfiguration(
-            agent="felis",
+            model_id="gemma-4-E2B-Q4_K_M.gguf",
             provider="llama_cpp",
-            model="model.gguf",
+            api_model="model.gguf",
             runtime_alias="gemma-4-e4b-16k",
             context=16384,
             reasoning="none",
             profile=profile,
-            agent_key="felis",
-            tool_projection_agent="felis",
+            agent_key="apex",
+            tool_projection_agent="apex",
         )
         runner = benchmark.BenchmarkRunner.__new__(benchmark.BenchmarkRunner)
         runner._prepare_configuration = mock.Mock(
@@ -326,15 +326,15 @@ class BenchmarkUtilityTests(unittest.TestCase):
     def test_context_mismatch_still_cleans_up_loaded_model(self) -> None:
         reference = LocalModelRef(provider="llama_cpp", model="gemma-4-e2b-16k")
         configuration = benchmark.BenchmarkConfiguration(
-            agent="felis",
+            model_id="gemma-4-E2B-Q4_K_M.gguf",
             provider="llama_cpp",
-            model="model.gguf",
+            api_model="model.gguf",
             runtime_alias="gemma-4-e2b-16k",
             context=16384,
             reasoning="none",
             profile=SimpleNamespace(),
-            agent_key="felis",
-            tool_projection_agent="felis",
+            agent_key="apex",
+            tool_projection_agent="apex",
         )
         runner = benchmark.BenchmarkRunner.__new__(benchmark.BenchmarkRunner)
         runner.configurations = (configuration,)
@@ -373,25 +373,16 @@ class BenchmarkUtilityTests(unittest.TestCase):
         self.assertEqual(cleaned_refs, [reference])
 
     def test_warmup_is_not_counted_as_a_measured_repetition(self) -> None:
-        default_profile = benchmark.get_model_profile(benchmark.DEFAULT_FELIS_MODEL)
+        default_profile = benchmark.get_model_profile(benchmark.DEFAULT_LOCAL_MODEL)
         assert default_profile is not None
-        with (
-            mock.patch.object(
-                benchmark,
-                "resolve_selected_model_profile",
-                return_value=default_profile,
-            ),
-            mock.patch(
-                "core.agent.catalog.resolve_selected_model_profile",
-                return_value=default_profile,
-            ),
-        ):
-            configurations = benchmark.build_configurations(
-                agents=("felis",),
-                context=16384,
-                all_contexts=False,
-                reasoning_modes=("none",),
-            )
+        configurations = benchmark.build_configurations(
+            models=None,
+            context=16384,
+            all_contexts=False,
+            reasoning_modes=("none",),
+            candidate_model="gemma-4-E2B-Q4_K_M.gguf",
+            runtime_alias="benchmark-gemma-e2b-16k",
+        )
         calls: list[str] = []
         response = AgentQueryResponse(answer="ready", agent_used={})
 

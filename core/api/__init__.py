@@ -57,7 +57,7 @@ from core.api.state import (
     global_pipeline_state,
 )
 from core.api.routers.briefings import get_briefing_history
-from core.api.routers.cortex import list_agents
+from core.api.routers.cortex import cortex_agent
 from core.api.routers.market import get_market_snapshot
 from core.api.routers.reminders import (
     create_reminder,
@@ -136,7 +136,7 @@ __all__ = [
     "get_system_diagnostics",
     "global_pipeline_state",
     "health_check",
-    "list_agents",
+    "cortex_agent",
     "list_reminders",
     "liveness",
     "main",

@@ -6,7 +6,7 @@ import type { ActionRecord } from '../types/actions'
 const destructiveAction: ActionRecord = {
   action_id: 'delete-1',
   proposal: {
-    agent_key: 'panthera', capability_name: 'delete_microsoft_todo_task',
+    agent_key: 'apex', capability_name: 'delete_microsoft_todo_task',
     arguments: { list_id: 'list-1', task_id: 'task-1' }, target: 'Delete Microsoft To Do Task',
     risk: 'destructive' as const, summary: 'Approve Delete Microsoft To Do Task',
     proposed_at: '2026-08-18T12:00:00Z', expires_at: '2026-08-19T12:00:00Z', proposal_hash: 'a'.repeat(64),
@@ -17,7 +17,7 @@ const destructiveAction: ActionRecord = {
 const verifiedRecentAction: ActionRecord = {
   action_id: 'create-1',
   proposal: {
-    agent_key: 'felis', capability_name: 'create_microsoft_todo_task',
+    agent_key: 'apex', capability_name: 'create_microsoft_todo_task',
     arguments: { title: 'Recent task' }, target: 'Create Microsoft To Do Task',
     risk: 'write' as const, summary: 'Approve Create Microsoft To Do Task',
     proposed_at: '2026-08-18T10:00:00Z', expires_at: '2026-08-19T10:00:00Z', proposal_hash: 'b'.repeat(64),
@@ -28,7 +28,7 @@ const verifiedRecentAction: ActionRecord = {
 const verifiedOldAction: ActionRecord = {
   action_id: 'old-1',
   proposal: {
-    agent_key: 'panthera', capability_name: 'create_microsoft_todo_task',
+    agent_key: 'apex', capability_name: 'create_microsoft_todo_task',
     arguments: { title: 'Old task' }, target: 'Create Microsoft To Do Task',
     risk: 'write' as const, summary: 'Approve Old Microsoft To Do Task',
     proposed_at: '2026-08-10T12:00:00Z', expires_at: '2026-08-11T12:00:00Z', proposal_hash: 'c'.repeat(64),

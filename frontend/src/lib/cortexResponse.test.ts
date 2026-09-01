@@ -7,10 +7,10 @@ describe('parseAgentQueryResponse', () => {
     const parsed = parseAgentQueryResponse({
       answer: 'Ready.',
       agent_used: {
-        key: 'panthera',
-        provider: 'gemini',
-        configured_model: 'gemini-2.5-pro',
-        resolved_model: 'gemini-2.5-pro',
+        key: 'apex',
+        provider: 'openrouter',
+        configured_model: 'deepseek/deepseek-v4-flash-0731',
+        resolved_model: 'deepseek/deepseek-v4-flash-0731',
       },
       usage: { input_tokens: 120, output_tokens: 30, total_tokens: 150 },
       timing: { total_ms: 820, provider_ms: 700, apex_tool_ms: 40 },
@@ -29,7 +29,7 @@ describe('parseAgentQueryResponse', () => {
       },
     })
 
-    expect(parsed.metadata?.agent?.key).toBe('panthera')
+    expect(parsed.metadata?.agent?.key).toBe('apex')
     expect(parsed.metadata?.usage?.totalTokens).toBe(150)
     expect(parsed.metadata?.timing?.totalMs).toBe(820)
     expect(parsed.metadata?.cost?.totalCost).toBe(0.01)
@@ -39,12 +39,12 @@ describe('parseAgentQueryResponse', () => {
   it('continues to parse the nested metadata shape', () => {
     const parsed = parseAgentQueryResponse({
       metadata: {
-        agent: { key: 'felis' },
+        agent: { key: 'apex' },
         usage: { total_tokens: 12 },
       },
     })
 
-    expect(parsed.metadata?.agent?.key).toBe('felis')
+    expect(parsed.metadata?.agent?.key).toBe('apex')
     expect(parsed.metadata?.usage?.totalTokens).toBe(12)
   })
 })

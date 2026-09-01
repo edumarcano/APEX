@@ -34,11 +34,11 @@ class ContextAssemblyTests(unittest.TestCase):
         conversation_id = uuid4()
         disabled = self.assembler.assemble(
             prompt="project", conversation_id=conversation_id,
-            policy=ContextPolicy("felis", "production", False),
+            policy=ContextPolicy("apex", "production", False),
         )
         sandbox = self.assembler.assemble(
             prompt="project", conversation_id=conversation_id,
-            policy=ContextPolicy("felis", "sandbox", True),
+            policy=ContextPolicy("apex", "sandbox", True),
         )
         self.assertFalse(disabled.enabled)
         self.assertFalse(sandbox.enabled)
@@ -63,7 +63,7 @@ class ContextAssemblyTests(unittest.TestCase):
 
         bundle = self.assembler.assemble(
             prompt="Project Alpha", conversation_id=current,
-            policy=ContextPolicy("felis", "production", True),
+            policy=ContextPolicy("apex", "production", True),
         )
 
         self.assertIn("<untrusted_retrieved_context>", bundle.rendered)
@@ -119,7 +119,7 @@ class ContextAssemblyTests(unittest.TestCase):
         bundle = self.assembler.assemble(
             prompt="Topic Beta Beta_0 Beta_1 Beta_2",
             conversation_id=current,
-            policy=ContextPolicy("felis", "production", True),
+            policy=ContextPolicy("apex", "production", True),
         )
 
         conversation_refs = [
@@ -155,7 +155,7 @@ class ContextAssemblyTests(unittest.TestCase):
         bundle = self.assembler.assemble(
             prompt="word",
             conversation_id=current,
-            policy=ContextPolicy("felis", "production", True),
+            policy=ContextPolicy("apex", "production", True),
         )
 
         self.assertTrue(bundle.truncated)
@@ -184,7 +184,7 @@ class ContextAssemblyTests(unittest.TestCase):
         bundle = self.assembler.assemble(
             prompt="Tell me about coffee roast preferences",
             conversation_id=current,
-            policy=ContextPolicy("felis", "production", True),
+            policy=ContextPolicy("apex", "production", True),
         )
 
         self.assertIn("Unresolved personal-context conflict", bundle.rendered)
@@ -222,7 +222,7 @@ class ContextAssemblyTests(unittest.TestCase):
         bundle = self.assembler.assemble(
             prompt="address secret key",
             conversation_id=current,
-            policy=ContextPolicy("felis", "production", True),
+            policy=ContextPolicy("apex", "production", True),
         )
 
         self.assertNotIn("Old deprecated address.", bundle.rendered)
@@ -263,9 +263,8 @@ class ContextAssemblyTests(unittest.TestCase):
         bundle = self.assembler.assemble(
             prompt="Tell me about Apex Core Engine architecture",
             conversation_id=uuid4(),
-            policy=ContextPolicy("felis", "production", True),
+            policy=ContextPolicy("apex", "production", True),
         )
-
         self.assertIn("Related personal context", bundle.rendered)
         self.assertIn("Configured storage layer operates in loopback mode.", bundle.rendered)
         self.assertIn(str(record.id), [r.source_id for r in bundle.references])
@@ -275,18 +274,20 @@ class ContextAssemblyTests(unittest.TestCase):
         from core.api.models import ToolPreflightRequest
         from core.settings.models import (
             AgentSettingsPatch,
-            PantheraSettingsPatch,
+            CloudSettingsPatch,
             SettingsPatch,
         )
         from core.settings import get_settings_store
 
         store = get_settings_store()
+        initial_snap = store.get_snapshot()
         try:
-            # Opt-in enabled for Panthera
+            # Opt-in enabled for cloud execution.
             store.apply_patch(
                 SettingsPatch(
                     ask_apex=AgentSettingsPatch(
-                        panthera=PantheraSettingsPatch(
+                        selected_model="gemini-3.6-flash",
+                        cloud=CloudSettingsPatch(
                             personal_context_enabled=True
                         )
                     )
@@ -294,17 +295,18 @@ class ContextAssemblyTests(unittest.TestCase):
             )
             resp_enabled = build_tool_preflight(
                 ToolPreflightRequest(
-                    agent="panthera",
+                    agent="apex",
                     prompt="Hello world",
                 )
             )
             self.assertEqual(resp_enabled.breakdown.retrieved_context, 1500)
 
-            # Opt-in disabled for Panthera
+            # Opt-in disabled for cloud execution.
             store.apply_patch(
                 SettingsPatch(
                     ask_apex=AgentSettingsPatch(
-                        panthera=PantheraSettingsPatch(
+                        selected_model="gemini-3.6-flash",
+                        cloud=CloudSettingsPatch(
                             personal_context_enabled=False
                         )
                     )
@@ -312,7 +314,7 @@ class ContextAssemblyTests(unittest.TestCase):
             )
             resp_disabled = build_tool_preflight(
                 ToolPreflightRequest(
-                    agent="panthera",
+                    agent="apex",
                     prompt="Hello world",
                 )
             )
@@ -321,8 +323,9 @@ class ContextAssemblyTests(unittest.TestCase):
             store.apply_patch(
                 SettingsPatch(
                     ask_apex=AgentSettingsPatch(
-                        panthera=PantheraSettingsPatch(
-                            personal_context_enabled=False
+                        selected_model=initial_snap.ask_apex.selected_model,
+                        cloud=CloudSettingsPatch(
+                            personal_context_enabled=initial_snap.ask_apex.cloud.personal_context_enabled
                         )
                     )
                 )

@@ -138,17 +138,9 @@ class TelemetryApiTests(unittest.TestCase):
                 "modules": {"football": False, "f1": False},
                 "ask_apex": {
                     "enabled": True,
-                    "agent": "felis",
-                    "panthera": {
-                        "provider": "openai",
-                        "model": "gpt-5.6-luna",
-                        "effort": "focused",
-                    },
-                    "felis": {
-                        "runtime": "ollama",
-                        "model": "qwen3:1.7b",
-                        "reasoning_mode": "none",
-                    },
+                    "selected_model": "qwen3:1.7b",
+                    "cloud": {"last_model": "gpt-5.6-luna", "effort": "low"},
+                    "local": {"last_model": "qwen3:1.7b", "reasoning_mode": "none"},
                 },
                 "tts_settings": {
                     "primary_tts": "pyttsx3",
@@ -455,14 +447,14 @@ class TelemetryApiTests(unittest.TestCase):
         ), mock.patch(
             "core.scanner.get_power_state", return_value="battery"
         ), mock.patch(
-            "core.telemetry.preflight._evaluate_local_agent_blockers",
+            "core.telemetry.preflight._evaluate_local_model_blockers",
             return_value=([], True),
         ):
             response = self.client.post(
                 "/api/v1/preflight",
                 json={
                     "operation": "activate",
-                    "synthesis_agent": "felis",
+                    "model_id": "gemma-4-E2B-Q4_K_M.gguf",
                     "involves_cloud": False,
                 },
             )
@@ -669,7 +661,7 @@ class TelemetryApiTests(unittest.TestCase):
         ):
             response = self.client.post(
                 "/api/v1/preflight",
-                json={"operation": "cortex_query", "synthesis_agent": "felis"},
+                json={"operation": "cortex_query", "model_id": "qwen3:1.7b"},
             )
 
         payload = response.json()
@@ -697,13 +689,13 @@ class TelemetryApiTests(unittest.TestCase):
         self.assertFalse(payload["can_proceed"])
         self.assertIn("missing_credentials", {item["code"] for item in payload["blockers"]})
 
-    def test_preflight_rejects_unknown_synthesis_agent(self) -> None:
+    def test_preflight_rejects_unknown_model(self) -> None:
         with mock.patch("core.telemetry.preflight.is_dev_mode", return_value=True), mock.patch(
             "core.telemetry.preflight.config.DEMO_MODE", False
         ):
             response = self.client.post(
                 "/api/v1/preflight",
-                json={"operation": "cortex_query", "synthesis_agent": "unknown"},
+                json={"operation": "cortex_query", "model_id": "unknown"},
             )
 
         payload = response.json()
@@ -789,17 +781,9 @@ class TriggerWithoutGateTests(unittest.TestCase):
                 "modules": {"football": False, "f1": False},
                 "ask_apex": {
                     "enabled": True,
-                    "agent": "felis",
-                    "panthera": {
-                        "provider": "openai",
-                        "model": "gpt-5.6-luna",
-                        "effort": "focused",
-                    },
-                    "felis": {
-                        "runtime": "ollama",
-                        "model": "qwen3:1.7b",
-                        "reasoning_mode": "none",
-                    },
+                    "selected_model": "qwen3:1.7b",
+                    "cloud": {"last_model": "gpt-5.6-luna", "effort": "low"},
+                    "local": {"last_model": "qwen3:1.7b", "reasoning_mode": "none"},
                 },
                 "tts_settings": {
                     "primary_tts": "pyttsx3",

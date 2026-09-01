@@ -51,7 +51,7 @@ class RuntimeMetadata(BaseModel):
         ]
         | None
     ) = None
-    synthesis_agent: Literal["panthera", "felis"] | None = None
+    synthesis_model_id: str | None = None
     synthesis_resolved_model: str | None = None
     synthesis_fallback_reason: str | None = None
     synthesis_fallback_steps: list[str] = Field(default_factory=list)
@@ -726,6 +726,38 @@ class AgentModelCatalogEntry(BaseModel):
         default=False,
         description="Whether this model supports encrypted reasoning payloads.",
     )
+    status: AgentAvailabilityStatus = Field(
+        default="configured",
+        description="Current model availability derived from provider credentials or local runtime state.",
+    )
+    status_source: AgentStatusSource = Field(
+        default="configuration",
+        description="Source of the current model availability result.",
+    )
+    status_checked_at: datetime | None = Field(
+        default=None,
+        description="Time at which the model availability was last checked.",
+    )
+    reason: str | None = Field(
+        default=None,
+        description="Diagnostic explanation when the model is unavailable or degraded.",
+    )
+    active: bool = Field(
+        default=False,
+        description="Whether this local model is resident in its runtime.",
+    )
+    loading: bool = Field(
+        default=False,
+        description="Whether this local model is currently being loaded.",
+    )
+    idle_unload_remaining_seconds: int | None = Field(
+        default=None,
+        description="Seconds until this resident local model is automatically unloaded.",
+    )
+    loaded_model: LocalLoadedModelStatus | None = Field(
+        default=None,
+        description="Sanitized local runtime residency details when available.",
+    )
 
 
 class AgentStatus(BaseModel):
@@ -837,6 +869,22 @@ class AgentStatus(BaseModel):
     )
 
 
+class CortexAgentResponse(BaseModel):
+    """The singular native Agent and its model-directed execution catalog."""
+
+    key: Literal["apex"] = "apex"
+    display_name: str = "Apex Agent"
+    description: str
+    selected_model: str
+    model_catalog: list[AgentModelCatalogEntry] = Field(default_factory=list)
+
+
+class ModelVerificationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    model_id: str = Field(min_length=1)
+
+
 class BriefingTargetStatus(BaseModel):
     """Authoritative synthesis target and live availability for one Briefing mode."""
 
@@ -880,7 +928,7 @@ class ToolPreflightRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    agent: AgentKey = "panthera"
+    agent: AgentKey = "apex"
     effort: ApexEffort | None = None
     model_id: str | None = None
     context_window: int | None = Field(default=None, ge=1)
@@ -913,7 +961,7 @@ class ToolProfileUpdateRequest(BaseModel):
 class ToolProfileDefaultRequest(BaseModel):
     """Assign one existing profile as an Agent default."""
 
-    agent: AgentKey
+    runtime: Literal["cloud", "local"]
     profile_id: str
 
 
@@ -921,7 +969,7 @@ class ToolProfilesResponse(BaseModel):
     """Built-in and persisted tool profiles plus Agent defaults."""
 
     profiles: list[ToolProfileMetadata] = Field(default_factory=list)
-    default_profile_by_agent: dict[str, str] = Field(default_factory=dict)
+    default_profile_by_runtime: dict[str, str] = Field(default_factory=dict)
     affected_profile_id: str | None = None
 
 
@@ -944,7 +992,7 @@ class RetrievalPrepareResponse(RetrievalStatusResponse):
 
 
 class CloudAgentVerificationResponse(BaseModel):
-    agent: str
+    model_id: str
     status: AgentAvailabilityStatus
     reason: str | None = None
     checked_at: datetime
@@ -958,10 +1006,7 @@ class LocalUnloadResponse(BaseModel):
 
 
 class LocalLoadRequest(BaseModel):
-    agent: Literal["felis"] = Field(
-        default="felis",
-        description="Local Apex Agent to pre-warm in local runtime memory.",
-    )
+    model_id: str = Field(min_length=1)
 
 
 class LocalLoadResponse(BaseModel):
@@ -969,9 +1014,7 @@ class LocalLoadResponse(BaseModel):
         default="success",
         description="Outcome label for the verified local model load.",
     )
-    agent: Literal["felis"] = Field(
-        description="Local Agent confirmed resident by the local runtime.",
-    )
+    model_id: str = Field(description="Local model confirmed resident by the runtime.")
 
 
 class BriefingHistoryRecord(BaseModel):
@@ -994,7 +1037,7 @@ class PipelineSynthesisState(BaseModel):
     provider: Literal[
         "ollama", "llama_cpp", "raw", "demo", "openai", "openrouter"
     ] | None = None
-    agent: Literal["panthera", "felis"] | None = None
+    model_id: str | None = None
     loading: bool = False
     fallback_reason: str | None = None
 
