@@ -7,7 +7,6 @@ import atexit
 import logging
 import os
 import signal
-import socket
 import subprocess
 import sys
 import time
@@ -19,10 +18,9 @@ from core.config import CUSTOM_BROWSER_PATH
 from core.runtime_logging import configure_logging
 
 ROOT_DIR: Path = Path(__file__).resolve().parent
-FRONTEND_HOST: str = "127.0.0.1"
-FRONTEND_PORTS: tuple[int, ...] = (5500, 5501, 5502, 5503)
-FRONTEND_URL: str = f"http://{FRONTEND_HOST}:{FRONTEND_PORTS[0]}"
+FRONTEND_URL: str = "http://127.0.0.1:5500"
 API_READY_URL: str = "http://127.0.0.1:8000/api/v1/health/ready"
+FRONTEND_PROBE_URL: str = "http://127.0.0.1:5500/"
 STARTUP_ATTEMPTS: int = 30
 STARTUP_POLL_SECONDS: float = 0.5
 PROBE_TIMEOUT_SECONDS: float = 3.0
@@ -75,42 +73,14 @@ def _resolve_windows_browser_bins() -> list[Path]:
     return candidates
 
 
-def _can_bind_frontend_port(port: int) -> bool:
-    """Return whether the loopback port is currently available to this user."""
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-            probe.bind((FRONTEND_HOST, port))
-    except OSError:
-        return False
-    return True
-
-
-def _frontend_url(port: int) -> str:
-    """Return the local frontend origin for ``port``."""
-    return f"http://{FRONTEND_HOST}:{port}"
-
-
-def _with_frontend_origin(env: dict[str, str], frontend_url: str) -> dict[str, str]:
-    """Allow the chosen local frontend origin without discarding user origins."""
-    configured = [
-        origin.strip()
-        for origin in env.get("APEX_ALLOWED_ORIGINS", "").split(",")
-        if origin.strip()
-    ]
-    if frontend_url not in configured:
-        configured.append(frontend_url)
-    env["APEX_ALLOWED_ORIGINS"] = ",".join(configured)
-    return env
-
-
 def launch_background_servers() -> tuple[
-    subprocess.Popen[bytes], subprocess.Popen[bytes], str
+    subprocess.Popen[bytes], subprocess.Popen[bytes]
 ]:
     """
     Start FastAPI (uvicorn) and the static frontend server as parallel children.
 
     Returns:
-        Tuple of (uvicorn process, http.server process, frontend URL).
+        Tuple of (uvicorn process, http.server process).
     """
     uvicorn_env = os.environ.copy()
     static_env = _get_sanitized_env()
@@ -130,15 +100,6 @@ def launch_background_servers() -> tuple[
         else f"{python_path}{os.pathsep}{static_existing_pp}"
     )
 
-    frontend_port = next(
-        (port for port in FRONTEND_PORTS if _can_bind_frontend_port(port)),
-        None,
-    )
-    if frontend_port is None:
-        raise OSError("No configured local frontend port is available")
-    frontend_url = _frontend_url(frontend_port)
-    _with_frontend_origin(uvicorn_env, frontend_url)
-
     uvicorn_cmd: list[str] = [
         sys.executable,
         "-m",
@@ -153,9 +114,9 @@ def launch_background_servers() -> tuple[
         sys.executable,
         "-m",
         "http.server",
-        str(frontend_port),
+        "5500",
         "--bind",
-        FRONTEND_HOST,
+        "127.0.0.1",
         "--directory",
         "dist",
     ]
@@ -176,7 +137,7 @@ def launch_background_servers() -> tuple[
     except Exception:
         _terminate_process(uvicorn_proc)
         raise
-    return uvicorn_proc, static_proc, frontend_url
+    return uvicorn_proc, static_proc
 
 
 def launch_kiosk_browser(url: str) -> subprocess.Popen[bytes] | None:
@@ -278,7 +239,6 @@ def _child_exit_reason(
 def wait_for_services(
     uvicorn_proc: subprocess.Popen[bytes],
     static_proc: subprocess.Popen[bytes],
-    frontend_url: str,
 ) -> str | None:
     """
     Probe backend readiness and frontend HTTP availability.
@@ -296,19 +256,19 @@ def wait_for_services(
             return static_exit
 
         api_ready = _http_ok(API_READY_URL)
-        frontend_ready = _http_ok(f"{frontend_url}/")
+        frontend_ready = _http_ok(FRONTEND_PROBE_URL)
         if api_ready and frontend_ready:
             _LOGGER.info("Backend and frontend are ready.")
             return None
         time.sleep(STARTUP_POLL_SECONDS)
 
     api_ready = _http_ok(API_READY_URL)
-    frontend_ready = _http_ok(f"{frontend_url}/")
+    frontend_ready = _http_ok(FRONTEND_PROBE_URL)
     missing: list[str] = []
     if not api_ready:
         missing.append("API readiness at /api/v1/health/ready")
     if not frontend_ready:
-        missing.append(f"frontend HTTP at {frontend_url}/")
+        missing.append("frontend HTTP at http://127.0.0.1:5500/")
     return (
         "Startup timed out waiting for: "
         + ", ".join(missing)
@@ -332,7 +292,7 @@ def main() -> int:
     """Run the orchestration sequence: servers, warm-up, browser, then wait."""
     configure_logging()
     try:
-        uvicorn_proc, static_proc, frontend_url = launch_background_servers()
+        uvicorn_proc, static_proc = launch_background_servers()
     except (OSError, subprocess.SubprocessError) as exc:
         _LOGGER.error(
             "Unable to start APEX child processes: error_type=%s",
@@ -341,14 +301,14 @@ def main() -> int:
         return 1
     register_shutdown_hooks(uvicorn_proc, static_proc)
 
-    failure = wait_for_services(uvicorn_proc, static_proc, frontend_url)
+    failure = wait_for_services(uvicorn_proc, static_proc)
     if failure is not None:
         return fail_startup(failure, uvicorn_proc, static_proc)
 
     browser_proc: subprocess.Popen[bytes] | None = None
     exit_code = 0
     try:
-        browser_proc = launch_kiosk_browser(frontend_url)
+        browser_proc = launch_kiosk_browser(FRONTEND_URL)
         if browser_proc is not None:
             while True:
                 if browser_proc.poll() is not None:
