@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Loader2, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { Check, ChevronDown, Cloud, Gpu, Loader2, ShieldAlert, ShieldCheck } from 'lucide-react'
 import {
   useEffect,
   useMemo,
@@ -318,11 +318,14 @@ export function ModelSelector({
 
           <div className="space-y-3 py-2">
             {([
-              ['Cloud models', cloudModels],
-              ['Local models', localModels],
-            ] as const).map(([label, models]) => models.length > 0 ? (
+              ['Cloud models', cloudModels, Cloud, 'text-[#6EA8FF]'],
+              ['Local models', localModels, Gpu, 'text-amber-400'],
+            ] as const).map(([label, models, Icon, iconClass]) => models.length > 0 ? (
               <section key={label} role="group" aria-label={label} className="space-y-1.5">
-                <p className="px-1 font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-500">{label}</p>
+                <p className="flex items-center gap-1.5 px-1 font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-500">
+                  <Icon className={`size-3.5 ${iconClass}`} aria-hidden />
+                  <span>{label}</span>
+                </p>
                 {models.map((model) => {
               const selected = model.model_id === selectedModelId
               const unavailable = model.status === 'disabled' || model.credentials_configured === false

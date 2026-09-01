@@ -1,7 +1,7 @@
 import {
   Check,
   ChevronDown,
-  Network,
+  Cloud,
   Gpu,
 } from 'lucide-react'
 import {
@@ -244,7 +244,7 @@ export function HomeModelSelector({
               {cloudModels.length > 0 && (
                 <li role="presentation">
                   <div className="flex items-center gap-2 px-2 py-1.5 font-mono text-[9px] uppercase tracking-widest text-[#6EA8FF]/90" aria-hidden>
-                    <Network className="size-3.5 text-[#6EA8FF]" />
+                    <Cloud className="size-3.5 text-[#6EA8FF]" />
                     Cloud models
                   </div>
                   <ul role="group" aria-label="Cloud models" className="space-y-1">
