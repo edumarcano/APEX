@@ -265,7 +265,6 @@ class ContextAssemblyTests(unittest.TestCase):
             conversation_id=uuid4(),
             policy=ContextPolicy("apex", "production", True),
         )
-
         self.assertIn("Related personal context", bundle.rendered)
         self.assertIn("Configured storage layer operates in loopback mode.", bundle.rendered)
         self.assertIn(str(record.id), [r.source_id for r in bundle.references])
@@ -281,11 +280,13 @@ class ContextAssemblyTests(unittest.TestCase):
         from core.settings import get_settings_store
 
         store = get_settings_store()
+        initial_snap = store.get_snapshot()
         try:
             # Opt-in enabled for cloud execution.
             store.apply_patch(
                 SettingsPatch(
                     ask_apex=AgentSettingsPatch(
+                        selected_model="gemini-3.6-flash",
                         cloud=CloudSettingsPatch(
                             personal_context_enabled=True
                         )
@@ -304,6 +305,7 @@ class ContextAssemblyTests(unittest.TestCase):
             store.apply_patch(
                 SettingsPatch(
                     ask_apex=AgentSettingsPatch(
+                        selected_model="gemini-3.6-flash",
                         cloud=CloudSettingsPatch(
                             personal_context_enabled=False
                         )
@@ -321,8 +323,9 @@ class ContextAssemblyTests(unittest.TestCase):
             store.apply_patch(
                 SettingsPatch(
                     ask_apex=AgentSettingsPatch(
+                        selected_model=initial_snap.ask_apex.selected_model,
                         cloud=CloudSettingsPatch(
-                            personal_context_enabled=False
+                            personal_context_enabled=initial_snap.ask_apex.cloud.personal_context_enabled
                         )
                     )
                 )

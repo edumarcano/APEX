@@ -256,7 +256,7 @@ class CloudAgentVerificationTests(unittest.TestCase):
         result.checked_at = cloud_status("gpt-5.6-luna").checked_at
         with (
             mock.patch("core.api.cortex.DEMO_MODE", False),
-            mock.patch("core.api.cortex.agent_has_credentials", return_value=True),
+            mock.patch("core.api.cortex.model_has_credentials", return_value=True),
             mock.patch("core.api.cortex.verify_cloud_agent", return_value=result),
         ):
             response = verify_cloud_agent_endpoint("gpt-5.6-luna")
