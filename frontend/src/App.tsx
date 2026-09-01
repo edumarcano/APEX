@@ -593,9 +593,18 @@ export default function App(): ReactElement {
       (liveSynthesis.provider === 'llama_cpp' ||
         liveSynthesis.model_id !== null))
   const isLocalModelLoaded = activeLocalModel !== null
-  const loadingDisplayName =
-    loadingLocalAgent?.display_name ??
-    (liveSynthesis?.model_id ?? null)
+  const loadingDisplayName = useMemo(() => {
+    if (liveSynthesis?.model_id) {
+      return (
+        fullModelCatalog.find((entry) => entry.model_id === liveSynthesis.model_id)?.display_name ??
+        liveSynthesis.model_id
+      )
+    }
+    const localEntry = homeSelectedEntry?.runtime === 'local'
+      ? homeSelectedEntry
+      : fullModelCatalog.find((entry) => entry.model_id === selectedModel && entry.runtime === 'local')
+    return localEntry?.display_name ?? null
+  }, [fullModelCatalog, homeSelectedEntry, liveSynthesis, selectedModel])
   const outerShellActivity = resolveOuterShellActivity({
     activeStep,
     isBriefingRunning,

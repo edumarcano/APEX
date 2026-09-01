@@ -52,13 +52,14 @@ function resolveSignalState(
   step: number | null,
   status: SystemState,
   isLocalModelLoading: boolean,
-  _loadingDisplayName: string | null,
+  loadingDisplayName: string | null,
   isCortexQuerying: boolean,
   isTelemetryCollecting: boolean = false,
 ): SignalState {
   if (isLocalModelLoading) {
+    const name = loadingDisplayName?.trim() || 'local model'
     return {
-      label: 'Loading local model',
+      label: `Loading ${name}`,
       tone: 'rust',
       isActive: true,
     }
