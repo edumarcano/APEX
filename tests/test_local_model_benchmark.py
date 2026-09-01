@@ -46,7 +46,7 @@ class BenchmarkUtilityTests(unittest.TestCase):
         self.assertFalse(benchmark.requires_model_reload(same_alias, same_alias))
         self.assertTrue(benchmark.requires_model_reload(same_alias, changed_alias))
 
-    def test_candidate_profile_is_not_added_to_agent_catalog(self) -> None:
+    def test_candidate_profile_is_not_added_to_model_catalog(self) -> None:
         configurations = benchmark.build_configurations(
             models=None,
             context=16384,
@@ -58,8 +58,8 @@ class BenchmarkUtilityTests(unittest.TestCase):
 
         self.assertEqual(len(configurations), 1)
         candidate = configurations[0]
-        self.assertEqual(candidate.agent, "candidate")
-        self.assertIsNone(candidate.agent_key)
+        self.assertEqual(candidate.model_id, "candidate")
+        self.assertEqual(candidate.agent_key, "apex")
         self.assertEqual(candidate.runtime_alias, "benchmark-gemma-e4b-16k")
         self.assertIsNone(benchmark.get_model_profile("benchmark-gemma-e4b-16k"))
 
@@ -154,9 +154,9 @@ class BenchmarkUtilityTests(unittest.TestCase):
             cpu_limit=95.0,
         )
         configuration = benchmark.BenchmarkConfiguration(
-            agent="gemma-4-E2B-Q4_K_M.gguf",
+            model_id="gemma-4-E2B-Q4_K_M.gguf",
             provider="llama_cpp",
-            model="model.gguf",
+            api_model="model.gguf",
             runtime_alias="gemma-4-e2b-32k",
             context=32768,
             reasoning="none",
@@ -212,9 +212,9 @@ class BenchmarkUtilityTests(unittest.TestCase):
             cpu_limit=95.0,
         )
         configuration = benchmark.BenchmarkConfiguration(
-            agent="gemma-4-E2B-Q4_K_M.gguf",
+            model_id="gemma-4-E2B-Q4_K_M.gguf",
             provider="llama_cpp",
-            model="model.gguf",
+            api_model="model.gguf",
             runtime_alias="gemma-4-e4b-16k",
             context=16384,
             reasoning="none",
@@ -257,9 +257,9 @@ class BenchmarkUtilityTests(unittest.TestCase):
             cpu_limit=95.0,
         )
         configuration = benchmark.BenchmarkConfiguration(
-            agent="gemma-4-E2B-Q4_K_M.gguf",
+            model_id="gemma-4-E2B-Q4_K_M.gguf",
             provider="llama_cpp",
-            model="model.gguf",
+            api_model="model.gguf",
             runtime_alias="gemma-4-e4b-16k",
             context=16384,
             reasoning="none",
@@ -326,9 +326,9 @@ class BenchmarkUtilityTests(unittest.TestCase):
     def test_context_mismatch_still_cleans_up_loaded_model(self) -> None:
         reference = LocalModelRef(provider="llama_cpp", model="gemma-4-e2b-16k")
         configuration = benchmark.BenchmarkConfiguration(
-            agent="gemma-4-E2B-Q4_K_M.gguf",
+            model_id="gemma-4-E2B-Q4_K_M.gguf",
             provider="llama_cpp",
-            model="model.gguf",
+            api_model="model.gguf",
             runtime_alias="gemma-4-e2b-16k",
             context=16384,
             reasoning="none",

@@ -59,15 +59,13 @@ class CortexAgentCatalogTests(unittest.TestCase):
                 "modules": {"f1": True, "football": False},
                 "ask_apex": {
                     "enabled": True,
-                    "agent": "felis",
-                    "panthera": {
-                        "provider": "openai",
-                        "model": "gpt-5.6-luna",
-                        "effort": "focused",
+                    "selected_model": "qwen3:1.7b",
+                    "cloud": {
+                        "last_model": "gpt-5.6-luna",
+                        "effort": "low",
                     },
-                    "felis": {
-                        "runtime": "ollama",
-                        "model": "qwen3:1.7b",
+                    "local": {
+                        "last_model": "qwen3:1.7b",
                         "reasoning_mode": "none",
                     },
                 },
@@ -207,15 +205,13 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
                 "modules": {"f1": True, "football": False},
                 "ask_apex": {
                     "enabled": True,
-                    "agent": "felis",
-                    "panthera": {
-                        "provider": "openai",
-                        "model": "gpt-5.6-luna",
-                        "effort": "focused",
+                    "selected_model": "qwen3:1.7b",
+                    "cloud": {
+                        "last_model": "gpt-5.6-luna",
+                        "effort": "low",
                     },
-                    "felis": {
-                        "runtime": "ollama",
-                        "model": "qwen3:1.7b",
+                    "local": {
+                        "last_model": "qwen3:1.7b",
                         "reasoning_mode": "none",
                     },
                 },

@@ -113,7 +113,7 @@ class LlamaCppProviderTests(unittest.TestCase):
             _local_profile(),
         )
         self.assertEqual(result.message.content, "The local weather looks clear.")
-        self.assertIn(result.resolved_model, {"gemma-4-e2b-16k", "apodemus-16k"})
+        self.assertEqual(result.resolved_model, "gemma-4-e2b-16k")
         self.assertIsNone(result.message.tool_calls)
         payload = mock_post.call_args.args[0]
         self.assertEqual(payload["reasoning_effort"], "none")
@@ -168,17 +168,17 @@ class LlamaCppProviderTests(unittest.TestCase):
 
     @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
     @patch("core.agent.providers.llama_cpp._post_chat")
-    def test_reasoning_payload_is_explicit_for_both_llama_agents(
+    def test_reasoning_payload_is_explicit_for_each_llama_model(
         self, mock_post: MagicMock, _activity: MagicMock
     ) -> None:
         mock_post.return_value = _load_fixture("basic_answer.json")
 
-        model_ids = {
-            "apodemus": "gemma-4-E2B-Q4_K_M.gguf",
-            "neotoma": "gemma-4-E4B-Q4_K_M.gguf",
-            "unnamed-experimental-agent": "Qwen3.5-4B-Q4_K_M.gguf",
-        }
-        for legacy_key, model_id in model_ids.items():
+        model_ids = (
+            "gemma-4-E2B-Q4_K_M.gguf",
+            "gemma-4-E4B-Q4_K_M.gguf",
+            "Qwen3.5-4B-Q4_K_M.gguf",
+        )
+        for model_id in model_ids:
             for reasoning_mode, enabled in (("none", False), ("focused", True)):
                 with self.subTest(model=model_id, reasoning_mode=reasoning_mode):
                     mock_post.reset_mock()

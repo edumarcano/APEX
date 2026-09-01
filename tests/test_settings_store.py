@@ -87,47 +87,26 @@ class SettingsStoreTests(unittest.TestCase):
                 {"ask_apex": {"cloud": {"last_model": "gemma-4-E2B-Q4_K_M.gguf"}}}
             )
 
-    def test_legacy_v18_settings_are_migrated_without_losing_controls(self) -> None:
-        _write_json(
-            self.config_path,
-            {
-                "settings_schema_version": 18,
-                "ask_apex": {
-                    "agent": "felis",
-                    "panthera": {"model": "gpt-5.6-luna", "effort": "high"},
-                    "felis": {
-                        "model": "gemma-4-E2B-Q4_K_M.gguf",
-                        "context_window": 16384,
-                        "reasoning_mode": "none",
-                    },
-                },
-            },
-        )
-
-        settings = self._store().get_snapshot().ask_apex
-
-        self.assertEqual(settings.selected_model, "gemma-4-E2B-Q4_K_M.gguf")
-        self.assertEqual(settings.cloud.last_model, "gpt-5.6-luna")
-        self.assertEqual(settings.cloud.effort, "high")
-
-    def test_legacy_local_context_key_is_migrated(self) -> None:
+    def test_stale_local_agent_settings_are_ignored_without_rewriting_the_file(self) -> None:
         _write_json(
             self.local_path,
             {
                 "ask_apex": {
-                    "agent": "felis",
-                    "felis": {"model": "gemma-4-E2B-Q4_K_M.gguf"},
-                    "apodemus_context_window": 32768,
-                }
+                    "obsolete_agent": "retired",
+                },
             },
         )
 
         store = self._store()
+        settings = store.get_snapshot().ask_apex
 
-        self.assertTrue(store.local_override_active)
-        self.assertEqual(store.get_snapshot().ask_apex.local.context_window, 32768)
-        rewritten = json.loads(self.local_path.read_text(encoding="utf-8"))
-        self.assertNotIn("apodemus_context_window", rewritten["ask_apex"])
+        self.assertFalse(store.local_override_active)
+        self.assertEqual(settings.selected_model, "deepseek/deepseek-v4-flash-0731")
+        self.assertIn("obsolete_agent", store.load_warning or "")
+        self.assertEqual(
+            json.loads(self.local_path.read_text(encoding="utf-8")),
+            {"ask_apex": {"obsolete_agent": "retired"}},
+        )
 
     def test_persistence_failure_keeps_the_published_snapshot_unchanged(self) -> None:
         store = self._store()

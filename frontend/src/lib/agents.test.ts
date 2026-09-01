@@ -18,10 +18,6 @@ describe('agents helpers', () => {
   it('exposes only the singular Apex Agent key', () => {
     expect(AGENT_KEYS).toEqual(['apex'])
     expect(isAgentKey('apex')).toBe(true)
-    expect(isAgentKey('panthera')).toBe(false)
-    expect(isAgentKey('felis')).toBe(false)
-    expect(isAgentKey('lynx')).toBe(false)
-    expect(isAgentKey('apodemus')).toBe(false)
     expect(isAgentKey('unknown')).toBe(false)
   })
 

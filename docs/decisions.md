@@ -170,17 +170,17 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 **Decision.** APEX has one native Apex Agent. The selected model determines cloud provider or local runtime, capabilities, controls, availability, and lifecycle behavior.
 
-**Why.** Cloud and local execution are runtime details, not enduring product identities. A singular assistant keeps Home, Cortex, persistence, and external-worker integration aligned.
+**Why.** Cloud and local execution are runtime details, not enduring product identities. A singular assistant keeps Home, Cortex, settings, and persistence aligned.
 
-**Trade-off.** The model catalog can grow without adding Agents, but model metadata, settings, and documentation still need to stay in sync.
+**Trade-off.** The model catalog can grow without creating another Agent identity, but model metadata, settings, and documentation still need to stay in sync.
 
-### Separate development-only models from product Agents
+### Keep development-only models separate from Apex Agent
 
-**Decision.** Development-only models remain in the registered model catalog and appear in each Agent's `model_catalog` list only when `DEV_MODE` is active. They are not separate Apex Agents.
+**Decision.** Development-only models remain in Apex Agent's registered model catalog and appear only when `DEV_MODE` is active. They are not separate Agent identities.
 
 **Why.** There needs to be a safe place to try alternate cloud and local models without expanding the normal product roster.
 
-**Trade-off.** Documentation and tests must distinguish Agent roles from replaceable model configuration.
+**Trade-off.** Documentation and tests must distinguish the stable Apex Agent identity from replaceable model configuration.
 
 ### Keep Agent execution stateless while storing conversations
 

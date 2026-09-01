@@ -7,29 +7,28 @@ This document defines the product names used in APEX. Runtime behavior belongs i
 ```text
 APEX
 ├── Home
-│   └── Briefing modes: Focused, Flash, Structured
+│   ├── Briefing modes: Focused, Flash, Structured
+│   └── Apex Agent (compact prompt)
 └── Cortex
     ├── Cortex workspace
-    ├── Cortex Engine
-    └── Apex Agent
-        ├── Cloud models
-        └── Local models
+    ├── Apex Agent (full workspace)
+    └── Cortex Engine
 ```
 
 - **APEX** is the complete local-first product: Home, Cortex, telemetry, briefings, voice, connectors, settings, and persistence.
 - **Home** is the day-to-day workspace for telemetry, briefings, reminders, connector health, and a compact Apex Agent prompt.
 - **Cortex** is the detailed workspace for conversations, model settings, tools, context, action review, and local-model lifecycle.
 - **Cortex Engine** is the backend execution boundary for bounded Agent turns, context assembly, tools, providers, and local runtime coordination.
-- **Apex Agent** is APEX's single built-in personal operations assistant.
+- **Apex Agent** is APEX's single built-in personal operations assistant, with a compact Home prompt and a full Cortex workspace.
 - A **model** is the selected execution model. Its catalog profile determines whether the turn uses a cloud provider or local runtime and which controls are available.
 
 ## Apex Agent
 
-Apex Agent works with briefings, trusted personal context, connected services, APEX actions, and results returned by external workers. Its role is fast, everyday operation within APEX. It is not intended to compete with general-purpose autonomous agents or external chat products.
+Apex Agent works with briefings, trusted personal context, connected services, and APEX actions. Its role is fast, everyday operation within APEX. It is not intended to compete with general-purpose autonomous agents or external chat products.
 
 The Agent identity, safety policy, and APEX-specific instructions stay consistent. Selecting a model changes execution characteristics such as provider or runtime, reasoning choices, local context limits, hosted capabilities, availability, and price. It does not select a different Agent.
 
-The product uses the singular name **Apex Agent**. A future distinct assistant would need a different durable role, not merely a different model or provider.
+The Home and Cortex surfaces use the same singular **Apex Agent** identity. Selecting a model never selects a different Agent.
 
 ## Briefing modes
 
@@ -62,5 +61,3 @@ The logo combines those ideas. Its outer shape forms an A and suggests a layered
 - Use **Cortex workspace** for the user interface and **Cortex Engine** for backend execution.
 - Use model, provider, and runtime names directly; do not turn them into Agent identities.
 - Use **Focused**, **Flash**, and **Structured** only for briefing modes.
-
-The former cloud/local runtime identities were retired. They can appear only in migration code and preserved historical records, such as the changelog and roadmap.

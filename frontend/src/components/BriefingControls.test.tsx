@@ -79,8 +79,6 @@ describe('BriefingModeSelector', () => {
     expect(within(listbox).getByText('llama.cpp · Gemma 4 E2B')).toBeVisible()
     expect(within(listbox).getByText('A deterministic readout of APEX telemetry with no model interpretation.')).toBeVisible()
     expect(within(listbox).getByText('Deterministic · No model')).toBeVisible()
-    expect(within(listbox).queryByRole('option', { name: /^Mus\b/i })).not.toBeInTheDocument()
-    expect(within(listbox).queryByRole('option', { name: /^Sorex\b/i })).not.toBeInTheDocument()
   })
 
   it('blocks unavailable model modes but always allows Structured', async () => {

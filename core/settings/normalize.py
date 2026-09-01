@@ -619,12 +619,7 @@ def _normalize_modules(
 def _normalize_agent_settings(
     value: Any, layer_name: str, errors: NormalizationIssues | None
 ) -> dict[str, Any]:
-    """Normalize v19 settings and read v18 Panthera/Felis data once.
-
-    The normalization result is always the v19 shape.  ``RuntimeSettingsStore``
-    subsequently writes that shape atomically when it encounters a local v18
-    override, so a failed rewrite never publishes a partial configuration.
-    """
+    """Normalize the current v19 Apex Agent settings shape."""
     if not isinstance(value, dict):
         if value is not None:
             _record_error(errors, "ask_apex must be a JSON object")
@@ -633,21 +628,7 @@ def _normalize_agent_settings(
             )
         return {}
 
-    legacy = (
-        "agent" in value
-        or "panthera" in value
-        or "felis" in value
-        or "apodemus_context_window" in value
-    )
     allowed = {"enabled", "selected_model", "sandbox_mode", "cloud", "local"}
-    if legacy:
-        allowed |= {
-            "agent",
-            "panthera",
-            "felis",
-            "apodemus_context_window",
-            "max_recent_conversation_messages",
-        }
     _record_unsupported_agent_fields(value, allowed=allowed, path="ask_apex", layer_name=layer_name, errors=errors)
     result: dict[str, Any] = {"selected_model": DEFAULT_APEX_MODEL}
     if isinstance(value.get("enabled"), bool):
@@ -659,13 +640,11 @@ def _normalize_agent_settings(
     elif value.get("sandbox_mode") is not None:
         _record_error(errors, "ask_apex.sandbox_mode must be a boolean")
 
-    cloud_raw = value.get("cloud") if not legacy else value.get("panthera")
-    local_raw = value.get("local") if not legacy else value.get("felis")
-    if local_raw is None and "apodemus_context_window" in value:
-        local_raw = {}
+    cloud_raw = value.get("cloud")
+    local_raw = value.get("local")
     cloud: dict[str, Any] = {}
     if isinstance(cloud_raw, dict):
-        raw_model = cloud_raw.get("last_model", cloud_raw.get("model"))
+        raw_model = cloud_raw.get("last_model")
         if isinstance(raw_model, str):
             cloud["last_model"] = reconcile_cloud_model(raw_model.strip(), dev_mode=is_dev_mode())
         raw_effort = cloud_raw.get("effort")
@@ -685,13 +664,11 @@ def _normalize_agent_settings(
 
     local: dict[str, Any] = {}
     if isinstance(local_raw, dict):
-        raw_model = local_raw.get("last_model", local_raw.get("model"))
+        raw_model = local_raw.get("last_model")
         if isinstance(raw_model, str):
             local["last_model"] = reconcile_local_model(raw_model.strip(), dev_mode=is_dev_mode())
         model = local.get("last_model", DEFAULT_LOCAL_MODEL)
         window = local_raw.get("context_window")
-        if window is None and "apodemus_context_window" in value:
-            window = value["apodemus_context_window"]
         profile = get_model_profile(model)
         if isinstance(window, int) and not isinstance(window, bool):
             local["context_window"] = reconcile_local_context_window(profile.provider if profile else DEFAULT_LOCAL_RUNTIME, model, window)
@@ -706,8 +683,6 @@ def _normalize_agent_settings(
         result["local"] = local
 
     selected = value.get("selected_model")
-    if legacy:
-        selected = cloud.get("last_model", DEFAULT_APEX_MODEL) if value.get("agent") == "panthera" else local.get("last_model", DEFAULT_LOCAL_MODEL)
     if isinstance(selected, str) and get_model_profile(selected):
         result["selected_model"] = selected
     return result

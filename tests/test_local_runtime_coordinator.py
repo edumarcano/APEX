@@ -417,11 +417,11 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
     def test_profile_protocol_compliance(self) -> None:
         profile = _FakeProfile(api_model="qwen-4b-model", high_resource=True)
         self.assertIsInstance(profile, LocalModelProfile)
-        sorex = _FakeProfile(api_model="qwen-17b-model", high_resource=False)
-        self.assertFalse(sorex.high_resource)
+        small_qwen = _FakeProfile(api_model="qwen-17b-model", high_resource=False)
+        self.assertFalse(small_qwen.high_resource)
         self.assertTrue(profile.high_resource)
 
-    def test_mus_to_apodemus_unloads_ollama_first(self) -> None:
+    def test_ollama_to_llama_cpp_unloads_ollama_first(self) -> None:
         self.backend.resident.add("qwen-4b-model")
         coord.register_local_activity(
             LocalModelRef(provider="ollama", model="qwen-4b-model")
@@ -442,7 +442,7 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         )
         coord.end_local_execution()
 
-    def test_apodemus_to_sorex_unloads_llama_cpp_first(self) -> None:
+    def test_llama_cpp_to_ollama_unloads_llama_cpp_first(self) -> None:
         self.llama_backend.resident.add("gemma-e2b-16k")
         coord.register_local_activity(
             LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k")

@@ -81,10 +81,10 @@ class DocumentationCheckerTests(unittest.TestCase):
         source = Path("virtual-readme.md")
         issues = check_agent_profiles(
             [source],
-            {"neofelis": "gemini-3.6-flash"},
+            {"catalog-one": "gemini-3.6-flash"},
             {
                 source: (
-                    "| `neofelis` | Gemini `gemini-3.6-flash` |\n"
+                    "| `catalog-one` | Gemini `gemini-3.6-flash` |\n"
                     "old uses gemini-3.1-flash\n"
                 )
             },
@@ -98,28 +98,28 @@ class DocumentationCheckerTests(unittest.TestCase):
         issues = check_agent_profiles(
             [source],
             {
-                "panthera": "gpt-5.6-luna",
-                "neofelis": "gemini-3.6-flash",
+                "catalog-one": "gpt-5.6-luna",
+                "catalog-two": "gemini-3.6-flash",
             },
             {
                 source: (
-                    "| `panthera` | Gemini `gemini-3.6-flash` |\n"
-                    "| `neofelis` | OpenAI `gpt-5.6-luna` |\n"
+                    "| `catalog-one` | Gemini `gemini-3.6-flash` |\n"
+                    "| `catalog-two` | OpenAI `gpt-5.6-luna` |\n"
                 )
             },
         )
 
         self.assertEqual({issue.target for issue in issues}, {
-            "panthera -> gpt-5.6-luna",
-            "neofelis -> gemini-3.6-flash",
+            "catalog-one -> gpt-5.6-luna",
+            "catalog-two -> gemini-3.6-flash",
         })
 
     def test_reports_unknown_suffixless_grok_model(self) -> None:
         source = Path("virtual-readme.md")
         issues = check_agent_profiles(
             [source],
-            {"delphinus": "grok-4.3"},
-            {source: "delphinus -> grok-4.3; retired model grok-4.2\n"},
+            {"catalog-one": "grok-4.3"},
+            {source: "catalog-one -> grok-4.3; retired model grok-4.2\n"},
         )
 
         self.assertEqual(len(issues), 1)
@@ -137,7 +137,7 @@ class DocumentationCheckerTests(unittest.TestCase):
             ROOT,
             readme_text=(
                 "### Produces briefings on user-defined terms\n"
-                "A briefing can use Mus through Ollama.\n\n"
+                "A briefing can use a local model through Ollama.\n\n"
                 "```mermaid\n"
                 'B --> M["OpenRouter · Ollama"]\n'
                 "```\n"

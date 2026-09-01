@@ -41,13 +41,13 @@ class SettingsApiTests(unittest.TestCase):
             "modules": {"football": False, "f1": True},
             "ask_apex": {
                 "enabled": True,
-                "agent": "panthera",
-                "panthera": {
-                    "model": "gpt-5.6-luna",
+                "selected_model": "gpt-5.6-luna",
+                "cloud": {
+                    "last_model": "gpt-5.6-luna",
                     "effort": "medium",
                 },
-                "felis": {
-                    "model": "gemma-4-E2B-Q4_K_M.gguf",
+                "local": {
+                    "last_model": "gemma-4-E2B-Q4_K_M.gguf",
                 },
             },
             "tts_settings": {
@@ -184,7 +184,7 @@ class SettingsApiTests(unittest.TestCase):
     def test_unknown_field_rejected(self) -> None:
         for payload in (
             {"features": {"weather": True, "unknown": True}},
-            {"briefing": {"default_mode": "acinonyx"}},
+            {"briefing": {"default_mode": "unknown-mode"}},
             {"ask_apex": {"cloud": {"provider": "gemini"}}},
             {"ask_apex": {"local": {"runtime": "ollama"}}},
         ):

@@ -128,7 +128,7 @@ class LlamaCppLifecycleTests(unittest.TestCase):
         payload = {
             "data": [
                 {
-                    "id": "apodemus-132k",
+                    "id": "gemma-4-e2b-132k",
                     "status": "loaded",
                     "n_ctx": 131072,
                 }
@@ -147,7 +147,7 @@ class LlamaCppLifecycleTests(unittest.TestCase):
         payload = {
             "data": [
                 {
-                    "id": "apodemus-132k",
+                    "id": "gemma-4-e2b-132k",
                     "status": {
                         "value": "unloaded",
                         "failed": True,
@@ -161,13 +161,13 @@ class LlamaCppLifecycleTests(unittest.TestCase):
         with mock.patch.object(lifecycle, "_SESSION", session):
             snapshot = self.backend.get_status_snapshot(force_refresh=True)
             self.assertEqual(snapshot["loaded_models"][0]["state"], "failed")
-            self.assertFalse(self.backend.is_model_resident("apodemus-132k"))
+            self.assertFalse(self.backend.is_model_resident("gemma-4-e2b-132k"))
 
     def test_missing_alias_is_not_fabricated_as_installed(self) -> None:
         payload = {
             "data": [
                 {
-                    "id": "apodemus-4k",
+                    "id": "gemma-4-e2b-4k",
                     "status": {"value": "unloaded", "args": []},
                 }
             ]
@@ -176,16 +176,16 @@ class LlamaCppLifecycleTests(unittest.TestCase):
         with mock.patch.object(lifecycle, "_SESSION", session):
             snapshot = self.backend.get_status_snapshot(force_refresh=True)
 
-        self.assertEqual(snapshot["installed_models"], ["apodemus-4k"])
-        self.assertNotIn("apodemus-132k", snapshot["installed_models"])
-        self.assertNotIn("apodemus-16k", snapshot["installed_models"])
-        self.assertNotIn("apodemus-32k", snapshot["installed_models"])
+        self.assertEqual(snapshot["installed_models"], ["gemma-4-e2b-4k"])
+        self.assertNotIn("gemma-4-e2b-132k", snapshot["installed_models"])
+        self.assertNotIn("gemma-4-e2b-16k", snapshot["installed_models"])
+        self.assertNotIn("gemma-4-e2b-32k", snapshot["installed_models"])
 
     def test_unloaded_configured_alias_still_appears_installed(self) -> None:
         payload = {
             "data": [
                 {
-                    "id": "apodemus-132k",
+                    "id": "gemma-4-e2b-132k",
                     "status": {"value": "unloaded", "args": []},
                 }
             ]
@@ -193,7 +193,7 @@ class LlamaCppLifecycleTests(unittest.TestCase):
         session = self._session_get_models(payload)
         with mock.patch.object(lifecycle, "_SESSION", session):
             snapshot = self.backend.get_status_snapshot(force_refresh=True)
-        self.assertIn("apodemus-132k", snapshot["installed_models"])
+        self.assertIn("gemma-4-e2b-132k", snapshot["installed_models"])
         self.assertEqual(snapshot["loaded_models"], [])
 
     def test_unknown_external_alias_is_not_an_apex_agent(self) -> None:
@@ -240,14 +240,14 @@ class LlamaCppLifecycleTests(unittest.TestCase):
         payload = {
             "data": [
                 {
-                    "id": "apodemus-132k",
+                    "id": "gemma-4-e2b-132k",
                     "status": {"value": "sleeping", "args": ["-ctx", "131072"]},
                 }
             ]
         }
         session = self._session_get_models(payload)
         with mock.patch.object(lifecycle, "_SESSION", session):
-            self.assertFalse(self.backend.is_model_resident("apodemus-132k"))
+            self.assertFalse(self.backend.is_model_resident("gemma-4-e2b-132k"))
 
     def test_unreachable_router(self) -> None:
         session = self._session_get_models(
@@ -386,14 +386,14 @@ class LlamaCppLifecycleTests(unittest.TestCase):
         session.post.return_value = post_response
 
         with mock.patch.object(lifecycle, "_SESSION", session):
-            self.assertTrue(self.backend.unload_model("apodemus-16k"))
+            self.assertTrue(self.backend.unload_model("gemma-4-e2b-16k"))
 
         unload_json = next(
             call.kwargs["json"]
             for call in session.post.call_args_list
             if str(call.args[0]).endswith("/models/unload")
         )
-        self.assertEqual(unload_json, {"model": "apodemus-16k"})
+        self.assertEqual(unload_json, {"model": "gemma-4-e2b-16k"})
 
     def test_props_probe_uses_autoload_false(self) -> None:
         session = MagicMock()
@@ -402,11 +402,11 @@ class LlamaCppLifecycleTests(unittest.TestCase):
         response.json.return_value = {"default_generation_settings": {}}
         session.get.return_value = response
         with mock.patch.object(lifecycle, "_SESSION", session):
-            props = lifecycle._probe_props("apodemus-16k")
+            props = lifecycle._probe_props("gemma-4-e2b-16k")
         self.assertIsNotNone(props)
         self.assertEqual(
             session.get.call_args.kwargs["params"],
-            {"model": "apodemus-16k", "autoload": "false"},
+            {"model": "gemma-4-e2b-16k", "autoload": "false"},
         )
 
     def test_cache_invalidation_epoch_drops_stale_probe(self) -> None:

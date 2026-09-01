@@ -126,9 +126,9 @@ class BenchmarkAbort(RuntimeError):
 class BenchmarkConfiguration:
     """One model/context/reasoning configuration to compare."""
 
-    agent: str
+    model_id: str
     provider: str
-    model: str
+    api_model: str
     runtime_alias: str
     context: int
     reasoning: str
@@ -529,9 +529,9 @@ def _build_registered_configuration(
         model_id=model_id,
     )
     return BenchmarkConfiguration(
-        agent=model_id,
+        model_id=model_id,
         provider=profile.provider,
-        model=profile.api_model,
+        api_model=profile.api_model,
         runtime_alias=profile.runtime_model_id,
         context=profile.context_window,
         reasoning=profile.reasoning_mode,
@@ -578,14 +578,14 @@ def _build_candidate_configuration(
         reasoning_mode=reasoning,  # type: ignore[arg-type]
     ).model_copy(update={"runtime_model_id": alias})
     return BenchmarkConfiguration(
-        agent="candidate",
+        model_id="candidate",
         provider="llama_cpp",
-        model=model_name,
+        api_model=model_name,
         runtime_alias=alias,
         context=profile.context_window,
         reasoning=profile.reasoning_mode,
         profile=profile,
-        agent_key=None,
+        agent_key="apex",
         tool_projection_agent="apex",
     )
 
@@ -1440,9 +1440,9 @@ class BenchmarkRunner:
         configuration: BenchmarkConfiguration,
     ) -> dict[str, Any]:
         run: dict[str, Any] = {
-            "agent": configuration.agent,
+            "model_id": configuration.model_id,
             "provider": configuration.provider,
-            "model": configuration.model,
+            "api_model": configuration.api_model,
             "runtime_alias": configuration.runtime_alias,
             "context": configuration.context,
             "reasoning": configuration.reasoning,
@@ -1736,7 +1736,7 @@ def render_markdown(result: Mapping[str, Any]) -> str:
         [
             "## Performance",
             "",
-            "| Agent | Status | Provider | Context | Reasoning | Load | Median latency | Effective output | Peak private memory | Commit delta | Failures |",
+            "| Model | Status | Provider | Context | Reasoning | Load | Median latency | Effective output | Peak private memory | Commit delta | Failures |",
             "| --- | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
@@ -1744,9 +1744,9 @@ def render_markdown(result: Mapping[str, Any]) -> str:
         performance = run.get("performance") or {}
         resources = run.get("resources") or {}
         lines.append(
-            "| {agent} | {status} | {provider} | {context} | {reasoning} | {load} | {latency} | "
+            "| {model} | {status} | {provider} | {context} | {reasoning} | {load} | {latency} | "
             "{generation} | {private} | {commit} | {failures} |".format(
-                agent=run.get("agent", "?"),
+                model=run.get("model_id", "?"),
                 status=run.get("status", "?"),
                 provider=run.get("provider", "?"),
                 context=run.get("context", "?"),
@@ -1771,7 +1771,7 @@ def render_markdown(result: Mapping[str, Any]) -> str:
             "",
             "## APEX tasks",
             "",
-            "| Agent | Task success | Tool selection | Schema validity | Multi-tool completion | Unnecessary tools | Failure rate |",
+            "| Model | Task success | Tool selection | Schema validity | Multi-tool completion | Unnecessary tools | Failure rate |",
             "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
@@ -1780,8 +1780,8 @@ def render_markdown(result: Mapping[str, Any]) -> str:
         if not metrics:
             continue
         lines.append(
-            "| {agent} | {task} | {selection} | {schema} | {multi} | {unnecessary} | {failure} |".format(
-                agent=run.get("agent", "?"),
+            "| {model} | {task} | {selection} | {schema} | {multi} | {unnecessary} | {failure} |".format(
+                model=run.get("model_id", "?"),
                 task=_display_rate(metrics.get("task_success_rate")),
                 selection=_display_rate(metrics.get("tool_selection_rate")),
                 schema=_display_rate(metrics.get("schema_validity_rate")),
@@ -1848,12 +1848,12 @@ def render_terminal_summary(result: Mapping[str, Any]) -> str:
         f"Repetitions: {result.get('repetitions', '?')}",
         "",
         "PERFORMANCE",
-        "Agent / context              Status             Load       Median latency   Effective output   Failures",
+        "Model / context              Status             Load       Median latency   Effective output   Failures",
     ]
     for run in result.get("runs", []):
         performance = run.get("performance") or {}
         lines.append(
-            f"{str(run.get('agent', '?')) + ' ' + str(run.get('context', '?')):28}"
+                f"{str(run.get('model_id', '?')) + ' ' + str(run.get('context', '?')):28}"
             f"{str(run.get('status', '?')):19}"
             f"{_display_seconds(run.get('load_seconds')):11}"
             f"{_display_seconds(performance.get('median_latency_seconds')):18}"
@@ -1861,13 +1861,13 @@ def render_terminal_summary(result: Mapping[str, Any]) -> str:
             f"{performance.get('failures', '—')}"
         )
 
-    lines.extend(["", "APEX TASKS", "Agent / context              Task success   Multi-tool   Failures"])
+    lines.extend(["", "APEX TASKS", "Model / context              Task success   Multi-tool   Failures"])
     for run in result.get("runs", []):
         metrics = (run.get("tool_suite") or {}).get("metrics") or {}
         if not metrics:
             continue
         lines.append(
-            f"{str(run.get('agent', '?')) + ' ' + str(run.get('context', '?')):28}"
+                f"{str(run.get('model_id', '?')) + ' ' + str(run.get('context', '?')):28}"
             f"{_display_rate(metrics.get('task_success_rate')):16}"
             f"{_display_rate(metrics.get('multi_tool_completion_rate')):13}"
             f"{_display_rate(metrics.get('failure_rate'))}"

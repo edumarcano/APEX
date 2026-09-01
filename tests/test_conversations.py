@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from uuid import uuid4
 
@@ -172,6 +175,68 @@ class ConversationStoreTests(unittest.TestCase):
         self.store.patch(self.conversation_id, "production", {"archived": True})
         with self.assertRaises(ConversationConflictError):
             self.store.delete(self.conversation_id, "production")
+
+
+class ConversationMigrationTests(unittest.TestCase):
+    def test_v1_history_is_preserved_and_normalized_to_apex(self) -> None:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        path = Path(temp_dir.name) / "apex_memory.db"
+        conversation_id, user_id, agent_id = uuid4(), uuid4(), uuid4()
+        timestamp = "2026-09-01T12:00:00+00:00"
+
+        with closing(sqlite3.connect(path)) as conn, conn:
+            conn.executescript(
+                """
+                CREATE TABLE schema_versions (domain TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL);
+                CREATE TABLE conversations (
+                    id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, partition TEXT NOT NULL,
+                    origin TEXT NOT NULL, agent TEXT NOT NULL, selected_tool_names_json TEXT,
+                    tool_profile_id TEXT, active_leaf_message_id TEXT, created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL, archived_at TEXT);
+                CREATE TABLE conversation_messages (
+                    id TEXT PRIMARY KEY NOT NULL, conversation_id TEXT NOT NULL,
+                    parent_message_id TEXT, role TEXT NOT NULL, content TEXT NOT NULL,
+                    status TEXT NOT NULL, agent TEXT, request_metadata_json TEXT,
+                    response_metadata_json TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+                """
+            )
+            conn.execute("INSERT INTO schema_versions VALUES ('conversations', 1)")
+            conn.execute(
+                "INSERT INTO conversations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    str(conversation_id), "Existing history", "production", "hud", "legacy",
+                    json.dumps(["get_weather_forecast"]), "daily", str(agent_id), timestamp,
+                    timestamp, None,
+                ),
+            )
+            conn.execute(
+                "INSERT INTO conversation_messages VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (str(user_id), str(conversation_id), None, "user", "Weather?", "completed", None,
+                 json.dumps({"model_id": "deepseek/deepseek-v4-flash-0731"}), None, timestamp, timestamp),
+            )
+            conn.execute(
+                "INSERT INTO conversation_messages VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (str(agent_id), str(conversation_id), str(user_id), "agent", "Checking.", "pending", "legacy",
+                 json.dumps({"model_id": "deepseek/deepseek-v4-flash-0731"}),
+                 json.dumps({"agent_used": {"key": "legacy", "provider": "openrouter", "model_id": "deepseek/deepseek-v4-flash-0731", "runtime": "cloud"}}),
+                 timestamp, timestamp),
+            )
+
+        store = ConversationStore(path)
+        self.addCleanup(store.close)
+        store.initialize()
+
+        detail = store.detail(conversation_id, "production")
+        self.assertEqual(detail.agent, "apex")
+        self.assertEqual(detail.active_leaf_message_id, agent_id)
+        self.assertEqual([message.id for message in detail.messages], [user_id, agent_id])
+        pending = detail.messages[-1]
+        self.assertEqual(pending.status, "pending")
+        self.assertEqual(pending.agent, "apex")
+        self.assertEqual(pending.response_metadata["agent_used"], {
+            "key": "apex", "provider": "openrouter", "model_id": "deepseek/deepseek-v4-flash-0731", "runtime": "cloud",
+        })
 
 
 if __name__ == "__main__":

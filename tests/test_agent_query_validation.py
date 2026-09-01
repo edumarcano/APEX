@@ -41,14 +41,14 @@ class LocalEffortRejectionTests(unittest.TestCase):
 
 
 class SandboxPolicyTests(unittest.TestCase):
-    def test_retired_agent_keys_are_rejected(self) -> None:
+    def test_unknown_agent_key_is_rejected(self) -> None:
         from core.api.app import app
 
         client = TestClient(app, raise_server_exceptions=True)
         with mock.patch("core.api.cortex.is_dev_mode", return_value=False):
             response = client.post(
                 "/api/v1/cortex/query",
-                json={"prompt": "hello", "agent": "acinonyx"},
+                json={"prompt": "hello", "agent": "unknown"},
             )
             self.assertEqual(response.status_code, 404)
 

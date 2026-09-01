@@ -804,7 +804,7 @@ class ResponsesAdapterTests(unittest.TestCase):
         self.assertIsNone(result.usage)
 
     @patch("core.agent.providers.responses_api.OpenAI")
-    def test_grok_4_3_delphinus_omits_encrypted_reasoning_include(
+    def test_grok_4_3_omits_encrypted_reasoning_include(
         self, mock_openai_cls: MagicMock
     ) -> None:
         mock_client = MagicMock()
@@ -815,18 +815,18 @@ class ResponsesAdapterTests(unittest.TestCase):
         mock_response.usage = None
         mock_client.responses.create.return_value = mock_response
 
-        delphinus_profile = _concrete_profile("grok-4.3")
+        grok_43_profile = _concrete_profile("grok-4.3")
         XAIProvider(api_key="test").generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
-            delphinus_profile,  # type: ignore[arg-type]
+            grok_43_profile,  # type: ignore[arg-type]
         )
         kwargs = mock_client.responses.create.call_args.kwargs
         self.assertEqual(kwargs["reasoning"], {"effort": "medium"})
         self.assertNotIn("include", kwargs)
 
     @patch("core.agent.providers.responses_api.OpenAI")
-    def test_grok_4_5_orcinus_includes_encrypted_reasoning_include(
+    def test_grok_4_5_includes_encrypted_reasoning_include(
         self, mock_openai_cls: MagicMock
     ) -> None:
         mock_client = MagicMock()
@@ -837,11 +837,11 @@ class ResponsesAdapterTests(unittest.TestCase):
         mock_response.usage = None
         mock_client.responses.create.return_value = mock_response
 
-        orcinus_profile = _concrete_profile("grok-4.5")
+        grok_45_profile = _concrete_profile("grok-4.5")
         XAIProvider(api_key="test").generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
-            orcinus_profile,  # type: ignore[arg-type]
+            grok_45_profile,  # type: ignore[arg-type]
         )
         kwargs = mock_client.responses.create.call_args.kwargs
         self.assertEqual(kwargs["reasoning"], {"effort": "high"})
@@ -867,13 +867,13 @@ class ResponsesAdapterTests(unittest.TestCase):
             },
         )
 
-        delphinus_profile = _concrete_profile("grok-4.3")
+        grok_43_profile = _concrete_profile("grok-4.3")
         with self.assertLogs("core.agent.providers.responses_api", level="WARNING") as log_cm:
             with self.assertRaises(APIStatusError):
                 XAIProvider(api_key="test").generate_turn(
                     [AgentMessage(role="user", content="Hi")],
                     [],
-                    delphinus_profile,  # type: ignore[arg-type]
+                    grok_43_profile,  # type: ignore[arg-type]
                 )
 
         self.assertTrue(
