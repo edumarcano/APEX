@@ -22,7 +22,6 @@ def _local_settings_mock(*, context_window: int = 16384) -> mock.Mock:
     settings.ask_apex.local.context_window = context_window
     settings.ask_apex.cloud.hosted_tools.google_search = True
     settings.ask_apex.cloud.hosted_tools.google_maps = True
-    settings.ask_apex.cloud.hosted_tools.x_search = True
     settings.ask_apex.cloud.last_model = "gpt-5.6-luna"
     return settings
 

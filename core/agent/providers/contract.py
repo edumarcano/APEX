@@ -14,7 +14,7 @@ from core.agent.types import (
 )
 
 InferenceProvider = Literal[
-    "gemini", "ollama", "llama_cpp", "openai", "openrouter", "xai"
+    "gemini", "ollama", "llama_cpp", "openai", "openrouter"
 ]
 LocalInferenceProvider = Literal["ollama", "llama_cpp"]
 LOCAL_INFERENCE_PROVIDERS: frozenset[str] = frozenset({"ollama", "llama_cpp"})
@@ -144,7 +144,7 @@ def merge_token_usage(
 def resolve_inference_provider(profile: object) -> InferenceProvider:
     """Map a concrete profile instance to its inference provider kind."""
     provider_attr = getattr(profile, "provider", None)
-    if provider_attr in {"gemini", "ollama", "llama_cpp", "openai", "openrouter", "xai"}:
+    if provider_attr in {"gemini", "ollama", "llama_cpp", "openai", "openrouter"}:
         return provider_attr  # type: ignore[return-value]
 
     module = type(profile).__module__
@@ -155,8 +155,6 @@ def resolve_inference_provider(profile: object) -> InferenceProvider:
         return "ollama"
     if "gemini" in module or name.startswith("Gemini"):
         return "gemini"
-    if "xai" in module or name.startswith("XAI") or name.startswith("Xai"):
-        return "xai"
     if "openrouter" in module or name.startswith("OpenRouter"):
         return "openrouter"
     if "openai" in module or name.startswith("OpenAI"):

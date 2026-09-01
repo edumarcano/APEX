@@ -1,9 +1,9 @@
-"""Shared OpenAI-compatible Responses API adapter (OpenAI and xAI).
+"""OpenAI-compatible Responses API adapter.
 
 Browser-owned history remains authoritative. Providers always send
 ``store=False`` and never persist provider response IDs across browser turns.
 Custom APEX function tools are supported. General provider web search remains
-forbidden; xAI profiles may opt into X Search explicitly.
+forbidden.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from core.agent.types import AgentMessage, Citation, TokenUsage, ToolCall, ToolR
 
 _LOGGER = logging.getLogger(__name__)
 
-ResponsesProviderKind = Literal["openai", "xai"]
+ResponsesProviderKind = Literal["openai"]
 
 # Native hosted tools that must never be attached by APEX adapters in v1.19
 # branch 1 (Brave remains the general search path when connected later).
@@ -57,7 +57,7 @@ class ResponsesModelProfile:
         reasoning_effort: (
             Literal["none", "minimal", "low", "medium", "high", "xhigh"] | str | None
         ) = None,
-        hosted_tools: frozenset[Literal["x_search"]] = frozenset(),
+        hosted_tools: frozenset[str] = frozenset(),
         supports_encrypted_reasoning: bool = True,
     ) -> None:
         self.provider = provider
@@ -305,10 +305,9 @@ def _extract_provider_tool_events(
     events: list[ProviderToolEvent] = []
     for item in output_items:
         item_type = item.get("type")
-        if item_type in {"web_search_call", "x_search_call", "mcp_call"}:
+        if item_type in {"web_search_call", "mcp_call"}:
             name = {
                 "web_search_call": "web_search",
-                "x_search_call": "x_search",
                 "mcp_call": str(item.get("name") or "mcp_call"),
             }[item_type]
             status_raw = item.get("status")
@@ -356,7 +355,7 @@ def assert_no_forbidden_native_tools(tools: list[dict[str, Any]]) -> None:
 
 
 class ResponsesApiProvider:
-    """Shared Responses API client used by OpenAI and xAI adapters."""
+    """Shared Responses API client used by OpenAI adapter."""
 
     def __init__(
         self,
@@ -387,10 +386,6 @@ class ResponsesApiProvider:
 
         input_items = _messages_to_responses_input(messages)
         request_tools = [descriptor_to_responses_tool(tool) for tool in tools]
-        if "x_search" in profile.hosted_tools:
-            if self.provider_kind != "xai":
-                raise ValueError("X Search may only be attached to xAI profiles.")
-            request_tools.append({"type": "x_search"})
         assert_no_forbidden_native_tools(request_tools)
 
         request: dict[str, Any] = {

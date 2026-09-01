@@ -1,7 +1,6 @@
 import GeminiColor from '@lobehub/icons/es/Gemini/components/Color'
 import DeepSeekColor from '@lobehub/icons/es/DeepSeek/components/Color'
 import GemmaColor from '@lobehub/icons/es/Gemma/components/Color'
-import GrokMono from '@lobehub/icons/es/Grok/components/Mono'
 import OllamaMono from '@lobehub/icons/es/Ollama/components/Mono'
 import OpenAIMono from '@lobehub/icons/es/OpenAI/components/Mono'
 import QwenColor from '@lobehub/icons/es/Qwen/components/Color'
@@ -59,15 +58,6 @@ export function ModelMark({
     return (
       <span className={`inline-flex shrink-0 items-center justify-center text-zinc-100 ${className}`} aria-hidden>
         <OpenAIMono size={size} />
-      </span>
-    )
-  }
-
-  // Grok / xAI family
-  if (normalizedModel.startsWith('grok') || normalizedProvider === 'xai') {
-    return (
-      <span className={`inline-flex shrink-0 items-center justify-center text-zinc-100 ${className}`} aria-hidden>
-        <GrokMono size={size} />
       </span>
     )
   }

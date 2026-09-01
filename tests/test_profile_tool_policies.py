@@ -12,7 +12,6 @@ from core.agent.model_catalog import get_model_profile
 from core.agent.prompting import build_tool_access_instruction
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.providers.gemini import _parse_grounding
-from core.agent.providers.xai_provider import XAIProvider
 from core.agent.sandbox_context import (
     clear_masked_briefing_for_tests,
     publish_masked_briefing,
@@ -28,8 +27,6 @@ from core.api.briefing import _mask_dev_personal_results
 from core.connectors.models import ConnectorResult
 from tests.support.agent_fixtures import (
     GEMINI_FLASH_MODEL,
-    GROK_43_MODEL,
-    GROK_45_MODEL,
     build_cloud_profile,
 )
 
@@ -38,8 +35,6 @@ class HostedGroundingTests(unittest.TestCase):
     def test_hosted_grounding_stays_outside_apex_tool_schema_profiles(self) -> None:
         expected = {
             GEMINI_FLASH_MODEL: {"google_search", "google_maps"},
-            GROK_43_MODEL: {"x_search"},
-            GROK_45_MODEL: {"x_search"},
         }
         for model_id, hosted_names in expected.items():
             profile = build_cloud_profile(model=model_id)
@@ -140,27 +135,6 @@ class HostedGroundingTests(unittest.TestCase):
             response.grounding.search_suggestions_html,
             "<div>Search suggestions</div>",
         )
-
-    @mock.patch("core.agent.providers.responses_api.OpenAI")
-    def test_xai_profiles_attach_x_search_without_web_search(
-        self, openai_cls: mock.MagicMock
-    ) -> None:
-        client = mock.MagicMock()
-        openai_cls.return_value = client
-        client.responses.create.return_value = SimpleNamespace(
-            output=[], model="grok-4.3", usage=None
-        )
-        profile = build_cloud_profile(model=GROK_43_MODEL)
-
-        XAIProvider(api_key="test").generate_turn(
-            [AgentMessage(role="user", content="What is happening on X?")],
-            [],
-            profile,
-        )
-
-        tools = client.responses.create.call_args.kwargs["tools"]
-        self.assertEqual(tools, [{"type": "x_search"}])
-        self.assertFalse(any(item.get("type") == "web_search" for item in tools))
 
 
 class ToolAccessInstructionTests(unittest.TestCase):

@@ -32,7 +32,7 @@ export const BASE_SETTINGS: RuntimeSettings = {
       last_model: 'deepseek/deepseek-v4-flash-0731',
       effort: 'low',
       personal_context_enabled: false,
-      hosted_tools: { google_search: true, google_maps: true, x_search: true },
+      hosted_tools: { google_search: true, google_maps: true },
     },
     local: {
       last_model: 'gemma-4-E2B-Q4_K_M.gguf',

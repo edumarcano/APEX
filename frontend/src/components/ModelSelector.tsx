@@ -95,7 +95,6 @@ function capabilityTags(entry: ModelCatalogEntry): string[] {
   }
   if (entry.hosted_capabilities.includes('google_search')) tags.push('Search')
   if (entry.hosted_capabilities.includes('google_maps')) tags.push('Maps')
-  if (entry.hosted_capabilities.includes('x_search')) tags.push('X Search')
   return tags
 }
 

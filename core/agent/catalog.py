@@ -43,7 +43,7 @@ from core.config import (
 AgentKey: TypeAlias = Literal["apex"]
 AgentRuntime: TypeAlias = Literal["cloud", "local"]
 NativeEffort: TypeAlias = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
-CloudProvider: TypeAlias = Literal["openai", "openrouter", "gemini", "xai"]
+CloudProvider: TypeAlias = Literal["openai", "openrouter", "gemini"]
 LocalRuntime: TypeAlias = Literal["ollama", "llama_cpp"]
 
 VALID_AGENT_KEYS: frozenset[str] = frozenset({"apex"})
@@ -54,7 +54,6 @@ _PROVIDER_DISPLAY_NAMES: dict[InferenceProvider, str] = {
     "llama_cpp": "llama.cpp",
     "openai": "OpenAI",
     "openrouter": "OpenRouter",
-    "xai": "SpaceXAI",
 }
 
 AgentModelProfile = (
@@ -221,7 +220,6 @@ def build_concrete_agent(
     local_reasoning_mode: LocalReasoningMode | None = None,
     google_search_enabled: bool = True,
     google_maps_enabled: bool = True,
-    x_search_enabled: bool = True,
     model_id: str | None = None,
 ) -> AgentModelProfile:
     """Materialize a provider-specific model configuration for an Agent."""
@@ -260,7 +258,6 @@ def build_concrete_agent(
                 model_profile,
                 google_search_enabled=google_search_enabled,
                 google_maps_enabled=google_maps_enabled,
-                x_search_enabled=x_search_enabled,
             ),
         )
     if model_profile.provider == "ollama":
@@ -339,7 +336,6 @@ def build_concrete_agent(
             model_profile,
             google_search_enabled=google_search_enabled,
             google_maps_enabled=google_maps_enabled,
-            x_search_enabled=x_search_enabled,
         ),
         supports_encrypted_reasoning=model_profile.supports_encrypted_reasoning,
     )
@@ -517,7 +513,6 @@ def default_cloud_settings() -> dict[str, Any]:
         "hosted_tools": {
             "google_search": True,
             "google_maps": True,
-            "x_search": True,
         },
     }
 

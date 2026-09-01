@@ -113,7 +113,7 @@ vi.mock('./components/CortexWorkspace', () => ({
     devModeActive: boolean
     sandboxMode: boolean
     onLocalContextWindowChange: (contextWindow: number) => Promise<boolean>
-    onHostedToolChange: (tool: 'google_search' | 'google_maps' | 'x_search', enabled: boolean) => void
+    onHostedToolChange: (tool: 'google_search' | 'google_maps', enabled: boolean) => void
     onSandboxModeChange: (enabled: boolean) => void
     toolCatalog: ToolCatalog | null
     actions?: { pendingCount: number }
@@ -386,7 +386,6 @@ function settingsResponse(
           hosted_tools: {
             google_search: googleSearchEnabled,
             google_maps: false,
-            x_search: false,
           },
         },
         local: {

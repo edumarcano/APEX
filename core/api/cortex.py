@@ -86,7 +86,6 @@ from core.agent.local_runtime.registry import (
 )
 from core.agent.providers.openai_provider import OpenAIProvider
 from core.agent.providers.openrouter import OpenRouterProvider
-from core.agent.providers.xai_provider import XAIProvider
 from core.agent.pricing import PRICING_VERSION, agent_pricing
 from core.agent.types import (
     AgentMessage,
@@ -136,7 +135,6 @@ _PROVIDER_DISPLAY_NAMES: dict[str, str] = {
     "llama_cpp": "llama.cpp",
     "openai": "OpenAI",
     "openrouter": "OpenRouter",
-    "xai": "SpaceXAI",
 }
 
 
@@ -241,9 +239,9 @@ def _is_sandbox_agent_query(agent_key: str) -> bool:
     )
 
 
-def _cloud_hosted_tool_settings() -> tuple[bool, bool, bool]:
+def _cloud_hosted_tool_settings() -> tuple[bool, bool]:
     hosted = get_settings_store().get_snapshot().ask_apex.cloud.hosted_tools
-    return hosted.google_search, hosted.google_maps, hosted.x_search
+    return hosted.google_search, hosted.google_maps
 
 
 def _local_provider_label(provider: str) -> str:
@@ -634,12 +632,11 @@ def build_agent_statuses() -> list[AgentStatus]:
         agent_status, cloud_reason, status_source, checked_at = _resolve_cloud_agent_status(
             model_profile.model_id
         )
-        google_search, google_maps, x_search = _cloud_hosted_tool_settings()
+        google_search, google_maps = _cloud_hosted_tool_settings()
         native_tools = effective_native_tools(
             model_profile,
             google_search_enabled=google_search,
             google_maps_enabled=google_maps,
-            x_search_enabled=x_search,
         )
         reasoning_options = (
             list(model_profile.reasoning_options)
@@ -999,8 +996,6 @@ def _create_provider(profile: AgentModelProfile, api_key: str):
         return OpenAIProvider(api_key=api_key)
     if profile.provider == "openrouter":
         return OpenRouterProvider(api_key=api_key)
-    if profile.provider == "xai":
-        return XAIProvider(api_key=api_key)
     if profile.provider == "ollama":
         return OllamaProvider()
     if profile.provider == "llama_cpp":
@@ -1280,10 +1275,10 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
         agent_key, payload.model_id
     )
 
-    google_search, google_maps, x_search = (
+    google_search, google_maps = (
         _cloud_hosted_tool_settings()
         if spec.runtime == "cloud"
-        else (False, False, False)
+        else (False, False)
     )
     resolved_effort = (
         resolve_effort(model_profile, payload.effort)
@@ -1307,7 +1302,6 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
         local_reasoning_mode=local_reasoning,
         google_search_enabled=google_search,
         google_maps_enabled=google_maps,
-        x_search_enabled=x_search,
         model_id=payload.model_id,
     )
     history: list[AgentMessage] = []
@@ -1398,10 +1392,10 @@ def query_agent(
         if spec.runtime == "cloud"
         else None
     )
-    google_search, google_maps, x_search = (
+    google_search, google_maps = (
         _cloud_hosted_tool_settings()
         if spec.runtime == "cloud"
-        else (False, False, False)
+        else (False, False)
     )
     local_context = (
         payload.context_window
@@ -1420,7 +1414,6 @@ def query_agent(
         local_reasoning_mode=local_reasoning,
         google_search_enabled=google_search,
         google_maps_enabled=google_maps,
-        x_search_enabled=x_search,
         model_id=payload.model_id,
     )
     selection = resolve_selected_tools(

@@ -241,7 +241,6 @@ const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = [
   'llama_cpp',
   'openai',
   'openrouter',
-  'xai',
   'raw',
   'demo',
 ]

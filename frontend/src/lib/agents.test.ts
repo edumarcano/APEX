@@ -26,7 +26,6 @@ describe('agents helpers', () => {
     expect(providerDisplayName('ollama')).toBe('Ollama')
     expect(providerDisplayName('gemini')).toBe('Google')
     expect(providerDisplayName('openrouter')).toBe('OpenRouter')
-    expect(providerDisplayName('xai')).toBe('SpaceXAI')
   })
 
   it('formats known context windows compactly', () => {

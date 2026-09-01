@@ -656,7 +656,7 @@ def _normalize_agent_settings(
             cloud["personal_context_enabled"] = cloud_raw["personal_context_enabled"]
         hosted = cloud_raw.get("hosted_tools")
         if isinstance(hosted, dict):
-            cloud["hosted_tools"] = {key: hosted[key] for key in ("google_search", "google_maps", "x_search") if isinstance(hosted.get(key), bool)}
+            cloud["hosted_tools"] = {key: hosted[key] for key in ("google_search", "google_maps") if isinstance(hosted.get(key), bool)}
     elif cloud_raw is not None:
         _record_error(errors, "ask_apex.cloud must be an object")
     if cloud:

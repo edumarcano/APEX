@@ -117,7 +117,7 @@ Returns the resolved settings envelope. The current contract version is `19`.
         "last_model": "deepseek/deepseek-v4-flash-0731",
         "effort": "low",
         "personal_context_enabled": false,
-        "hosted_tools": { "google_search": true, "google_maps": true, "x_search": true }
+        "hosted_tools": { "google_search": true, "google_maps": true }
       },
       "local": {
         "last_model": "gemma-4-E2B-Q4_K_M.gguf",
@@ -378,7 +378,7 @@ Development-only models appear in the `model_catalog` list only when `DEV_MODE` 
 
 Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Local availability distinguishes an unreachable runtime, missing model, loading model, busy execution slot, and provider-reported residency. Local catalog entries publish model-specific context and reasoning values, options, and defaults.
 
-Registered cloud models include `deepseek/deepseek-v4-flash-0731`, `gpt-5.6-luna`, and development-only Gemini and Grok models. Registered local models include Gemma and Qwen GGUF profiles plus development-only Ollama profiles.
+Registered cloud models include `deepseek/deepseek-v4-flash-0731`, `gpt-5.6-luna`, and development-only Gemini models. Registered local models include Gemma and Qwen GGUF profiles plus development-only Ollama profiles.
 
 ### POST `/api/v1/cortex/models/verify`
 
@@ -388,7 +388,7 @@ Runs one user-triggered, non-generative metadata check for a visible credential-
 { "model_id": "deepseek/deepseek-v4-flash-0731" }
 ```
 
-Google uses the Gemini API model metadata endpoint, OpenAI uses the OpenAI API, and SpaceXAI uses the xAI API with `GET /v1/models/{model}`. OpenRouter uses authenticated `GET /api/v1/endpoints/zdr` and verifies that the selected model has a ZDR route. The five-second probe sends no prompt, context, or provider tool call. Results are sanitized and cached; polling never triggers a probe.
+Google uses the Gemini API model metadata endpoint and OpenAI uses the OpenAI API. OpenRouter uses authenticated `GET /api/v1/endpoints/zdr` and verifies that the selected model has a ZDR route. The five-second probe sends no prompt, context, or provider tool call. Results are sanitized and cached; polling never triggers a probe.
 
 - `400` / `422` — the model is local or has no supported verification path.
 - `403` — demo mode disallows provider contact.

@@ -171,15 +171,13 @@ function parseHostedTools(value: unknown): RuntimeSettings['ask_apex']['cloud'][
   }
   if (
     typeof value.google_search !== 'boolean' ||
-    typeof value.google_maps !== 'boolean' ||
-    typeof value.x_search !== 'boolean'
+    typeof value.google_maps !== 'boolean'
   ) {
     return null
   }
   return {
     google_search: value.google_search,
     google_maps: value.google_maps,
-    x_search: value.x_search,
   }
 }
 

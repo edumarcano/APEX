@@ -63,24 +63,6 @@ _MODEL_RATES: dict[str, ModelTokenRates] = {
         long_context_cached_input_per_million=0.04,
     ),
     "deepseek/deepseek-v4-flash-0731": ModelTokenRates(0.14, 0.28, 0.028),
-    "grok-4.3": ModelTokenRates(
-        1.25,
-        2.50,
-        0.20,
-        long_context_threshold_tokens=200_000,
-        long_context_input_per_million=2.50,
-        long_context_output_per_million=5.00,
-        long_context_cached_input_per_million=0.40,
-    ),
-    "grok-4.5": ModelTokenRates(
-        2.00,
-        6.00,
-        0.30,
-        long_context_threshold_tokens=200_000,
-        long_context_input_per_million=4.00,
-        long_context_output_per_million=12.00,
-        long_context_cached_input_per_million=0.60,
-    ),
 }
 
 _LOCAL_ZERO = ModelTokenRates(0.0, 0.0, 0.0)
@@ -98,7 +80,6 @@ def is_free_tier_model(model: str | None) -> bool:
 _HOSTED_TOOL_RATES: dict[str, HostedToolRate] = {
     "google_search": HostedToolRate(0.014),
     "google_maps": HostedToolRate(0.025),
-    "x_search": HostedToolRate(0.005),
 }
 
 

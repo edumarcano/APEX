@@ -182,7 +182,6 @@ export default function App(): ReactElement {
   const [hostedTools, setHostedTools] = useState<CloudHostedToolsSettings>({
     google_search: true,
     google_maps: true,
-    x_search: true,
   })
   const [snapshotAttached, setSnapshotAttached] = useState(true)
   const [cloudPersonalContextEnabled, setCloudPersonalContextEnabled] = useState(false)

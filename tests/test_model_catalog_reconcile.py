@@ -15,7 +15,7 @@ from core.agent.model_catalog import (
 
 class ModelCatalogReconcileTests(unittest.TestCase):
     def test_hidden_cloud_model_falls_back_outside_dev_mode(self) -> None:
-        self.assertEqual(reconcile_cloud_model("grok-4.5", dev_mode=False), DEFAULT_CLOUD_MODEL)
+        self.assertEqual(reconcile_cloud_model("gemini-3.6-flash", dev_mode=False), DEFAULT_CLOUD_MODEL)
 
     def test_hidden_local_model_falls_back_outside_dev_mode(self) -> None:
         self.assertEqual(reconcile_local_model("qwen3:1.7b", dev_mode=False), DEFAULT_LOCAL_MODEL)
@@ -27,7 +27,7 @@ class ModelCatalogReconcileTests(unittest.TestCase):
         )
 
     def test_dev_only_models_remain_when_development_mode_is_enabled(self) -> None:
-        self.assertEqual(reconcile_cloud_model("grok-4.5", dev_mode=True), "grok-4.5")
+        self.assertEqual(reconcile_cloud_model("gemini-3.6-flash", dev_mode=True), "gemini-3.6-flash")
         self.assertEqual(reconcile_local_model("qwen3:1.7b", dev_mode=True), "qwen3:1.7b")
 
     def test_local_context_window_reconciles_to_model_capabilities(self) -> None:

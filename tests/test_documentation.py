@@ -118,8 +118,8 @@ class DocumentationCheckerTests(unittest.TestCase):
         source = Path("virtual-readme.md")
         issues = check_agent_profiles(
             [source],
-            {"catalog-one": "grok-4.3"},
-            {source: "catalog-one -> grok-4.3; retired model grok-4.2\n"},
+            {"catalog-one": "gpt-5.6-luna"},
+            {source: "catalog-one -> gpt-5.6-luna; retired model grok-4.2\n"},
         )
 
         self.assertEqual(len(issues), 1)
