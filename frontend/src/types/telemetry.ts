@@ -248,6 +248,7 @@ export interface ModelCatalogEntry {
   reason?: string | null
   active?: boolean
   loading?: boolean
+  idle_unload_remaining_seconds?: number | null
   loaded_model?: LocalLoadedModelStatus | null
 }
 

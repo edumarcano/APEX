@@ -74,3 +74,10 @@ class ApexAgentCatalogTests(unittest.TestCase):
         self.assertEqual(payload["key"], "apex")
         self.assertEqual(payload["selected_model"], "deepseek/deepseek-v4-flash-0731")
         self.assertTrue(payload["model_catalog"])
+        local_model = next(
+            model for model in payload["model_catalog"] if model["runtime"] == "local"
+        )
+        self.assertIn("status", local_model)
+        self.assertIn("active", local_model)
+        self.assertIn("loading", local_model)
+        self.assertIn("loaded_model", local_model)

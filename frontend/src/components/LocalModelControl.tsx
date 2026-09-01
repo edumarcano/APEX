@@ -18,7 +18,7 @@ function localRuntimeLabel(agent: AgentStatus, runtimeState: string): string {
     agentShortName(agent.display_name)
   const parts = [
     modelName,
-    providerDisplayName(agent.provider),
+    providerDisplayName(agent.loaded_model?.provider ?? agent.provider),
     runtimeState,
   ]
   return parts.join(' · ')

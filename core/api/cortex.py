@@ -340,6 +340,7 @@ def build_model_catalog() -> list[AgentModelCatalogEntry]:
     dev_mode = is_dev_mode()
     vitals = get_system_vitals()
     loading_ref = get_loading_local_model()
+    idle_remaining = get_idle_unload_remaining_seconds()
     local_execution_active = is_local_execution_active()
     snapshots: dict[str, Any] = {
         backend.provider: backend.get_status_snapshot()
@@ -413,6 +414,9 @@ def build_model_catalog() -> list[AgentModelCatalogEntry]:
                 "reason": reason,
                 "active": loaded is not None,
                 "loading": loading_ref == model_ref,
+                "idle_unload_remaining_seconds": (
+                    idle_remaining if loaded is not None else None
+                ),
                 "loaded_model": _loaded_model_status(status_row) if status_row else None,
             }
         )

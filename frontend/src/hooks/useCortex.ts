@@ -24,6 +24,13 @@ function parseAgentStatusList(body: unknown): AgentStatus[] {
   if (record.key !== 'apex' || !Array.isArray(record.model_catalog)) return []
   const catalog = record.model_catalog as AgentStatus['model_catalog']
   const selected = catalog.find((entry) => entry.model_id === record.selected_model) ?? catalog[0]
+  const residentLocalModel = catalog.find(
+    (entry) => entry.runtime === 'local' && entry.active,
+  )
+  const loadingLocalModel = catalog.find(
+    (entry) => entry.runtime === 'local' && entry.loading,
+  )
+  const localLifecycleModel = residentLocalModel ?? loadingLocalModel
   if (!selected) return []
   return [{
     key: 'apex',
@@ -39,7 +46,12 @@ function parseAgentStatusList(body: unknown): AgentStatus[] {
     reasoning_mode_options: selected.reasoning_modes ?? null, default_reasoning_mode: selected.default_reasoning_mode ?? null,
     status: selected.status ?? 'configured', status_source: selected.status_source ?? 'configuration', status_checked_at: selected.status_checked_at ?? null,
     provider_account_tier: null, pricing: selected.pricing ?? { currency: 'USD', pricing_version: 'unknown', billing_basis: selected.runtime === 'local' ? 'local' : 'standard', input_per_million: 0, output_per_million: 0, cached_input_per_million: null, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null },
-    active: selected.active ?? false, loading: selected.loading ?? false, reason: selected.reason ?? null, idle_unload_remaining_seconds: null, loaded_model: selected.loaded_model ?? null, model_catalog: catalog,
+    active: residentLocalModel?.active ?? false,
+    loading: loadingLocalModel?.loading ?? false,
+    reason: selected.reason ?? null,
+    idle_unload_remaining_seconds: localLifecycleModel?.idle_unload_remaining_seconds ?? null,
+    loaded_model: localLifecycleModel?.loaded_model ?? null,
+    model_catalog: catalog,
   }]
 }
 

@@ -583,7 +583,7 @@ export default function App(): ReactElement {
   const activeLocalModel = useMemo(
     () =>
       agentsStatus.find(
-        (agent) => agent.runtime === 'local' && agent.active,
+        (agent) => agent.active,
       ) ?? null,
     [agentsStatus],
   )
