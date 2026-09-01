@@ -658,7 +658,7 @@ class AgentModelCatalogEntry(BaseModel):
 
     model_id: str = Field(description="Stable model identifier from the registry.")
     display_name: str = Field(description="Human-readable model label for the HUD.")
-    provider: Literal["openai", "openrouter", "gemini", "xai", "ollama", "llama_cpp"] = Field(
+    provider: Literal["openai", "openrouter", "gemini", "ollama", "llama_cpp"] = Field(
         description="Inference provider or local runtime for this model.",
     )
     runtime: Literal["cloud", "local"] = Field(
@@ -667,7 +667,7 @@ class AgentModelCatalogEntry(BaseModel):
     stability: Literal["stable", "preview", "experimental"] = Field(
         description="Release stage classification for this model.",
     )
-    hosted_capabilities: list[Literal["google_search", "google_maps", "x_search"]] = (
+    hosted_capabilities: list[Literal["google_search", "google_maps"]] = (
         Field(
             default_factory=list,
             description="Provider-hosted grounding capabilities supported by this model.",
@@ -764,7 +764,7 @@ class AgentStatus(BaseModel):
     key: str = Field(description="Stable Agent identifier used by the HUD.")
     display_name: str = Field(description="Human-readable Apex Agent label.")
     description: str = Field(description="Short Agent capability and role summary.")
-    provider: Literal["ollama", "llama_cpp", "gemini", "openai", "openrouter", "xai"] = Field(
+    provider: Literal["ollama", "llama_cpp", "gemini", "openai", "openrouter"] = Field(
         description="Inference backend for this Agent.",
     )
     configured_model: str = Field(description="Configured provider model identifier.")

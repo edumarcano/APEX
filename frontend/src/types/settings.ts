@@ -56,7 +56,6 @@ export interface MarketSettings {
 export interface CloudHostedToolsSettings {
   google_search: boolean
   google_maps: boolean
-  x_search: boolean
 }
 
 export interface CloudSettings {
@@ -161,7 +160,6 @@ export interface MarketPatch {
 export interface CloudHostedToolsPatch {
   google_search?: boolean
   google_maps?: boolean
-  x_search?: boolean
 }
 
 export interface CloudSettingsPatch {

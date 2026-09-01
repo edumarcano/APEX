@@ -42,7 +42,6 @@ from core.agent.providers.responses_api import (
     _parse_usage,
 )
 from core.agent.providers.retries import call_with_bounded_retries
-from core.agent.providers.xai_provider import XAI_INTERNAL_PROFILES, XAIProvider
 from core.agent.tool_schemas import descriptor_to_responses_tool
 from core.agent.types import AgentMessage, AgentQueryRequest, TokenUsage, ToolCall, ToolResult
 
@@ -82,9 +81,6 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(
             resolve_inference_provider(OPENAI_INTERNAL_PROFILES["openai_default"]),
             "openai",
-        )
-        self.assertEqual(
-            resolve_inference_provider(XAI_INTERNAL_PROFILES["xai_default"]), "xai"
         )
 
     def test_local_profile_markers_and_runtime_ids(self) -> None:
@@ -534,10 +530,10 @@ class PricingRegistryTests(unittest.TestCase):
 
     def test_long_context_rates_apply_after_the_provider_threshold(self) -> None:
         estimate = estimate_inference_cost(
-            model="grok-4.5",
-            usage=TokenUsage(input_tokens=200_001, output_tokens=1_000_000),
+            model="gpt-5.6-luna",
+            usage=TokenUsage(input_tokens=272_001, output_tokens=1_000_000),
         )
-        self.assertAlmostEqual(estimate.token_cost or 0.0, 12.800004, places=6)
+        self.assertAlmostEqual(estimate.token_cost or 0.0, 1.9088004, places=6)
 
     def test_unknown_cloud_model_reports_unavailable_instead_of_guessing(self) -> None:
         estimate = estimate_inference_cost(
@@ -726,27 +722,6 @@ class ResponsesAdapterTests(unittest.TestCase):
         self.assertEqual(result.resolved_model, "gpt-5.6-luna")
 
     @patch("core.agent.providers.responses_api.OpenAI")
-    def test_non_reasoning_profile_omits_reasoning_request_fields(
-        self, mock_openai_cls: MagicMock
-    ) -> None:
-        mock_client = MagicMock()
-        mock_openai_cls.return_value = mock_client
-        mock_response = MagicMock()
-        mock_response.output = []
-        mock_response.model = "grok-4"
-        mock_response.usage = None
-        mock_client.responses.create.return_value = mock_response
-
-        XAIProvider(api_key="test").generate_turn(
-            [AgentMessage(role="user", content="Hi")],
-            [],
-            XAI_INTERNAL_PROFILES["xai_default"],
-        )
-        kwargs = mock_client.responses.create.call_args.kwargs
-        self.assertNotIn("reasoning", kwargs)
-        self.assertNotIn("include", kwargs)
-
-    @patch("core.agent.providers.responses_api.OpenAI")
     def test_hosted_tool_events_carry_attributed_durations(
         self, mock_openai_cls: MagicMock
     ) -> None:
@@ -754,98 +729,26 @@ class ResponsesAdapterTests(unittest.TestCase):
         mock_openai_cls.return_value = mock_client
         mock_response = MagicMock()
         mock_response.output = [
-            {"type": "x_search_call", "status": "completed"},
+            {"type": "mcp_call", "name": "weather", "status": "completed"},
             {
                 "type": "message",
                 "content": [{"type": "output_text", "text": "Done"}],
             },
         ]
-        mock_response.model = "grok-4"
+        mock_response.model = "gpt-5.6-luna"
         mock_response.usage = None
         mock_client.responses.create.return_value = mock_response
 
-        result = XAIProvider(api_key="test").generate_turn(
+        result = OpenAIProvider(api_key="test").generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
-            XAI_INTERNAL_PROFILES["xai_default"],
+            OPENAI_INTERNAL_PROFILES["openai_default"],
         )
         self.assertEqual(len(result.provider_tool_events), 1)
         event = result.provider_tool_events[0]
-        self.assertEqual(event.name, "x_search")
+        self.assertEqual(event.name, "weather")
         self.assertEqual(event.status, "ok")
         self.assertIsNotNone(event.duration_ms)
-
-    @patch("core.agent.providers.responses_api.OpenAI")
-    def test_xai_provider_uses_xai_base_url(self, mock_openai_cls: MagicMock) -> None:
-        mock_client = MagicMock()
-        mock_openai_cls.return_value = mock_client
-        mock_response = MagicMock()
-        mock_response.output = [
-            {
-                "type": "message",
-                "content": [{"type": "output_text", "text": "Hello from xAI"}],
-            }
-        ]
-        mock_response.model = "grok-4"
-        mock_response.usage = None
-        mock_client.responses.create.return_value = mock_response
-
-        result = XAIProvider(api_key="test").generate_turn(
-            [AgentMessage(role="user", content="Hi")],
-            [],
-            XAI_INTERNAL_PROFILES["xai_default"],
-        )
-        self.assertEqual(
-            mock_openai_cls.call_args.kwargs["base_url"], "https://api.x.ai/v1"
-        )
-        self.assertFalse(mock_client.responses.create.call_args.kwargs["store"])
-        self.assertEqual(result.message.content, "Hello from xAI")
-        # Unavailable usage remains None rather than inventing zeros.
-        self.assertIsNone(result.usage)
-
-    @patch("core.agent.providers.responses_api.OpenAI")
-    def test_grok_4_3_omits_encrypted_reasoning_include(
-        self, mock_openai_cls: MagicMock
-    ) -> None:
-        mock_client = MagicMock()
-        mock_openai_cls.return_value = mock_client
-        mock_response = MagicMock()
-        mock_response.output = []
-        mock_response.model = "grok-4.3"
-        mock_response.usage = None
-        mock_client.responses.create.return_value = mock_response
-
-        grok_43_profile = _concrete_profile("grok-4.3")
-        XAIProvider(api_key="test").generate_turn(
-            [AgentMessage(role="user", content="Hi")],
-            [],
-            grok_43_profile,  # type: ignore[arg-type]
-        )
-        kwargs = mock_client.responses.create.call_args.kwargs
-        self.assertEqual(kwargs["reasoning"], {"effort": "medium"})
-        self.assertNotIn("include", kwargs)
-
-    @patch("core.agent.providers.responses_api.OpenAI")
-    def test_grok_4_5_includes_encrypted_reasoning_include(
-        self, mock_openai_cls: MagicMock
-    ) -> None:
-        mock_client = MagicMock()
-        mock_openai_cls.return_value = mock_client
-        mock_response = MagicMock()
-        mock_response.output = []
-        mock_response.model = "grok-4.5"
-        mock_response.usage = None
-        mock_client.responses.create.return_value = mock_response
-
-        grok_45_profile = _concrete_profile("grok-4.5")
-        XAIProvider(api_key="test").generate_turn(
-            [AgentMessage(role="user", content="Hi")],
-            [],
-            grok_45_profile,  # type: ignore[arg-type]
-        )
-        kwargs = mock_client.responses.create.call_args.kwargs
-        self.assertEqual(kwargs["reasoning"], {"effort": "high"})
-        self.assertNotIn("include", kwargs)
 
     @patch("core.agent.providers.responses_api.OpenAI")
     def test_responses_api_logs_structured_warning_on_400_bad_request(
@@ -867,18 +770,17 @@ class ResponsesAdapterTests(unittest.TestCase):
             },
         )
 
-        grok_43_profile = _concrete_profile("grok-4.3")
         with self.assertLogs("core.agent.providers.responses_api", level="WARNING") as log_cm:
             with self.assertRaises(APIStatusError):
-                XAIProvider(api_key="test").generate_turn(
+                OpenAIProvider(api_key="test").generate_turn(
                     [AgentMessage(role="user", content="Hi")],
                     [],
-                    grok_43_profile,  # type: ignore[arg-type]
+                    OPENAI_INTERNAL_PROFILES["openai_default"],
                 )
 
         self.assertTrue(
             any(
-                "xai Responses API 400 Bad Request for model grok-4.3" in log and "invalid_parameter" in log
+                "openai Responses API 400 Bad Request for model gpt-5.6-luna" in log and "invalid_parameter" in log
                 for log in log_cm.output
             )
         )

@@ -512,7 +512,7 @@ function RuntimeControls({
 }): ReactElement {
   const controlsDisabled = props.isQuerying || Boolean(props.submissionPending) || Boolean(props.conversationHydrating)
   const selectedModel = props.selectedModel ?? activeStatus?.configured_model ?? ''
-  const hostedTools = props.hostedTools ?? { google_search: false, google_maps: false, x_search: false }
+  const hostedTools = props.hostedTools ?? { google_search: false, google_maps: false }
   const catalog = resolveModelCatalog(activeStatus ?? undefined)
   const selectedModelEntry = catalog.find((entry) => entry.model_id === selectedModel)
   const selectedRuntimeStatus = activeStatus && selectedModelEntry
@@ -580,15 +580,6 @@ function RuntimeControls({
               checked={hostedTools.google_maps}
               disabled={controlsDisabled}
               onChange={(enabled) => props.onHostedToolChange('google_maps', enabled)}
-            />
-          ) : null}
-          {hostedCapabilities.includes('x_search') ? (
-            <GroundingToggle
-              label="X Search"
-              detail="Provider grounding for later requests"
-              checked={hostedTools.x_search}
-              disabled={controlsDisabled}
-              onChange={(enabled) => props.onHostedToolChange('x_search', enabled)}
             />
           ) : null}
         </GroundingControls>

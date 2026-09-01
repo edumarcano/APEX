@@ -54,7 +54,6 @@ class ApexAgentCatalogTests(unittest.TestCase):
             "gpt-5.6-luna": "OPENAI_API_KEY",
             "deepseek/deepseek-v4-flash-0731": "OPENROUTER_API_KEY",
             "gemini-3.6-flash": "GEMINI_API_KEY",
-            "grok-4.3": "XAI_API_KEY",
         }
         self.assertEqual(
             {model_id: get_model_profile(model_id).credential_env for model_id in expected},

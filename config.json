@@ -39,8 +39,7 @@
       "effort": "low",
       "hosted_tools": {
         "google_search": true,
-        "google_maps": true,
-        "x_search": true
+        "google_maps": true
       }
     },
     "local": {

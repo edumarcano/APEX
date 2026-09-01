@@ -14,9 +14,9 @@ from core.config import (
 )
 
 ModelStability = Literal["stable", "preview", "experimental"]
-CloudProvider = Literal["openai", "openrouter", "gemini", "xai"]
+CloudProvider = Literal["openai", "openrouter", "gemini"]
 LocalRuntime = Literal["ollama", "llama_cpp"]
-HostedTool = Literal["google_search", "google_maps", "x_search"]
+HostedTool = Literal["google_search", "google_maps"]
 
 @dataclass(frozen=True, slots=True)
 class ModelProfile:
@@ -107,38 +107,6 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         hosted_capabilities=frozenset({"google_search", "google_maps"}),
         dev_only=True,
         maximum_context_window=1_048_576,
-    ),
-    "grok-4.3": ModelProfile(
-        model_id="grok-4.3",
-        display_name="Grok 4.3",
-        provider="xai",
-        runtime="cloud",
-        stability="stable",
-        credential_env="XAI_API_KEY",
-        max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
-        max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
-        reasoning_options=("low", "medium", "high"),
-        default_reasoning="medium",
-        supports_encrypted_reasoning=False,
-        hosted_capabilities=frozenset({"x_search"}),
-        dev_only=True,
-        maximum_context_window=200_000,
-    ),
-    "grok-4.5": ModelProfile(
-        model_id="grok-4.5",
-        display_name="Grok 4.5",
-        provider="xai",
-        runtime="cloud",
-        stability="stable",
-        credential_env="XAI_API_KEY",
-        max_tool_turns=min(4, GEMINI_AGENT_MAX_TURNS),
-        max_tool_calls=min(6, GEMINI_AGENT_MAX_TOOL_CALLS),
-        reasoning_options=("low", "medium", "high"),
-        default_reasoning="high",
-        supports_encrypted_reasoning=False,
-        hosted_capabilities=frozenset({"x_search"}),
-        dev_only=True,
-        maximum_context_window=200_000,
     ),
 }
 

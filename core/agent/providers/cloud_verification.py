@@ -192,9 +192,6 @@ def _probe_model(provider: str, model: str, api_key: str) -> tuple[CloudStatus, 
     elif provider == "openai":
         url = f"https://api.openai.com/v1/models/{model}"
         headers = {"Authorization": f"Bearer {api_key}"}
-    elif provider == "xai":
-        url = f"https://api.x.ai/v1/models/{model}"
-        headers = {"Authorization": f"Bearer {api_key}"}
     elif provider == "openrouter":
         return _probe_openrouter_zdr_model(model, api_key)
     else:

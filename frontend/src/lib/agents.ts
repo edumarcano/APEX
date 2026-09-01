@@ -51,9 +51,6 @@ export function providerDisplayName(provider: string | null | undefined): string
   if (provider === 'openrouter') {
     return 'OpenRouter'
   }
-  if (provider === 'xai') {
-    return 'SpaceXAI'
-  }
   if (provider === 'gemini') {
     return 'Google'
   }

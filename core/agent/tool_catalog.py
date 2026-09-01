@@ -351,16 +351,14 @@ def build_tool_catalog(agent_key: str = "apex", *, model_id: str | None = None) 
         sandbox_mode=settings.ask_apex.sandbox_mode,
         dev_mode=is_dev_mode(),
     )
-    google_search, google_maps, x_search = (
+    google_search, google_maps = (
         settings.ask_apex.cloud.hosted_tools.google_search,
         settings.ask_apex.cloud.hosted_tools.google_maps,
-        settings.ask_apex.cloud.hosted_tools.x_search,
     )
     hosted_tools = hosted_tools_for_model(
         model_profile,
         google_search_enabled=google_search,
         google_maps_enabled=google_maps,
-        x_search_enabled=x_search,
     )
     config = load_mcp_config()
     configured_mcp = _configured_mcp_tools(config)

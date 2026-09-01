@@ -92,7 +92,6 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(ask_apex["cloud"]["last_model"], "gpt-5.6-luna")
         self.assertEqual(ask_apex["local"]["last_model"], "gemma-4-E2B-Q4_K_M.gguf")
         self.assertTrue(ask_apex["cloud"]["hosted_tools"]["google_maps"])
-        self.assertTrue(ask_apex["cloud"]["hosted_tools"]["x_search"])
         self.assertEqual(payload["settings"]["voice"]["engine"], "google")
         self.assertFalse(payload["settings"]["mcp"]["enabled"])
         self.assertFalse(payload["settings"]["mcp"]["servers"]["github"]["enabled"])

@@ -447,7 +447,6 @@ PROVIDER_DISPLAY_NAMES: dict[str, str] = {
     "openai": "OpenAI",
     "openrouter": "OpenRouter",
     "gemini": "Google",
-    "xai": "SpaceXAI",
     "ollama": "Ollama",
     "llama_cpp": "llama.cpp",
 }

@@ -11,7 +11,7 @@ export interface PipelineState {
   synthesis?: SynthesisLiveState | null
 }
 
-export type SynthesisProvider = 'gemini' | 'ollama' | 'llama_cpp' | 'openai' | 'openrouter' | 'xai' | 'raw' | 'demo'
+export type SynthesisProvider = 'gemini' | 'ollama' | 'llama_cpp' | 'openai' | 'openrouter' | 'raw' | 'demo'
 export type SynthesisStrategy = 'cloud' | 'local' | 'raw' | 'demo'
 
 export interface SynthesisLiveState {
@@ -89,9 +89,9 @@ export type CloudEffort =
   | 'high'
   | 'xhigh'
   | 'max'
-export type CloudProvider = 'openai' | 'openrouter' | 'gemini' | 'xai'
+export type CloudProvider = 'openai' | 'openrouter' | 'gemini'
 export type LocalRuntime = 'ollama' | 'llama_cpp'
-export type HostedTool = 'google_search' | 'google_maps' | 'x_search'
+export type HostedTool = 'google_search' | 'google_maps'
 
 export type AgentKey = 'apex'
 

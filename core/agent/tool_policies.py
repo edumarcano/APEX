@@ -28,7 +28,6 @@ def hosted_tools_for_model(
     *,
     google_search_enabled: bool,
     google_maps_enabled: bool = True,
-    x_search_enabled: bool = True,
 ) -> frozenset[str]:
     """Resolve provider-hosted grounding from model capabilities and settings."""
     tools: set[str] = set()
@@ -37,8 +36,6 @@ def hosted_tools_for_model(
         tools.add("google_search")
     if "google_maps" in caps and google_maps_enabled:
         tools.add("google_maps")
-    if "x_search" in caps and x_search_enabled:
-        tools.add("x_search")
     return frozenset(tools)
 
 
@@ -47,7 +44,6 @@ def hosted_tools_for_agent(
     *,
     google_search_enabled: bool = True,
     google_maps_enabled: bool = True,
-    x_search_enabled: bool = True,
 ) -> frozenset[str]:
     """Resolve provider-hosted tools for the selected cloud model."""
     if agent_key != "apex":
@@ -58,7 +54,6 @@ def hosted_tools_for_agent(
         resolve_selected_model_profile(),
         google_search_enabled=google_search_enabled,
         google_maps_enabled=google_maps_enabled,
-        x_search_enabled=x_search_enabled,
     )
 
 
@@ -67,17 +62,14 @@ def effective_native_tools(
     *,
     google_search_enabled: bool,
     google_maps_enabled: bool,
-    x_search_enabled: bool,
 ) -> dict[str, bool]:
     """Return hosted-tool availability and effective enabled state for the HUD."""
     enabled = hosted_tools_for_model(
         model_profile,
         google_search_enabled=google_search_enabled,
         google_maps_enabled=google_maps_enabled,
-        x_search_enabled=x_search_enabled,
     )
     return {
         "google_search": "google_search" in enabled,
         "google_maps": "google_maps" in enabled,
-        "x_search": "x_search" in enabled,
     }

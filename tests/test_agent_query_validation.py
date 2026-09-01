@@ -229,30 +229,6 @@ class SandboxPolicyTests(unittest.TestCase):
                 frozenset(),
             )
 
-            resolve_profile.return_value = get_model_profile("grok-4.3")
-            self.assertEqual(
-                hosted_tools_for_agent(
-                    "apex", x_search_enabled=True
-                ),
-                frozenset({"x_search"}),
-            )
-            self.assertEqual(
-                hosted_tools_for_agent(
-                    "apex",
-                    x_search_enabled=False,
-                ),
-                frozenset(),
-            )
-
-            resolve_profile.return_value = get_model_profile("grok-4.5")
-            self.assertEqual(
-                hosted_tools_for_agent(
-                    "apex",
-                    x_search_enabled=False,
-                ),
-                frozenset(),
-            )
-
 
 if __name__ == "__main__":
     unittest.main()
