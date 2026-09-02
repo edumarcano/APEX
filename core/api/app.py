@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sqlite3
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -57,6 +58,10 @@ async def _app_lifespan(_app: FastAPI):
     mcp_manager: MCPClientManager | None = None
     microsoft_auth: MicrosoftTodoAuthenticationService | None = None
     microsoft_todo_client: MicrosoftTodoClient | None = None
+    demo_db: sqlite3.Connection | None = None
+    if DEMO_MODE:
+        demo_db = sqlite3.connect(":memory:", check_same_thread=False)
+        demo_db.execute("PRAGMA foreign_keys=ON;")
     conversation_store: ConversationStore | None = None
     run_store: RunStore | None = None
     retrieval_store: RetrievalStore | None = None
@@ -67,8 +72,14 @@ async def _app_lifespan(_app: FastAPI):
         microsoft_todo_client = MicrosoftTodoClient(microsoft_auth)
         set_microsoft_auth_service(microsoft_auth)
         set_microsoft_todo_client(microsoft_todo_client)
-    database.initialize_db(include_actions=not DEMO_MODE)
-    conversation_store = ConversationStore(None if DEMO_MODE else database.DB_NAME)
+    database.initialize_db(
+        include_actions=not DEMO_MODE,
+        connection=demo_db if DEMO_MODE else None,
+    )
+    conversation_store = ConversationStore(
+        None if DEMO_MODE else database.DB_NAME,
+        connection=demo_db,
+    )
     conversation_store.initialize()
     conversation_service = ConversationService(
         conversation_store,
@@ -77,13 +88,19 @@ async def _app_lifespan(_app: FastAPI):
     if not DEMO_MODE:
         conversation_service.recover_interrupted()
     set_conversation_service(conversation_service)
-    run_store = RunStore(None if DEMO_MODE else database.DB_NAME)
+    run_store = RunStore(
+        None if DEMO_MODE else database.DB_NAME,
+        connection=demo_db,
+    )
     run_store.initialize()
     run_service = RunService(run_store)
     if not DEMO_MODE:
         run_service.recover_interrupted()
     set_run_service(run_service)
-    retrieval_store = RetrievalStore(None if DEMO_MODE else database.DB_NAME)
+    retrieval_store = RetrievalStore(
+        None if DEMO_MODE else database.DB_NAME,
+        connection=demo_db,
+    )
     retrieval_service = RetrievalService(
         retrieval_store,
         conversation_store,
@@ -103,7 +120,10 @@ async def _app_lifespan(_app: FastAPI):
                 pass
 
         asyncio.create_task(_warm_retrieval())
-    knowledge_store = KnowledgeStore(None if DEMO_MODE else database.DB_NAME)
+    knowledge_store = KnowledgeStore(
+        None if DEMO_MODE else database.DB_NAME,
+        connection=demo_db,
+    )
     knowledge_store.initialize()
     set_knowledge_service(KnowledgeService(knowledge_store))
     if not DEMO_MODE:
@@ -223,6 +243,8 @@ async def _app_lifespan(_app: FastAPI):
                                     retrieval_store.close()
                                 if knowledge_store is not None:
                                     knowledge_store.close()
+                                if demo_db is not None:
+                                    demo_db.close()
                                 if idle_model_task is not None:
                                     idle_model_task.cancel()
                                     try:

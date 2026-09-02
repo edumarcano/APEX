@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
@@ -12,6 +13,7 @@ from core.runs.models import (
     RunLimitSnapshot,
     RunPartition,
     RunRecord,
+    RunRuntimeMeasurements,
     RunStatus,
     RunStopReason,
     UsageQuality,
@@ -33,6 +35,82 @@ def get_run_service() -> RunService:
     if _service is None:
         raise RuntimeError("Run service is unavailable.")
     return _service
+
+
+@dataclass(frozen=True, slots=True)
+class RunHandle:
+    """Immutable partition-bound run reference for coordinator and lifecycle operations."""
+
+    run_id: UUID
+    conversation_id: UUID
+    partition: RunPartition
+    store: RunStore
+
+    def get_record(self) -> RunRecord:
+        """Fetch current run record in the bound partition."""
+        return self.store.get_run(self.run_id, self.partition)
+
+    def start(
+        self,
+        *,
+        resolved_model: str,
+        provider: str,
+        runtime: str,
+    ) -> RunRecord:
+        """Mark run as running in the bound partition."""
+        return self.store.start_run(
+            self.run_id,
+            partition=self.partition,
+            resolved_model=resolved_model,
+            provider=provider,
+            runtime=runtime,
+        )
+
+    def update_progress(
+        self,
+        *,
+        turns_count: int | None = None,
+        tool_calls_count: int | None = None,
+        retries_count: int | None = None,
+        total_tokens: int | None = None,
+        elapsed_seconds: float | None = None,
+        usage_quality: UsageQuality | None = None,
+        runtime_measurements: RunRuntimeMeasurements | dict[str, Any] | None = None,
+    ) -> RunRecord:
+        """Update metrics on active run in the bound partition."""
+        return self.store.update_progress(
+            self.run_id,
+            partition=self.partition,
+            turns_count=turns_count,
+            tool_calls_count=tool_calls_count,
+            retries_count=retries_count,
+            total_tokens=total_tokens,
+            elapsed_seconds=elapsed_seconds,
+            usage_quality=usage_quality,
+            runtime_measurements=runtime_measurements,
+        )
+
+    def set_cancelling(self) -> RunRecord:
+        """Mark run as cancelling in the bound partition."""
+        return self.store.set_cancelling(self.run_id, partition=self.partition)
+
+    def finalize(
+        self,
+        *,
+        status: RunStatus,
+        stop_reason: RunStopReason,
+        evidence: RunCompletionEvidence,
+        error: RunError | None = None,
+    ) -> RunRecord:
+        """Finalize run in the bound partition."""
+        return self.store.finalize_run(
+            self.run_id,
+            partition=self.partition,
+            status=status,
+            stop_reason=stop_reason,
+            evidence=evidence,
+            error=error,
+        )
 
 
 class RunService:
@@ -60,17 +138,43 @@ class RunService:
         requested_model: str,
         limit_snapshot: RunLimitSnapshot,
         trace_id: str | None = None,
-    ) -> tuple[RunRecord, bool]:
-        """Create a run or return existing idempotent run record."""
-        return self.store.create_run(
+    ) -> tuple[RunRecord, RunHandle, bool]:
+        """
+        Create a run in the active partition and return a partition-bound RunHandle.
+
+        Returns:
+            A tuple of (RunRecord, RunHandle, replayed: bool).
+        """
+        partition = self.partition()
+        record, replayed = self.store.create_run(
             run_id=run_id,
             conversation_id=conversation_id,
-            partition=self.partition(),
+            partition=partition,
             user_message_id=user_message_id,
             agent_message_id=agent_message_id,
             requested_model=requested_model,
             limit_snapshot=limit_snapshot,
             trace_id=trace_id,
+        )
+        handle = RunHandle(
+            run_id=record.id,
+            conversation_id=record.conversation_id,
+            partition=record.partition,
+            store=self.store,
+        )
+        return record, handle, replayed
+
+    def get_handle(
+        self, run_id: UUID, partition: RunPartition | None = None
+    ) -> RunHandle:
+        """Return an immutable partition-bound RunHandle for an existing run."""
+        part = partition or self.partition()
+        record = self.store.get_run(run_id, part)
+        return RunHandle(
+            run_id=record.id,
+            conversation_id=record.conversation_id,
+            partition=record.partition,
+            store=self.store,
         )
 
     def get_run(self, run_id: UUID) -> RunRecord:
@@ -100,71 +204,6 @@ class RunService:
             conversation_id=conversation_id,
             limit=limit,
             offset=offset,
-        )
-
-    def start_run(
-        self,
-        run_id: UUID,
-        *,
-        resolved_model: str,
-        provider: str,
-        runtime: str,
-    ) -> RunRecord:
-        """Mark run as running in the active partition."""
-        return self.store.start_run(
-            run_id,
-            partition=self.partition(),
-            resolved_model=resolved_model,
-            provider=provider,
-            runtime=runtime,
-        )
-
-    def update_progress(
-        self,
-        run_id: UUID,
-        *,
-        turns_count: int | None = None,
-        tool_calls_count: int | None = None,
-        retries_count: int | None = None,
-        total_tokens: int | None = None,
-        elapsed_seconds: float | None = None,
-        usage_quality: UsageQuality | None = None,
-        runtime_measurements: dict[str, Any] | None = None,
-    ) -> RunRecord:
-        """Update metrics in the active partition."""
-        return self.store.update_progress(
-            run_id,
-            partition=self.partition(),
-            turns_count=turns_count,
-            tool_calls_count=tool_calls_count,
-            retries_count=retries_count,
-            total_tokens=total_tokens,
-            elapsed_seconds=elapsed_seconds,
-            usage_quality=usage_quality,
-            runtime_measurements=runtime_measurements,
-        )
-
-    def set_cancelling(self, run_id: UUID) -> RunRecord:
-        """Mark run as cancelling in the active partition."""
-        return self.store.set_cancelling(run_id, partition=self.partition())
-
-    def finalize_run(
-        self,
-        run_id: UUID,
-        *,
-        status: RunStatus,
-        stop_reason: RunStopReason,
-        evidence: RunCompletionEvidence,
-        error: RunError | None = None,
-    ) -> RunRecord:
-        """Finalize run in the active partition."""
-        return self.store.finalize_run(
-            run_id,
-            partition=self.partition(),
-            status=status,
-            stop_reason=stop_reason,
-            evidence=evidence,
-            error=error,
         )
 
     def recover_interrupted(self) -> int:

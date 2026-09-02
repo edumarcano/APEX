@@ -51,10 +51,16 @@ def _parse_json(value: str | None) -> Any:
 class ConversationStore:
     """Owns only short SQLite transactions; model execution happens above it."""
 
-    def __init__(self, db_path: Path | str | None) -> None:
+    def __init__(
+        self,
+        db_path: Path | str | None,
+        *,
+        connection: sqlite3.Connection | None = None,
+    ) -> None:
         self._db_path = str(db_path) if db_path is not None else None
         self._lock = threading.RLock()
-        self._memory_connection = (
+        self._owns_memory_connection = connection is None and db_path is None
+        self._memory_connection = connection or (
             sqlite3.connect(":memory:", check_same_thread=False)
             if db_path is None
             else None
@@ -80,7 +86,8 @@ class ConversationStore:
     def close(self) -> None:
         with self._lock:
             if self._memory_connection is not None:
-                self._memory_connection.close()
+                if self._owns_memory_connection:
+                    self._memory_connection.close()
                 self._memory_connection = None
 
     def initialize(self) -> None:
@@ -335,10 +342,6 @@ class ConversationStore:
             ).fetchone()
             if pending is not None:
                 raise ConversationConflictError("A conversation with a pending turn cannot be deleted.")
-            conn.execute(
-                "DELETE FROM conversation_messages WHERE conversation_id = ?",
-                (str(conversation_id),),
-            )
             cortex_runs_table = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'cortex_runs'"
             ).fetchone()
@@ -349,10 +352,10 @@ class ConversationStore:
                 ).fetchone()
                 if active_run is not None:
                     raise ConversationConflictError("A conversation with an active run cannot be deleted.")
-                conn.execute(
-                    "DELETE FROM cortex_runs WHERE conversation_id = ?",
-                    (str(conversation_id),),
-                )
+            conn.execute(
+                "DELETE FROM conversation_messages WHERE conversation_id = ?",
+                (str(conversation_id),),
+            )
             # Retrieval owns a trigger in normal initialization. This guarded
             # cleanup keeps the same transaction safe when an older database
             # was initialized before the retrieval domain was introduced.

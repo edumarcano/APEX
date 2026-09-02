@@ -54,10 +54,16 @@ def _required_text(value: str, field: str, *, limit: int = 10_000) -> str:
 class KnowledgeStore:
     """Owns canonical knowledge writes and their derived retrieval rows."""
 
-    def __init__(self, db_path: Path | str | None) -> None:
+    def __init__(
+        self,
+        db_path: Path | str | None,
+        *,
+        connection: sqlite3.Connection | None = None,
+    ) -> None:
         self._db_path = str(db_path) if db_path is not None else None
         self._lock = threading.RLock()
-        self._memory_connection = (
+        self._owns_memory_connection = connection is None and db_path is None
+        self._memory_connection = connection or (
             sqlite3.connect(":memory:", check_same_thread=False) if db_path is None else None
         )
 
@@ -80,7 +86,8 @@ class KnowledgeStore:
     def close(self) -> None:
         with self._lock:
             if self._memory_connection is not None:
-                self._memory_connection.close()
+                if self._owns_memory_connection:
+                    self._memory_connection.close()
                 self._memory_connection = None
 
     def initialize(self) -> None:

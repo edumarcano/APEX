@@ -13,11 +13,13 @@ from uuid import UUID
 
 from core.connectors.models import utc_now_iso
 from core.runs.models import (
+    SAFE_ERROR_MESSAGES,
     RunCompletionEvidence,
     RunError,
     RunLimitSnapshot,
     RunPartition,
     RunRecord,
+    RunRuntimeMeasurements,
     RunStatus,
     RunStopReason,
     UsageQuality,
@@ -49,15 +51,6 @@ def _parse_json(value: str | None) -> Any:
         return None
 
 
-def _sanitize_error_text(text: str | None, max_length: int = 500) -> str | None:
-    if text is None:
-        return None
-    cleaned = " ".join(text.split()).strip()
-    if not cleaned:
-        return None
-    return cleaned[:max_length]
-
-
 _VALID_STATUSES = frozenset(
     {"queued", "running", "cancelling", "completed", "failed", "cancelled", "interrupted"}
 )
@@ -85,10 +78,16 @@ _VALID_PARTITIONS = frozenset({"production", "sandbox"})
 class RunStore:
     """Manages transactional durability and queries for Cortex runs."""
 
-    def __init__(self, db_path: Path | str | None) -> None:
+    def __init__(
+        self,
+        db_path: Path | str | None,
+        *,
+        connection: sqlite3.Connection | None = None,
+    ) -> None:
         self._db_path = str(db_path) if db_path is not None else None
         self._lock = threading.RLock()
-        self._memory_connection = (
+        self._owns_memory_connection = connection is None and db_path is None
+        self._memory_connection = connection or (
             sqlite3.connect(":memory:", check_same_thread=False)
             if db_path is None
             else None
@@ -99,11 +98,13 @@ class RunStore:
         with self._lock:
             if self._memory_connection is not None:
                 conn = self._memory_connection
+                conn.row_factory = sqlite3.Row
                 conn.execute("PRAGMA foreign_keys=ON")
                 yield conn
                 return
             assert self._db_path is not None
             conn = sqlite3.connect(self._db_path, timeout=30.0)
+            conn.row_factory = sqlite3.Row
             try:
                 conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA foreign_keys=ON")
@@ -114,7 +115,8 @@ class RunStore:
     def close(self) -> None:
         with self._lock:
             if self._memory_connection is not None:
-                self._memory_connection.close()
+                if self._owns_memory_connection:
+                    self._memory_connection.close()
                 self._memory_connection = None
 
     def initialize(self) -> None:
@@ -127,14 +129,14 @@ class RunStore:
             row = conn.execute(
                 "SELECT version FROM schema_versions WHERE domain = 'cortex_runs'"
             ).fetchone()
-            if row is not None and int(row[0]) > 1:
+            if row is not None and int(row["version"]) > 1:
                 raise RunStoreError("Run schema is newer than this APEX build.")
 
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS cortex_runs (
                     id TEXT PRIMARY KEY NOT NULL,
-                    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+                    conversation_id TEXT NOT NULL,
                     partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')),
                     user_message_id TEXT NOT NULL,
                     agent_message_id TEXT NOT NULL UNIQUE,
@@ -168,7 +170,10 @@ class RunStore:
                     action_ids_json TEXT CHECK(action_ids_json IS NULL OR json_valid(action_ids_json)),
                     trace_id TEXT,
                     error_code TEXT,
-                    error_message TEXT
+                    error_message TEXT,
+                    FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+                    FOREIGN KEY(conversation_id, user_message_id) REFERENCES conversation_messages(conversation_id, id) ON DELETE CASCADE,
+                    FOREIGN KEY(conversation_id, agent_message_id) REFERENCES conversation_messages(conversation_id, id) ON DELETE CASCADE
                 )
                 """
             )
@@ -194,65 +199,52 @@ class RunStore:
             )
 
     @staticmethod
-    def _record(row: sqlite3.Row | tuple[Any, ...]) -> RunRecord:
-        limits_dict = _parse_json(row[15]) or {}
-        measurements_dict = _parse_json(row[22]) or {}
-        tool_outcomes_dict = _parse_json(row[26]) or {}
-        action_ids_list = _parse_json(row[27]) or []
+    def _record(row: sqlite3.Row) -> RunRecord:
+        limits_dict = _parse_json(row["limit_snapshot_json"]) or {}
+        measurements_dict = _parse_json(row["runtime_measurements_json"]) or {}
+        tool_outcomes_dict = _parse_json(row["tool_outcome_counts_json"]) or {}
+        action_ids_list = _parse_json(row["action_ids_json"]) or []
 
         evidence = RunCompletionEvidence(
-            final_message_id=UUID(str(row[23])) if row[23] else None,
-            final_message_status=str(row[24]) if row[24] else None,
-            answer_persisted=bool(row[25]),
+            final_message_id=UUID(str(row["final_message_id"])) if row["final_message_id"] else None,
+            final_message_status=str(row["final_message_status"]) if row["final_message_status"] else None,
+            answer_persisted=bool(row["answer_persisted"]),
             tool_outcome_counts=tool_outcomes_dict,
             action_ids=action_ids_list,
         )
 
         error = None
-        if row[29] is not None or row[30] is not None:
-            error = RunError(
-                code=str(row[29] or "unknown"),
-                message=str(row[30] or ""),
-            )
+        if row["error_code"] is not None:
+            error = RunError(code=row["error_code"])
 
         return RunRecord(
-            id=UUID(str(row[0])),
-            conversation_id=UUID(str(row[1])),
-            partition=row[2],
-            user_message_id=UUID(str(row[3])),
-            agent_message_id=UUID(str(row[4])),
-            requested_model=str(row[5]),
-            resolved_model=str(row[6]) if row[6] else None,
-            provider=str(row[7]) if row[7] else None,
-            runtime=str(row[8]) if row[8] else None,
-            status=row[9],
-            stop_reason=row[10] if row[10] else None,
-            created_at=datetime.fromisoformat(row[11]),
-            started_at=datetime.fromisoformat(row[12]) if row[12] else None,
-            completed_at=datetime.fromisoformat(row[13]) if row[13] else None,
-            updated_at=datetime.fromisoformat(row[14]),
+            id=UUID(str(row["id"])),
+            conversation_id=UUID(str(row["conversation_id"])),
+            partition=row["partition"],
+            user_message_id=UUID(str(row["user_message_id"])),
+            agent_message_id=UUID(str(row["agent_message_id"])),
+            requested_model=str(row["requested_model"]),
+            resolved_model=str(row["resolved_model"]) if row["resolved_model"] else None,
+            provider=str(row["provider"]) if row["provider"] else None,
+            runtime=str(row["runtime"]) if row["runtime"] else None,
+            status=row["status"],
+            stop_reason=row["stop_reason"] if row["stop_reason"] else None,
+            created_at=datetime.fromisoformat(row["created_at"]),
+            started_at=datetime.fromisoformat(row["started_at"]) if row["started_at"] else None,
+            completed_at=datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None,
+            updated_at=datetime.fromisoformat(row["updated_at"]),
             limit_snapshot=RunLimitSnapshot(**limits_dict),
-            turns_count=int(row[16]),
-            tool_calls_count=int(row[17]),
-            retries_count=int(row[18]),
-            total_tokens=int(row[19]),
-            elapsed_seconds=float(row[20]),
-            usage_quality=row[21],
-            runtime_measurements=measurements_dict,
+            turns_count=int(row["turns_count"]),
+            tool_calls_count=int(row["tool_calls_count"]),
+            retries_count=int(row["retries_count"]),
+            total_tokens=int(row["total_tokens"]),
+            elapsed_seconds=float(row["elapsed_seconds"]),
+            usage_quality=row["usage_quality"],
+            runtime_measurements=RunRuntimeMeasurements(**measurements_dict),
             evidence=evidence,
-            trace_id=str(row[28]) if row[28] else None,
+            trace_id=str(row["trace_id"]) if row["trace_id"] else None,
             error=error,
         )
-
-    _SELECT_COLUMNS = (
-        "id, conversation_id, partition, user_message_id, agent_message_id, "
-        "requested_model, resolved_model, provider, runtime, status, stop_reason, "
-        "created_at, started_at, completed_at, updated_at, limit_snapshot_json, "
-        "turns_count, tool_calls_count, retries_count, total_tokens, elapsed_seconds, "
-        "usage_quality, runtime_measurements_json, final_message_id, final_message_status, "
-        "answer_persisted, tool_outcome_counts_json, action_ids_json, trace_id, "
-        "error_code, error_message"
-    )
 
     def create_run(
         self,
@@ -273,7 +265,7 @@ class RunStore:
             A tuple of (RunRecord, replayed: bool).
 
         Raises:
-            RunNotFoundError: If conversation does not exist in partition.
+            RunNotFoundError: If conversation or message references do not exist in partition.
             RunConflictError: If conversation is archived or parameters conflict with existing agent_message_id.
         """
         if partition not in _VALID_PARTITIONS:
@@ -289,11 +281,29 @@ class RunStore:
             ).fetchone()
             if conv_row is None:
                 raise RunNotFoundError("Conversation was not found in partition.")
-            if conv_row[0] is not None:
+            if conv_row["archived_at"] is not None:
                 raise RunConflictError("Archived conversations cannot start runs.")
 
+            user_msg = conn.execute(
+                "SELECT role FROM conversation_messages WHERE id = ? AND conversation_id = ?",
+                (str(user_message_id), str(conversation_id)),
+            ).fetchone()
+            if user_msg is None:
+                raise RunNotFoundError("User message was not found in this conversation.")
+            if user_msg["role"] != "user":
+                raise RunConflictError("User message ID must refer to a user message.")
+
+            agent_msg = conn.execute(
+                "SELECT role FROM conversation_messages WHERE id = ? AND conversation_id = ?",
+                (str(agent_message_id), str(conversation_id)),
+            ).fetchone()
+            if agent_msg is None:
+                raise RunNotFoundError("Agent message was not found in this conversation.")
+            if agent_msg["role"] != "agent":
+                raise RunConflictError("Agent message ID must refer to an agent message.")
+
             existing = conn.execute(
-                f"SELECT {self._SELECT_COLUMNS} FROM cortex_runs WHERE agent_message_id = ?",
+                "SELECT * FROM cortex_runs WHERE agent_message_id = ?",
                 (str(agent_message_id),),
             ).fetchone()
             if existing is not None:
@@ -343,7 +353,7 @@ class RunStore:
                 ),
             )
             created = conn.execute(
-                f"SELECT {self._SELECT_COLUMNS} FROM cortex_runs WHERE id = ?",
+                "SELECT * FROM cortex_runs WHERE id = ?",
                 (str(run_id),),
             ).fetchone()
             assert created is not None
@@ -353,7 +363,7 @@ class RunStore:
         """Fetch run record by ID within a specific partition."""
         with self._connection() as conn:
             row = conn.execute(
-                f"SELECT {self._SELECT_COLUMNS} FROM cortex_runs WHERE id = ? AND partition = ?",
+                "SELECT * FROM cortex_runs WHERE id = ? AND partition = ?",
                 (str(run_id), partition),
             ).fetchone()
             if row is None:
@@ -366,7 +376,7 @@ class RunStore:
         """Fetch run record by agent_message_id within a partition."""
         with self._connection() as conn:
             row = conn.execute(
-                f"SELECT {self._SELECT_COLUMNS} FROM cortex_runs WHERE agent_message_id = ? AND partition = ?",
+                "SELECT * FROM cortex_runs WHERE agent_message_id = ? AND partition = ?",
                 (str(agent_message_id), partition),
             ).fetchone()
             return self._record(row) if row is not None else None
@@ -404,7 +414,7 @@ class RunStore:
         params.extend([bounded_limit, bounded_offset])
 
         query = (
-            f"SELECT {self._SELECT_COLUMNS} FROM cortex_runs "
+            f"SELECT * FROM cortex_runs "
             f"WHERE {where} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?"
         )
         with self._connection() as conn:
@@ -440,10 +450,10 @@ class RunStore:
                 if row is None:
                     raise RunNotFoundError(f"Run {run_id} was not found.")
                 raise RunConflictError(
-                    f"Run {run_id} cannot transition to running from status '{row[0]}'."
+                    f"Run {run_id} cannot transition to running from status '{row['status']}'."
                 )
             row = conn.execute(
-                f"SELECT {self._SELECT_COLUMNS} FROM cortex_runs WHERE id = ?",
+                "SELECT * FROM cortex_runs WHERE id = ?",
                 (str(run_id),),
             ).fetchone()
             assert row is not None
@@ -460,9 +470,9 @@ class RunStore:
         total_tokens: int | None = None,
         elapsed_seconds: float | None = None,
         usage_quality: UsageQuality | None = None,
-        runtime_measurements: dict[str, Any] | None = None,
+        runtime_measurements: RunRuntimeMeasurements | dict[str, Any] | None = None,
     ) -> RunRecord:
-        """Increment or update cumulative execution metrics."""
+        """Increment or update cumulative execution metrics on active runs only."""
         updates: list[str] = []
         params: list[Any] = []
 
@@ -487,8 +497,12 @@ class RunStore:
             updates.append("usage_quality = ?")
             params.append(usage_quality)
         if runtime_measurements is not None:
+            if isinstance(runtime_measurements, dict):
+                measurements_obj = RunRuntimeMeasurements(**runtime_measurements)
+            else:
+                measurements_obj = runtime_measurements
             updates.append("runtime_measurements_json = ?")
-            params.append(_json(runtime_measurements))
+            params.append(_json(measurements_obj.model_dump(exclude_unset=True)))
 
         if not updates:
             return self.get_run(run_id, partition)
@@ -501,13 +515,21 @@ class RunStore:
         with self._connection() as conn, conn:
             set_clause = ", ".join(updates)
             res = conn.execute(
-                f"UPDATE cortex_runs SET {set_clause} WHERE id = ? AND partition = ?",
+                f"UPDATE cortex_runs SET {set_clause} WHERE id = ? AND partition = ? AND status IN ('running', 'cancelling')",
                 params,
             )
             if res.rowcount != 1:
-                raise RunNotFoundError(f"Run {run_id} was not found in partition {partition}.")
+                row = conn.execute(
+                    "SELECT status FROM cortex_runs WHERE id = ? AND partition = ?",
+                    (str(run_id), partition),
+                ).fetchone()
+                if row is None:
+                    raise RunNotFoundError(f"Run {run_id} was not found in partition {partition}.")
+                raise RunConflictError(
+                    f"Run {run_id} is in status '{row['status']}' and cannot accept progress updates."
+                )
             row = conn.execute(
-                f"SELECT {self._SELECT_COLUMNS} FROM cortex_runs WHERE id = ?",
+                "SELECT * FROM cortex_runs WHERE id = ?",
                 (str(run_id),),
             ).fetchone()
             assert row is not None
@@ -532,9 +554,9 @@ class RunStore:
                 ).fetchone()
                 if row is None:
                     raise RunNotFoundError(f"Run {run_id} was not found.")
-                # Idempotently return existing terminal/cancelling state
+                # Idempotently return existing state
             row = conn.execute(
-                f"SELECT {self._SELECT_COLUMNS} FROM cortex_runs WHERE id = ?",
+                "SELECT * FROM cortex_runs WHERE id = ?",
                 (str(run_id),),
             ).fetchone()
             assert row is not None
@@ -560,8 +582,8 @@ class RunStore:
         persisted = 1 if (status == "completed" and evidence.answer_persisted) else 0
 
         now = utc_now_iso()
-        sanitized_msg = _sanitize_error_text(error.message) if error else None
         err_code = error.code if error else None
+        err_msg = error.message if error else None
 
         tool_outcomes = _json(evidence.tool_outcome_counts) if evidence.tool_outcome_counts else None
         action_ids = _json(evidence.action_ids) if evidence.action_ids else None
@@ -587,7 +609,7 @@ class RunStore:
                     tool_outcomes,
                     action_ids,
                     err_code,
-                    sanitized_msg,
+                    err_msg,
                     str(run_id),
                     partition,
                 ),
@@ -598,12 +620,12 @@ class RunStore:
                     (str(run_id), partition),
                 ).fetchone()
                 if row is None:
-                    raise RunNotFoundError(f"Run {run_id} was not found.")
+                    raise RunNotFoundError(f"Run {run_id} was not found in partition {partition}.")
                 raise RunConflictError(
-                    f"Run {run_id} is already in terminal state '{row[0]}'."
+                    f"Run {run_id} is already in terminal state '{row['status']}'."
                 )
             row = conn.execute(
-                f"SELECT {self._SELECT_COLUMNS} FROM cortex_runs WHERE id = ?",
+                "SELECT * FROM cortex_runs WHERE id = ?",
                 (str(run_id),),
             ).fetchone()
             assert row is not None
@@ -614,10 +636,10 @@ class RunStore:
         Transition any unfinished runs to interrupted state at startup.
 
         Runs in queued, running, or cancelling become interrupted with stop_reason
-        'interrupted_by_restart' and a sanitized error message.
+        'interrupted_by_restart' and a predefined safe error message.
         """
         now = utc_now_iso()
-        msg = "Run was interrupted by an APEX restart."
+        msg = SAFE_ERROR_MESSAGES["interrupted_by_restart"]
         with self._connection() as conn, conn:
             res = conn.execute(
                 """
