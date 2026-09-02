@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import sqlite3
+import threading
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -59,9 +60,11 @@ async def _app_lifespan(_app: FastAPI):
     microsoft_auth: MicrosoftTodoAuthenticationService | None = None
     microsoft_todo_client: MicrosoftTodoClient | None = None
     demo_db: sqlite3.Connection | None = None
+    demo_db_lock: threading.RLock | None = None
     if DEMO_MODE:
         demo_db = sqlite3.connect(":memory:", check_same_thread=False)
         demo_db.execute("PRAGMA foreign_keys=ON;")
+        demo_db_lock = threading.RLock()
     conversation_store: ConversationStore | None = None
     run_store: RunStore | None = None
     retrieval_store: RetrievalStore | None = None
@@ -79,6 +82,7 @@ async def _app_lifespan(_app: FastAPI):
     conversation_store = ConversationStore(
         None if DEMO_MODE else database.DB_NAME,
         connection=demo_db,
+        lock=demo_db_lock,
     )
     conversation_store.initialize()
     conversation_service = ConversationService(
@@ -91,6 +95,7 @@ async def _app_lifespan(_app: FastAPI):
     run_store = RunStore(
         None if DEMO_MODE else database.DB_NAME,
         connection=demo_db,
+        lock=demo_db_lock,
     )
     run_store.initialize()
     run_service = RunService(run_store)
@@ -100,6 +105,7 @@ async def _app_lifespan(_app: FastAPI):
     retrieval_store = RetrievalStore(
         None if DEMO_MODE else database.DB_NAME,
         connection=demo_db,
+        lock=demo_db_lock,
     )
     retrieval_service = RetrievalService(
         retrieval_store,
@@ -123,6 +129,7 @@ async def _app_lifespan(_app: FastAPI):
     knowledge_store = KnowledgeStore(
         None if DEMO_MODE else database.DB_NAME,
         connection=demo_db,
+        lock=demo_db_lock,
     )
     knowledge_store.initialize()
     set_knowledge_service(KnowledgeService(knowledge_store))

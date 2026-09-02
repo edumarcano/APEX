@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 RunStatus = Literal[
     "queued",
@@ -37,6 +44,8 @@ RunStopReason = Literal[
 
 UsageQuality = Literal["reported", "estimated", "unavailable"]
 RunPartition = Literal["production", "sandbox"]
+FinalMessageStatus = Literal["completed", "failed", "interrupted"]
+TraceId = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{32}$")]
 
 RunErrorCode = Literal[
     "timeout",
@@ -106,7 +115,7 @@ class RunCompletionEvidence(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     final_message_id: UUID | None = None
-    final_message_status: str | None = None
+    final_message_status: FinalMessageStatus | None = None
     answer_persisted: bool = False
     tool_outcome_counts: dict[str, int] = Field(default_factory=dict)
     action_ids: list[str] = Field(default_factory=list)
@@ -178,5 +187,5 @@ class RunRecord(BaseModel):
         default_factory=RunRuntimeMeasurements
     )
     evidence: RunCompletionEvidence = Field(default_factory=RunCompletionEvidence)
-    trace_id: str | None = None
+    trace_id: TraceId | None = None
     error: RunError | None = None

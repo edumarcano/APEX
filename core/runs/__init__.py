@@ -2,6 +2,7 @@
 
 from core.runs.models import (
     SAFE_ERROR_MESSAGES,
+    FinalMessageStatus,
     RunCompletionEvidence,
     RunError,
     RunErrorCode,
@@ -11,6 +12,7 @@ from core.runs.models import (
     RunRuntimeMeasurements,
     RunStatus,
     RunStopReason,
+    TraceId,
     UsageQuality,
 )
 from core.runs.service import (
@@ -31,6 +33,7 @@ __all__ = [
     "RunConflictError",
     "RunError",
     "RunErrorCode",
+    "FinalMessageStatus",
     "RunHandle",
     "RunLimitSnapshot",
     "RunNotFoundError",
@@ -43,6 +46,7 @@ __all__ = [
     "RunStore",
     "RunStoreError",
     "SAFE_ERROR_MESSAGES",
+    "TraceId",
     "UsageQuality",
     "get_run_service",
     "set_run_service",

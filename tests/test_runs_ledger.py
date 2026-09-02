@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 import tempfile
+import threading
 import unittest
 from contextlib import closing
 from pathlib import Path
@@ -190,7 +191,7 @@ class RunsLedgerTests(unittest.TestCase):
                 "SELECT version FROM schema_versions WHERE domain = 'cortex_runs'"
             ).fetchone()
             self.assertIsNotNone(row)
-            self.assertEqual(int(row[0]), 1)
+            self.assertEqual(int(row[0]), 2)
 
         self.store.initialize()
 
@@ -198,6 +199,32 @@ class RunsLedgerTests(unittest.TestCase):
             conn.execute("UPDATE schema_versions SET version = 99 WHERE domain = 'cortex_runs'")
         with self.assertRaises(RunStoreError):
             self.store.initialize()
+
+    def test_v1_schema_migrates_to_v2_with_message_foreign_keys(self) -> None:
+        """Verify valid v1 ledger rows survive the v2 constrained-table migration."""
+        legacy_run, _ = self._create_run()
+
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
+            conn.execute("ALTER TABLE cortex_runs RENAME TO cortex_runs_source")
+            conn.execute(
+                "CREATE TABLE cortex_runs AS SELECT * FROM cortex_runs_source"
+            )
+            conn.execute("DROP TABLE cortex_runs_source")
+            conn.execute(
+                "UPDATE schema_versions SET version = 1 WHERE domain = 'cortex_runs'"
+            )
+
+        self.store.initialize()
+
+        migrated = self.store.get_run(legacy_run.id, "production")
+        self.assertEqual(migrated.id, legacy_run.id)
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            foreign_keys = conn.execute("PRAGMA foreign_key_list(cortex_runs)").fetchall()
+            self.assertEqual(len(foreign_keys), 5)
+            version = conn.execute(
+                "SELECT version FROM schema_versions WHERE domain = 'cortex_runs'"
+            ).fetchone()
+        self.assertEqual(int(version[0]), 2)
 
     def test_foreign_key_constraints_on_messages(self) -> None:
         """Verify composite foreign keys to conversation_messages(conversation_id, id)."""
@@ -339,6 +366,9 @@ class RunsLedgerTests(unittest.TestCase):
                 tool_outcome_counts={"invalid outcome with space": 1},
             )
 
+        with self.assertRaises(ValidationError):
+            RunCompletionEvidence(final_message_status="provider response text")
+
         # 3. Error messages are strictly normalized to predefined safe taxonomy
         err = RunError(
             code="provider_error",
@@ -389,18 +419,33 @@ class RunsLedgerTests(unittest.TestCase):
 
             self.assertNotIn("sk-leak-in-exception-args", row_str)
             self.assertNotIn("Secret prompt", row_str)
-            self.assertIn("Inference provider encountered an unrecoverable error.", row_str)
-            self.assertIn("opaque-action-id-42", row_str)
+        self.assertIn("Inference provider encountered an unrecoverable error.", row_str)
+        self.assertIn("opaque-action-id-42", row_str)
+
+        with self.assertRaises(RunConflictError):
+            self.store.create_run(
+                run_id=uuid4(),
+                conversation_id=run.conversation_id,
+                partition="production",
+                user_message_id=run.user_message_id,
+                agent_message_id=uuid4(),
+                requested_model="m",
+                limit_snapshot=self._default_limits(),
+                trace_id="not-a-trace-id",
+            )
 
     def test_demo_mode_shared_ephemeral_db(self) -> None:
         """Verify DEMO_MODE creates runs in a shared ephemeral in-memory database."""
         demo_db = sqlite3.connect(":memory:", check_same_thread=False)
         demo_db.execute("PRAGMA foreign_keys=ON")
+        demo_lock = threading.RLock()
 
-        demo_conversations = ConversationStore(None, connection=demo_db)
+        demo_conversations = ConversationStore(
+            None, connection=demo_db, lock=demo_lock
+        )
         demo_conversations.initialize()
 
-        demo_runs = RunStore(None, connection=demo_db)
+        demo_runs = RunStore(None, connection=demo_db, lock=demo_lock)
         demo_runs.initialize()
 
         conv_id = uuid4()
@@ -440,6 +485,23 @@ class RunsLedgerTests(unittest.TestCase):
         )
         self.assertFalse(replayed)
         self.assertEqual(run.conversation_id, conv_id)
+
+        started = threading.Event()
+        completed = threading.Event()
+
+        def read_runs() -> None:
+            started.set()
+            demo_runs.list_runs("production")
+            completed.set()
+
+        with demo_lock:
+            worker = threading.Thread(target=read_runs)
+            worker.start()
+            self.assertTrue(started.wait(timeout=1.0))
+            self.assertFalse(completed.wait(timeout=0.1))
+        worker.join(timeout=1.0)
+        self.assertFalse(worker.is_alive())
+        self.assertTrue(completed.is_set())
 
         demo_runs.close()
         demo_conversations.close()

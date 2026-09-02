@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -24,6 +25,9 @@ from core.runs.models import (
     RunStopReason,
     UsageQuality,
 )
+
+_RUN_SCHEMA_VERSION = 2
+_TRACE_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 
 
 class RunStoreError(RuntimeError):
@@ -83,9 +87,10 @@ class RunStore:
         db_path: Path | str | None,
         *,
         connection: sqlite3.Connection | None = None,
+        lock: threading.RLock | None = None,
     ) -> None:
         self._db_path = str(db_path) if db_path is not None else None
-        self._lock = threading.RLock()
+        self._lock = lock or threading.RLock()
         self._owns_memory_connection = connection is None and db_path is None
         self._memory_connection = connection or (
             sqlite3.connect(":memory:", check_same_thread=False)
@@ -129,74 +134,120 @@ class RunStore:
             row = conn.execute(
                 "SELECT version FROM schema_versions WHERE domain = 'cortex_runs'"
             ).fetchone()
-            if row is not None and int(row["version"]) > 1:
+            if row is not None and int(row["version"]) > _RUN_SCHEMA_VERSION:
                 raise RunStoreError("Run schema is newer than this APEX build.")
+            if row is not None and int(row["version"]) == 1:
+                self._migrate_v1_to_v2(conn)
 
+            self._create_schema_v2(conn)
             conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS cortex_runs (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    conversation_id TEXT NOT NULL,
-                    partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')),
-                    user_message_id TEXT NOT NULL,
-                    agent_message_id TEXT NOT NULL UNIQUE,
-                    requested_model TEXT NOT NULL,
-                    resolved_model TEXT,
-                    provider TEXT,
-                    runtime TEXT,
-                    status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled', 'interrupted')),
-                    stop_reason TEXT CHECK(stop_reason IS NULL OR stop_reason IN (
-                        'end_turn', 'operator_cancelled', 'max_elapsed_seconds', 'max_total_tokens',
-                        'max_retries', 'max_model_turns', 'max_tool_calls', 'provider_error',
-                        'tool_error', 'runtime_error', 'resource_exhaustion', 'interrupted_by_restart',
-                        'internal_error'
-                    )),
-                    created_at TEXT NOT NULL,
-                    started_at TEXT,
-                    completed_at TEXT,
-                    updated_at TEXT NOT NULL,
-                    limit_snapshot_json TEXT NOT NULL CHECK(json_valid(limit_snapshot_json)),
-                    turns_count INTEGER NOT NULL DEFAULT 0 CHECK(turns_count >= 0),
-                    tool_calls_count INTEGER NOT NULL DEFAULT 0 CHECK(tool_calls_count >= 0),
-                    retries_count INTEGER NOT NULL DEFAULT 0 CHECK(retries_count >= 0),
-                    total_tokens INTEGER NOT NULL DEFAULT 0 CHECK(total_tokens >= 0),
-                    elapsed_seconds REAL NOT NULL DEFAULT 0.0 CHECK(elapsed_seconds >= 0.0),
-                    usage_quality TEXT NOT NULL CHECK(usage_quality IN ('reported', 'estimated', 'unavailable')),
-                    runtime_measurements_json TEXT CHECK(runtime_measurements_json IS NULL OR json_valid(runtime_measurements_json)),
-                    final_message_id TEXT,
-                    final_message_status TEXT,
-                    answer_persisted INTEGER NOT NULL DEFAULT 0 CHECK(answer_persisted IN (0, 1)),
-                    tool_outcome_counts_json TEXT CHECK(tool_outcome_counts_json IS NULL OR json_valid(tool_outcome_counts_json)),
-                    action_ids_json TEXT CHECK(action_ids_json IS NULL OR json_valid(action_ids_json)),
-                    trace_id TEXT,
-                    error_code TEXT,
-                    error_message TEXT,
-                    FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
-                    FOREIGN KEY(conversation_id, user_message_id) REFERENCES conversation_messages(conversation_id, id) ON DELETE CASCADE,
-                    FOREIGN KEY(conversation_id, agent_message_id) REFERENCES conversation_messages(conversation_id, id) ON DELETE CASCADE
-                )
-                """
+                "INSERT INTO schema_versions(domain, version) VALUES ('cortex_runs', ?) "
+                "ON CONFLICT(domain) DO UPDATE SET version = excluded.version",
+                (_RUN_SCHEMA_VERSION,),
             )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_cortex_runs_partition_created "
-                "ON cortex_runs(partition, created_at DESC)"
+
+    @staticmethod
+    def _create_schema_v2(conn: sqlite3.Connection) -> None:
+        """Create the current run-ledger table and supporting indexes."""
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS cortex_runs (
+                id TEXT PRIMARY KEY NOT NULL,
+                conversation_id TEXT NOT NULL,
+                partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')),
+                user_message_id TEXT NOT NULL,
+                agent_message_id TEXT NOT NULL UNIQUE,
+                requested_model TEXT NOT NULL,
+                resolved_model TEXT,
+                provider TEXT,
+                runtime TEXT,
+                status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled', 'interrupted')),
+                stop_reason TEXT CHECK(stop_reason IS NULL OR stop_reason IN (
+                    'end_turn', 'operator_cancelled', 'max_elapsed_seconds', 'max_total_tokens',
+                    'max_retries', 'max_model_turns', 'max_tool_calls', 'provider_error',
+                    'tool_error', 'runtime_error', 'resource_exhaustion', 'interrupted_by_restart',
+                    'internal_error'
+                )),
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT,
+                updated_at TEXT NOT NULL,
+                limit_snapshot_json TEXT NOT NULL CHECK(json_valid(limit_snapshot_json)),
+                turns_count INTEGER NOT NULL DEFAULT 0 CHECK(turns_count >= 0),
+                tool_calls_count INTEGER NOT NULL DEFAULT 0 CHECK(tool_calls_count >= 0),
+                retries_count INTEGER NOT NULL DEFAULT 0 CHECK(retries_count >= 0),
+                total_tokens INTEGER NOT NULL DEFAULT 0 CHECK(total_tokens >= 0),
+                elapsed_seconds REAL NOT NULL DEFAULT 0.0 CHECK(elapsed_seconds >= 0.0),
+                usage_quality TEXT NOT NULL CHECK(usage_quality IN ('reported', 'estimated', 'unavailable')),
+                runtime_measurements_json TEXT CHECK(runtime_measurements_json IS NULL OR json_valid(runtime_measurements_json)),
+                final_message_id TEXT,
+                final_message_status TEXT CHECK(final_message_status IS NULL OR final_message_status IN ('completed', 'failed', 'interrupted')),
+                answer_persisted INTEGER NOT NULL DEFAULT 0 CHECK(answer_persisted IN (0, 1)),
+                tool_outcome_counts_json TEXT CHECK(tool_outcome_counts_json IS NULL OR json_valid(tool_outcome_counts_json)),
+                action_ids_json TEXT CHECK(action_ids_json IS NULL OR json_valid(action_ids_json)),
+                trace_id TEXT CHECK(trace_id IS NULL OR (length(trace_id) = 32 AND trace_id NOT GLOB '*[^0-9a-f]*')),
+                error_code TEXT,
+                error_message TEXT,
+                FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+                FOREIGN KEY(conversation_id, user_message_id) REFERENCES conversation_messages(conversation_id, id) ON DELETE CASCADE,
+                FOREIGN KEY(conversation_id, agent_message_id) REFERENCES conversation_messages(conversation_id, id) ON DELETE CASCADE
             )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_cortex_runs_partition_status "
-                "ON cortex_runs(partition, status)"
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cortex_runs_partition_created "
+            "ON cortex_runs(partition, created_at DESC)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cortex_runs_partition_status "
+            "ON cortex_runs(partition, status)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cortex_runs_conversation "
+            "ON cortex_runs(conversation_id, created_at DESC)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cortex_runs_agent_message "
+            "ON cortex_runs(agent_message_id)"
+        )
+
+    @classmethod
+    def _migrate_v1_to_v2(cls, conn: sqlite3.Connection) -> None:
+        """Rebuild the initial ledger schema with message foreign keys and safe metadata checks."""
+        valid_rows = conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM cortex_runs r
+            JOIN conversations c ON c.id = r.conversation_id
+            JOIN conversation_messages u
+              ON u.conversation_id = r.conversation_id AND u.id = r.user_message_id AND u.role = 'user'
+            JOIN conversation_messages a
+              ON a.conversation_id = r.conversation_id AND a.id = r.agent_message_id AND a.role = 'agent'
+            """
+        ).fetchone()
+        total_rows = conn.execute("SELECT COUNT(*) AS count FROM cortex_runs").fetchone()
+        assert valid_rows is not None and total_rows is not None
+        if int(valid_rows["count"]) != int(total_rows["count"]):
+            raise RunStoreError(
+                "Run migration requires every ledger row to reference its conversation messages."
             )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_cortex_runs_conversation "
-                "ON cortex_runs(conversation_id, created_at DESC)"
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_cortex_runs_agent_message "
-                "ON cortex_runs(agent_message_id)"
-            )
-            conn.execute(
-                "INSERT INTO schema_versions(domain, version) VALUES ('cortex_runs', 1) "
-                "ON CONFLICT(domain) DO UPDATE SET version = excluded.version"
-            )
+
+        conn.execute("ALTER TABLE cortex_runs RENAME TO cortex_runs_v1")
+        for index_name in (
+            "idx_cortex_runs_partition_created",
+            "idx_cortex_runs_partition_status",
+            "idx_cortex_runs_conversation",
+            "idx_cortex_runs_agent_message",
+        ):
+            conn.execute(f"DROP INDEX IF EXISTS {index_name}")
+        cls._create_schema_v2(conn)
+        conn.execute(
+            """
+            INSERT INTO cortex_runs
+            SELECT * FROM cortex_runs_v1
+            """
+        )
+        conn.execute("DROP TABLE cortex_runs_v1")
 
     @staticmethod
     def _record(row: sqlite3.Row) -> RunRecord:
@@ -270,6 +321,8 @@ class RunStore:
         """
         if partition not in _VALID_PARTITIONS:
             raise RunConflictError(f"Invalid partition: {partition}")
+        if trace_id is not None and not _TRACE_ID_PATTERN.fullmatch(trace_id):
+            raise RunConflictError("Trace ID must be a 32-character lowercase hexadecimal value.")
 
         now = utc_now_iso()
         snapshot_json = _json(limit_snapshot.model_dump())
