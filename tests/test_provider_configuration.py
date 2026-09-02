@@ -10,7 +10,7 @@ from core.agent.model_catalog import get_model_profile
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.ollama import OllamaProvider
 from core.agent.types import AgentMessage
-from core.config import GEMINI_AGENT_MAX_TOOL_CALLS, GEMINI_AGENT_MAX_TURNS
+from core.config import CORTEX_RUNS_MAX_TOOL_CALLS, CORTEX_RUNS_MAX_MODEL_TURNS
 
 def _concrete_profile(model_id: str):
     model_profile = get_model_profile(model_id)
@@ -31,8 +31,8 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
                 assert profile is not None
                 self.assertGreater(profile.max_tool_turns, 0)
                 self.assertGreaterEqual(profile.max_tool_calls, profile.max_tool_turns)
-                self.assertLessEqual(profile.max_tool_turns, GEMINI_AGENT_MAX_TURNS)
-                self.assertLessEqual(profile.max_tool_calls, GEMINI_AGENT_MAX_TOOL_CALLS)
+                self.assertLessEqual(profile.max_tool_turns, CORTEX_RUNS_MAX_MODEL_TURNS)
+                self.assertLessEqual(profile.max_tool_calls, CORTEX_RUNS_MAX_TOOL_CALLS)
 
     def test_local_models_leave_a_final_answer_turn_after_tool_work(self) -> None:
         for model_id in (
