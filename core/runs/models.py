@@ -114,7 +114,6 @@ class RunCompletionEvidence(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    final_message_id: UUID | None = None
     final_message_status: FinalMessageStatus | None = None
     answer_persisted: bool = False
     tool_outcome_counts: dict[str, int] = Field(default_factory=dict)

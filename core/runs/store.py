@@ -14,7 +14,6 @@ from uuid import UUID
 
 from core.connectors.models import utc_now_iso
 from core.runs.models import (
-    SAFE_ERROR_MESSAGES,
     RunCompletionEvidence,
     RunError,
     RunLimitSnapshot,
@@ -136,10 +135,13 @@ class RunStore:
             ).fetchone()
             if row is not None and int(row["version"]) > _RUN_SCHEMA_VERSION:
                 raise RunStoreError("Run schema is newer than this APEX build.")
-            if row is not None and int(row["version"]) == 1:
-                self._migrate_v1_to_v2(conn)
+            if row is not None and int(row["version"]) != _RUN_SCHEMA_VERSION:
+                raise RunStoreError(
+                    "The pre-release run ledger is incompatible with this APEX build. "
+                    "Delete cortex_runs and its schema_versions entry before starting beta.2."
+                )
 
-            self._create_schema_v2(conn)
+            self._create_schema(conn)
             conn.execute(
                 "INSERT INTO schema_versions(domain, version) VALUES ('cortex_runs', ?) "
                 "ON CONFLICT(domain) DO UPDATE SET version = excluded.version",
@@ -147,7 +149,7 @@ class RunStore:
             )
 
     @staticmethod
-    def _create_schema_v2(conn: sqlite3.Connection) -> None:
+    def _create_schema(conn: sqlite3.Connection) -> None:
         """Create the current run-ledger table and supporting indexes."""
         conn.execute(
             """
@@ -180,14 +182,12 @@ class RunStore:
                 elapsed_seconds REAL NOT NULL DEFAULT 0.0 CHECK(elapsed_seconds >= 0.0),
                 usage_quality TEXT NOT NULL CHECK(usage_quality IN ('reported', 'estimated', 'unavailable')),
                 runtime_measurements_json TEXT CHECK(runtime_measurements_json IS NULL OR json_valid(runtime_measurements_json)),
-                final_message_id TEXT,
                 final_message_status TEXT CHECK(final_message_status IS NULL OR final_message_status IN ('completed', 'failed', 'interrupted')),
                 answer_persisted INTEGER NOT NULL DEFAULT 0 CHECK(answer_persisted IN (0, 1)),
                 tool_outcome_counts_json TEXT CHECK(tool_outcome_counts_json IS NULL OR json_valid(tool_outcome_counts_json)),
                 action_ids_json TEXT CHECK(action_ids_json IS NULL OR json_valid(action_ids_json)),
                 trace_id TEXT CHECK(trace_id IS NULL OR (length(trace_id) = 32 AND trace_id NOT GLOB '*[^0-9a-f]*')),
                 error_code TEXT,
-                error_message TEXT,
                 FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
                 FOREIGN KEY(conversation_id, user_message_id) REFERENCES conversation_messages(conversation_id, id) ON DELETE CASCADE,
                 FOREIGN KEY(conversation_id, agent_message_id) REFERENCES conversation_messages(conversation_id, id) ON DELETE CASCADE
@@ -206,49 +206,6 @@ class RunStore:
             "CREATE INDEX IF NOT EXISTS idx_cortex_runs_conversation "
             "ON cortex_runs(conversation_id, created_at DESC)"
         )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_cortex_runs_agent_message "
-            "ON cortex_runs(agent_message_id)"
-        )
-
-    @classmethod
-    def _migrate_v1_to_v2(cls, conn: sqlite3.Connection) -> None:
-        """Rebuild the initial ledger schema with message foreign keys and safe metadata checks."""
-        valid_rows = conn.execute(
-            """
-            SELECT COUNT(*) AS count
-            FROM cortex_runs r
-            JOIN conversations c ON c.id = r.conversation_id
-            JOIN conversation_messages u
-              ON u.conversation_id = r.conversation_id AND u.id = r.user_message_id AND u.role = 'user'
-            JOIN conversation_messages a
-              ON a.conversation_id = r.conversation_id AND a.id = r.agent_message_id AND a.role = 'agent'
-            """
-        ).fetchone()
-        total_rows = conn.execute("SELECT COUNT(*) AS count FROM cortex_runs").fetchone()
-        assert valid_rows is not None and total_rows is not None
-        if int(valid_rows["count"]) != int(total_rows["count"]):
-            raise RunStoreError(
-                "Run migration requires every ledger row to reference its conversation messages."
-            )
-
-        conn.execute("ALTER TABLE cortex_runs RENAME TO cortex_runs_v1")
-        for index_name in (
-            "idx_cortex_runs_partition_created",
-            "idx_cortex_runs_partition_status",
-            "idx_cortex_runs_conversation",
-            "idx_cortex_runs_agent_message",
-        ):
-            conn.execute(f"DROP INDEX IF EXISTS {index_name}")
-        cls._create_schema_v2(conn)
-        conn.execute(
-            """
-            INSERT INTO cortex_runs
-            SELECT * FROM cortex_runs_v1
-            """
-        )
-        conn.execute("DROP TABLE cortex_runs_v1")
-
     @staticmethod
     def _record(row: sqlite3.Row) -> RunRecord:
         limits_dict = _parse_json(row["limit_snapshot_json"]) or {}
@@ -257,7 +214,6 @@ class RunStore:
         action_ids_list = _parse_json(row["action_ids_json"]) or []
 
         evidence = RunCompletionEvidence(
-            final_message_id=UUID(str(row["final_message_id"])) if row["final_message_id"] else None,
             final_message_status=str(row["final_message_status"]) if row["final_message_status"] else None,
             answer_persisted=bool(row["answer_persisted"]),
             tool_outcome_counts=tool_outcomes_dict,
@@ -347,13 +303,15 @@ class RunStore:
                 raise RunConflictError("User message ID must refer to a user message.")
 
             agent_msg = conn.execute(
-                "SELECT role FROM conversation_messages WHERE id = ? AND conversation_id = ?",
+                "SELECT role, status FROM conversation_messages WHERE id = ? AND conversation_id = ?",
                 (str(agent_message_id), str(conversation_id)),
             ).fetchone()
             if agent_msg is None:
                 raise RunNotFoundError("Agent message was not found in this conversation.")
             if agent_msg["role"] != "agent":
                 raise RunConflictError("Agent message ID must refer to an agent message.")
+            if agent_msg["status"] != "pending":
+                raise RunConflictError("Agent message must be pending when a run starts.")
 
             existing = conn.execute(
                 "SELECT * FROM cortex_runs WHERE agent_message_id = ?",
@@ -379,17 +337,17 @@ class RunStore:
                     requested_model, resolved_model, provider, runtime, status, stop_reason,
                     created_at, started_at, completed_at, updated_at, limit_snapshot_json,
                     turns_count, tool_calls_count, retries_count, total_tokens, elapsed_seconds,
-                    usage_quality, runtime_measurements_json, final_message_id, final_message_status,
+                    usage_quality, runtime_measurements_json, final_message_status,
                     answer_persisted, tool_outcome_counts_json, action_ids_json, trace_id,
-                    error_code, error_message
+                    error_code
                 ) VALUES (
                     ?, ?, ?, ?, ?,
                     ?, NULL, NULL, NULL, 'queued', NULL,
                     ?, NULL, NULL, ?, ?,
                     0, 0, 0, 0, 0.0,
-                    'unavailable', NULL, NULL, NULL,
+                    'unavailable', NULL, NULL,
                     0, NULL, NULL, ?,
-                    NULL, NULL
+                    NULL
                 )
                 """,
                 (
@@ -636,8 +594,6 @@ class RunStore:
 
         now = utc_now_iso()
         err_code = error.code if error else None
-        err_msg = error.message if error else None
-
         tool_outcomes = _json(evidence.tool_outcome_counts) if evidence.tool_outcome_counts else None
         action_ids = _json(evidence.action_ids) if evidence.action_ids else None
 
@@ -646,9 +602,9 @@ class RunStore:
                 """
                 UPDATE cortex_runs
                 SET status = ?, stop_reason = ?, completed_at = ?, updated_at = ?,
-                    final_message_id = ?, final_message_status = ?, answer_persisted = ?,
+                    final_message_status = ?, answer_persisted = ?,
                     tool_outcome_counts_json = ?, action_ids_json = ?,
-                    error_code = ?, error_message = ?
+                    error_code = ?
                 WHERE id = ? AND partition = ? AND status IN ('queued', 'running', 'cancelling')
                 """,
                 (
@@ -656,13 +612,11 @@ class RunStore:
                     stop_reason,
                     now,
                     now,
-                    str(evidence.final_message_id) if evidence.final_message_id else None,
                     evidence.final_message_status,
                     persisted,
                     tool_outcomes,
                     action_ids,
                     err_code,
-                    err_msg,
                     str(run_id),
                     partition,
                 ),
@@ -692,7 +646,6 @@ class RunStore:
         'interrupted_by_restart' and a predefined safe error message.
         """
         now = utc_now_iso()
-        msg = SAFE_ERROR_MESSAGES["interrupted_by_restart"]
         with self._connection() as conn, conn:
             res = conn.execute(
                 """
@@ -703,11 +656,10 @@ class RunStore:
                     updated_at = ?,
                     final_message_status = 'interrupted',
                     answer_persisted = 0,
-                    error_code = 'interrupted_by_restart',
-                    error_message = ?
+                    error_code = 'interrupted_by_restart'
                 WHERE status IN ('queued', 'running', 'cancelling')
                 """,
-                (now, now, msg),
+                (now, now),
             )
             return res.rowcount
 

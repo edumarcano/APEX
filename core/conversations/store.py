@@ -343,16 +343,6 @@ class ConversationStore:
             ).fetchone()
             if pending is not None:
                 raise ConversationConflictError("A conversation with a pending turn cannot be deleted.")
-            cortex_runs_table = conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'cortex_runs'"
-            ).fetchone()
-            if cortex_runs_table is not None:
-                active_run = conn.execute(
-                    "SELECT 1 FROM cortex_runs WHERE conversation_id = ? AND status IN ('queued', 'running', 'cancelling') LIMIT 1",
-                    (str(conversation_id),),
-                ).fetchone()
-                if active_run is not None:
-                    raise ConversationConflictError("A conversation with an active run cannot be deleted.")
             conn.execute(
                 "DELETE FROM conversation_messages WHERE conversation_id = ?",
                 (str(conversation_id),),

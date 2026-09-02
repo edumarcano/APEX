@@ -200,31 +200,15 @@ class RunsLedgerTests(unittest.TestCase):
         with self.assertRaises(RunStoreError):
             self.store.initialize()
 
-    def test_v1_schema_migrates_to_v2_with_message_foreign_keys(self) -> None:
-        """Verify valid v1 ledger rows survive the v2 constrained-table migration."""
-        legacy_run, _ = self._create_run()
-
+    def test_rejects_pre_release_run_ledger_schema(self) -> None:
+        """Verify beta.2 rejects rather than migrates an unreleased ledger schema."""
         with closing(sqlite3.connect(self.db_path)) as conn, conn:
-            conn.execute("ALTER TABLE cortex_runs RENAME TO cortex_runs_source")
-            conn.execute(
-                "CREATE TABLE cortex_runs AS SELECT * FROM cortex_runs_source"
-            )
-            conn.execute("DROP TABLE cortex_runs_source")
             conn.execute(
                 "UPDATE schema_versions SET version = 1 WHERE domain = 'cortex_runs'"
             )
 
-        self.store.initialize()
-
-        migrated = self.store.get_run(legacy_run.id, "production")
-        self.assertEqual(migrated.id, legacy_run.id)
-        with closing(sqlite3.connect(self.db_path)) as conn:
-            foreign_keys = conn.execute("PRAGMA foreign_key_list(cortex_runs)").fetchall()
-            self.assertEqual(len(foreign_keys), 5)
-            version = conn.execute(
-                "SELECT version FROM schema_versions WHERE domain = 'cortex_runs'"
-            ).fetchone()
-        self.assertEqual(int(version[0]), 2)
+        with self.assertRaisesRegex(RunStoreError, "pre-release run ledger"):
+            self.store.initialize()
 
     def test_foreign_key_constraints_on_messages(self) -> None:
         """Verify composite foreign keys to conversation_messages(conversation_id, id)."""
@@ -267,6 +251,22 @@ class RunsLedgerTests(unittest.TestCase):
             limit_snapshot=self._default_limits(),
         )
         self.assertFalse(replayed)
+
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
+            conn.execute(
+                "UPDATE conversation_messages SET status = 'completed' WHERE id = ?",
+                (str(valid_aid),),
+            )
+        with self.assertRaisesRegex(RunConflictError, "must be pending"):
+            self.store.create_run(
+                run_id=uuid4(),
+                conversation_id=self.prod_conversation_id,
+                partition="production",
+                user_message_id=valid_uid,
+                agent_message_id=valid_aid,
+                requested_model="m",
+                limit_snapshot=self._default_limits(),
+            )
 
         # SQLite schema constraint: inserting orphan directly violates composite FK
         with closing(sqlite3.connect(self.db_path)) as conn:
@@ -419,7 +419,7 @@ class RunsLedgerTests(unittest.TestCase):
 
             self.assertNotIn("sk-leak-in-exception-args", row_str)
             self.assertNotIn("Secret prompt", row_str)
-        self.assertIn("Inference provider encountered an unrecoverable error.", row_str)
+        self.assertNotIn("Inference provider encountered an unrecoverable error.", row_str)
         self.assertIn("opaque-action-id-42", row_str)
 
         with self.assertRaises(RunConflictError):
@@ -632,7 +632,6 @@ class RunsLedgerTests(unittest.TestCase):
 
         # Finalize
         evidence = RunCompletionEvidence(
-            final_message_id=run.agent_message_id,
             final_message_status="completed",
             answer_persisted=True,
             tool_outcome_counts={"search": 2, "read": 1},
