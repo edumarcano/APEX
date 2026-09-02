@@ -9,10 +9,18 @@ from fastapi import HTTPException
 
 from core.agent.local_runtime.contract import LocalModelRef
 from core.api.cortex import (
-    build_agent_statuses,
+    build_model_catalog,
     load_local_model_endpoint,
     unload_active_local_model_endpoint,
 )
+
+
+def _selected_model_entry():
+    from core.settings import get_settings_store
+
+    model_id = get_settings_store().get_snapshot().ask_apex.selected_model
+    selected = next(entry for entry in build_model_catalog() if entry.model_id == model_id)
+    return selected
 
 
 def _local_settings_mock(*, context_window: int = 16384) -> mock.Mock:
@@ -325,10 +333,10 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
                 {"OPENAI_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"},
             ),
         ):
-            profiles = {profile.key: profile for profile in build_agent_statuses()}
+            selected = _selected_model_entry()
 
-        self.assertEqual(profiles["apex"].status, "model_not_installed")
-        self.assertIn("not installed or configured", profiles["apex"].reason or "")
+        self.assertEqual(selected.status, "model_not_installed")
+        self.assertIn("not installed or configured", selected.reason or "")
 
     def test_local_model_status_reports_router_load_failure(self) -> None:
         snapshot = {
@@ -391,9 +399,9 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
                 {"OPENAI_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"},
             ),
         ):
-            profiles = {profile.key: profile for profile in build_agent_statuses()}
+            selected = _selected_model_entry()
 
-        local_status = profiles["apex"]
+        local_status = selected
         self.assertNotEqual(local_status.status, "available")
         self.assertEqual(local_status.status, "provider_error")
         self.assertFalse(local_status.active)
@@ -478,12 +486,12 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             mock.patch("core.agent.catalog.is_dev_mode", return_value=True),
             mock.patch.dict("os.environ", {"OPENAI_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"}),
         ):
-            profiles = {profile.key: profile for profile in build_agent_statuses()}
+            selected = _selected_model_entry()
 
-        self.assertFalse(profiles["apex"].active)
-        self.assertIsNone(profiles["apex"].idle_unload_remaining_seconds)
+        self.assertFalse(selected.active)
+        self.assertIsNone(selected.idle_unload_remaining_seconds)
 
-    def test_local_model_status_tracks_resident_model_separately(self) -> None:
+    def test_selected_model_status_does_not_adopt_another_models_residency(self) -> None:
         snapshot = {
             "provider": "ollama",
             "reachable": True,
@@ -533,15 +541,13 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             ),
             mock.patch.dict("os.environ", {"OPENAI_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"}),
         ):
-            profiles = {profile.key: profile for profile in build_agent_statuses()}
+            selected = _selected_model_entry()
 
-        local_status = profiles["apex"]
-        self.assertTrue(local_status.active)
-        self.assertEqual(local_status.configured_model, "qwen3:4b-instruct")
-        self.assertIsNotNone(local_status.loaded_model)
-        assert local_status.loaded_model is not None
-        self.assertEqual(local_status.loaded_model.name, "qwen3:1.7b")
-        self.assertEqual(local_status.idle_unload_remaining_seconds, 60)
+        local_status = selected
+        self.assertFalse(local_status.active)
+        self.assertEqual(local_status.model_id, "qwen3:4b-instruct")
+        self.assertIsNone(local_status.loaded_model)
+        self.assertIsNone(local_status.idle_unload_remaining_seconds)
 
 
 if __name__ == "__main__":

@@ -24,7 +24,6 @@ from core.settings import (
 )
 from core.config import is_dev_mode
 from core.api.cortex import (
-    build_agent_statuses,
     build_tool_catalog,
     build_tool_preflight,
     load_local_model_endpoint,
@@ -54,7 +53,6 @@ from core.knowledge.store import KnowledgeConflictError, KnowledgeNotFoundError,
 from core.context import ContextAssembler, ContextPolicy
 from core.knowledge import get_knowledge_service
 from core.api.models import (
-    AgentStatus,
     CortexAgentResponse,
     ModelVerificationRequest,
     ActionResponse,

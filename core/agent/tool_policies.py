@@ -55,21 +55,3 @@ def hosted_tools_for_agent(
         google_search_enabled=google_search_enabled,
         google_maps_enabled=google_maps_enabled,
     )
-
-
-def effective_native_tools(
-    model_profile: ModelProfile,
-    *,
-    google_search_enabled: bool,
-    google_maps_enabled: bool,
-) -> dict[str, bool]:
-    """Return hosted-tool availability and effective enabled state for the HUD."""
-    enabled = hosted_tools_for_model(
-        model_profile,
-        google_search_enabled=google_search_enabled,
-        google_maps_enabled=google_maps_enabled,
-    )
-    return {
-        "google_search": "google_search" in enabled,
-        "google_maps": "google_maps" in enabled,
-    }

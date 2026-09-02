@@ -11,7 +11,12 @@ from fastapi.testclient import TestClient
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.model_catalog import get_model_profile
 from core.agent.tool_policies import filter_agent_capabilities, hosted_tools_for_agent
-from core.agent.types import AgentMessage, AgentQueryRequest, AgentQueryResponse
+from core.agent.types import (
+    AgentMessage,
+    AgentQueryRequest,
+    AgentQueryResponse,
+    ToolSelectionDiagnostics,
+)
 from core.api.models import ToolPreflightRequest
 from core.api.cortex import query_agent
 
@@ -38,6 +43,42 @@ class LocalEffortRejectionTests(unittest.TestCase):
                     )
                 )
         self.assertEqual(ctx.exception.status_code, 400)
+
+    def test_demo_metadata_uses_explicit_local_model_not_saved_cloud_model(self) -> None:
+        saved_cloud_model = get_model_profile("gpt-5.6-luna")
+        assert saved_cloud_model is not None
+        settings = mock.Mock()
+        settings.ask_apex.enabled = True
+        with (
+            mock.patch("core.api.cortex.DEMO_MODE", True),
+            mock.patch("core.api.cortex.get_settings_store") as store_mock,
+            mock.patch(
+                "core.agent.catalog.resolve_selected_model_profile",
+                return_value=saved_cloud_model,
+            ),
+            mock.patch(
+                "core.api.cortex.resolve_selected_tools",
+                return_value=mock.Mock(
+                    failures=[],
+                    descriptors=[],
+                    diagnostics=ToolSelectionDiagnostics(),
+                ),
+            ),
+        ):
+            store_mock.return_value.get_snapshot.return_value = settings
+            response = query_agent(
+                AgentQueryRequest(
+                    prompt="hello",
+                    agent="apex",
+                    model_id="gemma-4-E2B-Q4_K_M.gguf",
+                    context_window=4096,
+                    local_reasoning_mode="none",
+                )
+            )
+
+        self.assertEqual(response.agent_used["configured_model"], "gemma-4-E2B-Q4_K_M.gguf")
+        self.assertEqual(response.agent_used["resolved_model"], "gemma-4-E2B-Q4_K_M.gguf")
+        self.assertEqual(response.agent_used["runtime"], "local")
 
 
 class SandboxPolicyTests(unittest.TestCase):
