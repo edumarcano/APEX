@@ -42,43 +42,55 @@ def _parse_stored_timestamp(raw: str) -> datetime:
     return parsed
 
 
-def initialize_db(*, include_actions: bool = True) -> None:
-    """Initialize local persistence; demo mode may deliberately skip action tables."""
+def _init_db_schema(conn: sqlite3.Connection, *, include_actions: bool) -> None:
+    cursor = conn.cursor()
+    cursor.execute(
+        "CREATE TABLE IF NOT EXISTS runs "
+        "(id INTEGER PRIMARY KEY, timestamp TEXT)"
+    )
+    cursor.execute(
+        "CREATE TABLE IF NOT EXISTS reminders "
+        "(id INTEGER PRIMARY KEY, note TEXT, is_read INTEGER DEFAULT 0)"
+    )
+    _initialize_reminder_schema(conn)
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS briefings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            briefing TEXT NOT NULL,
+            digest_json TEXT NOT NULL,
+            metadata_json TEXT
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_briefings_timestamp "
+        "ON briefings(timestamp DESC)"
+    )
+    cursor.execute("PRAGMA table_info(briefings)")
+    if "metadata_json" not in {str(row[1]) for row in cursor.fetchall()}:
+        cursor.execute("ALTER TABLE briefings ADD COLUMN metadata_json TEXT")
+    if include_actions:
+        # Local import keeps the action domain independent of global database state.
+        from core.actions.store import initialize_action_schema
+
+        initialize_action_schema(conn)
+
+
+def initialize_db(
+    *,
+    include_actions: bool = True,
+    connection: sqlite3.Connection | None = None,
+) -> None:
+    """Initialize local persistence; demo mode may deliberately skip action tables or use a shared connection."""
+    if connection is not None:
+        with connection:
+            _init_db_schema(connection, include_actions=include_actions)
+        return
     with _connection() as conn:
         with conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "CREATE TABLE IF NOT EXISTS runs "
-                "(id INTEGER PRIMARY KEY, timestamp TEXT)"
-            )
-            cursor.execute(
-                "CREATE TABLE IF NOT EXISTS reminders "
-                "(id INTEGER PRIMARY KEY, note TEXT, is_read INTEGER DEFAULT 0)"
-            )
-            _initialize_reminder_schema(conn)
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS briefings (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp TEXT NOT NULL,
-                    briefing TEXT NOT NULL,
-                    digest_json TEXT NOT NULL,
-                    metadata_json TEXT
-                )
-                """
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_briefings_timestamp "
-                "ON briefings(timestamp DESC)"
-            )
-            cursor.execute("PRAGMA table_info(briefings)")
-            if "metadata_json" not in {str(row[1]) for row in cursor.fetchall()}:
-                cursor.execute("ALTER TABLE briefings ADD COLUMN metadata_json TEXT")
-            if include_actions:
-                # Local import keeps the action domain independent of global database state.
-                from core.actions.store import initialize_action_schema
-
-                initialize_action_schema(conn)
+            _init_db_schema(conn, include_actions=include_actions)
 
 
 def probe_db() -> None:

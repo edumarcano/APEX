@@ -9,13 +9,21 @@ import json
 import logging
 import os
 from pathlib import Path
+from dataclasses import dataclass
 from typing import Any, Final, Literal, cast
 
 from dotenv import load_dotenv
 
 __all__ = [
-    "GEMINI_AGENT_MAX_TOOL_CALLS",
-    "GEMINI_AGENT_MAX_TURNS",
+    "CORTEX_RUNS_CONFIG",
+    "CORTEX_RUNS_EVENT_REPLAY_LIMIT",
+    "CORTEX_RUNS_MAX_CONCURRENT_RUNS",
+    "CORTEX_RUNS_MAX_ELAPSED_SECONDS",
+    "CORTEX_RUNS_MAX_MODEL_TURNS",
+    "CORTEX_RUNS_MAX_RETRIES",
+    "CORTEX_RUNS_MAX_TOOL_CALLS",
+    "CORTEX_RUNS_MAX_TOTAL_TOKENS",
+    "CortexRunsConfig",
     "AGENT_SYSTEM_PROMPT",
     "LOCAL_AGENT_SYSTEM_PROMPT",
     "CONFIG_PATH",
@@ -455,30 +463,91 @@ except Exception as exc:
 
 LOCAL_MAX_RECENT_CONVERSATION_MESSAGES: Final[int] = 6
 
-try:
-    _gemini_cfg = _CONFIG_DATA.get("gemini", {})
-    if not isinstance(_gemini_cfg, dict):
-        _LOGGER.warning('Config key "gemini" must be a JSON object; using defaults.')
-        _gemini_cfg = {}
+@dataclass(frozen=True, slots=True)
+class CortexRunsConfig:
+    max_concurrent_runs: int
+    max_elapsed_seconds: int
+    max_total_tokens: int
+    max_retries: int
+    max_model_turns: int
+    max_tool_calls: int
+    event_replay_limit: int
 
-    GEMINI_AGENT_MAX_TURNS: Final[int] = _parse_config_int(
-        _gemini_cfg.get("agent_max_turns"),
-        key="gemini.agent_max_turns",
-        default=6,
+
+try:
+    _cortex_runs_cfg = _CONFIG_DATA.get("cortex_runs", {})
+    if not isinstance(_cortex_runs_cfg, dict):
+        _LOGGER.warning('Config key "cortex_runs" must be a JSON object; using defaults.')
+        _cortex_runs_cfg = {}
+
+    CORTEX_RUNS_MAX_CONCURRENT_RUNS: Final[int] = _parse_config_int(
+        _cortex_runs_cfg.get("max_concurrent_runs"),
+        key="cortex_runs.max_concurrent_runs",
+        default=2,
         min_value=1,
-        max_value=6,
+        max_value=4,
     )
-    GEMINI_AGENT_MAX_TOOL_CALLS: Final[int] = _parse_config_int(
-        _gemini_cfg.get("agent_max_tool_calls"),
-        key="gemini.agent_max_tool_calls",
-        default=10,
-        min_value=1,
+    CORTEX_RUNS_MAX_ELAPSED_SECONDS: Final[int] = _parse_config_int(
+        _cortex_runs_cfg.get("max_elapsed_seconds"),
+        key="cortex_runs.max_elapsed_seconds",
+        default=600,
+        min_value=30,
+        max_value=3600,
+    )
+    CORTEX_RUNS_MAX_TOTAL_TOKENS: Final[int] = _parse_config_int(
+        _cortex_runs_cfg.get("max_total_tokens"),
+        key="cortex_runs.max_total_tokens",
+        default=128000,
+        min_value=8192,
+        max_value=2000000,
+    )
+    CORTEX_RUNS_MAX_RETRIES: Final[int] = _parse_config_int(
+        _cortex_runs_cfg.get("max_retries"),
+        key="cortex_runs.max_retries",
+        default=4,
+        min_value=0,
         max_value=10,
     )
+    CORTEX_RUNS_MAX_MODEL_TURNS: Final[int] = _parse_config_int(
+        _cortex_runs_cfg.get("max_model_turns"),
+        key="cortex_runs.max_model_turns",
+        default=6,
+        min_value=1,
+        max_value=12,
+    )
+    CORTEX_RUNS_MAX_TOOL_CALLS: Final[int] = _parse_config_int(
+        _cortex_runs_cfg.get("max_tool_calls"),
+        key="cortex_runs.max_tool_calls",
+        default=10,
+        min_value=1,
+        max_value=32,
+    )
+    CORTEX_RUNS_EVENT_REPLAY_LIMIT: Final[int] = _parse_config_int(
+        _cortex_runs_cfg.get("event_replay_limit"),
+        key="cortex_runs.event_replay_limit",
+        default=512,
+        min_value=64,
+        max_value=2048,
+    )
 except Exception as exc:
-    _LOGGER.warning("Unable to parse gemini config: %s; using defaults.", exc)
-    GEMINI_AGENT_MAX_TURNS = 6
-    GEMINI_AGENT_MAX_TOOL_CALLS = 10
+    _LOGGER.warning("Unable to parse cortex_runs config: %s; using defaults.", exc)
+    CORTEX_RUNS_MAX_CONCURRENT_RUNS = 2
+    CORTEX_RUNS_MAX_ELAPSED_SECONDS = 600
+    CORTEX_RUNS_MAX_TOTAL_TOKENS = 128000
+    CORTEX_RUNS_MAX_RETRIES = 4
+    CORTEX_RUNS_MAX_MODEL_TURNS = 6
+    CORTEX_RUNS_MAX_TOOL_CALLS = 10
+    CORTEX_RUNS_EVENT_REPLAY_LIMIT = 512
+
+CORTEX_RUNS_CONFIG: Final[CortexRunsConfig] = CortexRunsConfig(
+    max_concurrent_runs=CORTEX_RUNS_MAX_CONCURRENT_RUNS,
+    max_elapsed_seconds=CORTEX_RUNS_MAX_ELAPSED_SECONDS,
+    max_total_tokens=CORTEX_RUNS_MAX_TOTAL_TOKENS,
+    max_retries=CORTEX_RUNS_MAX_RETRIES,
+    max_model_turns=CORTEX_RUNS_MAX_MODEL_TURNS,
+    max_tool_calls=CORTEX_RUNS_MAX_TOOL_CALLS,
+    event_replay_limit=CORTEX_RUNS_EVENT_REPLAY_LIMIT,
+)
 
 _DEFAULT_QWEN_17B_RAM: Final[float] = 88.0
 _DEFAULT_QWEN_17B_CPU: Final[float] = 95.0

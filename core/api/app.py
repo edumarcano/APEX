@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sqlite3
+import threading
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -29,6 +31,7 @@ from core.agent.local_runtime.registry import any_local_runtime_enabled
 from core.agent.providers.llama_cpp_supervisor import get_llama_cpp_server_supervisor
 from core import database, speaker
 from core.conversations import ConversationService, ConversationStore, set_conversation_service
+from core.runs import RunService, RunStore, set_run_service
 from core.knowledge import KnowledgeService, KnowledgeStore, set_knowledge_service
 from core.knowledge.capture import ContextCaptureExecutor, ContextCaptureVerifier, CAPABILITY_NAME
 from core.knowledge.reconciliation import (
@@ -56,7 +59,14 @@ async def _app_lifespan(_app: FastAPI):
     mcp_manager: MCPClientManager | None = None
     microsoft_auth: MicrosoftTodoAuthenticationService | None = None
     microsoft_todo_client: MicrosoftTodoClient | None = None
+    demo_db: sqlite3.Connection | None = None
+    demo_db_lock: threading.RLock | None = None
+    if DEMO_MODE:
+        demo_db = sqlite3.connect(":memory:", check_same_thread=False)
+        demo_db.execute("PRAGMA foreign_keys=ON;")
+        demo_db_lock = threading.RLock()
     conversation_store: ConversationStore | None = None
+    run_store: RunStore | None = None
     retrieval_store: RetrievalStore | None = None
     knowledge_store: KnowledgeStore | None = None
     if not DEMO_MODE:
@@ -65,8 +75,15 @@ async def _app_lifespan(_app: FastAPI):
         microsoft_todo_client = MicrosoftTodoClient(microsoft_auth)
         set_microsoft_auth_service(microsoft_auth)
         set_microsoft_todo_client(microsoft_todo_client)
-    database.initialize_db(include_actions=not DEMO_MODE)
-    conversation_store = ConversationStore(None if DEMO_MODE else database.DB_NAME)
+    database.initialize_db(
+        include_actions=not DEMO_MODE,
+        connection=demo_db if DEMO_MODE else None,
+    )
+    conversation_store = ConversationStore(
+        None if DEMO_MODE else database.DB_NAME,
+        connection=demo_db,
+        lock=demo_db_lock,
+    )
     conversation_store.initialize()
     conversation_service = ConversationService(
         conversation_store,
@@ -75,7 +92,21 @@ async def _app_lifespan(_app: FastAPI):
     if not DEMO_MODE:
         conversation_service.recover_interrupted()
     set_conversation_service(conversation_service)
-    retrieval_store = RetrievalStore(None if DEMO_MODE else database.DB_NAME)
+    run_store = RunStore(
+        None if DEMO_MODE else database.DB_NAME,
+        connection=demo_db,
+        lock=demo_db_lock,
+    )
+    run_store.initialize()
+    run_service = RunService(run_store)
+    if not DEMO_MODE:
+        run_service.recover_interrupted()
+    set_run_service(run_service)
+    retrieval_store = RetrievalStore(
+        None if DEMO_MODE else database.DB_NAME,
+        connection=demo_db,
+        lock=demo_db_lock,
+    )
     retrieval_service = RetrievalService(
         retrieval_store,
         conversation_store,
@@ -95,7 +126,11 @@ async def _app_lifespan(_app: FastAPI):
                 pass
 
         asyncio.create_task(_warm_retrieval())
-    knowledge_store = KnowledgeStore(None if DEMO_MODE else database.DB_NAME)
+    knowledge_store = KnowledgeStore(
+        None if DEMO_MODE else database.DB_NAME,
+        connection=demo_db,
+        lock=demo_db_lock,
+    )
     knowledge_store.initialize()
     set_knowledge_service(KnowledgeService(knowledge_store))
     if not DEMO_MODE:
@@ -204,14 +239,19 @@ async def _app_lifespan(_app: FastAPI):
                                 set_action_service(None)
                                 set_reminder_service(None)
                                 set_conversation_service(None)
+                                set_run_service(None)
                                 set_retrieval_service(None)
                                 set_knowledge_service(None)
                                 if conversation_store is not None:
                                     conversation_store.close()
+                                if run_store is not None:
+                                    run_store.close()
                                 if retrieval_store is not None:
                                     retrieval_store.close()
                                 if knowledge_store is not None:
                                     knowledge_store.close()
+                                if demo_db is not None:
+                                    demo_db.close()
                                 if idle_model_task is not None:
                                     idle_model_task.cancel()
                                     try:
