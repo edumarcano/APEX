@@ -331,6 +331,89 @@ class ContextAssemblyTests(unittest.TestCase):
                 )
             )
 
+    def test_local_model_retrieval_policy_limits_and_preflight(self) -> None:
+        from core.settings import get_settings_store
+        from core.api.cortex import build_tool_preflight
+        from core.api.models import ToolPreflightRequest
+
+        store = get_settings_store()
+        policy = ContextPolicy.from_settings(
+            agent="apex",
+            partition="production",
+            settings=store.get_snapshot(),
+            model_id="gemma-4-E2B-Q4_K_M.gguf",
+        )
+        self.assertEqual(policy.max_retrieved_tokens, 400)
+        self.assertEqual(policy.max_conversation_excerpts, 1)
+        self.assertEqual(policy.max_personal_records, 2)
+
+        resp = build_tool_preflight(
+            ToolPreflightRequest(
+                agent="apex",
+                prompt="Check local context limit",
+                model_id="gemma-4-E2B-Q4_K_M.gguf",
+            )
+        )
+        self.assertEqual(resp.breakdown.retrieved_context, 400)
+
+    def test_personal_records_prioritized_over_conversation_under_tight_budget(self) -> None:
+        current = uuid4()
+        other = uuid4()
+        # Add conversation hit that takes ~350 tokens
+        self.retrieval_store.upsert_item(
+            RetrievalItem(
+                namespace="conversation",
+                source_type="message",
+                source_id="msg-large",
+                partition="production",
+                conversation_id=str(other),
+                message_id="msg-large",
+                role="user",
+                timestamp="2026-01-01T00:00:00+00:00",
+                locator=f"conversation/{other}/message/msg-large",
+                content_hash="large-hash",
+                text="Earlier conversation detail " * 50,
+            )
+        )
+
+        source = self.knowledge_store.create_source(
+            kind="manual",
+            partition="production",
+            locator="manual/priority-test",
+            original_text="Priority source",
+        )
+        entity = self.knowledge_store.create_entity("PriorityEntity")
+        self.knowledge_store.add_alias(entity.id, "priority")
+        record = self.knowledge_store.create_record(
+            partition="production",
+            kind="fact",
+            text="Priority knowledge fact that must be included first.",
+            source_ids=[source.id],
+            subject_entity_id=entity.id,
+            predicate="has_priority",
+            object_value="first",
+        )
+
+        # Assemble with local policy (400 tokens)
+        policy = ContextPolicy(
+            agent="apex",
+            partition="production",
+            personal_context_enabled=True,
+            max_retrieved_tokens=400,
+            max_conversation_excerpts=1,
+            max_personal_records=2,
+        )
+        bundle = self.assembler.assemble(
+            prompt="priority earlier conversation detail",
+            conversation_id=current,
+            policy=policy,
+        )
+
+        # Personal context must be present
+        self.assertIn("Priority knowledge fact", bundle.rendered)
+        personal_refs = [r for r in bundle.references if r.namespace == "personal_context"]
+        self.assertGreaterEqual(len(personal_refs), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

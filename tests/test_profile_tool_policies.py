@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from core.agent.loop import run_agent_loop
-from core.agent.capabilities import CapabilityDescriptor
+from core.agent.capabilities import CapabilityDescriptor, get_capability_descriptor
 from core.agent.model_catalog import get_model_profile
 from core.agent.prompting import build_tool_access_instruction
 from core.agent.providers.contract import ProviderTurnResult
@@ -304,6 +304,77 @@ class SandboxContextTests(unittest.TestCase):
         self.assertEqual(
             response.tool_outputs[0]["output"]["error_category"], "unavailable"
         )
+
+    def test_multi_step_tool_loop_compacts_earlier_tool_outputs(self) -> None:
+        turn_history_snapshots: list[list[AgentMessage]] = []
+
+        class MultiTurnProvider:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def generate_turn(
+                self,
+                messages: list[AgentMessage],
+                _tools: list[object],
+                _profile: object,
+                system_instruction_override: str | None = None,
+            ) -> ProviderTurnResult:
+                del system_instruction_override
+                self.calls += 1
+                tool_msgs = [m for m in messages if m.role == "tool"]
+                turn_history_snapshots.append(
+                    [m.model_copy(deep=True) for m in tool_msgs]
+                )
+                if self.calls == 1:
+                    return ProviderTurnResult(
+                        message=AgentMessage(
+                            role="agent",
+                            tool_calls=[
+                                ToolCall(id="call-1", name="get_weather_forecast", arguments={})
+                            ],
+                        )
+                    )
+                elif self.calls == 2:
+                    return ProviderTurnResult(
+                        message=AgentMessage(
+                            role="agent",
+                            tool_calls=[
+                                ToolCall(id="call-2", name="get_f1_driver_standings", arguments={})
+                            ],
+                        )
+                    )
+                return ProviderTurnResult(
+                    message=AgentMessage(role="agent", content="Final answer.")
+                )
+
+        tool_a_desc = get_capability_descriptor("get_weather_forecast")
+        tool_b_desc = get_capability_descriptor("get_f1_driver_standings")
+
+        large_payload = {"data": "x" * 1000}
+
+        def dispatcher(name: str, _args: dict[str, object]) -> object:
+            if name == "get_weather_forecast":
+                return large_payload
+            return {"result": "step_2_done"}
+
+        profile = build_cloud_profile(model="gemini-3.7-flash")
+        response = run_agent_loop(
+            AgentQueryRequest(prompt="Run multi-step", agent="apex"),
+            MultiTurnProvider(),
+            profile,
+            tools_dispatcher=dispatcher,
+            selected_tools=[tool_a_desc, tool_b_desc],
+        )
+
+        self.assertEqual(response.answer, "Final answer.")
+        self.assertEqual(len(turn_history_snapshots[0]), 0)
+        self.assertEqual(len(turn_history_snapshots[1]), 1)
+        self.assertEqual(turn_history_snapshots[1][0].tool_results[0].output, large_payload)
+        self.assertEqual(len(turn_history_snapshots[2]), 2)
+        step_1_res = turn_history_snapshots[2][0].tool_results[0].output
+        self.assertIn("compacted", str(step_1_res))
+        self.assertEqual(turn_history_snapshots[2][1].tool_results[0].output, {"result": "step_2_done"})
+        self.assertEqual(response.tool_outputs[0]["output"], large_payload)
 
 
 if __name__ == "__main__":

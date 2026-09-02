@@ -643,12 +643,26 @@ def _prepare_agent_payload(
     payload: AgentQueryRequest,
     *,
     agent_key: str,
+    model_id: str | None = None,
 ) -> AgentQueryRequest:
     """Apply the same bounded history partition used by execution and preflight."""
+    from core.agent.model_catalog import get_model_profile
+
+    selected_model = (
+        model_id
+        or payload.model_id
+        or get_settings_store().get_snapshot().ask_apex.selected_model
+    )
+    profile = get_model_profile(selected_model)
+    max_history = (
+        6
+        if profile and profile.runtime == "local"
+        else config.MAX_RECENT_CONVERSATION_MESSAGES
+    )
     prepared = payload.model_copy(
         update={
             "history": _trim_agent_history(
-                payload.history, config.MAX_RECENT_CONVERSATION_MESSAGES
+                payload.history, max_history
             )
         }
     )
@@ -800,8 +814,6 @@ def _execute_agent_turn(
                 base_prompt,
                 user_designation=user_designation,
             )
-            + hud_context
-            + (context_bundle.rendered if context_bundle is not None else "")
             + build_tool_access_instruction(
                 [descriptor.name for descriptor in selected_tools or []],
                 hosted_tool_names=tuple(
@@ -810,8 +822,21 @@ def _execute_agent_turn(
             )
         )
 
+        dynamic_context_parts: list[str] = []
+        if hud_context:
+            dynamic_context_parts.append(hud_context.strip())
+        if context_bundle is not None and context_bundle.rendered:
+            dynamic_context_parts.append(context_bundle.rendered.strip())
+
+        if dynamic_context_parts:
+            dynamic_prefix = "\n\n".join(dynamic_context_parts)
+            execution_prompt = f"{dynamic_prefix}\n\n{payload.prompt}"
+            execution_payload = payload.model_copy(update={"prompt": execution_prompt})
+        else:
+            execution_payload = payload
+
         response = run_agent_loop(
-            payload,
+            execution_payload,
             provider,
             profile,
             system_instruction_override=local_system_instruction,
@@ -917,8 +942,9 @@ def _estimate_agent_request(
         agent=agent_key,
         partition=payload.history_partition,
         settings=get_settings_store().get_snapshot(),
+        model_id=payload.model_id,
     )
-    retrieved_tokens = 1_500 if policy.permits_retrieval else 0
+    retrieved_tokens = policy.max_retrieved_tokens if policy.permits_retrieval else 0
     if is_local_profile(profile):
         base_prompt = config.LOCAL_AGENT_SYSTEM_PROMPT
     else:
@@ -1092,6 +1118,7 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
     query_payload = _prepare_agent_payload(
         AgentQueryRequest(**query_payload_kwargs),
         agent_key=agent_key,
+        model_id=payload.model_id,
     )
     selection = resolve_selected_tools(
         agent_key,
@@ -1209,7 +1236,9 @@ def query_agent(
             **selection_as_response_fields(selection),
         )
 
-    payload = _prepare_agent_payload(payload, agent_key=agent_key)
+    payload = _prepare_agent_payload(
+        payload, agent_key=agent_key, model_id=payload.model_id
+    )
 
     if is_local_profile(profile):
         backend = get_local_runtime_backend(profile.provider)

@@ -522,6 +522,7 @@ def conversation_turn(conversation_id: str, payload: ConversationTurnRequest) ->
         agent=agent_key,
         partition=service.partition(),
         settings=get_settings_store().get_snapshot(),
+        model_id=payload.model_id,
     )
     context_bundle = ContextAssembler(
         get_retrieval_service(), get_knowledge_service()

@@ -116,6 +116,34 @@ def build_agent_failure_details(
     return answer, error_detail
 
 
+_PRIOR_TOOL_OUTPUT_MAX_CHARS = 400
+
+
+def _compact_tool_result_output(
+    output: Any, max_chars: int = _PRIOR_TOOL_OUTPUT_MAX_CHARS
+) -> Any:
+    """Compact an earlier tool result within a multi-turn query to bound prompt growth."""
+    import json
+
+    if isinstance(output, str):
+        if len(output) <= max_chars:
+            return output
+        return f"{output[:max_chars]}... [prior step output compacted]"
+    if isinstance(output, (dict, list, tuple)):
+        try:
+            serialized = json.dumps(output, default=str)
+        except Exception:
+            serialized = str(output)
+        if len(serialized) <= max_chars:
+            return output
+        preview = serialized[:max_chars]
+        return {
+            "preview": f"{preview}... [prior step output compacted]",
+            "compacted": True,
+        }
+    return output
+
+
 def run_agent_loop(
     request: AgentQueryRequest,
     provider: AgentProvider[P],
@@ -130,6 +158,7 @@ def run_agent_loop(
     history: list[AgentMessage] = list(request.history)
     history.append(AgentMessage(role="user", content=request.prompt))
 
+    turn_tool_messages: list[AgentMessage] = []
     tool_trace: list[dict[str, Any]] = []
     tool_outputs: list[dict[str, Any]] = []
     citations: list[Citation] = []
@@ -459,7 +488,17 @@ def run_agent_loop(
                     ToolResult(id=call.id, name=call.name, output=output)
                 )
 
-            history.append(AgentMessage(role="tool", tool_results=tool_results))
+            if turn_tool_messages:
+                for prior_msg in turn_tool_messages:
+                    if prior_msg.tool_results:
+                        for prior_result in prior_msg.tool_results:
+                            prior_result.output = _compact_tool_result_output(
+                                prior_result.output
+                            )
+
+            tool_message = AgentMessage(role="tool", tool_results=tool_results)
+            turn_tool_messages.append(tool_message)
+            history.append(tool_message)
 
         return response(
             answer=last_model_content or "",

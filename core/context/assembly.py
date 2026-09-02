@@ -13,6 +13,10 @@ MAX_RETRIEVED_CONTEXT_TOKENS = 1_500
 MAX_CONVERSATION_EXCERPTS = 2
 MAX_PERSONAL_RECORDS = 4
 
+LOCAL_MAX_RETRIEVED_CONTEXT_TOKENS = 400
+LOCAL_MAX_CONVERSATION_EXCERPTS = 1
+LOCAL_MAX_PERSONAL_RECORDS = 2
+
 
 def _tokens(value: str) -> int:
     return max(1, (len(value) + 3) // 4) if value else 0
@@ -50,19 +54,41 @@ class ContextPolicy:
     agent: str
     partition: str
     personal_context_enabled: bool
+    max_retrieved_tokens: int = MAX_RETRIEVED_CONTEXT_TOKENS
+    max_conversation_excerpts: int = MAX_CONVERSATION_EXCERPTS
+    max_personal_records: int = MAX_PERSONAL_RECORDS
 
     @property
     def permits_retrieval(self) -> bool:
         return self.partition == "production" and self.personal_context_enabled
 
     @classmethod
-    def from_settings(cls, *, agent: str, partition: str, settings) -> "ContextPolicy":
+    def from_settings(
+        cls,
+        *,
+        agent: str,
+        partition: str,
+        settings,
+        model_id: str | None = None,
+    ) -> "ContextPolicy":
         from core.agent.model_catalog import get_model_profile
 
-        profile = get_model_profile(settings.ask_apex.selected_model)
-        runtime_settings = settings.ask_apex.local if profile and profile.runtime == "local" else settings.ask_apex.cloud
+        selected_model = model_id or settings.ask_apex.selected_model
+        profile = get_model_profile(selected_model)
+        is_local = profile and profile.runtime == "local"
+        runtime_settings = settings.ask_apex.local if is_local else settings.ask_apex.cloud
         enabled = bool(runtime_settings.personal_context_enabled)
-        return cls(agent=agent, partition=partition, personal_context_enabled=enabled)
+        max_tokens = LOCAL_MAX_RETRIEVED_CONTEXT_TOKENS if is_local else MAX_RETRIEVED_CONTEXT_TOKENS
+        max_excerpts = LOCAL_MAX_CONVERSATION_EXCERPTS if is_local else MAX_CONVERSATION_EXCERPTS
+        max_records = LOCAL_MAX_PERSONAL_RECORDS if is_local else MAX_PERSONAL_RECORDS
+        return cls(
+            agent=agent,
+            partition=partition,
+            personal_context_enabled=enabled,
+            max_retrieved_tokens=max_tokens,
+            max_conversation_excerpts=max_excerpts,
+            max_personal_records=max_records,
+        )
 
 
 class ContextAssembler:
@@ -75,14 +101,10 @@ class ContextAssembler:
     def assemble(self, *, prompt: str, conversation_id: UUID, policy: ContextPolicy) -> ContextBundle:
         if not policy.permits_retrieval:
             return ContextBundle()
-        candidates: list[tuple[str, ContextReference]] = []
-        conversation_hits = self._retrieval.search(prompt, namespace="conversation", partition="production", source_type="message", limit=24)
-        for hit in conversation_hits:
-            if hit.conversation_id == str(conversation_id):
-                continue
-            candidates.append((self._render_hit("Earlier conversation", hit), ContextReference("conversation", hit.source_type, hit.source_id, hit.locator)))
-            if sum(1 for _, ref in candidates if ref.namespace == "conversation") >= MAX_CONVERSATION_EXCERPTS:
-                break
+
+        personal_candidates: list[tuple[str, ContextReference]] = []
+        conversation_candidates: list[tuple[str, ContextReference]] = []
+
         personal_hits = self._retrieval.search(prompt, namespace="personal_context", partition="production", source_type=None, limit=24)
         seen: set[str] = set()
         for hit in personal_hits:
@@ -97,35 +119,46 @@ class ContextAssembler:
             if record.status not in {"active", "conflicting"}:
                 continue
             label = "Unresolved personal-context conflict" if record.status == "conflicting" else "Personal context"
-            candidates.append((f"{label} ({record.kind}): {record.text}", ContextReference("personal_context", "record", str(record.id), f"knowledge/record/{record.id}", record.status)))
-            if sum(1 for _, ref in candidates if ref.namespace == "personal_context") >= MAX_PERSONAL_RECORDS:
+            personal_candidates.append((f"{label} ({record.kind}): {record.text}", ContextReference("personal_context", "record", str(record.id), f"knowledge/record/{record.id}", record.status)))
+            if len(personal_candidates) >= policy.max_personal_records:
                 break
+
         for entity in self._knowledge.entities_mentioned_in(prompt):
-            if sum(1 for _, ref in candidates if ref.namespace == "personal_context") >= MAX_PERSONAL_RECORDS:
+            if len(personal_candidates) >= policy.max_personal_records:
                 break
             for record in self._knowledge.one_hop_relationships(entity.id, partition="production"):
                 if record.status not in {"active", "conflicting"} or str(record.id) in seen:
                     continue
                 seen.add(str(record.id))
                 label = "Unresolved personal-context conflict" if record.status == "conflicting" else "Related personal context"
-                candidates.append((f"{label} ({record.kind}): {record.text}", ContextReference("personal_context", "record", str(record.id), f"knowledge/record/{record.id}", record.status)))
-                if sum(1 for _, ref in candidates if ref.namespace == "personal_context") >= MAX_PERSONAL_RECORDS:
+                personal_candidates.append((f"{label} ({record.kind}): {record.text}", ContextReference("personal_context", "record", str(record.id), f"knowledge/record/{record.id}", record.status)))
+                if len(personal_candidates) >= policy.max_personal_records:
                     break
-        return self._bounded(candidates)
+
+        conversation_hits = self._retrieval.search(prompt, namespace="conversation", partition="production", source_type="message", limit=24)
+        for hit in conversation_hits:
+            if hit.conversation_id == str(conversation_id):
+                continue
+            conversation_candidates.append((self._render_hit("Earlier conversation", hit), ContextReference("conversation", hit.source_type, hit.source_id, hit.locator)))
+            if len(conversation_candidates) >= policy.max_conversation_excerpts:
+                break
+
+        candidates = personal_candidates + conversation_candidates
+        return self._bounded(candidates, max_tokens=policy.max_retrieved_tokens)
 
     @staticmethod
     def _render_hit(label: str, hit: RetrievalHit) -> str:
         return f"{label} ({hit.locator}): {hit.text}"
 
     @staticmethod
-    def _bounded(candidates: list[tuple[str, ContextReference]]) -> ContextBundle:
+    def _bounded(candidates: list[tuple[str, ContextReference]], max_tokens: int = MAX_RETRIEVED_CONTEXT_TOKENS) -> ContextBundle:
         parts: list[str] = []
         refs: list[ContextReference] = []
         used = 0
         truncated = False
         for text, reference in candidates:
             cost = _tokens(text)
-            if used + cost > MAX_RETRIEVED_CONTEXT_TOKENS:
+            if used + cost > max_tokens:
                 truncated = True
                 continue
             parts.append(text)

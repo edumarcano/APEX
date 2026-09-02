@@ -442,15 +442,15 @@ try:
         _agent_settings_cfg = {}
 
     MAX_RECENT_CONVERSATION_MESSAGES: Final[int] = _parse_config_int(
-        _agent_settings_cfg.get("max_recent_conversation_messages", 6),
+        _agent_settings_cfg.get("max_recent_conversation_messages", 20),
         key="ask_apex.max_recent_conversation_messages",
-        default=6,
+        default=20,
         min_value=2,
         max_value=20,
     )
 except Exception as exc:
     _LOGGER.warning("Unable to parse ask_apex config: %s; using defaults.", exc)
-    MAX_RECENT_CONVERSATION_MESSAGES = 6
+    MAX_RECENT_CONVERSATION_MESSAGES = 20
 
 try:
     _gemini_cfg = _CONFIG_DATA.get("gemini", {})
