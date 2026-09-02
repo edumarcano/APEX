@@ -376,6 +376,24 @@ class SandboxContextTests(unittest.TestCase):
         self.assertEqual(turn_history_snapshots[2][1].tool_results[0].output, {"result": "step_2_done"})
         self.assertEqual(response.tool_outputs[0]["output"], large_payload)
 
+    def test_multi_step_turn_tool_compaction_is_idempotent(self) -> None:
+        from core.agent.loop import _compact_tool_result_output
+
+        large_payload = {"data": "x" * 1000}
+        compacted = _compact_tool_result_output(large_payload)
+        self.assertTrue(isinstance(compacted, dict) and compacted.get("compacted") is True)
+
+        # Re-compacting already compacted output must be idempotent (no nested wrapping)
+        recompacted = _compact_tool_result_output(compacted)
+        self.assertEqual(recompacted, compacted)
+
+        # String compaction idempotency
+        large_str = "x" * 1000
+        compacted_str = _compact_tool_result_output(large_str)
+        self.assertTrue(compacted_str.endswith("... [prior step output compacted]"))
+        recompacted_str = _compact_tool_result_output(compacted_str)
+        self.assertEqual(recompacted_str, compacted_str)
+
 
 if __name__ == "__main__":
     unittest.main()

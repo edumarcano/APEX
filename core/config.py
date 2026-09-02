@@ -19,6 +19,7 @@ __all__ = [
     "AGENT_SYSTEM_PROMPT",
     "LOCAL_AGENT_SYSTEM_PROMPT",
     "CONFIG_PATH",
+    "LOCAL_MAX_RECENT_CONVERSATION_MESSAGES",
     "MAX_RECENT_CONVERSATION_MESSAGES",
     "OLLAMA_RESOURCE_GATES",
     "OLLAMA_ENABLED",
@@ -451,6 +452,8 @@ try:
 except Exception as exc:
     _LOGGER.warning("Unable to parse ask_apex config: %s; using defaults.", exc)
     MAX_RECENT_CONVERSATION_MESSAGES = 20
+
+LOCAL_MAX_RECENT_CONVERSATION_MESSAGES: Final[int] = 6
 
 try:
     _gemini_cfg = _CONFIG_DATA.get("gemini", {})

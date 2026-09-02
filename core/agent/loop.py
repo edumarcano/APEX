@@ -125,7 +125,11 @@ def _compact_tool_result_output(
     """Compact an earlier tool result within a multi-turn query to bound prompt growth."""
     import json
 
+    if isinstance(output, dict) and output.get("compacted") is True:
+        return output
     if isinstance(output, str):
+        if output.endswith("... [prior step output compacted]"):
+            return output
         if len(output) <= max_chars:
             return output
         return f"{output[:max_chars]}... [prior step output compacted]"
@@ -489,12 +493,10 @@ def run_agent_loop(
                 )
 
             if turn_tool_messages:
-                for prior_msg in turn_tool_messages:
-                    if prior_msg.tool_results:
-                        for prior_result in prior_msg.tool_results:
-                            prior_result.output = _compact_tool_result_output(
-                                prior_result.output
-                            )
+                for prior_result in turn_tool_messages[-1].tool_results or []:
+                    prior_result.output = _compact_tool_result_output(
+                        prior_result.output
+                    )
 
             tool_message = AgentMessage(role="tool", tool_results=tool_results)
             turn_tool_messages.append(tool_message)

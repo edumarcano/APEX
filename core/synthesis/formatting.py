@@ -149,9 +149,9 @@ def _compact_flash_payload(
     ]
 
     system_issues = [
-        f"{sanitize_fact(c.name, 32)}: {sanitize_fact(c.reason_code, 48)}"
+        f"{sanitize_fact(c.name, 32)}: {'stale' if c.freshness == 'stale' and c.reason_code == 'ok' else sanitize_fact(c.reason_code, 48)}"
         for c in source.connector_health
-        if c.status not in ("healthy", "disabled")
+        if c.status not in ("healthy", "disabled") or c.freshness == "stale"
     ] + [sanitize_fact(f, 48) for f in source.failed_connectors if sanitize_fact(f, 48)]
 
     data: dict[str, Any] = {

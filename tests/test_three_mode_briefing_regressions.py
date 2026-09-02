@@ -372,6 +372,7 @@ class BriefingRouterContractTests(unittest.TestCase):
             update={
                 "connector_health": [
                     ConnectorHealthFact(name="weather", status="degraded", reason_code="timeout", freshness="stale"),
+                    ConnectorHealthFact(name="news", status="healthy", reason_code="ok", freshness="stale"),
                     ConnectorHealthFact(name="calendar", status="healthy", reason_code="ok", freshness="live"),
                 ],
                 "failed_connectors": ["gmail"],
@@ -383,5 +384,6 @@ class BriefingRouterContractTests(unittest.TestCase):
         )
         self.assertIn("system_issues", inner)
         self.assertIn("weather: timeout", inner["system_issues"])
+        self.assertIn("news: stale", inner["system_issues"])
         self.assertIn("gmail", inner["system_issues"])
         self.assertNotIn("calendar", str(inner["system_issues"]))

@@ -655,7 +655,7 @@ def _prepare_agent_payload(
     )
     profile = get_model_profile(selected_model)
     max_history = (
-        6
+        config.LOCAL_MAX_RECENT_CONVERSATION_MESSAGES
         if profile and profile.runtime == "local"
         else config.MAX_RECENT_CONVERSATION_MESSAGES
     )
