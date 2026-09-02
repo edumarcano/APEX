@@ -15,6 +15,7 @@ from core.agent.types import (
     AgentQueryResponse,
     ToolSelectionDiagnostics,
 )
+from core.agent.model_catalog import ModelProfile
 from core.api.models import DigestPayload, TelemetryPayload
 from core.mock.demo_fixture import DemoBundle, DemoFixtureError, load_demo_bundle
 
@@ -353,6 +354,8 @@ def _natural_date_label(value: date, *, local_now: date) -> str:
 def run_demo_agent_query(
     payload: AgentQueryRequest,
     *,
+    model_profile: ModelProfile,
+    resolved_effort: str | None,
     tool_selection: ToolSelectionDiagnostics | None = None,
 ) -> AgentQueryResponse:
     """Return deterministic Agent responses when ``DEMO_MODE`` is active."""
@@ -361,9 +364,7 @@ def run_demo_agent_query(
         build_concrete_agent,
         build_agent_used_metadata,
         is_agent_visible,
-        resolve_effort_for_agent,
     )
-    from core.agent.loop import is_local_profile
 
     agent_key = payload.agent
     if agent_key not in AGENT_SPECS or not is_agent_visible(agent_key):
@@ -372,8 +373,11 @@ def run_demo_agent_query(
             detail=f"Agent {agent_key!r} is not available.",
         )
 
-    resolved_effort = resolve_effort_for_agent(agent_key, payload.effort)
-    agent = build_concrete_agent(agent_key, native_effort=resolved_effort)
+    agent = build_concrete_agent(
+        agent_key,
+        native_effort=resolved_effort,
+        model_id=model_profile.model_id,
+    )
 
     prompt_lower = payload.prompt.lower()
     responses, fallback = load_mock_agent_responses()
@@ -392,7 +396,7 @@ def run_demo_agent_query(
             resolved_model=agent.api_model,
             requested_effort=payload.effort,
             resolved_effort=resolved_effort,
-            runtime="local" if is_local_profile(agent) else "cloud",
+            runtime=model_profile.runtime,
             model_stability=getattr(agent, "stability", None),
             hosted_tools=getattr(agent, "hosted_tools", None),
         ),

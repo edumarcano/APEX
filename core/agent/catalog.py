@@ -86,14 +86,6 @@ AGENT_SPECS: dict[str, AgentSpec] = {
     ),
 }
 
-_RUNTIME_PROFILE_ORDER: tuple[str, ...] = ("apex",)
-
-
-def runtime_agent_order() -> tuple[str, ...]:
-    """Return HUD-visible Agent keys in display order."""
-    return _RUNTIME_PROFILE_ORDER
-
-
 def is_agent_visible(key: str) -> bool:
     return key in AGENT_SPECS
 

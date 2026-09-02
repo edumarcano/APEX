@@ -51,7 +51,6 @@ from core.agent.model_catalog import (
 from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
 from core.agent.providers.ollama_models import OLLAMA_RUNTIME_CONFIGS
 from core.agent.sandbox_context import get_masked_briefing
-from core.agent.tool_policies import effective_native_tools
 from core.agent.loop import is_local_profile
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.cloud_verification import (
@@ -216,16 +215,6 @@ def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
     )
 
 
-def _cloud_model_catalog(dev_mode: bool) -> list[AgentModelCatalogEntry]:
-    profiles = visible_cloud_models(dev_mode=dev_mode)
-    return [_profile_to_catalog_entry(profile) for profile in profiles]
-
-
-def _local_model_catalog(dev_mode: bool) -> list[AgentModelCatalogEntry]:
-    profiles = visible_local_models(dev_mode=dev_mode)
-    return [_profile_to_catalog_entry(profile) for profile in profiles]
-
-
 def _is_sandbox_agent_query(agent_key: str) -> bool:
     settings = get_settings_store().get_snapshot().ask_apex
     return is_sandbox_query(
@@ -273,11 +262,6 @@ def _ensure_local_alias_configured(profile: LocalModelProfile) -> None:
                 "present in the local runtime."
             ),
         )
-
-
-def _agent_pricing_metadata(agent_key: str) -> AgentPricingMetadata:
-    model_profile = resolve_selected_model_profile()
-    return _model_pricing_metadata(model_profile)
 
 
 def _resolve_local_agent_status(
@@ -1197,7 +1181,12 @@ def query_agent(
         )
 
     if DEMO_MODE:
-        return run_demo_agent_query(payload, tool_selection=selection.diagnostics)
+        return run_demo_agent_query(
+            payload,
+            model_profile=model_profile,
+            resolved_effort=resolved_effort,
+            tool_selection=selection.diagnostics,
+        )
 
     if model_profile.credential_env and not agent_has_credentials(
         agent_key, model_profile
