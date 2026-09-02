@@ -7,10 +7,16 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
-from core.synthesis.formatting import compact_payload, parse_model_output, render_structured_briefing
+from core.synthesis.formatting import (
+    compact_payload,
+    parse_model_output,
+    render_structured_briefing,
+    wrap_untrusted_payload,
+)
 from core.synthesis.models import (
     BriefingFacts,
     CalendarFact,
+    ConnectorHealthFact,
     EmailFact,
     NewsFact,
     ReminderFact,
@@ -290,3 +296,92 @@ class BriefingRouterContractTests(unittest.TestCase):
             )
         self.assertFalse(response.metadata.spoken)
         self.assertEqual(response.metadata.synthesis_provider, "raw")
+
+    def test_flash_payload_is_compact_and_omits_healthy_connector_noise(self) -> None:
+        source = rich_facts().model_copy(
+            update={
+                "local_time": "2026-08-19T08:00:00-04:00",
+                "weather_summary": "Sunny with clear skies",
+                "weather_temp_f": 75,
+                "weather_temp_max_f": 82,
+                "weather_temp_min_f": 65,
+                "weather_condition": "Sunny",
+                "weather_precip_probability": 0,
+                "connector_health": [
+                    ConnectorHealthFact(name=name, status="healthy", reason_code="ok", freshness="live")
+                    for name in ("weather", "calendar", "reminders", "email", "news", "f1", "football")
+                ],
+            }
+        )
+        flash_source = source.flash_view()
+        payload = wrap_untrusted_payload(flash_source, mode="flash")
+        self.assertIn("<untrusted_connector_data>", payload)
+        self.assertLessEqual(len(payload), 1500)
+
+        inner = json.loads(
+            payload.replace("<untrusted_connector_data>\n", "").replace("\n</untrusted_connector_data>", "")
+        )
+        # All connectors healthy -> no system issues block
+        self.assertNotIn("system_issues", inner)
+        self.assertNotIn("connector_health", inner)
+        # Duplicate flat fields omitted
+        self.assertNotIn("first_pending_reminder", inner)
+        self.assertNotIn("next_calendar_event", inner)
+        self.assertNotIn("email_recent_subjects", inner)
+
+    def test_flash_payload_preserves_all_necessary_briefing_facts(self) -> None:
+        source = rich_facts().model_copy(
+            update={
+                "local_time": "2026-08-19T08:00:00-04:00",
+                "weather_summary": "Sunny with clear skies",
+                "weather_temp_f": 75,
+                "weather_temp_max_f": 82,
+                "weather_temp_min_f": 65,
+                "weather_condition": "Sunny",
+                "weather_precip_probability": 10,
+                "overdue_reminder_count": 2,
+                "due_today_reminder_count": 3,
+                "email_unread_count": 5,
+                "sports_events": [
+                    SportEventFact(kind="football", title="Arsenal vs Chelsea", start="2026-08-20T12:00:00Z"),
+                    SportEventFact(kind="f1", title="Monza Grand Prix", start="2026-08-21T14:00:00Z"),
+                ],
+            }
+        )
+        payload = wrap_untrusted_payload(source.flash_view(), mode="flash")
+        inner = json.loads(
+            payload.replace("<untrusted_connector_data>\n", "").replace("\n</untrusted_connector_data>", "")
+        )
+
+        self.assertEqual(inner["local_time"], "2026-08-19T08:00:00-04:00")
+        self.assertEqual(inner["weather"]["temp_f"], 75)
+        self.assertEqual(inner["weather"]["high_f"], 82)
+        self.assertEqual(inner["weather"]["low_f"], 65)
+        self.assertEqual(inner["weather"]["condition"], "Sunny")
+        self.assertEqual(inner["weather"]["precip_chance"], 10)
+        self.assertEqual(len(inner["calendar"]), 2)
+        self.assertEqual(len(inner["reminders"]), 3)
+        self.assertEqual(inner["overdue_reminders"], 2)
+        self.assertEqual(inner["due_today_reminders"], 3)
+        self.assertEqual(inner["email"]["unread_count"], 5)
+        self.assertEqual(len(inner["news"]), 1)
+        self.assertEqual(len(inner["sports"]), 2)
+
+    def test_flash_payload_includes_system_issues_when_connectors_fail(self) -> None:
+        source = rich_facts().model_copy(
+            update={
+                "connector_health": [
+                    ConnectorHealthFact(name="weather", status="degraded", reason_code="timeout", freshness="stale"),
+                    ConnectorHealthFact(name="calendar", status="healthy", reason_code="ok", freshness="live"),
+                ],
+                "failed_connectors": ["gmail"],
+            }
+        )
+        payload = wrap_untrusted_payload(source.flash_view(), mode="flash")
+        inner = json.loads(
+            payload.replace("<untrusted_connector_data>\n", "").replace("\n</untrusted_connector_data>", "")
+        )
+        self.assertIn("system_issues", inner)
+        self.assertIn("weather: timeout", inner["system_issues"])
+        self.assertIn("gmail", inner["system_issues"])
+        self.assertNotIn("calendar", str(inner["system_issues"]))
