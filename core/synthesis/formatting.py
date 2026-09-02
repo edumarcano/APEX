@@ -108,7 +108,108 @@ def _drop_optional_payload_item(
     return None
 
 
-def compact_payload(source: BriefingFacts, max_chars: int = _DEFAULT_MAX_CHARS) -> str:
+def _compact_flash_payload(
+    source: BriefingFacts, max_chars: int = 2_500
+) -> str:
+    """Build a tight, high-signal JSON payload tailored specifically for local Flash briefing."""
+    weather_dict: dict[str, Any] = {}
+    if source.weather_summary:
+        weather_dict["summary"] = sanitize_fact(source.weather_summary, 200)
+    if source.weather_temp_f is not None:
+        weather_dict["temp_f"] = source.weather_temp_f
+    if source.weather_temp_max_f is not None:
+        weather_dict["high_f"] = source.weather_temp_max_f
+    if source.weather_temp_min_f is not None:
+        weather_dict["low_f"] = source.weather_temp_min_f
+    if source.weather_condition:
+        weather_dict["condition"] = sanitize_fact(source.weather_condition, 48)
+    if source.weather_precip_probability is not None:
+        weather_dict["precip_chance"] = source.weather_precip_probability
+
+    calendar_events = [
+        {
+            "title": sanitize_fact(event.title, 120),
+            "start": sanitize_fact(event.start, 64),
+            "all_day": event.all_day,
+        }
+        for event in source.calendar_events[:2]
+    ]
+
+    reminders = [
+        {
+            k: v
+            for k, v in {
+                "note": sanitize_fact(r.note, 120),
+                "due": sanitize_fact(r.due, 64) if r.due else None,
+                "importance": sanitize_fact(r.importance, 24) if r.importance else None,
+            }.items()
+            if v is not None
+        }
+        for r in source.reminders[:3]
+    ]
+
+    system_issues = [
+        f"{sanitize_fact(c.name, 32)}: {'stale' if c.freshness == 'stale' and c.reason_code == 'ok' else sanitize_fact(c.reason_code, 48)}"
+        for c in source.connector_health
+        if c.status not in ("healthy", "disabled") or c.freshness == "stale"
+    ] + [sanitize_fact(f, 48) for f in source.failed_connectors if sanitize_fact(f, 48)]
+
+    data: dict[str, Any] = {
+        "local_time": sanitize_fact(source.local_time or source.generated_at, 64),
+    }
+    if weather_dict:
+        data["weather"] = weather_dict
+    if calendar_events:
+        data["calendar"] = calendar_events
+    if reminders:
+        data["reminders"] = reminders
+    if source.overdue_reminder_count:
+        data["overdue_reminders"] = source.overdue_reminder_count
+    if source.due_today_reminder_count:
+        data["due_today_reminders"] = source.due_today_reminder_count
+    if source.emails or source.email_unread_count:
+        email_data: dict[str, Any] = {"unread_count": source.email_unread_count}
+        if source.emails:
+            email_data["recent"] = [
+                {
+                    k: v
+                    for k, v in {
+                        "sender": sanitize_fact(m.sender, 64) if m.sender else None,
+                        "subject": sanitize_fact(m.subject, 120),
+                    }.items()
+                    if v is not None
+                }
+                for m in source.emails[:2]
+            ]
+        data["email"] = email_data
+    if source.news_headlines:
+        data["news"] = [
+            {"topic": sanitize_fact(h.topic, 48), "headline": sanitize_fact(h.headline, 140)}
+            for h in source.news_headlines[:1]
+        ]
+    if source.sports_events:
+        data["sports"] = [
+            {"title": sanitize_fact(s.title, 120), "start": sanitize_fact(s.start, 64)}
+            for s in source.sports_events[:2]
+        ]
+    if system_issues:
+        data["system_issues"] = system_issues
+
+    rendered = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    if len(rendered) <= max_chars:
+        return rendered
+
+    return compact_payload(source, max_chars=max_chars, mode=None)
+
+
+def compact_payload(
+    source: BriefingFacts,
+    max_chars: int = _DEFAULT_MAX_CHARS,
+    *,
+    mode: BriefingMode | None = None,
+) -> str:
+    if mode == "flash":
+        return _compact_flash_payload(source, max_chars=max_chars)
     data: dict[str, Any] = {
         "generated_at": sanitize_fact(source.generated_at, 64),
         "timezone": sanitize_fact(source.timezone, 64),
@@ -249,8 +350,8 @@ def wrap_untrusted_payload(
 ) -> str:
     """Serialize and mark connector facts as untrusted model evidence."""
     if max_chars is None:
-        max_chars = 28_000 if mode == "focused" else 8_000 if mode == "flash" else _DEFAULT_MAX_CHARS
-    compact = compact_payload(source, max_chars=max_chars)
+        max_chars = 28_000 if mode == "focused" else 2_500 if mode == "flash" else _DEFAULT_MAX_CHARS
+    compact = compact_payload(source, max_chars=max_chars, mode=mode)
     return f"{_UNTRUSTED_OPEN}\n{compact}\n{_UNTRUSTED_CLOSE}"
 
 
