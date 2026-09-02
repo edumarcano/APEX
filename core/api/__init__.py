@@ -5,10 +5,8 @@ from __future__ import annotations
 from core.api.app import _app_lifespan, app, get_allowed_origins, main
 from core.api.cortex import (
     _execute_agent_turn,
-    _resolve_cloud_agent_status,
     _resolve_local_agent_status,
     _trim_agent_history,
-    build_agent_statuses as _build_agent_statuses,
     query_agent,
     unload_active_local_model_endpoint,
 )
@@ -26,7 +24,6 @@ from core.api.demo import (
     run_demo_agent_query as _run_demo_agent_query,
 )
 from core.api.models import (
-    AgentStatus,
     BriefingHistoryRecord,
     BriefingResponse,
     CompleteReminderRequest,
@@ -80,7 +77,6 @@ from core.api.routers.system import (
 from core.api.tts import clean_for_tts, resolve_tts_diagnostics as _resolve_tts_diagnostics
 
 __all__ = [
-    "AgentStatus",
     "BriefingHistoryRecord",
     "BriefingResponse",
     "CompleteReminderRequest",
@@ -105,7 +101,6 @@ __all__ = [
     "_DEMO_STAGE_DELAY_SECONDS",
     "_TRIGGER_LOCK",
     "_app_lifespan",
-    "_build_agent_statuses",
     "_build_demo_briefing",
     "_build_settings_response",
     "_execute_agent_turn",
@@ -114,7 +109,6 @@ __all__ = [
     "_mock_briefing_history",
     "_parse_digest_payload",
     "_parse_runtime_metadata",
-    "_resolve_cloud_agent_status",
     "_resolve_local_agent_status",
     "_resolve_tts_diagnostics",
     "_run_demo_agent_query",

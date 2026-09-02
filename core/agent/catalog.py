@@ -73,7 +73,6 @@ class AgentSpec:
     display_name: str
     description: str
     identity_instruction: str
-    runtime: AgentRuntime
     capability_tags: tuple[str, ...]
 
 
@@ -83,7 +82,6 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         display_name="Apex Agent",
         description="APEX's built-in personal operations assistant for briefings, trusted context, connected services, and APEX actions.",
         identity_instruction="You are Apex Agent, APEX's built-in personal operations assistant.",
-        runtime="cloud",
         capability_tags=("APEX", "Personal operations"),
     ),
 }
@@ -349,10 +347,12 @@ def build_agent_used_metadata(
     resolved_model: str | None,
     requested_effort: NativeEffort | None,
     resolved_effort: NativeEffort | None,
+    runtime: AgentRuntime,
     model_stability: str | None = None,
     hosted_tools: frozenset[str] | None = None,
 ) -> dict[str, Any]:
-    spec = AGENT_SPECS[agent_key]
+    if agent_key not in AGENT_SPECS:
+        raise ValueError(f"Unknown Agent key: {agent_key!r}")
     metadata: dict[str, Any] = {
         "key": agent_key,
         "provider": provider,
@@ -360,7 +360,7 @@ def build_agent_used_metadata(
         "resolved_model": resolved_model or configured_model,
         "requested_effort": requested_effort,
         "resolved_effort": resolved_effort,
-        "runtime": spec.runtime,
+        "runtime": runtime,
     }
     if model_stability is not None:
         metadata["model_stability"] = model_stability

@@ -363,6 +363,7 @@ def run_demo_agent_query(
         is_agent_visible,
         resolve_effort_for_agent,
     )
+    from core.agent.loop import is_local_profile
 
     agent_key = payload.agent
     if agent_key not in AGENT_SPECS or not is_agent_visible(agent_key):
@@ -391,6 +392,7 @@ def run_demo_agent_query(
             resolved_model=agent.api_model,
             requested_effort=payload.effort,
             resolved_effort=resolved_effort,
+            runtime="local" if is_local_profile(agent) else "cloud",
             model_stability=getattr(agent, "stability", None),
             hosted_tools=getattr(agent, "hosted_tools", None),
         ),

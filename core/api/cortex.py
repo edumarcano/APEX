@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from typing import Any, Mapping
 
 from fastapi import HTTPException, status
@@ -24,7 +23,6 @@ from core.agent.prompting import (
 from core.agent.tool_schemas import descriptor_to_openai_schema, estimate_json_tokens
 from core.agent.catalog import (
     AGENT_SPECS,
-    AgentSpec,
     AgentModelProfile,
     build_concrete_agent,
     build_agent_used_metadata,
@@ -42,7 +40,6 @@ from core.agent.catalog import (
     resolve_effort,
     resolve_effort_for_agent,
     resolve_selected_model_profile,
-    runtime_agent_order,
 )
 from core.agent.model_catalog import (
     ModelProfile,
@@ -98,14 +95,12 @@ from core.agent.types import (
 from core.api.demo import run_demo_agent_query
 from core.api.models import (
     AgentModelCatalogEntry,
-    AgentStatus,
     CloudAgentVerificationResponse,
     LocalLoadResponse,
     LocalLoadedModelStatus,
     LocalUnloadResponse,
     AgentPricingMetadata,
     AgentAvailabilityStatus,
-    AgentStatusSource,
     ToolPreflightRequest,
 )
 from core.config import DEMO_MODE, is_dev_mode
@@ -438,28 +433,6 @@ def _matching_runtime_model_row(
     return None
 
 
-def _resolve_cloud_agent_status(
-    model_id: str,
-) -> tuple[AgentAvailabilityStatus, str | None, AgentStatusSource, datetime | None]:
-    """Return configured or cached cloud verification state without probing."""
-    model_profile = get_model_profile(model_id)
-    if model_profile is None or model_profile.runtime != "cloud":
-        raise ValueError("Cloud status requires a registered cloud model.")
-    if model_has_credentials(model_profile):
-        result = cloud_status(model_id)
-        return result.status, result.reason, result.source, result.checked_at
-    env_key = model_profile.credential_env or "API_KEY"
-    provider_label = _PROVIDER_DISPLAY_NAMES.get(
-        model_profile.provider, model_profile.provider
-    )
-    return (
-        "disabled",
-        f"{provider_label} API key is not configured ({env_key})",
-        "configuration",
-        None,
-    )
-
-
 def _loaded_model_status(loaded_model: dict[str, Any]) -> LocalLoadedModelStatus:
     """Map a normalized runtime model row into the public API shape."""
     return LocalLoadedModelStatus(
@@ -474,208 +447,6 @@ def _loaded_model_status(loaded_model: dict[str, Any]) -> LocalLoadedModelStatus
         context=loaded_model.get("context"),
         expires_at=loaded_model.get("expires_at"),
     )
-
-
-def build_agent_statuses() -> list[AgentStatus]:
-    """Build the full Agent availability matrix for the HUD."""
-    tracked_active = get_active_local_model()
-    loading = get_loading_local_model()
-    idle_remaining = get_idle_unload_remaining_seconds()
-    dev_mode = is_dev_mode()
-    vitals = get_system_vitals()
-
-    snapshots: dict[str, Any] = {}
-    for backend in iter_local_runtime_backends(enabled_only=True):
-        snapshots[backend.provider] = backend.get_status_snapshot()
-
-    agents: list[AgentStatus] = []
-    cloud_models = _cloud_model_catalog(dev_mode)
-    local_models = _local_model_catalog(dev_mode)
-
-    for sort_order, key in enumerate(runtime_agent_order()):
-        spec = AGENT_SPECS[key]
-        model_profile = resolve_selected_model_profile()
-
-        if model_profile.runtime == "local":
-            profile = build_concrete_agent(
-                key,
-                native_effort=None,
-                local_context_window=local_context_window_for_agent(key),
-                local_reasoning_mode=local_reasoning_mode_for_agent(key),
-            )
-            assert is_local_profile(profile)
-            backend = get_local_runtime_backend(profile.provider)
-            snapshot = snapshots.get(profile.provider)
-            if snapshot is None and backend.enabled:
-                snapshot = backend.get_status_snapshot()
-                snapshots[profile.provider] = snapshot
-            loaded_models = snapshot["loaded_models"] if snapshot is not None else []
-            installed_models = (
-                snapshot["installed_models"] if snapshot is not None else []
-            )
-            provider_reachable = bool(snapshot and snapshot["reachable"])
-            model_ref = LocalModelRef(
-                provider=profile.provider, model=profile.runtime_model_id
-            )
-            loaded_model = _matching_runtime_model_row(
-                loaded_models,
-                profile.runtime_model_id,
-                state="loaded",
-            )
-            failed_model = _matching_runtime_model_row(
-                loaded_models,
-                profile.runtime_model_id,
-                state="failed",
-            )
-            resident_loaded_model = loaded_model or next(
-                (m for m in loaded_models if m.get("state") == "loaded"),
-                None,
-            )
-            if resident_loaded_model is None:
-                resident_loaded_model = next(
-                    (
-                        m
-                        for s in snapshots.values()
-                        if s and isinstance(s, dict)
-                        for m in s.get("loaded_models", [])
-                        if m.get("state") == "loaded"
-                    ),
-                    None,
-                )
-            is_active = resident_loaded_model is not None
-            is_loading = (
-                loading == model_ref
-                or (loading is not None and loading.provider == profile.provider)
-            )
-            agent_status, reason = _resolve_local_agent_status(
-                profile,
-                is_active=loaded_model is not None,
-                provider_reachable=provider_reachable,
-                installed_models=installed_models,
-                vitals=vitals,
-                backend_enabled=backend.enabled,
-                load_failed=failed_model is not None,
-            )
-            if agent_status == "available" and is_local_execution_active():
-                agent_status, reason = "busy", _BUSY_REASON
-            status_model = (
-                resident_loaded_model
-                if resident_loaded_model is not None
-                else failed_model
-            )
-            agents.append(
-                AgentStatus(
-                    key=key,
-                    display_name=spec.display_name,
-                    description=spec.description,
-                    provider=profile.provider,
-                    configured_model=model_profile.model_id,
-                    sort_order=sort_order,
-                    capabilities=list(spec.capability_tags),
-                    native_tools={},
-                    runtime=spec.runtime,
-                    model_stability=model_profile.stability,
-                    context_window=(
-                        profile.context_window
-                        if hasattr(profile, "allowed_context_windows")
-                        else None
-                    ),
-                    context_window_options=(
-                        list(profile.allowed_context_windows)
-                        if hasattr(profile, "allowed_context_windows")
-                        else None
-                    ),
-                    context_window_high_resource_options=(
-                        list(profile.high_resource_context_options)
-                        if hasattr(profile, "high_resource_context_options")
-                        else None
-                    ),
-                    default_context_window=(
-                        profile.default_context_window
-                        if hasattr(profile, "default_context_window")
-                        else None
-                    ),
-                    reasoning_mode=(
-                        profile.reasoning_mode
-                        if hasattr(profile, "reasoning_mode")
-                        else None
-                    ),
-                    reasoning_mode_options=(
-                        list(profile.supported_reasoning_modes)
-                        if hasattr(profile, "supported_reasoning_modes")
-                        else None
-                    ),
-                    default_reasoning_mode=(
-                        profile.default_reasoning_mode
-                        if hasattr(profile, "default_reasoning_mode")
-                        else None
-                    ),
-                    status=agent_status,
-                    status_source="runtime",
-                    pricing=_agent_pricing_metadata(key),
-                    active=is_active,
-                    loading=is_loading,
-                    reason=reason,
-                    idle_unload_remaining_seconds=(
-                        idle_remaining if is_active else None
-                    ),
-                    loaded_model=(
-                        _loaded_model_status(status_model)
-                        if status_model is not None
-                        else None
-                    ),
-                    model_catalog=local_models,
-                )
-            )
-            continue
-
-        agent_status, cloud_reason, status_source, checked_at = _resolve_cloud_agent_status(
-            model_profile.model_id
-        )
-        google_search, google_maps = _cloud_hosted_tool_settings()
-        native_tools = effective_native_tools(
-            model_profile,
-            google_search_enabled=google_search,
-            google_maps_enabled=google_maps,
-        )
-        reasoning_options = (
-            list(model_profile.reasoning_options)
-            if model_profile.reasoning_options
-            else None
-        )
-        agents.append(
-            AgentStatus(
-                key=key,
-                display_name=spec.display_name,
-                description=spec.description,
-                provider=model_profile.provider,
-                configured_model=model_profile.model_id,
-                sort_order=sort_order,
-                capabilities=list(spec.capability_tags),
-                native_tools=native_tools,
-                runtime=spec.runtime,
-                model_stability=model_profile.stability,
-                reasoning_options=reasoning_options,
-                default_reasoning=model_profile.default_reasoning,
-                context_window=None,
-                context_window_options=None,
-                context_window_high_resource_options=None,
-                default_context_window=None,
-                reasoning_mode=None,
-                reasoning_mode_options=None,
-                default_reasoning_mode=None,
-                status=agent_status,
-                status_source=status_source,
-                status_checked_at=checked_at,
-                pricing=_agent_pricing_metadata(key),
-                active=False,
-                loading=False,
-                reason=cloud_reason,
-                model_catalog=cloud_models,
-            )
-        )
-
-    return agents
 
 
 def verify_cloud_agent_endpoint(model_id: str) -> CloudAgentVerificationResponse:
@@ -694,7 +465,7 @@ def verify_cloud_agent_endpoint(model_id: str) -> CloudAgentVerificationResponse
     if model_profile.runtime != "cloud":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only cloud Agents support provider verification.",
+            detail="Only cloud models support provider verification.",
         )
     if not model_has_credentials(model_profile):
         raise HTTPException(
@@ -799,7 +570,7 @@ def load_local_model_endpoint(model_id: str) -> LocalLoadResponse:
     if model_profile is None or model_profile.runtime != "local":
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Only configured local Agents can be pre-warmed.",
+            detail="Only configured local models can be pre-warmed.",
         )
 
     profile = build_concrete_agent(
@@ -1078,6 +849,7 @@ def _execute_agent_turn(
             resolved_model=response.resolved_model,
             requested_effort=payload.effort,
             resolved_effort=resolved_effort,
+            runtime="local" if is_local_profile(profile) else "cloud",
             model_stability=getattr(profile, "stability", None),
             hosted_tools=getattr(profile, "hosted_tools", None),
         )
@@ -1110,6 +882,7 @@ def _execute_agent_turn(
                 resolved_model=None,
                 requested_effort=payload.effort,
                 resolved_effort=resolved_effort,
+                runtime="local" if is_local_profile(profile) else "cloud",
                 model_stability=getattr(profile, "stability", None),
                 hosted_tools=getattr(profile, "hosted_tools", None),
             ),
@@ -1244,7 +1017,7 @@ def _estimate_agent_request(
 def _resolve_and_validate_model_profile(
     agent_key: str,
     model_id: str | None,
-) -> tuple[AgentSpec, ModelProfile]:
+) -> ModelProfile:
     if agent_key != "apex":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1264,25 +1037,22 @@ def _resolve_and_validate_model_profile(
             )
     else:
         model_profile = resolve_selected_model_profile()
-    spec = AGENT_SPECS["apex"]
-    return AgentSpec(spec.key, spec.display_name, spec.description, spec.identity_instruction, model_profile.runtime, spec.capability_tags), model_profile
+    return model_profile
 
 
 def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse:
     """Build an Agent-specific estimate without making a provider call."""
     agent_key = payload.agent
-    spec, model_profile = _resolve_and_validate_model_profile(
-        agent_key, payload.model_id
-    )
+    model_profile = _resolve_and_validate_model_profile(agent_key, payload.model_id)
 
     google_search, google_maps = (
         _cloud_hosted_tool_settings()
-        if spec.runtime == "cloud"
+        if model_profile.runtime == "cloud"
         else (False, False)
     )
     resolved_effort = (
         resolve_effort(model_profile, payload.effort)
-        if spec.runtime == "cloud"
+        if model_profile.runtime == "cloud"
         else None
     )
     local_context = (
@@ -1377,24 +1147,22 @@ def query_agent(
         )
 
     agent_key = payload.agent
-    spec, model_profile = _resolve_and_validate_model_profile(
-        agent_key, payload.model_id
-    )
+    model_profile = _resolve_and_validate_model_profile(agent_key, payload.model_id)
 
-    if spec.runtime == "local" and payload.effort is not None:
+    if model_profile.runtime == "local" and payload.effort is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Effort cannot be set for local Agents.",
+            detail="Effort cannot be set for local models.",
         )
 
     resolved_effort = (
         resolve_effort(model_profile, payload.effort)
-        if spec.runtime == "cloud"
+        if model_profile.runtime == "cloud"
         else None
     )
     google_search, google_maps = (
         _cloud_hosted_tool_settings()
-        if spec.runtime == "cloud"
+        if model_profile.runtime == "cloud"
         else (False, False)
     )
     local_context = (
@@ -1443,6 +1211,7 @@ def query_agent(
                 resolved_model=None,
                 requested_effort=payload.effort,
                 resolved_effort=resolved_effort,
+                runtime=model_profile.runtime,
                 model_stability=getattr(profile, "stability", None),
                 hosted_tools=getattr(profile, "hosted_tools", None),
             ),

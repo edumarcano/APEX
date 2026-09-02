@@ -300,7 +300,7 @@ class AgentQueryRequest(BaseModel):
         default=None,
         description=(
             "Optional cloud reasoning effort override (none, minimal, low, medium, high, xhigh, max). "
-            "Rejected for local Agents."
+            "Rejected for local models."
         ),
     )
     session_id: Optional[str] = Field(
@@ -344,11 +344,11 @@ class AgentQueryRequest(BaseModel):
     context_window: Optional[int] = Field(
         default=None,
         ge=1,
-        description="Optional turn-specific context window override for local agents.",
+        description="Optional turn-specific context window override for local models.",
     )
     local_reasoning_mode: Optional[LocalReasoningMode] = Field(
         default=None,
-        description="Optional turn-specific reasoning mode override for local agents.",
+        description="Optional turn-specific reasoning mode override for local models.",
     )
     briefing_id: Optional[int] = Field(
         default=None,
@@ -393,7 +393,7 @@ class AgentQueryResponse(BaseModel):
     active_tool_profile_name: str | None = None
     local_context_usage: LocalContextUsage | None = Field(
         default=None,
-        description="Local Agent prompt-window usage; null for cloud Agents.",
+        description="Local model prompt-window usage; null for cloud models.",
     )
     resolved_model: Optional[str] = Field(
         default=None,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from core.agent.catalog import AGENT_SPECS, resolve_model_selection
+from core.agent.catalog import AGENT_SPECS, build_agent_used_metadata, resolve_model_selection
 from core.agent.model_catalog import get_model_profile, visible_cloud_models, visible_local_models
 from core.settings.models import AgentSettings, CloudSettings, LocalSettings
 
@@ -14,6 +14,19 @@ class ApexAgentCatalogTests(unittest.TestCase):
     def test_catalog_has_one_native_agent(self) -> None:
         self.assertEqual(tuple(AGENT_SPECS), ("apex",))
         self.assertEqual(AGENT_SPECS["apex"].display_name, "Apex Agent")
+
+    def test_response_metadata_runtime_comes_from_the_resolved_model(self) -> None:
+        cloud = build_agent_used_metadata(
+            "apex", provider="openrouter", configured_model="deepseek/deepseek-v4-flash-0731",
+            resolved_model=None, requested_effort="low", resolved_effort="low", runtime="cloud",
+        )
+        local = build_agent_used_metadata(
+            "apex", provider="llama_cpp", configured_model="gemma-4-E2B-Q4_K_M.gguf",
+            resolved_model=None, requested_effort=None, resolved_effort=None, runtime="local",
+        )
+
+        self.assertEqual(cloud["runtime"], "cloud")
+        self.assertEqual(local["runtime"], "local")
 
     def test_selected_cloud_model_resolves_runtime_and_effort(self) -> None:
         settings = AgentSettings(
