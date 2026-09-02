@@ -333,28 +333,77 @@ class ContextAssemblyTests(unittest.TestCase):
 
     def test_local_model_retrieval_policy_limits_and_preflight(self) -> None:
         from core.settings import get_settings_store
+        from core.settings.models import (
+            AgentSettingsPatch,
+            LocalSettingsPatch,
+            SettingsPatch,
+        )
         from core.api.cortex import build_tool_preflight
         from core.api.models import ToolPreflightRequest
 
         store = get_settings_store()
-        policy = ContextPolicy.from_settings(
-            agent="apex",
-            partition="production",
-            settings=store.get_snapshot(),
-            model_id="gemma-4-E2B-Q4_K_M.gguf",
-        )
-        self.assertEqual(policy.max_retrieved_tokens, 400)
-        self.assertEqual(policy.max_conversation_excerpts, 1)
-        self.assertEqual(policy.max_personal_records, 2)
-
-        resp = build_tool_preflight(
-            ToolPreflightRequest(
+        initial_snap = store.get_snapshot()
+        try:
+            # Opt-in enabled for local execution
+            store.apply_patch(
+                SettingsPatch(
+                    ask_apex=AgentSettingsPatch(
+                        selected_model="gemma-4-E2B-Q4_K_M.gguf",
+                        local=LocalSettingsPatch(
+                            personal_context_enabled=True,
+                        ),
+                    )
+                )
+            )
+            policy = ContextPolicy.from_settings(
                 agent="apex",
-                prompt="Check local context limit",
+                partition="production",
+                settings=store.get_snapshot(),
                 model_id="gemma-4-E2B-Q4_K_M.gguf",
             )
-        )
-        self.assertEqual(resp.breakdown.retrieved_context, 400)
+            self.assertEqual(policy.max_retrieved_tokens, 400)
+            self.assertEqual(policy.max_conversation_excerpts, 1)
+            self.assertEqual(policy.max_personal_records, 2)
+
+            resp_enabled = build_tool_preflight(
+                ToolPreflightRequest(
+                    agent="apex",
+                    prompt="Check local context limit",
+                    model_id="gemma-4-E2B-Q4_K_M.gguf",
+                )
+            )
+            self.assertEqual(resp_enabled.breakdown.retrieved_context, 400)
+
+            # Opt-in disabled for local execution
+            store.apply_patch(
+                SettingsPatch(
+                    ask_apex=AgentSettingsPatch(
+                        selected_model="gemma-4-E2B-Q4_K_M.gguf",
+                        local=LocalSettingsPatch(
+                            personal_context_enabled=False,
+                        ),
+                    )
+                )
+            )
+            resp_disabled = build_tool_preflight(
+                ToolPreflightRequest(
+                    agent="apex",
+                    prompt="Check local context limit",
+                    model_id="gemma-4-E2B-Q4_K_M.gguf",
+                )
+            )
+            self.assertEqual(resp_disabled.breakdown.retrieved_context, 0)
+        finally:
+            store.apply_patch(
+                SettingsPatch(
+                    ask_apex=AgentSettingsPatch(
+                        selected_model=initial_snap.ask_apex.selected_model,
+                        local=LocalSettingsPatch(
+                            personal_context_enabled=initial_snap.ask_apex.local.personal_context_enabled,
+                        ),
+                    )
+                )
+            )
 
     def test_personal_records_prioritized_over_conversation_under_tight_budget(self) -> None:
         current = uuid4()
