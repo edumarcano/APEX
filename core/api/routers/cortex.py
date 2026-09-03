@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+from concurrent.futures import Future
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Query, status
 
@@ -22,7 +24,14 @@ from core.settings import (
     ToolProfilesPatch,
     get_settings_store,
 )
-from core.config import is_dev_mode
+from core.config import (
+    CORTEX_RUNS_MAX_ELAPSED_SECONDS,
+    CORTEX_RUNS_MAX_MODEL_TURNS,
+    CORTEX_RUNS_MAX_RETRIES,
+    CORTEX_RUNS_MAX_TOOL_CALLS,
+    CORTEX_RUNS_MAX_TOTAL_TOKENS,
+    is_dev_mode,
+)
 from core.api.cortex import (
     build_tool_catalog,
     build_tool_preflight,
@@ -32,6 +41,17 @@ from core.api.cortex import (
     verify_cloud_agent_endpoint,
 )
 from core.conversations import get_conversation_service
+from core.runs import (
+    ActiveConversationRunError,
+    RunCapacityError,
+    RunCompletionEvidence,
+    RunError,
+    RunLimitSnapshot,
+    RunNotFoundError,
+    RunRecord,
+    get_run_coordinator,
+    get_run_service,
+)
 from core.conversations.models import (
     ConversationCreateRequest,
     ConversationDetail,
@@ -451,15 +471,64 @@ def _turn_result(conversation_id, user, agent) -> ConversationTurnResult:
     response_model=ConversationTurnResult,
 )
 def conversation_turn(conversation_id: str, payload: ConversationTurnRequest) -> ConversationTurnResult:
-    from uuid import UUID
-
     try:
         parsed_id = UUID(conversation_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation was not found.") from exc
-    service = get_conversation_service()
+    record, future = _submit_run(parsed_id, payload)
+    if future is not None:
+        future.result()
+    return _turn_result_for_message(parsed_id, payload.agent_message_id)
+
+
+@router.post(
+    "/api/v1/cortex/conversations/{conversation_id}/runs",
+    response_model=RunRecord,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def create_conversation_run(conversation_id: str, payload: ConversationTurnRequest) -> RunRecord:
     try:
-        detail = service.detail(parsed_id)
+        parsed_id = UUID(conversation_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation was not found.") from exc
+    record, _ = _submit_run(parsed_id, payload)
+    return record
+
+
+@router.get("/api/v1/cortex/runs", response_model=list[RunRecord])
+def list_cortex_runs(
+    status_filter: str | None = Query(default=None, alias="status"),
+    limit: int = Query(default=25, ge=1, le=100),
+) -> list[RunRecord]:
+    valid_statuses = {"queued", "running", "cancelling", "completed", "failed", "cancelled", "interrupted"}
+    if status_filter is not None and status_filter not in valid_statuses:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid run status.")
+    return get_run_service().list_runs(status=status_filter, limit=limit)  # type: ignore[arg-type]
+
+
+@router.get("/api/v1/cortex/runs/{run_id}", response_model=RunRecord)
+def get_cortex_run(run_id: UUID) -> RunRecord:
+    try:
+        return get_run_service().get_run(run_id)
+    except RunNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run was not found.") from exc
+
+
+@router.post("/api/v1/cortex/runs/{run_id}/cancel", response_model=RunRecord)
+def cancel_cortex_run(run_id: UUID) -> RunRecord:
+    try:
+        return get_run_coordinator().cancel(run_id)
+    except RunNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run was not found.") from exc
+
+
+def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tuple[RunRecord, Future[object] | None]:
+    """Prepare durable messages and submit one run through the shared coordinator."""
+    service = get_conversation_service()
+    coordinator = get_run_coordinator()
+    admitted = False
+    try:
+        detail = service.detail(conversation_id)
         agent_key = payload.agent or detail.agent
         selected_tools = (
             payload.selected_tool_names
@@ -479,8 +548,14 @@ def conversation_turn(conversation_id: str, payload: ConversationTurnRequest) ->
             "briefing_id": payload.briefing_id,
             **_resolved_turn_metadata(payload),
         }
+        existing = coordinator.admit(
+            conversation_id=conversation_id, agent_message_id=payload.agent_message_id
+        )
+        if existing is not None:
+            return existing, coordinator.future_for(existing.id)
+        admitted = True
         user, agent_message, history, replayed = service.begin_turn(
-            parsed_id,
+            conversation_id,
             user_id=payload.user_message_id,
             agent_id=payload.agent_message_id,
             parent_id=payload.parent_message_id,
@@ -491,14 +566,19 @@ def conversation_turn(conversation_id: str, payload: ConversationTurnRequest) ->
             tool_profile_id=tool_profile_id,
         )
         if replayed:
-            if agent_message.status == "completed":
-                try:
-                    get_retrieval_service().index_turn(user, agent_message, partition=service.partition())
-                except Exception:
-                    pass
-            return _turn_result(parsed_id, user, agent_message)
+            coordinator.abandon_admission(payload.agent_message_id)
+            existing = get_run_service().get_run_by_agent_message_id(payload.agent_message_id)
+            if existing is not None:
+                return existing, coordinator.future_for(existing.id)
+            raise ConversationConflictError("Turn was completed before a run could be created.")
     except (ConversationNotFoundError, ConversationConflictError) as exc:
+        if admitted:
+            coordinator.abandon_admission(payload.agent_message_id)
         raise _conversation_error(exc) from exc
+    except RunCapacityError as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Cortex run capacity is full.") from exc
+    except ActiveConversationRunError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A Cortex run is already active for this conversation.") from exc
 
     execution_kwargs = {
         "prompt": payload.prompt,
@@ -524,50 +604,72 @@ def conversation_turn(conversation_id: str, payload: ConversationTurnRequest) ->
         settings=get_settings_store().get_snapshot(),
         model_id=payload.model_id,
     )
-    context_bundle = ContextAssembler(
-        get_retrieval_service(), get_knowledge_service()
-    ).assemble(
-        prompt=payload.prompt,
-        conversation_id=parsed_id,
-        policy=context_policy,
-    )
     try:
-        response = query_agent(
-            execution_payload,
-            action_provenance={
-                "source_kind": "conversation_message",
-                "conversation_id": str(parsed_id),
-                "message_id": str(user.id),
-                "partition": service.partition(),
-            },
-            context_bundle=context_bundle,
+        context_bundle = ContextAssembler(
+            get_retrieval_service(), get_knowledge_service()
+        ).assemble(
+            prompt=payload.prompt,
+            conversation_id=conversation_id,
+            policy=context_policy,
         )
-    except HTTPException as exc:
-        failed = service.finalize(
-            parsed_id,
-            payload.agent_message_id,
-            answer="",
-            status="failed",
-            response_metadata={"error": str(exc.detail)},
-        )
-        _ = failed
+    except Exception:
+        service.finalize(conversation_id, agent_message.id, answer="", status="failed", response_metadata={"error": "internal_error"})
+        coordinator.abandon_admission(payload.agent_message_id)
         raise
-    response_data = response.model_dump(mode="json", exclude={"answer", "session_id"})
-    completed = service.finalize(
-        parsed_id,
-        payload.agent_message_id,
-        answer=response.answer,
-        status="failed" if response.error else "completed",
-        response_metadata=response_data,
+    limit_snapshot = RunLimitSnapshot(
+        max_elapsed_seconds=CORTEX_RUNS_MAX_ELAPSED_SECONDS,
+        max_total_tokens=CORTEX_RUNS_MAX_TOTAL_TOKENS,
+        max_retries=CORTEX_RUNS_MAX_RETRIES,
+        max_model_turns=CORTEX_RUNS_MAX_MODEL_TURNS,
+        max_tool_calls=CORTEX_RUNS_MAX_TOOL_CALLS,
     )
-    if completed.status == "completed":
-        try:
-            get_retrieval_service().index_turn(user, completed, partition=service.partition())
-        except Exception:
-            # Retrieval is a repairable secondary index and must not change the
-            # established successful-turn contract.
-            pass
-    return _turn_result(parsed_id, user, completed)
+    metadata = request_metadata
+    try:
+        record, handle, _ = get_run_service().create_run(
+            run_id=uuid4(), conversation_id=conversation_id, user_message_id=user.id,
+            agent_message_id=agent_message.id, requested_model=str(metadata["resolved_model"]),
+            limit_snapshot=limit_snapshot,
+        )
+    except Exception:
+        service.finalize(conversation_id, agent_message.id, answer="", status="failed", response_metadata={"error": "internal_error"})
+        coordinator.abandon_admission(payload.agent_message_id)
+        raise
+
+    def execute(control):
+        return query_agent(
+            execution_payload,
+            action_provenance={"source_kind": "conversation_message", "conversation_id": str(conversation_id), "message_id": str(user.id), "partition": service.partition()},
+            context_bundle=context_bundle,
+            execution_control=control,
+        )
+
+    def finalize(response, message_status: str, error_code: str | None):
+        response_data = ({"error": error_code} if response is None else response.model_dump(mode="json", exclude={"answer", "session_id"}))
+        completed = service.finalize(conversation_id, agent_message.id, answer="" if response is None else response.answer, status=message_status, response_metadata=response_data)
+        if completed.status == "completed":
+            try:
+                get_retrieval_service().index_turn(user, completed, partition=service.partition())
+            except Exception:
+                pass
+        return completed
+
+    try:
+        future = coordinator.submit(
+            handle=handle, resolved_model=str(metadata["resolved_model"]), provider=str(metadata["provider"]), runtime=str(metadata["runtime"]), execute=execute, finalize_conversation=finalize,
+        )
+    except Exception:
+        service.finalize(conversation_id, agent_message.id, answer="", status="failed", response_metadata={"error": "internal_error"})
+        handle.finalize(status="failed", stop_reason="internal_error", evidence=RunCompletionEvidence(final_message_status="failed"), error=RunError(code="internal_error"))
+        coordinator.abandon_admission(agent_message.id)
+        raise
+    return record, future
+
+
+def _turn_result_for_message(conversation_id: UUID, agent_message_id: UUID) -> ConversationTurnResult:
+    detail = get_conversation_service().detail(conversation_id)
+    agent = next(message for message in detail.messages if message.id == agent_message_id)
+    user = next(message for message in detail.messages if message.id == agent.parent_message_id)
+    return _turn_result(conversation_id, user, agent)
 
 
 def _profile_response(

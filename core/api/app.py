@@ -25,13 +25,13 @@ from core.actions.microsoft_todo import (
     MicrosoftTodoTaskMutationVerifier,
 )
 from core.api.routers import actions, cortex, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
-from core.config import DEMO_MODE, ENV_PATH, MAX_RECENT_CONVERSATION_MESSAGES
+from core.config import CORTEX_RUNS_MAX_CONCURRENT_RUNS, DEMO_MODE, ENV_PATH, MAX_RECENT_CONVERSATION_MESSAGES
 from core.agent.local_runtime.coordinator import check_idle_local_models_loop
 from core.agent.local_runtime.registry import any_local_runtime_enabled
 from core.agent.providers.llama_cpp_supervisor import get_llama_cpp_server_supervisor
 from core import database, speaker
 from core.conversations import ConversationService, ConversationStore, set_conversation_service
-from core.runs import RunService, RunStore, set_run_service
+from core.runs import CortexRunCoordinator, RunService, RunStore, set_run_coordinator, set_run_service
 from core.knowledge import KnowledgeService, KnowledgeStore, set_knowledge_service
 from core.knowledge.capture import ContextCaptureExecutor, ContextCaptureVerifier, CAPABILITY_NAME
 from core.knowledge.reconciliation import (
@@ -67,6 +67,7 @@ async def _app_lifespan(_app: FastAPI):
         demo_db_lock = threading.RLock()
     conversation_store: ConversationStore | None = None
     run_store: RunStore | None = None
+    run_coordinator: CortexRunCoordinator | None = None
     retrieval_store: RetrievalStore | None = None
     knowledge_store: KnowledgeStore | None = None
     if not DEMO_MODE:
@@ -102,6 +103,10 @@ async def _app_lifespan(_app: FastAPI):
     if not DEMO_MODE:
         run_service.recover_interrupted()
     set_run_service(run_service)
+    run_coordinator = CortexRunCoordinator(
+        run_service, max_workers=CORTEX_RUNS_MAX_CONCURRENT_RUNS
+    )
+    set_run_coordinator(run_coordinator)
     retrieval_store = RetrievalStore(
         None if DEMO_MODE else database.DB_NAME,
         connection=demo_db,
@@ -240,10 +245,13 @@ async def _app_lifespan(_app: FastAPI):
                                 set_reminder_service(None)
                                 set_conversation_service(None)
                                 set_run_service(None)
+                                set_run_coordinator(None)
                                 set_retrieval_service(None)
                                 set_knowledge_service(None)
                                 if conversation_store is not None:
                                     conversation_store.close()
+                                if run_coordinator is not None:
+                                    run_coordinator.close()
                                 if run_store is not None:
                                     run_store.close()
                                 if retrieval_store is not None:

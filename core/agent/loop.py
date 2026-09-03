@@ -47,6 +47,31 @@ P = TypeVar("P", bound=AgentModelProfile, contravariant=True)
 
 ToolsDispatcher = Callable[[str, dict[str, Any]], Any]
 
+
+class ExecutionStopped(RuntimeError):
+    """A coordinator requested a safe, cooperative end to a run."""
+
+
+class ExecutionCancelled(ExecutionStopped):
+    """The operator cancelled the run."""
+
+
+class ExecutionLimitReached(ExecutionStopped):
+    """A cumulative run limit was reached."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class ExecutionControl(Protocol):
+    """Optional per-run callbacks supplied by the run coordinator."""
+
+    def before_model_turn(self) -> None: ...
+    def after_model_turn(self, result: ProviderTurnResult) -> None: ...
+    def before_tool(self) -> None: ...
+    def after_tool(self) -> None: ...
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -158,6 +183,7 @@ def run_agent_loop(
     tool_selection: ToolSelectionDiagnostics | None = None,
     agent_key: str | None = None,
     action_provenance: Mapping[str, object] | None = None,
+    execution_control: ExecutionControl | None = None,
 ) -> AgentQueryResponse:
     history: list[AgentMessage] = list(request.history)
     history.append(AgentMessage(role="user", content=request.prompt))
@@ -283,6 +309,8 @@ def run_agent_loop(
 
     try:
         for _turn in range(profile.max_tool_turns):
+            if execution_control is not None:
+                execution_control.before_model_turn()
             turn_tools: list[CapabilityDescriptor] = list(resolved_tools)
 
             # Withhold tools on the last permitted turn so every provider must
@@ -302,6 +330,8 @@ def run_agent_loop(
                 profile,
                 system_instruction_override=turn_instruction,
             )
+            if execution_control is not None:
+                execution_control.after_model_turn(turn_result)
             model_message = turn_result.message
             history.append(model_message)
             if turn_result.provider_ms is not None:
@@ -357,6 +387,8 @@ def run_agent_loop(
             tool_results: list[ToolResult] = []
 
             for call in model_message.tool_calls:
+                if execution_control is not None:
+                    execution_control.before_tool()
                 if total_tool_executions >= profile.max_tool_calls:
                     return response(
                         answer=last_model_content or "",
@@ -491,6 +523,8 @@ def run_agent_loop(
                 tool_results.append(
                     ToolResult(id=call.id, name=call.name, output=output)
                 )
+                if execution_control is not None:
+                    execution_control.after_tool()
 
             if turn_tool_messages:
                 for prior_result in turn_tool_messages[-1].tool_results or []:
@@ -509,6 +543,8 @@ def run_agent_loop(
                 "without a final answer."
             ),
         )
+    except ExecutionStopped:
+        raise
     except Exception as exc:
         _LOGGER.exception(
             "Bounded Agent loop failed for model configuration %s",

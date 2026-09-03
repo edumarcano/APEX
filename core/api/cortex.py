@@ -785,6 +785,7 @@ def _execute_agent_turn(
     user_designation: str = "",
     action_provenance: Mapping[str, object] | None = None,
     context_bundle: ContextBundle | None = None,
+    execution_control: object | None = None,
 ) -> AgentQueryResponse:
     """Build HUD context, select the provider, and run the bounded agent loop."""
     try:
@@ -844,6 +845,7 @@ def _execute_agent_turn(
             tool_selection=tool_selection,
             agent_key=agent_key,
             action_provenance=action_provenance,
+            execution_control=execution_control,
         )
         if not is_local_profile(profile):
             record_cloud_request_success(
@@ -870,6 +872,10 @@ def _execute_agent_turn(
             response.context_references = [reference.as_dict() for reference in context_bundle.references]
         return response
     except Exception as exc:
+        from core.agent.loop import ExecutionStopped
+
+        if isinstance(exc, ExecutionStopped):
+            raise
         if not is_local_profile(profile):
             record_cloud_request_failure(
                 agent_key,
@@ -1139,6 +1145,7 @@ def query_agent(
     *,
     action_provenance: Mapping[str, object] | None = None,
     context_bundle: ContextBundle | None = None,
+    execution_control: object | None = None,
 ) -> AgentQueryResponse:
     """
     Execute one Cortex Engine Agent turn with optional tool calling.
@@ -1300,6 +1307,7 @@ def query_agent(
                 user_designation=settings.user_designation,
                 action_provenance=action_provenance,
                 context_bundle=context_bundle,
+                execution_control=execution_control,
             )
         finally:
             end_local_execution()
@@ -1322,4 +1330,5 @@ def query_agent(
         user_designation=settings.user_designation,
         action_provenance=action_provenance,
         context_bundle=context_bundle,
+        execution_control=execution_control,
     )
