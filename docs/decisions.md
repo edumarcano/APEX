@@ -184,11 +184,11 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 ### Keep Agent execution stateless while storing conversations
 
-**Decision.** APEX stores Cortex conversations and reconstructs bounded active-branch history on the backend. Each Agent turn is one synchronous request with no server-side model session.
+**Decision.** APEX stores Cortex conversations and rebuilds a bounded active-branch history for each run. The synchronous `/turns` route waits for completion; the `/runs` route starts the same work asynchronously. Neither route keeps a model session between turns.
 
-**Why.** SQLite holds the durable conversation tree and client-visible metadata; the backend executes each turn against a bounded slice of that history rather than keeping a long-lived model session open. That keeps session expiry, cleanup, and multi-tab coordination out of the execution path.
+**Why.** SQLite owns the conversation tree and client-visible metadata. Each run reads a bounded history slice, so session expiry and cleanup do not depend on a long-lived model session. Multi-tab coordination stays in conversation persistence.
 
-**Trade-off.** Conversation text and client-visible response metadata sit in unencrypted local SQLite, and only the bounded history slice reaches the model. The frontend has to reconcile assistant-ui's transient branch state with the durable active leaf.
+**Trade-off.** Conversation text and response metadata remain in unencrypted local SQLite. Only the bounded history slice reaches the model. The frontend must reconcile assistant-ui's transient branch state with the durable active leaf.
 
 ### Keep assistant-ui replaceable and behind an APEX adapter
 

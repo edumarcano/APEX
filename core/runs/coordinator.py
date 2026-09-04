@@ -46,7 +46,7 @@ class ActiveConversationRunError(RuntimeError):
 
 
 class RunHttpError(RuntimeError):
-    """A request error that the synchronous compatibility route must re-raise."""
+    """A request error that the synchronous route must re-raise."""
 
     def __init__(self, *, status_code: int, detail: Any) -> None:
         super().__init__(str(status_code))
