@@ -190,6 +190,7 @@ def run_agent_loop(
     action_provenance: Mapping[str, object] | None = None,
     execution_control: ExecutionControl | None = None,
     stream_observer: ProviderStreamObserver | None = None,
+    activity_observer: Callable[[str, dict[str, Any]], None] | None = None,
     output_schema: dict[str, Any] | None = None,
 ) -> AgentQueryResponse:
     history: list[AgentMessage] = list(request.history)
@@ -334,13 +335,26 @@ def run_agent_loop(
             generate_kwargs: dict[str, Any] = {
                 "system_instruction_override": turn_instruction,
             }
+            provisional_text = False
+
+            def observe_stream(event) -> None:
+                nonlocal provisional_text
+                if event.kind == "text" and event.text:
+                    provisional_text = True
+                elif event.kind == "reset":
+                    provisional_text = False
+                if stream_observer is not None:
+                    stream_observer(event)
+
+            if activity_observer is not None:
+                activity_observer("model.started", {"turn": _turn + 1})
             # Existing test and extension providers may implement the small
             # pre-beta.2 contract.  Pass the new seam only when supported.
             parameters = inspect.signature(provider.generate_turn).parameters
             if "execution_control" in parameters:
                 generate_kwargs["execution_control"] = execution_control
             if "stream_observer" in parameters:
-                generate_kwargs["stream_observer"] = stream_observer
+                generate_kwargs["stream_observer"] = observe_stream
             if "output_schema" in parameters:
                 generate_kwargs["output_schema"] = output_schema if is_final_turn else None
             turn_result = provider.generate_turn(
@@ -348,6 +362,14 @@ def run_agent_loop(
             )
             if execution_control is not None:
                 execution_control.after_model_turn(turn_result)
+            if activity_observer is not None:
+                activity_observer(
+                    "model.completed",
+                    {
+                        "turn": _turn + 1,
+                        "provider_ms": turn_result.provider_ms,
+                    },
+                )
             model_message = turn_result.message
             history.append(model_message)
             if turn_result.provider_ms is not None:
@@ -371,6 +393,16 @@ def run_agent_loop(
                             "billable_units": event.billable_units,
                         }
                     )
+                    if activity_observer is not None:
+                        activity_observer(
+                            "tool.completed",
+                            {
+                                "name": event.name,
+                                "origin": "provider",
+                                "status": event.status,
+                                "duration_ms": event.duration_ms,
+                            },
+                        )
 
             estimated_prompt_tokens = max(
                 estimated_prompt_tokens,
@@ -398,7 +430,15 @@ def run_agent_loop(
                 last_model_content = model_message.content
 
             if not model_message.tool_calls:
+                if activity_observer is not None:
+                    activity_observer(
+                        "response.completed",
+                        {"answer": model_message.content or ""},
+                    )
                 return response(answer=model_message.content or "")
+
+            if provisional_text and activity_observer is not None:
+                activity_observer("response.reset", {})
 
             tool_results: list[ToolResult] = []
 
@@ -417,6 +457,11 @@ def run_agent_loop(
                 tool_started = time.perf_counter()
                 status = "ok"
                 output: Any
+                if activity_observer is not None:
+                    activity_observer(
+                        "tool.started",
+                        {"name": call.name, "origin": "apex"},
+                    )
 
                 try:
                     if call.name not in allowed_tools:
@@ -482,6 +527,15 @@ def run_agent_loop(
                             "summary": action.proposal.summary,
                             "target": action.proposal.target,
                         }
+                        if activity_observer is not None:
+                            activity_observer(
+                                "action.proposed",
+                                {
+                                    "action_id": action.action_id,
+                                    "status": action.status,
+                                    "risk": action.proposal.risk,
+                                },
+                            )
                 except CapabilityError as exc:
                     status = "error"
                     _LOGGER.warning(
@@ -516,6 +570,16 @@ def run_agent_loop(
                         "origin": "apex",
                     }
                 )
+                if activity_observer is not None:
+                    activity_observer(
+                        "tool.completed",
+                        {
+                            "name": call.name,
+                            "origin": "apex",
+                            "status": status,
+                            "duration_ms": duration_ms,
+                        },
+                    )
 
                 if status == "ok":
                     if is_client_display_enabled(call.name):

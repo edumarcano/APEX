@@ -11,6 +11,8 @@ from uuid import UUID
 
 from core.agent.loop import ExecutionCancelled, ExecutionLimitReached
 from core.agent.providers.contract import ProviderTurnResult
+from core.config import CORTEX_RUNS_EVENT_REPLAY_LIMIT
+from core.runs.events import RunEventRegistry
 from core.runs.models import (
     RunCompletionEvidence,
     RunError,
@@ -64,7 +66,12 @@ class _ActiveRun:
 class RunExecutionControl:
     """Checkpoint-only cancellation and cumulative accounting for one run."""
 
-    def __init__(self, handle: RunHandle, cancel_event: threading.Event) -> None:
+    def __init__(
+        self,
+        handle: RunHandle,
+        cancel_event: threading.Event,
+        event_sink: Callable[[str, dict[str, Any], RunRecord | None], None] | None = None,
+    ) -> None:
         self.handle = handle
         self.cancel_event = cancel_event
         self.limits = handle.get_record().limit_snapshot
@@ -76,6 +83,25 @@ class RunExecutionControl:
         self.usage_quality: UsageQuality = "unavailable"
         self.runtime_measurements = RunRuntimeMeasurements()
         self._turn_retry_count = 0
+        self._event_sink = event_sink
+
+    def publish_activity(
+        self,
+        event_type: str,
+        payload: dict[str, Any],
+        *,
+        record: RunRecord | None = None,
+    ) -> None:
+        """Forward a loop-owned safe activity event to the live run stream."""
+        if self._event_sink is not None:
+            self._event_sink(event_type, payload, record)
+
+    def observe_provider_stream(self, event: Any) -> None:
+        """Translate the intentionally small provider stream contract."""
+        if event.kind == "text" and event.text:
+            self.publish_activity("response.delta", {"text": event.text})
+        elif event.kind == "reset":
+            self.publish_activity("response.reset", {})
 
     def _elapsed(self) -> float:
         return round(time.monotonic() - self.started, 3)
@@ -121,7 +147,7 @@ class RunExecutionControl:
         self.runtime_measurements = self.runtime_measurements.model_copy(
             update=measurement_updates
         )
-        self.handle.update_progress(
+        record = self.handle.update_progress(
             turns_count=self.turns,
             tool_calls_count=self.tools,
             retries_count=self.retries,
@@ -130,6 +156,21 @@ class RunExecutionControl:
             usage_quality=self.usage_quality,
             runtime_measurements=self.runtime_measurements,
         )
+        if record is not None:
+            self.publish_activity(
+                "usage.updated",
+                {
+                    "total_tokens": record.total_tokens,
+                    "usage_quality": record.usage_quality,
+                    "retries_count": record.retries_count,
+                },
+                record=record,
+            )
+            self.publish_activity(
+                "runtime.updated",
+                {"runtime_measurements": record.runtime_measurements.model_dump(mode="json")},
+                record=record,
+            )
 
     def before_model_turn(self) -> None:
         self._check()
@@ -163,7 +204,13 @@ class RunExecutionControl:
             }
             if updates:
                 self.runtime_measurements = self.runtime_measurements.model_copy(update=updates)
-                self.handle.update_progress(runtime_measurements=self.runtime_measurements)
+                record = self.handle.update_progress(runtime_measurements=self.runtime_measurements)
+                if record is not None:
+                    self.publish_activity(
+                        "runtime.updated",
+                        {"runtime_measurements": record.runtime_measurements.model_dump(mode="json")},
+                        record=record,
+                    )
         self._check()
         if self.retries > self.limits.max_retries:
             raise ExecutionLimitReached("max_retries")
@@ -196,6 +243,7 @@ class CortexRunCoordinator:
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="apex-run")
         self._lock = threading.RLock()
         self._active: dict[UUID, _ActiveRun] = {}
+        self.events = RunEventRegistry(replay_limit=CORTEX_RUNS_EVENT_REPLAY_LIMIT)
 
     def close(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=False)
@@ -240,11 +288,13 @@ class CortexRunCoordinator:
                     raise RuntimeError("Run was not admitted.")
                 self._active[handle.run_id] = active
             try:
+                self.events.start(handle.get_record())
                 future = self._executor.submit(
                     self._run, handle, resolved_model, provider, runtime, active, execute, finalize_conversation
                 )
             except Exception:
                 self._active.pop(handle.run_id, None)
+                self.events.discard(handle.run_id)
                 self._slots.release()
                 raise
             active.future = future
@@ -254,6 +304,12 @@ class CortexRunCoordinator:
         with self._lock:
             handle = self.service.get_handle(run_id)
             record = handle.set_cancelling()
+            self.events.publish(
+                run_id,
+                "run.status",
+                {"status": record.status},
+                record=record,
+            )
             active = self._active.get(run_id)
             if active is not None:
                 active.cancel_event.set()
@@ -275,16 +331,31 @@ class CortexRunCoordinator:
         execute: ExecuteRun,
         finalize_conversation: FinalizeConversation,
     ) -> Any:
-        control = RunExecutionControl(handle, active.cancel_event)
+        control = RunExecutionControl(
+            handle,
+            active.cancel_event,
+            lambda event_type, payload, record=None: self.events.publish(
+                handle.run_id,
+                event_type,
+                payload,
+                record=record,
+            ),
+        )
         try:
             with self._lock:
                 if active.cancel_event.is_set() or handle.get_record().status == "cancelling":
                     raise ExecutionCancelled()
                 try:
-                    handle.start(
+                    record = handle.start(
                         resolved_model=resolved_model,
                         provider=provider,
                         runtime=runtime,
+                    )
+                    self.events.publish(
+                        handle.run_id,
+                        "run.status",
+                        {"status": record.status},
+                        record=record,
                     )
                 except RunConflictError:
                     if handle.get_record().status == "cancelling":
@@ -300,12 +371,14 @@ class CortexRunCoordinator:
                 tool_outcome_counts=_tool_outcomes(response),
                 action_ids=_action_ids(response),
             )
-            return handle.finalize(
+            record = handle.finalize(
                 status="completed" if conversation.status == "completed" else "failed",
                 stop_reason="end_turn" if conversation.status == "completed" else "provider_error",
                 evidence=evidence,
                 error=None if conversation.status == "completed" else RunError(code="provider_error"),
             )
+            self._publish_terminal(record)
+            return record
         except ExecutionCancelled:
             return self._finalize_stopped(handle, control, finalize_conversation, "cancelled", "operator_cancelled", "operator_cancelled")
         except ExecutionLimitReached as exc:
@@ -329,19 +402,37 @@ class CortexRunCoordinator:
                 self._active.pop(handle.run_id, None)
                 self._slots.release()
 
-    @staticmethod
-    def _finalize_stopped(handle: RunHandle, control: RunExecutionControl, finalize_conversation: FinalizeConversation, status: str, reason: RunStopReason, error_code: RunErrorCode) -> RunRecord:
+    def _finalize_stopped(self, handle: RunHandle, control: RunExecutionControl, finalize_conversation: FinalizeConversation, status: str, reason: RunStopReason, error_code: RunErrorCode) -> RunRecord:
         try:
             control.finish()
         except Exception:
             pass
         conversation = finalize_conversation(None, "interrupted" if status == "cancelled" else "failed", error_code)
-        return handle.finalize(
+        record = handle.finalize(
             status=status,  # type: ignore[arg-type]
             stop_reason=reason,  # type: ignore[arg-type]
             evidence=RunCompletionEvidence(final_message_status=conversation.status, answer_persisted=False),
             error=RunError(code=error_code),  # type: ignore[arg-type]
         )
+        self._publish_terminal(record)
+        return record
+
+    def _publish_terminal(self, record: RunRecord) -> None:
+        if record.status != "completed":
+            # A stopped run never leaves provisional provider text presented as
+            # a completed conversation answer.
+            self.events.publish(record.id, "response.reset", {}, record=record)
+        self.events.publish(
+            record.id,
+            "run.completed",
+            {
+                "status": record.status,
+                "stop_reason": record.stop_reason,
+                "error": record.error.model_dump(mode="json") if record.error else None,
+            },
+            record=record,
+        )
+        self.events.complete(record.id, record)
 
 
 def _tool_outcomes(response: Any) -> dict[str, int]:

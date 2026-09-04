@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from fastapi import HTTPException, status
 
 from core import config, database
 from core.agent.loop import ExecutionControl, build_agent_failure_details, run_agent_loop
+from core.agent.providers.contract import ProviderStreamObserver
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.tool_catalog import build_tool_catalog
 from core.agent.tool_selection import (
@@ -798,6 +799,8 @@ def _execute_agent_turn(
     action_provenance: Mapping[str, object] | None = None,
     context_bundle: ContextBundle | None = None,
     execution_control: ExecutionControl | None = None,
+    stream_observer: ProviderStreamObserver | None = None,
+    activity_observer: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> AgentQueryResponse:
     """Build HUD context, select the provider, and run the bounded agent loop."""
     try:
@@ -858,6 +861,8 @@ def _execute_agent_turn(
             agent_key=agent_key,
             action_provenance=action_provenance,
             execution_control=execution_control,
+            stream_observer=stream_observer,
+            activity_observer=activity_observer,
         )
         if not is_local_profile(profile):
             record_cloud_request_success(
@@ -1158,6 +1163,8 @@ def query_agent(
     action_provenance: Mapping[str, object] | None = None,
     context_bundle: ContextBundle | None = None,
     execution_control: ExecutionControl | None = None,
+    stream_observer: ProviderStreamObserver | None = None,
+    activity_observer: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> AgentQueryResponse:
     """
     Execute one Cortex Engine Agent turn with optional tool calling.
@@ -1320,6 +1327,8 @@ def query_agent(
                 action_provenance=action_provenance,
                 context_bundle=context_bundle,
                 execution_control=execution_control,
+                stream_observer=stream_observer,
+                activity_observer=activity_observer,
             )
         finally:
             end_local_execution()
@@ -1343,4 +1352,6 @@ def query_agent(
         action_provenance=action_provenance,
         context_bundle=context_bundle,
         execution_control=execution_control,
+        stream_observer=stream_observer,
+        activity_observer=activity_observer,
     )

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import re
 from concurrent.futures import Future
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi.responses import StreamingResponse
 
 from core.agent.catalog import AGENT_SPECS, resolve_effort
 from core.agent.model_catalog import get_model_profile, visible_cloud_models, visible_local_models
@@ -53,6 +56,7 @@ from core.runs import (
     get_run_coordinator,
     get_run_service,
 )
+from core.runs.events import RunEvent, RunEventRegistry
 from core.conversations.models import (
     ConversationCreateRequest,
     ConversationDetail,
@@ -526,6 +530,77 @@ def cancel_cortex_run(run_id: UUID) -> RunRecord:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run was not found.") from exc
 
 
+@router.get("/api/v1/cortex/runs/{run_id}/events")
+async def stream_cortex_run_events(run_id: UUID, request: Request) -> StreamingResponse:
+    """Stream replayable, process-local activity for one partition-bound run."""
+    last_event_id = _parse_last_event_id(request.headers.get("last-event-id"))
+    try:
+        record = get_run_service().get_run(run_id)
+    except RunNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run was not found.") from exc
+    buffer = get_run_coordinator().events.get(run_id)
+
+    async def generate():
+        if buffer is None:
+            yield _format_sse(RunEventRegistry.durable_snapshot(record))
+            return
+
+        cursor = last_event_id
+        events, gap, terminal = buffer.replay(cursor)
+        if gap:
+            snapshot = buffer.snapshot()
+            yield _format_sse(snapshot)
+            cursor = snapshot.sequence
+        else:
+            for event in events:
+                yield _format_sse(event)
+                cursor = event.sequence
+        if terminal:
+            return
+
+        while not await request.is_disconnected():
+            events, gap, terminal = await asyncio.to_thread(buffer.wait_for, cursor, 15.0)
+            if gap:
+                snapshot = buffer.snapshot()
+                yield _format_sse(snapshot)
+                cursor = snapshot.sequence
+            elif events:
+                for event in events:
+                    yield _format_sse(event)
+                    cursor = event.sequence
+            else:
+                yield ": heartbeat\n\n"
+            if terminal:
+                return
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+def _parse_last_event_id(value: str | None) -> int:
+    if value is None:
+        return 0
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Last-Event-ID must be a non-negative integer.") from exc
+    if parsed < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Last-Event-ID must be a non-negative integer.")
+    return parsed
+
+
+def _format_sse(event: RunEvent) -> str:
+    data = json.dumps(event.model_dump(mode="json"), separators=(",", ":"))
+    return f"id: {event.sequence}\nevent: {event.type}\ndata: {data}\n\n"
+
+
 def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tuple[RunRecord, Future[object] | None]:
     """Prepare durable messages and submit one run through the shared coordinator."""
     service = get_conversation_service()
@@ -661,6 +736,8 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
                 action_provenance={"source_kind": "conversation_message", "conversation_id": str(conversation_id), "message_id": str(user.id), "partition": service.partition()},
                 context_bundle=context_bundle,
                 execution_control=control,
+                stream_observer=control.observe_provider_stream,
+                activity_observer=control.publish_activity,
             )
         except HTTPException as exc:
             raise RunHttpError(status_code=exc.status_code, detail=exc.detail) from exc
