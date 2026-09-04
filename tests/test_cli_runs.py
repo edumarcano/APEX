@@ -15,15 +15,11 @@ class _Response:
     def __init__(self, status_code: int, payload: object | Exception) -> None:
         self.status_code = status_code
         self._payload = payload
-        self.closed = False
 
     def json(self) -> object:
         if isinstance(self._payload, Exception):
             raise self._payload
         return self._payload
-
-    def close(self) -> None:
-        self.closed = True
 
 
 class _Session:
@@ -39,12 +35,6 @@ class _Session:
         if isinstance(next_response, Exception):
             raise next_response
         return next_response
-
-    def get(self, url: str, **kwargs: object) -> object:
-        return self.request("GET", url, **kwargs)
-
-    def post(self, url: str, **kwargs: object) -> object:
-        return self.request("POST", url, **kwargs)
 
     def close(self) -> None:
         self.closed = True
