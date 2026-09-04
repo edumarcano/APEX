@@ -482,6 +482,50 @@ The effective exposure is `selected tools ∩ Apex Agent policy ∩ runtime avai
 
 Cortex Engine loops are bounded by the selected model profile. The final model turn is answer-only, leaving bounded tool-calling turns for workflows that need list resolution, task lookup, and approval-gated proposals.
 
+### Cortex runs
+
+The run-control routes expose the durable metadata for the same Cortex Engine
+path used by synchronous turns. Run records contain status, the immutable limit
+snapshot, cumulative counters, runtime measurements, completion evidence, and
+safe error information; conversation messages remain the source of prompt and
+answer text. Responses are limited to the current server-derived partition.
+
+### POST `/api/v1/cortex/conversations/{conversation_id}/runs`
+
+Accepts the same `ConversationTurnRequest` payload as the synchronous turns
+route and creates a server-generated run ID. The request reserves one of the
+configured worker slots before it mutates conversation history, then returns
+the durable run record with `202 Accepted`. Work is started asynchronously;
+there is no internal request queue.
+
+An identical replay using the same `agent_message_id` returns the existing run
+and does not create another message or consume another slot. A different active
+run for the conversation returns `409`; a full run capacity returns `429`
+without mutating the conversation. Invalid conversation IDs return `404`.
+
+### GET `/api/v1/cortex/runs`
+
+Lists runs newest-first in the current server-derived partition. The optional
+`status` filter accepts `queued`, `running`, `cancelling`, `completed`,
+`failed`, `cancelled`, or `interrupted`. `limit` defaults to `25` and accepts
+values from `1` through `100`.
+
+### GET `/api/v1/cortex/runs/{run_id}`
+
+Returns one durable run record when its ID belongs to the current server-derived
+partition. A run from another partition is indistinguishable from a missing run
+and returns `404`.
+
+### POST `/api/v1/cortex/runs/{run_id}/cancel`
+
+Requests cooperative cancellation for a queued or running run and returns its
+current durable record. Cancellation is idempotent for already-cancelling or
+terminal runs. A queued run is cancelled before execution; a provider or tool
+call already in progress finishes before the next execution checkpoint observes
+the request. Cancellation writes an empty interrupted Agent message with a safe
+cancellation marker and finalizes the run as `cancelled`. A run from another
+partition or an unknown ID returns `404`.
+
 ### POST `/api/v1/cortex/context/captures`
 
 Creates a `remember_personal_context` action proposal from direct operator input. It does not write a knowledge record until the normal action approval, execution, and verification flow completes. Structured captures require a subject, predicate, and exactly one entity or scalar value. Requests that resemble credentials or private keys are rejected before proposal creation.
@@ -638,6 +682,8 @@ APEX API contract version 19.
 | GET | `/api/v1/cortex/conversations` | API route |
 | GET | `/api/v1/cortex/conversations/{conversation_id}` | API route |
 | GET | `/api/v1/cortex/retrieval/status` | API route |
+| GET | `/api/v1/cortex/runs` | API route |
+| GET | `/api/v1/cortex/runs/{run_id}` | API route |
 | GET | `/api/v1/cortex/tool-catalog` | API route |
 | GET | `/api/v1/cortex/tool-profiles` | API route |
 | GET | `/api/v1/diagnostics` | API route |
@@ -664,11 +710,13 @@ APEX API contract version 19.
 | POST | `/api/v1/cortex/context/actions` | API route |
 | POST | `/api/v1/cortex/context/captures` | API route |
 | POST | `/api/v1/cortex/conversations` | API route |
+| POST | `/api/v1/cortex/conversations/{conversation_id}/runs` | API route |
 | POST | `/api/v1/cortex/conversations/{conversation_id}/turns` | API route |
 | POST | `/api/v1/cortex/local-model/load` | API route |
 | POST | `/api/v1/cortex/local-model/unload` | API route |
 | POST | `/api/v1/cortex/models/verify` | API route |
 | POST | `/api/v1/cortex/retrieval/prepare` | API route |
+| POST | `/api/v1/cortex/runs/{run_id}/cancel` | API route |
 | POST | `/api/v1/cortex/tool-preflight` | API route |
 | POST | `/api/v1/cortex/tool-profiles` | API route |
 | POST | `/api/v1/cortex/tool-profiles/default` | API route |

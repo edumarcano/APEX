@@ -21,6 +21,14 @@ from core.runs.service import (
     get_run_service,
     set_run_service,
 )
+from core.runs.coordinator import (
+    ActiveConversationRunError,
+    CortexRunCoordinator,
+    RunCapacityError,
+    RunHttpError,
+    get_run_coordinator,
+    set_run_coordinator,
+)
 from core.runs.store import (
     RunConflictError,
     RunNotFoundError,
@@ -29,6 +37,8 @@ from core.runs.store import (
 )
 
 __all__ = [
+    "ActiveConversationRunError",
+    "CortexRunCoordinator",
     "RunCompletionEvidence",
     "RunConflictError",
     "RunError",
@@ -39,6 +49,8 @@ __all__ = [
     "RunNotFoundError",
     "RunPartition",
     "RunRecord",
+    "RunCapacityError",
+    "RunHttpError",
     "RunRuntimeMeasurements",
     "RunService",
     "RunStatus",
@@ -49,5 +61,7 @@ __all__ = [
     "TraceId",
     "UsageQuality",
     "get_run_service",
+    "get_run_coordinator",
+    "set_run_coordinator",
     "set_run_service",
 ]
