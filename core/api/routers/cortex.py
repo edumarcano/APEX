@@ -46,6 +46,7 @@ from core.runs import (
     RunCapacityError,
     RunCompletionEvidence,
     RunError,
+    RunHttpError,
     RunLimitSnapshot,
     RunNotFoundError,
     RunRecord,
@@ -475,9 +476,12 @@ def conversation_turn(conversation_id: str, payload: ConversationTurnRequest) ->
         parsed_id = UUID(conversation_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation was not found.") from exc
-    record, future = _submit_run(parsed_id, payload)
+    _record, future = _submit_run(parsed_id, payload)
     if future is not None:
-        future.result()
+        try:
+            future.result()
+        except RunHttpError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     return _turn_result_for_message(parsed_id, payload.agent_message_id)
 
 
@@ -552,6 +556,13 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
             conversation_id=conversation_id, agent_message_id=payload.agent_message_id
         )
         if existing is not None:
+            _validate_replayed_turn(
+                detail,
+                payload=payload,
+                agent_key=agent_key,
+                request_metadata=request_metadata,
+                run=existing,
+            )
             return existing, coordinator.future_for(existing.id)
         admitted = True
         user, agent_message, history, replayed = service.begin_turn(
@@ -613,8 +624,12 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
             policy=context_policy,
         )
     except Exception:
-        service.finalize(conversation_id, agent_message.id, answer="", status="failed", response_metadata={"error": "internal_error"})
-        coordinator.abandon_admission(payload.agent_message_id)
+        _compensate_submission_failure(
+            service=service,
+            coordinator=coordinator,
+            conversation_id=conversation_id,
+            agent_message_id=agent_message.id,
+        )
         raise
     limit_snapshot = RunLimitSnapshot(
         max_elapsed_seconds=CORTEX_RUNS_MAX_ELAPSED_SECONDS,
@@ -631,17 +646,24 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
             limit_snapshot=limit_snapshot,
         )
     except Exception:
-        service.finalize(conversation_id, agent_message.id, answer="", status="failed", response_metadata={"error": "internal_error"})
-        coordinator.abandon_admission(payload.agent_message_id)
+        _compensate_submission_failure(
+            service=service,
+            coordinator=coordinator,
+            conversation_id=conversation_id,
+            agent_message_id=agent_message.id,
+        )
         raise
 
     def execute(control):
-        return query_agent(
-            execution_payload,
-            action_provenance={"source_kind": "conversation_message", "conversation_id": str(conversation_id), "message_id": str(user.id), "partition": service.partition()},
-            context_bundle=context_bundle,
-            execution_control=control,
-        )
+        try:
+            return query_agent(
+                execution_payload,
+                action_provenance={"source_kind": "conversation_message", "conversation_id": str(conversation_id), "message_id": str(user.id), "partition": service.partition()},
+                context_bundle=context_bundle,
+                execution_control=control,
+            )
+        except HTTPException as exc:
+            raise RunHttpError(status_code=exc.status_code, detail=exc.detail) from exc
 
     def finalize(response, message_status: str, error_code: str | None):
         response_data = ({"error": error_code} if response is None else response.model_dump(mode="json", exclude={"answer", "session_id"}))
@@ -658,11 +680,73 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
             handle=handle, resolved_model=str(metadata["resolved_model"]), provider=str(metadata["provider"]), runtime=str(metadata["runtime"]), execute=execute, finalize_conversation=finalize,
         )
     except Exception:
-        service.finalize(conversation_id, agent_message.id, answer="", status="failed", response_metadata={"error": "internal_error"})
-        handle.finalize(status="failed", stop_reason="internal_error", evidence=RunCompletionEvidence(final_message_status="failed"), error=RunError(code="internal_error"))
-        coordinator.abandon_admission(agent_message.id)
+        _compensate_submission_failure(
+            service=service,
+            coordinator=coordinator,
+            conversation_id=conversation_id,
+            agent_message_id=agent_message.id,
+            handle=handle,
+        )
         raise
     return record, future
+
+
+def _validate_replayed_turn(
+    detail: ConversationDetail,
+    *,
+    payload: ConversationTurnRequest,
+    agent_key: AgentKey,
+    request_metadata: dict[str, object],
+    run: RunRecord,
+) -> None:
+    """Apply the conversation store's replay identity checks before returning a run."""
+    agent = next((message for message in detail.messages if message.id == payload.agent_message_id), None)
+    user = next((message for message in detail.messages if message.id == payload.user_message_id), None)
+    if (
+        run.conversation_id != detail.id
+        or agent is None
+        or user is None
+        or agent.conversation_id != detail.id
+        or agent.parent_message_id != payload.user_message_id
+        or agent.role != "agent"
+        or agent.agent != agent_key
+        or agent.request_metadata != request_metadata
+        or user.conversation_id != detail.id
+        or user.role != "user"
+        or user.parent_message_id != payload.parent_message_id
+        or user.content != payload.prompt
+    ):
+        raise ConversationConflictError("Message IDs cannot be reused with different turn content.")
+
+
+def _compensate_submission_failure(
+    *,
+    service,
+    coordinator,
+    conversation_id: UUID,
+    agent_message_id: UUID,
+    handle=None,
+) -> None:
+    """Terminalize durable work and always return the pre-admitted worker slot."""
+    try:
+        service.finalize(
+            conversation_id,
+            agent_message_id,
+            answer="",
+            status="failed",
+            response_metadata={"error": "internal_error"},
+        )
+    finally:
+        try:
+            if handle is not None:
+                handle.finalize(
+                    status="failed",
+                    stop_reason="internal_error",
+                    evidence=RunCompletionEvidence(final_message_status="failed"),
+                    error=RunError(code="internal_error"),
+                )
+        finally:
+            coordinator.abandon_admission(agent_message_id)
 
 
 def _turn_result_for_message(conversation_id: UUID, agent_message_id: UUID) -> ConversationTurnResult:

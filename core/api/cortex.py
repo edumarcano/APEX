@@ -8,7 +8,7 @@ from typing import Any, Mapping
 from fastapi import HTTPException, status
 
 from core import config, database
-from core.agent.loop import build_agent_failure_details, run_agent_loop
+from core.agent.loop import ExecutionControl, build_agent_failure_details, run_agent_loop
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.tool_catalog import build_tool_catalog
 from core.agent.tool_selection import (
@@ -785,7 +785,7 @@ def _execute_agent_turn(
     user_designation: str = "",
     action_provenance: Mapping[str, object] | None = None,
     context_bundle: ContextBundle | None = None,
-    execution_control: object | None = None,
+    execution_control: ExecutionControl | None = None,
 ) -> AgentQueryResponse:
     """Build HUD context, select the provider, and run the bounded agent loop."""
     try:
@@ -1145,7 +1145,7 @@ def query_agent(
     *,
     action_provenance: Mapping[str, object] | None = None,
     context_bundle: ContextBundle | None = None,
-    execution_control: object | None = None,
+    execution_control: ExecutionControl | None = None,
 ) -> AgentQueryResponse:
     """
     Execute one Cortex Engine Agent turn with optional tool calling.

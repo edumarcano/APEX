@@ -14,10 +14,14 @@ from core.agent.providers.contract import ProviderTurnResult
 from core.runs.models import (
     RunCompletionEvidence,
     RunError,
+    RunErrorCode,
     RunRecord,
     RunRuntimeMeasurements,
+    RunStopReason,
+    UsageQuality,
 )
 from core.runs.service import RunHandle, RunService
+from core.runs.store import RunConflictError
 
 _coordinator: CortexRunCoordinator | None = None
 
@@ -41,6 +45,15 @@ class ActiveConversationRunError(RuntimeError):
     """A different active run owns the requested conversation."""
 
 
+class RunHttpError(RuntimeError):
+    """A request error that the synchronous compatibility route must re-raise."""
+
+    def __init__(self, *, status_code: int, detail: Any) -> None:
+        super().__init__(str(status_code))
+        self.status_code = status_code
+        self.detail = detail
+
+
 @dataclass(slots=True)
 class _ActiveRun:
     conversation_id: UUID
@@ -54,12 +67,14 @@ class RunExecutionControl:
     def __init__(self, handle: RunHandle, cancel_event: threading.Event) -> None:
         self.handle = handle
         self.cancel_event = cancel_event
+        self.limits = handle.get_record().limit_snapshot
         self.started = time.monotonic()
         self.turns = 0
         self.tools = 0
         self.retries = 0
         self.tokens = 0
-        self.usage_quality = "unavailable"
+        self.usage_quality: UsageQuality = "unavailable"
+        self.runtime_measurements = RunRuntimeMeasurements()
 
     def _elapsed(self) -> float:
         return round(time.monotonic() - self.started, 3)
@@ -67,13 +82,20 @@ class RunExecutionControl:
     def _check(self) -> None:
         if self.cancel_event.is_set():
             raise ExecutionCancelled()
-        if self._elapsed() >= self.handle.get_record().limit_snapshot.max_elapsed_seconds:
+        if self._elapsed() >= self.limits.max_elapsed_seconds:
             raise ExecutionLimitReached("max_elapsed_seconds")
 
     def _persist(self, *, provider_ms: float | None = None) -> None:
-        measurements = RunRuntimeMeasurements(
-            total_duration_ms=round(self._elapsed() * 1000, 2),
-            eval_duration_ms=provider_ms,
+        measurement_updates: dict[str, float] = {
+            "total_duration_ms": round(self._elapsed() * 1000, 2),
+        }
+        if provider_ms is not None:
+            measurement_updates["eval_duration_ms"] = round(
+                (self.runtime_measurements.eval_duration_ms or 0.0) + provider_ms,
+                2,
+            )
+        self.runtime_measurements = self.runtime_measurements.model_copy(
+            update=measurement_updates
         )
         self.handle.update_progress(
             turns_count=self.turns,
@@ -81,13 +103,13 @@ class RunExecutionControl:
             retries_count=self.retries,
             total_tokens=self.tokens,
             elapsed_seconds=self._elapsed(),
-            usage_quality=self.usage_quality,  # type: ignore[arg-type]
-            runtime_measurements=measurements,
+            usage_quality=self.usage_quality,
+            runtime_measurements=self.runtime_measurements,
         )
 
     def before_model_turn(self) -> None:
         self._check()
-        if self.turns >= self.handle.get_record().limit_snapshot.max_model_turns:
+        if self.turns >= self.limits.max_model_turns:
             raise ExecutionLimitReached("max_model_turns")
 
     def after_model_turn(self, result: ProviderTurnResult) -> None:
@@ -96,20 +118,21 @@ class RunExecutionControl:
         usage = result.usage
         if usage is not None and usage.total_tokens is not None:
             self.tokens += usage.total_tokens
-            self.usage_quality = "reported"
+            if self.usage_quality == "unavailable":
+                self.usage_quality = "reported"
         elif result.estimated_prompt_tokens is not None:
             self.tokens += result.estimated_prompt_tokens
             self.usage_quality = "estimated"
         self._persist(provider_ms=result.provider_ms)
         self._check()
-        if self.retries > self.handle.get_record().limit_snapshot.max_retries:
+        if self.retries > self.limits.max_retries:
             raise ExecutionLimitReached("max_retries")
-        if self.tokens > self.handle.get_record().limit_snapshot.max_total_tokens:
+        if self.tokens > self.limits.max_total_tokens:
             raise ExecutionLimitReached("max_total_tokens")
 
     def before_tool(self) -> None:
         self._check()
-        if self.tools >= self.handle.get_record().limit_snapshot.max_tool_calls:
+        if self.tools >= self.limits.max_tool_calls:
             raise ExecutionLimitReached("max_tool_calls")
 
     def after_tool(self) -> None:
@@ -188,9 +211,9 @@ class CortexRunCoordinator:
             return future
 
     def cancel(self, run_id: UUID) -> RunRecord:
-        handle = self.service.get_handle(run_id)
-        record = handle.set_cancelling()
         with self._lock:
+            handle = self.service.get_handle(run_id)
+            record = handle.set_cancelling()
             active = self._active.get(run_id)
             if active is not None:
                 active.cancel_event.set()
@@ -214,9 +237,19 @@ class CortexRunCoordinator:
     ) -> Any:
         control = RunExecutionControl(handle, active.cancel_event)
         try:
-            if active.cancel_event.is_set() or handle.get_record().status == "cancelling":
-                raise ExecutionCancelled()
-            handle.start(resolved_model=resolved_model, provider=provider, runtime=runtime)
+            with self._lock:
+                if active.cancel_event.is_set() or handle.get_record().status == "cancelling":
+                    raise ExecutionCancelled()
+                try:
+                    handle.start(
+                        resolved_model=resolved_model,
+                        provider=provider,
+                        runtime=runtime,
+                    )
+                except RunConflictError:
+                    if handle.get_record().status == "cancelling":
+                        raise ExecutionCancelled() from None
+                    raise
             response = execute(control)
             control.finish()
             message_status = "failed" if getattr(response, "error", None) else "completed"
@@ -238,6 +271,17 @@ class CortexRunCoordinator:
         except ExecutionLimitReached as exc:
             code = {"max_elapsed_seconds": "timeout", "max_total_tokens": "token_limit", "max_model_turns": "turn_limit", "max_tool_calls": "tool_limit", "max_retries": "retry_limit"}[exc.reason]
             return self._finalize_stopped(handle, control, finalize_conversation, "failed", exc.reason, code)
+        except RunHttpError as exc:
+            stop_reason, error_code = _http_failure_mapping(exc.status_code)
+            self._finalize_stopped(
+                handle,
+                control,
+                finalize_conversation,
+                "failed",
+                stop_reason,
+                error_code,
+            )
+            raise
         except Exception:
             return self._finalize_stopped(handle, control, finalize_conversation, "failed", "internal_error", "internal_error")
         finally:
@@ -246,7 +290,7 @@ class CortexRunCoordinator:
                 self._slots.release()
 
     @staticmethod
-    def _finalize_stopped(handle: RunHandle, control: RunExecutionControl, finalize_conversation: FinalizeConversation, status: str, reason: str, error_code: str) -> RunRecord:
+    def _finalize_stopped(handle: RunHandle, control: RunExecutionControl, finalize_conversation: FinalizeConversation, status: str, reason: RunStopReason, error_code: RunErrorCode) -> RunRecord:
         try:
             control.finish()
         except Exception:
@@ -275,3 +319,12 @@ def _action_ids(response: Any) -> list[str]:
         if isinstance(output, dict) and isinstance(output.get("action_id"), str):
             ids.append(output["action_id"])
     return ids
+
+
+def _http_failure_mapping(status_code: int) -> tuple[RunStopReason, RunErrorCode]:
+    """Map request/runtime HTTP failures without persisting their details."""
+    if status_code == 429:
+        return "resource_exhaustion", "resource_exhaustion"
+    if status_code >= 500:
+        return "provider_error", "provider_unavailable"
+    return "internal_error", "internal_error"

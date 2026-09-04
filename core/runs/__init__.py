@@ -25,6 +25,7 @@ from core.runs.coordinator import (
     ActiveConversationRunError,
     CortexRunCoordinator,
     RunCapacityError,
+    RunHttpError,
     get_run_coordinator,
     set_run_coordinator,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "RunPartition",
     "RunRecord",
     "RunCapacityError",
+    "RunHttpError",
     "RunRuntimeMeasurements",
     "RunService",
     "RunStatus",
