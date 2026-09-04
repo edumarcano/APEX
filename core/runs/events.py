@@ -104,17 +104,21 @@ class RunEventBuffer:
     def replay(self, after: int) -> tuple[list[RunEvent], bool, bool]:
         """Return events after a cursor, reporting when that cursor has expired."""
         with self._condition:
-            first = self._events[0].sequence if self._events else self._sequence
-            gap = after > self._sequence or bool(self._events and after < first - 1)
-            events = [] if gap else [event for event in self._events if event.sequence > after]
-            return events, gap, self._terminal
+            return self._replay_locked(after)
 
     def wait_for(self, after: int, timeout: float) -> tuple[list[RunEvent], bool, bool]:
         """Block off the event loop until data, termination, or heartbeat timeout."""
         with self._condition:
             if not self._terminal and self._sequence <= after:
                 self._condition.wait(timeout=timeout)
-            return self.replay(after)
+            return self._replay_locked(after)
+
+    def _replay_locked(self, after: int) -> tuple[list[RunEvent], bool, bool]:
+        """Read replay state while ``_condition`` is held."""
+        first = self._events[0].sequence if self._events else self._sequence
+        gap = after > self._sequence or bool(self._events and after < first - 1)
+        events = [] if gap else [event for event in self._events if event.sequence > after]
+        return events, gap, self._terminal
 
     def complete(self, record: RunRecord) -> None:
         """Mark the buffer terminal after its terminal event has been published."""
@@ -164,10 +168,14 @@ class RunEventRegistry:
         *,
         record: RunRecord | None = None,
     ) -> RunEvent | None:
-        buffer = self.get(run_id)
-        if buffer is None:
-            return None
-        return buffer.publish(event_type, payload, record=record)
+        # Keep the registry lock while publishing so completion cannot move the
+        # buffer to terminal storage between this lookup and append.  Terminal
+        # streams are immutable: ``run.completed`` must remain their last event.
+        with self._lock:
+            buffer = self._active.get(run_id)
+            if buffer is None:
+                return None
+            return buffer.publish(event_type, payload, record=record)
 
     def complete(self, run_id: UUID, record: RunRecord) -> None:
         with self._lock:

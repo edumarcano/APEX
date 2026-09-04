@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import asyncio
+import threading
 import unittest
 from uuid import uuid4
 
@@ -79,6 +80,25 @@ class LiveRunStreamTests(unittest.TestCase):
         self.assertTrue(gap)
         self.assertEqual(events, [])
 
+    def test_wait_for_delivers_new_events_without_reacquiring_its_lock(self) -> None:
+        buffer = RunEventBuffer(_record(), limit=2)
+        result = []
+        completed = threading.Event()
+
+        def wait_for_event() -> None:
+            result.append(buffer.wait_for(0, timeout=1))
+            completed.set()
+
+        waiter = threading.Thread(target=wait_for_event, daemon=True)
+        waiter.start()
+        buffer.publish("response.delta", {"text": "live"})
+
+        self.assertTrue(completed.wait(timeout=1))
+        events, gap, terminal = result[0]
+        self.assertFalse(gap)
+        self.assertFalse(terminal)
+        self.assertEqual([event.type for event in events], ["response.delta"])
+
     def test_terminal_buffers_use_bounded_lru_retention(self) -> None:
         registry = RunEventRegistry(replay_limit=4, terminal_limit=1)
         first = _record(status="completed")
@@ -94,6 +114,20 @@ class LiveRunStreamTests(unittest.TestCase):
         retained = registry.get(second.id)
         self.assertIsNotNone(retained)
         self.assertTrue(retained.replay(0)[2])
+
+    def test_terminal_buffer_rejects_late_publication(self) -> None:
+        registry = RunEventRegistry(replay_limit=4)
+        record = _record(status="completed")
+        registry.start(record)
+        registry.publish(record.id, "run.completed", {"status": "completed"}, record=record)
+        registry.complete(record.id, record)
+
+        self.assertIsNone(registry.publish(record.id, "run.status", {"status": "completed"}))
+        retained = registry.get(record.id)
+        self.assertIsNotNone(retained)
+        events, _gap, terminal = retained.replay(0)
+        self.assertTrue(terminal)
+        self.assertEqual(events[-1].type, "run.completed")
 
     def test_event_payload_and_sse_framing_do_not_expand_private_data(self) -> None:
         record = _record()
