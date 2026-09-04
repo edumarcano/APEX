@@ -11,7 +11,11 @@ from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI, 
 
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.prompting import SECURITY_BOUNDARY_DIRECTIVE
-from core.agent.providers.contract import ProviderTurnResult
+from core.agent.providers.contract import (
+    ProviderTurnResult,
+    ProviderStreamEvent,
+    ProviderStreamObserver,
+)
 from core.agent.providers.retries import (
     call_with_bounded_retries,
     exponential_backoff_seconds,
@@ -90,6 +94,10 @@ class OpenRouterProvider:
         tools: list[CapabilityDescriptor],
         profile: OpenRouterModelProfile,
         system_instruction_override: str | None = None,
+        *,
+        execution_control: Any | None = None,
+        stream_observer: ProviderStreamObserver | None = None,
+        output_schema: dict[str, Any] | None = None,
     ) -> ProviderTurnResult:
         request: dict[str, Any] = {
             "model": profile.api_model,
@@ -106,14 +114,87 @@ class OpenRouterProvider:
             request["extra_body"]["reasoning"] = {"effort": profile.reasoning_effort}
 
         def _create() -> Any:
-            return self.client.chat.completions.create(**request)
+            if execution_control is not None:
+                execution_control.before_provider_attempt()
+            # OpenRouter does not promise structured-output enforcement.  Keep
+            # this flag out of every request, including retries.
+            call_request = dict(request)
+            if execution_control is not None:
+                call_request["timeout"] = min(
+                    OPENROUTER_REQUEST_TIMEOUT_SECONDS,
+                    max(0.1, execution_control.remaining_seconds()),
+                )
+            return self.client.chat.completions.create(
+                **call_request, stream=True, stream_options={"include_usage": True}
+            )
+
+        def _consume() -> Any:
+            stream = _create()
+            choices = getattr(stream, "choices", None)
+            if not isinstance(choices, list):
+                choices = _as_dict(stream).get("choices")
+            if isinstance(choices, list) and choices:
+                return stream
+            text_parts: list[str] = []
+            stream_started = time.perf_counter()
+            ttft_ms: float | None = None
+            tool_state: dict[int, dict[str, Any]] = {}
+            usage: Any = None
+            try:
+                for raw in stream:
+                    if execution_control is not None:
+                        execution_control.before_provider_attempt()
+                    chunk = _as_dict(raw)
+                    usage = chunk.get("usage") or usage
+                    choices = chunk.get("choices")
+                    if not isinstance(choices, list) or not choices:
+                        continue
+                    delta = _as_dict(_as_dict(choices[0]).get("delta"))
+                    content = delta.get("content")
+                    if isinstance(content, str):
+                        text_parts.append(content)
+                        if ttft_ms is None:
+                            ttft_ms = round((time.perf_counter() - stream_started) * 1000, 2)
+                        if stream_observer is not None:
+                            stream_observer(ProviderStreamEvent(kind="text", text=content))
+                    for raw_call in delta.get("tool_calls") or []:
+                        call = _as_dict(raw_call)
+                        index = call.get("index", 0)
+                        index = int(index) if isinstance(index, int) else 0
+                        fn = _as_dict(call.get("function"))
+                        state = tool_state.setdefault(index, {"id": "", "name": "", "arguments": ""})
+                        if isinstance(call.get("id"), str):
+                            state["id"] = call["id"]
+                        if isinstance(fn.get("name"), str):
+                            if text_parts and stream_observer is not None and not state["name"]:
+                                stream_observer(ProviderStreamEvent(kind="reset"))
+                            state["name"] = fn["name"]
+                        if isinstance(fn.get("arguments"), str):
+                            state["arguments"] += fn["arguments"]
+                result = type("StreamResponse", (), {})()
+                result.choices = [{"message": {"content": "".join(text_parts), "tool_calls": [
+                    {"id": value.get("id") or f"call_{index}", "function": {"name": value.get("name", ""), "arguments": value.get("arguments", "")}}
+                    for index, value in sorted(tool_state.items())
+                ]}}]
+                result.model = profile.api_model
+                result.usage = usage
+                result._stream_measurements = {"ttft_ms": ttft_ms} if ttft_ms is not None else {}
+                return result
+            finally:
+                close = getattr(stream, "close", None)
+                if callable(close):
+                    close()
 
         started = time.perf_counter()
         response, retry_count = call_with_bounded_retries(
-            _create,
+            _consume,
             is_retryable=_is_retryable_error,
             wait_seconds=_wait_seconds,
             log_label="openrouter-chat",
+            check=execution_control.before_provider_attempt if execution_control is not None else None,
+            before_retry=execution_control.before_retry if execution_control is not None else None,
+            remaining_seconds=execution_control.remaining_seconds if execution_control is not None else None,
+            execution_control=execution_control,
         )
         provider_ms = round((time.perf_counter() - started) * 1000, 2)
         payload = _as_dict(response)
@@ -133,12 +214,18 @@ class OpenRouterProvider:
             provider_reasoning_details=reasoning_details,
         )
         resolved_model = payload.get("model")
+        if stream_observer is not None:
+            stream_observer(ProviderStreamEvent(kind="completed"))
+        stream_measurements = getattr(response, "_stream_measurements", None)
+        if not isinstance(stream_measurements, dict):
+            stream_measurements = {}
         return ProviderTurnResult(
             message=message,
             resolved_model=resolved_model if isinstance(resolved_model, str) else profile.api_model,
             usage=_parse_usage(payload.get("usage")),
             provider_ms=provider_ms,
             retry_count=retry_count,
+            runtime_measurements={"total_duration_ms": provider_ms, **stream_measurements},
         )
 
 
@@ -181,6 +268,13 @@ def _as_dict(value: Any) -> dict[str, Any]:
     if hasattr(value, "model_dump"):
         dumped = value.model_dump(exclude_none=True)
         return dumped if isinstance(dumped, dict) else {}
+    data: dict[str, Any] = {}
+    for name in ("model", "choices", "usage"):
+        item = getattr(value, name, None)
+        if isinstance(item, (str, list, dict)):
+            data[name] = item
+    if data:
+        return data
     return {}
 
 

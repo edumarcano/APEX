@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Protocol
+from typing import Any, Callable, Literal, Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from core.agent.types import (
     AgentMessage,
@@ -19,6 +19,35 @@ InferenceProvider = Literal[
 LocalInferenceProvider = Literal["ollama", "llama_cpp"]
 LOCAL_INFERENCE_PROVIDERS: frozenset[str] = frozenset({"ollama", "llama_cpp"})
 ToolTraceOrigin = Literal["apex", "provider"]
+
+
+class ProviderStreamEvent(BaseModel):
+    """Sanitized, internal observation from a provider-native stream.
+
+    The event is deliberately smaller than any provider payload.  Text is
+    provisional until the final turn result is returned; a reset marks text
+    that must be discarded when a late tool call is discovered.
+    """
+
+    kind: Literal["text", "reset", "completed"]
+    text: str | None = None
+
+
+ProviderStreamObserver = Callable[[ProviderStreamEvent], None]
+
+
+class ProviderRuntimeMeasurements(BaseModel):
+    """Strict allowlist of provider-neutral runtime measurements."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    prompt_eval_duration_ms: float | None = Field(default=None, ge=0)
+    eval_duration_ms: float | None = Field(default=None, ge=0)
+    total_duration_ms: float | None = Field(default=None, ge=0)
+    ttft_ms: float | None = Field(default=None, ge=0)
+    prompt_eval_count: int | None = Field(default=None, ge=0)
+    eval_count: int | None = Field(default=None, ge=0)
+    tokens_per_second: float | None = Field(default=None, ge=0)
 
 
 def is_local_inference_provider(value: object) -> bool:
@@ -86,6 +115,14 @@ class ProviderTurnResult(BaseModel):
         default=0,
         ge=0,
         description="Prior history messages omitted to fit a local context window.",
+    )
+    output_schema_applied: bool = Field(
+        default=False,
+        description="Whether an internal native output schema was enforced.",
+    )
+    runtime_measurements: ProviderRuntimeMeasurements = Field(
+        default_factory=dict,
+        description="Allowlisted provider-neutral runtime timings and counters.",
     )
 
 

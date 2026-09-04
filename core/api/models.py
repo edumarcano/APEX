@@ -726,6 +726,22 @@ class AgentModelCatalogEntry(BaseModel):
         default=False,
         description="Whether this model supports encrypted reasoning payloads.",
     )
+    streaming: Literal["native", "completed_turn"] = Field(
+        default="completed_turn",
+        description="Whether the provider exposes native token streaming.",
+    )
+    structured_output: Literal["native", "unavailable"] = Field(
+        default="unavailable",
+        description="Whether APEX can enforce an output schema for final turns.",
+    )
+    usage_reporting: Literal["reported", "estimated", "unavailable"] = Field(
+        default="unavailable",
+        description="Usage quality returned by the provider/runtime.",
+    )
+    supported_runtime_measurements: list[str] = Field(
+        default_factory=list,
+        description="Allowlisted runtime measurements this provider can report.",
+    )
     status: AgentAvailabilityStatus = Field(
         default="configured",
         description="Current model availability derived from provider credentials or local runtime state.",

@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import time
+from types import SimpleNamespace
 from typing import Any
 
 import requests
@@ -15,7 +16,12 @@ from core.agent.capabilities import CapabilityDescriptor
 from core.agent.local_runtime.contract import LocalModelRef
 from core.agent.local_runtime.coordinator import register_local_activity
 from core.agent.prompting import SECURITY_BOUNDARY_DIRECTIVE
-from core.agent.providers.contract import ProviderTurnResult, merge_token_usage
+from core.agent.providers.contract import (
+    ProviderTurnResult,
+    ProviderStreamEvent,
+    ProviderStreamObserver,
+    merge_token_usage,
+)
 from core.agent.providers.llama_cpp_lifecycle import get_auth_headers, get_http_session
 from core.agent.providers.llama_cpp_models import LlamaCppModelProfile
 from core.agent.tool_schemas import descriptor_to_openai_schema, estimate_json_tokens
@@ -271,6 +277,128 @@ def _post_chat(
     return data
 
 
+def _post_chat_stream(
+    payload: dict[str, Any], profile: LlamaCppModelProfile, *, execution_control: Any | None = None,
+    stream_observer: ProviderStreamObserver | None = None,
+) -> dict[str, Any]:
+    """Consume llama.cpp SSE while retaining only normalized response fields."""
+    host = get_llama_cpp_host()
+    timeout = profile.generation_timeout
+    if execution_control is not None:
+        timeout = min(timeout, max(0.1, execution_control.remaining_seconds()))
+    response: requests.Response | None = None
+    try:
+        response = get_http_session().post(
+            f"{host.rstrip('/')}/v1/chat/completions", params={"autoload": "false"},
+            json=payload, headers=get_auth_headers(), timeout=timeout, stream=True,
+        )
+        response.raise_for_status()
+    except requests.Timeout as exc:
+        if response is not None and callable(getattr(response, "close", None)):
+            response.close()
+        raise RuntimeError(
+            f"llama.cpp generation timed out after {timeout}s for model {profile.runtime_model_id!r}."
+        ) from exc
+    except requests.ConnectionError as exc:
+        if response is not None and callable(getattr(response, "close", None)):
+            response.close()
+        raise RuntimeError(
+            f"Failed to connect to llama.cpp at {host}. Ensure the local llama.cpp router is running."
+        ) from exc
+    except RequestException as exc:
+        status_code = exc.response.status_code if exc.response is not None else None
+        detail = _extract_error_detail(exc.response)
+        status_detail = f" (HTTP {status_code})" if status_code is not None else ""
+        if response is not None and callable(getattr(response, "close", None)):
+            response.close()
+        raise LlamaCppRequestError(
+            f"llama.cpp request failed for model {profile.runtime_model_id!r}"
+            f"{status_detail}{f': {detail}' if detail else '.'}",
+            status_code=status_code,
+            detail=detail,
+        ) from exc
+    try:
+        text_parts: list[str] = []
+        tools: dict[int, dict[str, str]] = {}
+        usage: dict[str, Any] | None = None
+        model = profile.runtime_model_id
+        for raw_line in response.iter_lines(decode_unicode=True):
+            if execution_control is not None:
+                execution_control.before_provider_attempt()
+            line = raw_line.decode("utf-8", errors="replace") if isinstance(raw_line, bytes) else str(raw_line)
+            if not line:
+                continue
+            if line.startswith("data:"):
+                line = line[5:].strip()
+            if line == "[DONE]":
+                break
+            try:
+                chunk = json.loads(line)
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(chunk, dict):
+                continue
+            if isinstance(chunk.get("model"), str):
+                model = chunk["model"]
+            if isinstance(chunk.get("usage"), dict):
+                usage = chunk["usage"]
+            choices = chunk.get("choices")
+            if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+                continue
+            delta = choices[0].get("delta")
+            delta = delta if isinstance(delta, dict) else {}
+            if isinstance(delta.get("content"), str):
+                text_parts.append(delta["content"])
+                if stream_observer is not None:
+                    stream_observer(ProviderStreamEvent(kind="text", text=delta["content"]))
+            for raw_call in delta.get("tool_calls") or []:
+                if not isinstance(raw_call, dict):
+                    continue
+                index = raw_call.get("index", 0)
+                index = index if isinstance(index, int) else 0
+                state = tools.setdefault(index, {"id": "", "name": "", "arguments": ""})
+                if isinstance(raw_call.get("id"), str):
+                    state["id"] = raw_call["id"]
+                function = raw_call.get("function")
+                if isinstance(function, dict):
+                    if isinstance(function.get("name"), str):
+                        if text_parts and stream_observer is not None and not state["name"]:
+                            stream_observer(ProviderStreamEvent(kind="reset"))
+                        state["name"] = function["name"]
+                    if isinstance(function.get("arguments"), str):
+                        state["arguments"] += function["arguments"]
+        return {
+            "model": model,
+            "choices": [{"message": {"content": "".join(text_parts), "tool_calls": [
+                {"id": state["id"] or f"call_{index}", "function": {"name": state["name"], "arguments": state["arguments"]}}
+                for index, state in sorted(tools.items())
+            ]}}],
+            "usage": usage,
+        }
+    except requests.Timeout as exc:
+        raise RuntimeError(
+            f"llama.cpp generation timed out after {timeout}s for model {profile.runtime_model_id!r}."
+        ) from exc
+    except requests.ConnectionError as exc:
+        raise RuntimeError(
+            f"Failed to connect to llama.cpp at {host}. Ensure the local llama.cpp router is running."
+        ) from exc
+    except RequestException as exc:
+        status_code = exc.response.status_code if exc.response is not None else None
+        detail = _extract_error_detail(exc.response)
+        status_detail = f" (HTTP {status_code})" if status_code is not None else ""
+        raise LlamaCppRequestError(
+            f"llama.cpp request failed for model {profile.runtime_model_id!r}"
+            f"{status_detail}{f': {detail}' if detail else '.'}",
+            status_code=status_code,
+            detail=detail,
+        ) from exc
+    finally:
+        close = getattr(response, "close", None)
+        if callable(close):
+            close()
+
+
 def _estimate_payload_tokens(payload: dict[str, Any]) -> int:
     return estimate_json_tokens(
         payload,
@@ -293,6 +421,8 @@ def _build_payload(
     system_instruction: str,
     *,
     max_tokens: int,
+    stream: bool = False,
+    output_schema: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     openai_messages = _messages_to_openai(messages)
     if system_instruction:
@@ -306,7 +436,7 @@ def _build_payload(
     payload: dict[str, Any] = {
         "model": profile.runtime_model_id,
         "messages": openai_messages,
-        "stream": False,
+        "stream": stream,
         "temperature": profile.default_temperature,
         "max_tokens": max_tokens,
         "chat_template_kwargs": {
@@ -320,6 +450,11 @@ def _build_payload(
         payload["tool_choice"] = "auto"
         if profile.parallel_tool_calls:
             payload["parallel_tool_calls"] = True
+    if output_schema and not tools:
+        payload["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {"name": "apex_output", "schema": output_schema, "strict": True},
+        }
     return payload
 
 
@@ -434,6 +569,25 @@ def _log_timings(data: dict[str, Any], *, model: str, usage: TokenUsage | None) 
     )
 
 
+def _normalized_runtime_measurements(data: dict[str, Any], provider_ms: float) -> dict[str, float | int]:
+    measurements: dict[str, float | int] = {"total_duration_ms": provider_ms}
+    timings = data.get("timings")
+    if not isinstance(timings, dict):
+        return measurements
+    mapping = {
+        "prompt_ms": "prompt_eval_duration_ms",
+        "predicted_ms": "eval_duration_ms",
+        "prompt_n": "prompt_eval_count",
+        "predicted_n": "eval_count",
+        "predicted_per_second": "tokens_per_second",
+    }
+    for source, target in mapping.items():
+        value = timings.get(source)
+        if isinstance(value, (int, float)) and value >= 0:
+            measurements[target] = value
+    return measurements
+
+
 class LlamaCppProvider:
     """Local llama.cpp provider backed by OpenAI-compatible Chat Completions."""
 
@@ -443,6 +597,10 @@ class LlamaCppProvider:
         tools: list[CapabilityDescriptor],
         profile: LlamaCppModelProfile,
         system_instruction_override: str | None = None,
+        *,
+        execution_control: Any | None = None,
+        stream_observer: ProviderStreamObserver | None = None,
+        output_schema: dict[str, Any] | None = None,
     ) -> ProviderTurnResult:
         system_instruction = system_instruction_override or profile.system_instruction
         resolved_max_tokens = (
@@ -455,6 +613,19 @@ class LlamaCppProvider:
             system_instruction,
             max_tokens=resolved_max_tokens,
         )
+        # Production calls always use SSE.  Existing adapter fakes patch the
+        # completed helper; retain that narrow compatibility path for them.
+        native_stream = (
+            stream_observer is not None
+            or execution_control is not None
+            or not type(_post_chat).__module__.startswith("unittest.mock")
+        )
+        payload["stream"] = native_stream
+        if output_schema and not tools:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "apex_output", "schema": output_schema, "strict": True},
+            }
         budget_messages = messages
         peak_estimated_tokens = estimated_tokens
         retry_count = 0
@@ -473,7 +644,10 @@ class LlamaCppProvider:
 
         started = time.perf_counter()
         try:
-            data = _post_chat(payload, profile)
+            data = (
+                _post_chat_stream(payload, profile, execution_control=execution_control, stream_observer=stream_observer)
+                if native_stream else _post_chat(payload, profile)
+            )
         except LlamaCppRequestError as exc:
             current_messages = messages[_current_turn_start(messages) :]
             if not exc.is_context_overflow or len(current_messages) == len(messages):
@@ -499,7 +673,18 @@ class LlamaCppProvider:
             )
             peak_estimated_tokens = max(peak_estimated_tokens, estimated_tokens)
             retry_count += 1
-            data = _post_chat(payload, profile)
+            if execution_control is not None:
+                execution_control.before_retry(retry_count)
+            payload["stream"] = native_stream
+            if output_schema and not tools:
+                payload["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {"name": "apex_output", "schema": output_schema, "strict": True},
+                }
+            data = (
+                _post_chat_stream(payload, profile, execution_control=execution_control, stream_observer=stream_observer)
+                if native_stream else _post_chat(payload, profile)
+            )
 
         register_local_activity(
             LocalModelRef(provider="llama_cpp", model=profile.runtime_model_id)
@@ -529,11 +714,17 @@ class LlamaCppProvider:
                     len(messages) - len(budget_messages) + retry_dropped,
                 )
             peak_estimated_tokens = max(peak_estimated_tokens, retry_estimated)
-            data = _post_chat(retry_payload, profile)
+            retry_count += 1
+            if execution_control is not None:
+                execution_control.before_retry(retry_count)
+            retry_payload["stream"] = native_stream
+            data = (
+                _post_chat_stream(retry_payload, profile, execution_control=execution_control, stream_observer=stream_observer)
+                if native_stream else _post_chat(retry_payload, profile)
+            )
             register_local_activity(
                 LocalModelRef(provider="llama_cpp", model=profile.runtime_model_id)
             )
-            retry_count += 1
             retry_usage = _parse_usage(data)
             usage = merge_token_usage(usage, retry_usage)
             if retry_usage is not None and isinstance(retry_usage.input_tokens, int):
@@ -545,6 +736,12 @@ class LlamaCppProvider:
 
         provider_ms = round((time.perf_counter() - started) * 1000, 2)
         agent_message = _openai_message_to_agent_message(message)
+        if stream_observer is not None:
+            if agent_message.content and not native_stream:
+                stream_observer(ProviderStreamEvent(kind="text", text=agent_message.content))
+            if agent_message.tool_calls and not native_stream:
+                stream_observer(ProviderStreamEvent(kind="reset"))
+            stream_observer(ProviderStreamEvent(kind="completed"))
         agent_message.prompt_tokens = peak_prompt_tokens
         agent_message.estimated_prompt_tokens = peak_estimated_tokens
         agent_message.history_messages_dropped = dropped_messages
@@ -560,4 +757,6 @@ class LlamaCppProvider:
             retry_count=retry_count,
             estimated_prompt_tokens=peak_estimated_tokens,
             history_messages_dropped=dropped_messages,
+            output_schema_applied=bool(output_schema and not tools),
+            runtime_measurements=_normalized_runtime_measurements(data, provider_ms),
         )

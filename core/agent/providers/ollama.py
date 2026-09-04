@@ -9,7 +9,7 @@ from requests.exceptions import RequestException
 
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.prompting import SECURITY_BOUNDARY_DIRECTIVE
-from core.agent.providers.contract import ProviderTurnResult, merge_token_usage
+from core.agent.providers.contract import ProviderTurnResult, ProviderStreamEvent, ProviderStreamObserver, merge_token_usage
 from core.agent.local_runtime.contract import LocalModelRef
 from core.agent.local_runtime.coordinator import register_local_activity
 from core.agent.providers.ollama_lifecycle import (
@@ -402,6 +402,10 @@ class OllamaProvider:
         tools: list[CapabilityDescriptor],
         profile: OllamaModelProfile,
         system_instruction_override: str | None = None,
+        *,
+        execution_control: Any | None = None,
+        stream_observer: ProviderStreamObserver | None = None,
+        output_schema: dict[str, Any] | None = None,
     ) -> ProviderTurnResult:
         system_instruction = system_instruction_override or profile.system_instruction
         resolved_num_predict = (
@@ -433,6 +437,8 @@ class OllamaProvider:
         )
 
         started = time.perf_counter()
+        if execution_control is not None:
+            execution_control.before_provider_attempt()
         try:
             data = _post_chat(payload, profile)
         except OllamaRequestError as exc:
@@ -460,6 +466,9 @@ class OllamaProvider:
             )
             peak_estimated_tokens = max(peak_estimated_tokens, estimated_tokens)
             retry_count += 1
+            if execution_control is not None:
+                execution_control.before_retry(retry_count)
+                execution_control.before_provider_attempt()
             data = _post_chat(payload, profile)
 
         register_local_activity(
@@ -506,6 +515,9 @@ class OllamaProvider:
                 retry_estimated,
             )
 
+            if execution_control is not None:
+                execution_control.before_retry(retry_count + 1)
+                execution_control.before_provider_attempt()
             data = _post_chat(retry_payload, profile)
             register_local_activity(
             LocalModelRef(provider="ollama", model=profile.runtime_model_id)
@@ -526,6 +538,10 @@ class OllamaProvider:
             message["content"] = _strip_thinking_tags(raw_content)
 
         agent_message = _ollama_message_to_agent_message(message)
+        if stream_observer is not None and agent_message.content:
+            stream_observer(ProviderStreamEvent(kind="text", text=agent_message.content))
+        if stream_observer is not None:
+            stream_observer(ProviderStreamEvent(kind="completed"))
         agent_message.prompt_tokens = peak_prompt_tokens
         agent_message.estimated_prompt_tokens = peak_estimated_tokens
         agent_message.history_messages_dropped = dropped_messages
@@ -541,4 +557,5 @@ class OllamaProvider:
             retry_count=retry_count,
             estimated_prompt_tokens=peak_estimated_tokens,
             history_messages_dropped=dropped_messages,
+            runtime_measurements={"total_duration_ms": provider_ms},
         )

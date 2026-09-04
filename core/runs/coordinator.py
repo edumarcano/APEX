@@ -75,6 +75,7 @@ class RunExecutionControl:
         self.tokens = 0
         self.usage_quality: UsageQuality = "unavailable"
         self.runtime_measurements = RunRuntimeMeasurements()
+        self._turn_retry_count = 0
 
     def _elapsed(self) -> float:
         return round(time.monotonic() - self.started, 3)
@@ -84,6 +85,29 @@ class RunExecutionControl:
             raise ExecutionCancelled()
         if self._elapsed() >= self.limits.max_elapsed_seconds:
             raise ExecutionLimitReached("max_elapsed_seconds")
+
+    def remaining_seconds(self) -> float:
+        """Return the run deadline remaining for provider timeout capping."""
+        return max(0.0, self.limits.max_elapsed_seconds - (time.monotonic() - self.started))
+
+    def before_provider_attempt(self) -> None:
+        self._check()
+
+    def before_retry(self, _retry_number: int = 0) -> None:
+        self._check()
+        self.retries += 1
+        self._turn_retry_count += 1
+        if self.retries > self.limits.max_retries:
+            raise ExecutionLimitReached("max_retries")
+        self._persist()
+
+    def wait_retry(self, delay: float) -> None:
+        """Wait cooperatively, converting deadline/cancel stops to run errors."""
+        self._check()
+        if delay >= self.remaining_seconds():
+            raise ExecutionLimitReached("max_elapsed_seconds")
+        self.cancel_event.wait(delay)
+        self._check()
 
     def _persist(self, *, provider_ms: float | None = None) -> None:
         measurement_updates: dict[str, float] = {
@@ -109,12 +133,15 @@ class RunExecutionControl:
 
     def before_model_turn(self) -> None:
         self._check()
+        self._turn_retry_count = 0
         if self.turns >= self.limits.max_model_turns:
             raise ExecutionLimitReached("max_model_turns")
 
     def after_model_turn(self, result: ProviderTurnResult) -> None:
         self.turns += 1
-        self.retries += result.retry_count
+        # Provider adapters that receive this control charge retries before
+        # waiting.  Legacy adapters still report their count here.
+        self.retries += max(0, result.retry_count - self._turn_retry_count)
         usage = result.usage
         if usage is not None and usage.total_tokens is not None:
             self.tokens += usage.total_tokens
@@ -124,6 +151,19 @@ class RunExecutionControl:
             self.tokens += result.estimated_prompt_tokens
             self.usage_quality = "estimated"
         self._persist(provider_ms=result.provider_ms)
+        if result.runtime_measurements:
+            allowed = set(RunRuntimeMeasurements.model_fields)
+            updates = {
+                key: value
+                for key, value in result.runtime_measurements.model_dump(exclude_none=True).items()
+                if key in allowed
+                and key != "total_duration_ms"
+                and isinstance(value, (int, float))
+                and value >= 0
+            }
+            if updates:
+                self.runtime_measurements = self.runtime_measurements.model_copy(update=updates)
+                self.handle.update_progress(runtime_measurements=self.runtime_measurements)
         self._check()
         if self.retries > self.limits.max_retries:
             raise ExecutionLimitReached("max_retries")
