@@ -94,6 +94,40 @@ describe('cortexStream', () => {
       })
     })
 
+    it('unwraps full RunEvent envelope when emitted by backend serializer', async () => {
+      const runId = '00000000-0000-4000-8000-000000000001'
+      const envelopeChunk = [
+        'id: 1\nevent: response.delta\ndata: {"sequence":1,"run_id":"00000000-0000-4000-8000-000000000001","type":"response.delta","timestamp":"2026-09-04T00:00:00Z","payload":{"text":"Streaming "}}\n\n',
+        'id: 2\nevent: response.delta\ndata: {"sequence":2,"run_id":"00000000-0000-4000-8000-000000000001","type":"response.delta","timestamp":"2026-09-04T00:00:01Z","payload":{"text":"token"}}\n\n',
+        'id: 3\nevent: run.completed\ndata: {"sequence":3,"run_id":"00000000-0000-4000-8000-000000000001","type":"run.completed","timestamp":"2026-09-04T00:00:02Z","payload":{"status":"completed"}}\n\n',
+      ]
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(createStreamResponse(envelopeChunk))
+
+      const events = []
+      for await (const event of streamRunEvents(runId)) {
+        events.push(event)
+      }
+
+      expect(events).toHaveLength(3)
+      expect(events[0]).toMatchObject({
+        sequence: 1,
+        run_id: runId,
+        type: 'response.delta',
+        payload: { text: 'Streaming ' },
+      })
+      expect(events[1]).toMatchObject({
+        sequence: 2,
+        type: 'response.delta',
+        payload: { text: 'token' },
+      })
+      expect(events[2]).toMatchObject({
+        sequence: 3,
+        type: 'run.completed',
+        payload: { status: 'completed' },
+      })
+    })
+
     it('reconnects with Last-Event-ID if stream drops before terminal event', async () => {
       const runId = '00000000-0000-4000-8000-000000000002'
       let callCount = 0

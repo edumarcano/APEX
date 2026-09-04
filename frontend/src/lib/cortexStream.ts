@@ -123,15 +123,30 @@ export async function* streamRunEvents(
             const parsed = parseSSEBlock(part)
             if (!parsed || parsed.isComment) continue
 
-            const eventSequence = parsed.id ?? (lastEventId + 1)
+            const rawData = parsed.data
+            const isEnvelope = Boolean(
+              rawData &&
+              typeof rawData === 'object' &&
+              'payload' in rawData &&
+              rawData.payload !== null &&
+              typeof rawData.payload === 'object' &&
+              !Array.isArray(rawData.payload)
+            )
+
+            const eventSequence = (isEnvelope && typeof rawData?.sequence === 'number' ? rawData.sequence : undefined)
+              ?? parsed.id
+              ?? (lastEventId + 1)
             lastEventId = eventSequence
 
             const event: RunEvent = {
               sequence: eventSequence,
-              run_id: runId,
-              type: parsed.event ?? 'run.status',
-              timestamp: new Date().toISOString(),
-              payload: parsed.data ?? {},
+              run_id: (isEnvelope && typeof rawData?.run_id === 'string' ? rawData.run_id : undefined) ?? runId,
+              type: (isEnvelope && typeof rawData?.type === 'string' ? (rawData.type as RunEventType) : undefined)
+                ?? parsed.event
+                ?? 'run.status',
+              timestamp: (isEnvelope && typeof rawData?.timestamp === 'string' ? rawData.timestamp : undefined)
+                ?? new Date().toISOString(),
+              payload: (isEnvelope ? (rawData!.payload as Record<string, unknown>) : rawData) ?? {},
             }
 
             options.onEvent?.(event)

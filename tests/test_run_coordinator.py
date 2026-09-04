@@ -276,3 +276,28 @@ class RunCoordinatorTests(unittest.TestCase):
                 request_metadata={},
                 run=record,
             )
+
+    def test_admitted_run_records_and_emits_queue_duration(self) -> None:
+        coordinator = CortexRunCoordinator(self.service, max_workers=1)
+        self.addCleanup(coordinator.close)
+        _conv_id, _user_id, _agent_id, record, handle = self._create_run(
+            coordinator=coordinator
+        )
+        response = SimpleNamespace(error=None, tool_trace=[], tool_outputs=[])
+        completed = coordinator.submit(
+            handle=handle,
+            resolved_model="test-model",
+            provider="openai",
+            runtime="cloud",
+            execute=lambda control: (control.finish(), response)[1],
+            finalize_conversation=self._finalize,
+        ).result(timeout=2)
+
+        self.assertEqual(completed.status, "completed")
+        self.assertIsNotNone(completed.runtime_measurements.queue_duration_ms)
+        self.assertGreaterEqual(completed.runtime_measurements.queue_duration_ms, 0.0)
+
+        events, _gap, _terminal = coordinator.events.get(record.id).replay(0)
+        runtime_events = [e for e in events if e.type == "runtime.updated"]
+        self.assertTrue(len(runtime_events) > 0)
+        self.assertIn("queue_duration_ms", runtime_events[0].payload["runtime_measurements"])

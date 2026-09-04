@@ -61,6 +61,7 @@ class _ActiveRun:
     conversation_id: UUID
     cancel_event: threading.Event
     future: Future[Any] | None = None
+    admitted_at: float | None = None
 
 
 class RunExecutionControl:
@@ -71,6 +72,8 @@ class RunExecutionControl:
         handle: RunHandle,
         cancel_event: threading.Event,
         event_sink: Callable[[str, dict[str, Any], RunRecord | None], None] | None = None,
+        *,
+        queue_duration_ms: float | None = None,
     ) -> None:
         self.handle = handle
         self.cancel_event = cancel_event
@@ -81,7 +84,9 @@ class RunExecutionControl:
         self.retries = 0
         self.tokens = 0
         self.usage_quality: UsageQuality = "unavailable"
-        self.runtime_measurements = RunRuntimeMeasurements()
+        self.runtime_measurements = RunRuntimeMeasurements(
+            queue_duration_ms=queue_duration_ms
+        )
         self._turn_retry_count = 0
         self._event_sink = event_sink
 
@@ -260,7 +265,9 @@ class CortexRunCoordinator:
                 raise ActiveConversationRunError()
             if not self._slots.acquire(blocking=False):
                 raise RunCapacityError()
-            self._active[agent_message_id] = _ActiveRun(conversation_id, threading.Event())
+            self._active[agent_message_id] = _ActiveRun(
+                conversation_id, threading.Event(), admitted_at=time.perf_counter()
+            )
             return None
 
     def abandon_admission(self, agent_message_id: UUID) -> None:
@@ -331,6 +338,11 @@ class CortexRunCoordinator:
         execute: ExecuteRun,
         finalize_conversation: FinalizeConversation,
     ) -> Any:
+        queue_duration_ms = (
+            round((time.perf_counter() - active.admitted_at) * 1000, 2)
+            if active.admitted_at is not None
+            else None
+        )
         control = RunExecutionControl(
             handle,
             active.cancel_event,
@@ -340,6 +352,7 @@ class CortexRunCoordinator:
                 payload,
                 record=record,
             ),
+            queue_duration_ms=queue_duration_ms,
         )
         try:
             with self._lock:
@@ -351,12 +364,23 @@ class CortexRunCoordinator:
                         provider=provider,
                         runtime=runtime,
                     )
+                    if queue_duration_ms is not None:
+                        record = handle.update_progress(
+                            runtime_measurements=control.runtime_measurements,
+                        ) or record
                     self.events.publish(
                         handle.run_id,
                         "run.status",
                         {"status": record.status},
                         record=record,
                     )
+                    if queue_duration_ms is not None:
+                        self.events.publish(
+                            handle.run_id,
+                            "runtime.updated",
+                            {"runtime_measurements": record.runtime_measurements.model_dump(mode="json")},
+                            record=record,
+                        )
                 except RunConflictError:
                     if handle.get_record().status == "cancelling":
                         raise ExecutionCancelled() from None
