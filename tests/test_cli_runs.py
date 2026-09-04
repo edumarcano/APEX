@@ -15,10 +15,11 @@ from apex import cli
 
 
 class _Response:
-    def __init__(self, status_code: int, payload: object | Exception, lines: list[str] | None = None) -> None:
+    def __init__(self, status_code: int, payload: object | Exception, lines: list[Any] | None = None) -> None:
         self.status_code = status_code
         self._payload = payload
         self._lines = lines or []
+        self.closed = False
 
     def json(self) -> object:
         if isinstance(self._payload, Exception):
@@ -27,7 +28,12 @@ class _Response:
 
     def iter_lines(self, decode_unicode: bool = True) -> Any:
         for line in self._lines:
+            if isinstance(line, Exception):
+                raise line
             yield line
+
+    def close(self) -> None:
+        self.closed = True
 
 
 class _Session:
@@ -286,6 +292,57 @@ class CliRunsTests(unittest.TestCase):
         self.assertEqual(len(session.calls), 2)
         # Check that second request passed Last-Event-ID: 1
         self.assertEqual(session.calls[1]["headers"].get("Last-Event-ID"), "1")
+        self.assertTrue(resp_1.closed)
+        self.assertTrue(resp_2.closed)
+
+    def test_runs_follow_reconnects_on_midstream_network_drop(self) -> None:
+        lines_1 = [
+            "id: 1",
+            "event: response.delta",
+            'data: {"delta": "Hello "}',
+            "",
+            requests.RequestException("connection dropped mid-stream"),
+        ]
+        lines_2 = [
+            "id: 2",
+            "event: response.delta",
+            'data: {"delta": "world!"}',
+            "",
+            "id: 3",
+            "event: run.completed",
+            'data: {"record": {"status": "completed"}}',
+            "",
+        ]
+        resp_1 = _Response(200, {}, lines=lines_1)
+        resp_2 = _Response(200, {}, lines=lines_2)
+        code, stdout, _, session = self._run(
+            ["runs", "follow", "run-drop"],
+            [resp_1, resp_2],
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(stdout.strip(), "Hello world!")
+        self.assertEqual(len(session.calls), 2)
+        self.assertEqual(session.calls[1]["headers"].get("Last-Event-ID"), "1")
+        self.assertTrue(resp_1.closed)
+        self.assertTrue(resp_2.closed)
+
+    def test_runs_follow_terminal_snapshot_does_not_retry(self) -> None:
+        lines = [
+            "id: 0",
+            "event: run.snapshot",
+            'data: {"run": {"id": "run-old", "status": "completed", "total_tokens": 256, "elapsed_seconds": 1.5, "resolved_model": "deepseek"}, "answer": "Done."}',
+            "",
+        ]
+        resp = _Response(200, {}, lines=lines)
+        code, stdout, stderr, session = self._run(
+            ["runs", "follow", "run-old"],
+            [resp],
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(stdout.strip(), "Done.")
+        self.assertIn("[Run completed: 1.5s | 256 tokens | deepseek]", stderr)
+        self.assertEqual(len(session.calls), 1)
+        self.assertTrue(resp.closed)
 
 
 if __name__ == "__main__":

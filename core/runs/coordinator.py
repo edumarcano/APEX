@@ -446,52 +446,16 @@ class CortexRunCoordinator:
                     error=None if conversation.status == "completed" else RunError(code="provider_error"),
                 )
                 self._publish_terminal(record)
-                span_context.record_progress(
-                    resolved_model=record.resolved_model,
-                    provider=record.provider,
-                    runtime=record.runtime,
-                    turns_count=record.turns_count,
-                    tool_calls_count=record.tool_calls_count,
-                    retries_count=record.retries_count,
-                    total_tokens=record.total_tokens,
-                    usage_quality=record.usage_quality,
-                    status=record.status,
-                    stop_reason=record.stop_reason,
-                    error_code=record.error.code if record.error else None,
-                )
+                span_context.record_terminal(record)
                 return record
             except ExecutionCancelled:
                 record = self._finalize_stopped(handle, control, finalize_conversation, "cancelled", "operator_cancelled", "operator_cancelled")
-                span_context.record_progress(
-                    resolved_model=record.resolved_model,
-                    provider=record.provider,
-                    runtime=record.runtime,
-                    turns_count=record.turns_count,
-                    tool_calls_count=record.tool_calls_count,
-                    retries_count=record.retries_count,
-                    total_tokens=record.total_tokens,
-                    usage_quality=record.usage_quality,
-                    status=record.status,
-                    stop_reason=record.stop_reason,
-                    error_code="operator_cancelled",
-                )
+                span_context.record_terminal(record, error_code="operator_cancelled")
                 return record
             except ExecutionLimitReached as exc:
                 code = {"max_elapsed_seconds": "timeout", "max_total_tokens": "token_limit", "max_model_turns": "turn_limit", "max_tool_calls": "tool_limit", "max_retries": "retry_limit"}[exc.reason]
                 record = self._finalize_stopped(handle, control, finalize_conversation, "failed", exc.reason, code)
-                span_context.record_progress(
-                    resolved_model=record.resolved_model,
-                    provider=record.provider,
-                    runtime=record.runtime,
-                    turns_count=record.turns_count,
-                    tool_calls_count=record.tool_calls_count,
-                    retries_count=record.retries_count,
-                    total_tokens=record.total_tokens,
-                    usage_quality=record.usage_quality,
-                    status=record.status,
-                    stop_reason=record.stop_reason,
-                    error_code=code,
-                )
+                span_context.record_terminal(record, error_code=code)
                 return record
             except RunHttpError as exc:
                 stop_reason, error_code = _http_failure_mapping(exc.status_code)
@@ -503,35 +467,11 @@ class CortexRunCoordinator:
                     stop_reason,
                     error_code,
                 )
-                span_context.record_progress(
-                    resolved_model=record.resolved_model,
-                    provider=record.provider,
-                    runtime=record.runtime,
-                    turns_count=record.turns_count,
-                    tool_calls_count=record.tool_calls_count,
-                    retries_count=record.retries_count,
-                    total_tokens=record.total_tokens,
-                    usage_quality=record.usage_quality,
-                    status=record.status,
-                    stop_reason=record.stop_reason,
-                    error_code=error_code,
-                )
+                span_context.record_terminal(record, error_code=error_code)
                 raise
             except Exception:
                 record = self._finalize_stopped(handle, control, finalize_conversation, "failed", "internal_error", "internal_error")
-                span_context.record_progress(
-                    resolved_model=record.resolved_model,
-                    provider=record.provider,
-                    runtime=record.runtime,
-                    turns_count=record.turns_count,
-                    tool_calls_count=record.tool_calls_count,
-                    retries_count=record.retries_count,
-                    total_tokens=record.total_tokens,
-                    usage_quality=record.usage_quality,
-                    status=record.status,
-                    stop_reason=record.stop_reason,
-                    error_code="internal_error",
-                )
+                span_context.record_terminal(record, error_code="internal_error")
                 return record
             finally:
                 with self._lock:

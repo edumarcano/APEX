@@ -253,6 +253,48 @@ class GenAISpansTests(unittest.TestCase):
         self.assertEqual(tool_span.status.status_code, StatusCode.ERROR)
         self.assertEqual(tool_span.attributes.get("apex.tool.error_category"), "unavailable")
 
+    def test_record_terminal_consolidates_run_record_metrics(self) -> None:
+        run_id = uuid4()
+        conv_id = uuid4()
+        user_msg_id = uuid4()
+        agent_msg_id = uuid4()
+
+        with trace_run(
+            run_id=run_id,
+            conversation_id=conv_id,
+            user_message_id=user_msg_id,
+            agent_message_id=agent_msg_id,
+            requested_model="deepseek/deepseek-v4-flash-0731",
+            provider="openrouter",
+            runtime="cloud",
+        ) as root_ctx:
+            mock_record = mock.Mock(
+                resolved_model="deepseek/deepseek-v4-flash-0731",
+                provider="openrouter",
+                runtime="cloud",
+                turns_count=3,
+                tool_calls_count=2,
+                retries_count=1,
+                total_tokens=2048,
+                usage_quality="reported",
+                status="completed",
+                stop_reason="end_turn",
+                error=None,
+            )
+            root_ctx.record_terminal(mock_record)
+
+        spans = self.memory_exporter.get_finished_spans()
+        self.assertEqual(len(spans), 1)
+        attrs = spans[0].attributes or {}
+        self.assertEqual(attrs.get("gen_ai.response.model"), "deepseek/deepseek-v4-flash-0731")
+        self.assertEqual(attrs.get("apex.turns_count"), 3)
+        self.assertEqual(attrs.get("apex.tool_calls_count"), 2)
+        self.assertEqual(attrs.get("apex.retries_count"), 1)
+        self.assertEqual(attrs.get("apex.total_tokens"), 2048)
+        self.assertEqual(attrs.get("apex.status"), "completed")
+        self.assertEqual(attrs.get("apex.stop_reason"), "end_turn")
+        self.assertEqual(spans[0].status.status_code, StatusCode.OK)
+
 
 if __name__ == "__main__":
     unittest.main()

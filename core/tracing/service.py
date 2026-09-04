@@ -113,7 +113,8 @@ class TracingService:
                 headers=self._headers,
             )
             provider.add_span_processor(BatchSpanProcessor(exporter))
-            trace.set_tracer_provider(provider)
+            if getattr(trace, "_TRACER_PROVIDER", None) is None:
+                trace.set_tracer_provider(provider)
             self._provider = provider
             self._enabled = True
             _LOGGER.info(

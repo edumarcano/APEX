@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import contextlib
 import logging
-import time
 from typing import Any, Generator
 from uuid import UUID
 
@@ -70,6 +69,30 @@ class RunSpanContext:
                 self.span.set_attribute("apex.error_code", error_code)
         except Exception as exc:
             _LOGGER.debug("Failed to record span progress: %s", exc)
+
+    def record_terminal(
+        self,
+        record: Any,
+        *,
+        error_code: str | None = None,
+    ) -> None:
+        """Record final metrics, status, and outcome from a terminal RunRecord."""
+        err_code = error_code
+        if err_code is None and getattr(record, "error", None) is not None:
+            err_code = getattr(record.error, "code", None)
+        self.record_progress(
+            resolved_model=getattr(record, "resolved_model", None),
+            provider=getattr(record, "provider", None),
+            runtime=getattr(record, "runtime", None),
+            turns_count=getattr(record, "turns_count", None),
+            tool_calls_count=getattr(record, "tool_calls_count", None),
+            retries_count=getattr(record, "retries_count", None),
+            total_tokens=getattr(record, "total_tokens", None),
+            usage_quality=getattr(record, "usage_quality", None),
+            status=getattr(record, "status", None),
+            stop_reason=getattr(record, "stop_reason", None),
+            error_code=err_code,
+        )
 
 
 @contextlib.contextmanager

@@ -106,59 +106,68 @@ class ApiClient:
                 "APEX is not reachable at http://127.0.0.1:8000.",
             ) from exc
 
-        if not 200 <= response.status_code < 300:
-            try:
-                body = response.json()
-            except ValueError:
-                body = None
-            detail = body.get("detail") if isinstance(body, dict) else None
-            raise CliError(
-                "http_error",
-                _http_error_message(response.status_code, detail),
-                status_code=response.status_code,
-                detail=detail,
-            )
-
-        current_id: int | None = None
-        current_event: str | None = None
-        current_data: list[str] = []
-
-        for line in response.iter_lines(decode_unicode=True):
-            if line is None:
-                continue
-            line_str = line.strip("\r")
-            if not line_str:
-                if current_data or current_event is not None:
-                    raw_data = "\n".join(current_data)
-                    payload: Any = None
-                    if raw_data:
-                        try:
-                            payload = json.loads(raw_data)
-                        except ValueError:
-                            payload = raw_data
-                    yield {
-                        "id": current_id,
-                        "type": current_event or "message",
-                        "payload": payload,
-                        "raw": raw_data,
-                    }
-                current_id = None
-                current_event = None
-                current_data = []
-                continue
-
-            if line_str.startswith(":"):
-                continue
-            if line_str.startswith("id:"):
-                val = line_str[3:].strip()
+        try:
+            if not 200 <= response.status_code < 300:
                 try:
-                    current_id = int(val)
+                    body = response.json()
                 except ValueError:
-                    pass
-            elif line_str.startswith("event:"):
-                current_event = line_str[6:].strip()
-            elif line_str.startswith("data:"):
-                current_data.append(line_str[5:].lstrip(" "))
+                    body = None
+                detail = body.get("detail") if isinstance(body, dict) else None
+                raise CliError(
+                    "http_error",
+                    _http_error_message(response.status_code, detail),
+                    status_code=response.status_code,
+                    detail=detail,
+                )
+
+            current_id: int | None = None
+            current_event: str | None = None
+            current_data: list[str] = []
+
+            try:
+                for line in response.iter_lines(decode_unicode=True):
+                    if line is None:
+                        continue
+                    line_str = line.strip("\r")
+                    if not line_str:
+                        if current_data or current_event is not None:
+                            raw_data = "\n".join(current_data)
+                            payload: Any = None
+                            if raw_data:
+                                try:
+                                    payload = json.loads(raw_data)
+                                except ValueError:
+                                    payload = raw_data
+                            yield {
+                                "id": current_id,
+                                "type": current_event or "message",
+                                "payload": payload,
+                                "raw": raw_data,
+                            }
+                        current_id = None
+                        current_event = None
+                        current_data = []
+                        continue
+
+                    if line_str.startswith(":"):
+                        continue
+                    if line_str.startswith("id:"):
+                        val = line_str[3:].strip()
+                        try:
+                            current_id = int(val)
+                        except ValueError:
+                            pass
+                    elif line_str.startswith("event:"):
+                        current_event = line_str[6:].strip()
+                    elif line_str.startswith("data:"):
+                        current_data.append(line_str[5:].lstrip(" "))
+            except requests.RequestException as exc:
+                raise CliError(
+                    "backend_unavailable",
+                    "Connection to APEX stream was lost.",
+                ) from exc
+        finally:
+            response.close()
 
 
 def _json_body(response: requests.Response) -> object:
@@ -786,6 +795,16 @@ def _follow_run_stream(
                     if status in {"completed", "failed", "cancelled", "interrupted"}:
                         terminal_reached = True
                         exit_code = 0 if status == "completed" else 1
+                elif event_type == "run.snapshot" and isinstance(payload, dict):
+                    run_data = payload.get("run")
+                    if isinstance(run_data, dict):
+                        status = run_data.get("status")
+                        if status in {"completed", "failed", "cancelled", "interrupted"}:
+                            terminal_reached = True
+                            exit_code = 0 if status == "completed" else 1
+                            if not json_mode:
+                                _render_stream_event("run.completed", {"record": run_data})
+                            break
 
             if terminal_reached:
                 break
