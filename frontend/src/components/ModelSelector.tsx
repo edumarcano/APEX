@@ -338,7 +338,7 @@ export function ModelSelector({
                     unavailable
                       ? 'cursor-not-allowed border-white/5 bg-white/[0.01] opacity-45'
                       : selected
-                      ? 'border-[#7E22CE]/65 bg-[#7E22CE]/15 ring-1 ring-[#7E22CE]/35'
+                      ? 'border-[#7EB3FF]/50 bg-[#0F4DB8]/15 ring-1 ring-[#0F4DB8]/30'
                       : 'border-white/5 bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.04]'
                   }`}
                 >

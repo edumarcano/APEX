@@ -119,7 +119,7 @@ def _resolved_turn_metadata(payload: ConversationTurnRequest) -> dict[str, objec
             "runtime": profile.runtime,
             "provider": profile.provider,
             "effective_effort": resolve_effort(profile, payload.effort),
-            "effective_context_window": None,
+            "effective_context_window": profile.maximum_context_window,
             "effective_local_reasoning_mode": None,
         }
     if payload.effort is not None:
@@ -706,9 +706,15 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
             agent_message_id=agent_message.id,
         )
         raise
+    effective_window = request_metadata.get("effective_context_window")
+    max_tokens = (
+        int(effective_window)
+        if isinstance(effective_window, (int, float)) and effective_window > 0
+        else CORTEX_RUNS_MAX_TOTAL_TOKENS
+    )
     limit_snapshot = RunLimitSnapshot(
         max_elapsed_seconds=CORTEX_RUNS_MAX_ELAPSED_SECONDS,
-        max_total_tokens=CORTEX_RUNS_MAX_TOTAL_TOKENS,
+        max_total_tokens=max_tokens,
         max_retries=CORTEX_RUNS_MAX_RETRIES,
         max_model_turns=CORTEX_RUNS_MAX_MODEL_TURNS,
         max_tool_calls=CORTEX_RUNS_MAX_TOOL_CALLS,

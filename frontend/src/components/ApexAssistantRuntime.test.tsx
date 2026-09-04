@@ -22,6 +22,48 @@ function response(body: unknown, status = 200): Response {
   })
 }
 
+function sseResponse(events: Array<{ sequence: number; type: string; payload: Record<string, unknown> }>): Response {
+  const encoder = new TextEncoder()
+  const body = events
+    .map((e) => `id: ${e.sequence}\nevent: ${e.type}\ndata: ${JSON.stringify(e.payload)}\n\n`)
+    .join('')
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode(body))
+      controller.close()
+    },
+  })
+  return new Response(stream, {
+    status: 200,
+    headers: { 'Content-Type': 'text/event-stream' },
+  })
+}
+
+function mockRunRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: '00000000-0000-4000-8000-000000000099',
+    conversation_id: conversationId,
+    partition: 'production',
+    user_message_id: '00000000-0000-4000-8000-000000000002',
+    agent_message_id: '00000000-0000-4000-8000-000000000003',
+    requested_model: 'apex-default',
+    resolved_model: 'apex-default',
+    provider: 'openai',
+    runtime: 'cloud',
+    status: 'running',
+    stop_reason: null,
+    created_at: '2026-08-17T12:00:00Z',
+    started_at: '2026-08-17T12:00:01Z',
+    completed_at: null,
+    updated_at: '2026-08-17T12:00:01Z',
+    limit_snapshot: { max_elapsed_seconds: 600, max_total_tokens: 128000, max_retries: 4, max_model_turns: 6, max_tool_calls: 10 },
+    turns_count: 1, tool_calls_count: 0, retries_count: 0, total_tokens: 100, elapsed_seconds: 1.0,
+    usage_quality: 'reported', runtime_measurements: {}, evidence: { final_message_status: 'completed', answer_persisted: true, tool_outcome_counts: {}, action_ids: [] },
+    trace_id: null, error: null,
+    ...overrides,
+  }
+}
+
 afterEach(() => {
   vi.restoreAllMocks()
 })
@@ -34,14 +76,20 @@ describe('ApexAssistantRuntime', () => {
       if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
       if (url.endsWith('/api/v1/cortex/conversations')) return response([summary])
       if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}`)) return response({ ...summary, active_leaf_message_id: null, messages: [] })
-      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}/turns`)) {
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}/runs`)) {
         expect(init?.method).toBe('POST')
         const payload = JSON.parse(String(init?.body)) as Record<string, unknown>
         expect(payload.prompt).toBe('List my pending reminders.')
         expect(payload.user_message_id).toMatch(/^[0-9a-f-]{36}$/i)
         expect(payload.agent_message_id).toMatch(/^[0-9a-f-]{36}$/i)
         expect(payload.agent).toBe('apex')
-        return response({ answer: 'There are three active reminders.', tool_trace: [], tool_outputs: [], citations: [] })
+        return response(mockRunRecord(), 202)
+      }
+      if (url.includes('/events')) {
+        return sseResponse([
+          { sequence: 1, type: 'response.delta', payload: { text: 'There are three active reminders.' } },
+          { sequence: 2, type: 'run.completed', payload: { status: 'completed' } },
+        ])
       }
       throw new Error(`Unexpected request: ${url}`)
     })
@@ -76,8 +124,11 @@ describe('ApexAssistantRuntime', () => {
       if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
       if (url.endsWith('/api/v1/cortex/conversations')) return response([summary])
       if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}`)) return response({ ...summary, active_leaf_message_id: null, messages: [] })
-      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}/turns`)) {
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}/runs`)) {
         expect(init?.method).toBe('POST')
+        return response(mockRunRecord(), 202)
+      }
+      if (url.includes('/events')) {
         return turnResponse
       }
       throw new Error(`Unexpected request: ${url}`)
@@ -108,8 +159,58 @@ describe('ApexAssistantRuntime', () => {
     await user.click(screen.getByRole('button', { name: 'Send' }))
     await waitFor(() => expect(screen.getByText('Apex Agent working')).toBeInTheDocument())
     expect(screen.queryByText('Apex Apex Agent working')).not.toBeInTheDocument()
-    resolveTurn(response({ answer: 'Finished.', tool_trace: [], tool_outputs: [], citations: [] }))
+    resolveTurn(sseResponse([
+      { sequence: 1, type: 'response.delta', payload: { text: 'Finished.' } },
+      { sequence: 2, type: 'run.completed', payload: { status: 'completed' } },
+    ]))
     await waitFor(() => expect(screen.getByText('Finished.')).toBeInTheDocument())
+    expect(fetchMock).toHaveBeenCalled()
+  })
+
+  it('batches streaming deltas and flushes on completion while preserving agent streaming metadata', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([summary])
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}`)) return response({ ...summary, active_leaf_message_id: null, messages: [] })
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}/runs`)) {
+        return response(mockRunRecord(), 202)
+      }
+      if (url.includes('/events')) {
+        return sseResponse([
+          { sequence: 1, type: 'response.delta', payload: { text: 'High ' } },
+          { sequence: 2, type: 'response.delta', payload: { text: 'throughput ' } },
+          { sequence: 3, type: 'response.delta', payload: { text: 'token stream.' } },
+          { sequence: 4, type: 'run.completed', payload: { status: 'completed' } },
+        ])
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+
+    render(
+      <ApexAssistantRuntime
+        config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+        beforeRun={async () => true}
+      >
+        <ApexAssistantThread
+          renderAgent={(text, metadata) => (
+            <div data-testid="agent-msg-box">
+              <span data-testid="agent-msg-key">{String((metadata?.agent_used as Record<string, unknown> | undefined)?.key ?? '')}</span>
+              <span data-testid="agent-msg-text">{text}</span>
+            </div>
+          )}
+        />
+      </ApexAssistantRuntime>,
+    )
+
+    await waitFor(() => expect(screen.getByPlaceholderText('Ask APEX…')).toBeInTheDocument())
+    await user.type(screen.getByPlaceholderText('Ask APEX…'), 'Fast stream test')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => expect(screen.getByTestId('agent-msg-text')).toHaveTextContent('High throughput token stream.'))
+    expect(screen.getByTestId('agent-msg-key')).toHaveTextContent('apex')
     expect(fetchMock).toHaveBeenCalled()
   })
 
@@ -248,8 +349,11 @@ describe('ApexAssistantRuntime', () => {
         return response({ ...summary, id: createdId })
       }
       if (url.endsWith('/api/v1/cortex/conversations')) return response([])
-      if (url.endsWith(`/api/v1/cortex/conversations/${createdId}`)) return response({ ...summary, id: createdId, active_leaf_message_id: null, messages: [] })
-      if (url.endsWith(`/api/v1/cortex/conversations/${createdId}/turns`)) return response({ answer: 'Created after use.', tool_trace: [], tool_outputs: [], citations: [] })
+      if (url.endsWith(`/api/v1/cortex/conversations/${createdId}/runs`)) return response(mockRunRecord({ conversation_id: createdId }), 202)
+      if (url.includes('/events')) return sseResponse([
+        { sequence: 1, type: 'response.delta', payload: { text: 'Created after use.' } },
+        { sequence: 2, type: 'run.completed', payload: { status: 'completed' } },
+      ])
       throw new Error(`Unexpected request: ${url}`)
     })
     const user = userEvent.setup()
@@ -369,7 +473,8 @@ describe('ApexAssistantRuntime', () => {
         { id: userId, parent_message_id: null, role: 'user', content: 'Existing prompt', status: 'completed', created_at: '2026-08-17T12:00:00Z', response_metadata: null },
         { id: agentId, parent_message_id: userId, role: 'agent', content: 'Existing answer', status: 'completed', created_at: '2026-08-17T12:00:01Z', response_metadata: {} },
       ] })
-      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}/turns`) && init?.method === 'POST') return turnResponse
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}/runs`) && init?.method === 'POST') return response(mockRunRecord(), 202)
+      if (url.includes('/events')) return turnResponse
       throw new Error(`Unexpected request: ${url}`)
     })
     const user = userEvent.setup()
@@ -379,7 +484,10 @@ describe('ApexAssistantRuntime', () => {
     await user.click(screen.getByRole('button', { name: 'Send' }))
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Edit' }).every((button) => (button as HTMLButtonElement).disabled)).toBe(true))
     expect(screen.getByRole('button', { name: 'Retry' })).toBeDisabled()
-    resolveTurn(response({ answer: 'Completed.', tool_trace: [], tool_outputs: [], citations: [] }))
+    resolveTurn(sseResponse([
+      { sequence: 1, type: 'response.delta', payload: { text: 'Completed.' } },
+      { sequence: 2, type: 'run.completed', payload: { status: 'completed' } },
+    ]))
     await waitFor(() => expect(screen.getByText('Completed.')).toBeInTheDocument())
   })
 
@@ -530,8 +638,11 @@ describe('ApexAssistantRuntime', () => {
         return response({ ...summary, id: createdId, title: body.title ?? 'New conversation' })
       }
       if (url.endsWith('/api/v1/cortex/conversations')) return response([])
-      if (url.endsWith(`/api/v1/cortex/conversations/${createdId}`)) return response({ ...summary, id: createdId, active_leaf_message_id: null, messages: [] })
-      if (url.endsWith(`/api/v1/cortex/conversations/${createdId}/turns`)) return response({ answer: 'Title tested.', tool_trace: [], tool_outputs: [], citations: [] })
+      if (url.endsWith(`/api/v1/cortex/conversations/${createdId}/runs`)) return response(mockRunRecord({ conversation_id: createdId }), 202)
+      if (url.includes('/events')) return sseResponse([
+        { sequence: 1, type: 'response.delta', payload: { text: 'Title tested.' } },
+        { sequence: 2, type: 'run.completed', payload: { status: 'completed' } },
+      ])
       throw new Error(`Unexpected request: ${url}`)
     })
 
@@ -625,10 +736,16 @@ describe('ApexAssistantRuntime', () => {
           messages: [],
         })
       }
-      if (url.endsWith(`/api/v1/cortex/conversations/${conv1}/turns`) && init?.method === 'POST') {
+      if (url.endsWith(`/api/v1/cortex/conversations/${conv1}/runs`) && init?.method === 'POST') {
         const body = JSON.parse(String(init.body)) as { parent_message_id?: string }
         sentParentId = body.parent_message_id
-        return response({ answer: 'Follow up in Alpha complete.', tool_trace: [], tool_outputs: [], citations: [] })
+        return response(mockRunRecord({ conversation_id: conv1 }), 202)
+      }
+      if (url.includes('/events')) {
+        return sseResponse([
+          { sequence: 1, type: 'response.delta', payload: { text: 'Follow up in Alpha complete.' } },
+          { sequence: 2, type: 'run.completed', payload: { status: 'completed' } },
+        ])
       }
       throw new Error(`Unexpected request: ${url}`)
     })
@@ -761,9 +878,15 @@ describe('ApexAssistantRuntime', () => {
       if (url.endsWith(`/api/v1/cortex/conversations/${existingId}`)) {
         return response({ ...summary, id: existingId, title: 'Existing Chat', active_leaf_message_id: null, messages: [] })
       }
-      if (url.endsWith(`/api/v1/cortex/conversations/${newConvId}/turns`) && init?.method === 'POST') {
+      if (url.endsWith(`/api/v1/cortex/conversations/${newConvId}/runs`) && init?.method === 'POST') {
         turnPayload = JSON.parse(String(init.body))
-        return response({ answer: 'Local model answer.', tool_trace: [], tool_outputs: [], citations: [] })
+        return response(mockRunRecord({ conversation_id: newConvId }), 202)
+      }
+      if (url.includes('/events')) {
+        return sseResponse([
+          { sequence: 1, type: 'response.delta', payload: { text: 'Local model answer.' } },
+          { sequence: 2, type: 'run.completed', payload: { status: 'completed' } },
+        ])
       }
       throw new Error(`Unexpected request: ${url}`)
     })
@@ -811,8 +934,14 @@ describe('ApexAssistantRuntime', () => {
       if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
       if (url.endsWith('/api/v1/cortex/conversations')) return response([summary])
       if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}`)) return response({ ...summary, active_leaf_message_id: null, messages: [] })
-      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}/turns`)) {
-        return response({ answer: 'Response with logo below.', tool_trace: [], tool_outputs: [], citations: [] })
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}/runs`)) {
+        return response(mockRunRecord({ conversation_id: conversationId, id: 'run-logo' }))
+      }
+      if (url.includes('/events')) {
+        return sseResponse([
+          { sequence: 1, type: 'response.delta', payload: { text: 'Response with logo below.' } },
+          { sequence: 2, type: 'run.completed', payload: { status: 'completed' } },
+        ])
       }
       throw new Error(`Unexpected request: ${url}`)
     })
@@ -834,5 +963,132 @@ describe('ApexAssistantRuntime', () => {
 
     await waitFor(() => expect(screen.getByText('Response with logo below.')).toBeInTheDocument())
     expect(container.querySelector('[data-slot="cortex-chat-logo"]')).toBeInTheDocument()
+  })
+
+  it('streams live text deltas and handles response.reset before completing', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const streamConvId = 'conv-stream'
+    const streamSummary = { ...summary, id: streamConvId, title: 'Stream test' }
+    let runStarted = false
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([streamSummary])
+      if (url.endsWith(`/api/v1/cortex/conversations/${streamConvId}`)) {
+        return response({
+          ...streamSummary,
+          active_leaf_message_id: runStarted ? 'msg-stream-agent' : null,
+          messages: runStarted
+            ? [
+                {
+                  id: 'msg-stream-user',
+                  parent_message_id: null,
+                  role: 'user',
+                  content: 'List my pending reminders.',
+                  status: 'completed',
+                  created_at: new Date().toISOString(),
+                },
+                {
+                  id: 'msg-stream-agent',
+                  parent_message_id: 'msg-stream-user',
+                  role: 'agent',
+                  content: 'Final text after reset.',
+                  status: 'completed',
+                  created_at: new Date().toISOString(),
+                  response_metadata: {},
+                },
+              ]
+            : [],
+        })
+      }
+      if (url.endsWith(`/api/v1/cortex/conversations/${streamConvId}/runs`)) {
+        runStarted = true
+        return response(mockRunRecord({ conversation_id: streamConvId, id: 'run-stream' }))
+      }
+      if (url.includes('/runs/run-stream/events')) {
+        return sseResponse([
+          { sequence: 1, type: 'response.delta', payload: { text: 'Drafting...' } },
+          { sequence: 2, type: 'response.reset', payload: {} },
+          { sequence: 3, type: 'response.delta', payload: { text: 'Final text after reset.' } },
+          { sequence: 4, type: 'run.completed', payload: { status: 'completed' } },
+        ])
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+
+    render(
+      <ApexAssistantRuntime
+        config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+      >
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+
+    await waitFor(() => expect(screen.getByText('Reminders')).toBeInTheDocument())
+    await user.click(screen.getByText('Reminders'))
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => expect(screen.getByText('Final text after reset.')).toBeInTheDocument())
+  })
+
+  it('cancels active run on explicit stop', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const cancelConvId = 'conv-cancel'
+    const cancelSummary = { ...summary, id: cancelConvId, title: 'Cancel test' }
+    let cancelCalled = false
+    let resolveStream: () => void = () => {}
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([cancelSummary])
+      if (url.endsWith(`/api/v1/cortex/conversations/${cancelConvId}`)) {
+        return response({ ...cancelSummary, active_leaf_message_id: null, messages: [] })
+      }
+      if (url.endsWith(`/api/v1/cortex/conversations/${cancelConvId}/runs`)) {
+        return response(mockRunRecord({ conversation_id: cancelConvId, id: 'run-to-cancel' }))
+      }
+      if (url.endsWith('/api/v1/cortex/runs/run-to-cancel/cancel') && init?.method === 'POST') {
+        cancelCalled = true
+        resolveStream()
+        return response({ status: 'cancelling' })
+      }
+      if (url.includes('/runs/run-to-cancel/events')) {
+        const stream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('event: response.delta\ndata: {"text":"Generating..."}\n\n'))
+            // Keep stream open until cancelled
+            resolveStream = () => {
+              controller.enqueue(new TextEncoder().encode('event: run.completed\ndata: {"status":"interrupted"}\n\n'))
+              controller.close()
+            }
+          },
+        })
+        return new Response(stream, {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+
+    render(
+      <ApexAssistantRuntime
+        config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+      >
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+
+    await waitFor(() => expect(screen.getByText('Reminders')).toBeInTheDocument())
+    await user.click(screen.getByText('Reminders'))
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    const stopButton = await screen.findByRole('button', { name: /stop/i })
+    await user.click(stopButton)
+
+    await waitFor(() => expect(cancelCalled).toBe(true))
   })
 })

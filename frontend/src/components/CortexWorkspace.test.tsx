@@ -59,4 +59,42 @@ describe('CortexWorkspace', () => {
     await user.click(screen.getByText('Response information'))
     expect(screen.getByText('OpenRouter / apex')).toBeVisible()
   })
+
+  it('supports 4-tab keyboard navigation across controls, context, actions, and activity', async () => {
+    const user = userEvent.setup()
+    renderWorkspace()
+
+    const controlsTab = screen.getByRole('tab', { name: 'controls' })
+    const contextTab = screen.getByRole('tab', { name: 'context' })
+    const actionsTab = screen.getByRole('tab', { name: 'actions' })
+    const activityTab = screen.getByRole('tab', { name: 'activity' })
+
+    expect(controlsTab).toHaveAttribute('aria-selected', 'true')
+
+    await user.click(controlsTab)
+    await user.keyboard('{ArrowRight}')
+    expect(contextTab).toHaveAttribute('aria-selected', 'true')
+
+    await user.keyboard('{ArrowRight}')
+    expect(actionsTab).toHaveAttribute('aria-selected', 'true')
+
+    await user.keyboard('{ArrowRight}')
+    expect(activityTab).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('cortex-activity-panel')).toBeInTheDocument()
+
+    // Wrap around to first tab
+    await user.keyboard('{ArrowRight}')
+    expect(controlsTab).toHaveAttribute('aria-selected', 'true')
+
+    // ArrowLeft backwards
+    await user.keyboard('{ArrowLeft}')
+    expect(activityTab).toHaveAttribute('aria-selected', 'true')
+
+    // Home and End keys
+    await user.keyboard('{Home}')
+    expect(controlsTab).toHaveAttribute('aria-selected', 'true')
+
+    await user.keyboard('{End}')
+    expect(activityTab).toHaveAttribute('aria-selected', 'true')
+  })
 })

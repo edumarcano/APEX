@@ -321,6 +321,9 @@ def _post_chat_stream(
         text_parts: list[str] = []
         tools: dict[int, dict[str, str]] = {}
         usage: dict[str, Any] | None = None
+        timings: dict[str, Any] | None = None
+        stream_started = time.perf_counter()
+        ttft_ms: float | None = None
         model = profile.runtime_model_id
         for raw_line in response.iter_lines(decode_unicode=True):
             if execution_control is not None:
@@ -342,12 +345,16 @@ def _post_chat_stream(
                 model = chunk["model"]
             if isinstance(chunk.get("usage"), dict):
                 usage = chunk["usage"]
+            if isinstance(chunk.get("timings"), dict):
+                timings = chunk["timings"]
             choices = chunk.get("choices")
             if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
                 continue
             delta = choices[0].get("delta")
             delta = delta if isinstance(delta, dict) else {}
             if isinstance(delta.get("content"), str):
+                if delta["content"] and ttft_ms is None:
+                    ttft_ms = round((time.perf_counter() - stream_started) * 1000, 2)
                 text_parts.append(delta["content"])
                 if stream_observer is not None:
                     stream_observer(ProviderStreamEvent(kind="text", text=delta["content"]))
@@ -374,6 +381,8 @@ def _post_chat_stream(
                 for index, state in sorted(tools.items())
             ]}}],
             "usage": usage,
+            "timings": timings,
+            "ttft_ms": ttft_ms,
         }
     except requests.Timeout as exc:
         raise RuntimeError(
@@ -569,22 +578,30 @@ def _log_timings(data: dict[str, Any], *, model: str, usage: TokenUsage | None) 
     )
 
 
-def _normalized_runtime_measurements(data: dict[str, Any], provider_ms: float) -> dict[str, float | int]:
+def _normalized_runtime_measurements(
+    data: dict[str, Any],
+    provider_ms: float,
+    *,
+    usage: TokenUsage | None = None,
+) -> dict[str, float | int]:
     measurements: dict[str, float | int] = {"total_duration_ms": provider_ms}
+    ttft_ms = data.get("ttft_ms")
+    if isinstance(ttft_ms, (int, float)) and ttft_ms >= 0:
+        measurements["ttft_ms"] = float(ttft_ms)
+
     timings = data.get("timings")
-    if not isinstance(timings, dict):
-        return measurements
-    mapping = {
-        "prompt_ms": "prompt_eval_duration_ms",
-        "predicted_ms": "eval_duration_ms",
-        "prompt_n": "prompt_eval_count",
-        "predicted_n": "eval_count",
-        "predicted_per_second": "tokens_per_second",
-    }
-    for source, target in mapping.items():
-        value = timings.get(source)
-        if isinstance(value, (int, float)) and value >= 0:
-            measurements[target] = value
+    if isinstance(timings, dict):
+        mapping = {
+            "prompt_ms": "prompt_eval_duration_ms",
+            "predicted_ms": "eval_duration_ms",
+            "prompt_n": "prompt_eval_count",
+            "predicted_n": "eval_count",
+            "predicted_per_second": "tokens_per_second",
+        }
+        for source, target in mapping.items():
+            value = timings.get(source)
+            if isinstance(value, (int, float)) and value >= 0:
+                measurements[target] = value
     return measurements
 
 
@@ -621,6 +638,8 @@ class LlamaCppProvider:
             or not type(_post_chat).__module__.startswith("unittest.mock")
         )
         payload["stream"] = native_stream
+        if native_stream:
+            payload["stream_options"] = {"include_usage": True}
         if output_schema and not tools:
             payload["response_format"] = {
                 "type": "json_schema",
@@ -676,6 +695,8 @@ class LlamaCppProvider:
             if execution_control is not None:
                 execution_control.before_retry(retry_count)
             payload["stream"] = native_stream
+            if native_stream:
+                payload["stream_options"] = {"include_usage": True}
             if output_schema and not tools:
                 payload["response_format"] = {
                     "type": "json_schema",
@@ -718,6 +739,8 @@ class LlamaCppProvider:
             if execution_control is not None:
                 execution_control.before_retry(retry_count)
             retry_payload["stream"] = native_stream
+            if native_stream:
+                retry_payload["stream_options"] = {"include_usage": True}
             data = (
                 _post_chat_stream(retry_payload, profile, execution_control=execution_control, stream_observer=stream_observer)
                 if native_stream else _post_chat(retry_payload, profile)
@@ -758,5 +781,5 @@ class LlamaCppProvider:
             estimated_prompt_tokens=peak_estimated_tokens,
             history_messages_dropped=dropped_messages,
             output_schema_applied=bool(output_schema and not tools),
-            runtime_measurements=_normalized_runtime_measurements(data, provider_ms),
+            runtime_measurements=_normalized_runtime_measurements(data, provider_ms, usage=usage),
         )

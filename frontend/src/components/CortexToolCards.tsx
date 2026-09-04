@@ -634,7 +634,7 @@ function formatTodoDue(value: MicrosoftTodoDateTime | null): string | null {
 
 function TodoSourceLabel(): ReactElement {
   return (
-    <p className="mb-2 font-mono text-[9px] uppercase tracking-wider text-[#60A5FA]">
+    <p className="mb-2 font-mono text-[9px] uppercase tracking-wider text-[#7EB3FF]">
       Microsoft To Do · Read only
     </p>
   )
@@ -1317,7 +1317,7 @@ function MicrosoftTodoListsCard({ durationMs, output }: { durationMs: number; ou
       title="Microsoft To Do Lists"
       icon={<ListTodo className="size-3.5" aria-hidden />}
       durationMs={durationMs}
-      accentClass="text-[#60A5FA]"
+      accentClass="text-[#7EB3FF]"
     >
       <TodoSourceLabel />
       <ul className={LIST_SCROLL}>
@@ -1343,7 +1343,7 @@ function MicrosoftTodoTasksCard({ durationMs, output }: { durationMs: number; ou
       title="Microsoft To Do Tasks"
       icon={<ListTodo className="size-3.5" aria-hidden />}
       durationMs={durationMs}
-      accentClass="text-[#60A5FA]"
+      accentClass="text-[#7EB3FF]"
     >
       <TodoSourceLabel />
       <ul className={LIST_SCROLL}>

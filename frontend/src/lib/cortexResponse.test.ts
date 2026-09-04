@@ -47,4 +47,14 @@ describe('parseAgentQueryResponse', () => {
     expect(parsed.metadata?.agent?.key).toBe('apex')
     expect(parsed.metadata?.usage?.totalTokens).toBe(12)
   })
+
+  it('parses top-level agent property for in-flight streaming responses', () => {
+    const parsed = parseAgentQueryResponse({
+      agent: { key: 'apex' },
+      answer: 'Streaming text...',
+    })
+
+    expect(parsed.metadata?.agent?.key).toBe('apex')
+    expect(parsed.metadata?.usage).toBeNull()
+  })
 })

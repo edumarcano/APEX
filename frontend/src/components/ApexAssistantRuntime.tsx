@@ -23,6 +23,8 @@ import remarkGfm from 'remark-gfm'
 import { createAssistantStream } from 'assistant-stream'
 
 import { API_ENDPOINTS } from '../lib/api'
+import { streamRunEvents } from '../lib/cortexStream'
+import type { RunRecord } from '../types/runs'
 import type { AgentKey, CloudEffort } from '../types/telemetry'
 import { CortexErrorFeedback, CortexQueryRim } from './AgentQueryBar'
 import { ToolsSelector, type ToolsSelectorProps } from './ToolsSelector'
@@ -604,7 +606,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
 
   const runtimeHook = useCallback(() => {
     const model: ChatModelAdapter = {
-      async run(options) {
+      async *run(options) {
         const localThreadId = options.unstable_threadId
         const remoteId = (localThreadId && uuidPattern.test(localThreadId) ? localThreadId : undefined)
           ?? (localThreadId ? remoteByLocal.current.get(localThreadId) : undefined)
@@ -637,8 +639,10 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
           if (parentMessage?.id) {
             parentMessageId = canonicalId(parentMessage.id, idMap)
           }
-          const response = await requestJson<Record<string, unknown>>(API_ENDPOINTS.cortexConversationTurns(remoteId), {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+
+          const runRecord = await requestJson<RunRecord>(API_ENDPOINTS.cortexConversationRuns(remoteId), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               prompt: user.content.filter((part) => part.type === 'text').map((part) => part.text).join('\n'),
               user_message_id: userMessageId,
@@ -655,16 +659,118 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
               briefing_id: current.briefingId ?? undefined,
             }),
           })
-          const responseError = typeof response.error === 'string' ? response.error : null
-          const responseStatus = response.message_status ?? response.status
-          const incomplete = responseError !== null || responseStatus === 'failed' || responseStatus === 'interrupted'
-          const persistedError = responseError ?? (typeof responseStatus === 'string' ? responseStatus : 'Agent turn did not complete.')
-          onResponseChangeRef.current?.(response, incomplete ? persistedError : null)
-          return {
-            content: [{ type: 'text' as const, text: String(response.answer ?? '') }],
-            ...(incomplete ? { status: { type: 'incomplete' as const, reason: 'error' as const, error: persistedError } } : {}),
-            metadata: { custom: { apex: response } },
+
+          const abortHandler = (): void => {
+            const isExplicitStop = (options.abortSignal.reason as { detach?: boolean } | undefined)?.detach !== true
+            if (isExplicitStop) {
+              void requestJson(API_ENDPOINTS.cortexRunCancel(runRecord.id), { method: 'POST' }).catch(() => undefined)
+            }
           }
+
+          if (options.abortSignal.aborted) {
+            abortHandler()
+          } else {
+            options.abortSignal.addEventListener('abort', abortHandler, { once: true })
+          }
+
+          let cumulativeAnswer = ''
+          let lastYieldedAnswer = ''
+          let lastYieldTime = 0
+          const STREAM_YIELD_INTERVAL_MS = 32
+          const streamingMetadata = { custom: { apex: { agent_used: { key: current.agent } } } }
+
+          try {
+            for await (const event of streamRunEvents(runRecord.id, { signal: options.abortSignal })) {
+              if (event.type === 'response.delta') {
+                const text = typeof event.payload?.text === 'string' ? event.payload.text : ''
+                cumulativeAnswer += text
+                const now = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+                if (now - lastYieldTime >= STREAM_YIELD_INTERVAL_MS) {
+                  lastYieldTime = now
+                  lastYieldedAnswer = cumulativeAnswer
+                  yield {
+                    content: [{ type: 'text' as const, text: cumulativeAnswer }],
+                    metadata: streamingMetadata,
+                  }
+                }
+              } else if (event.type === 'response.reset') {
+                cumulativeAnswer = ''
+                lastYieldedAnswer = ''
+                lastYieldTime = 0
+                yield {
+                  content: [{ type: 'text' as const, text: '' }],
+                  metadata: streamingMetadata,
+                }
+              } else if (event.type === 'response.completed') {
+                const answer = typeof event.payload?.answer === 'string' ? event.payload.answer : ''
+                cumulativeAnswer = answer
+                lastYieldedAnswer = cumulativeAnswer
+                lastYieldTime = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+                yield {
+                  content: [{ type: 'text' as const, text: cumulativeAnswer }],
+                  metadata: streamingMetadata,
+                }
+              } else if (event.type === 'run.snapshot') {
+                const answer = typeof event.payload?.answer === 'string' ? event.payload.answer : ''
+                if (answer) {
+                  cumulativeAnswer = answer
+                }
+                if (cumulativeAnswer !== lastYieldedAnswer) {
+                  lastYieldedAnswer = cumulativeAnswer
+                  lastYieldTime = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+                  yield {
+                    content: [{ type: 'text' as const, text: cumulativeAnswer }],
+                    metadata: streamingMetadata,
+                  }
+                }
+              } else if (cumulativeAnswer !== lastYieldedAnswer) {
+                lastYieldedAnswer = cumulativeAnswer
+                lastYieldTime = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+                yield {
+                  content: [{ type: 'text' as const, text: cumulativeAnswer }],
+                  metadata: streamingMetadata,
+                }
+              }
+            }
+          } finally {
+            options.abortSignal.removeEventListener('abort', abortHandler)
+          }
+
+          if (cumulativeAnswer !== lastYieldedAnswer) {
+            lastYieldedAnswer = cumulativeAnswer
+            yield {
+              content: [{ type: 'text' as const, text: cumulativeAnswer }],
+              metadata: streamingMetadata,
+            }
+          }
+
+          let durableMessage: ConversationMessage | undefined
+          try {
+            const detail = await requestJson<ConversationDetail>(API_ENDPOINTS.cortexConversation(remoteId))
+            durableMessage = detail.messages.find((m) => m.id === agentMessageId)
+          } catch {
+            // Fallback to accumulated text if durable conversation fetch is interrupted
+          }
+
+          const finalAnswer = durableMessage?.content ?? cumulativeAnswer
+          const rawMetadata = (durableMessage?.response_metadata ?? {}) as Record<string, unknown>
+          const metadata: Record<string, unknown> = {
+            agent_used: { key: current.agent },
+            ...rawMetadata,
+          }
+          const responseError = typeof metadata.error === 'string' ? metadata.error : null
+          const responseStatus = durableMessage?.status ?? (options.abortSignal.aborted ? 'interrupted' : 'completed')
+          const incomplete = responseError !== null || responseStatus === 'failed' || responseStatus === 'interrupted'
+          const persistedError = responseError ?? (responseStatus !== 'completed' ? responseStatus : 'Agent turn did not complete.')
+
+          onResponseChangeRef.current?.(metadata, incomplete ? persistedError : null)
+
+          yield {
+            content: [{ type: 'text' as const, text: finalAnswer }],
+            ...(incomplete ? { status: { type: 'incomplete' as const, reason: 'error' as const, error: persistedError } } : {}),
+            metadata: { custom: { apex: metadata } },
+          }
+          return
         } catch (error) {
           const message = error instanceof Error ? error.message : 'APEX request failed.'
           onResponseChangeRef.current?.(null, message)
@@ -753,10 +859,21 @@ function GatedComposer({
   return <ComposerPrimitive.Root onSubmit={handleSubmit} className="relative border-t border-white/10 bg-black/20 p-3 sm:p-4">
     {!edit && composer && queryActive ? <CortexQueryRim /> : null}
     <div className="flex items-end gap-2">
-      <ComposerPrimitive.Input disabled={blocked} placeholder={edit ? 'Edit message…' : 'Ask APEX…'} className="min-h-11 flex-1 resize-none rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-[#7EB3FF] disabled:cursor-not-allowed disabled:opacity-45" />
+      <ComposerPrimitive.Input disabled={blocked} placeholder={edit ? 'Edit message…' : 'Ask APEX…'} className="min-h-11 flex-1 resize-none rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 transition-[border-color,box-shadow] duration-300 focus:border-[#0F4DB8]/70 focus:shadow-[0_0_16px_rgba(15,77,184,0.24)] disabled:cursor-not-allowed disabled:opacity-45" />
       {!edit && composer ? <ToolsSelector {...composer.tools} compact disabled={blocked || queryActive} /> : null}
       {edit ? <ComposerPrimitive.Cancel disabled={blocked} className="rounded-lg border border-white/10 px-3 py-2 font-mono text-xs text-zinc-400 hover:text-white disabled:opacity-45">Cancel</ComposerPrimitive.Cancel> : null}
-      <ComposerPrimitive.Send disabled={blocked || queryActive} onClick={(event) => { event.preventDefault(); void submit() }} className="rounded-lg border border-[#7E22CE]/45 bg-[#7E22CE]/15 px-3 py-2 font-mono text-xs uppercase tracking-wider text-[#E9D5FF] hover:bg-[#7E22CE]/25 disabled:cursor-not-allowed disabled:opacity-45">{edit ? 'Save' : 'Send'}</ComposerPrimitive.Send>
+      {!edit && queryActive ? (
+        <button
+          type="button"
+          onClick={() => aui.thread.cancelRun()}
+          className="rounded-lg border border-red-500/40 bg-red-950/25 px-3 py-2 font-mono text-xs uppercase tracking-wider text-red-200 hover:bg-red-950/40"
+          aria-label="Stop generation"
+        >
+          Stop
+        </button>
+      ) : (
+        <ComposerPrimitive.Send disabled={blocked || queryActive} onClick={(event) => { event.preventDefault(); void submit() }} className="rounded-lg border border-[#7E22CE]/45 bg-[#7E22CE]/15 px-3 py-2 font-mono text-xs uppercase tracking-wider text-[#D8B4FE] hover:bg-[#7E22CE]/25 disabled:cursor-not-allowed disabled:opacity-45">{edit ? 'Save' : 'Send'}</ComposerPrimitive.Send>
+      )}
     </div>
     {!edit && composer && error ? <CortexErrorFeedback error={error} /> : null}
   </ComposerPrimitive.Root>
@@ -806,7 +923,7 @@ function ApexAssistantMessage(): ReactNode {
       void context.persistActiveLeaf(selectedId).catch(() => undefined)
     })
   }
-  if (status?.type === 'running') return null
+  if (status?.type === 'running' && !text) return null
   return <MessagePrimitive.Root ref={messageRef} className={role === 'user' ? 'flex justify-end' : 'max-w-5xl'}>
     {editing && role === 'user' ? <GatedComposer edit disabled={Boolean(composer?.disabled) || Boolean(context?.isTurnLocked)} /> : null}
     {editing && role === 'user' ? null : <>
@@ -826,7 +943,7 @@ function ApexAssistantMessage(): ReactNode {
 }
 
 /** APEX-owned presentation built from assistant-ui primitives, not its starter kit. */
-export function ApexAssistantThread({ disabled = false, renderAgent, composer, logoProps }: { disabled?: boolean; renderAgent?: (text: string, metadata: Record<string, unknown>) => ReactNode; composer?: ApexAssistantComposerProps; logoProps?: Omit<ApexLogoProps, 'className'> }): ReactNode {
+export function ApexAssistantThread({ disabled = false, renderAgent, composer, logoProps, activeRunSlot }: { disabled?: boolean; renderAgent?: (text: string, metadata: Record<string, unknown>) => ReactNode; composer?: ApexAssistantComposerProps; logoProps?: Omit<ApexLogoProps, 'className'>; activeRunSlot?: ReactNode }): ReactNode {
   const running = useAuiState((state) => state.thread.isRunning)
   const isEmpty = useAuiState((state) => state.thread.isEmpty)
   const context = useContext(ApexAssistantComposerContext)
@@ -836,7 +953,7 @@ export function ApexAssistantThread({ disabled = false, renderAgent, composer, l
     <ThreadPrimitive.Viewport className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 scrollbar-thin" autoScroll={false}>
       <ThreadPrimitive.Empty><div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-white/10 px-6 py-8 text-center"><p className="font-mono text-xs uppercase tracking-widest text-zinc-500">APEX is ready. Start a session with a focused question.</p><div className="mt-4 flex max-w-xl flex-wrap justify-center gap-2">{OPERATION_PROMPT_CHIPS.map((chip) => <ThreadPrimitive.Suggestion key={chip.label} prompt={chip.query} send={false} className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 transition-colors hover:border-[#0F4DB8]/50 hover:bg-[#0F4DB8]/15 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF]">{chip.label}</ThreadPrimitive.Suggestion>)}</div>{logoProps ? <div data-slot="cortex-chat-logo" className="mt-6 flex items-center justify-center filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]"><ApexLogo {...logoProps} className="size-40 sm:size-48" /></div> : null}</div></ThreadPrimitive.Empty>
       <ThreadPrimitive.Messages components={messageComponents} />
-      {running ? <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-[#D8B4FE]" aria-live="polite"><span className="inline-block size-2 animate-pulse rounded-full bg-[#C084FC]" aria-hidden />{composer?.activeAgentName ?? 'Agent'} working</div> : null}
+      {running ? (activeRunSlot ?? <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-[#D8B4FE]" aria-live="polite"><span className="inline-block size-2 animate-pulse rounded-full bg-[#C084FC]" aria-hidden />{composer?.activeAgentName ?? 'Agent'} working</div>) : null}
       {!isEmpty && logoProps ? <div data-slot="cortex-chat-logo" className="my-8 flex items-center justify-center filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]"><ApexLogo {...logoProps} className="size-40 sm:size-48" /></div> : null}
     </ThreadPrimitive.Viewport>
     {context?.branchPersistenceError ? <p className="border-t border-red-500/20 bg-red-950/20 px-4 py-2 text-xs text-red-200" role="alert">{context.branchPersistenceError}</p> : null}
@@ -890,7 +1007,7 @@ function ApexConversationRailItem(): ReactNode {
       setActionError(error instanceof Error ? error.message : 'Conversation rename failed.')
     }
   }
-  return <ThreadListItemPrimitive.Root className="group relative flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors hover:bg-white/5 data-[active=true]:bg-white/10 data-[active=true]:border-l-2 data-[active=true]:border-[#7EB3FF] data-[active=true]:text-white">
+  return <ThreadListItemPrimitive.Root className="group relative flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors hover:bg-white/5 data-[active=true]:bg-white/10 data-[active=true]:border-l-2 data-[active=true]:border-[#1F6FE5] data-[active=true]:text-white">
     {renaming ? <input autoFocus disabled={disabled} value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setRenaming(false); if (event.key === 'Enter') void rename() }} className="min-w-0 flex-1 bg-transparent text-xs text-white outline-none" /> : <button type="button" disabled={disabled} onClick={() => aui.threadListItem.switchTo({ unarchive: false })} className="min-w-0 flex-1 truncate text-left font-mono text-xs text-zinc-300 group-data-[active=true]:font-medium group-data-[active=true]:text-white disabled:cursor-not-allowed disabled:opacity-40"><ThreadListItemPrimitive.Title /></button>}
     {!renaming ? <button ref={renameTriggerRef} type="button" disabled={disabled} aria-label={`Rename ${currentTitle}`} onClick={() => { setTitle(currentTitle); setRenaming(true) }} className="text-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 group-data-[active=true]:opacity-70 group-data-[active=true]:hover:opacity-100 transition-opacity">✎</button> : null}
     <button type="button" disabled={disabled} onClick={() => void archive()} className="text-[10px] text-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 group-data-[active=true]:opacity-70 group-data-[active=true]:hover:opacity-100 transition-opacity">{archived ? 'Restore' : 'Archive'}</button>
@@ -911,7 +1028,7 @@ export function ApexConversationRail({ className = 'hidden xl:block', disabled =
   const interactionDisabled = disabled || Boolean(context?.isTurnLocked)
   const threadListError = context?.threadListError ?? null
   const itemComponents = useMemo(() => ({ ThreadListItem: ApexConversationRailItem }), [])
-  return <aside className={`${className} w-56 shrink-0 border-r border-white/10 bg-black/15 p-3`} aria-label="Conversations"><div className="mb-3 flex items-center justify-between"><p className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">Conversations</p><ApexAssistantNewConversation disabled={interactionDisabled} /></div><div className="mb-2 flex gap-2"><button type="button" disabled={interactionDisabled} onClick={() => setArchived(false)} aria-pressed={!archived} className="text-[10px] text-zinc-400 hover:text-white disabled:opacity-40">Active</button><button type="button" disabled={interactionDisabled} onClick={() => setArchived(true)} aria-pressed={archived} className="text-[10px] text-zinc-400 hover:text-white disabled:opacity-40">Archived</button></div>{isLoading ? <p className="px-2 py-4 text-xs text-zinc-500" role="status">Loading conversations…</p> : threadListError ? <div className="space-y-2 px-2 py-4"><p className="text-xs text-red-300" role="alert">{threadListError}</p><button type="button" disabled={interactionDisabled} onClick={() => void (context?.reloadThreads() ?? aui.threads.reload())} className="text-[10px] text-[#7EB3FF] hover:text-white disabled:opacity-40">Retry</button></div> : (!archived && isDraftActive) || threadCount > 0 ? <div className="space-y-0.5">{!archived && isDraftActive ? <div data-active="true" className="group relative flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors bg-white/10 border-l-2 border-[#7EB3FF] text-white"><span className="min-w-0 flex-1 truncate text-left font-mono text-xs font-medium text-white">New conversation</span></div> : null}<ThreadListPrimitive.Root><ThreadListPrimitive.Items archived={archived} components={itemComponents} /></ThreadListPrimitive.Root></div> : <div className="space-y-2 px-2 py-4"><p className="text-xs text-zinc-500">No {archived ? 'archived' : 'active'} conversations.</p></div>}</aside>
+  return <aside className={`${className} w-56 shrink-0 border-r border-white/10 bg-black/15 p-3`} aria-label="Conversations"><div className="mb-3 flex items-center justify-between"><p className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">Conversations</p><ApexAssistantNewConversation disabled={interactionDisabled} /></div><div className="mb-2 flex gap-2"><button type="button" disabled={interactionDisabled} onClick={() => setArchived(false)} aria-pressed={!archived} className="text-[10px] text-zinc-400 hover:text-white disabled:opacity-40">Active</button><button type="button" disabled={interactionDisabled} onClick={() => setArchived(true)} aria-pressed={archived} className="text-[10px] text-zinc-400 hover:text-white disabled:opacity-40">Archived</button></div>{isLoading ? <p className="px-2 py-4 text-xs text-zinc-500" role="status">Loading conversations…</p> : threadListError ? <div className="space-y-2 px-2 py-4"><p className="text-xs text-red-300" role="alert">{threadListError}</p><button type="button" disabled={interactionDisabled} onClick={() => void (context?.reloadThreads() ?? aui.threads.reload())} className="text-[10px] text-[#7EB3FF] hover:text-white disabled:opacity-40">Retry</button></div> : (!archived && isDraftActive) || threadCount > 0 ? <div className="space-y-0.5">{!archived && isDraftActive ? <div data-active="true" className="group relative flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors bg-white/10 border-l-2 border-[#1F6FE5] text-white"><span className="min-w-0 flex-1 truncate text-left font-mono text-xs font-medium text-white">New conversation</span></div> : null}<ThreadListPrimitive.Root><ThreadListPrimitive.Items archived={archived} components={itemComponents} /></ThreadListPrimitive.Root></div> : <div className="space-y-2 px-2 py-4"><p className="text-xs text-zinc-500">No {archived ? 'archived' : 'active'} conversations.</p></div>}</aside>
 }
 
 export function ApexAssistantNewConversation({ disabled = false }: { disabled?: boolean }): ReactNode {

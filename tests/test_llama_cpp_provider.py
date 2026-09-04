@@ -547,6 +547,53 @@ class LlamaCppProviderTests(unittest.TestCase):
                     _local_profile(),
                 )
 
+    @patch("core.agent.providers.llama_cpp.get_auth_headers", return_value={})
+    @patch("core.agent.providers.llama_cpp.get_http_session")
+    def test_post_chat_stream_measures_ttft_and_retains_timings(
+        self, mock_get_session: MagicMock, _auth: MagicMock
+    ) -> None:
+        from core.agent.providers.llama_cpp import (
+            _normalized_runtime_measurements,
+            _post_chat_stream,
+        )
+        response = MagicMock()
+        response.iter_lines.return_value = [
+            'data: {"choices":[{"delta":{"content":"First token"}}]}',
+            'data: {"choices":[{"delta":{"content":" and second token"}}]}',
+            'data: {"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15},"timings":{"prompt_ms":50.0,"predicted_ms":100.0,"predicted_per_second":25.0,"prompt_n":10,"predicted_n":5}}',
+            'data: [DONE]',
+        ]
+        session = MagicMock()
+        session.post.return_value = response
+        mock_get_session.return_value = session
+        events = []
+        data = _post_chat_stream(
+            {"model": "gemma-4-e2b-16k", "messages": []},
+            _local_profile(),
+            stream_observer=events.append,
+        )
+        self.assertEqual(data["choices"][0]["message"]["content"], "First token and second token")
+        self.assertIsNotNone(data.get("ttft_ms"))
+        self.assertGreaterEqual(data["ttft_ms"], 0.0)
+        self.assertIsNotNone(data.get("timings"))
+        self.assertEqual(data["timings"]["predicted_per_second"], 25.0)
+
+        measurements = _normalized_runtime_measurements(data, 150.0)
+        self.assertEqual(measurements["ttft_ms"], data["ttft_ms"])
+        self.assertEqual(measurements["tokens_per_second"], 25.0)
+        self.assertEqual(measurements["prompt_eval_duration_ms"], 50.0)
+        self.assertEqual(measurements["eval_duration_ms"], 100.0)
+
+    def test_normalized_runtime_measurements_delegates_fallback_throughput(self) -> None:
+        from core.agent.providers.contract import TokenUsage
+        from core.agent.providers.llama_cpp import _normalized_runtime_measurements
+
+        data = {"ttft_ms": 200.0}
+        usage = TokenUsage(input_tokens=10, output_tokens=20, total_tokens=30)
+        measurements = _normalized_runtime_measurements(data, 1200.0, usage=usage)
+        self.assertEqual(measurements["ttft_ms"], 200.0)
+        self.assertNotIn("tokens_per_second", measurements)
+
 
 if __name__ == "__main__":
     unittest.main()
