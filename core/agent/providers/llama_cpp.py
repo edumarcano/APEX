@@ -602,19 +602,6 @@ def _normalized_runtime_measurements(
             value = timings.get(source)
             if isinstance(value, (int, float)) and value >= 0:
                 measurements[target] = value
-
-    if "tokens_per_second" not in measurements:
-        eval_count = measurements.get("eval_count")
-        if eval_count is None and usage and usage.output_tokens is not None:
-            eval_count = usage.output_tokens
-        eval_ms = measurements.get("eval_duration_ms")
-        if eval_ms is None and isinstance(ttft_ms, (int, float)) and provider_ms > ttft_ms:
-            eval_ms = provider_ms - ttft_ms
-        elif eval_ms is None and provider_ms > 0:
-            eval_ms = provider_ms
-        if isinstance(eval_count, (int, float)) and eval_count > 0 and isinstance(eval_ms, (int, float)) and eval_ms > 0:
-            measurements["tokens_per_second"] = round((eval_count / (eval_ms / 1000.0)), 2)
-
     return measurements
 
 

@@ -167,6 +167,53 @@ describe('ApexAssistantRuntime', () => {
     expect(fetchMock).toHaveBeenCalled()
   })
 
+  it('batches streaming deltas and flushes on completion while preserving agent streaming metadata', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([summary])
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}`)) return response({ ...summary, active_leaf_message_id: null, messages: [] })
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}/runs`)) {
+        return response(mockRunRecord(), 202)
+      }
+      if (url.includes('/events')) {
+        return sseResponse([
+          { sequence: 1, type: 'response.delta', payload: { text: 'High ' } },
+          { sequence: 2, type: 'response.delta', payload: { text: 'throughput ' } },
+          { sequence: 3, type: 'response.delta', payload: { text: 'token stream.' } },
+          { sequence: 4, type: 'run.completed', payload: { status: 'completed' } },
+        ])
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+
+    render(
+      <ApexAssistantRuntime
+        config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+        beforeRun={async () => true}
+      >
+        <ApexAssistantThread
+          renderAgent={(text, metadata) => (
+            <div data-testid="agent-msg-box">
+              <span data-testid="agent-msg-key">{String((metadata?.agent_used as Record<string, unknown> | undefined)?.key ?? '')}</span>
+              <span data-testid="agent-msg-text">{text}</span>
+            </div>
+          )}
+        />
+      </ApexAssistantRuntime>,
+    )
+
+    await waitFor(() => expect(screen.getByPlaceholderText('Ask APEX…')).toBeInTheDocument())
+    await user.type(screen.getByPlaceholderText('Ask APEX…'), 'Fast stream test')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => expect(screen.getByTestId('agent-msg-text')).toHaveTextContent('High throughput token stream.'))
+    expect(screen.getByTestId('agent-msg-key')).toHaveTextContent('apex')
+    expect(fetchMock).toHaveBeenCalled()
+  })
+
   it('does not reload the remote thread list when host callbacks change identity', async () => {
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
     let regularListCalls = 0

@@ -674,37 +674,74 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
           }
 
           let cumulativeAnswer = ''
+          let lastYieldedAnswer = ''
+          let lastYieldTime = 0
+          const STREAM_YIELD_INTERVAL_MS = 32
+          const streamingMetadata = { custom: { apex: { agent_used: { key: current.agent } } } }
+
           try {
             for await (const event of streamRunEvents(runRecord.id, { signal: options.abortSignal })) {
               if (event.type === 'response.delta') {
                 const text = typeof event.payload?.text === 'string' ? event.payload.text : ''
                 cumulativeAnswer += text
-                yield {
-                  content: [{ type: 'text' as const, text: cumulativeAnswer }],
+                const now = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+                if (now - lastYieldTime >= STREAM_YIELD_INTERVAL_MS) {
+                  lastYieldTime = now
+                  lastYieldedAnswer = cumulativeAnswer
+                  yield {
+                    content: [{ type: 'text' as const, text: cumulativeAnswer }],
+                    metadata: streamingMetadata,
+                  }
                 }
               } else if (event.type === 'response.reset') {
                 cumulativeAnswer = ''
+                lastYieldedAnswer = ''
+                lastYieldTime = 0
                 yield {
                   content: [{ type: 'text' as const, text: '' }],
+                  metadata: streamingMetadata,
                 }
               } else if (event.type === 'response.completed') {
                 const answer = typeof event.payload?.answer === 'string' ? event.payload.answer : ''
                 cumulativeAnswer = answer
+                lastYieldedAnswer = cumulativeAnswer
+                lastYieldTime = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
                 yield {
                   content: [{ type: 'text' as const, text: cumulativeAnswer }],
+                  metadata: streamingMetadata,
                 }
               } else if (event.type === 'run.snapshot') {
                 const answer = typeof event.payload?.answer === 'string' ? event.payload.answer : ''
                 if (answer) {
                   cumulativeAnswer = answer
+                }
+                if (cumulativeAnswer !== lastYieldedAnswer) {
+                  lastYieldedAnswer = cumulativeAnswer
+                  lastYieldTime = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
                   yield {
                     content: [{ type: 'text' as const, text: cumulativeAnswer }],
+                    metadata: streamingMetadata,
                   }
+                }
+              } else if (cumulativeAnswer !== lastYieldedAnswer) {
+                lastYieldedAnswer = cumulativeAnswer
+                lastYieldTime = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+                yield {
+                  content: [{ type: 'text' as const, text: cumulativeAnswer }],
+                  metadata: streamingMetadata,
                 }
               }
             }
           } finally {
             options.abortSignal.removeEventListener('abort', abortHandler)
+          }
+
+          if (cumulativeAnswer !== lastYieldedAnswer) {
+            lastYieldedAnswer = cumulativeAnswer
+            yield {
+              content: [{ type: 'text' as const, text: cumulativeAnswer }],
+              metadata: streamingMetadata,
+            }
           }
 
           let durableMessage: ConversationMessage | undefined
@@ -716,7 +753,11 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
           }
 
           const finalAnswer = durableMessage?.content ?? cumulativeAnswer
-          const metadata = (durableMessage?.response_metadata ?? {}) as Record<string, unknown>
+          const rawMetadata = (durableMessage?.response_metadata ?? {}) as Record<string, unknown>
+          const metadata: Record<string, unknown> = {
+            agent_used: { key: current.agent },
+            ...rawMetadata,
+          }
           const responseError = typeof metadata.error === 'string' ? metadata.error : null
           const responseStatus = durableMessage?.status ?? (options.abortSignal.aborted ? 'interrupted' : 'completed')
           const incomplete = responseError !== null || responseStatus === 'failed' || responseStatus === 'interrupted'

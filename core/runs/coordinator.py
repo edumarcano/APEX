@@ -144,7 +144,7 @@ class RunExecutionControl:
         measurement_updates: dict[str, float] = {
             "total_duration_ms": round(self._elapsed() * 1000, 2),
         }
-        if provider_ms is not None:
+        if provider_ms is not None and self.runtime_measurements.eval_duration_ms is None:
             measurement_updates["eval_duration_ms"] = round(
                 (self.runtime_measurements.eval_duration_ms or 0.0) + provider_ms,
                 2,
@@ -196,26 +196,56 @@ class RunExecutionControl:
         elif result.estimated_prompt_tokens is not None:
             self.tokens += result.estimated_prompt_tokens
             self.usage_quality = "estimated"
+
+        measurements = (
+            result.runtime_measurements.model_dump(exclude_none=True)
+            if result.runtime_measurements
+            else {}
+        )
+        ttft_ms = measurements.get("ttft_ms")
+        eval_ms = measurements.get("eval_duration_ms")
+        provider_ms = result.provider_ms or 0.0
+        if eval_ms is None and isinstance(ttft_ms, (int, float)) and provider_ms > ttft_ms:
+            eval_ms = round(provider_ms - ttft_ms, 2)
+        elif eval_ms is None and provider_ms > 0:
+            eval_ms = round(provider_ms, 2)
+        if eval_ms is not None and "eval_duration_ms" not in measurements:
+            measurements["eval_duration_ms"] = eval_ms
+
+        eval_count = measurements.get("eval_count")
+        if eval_count is None and usage and usage.output_tokens is not None:
+            eval_count = usage.output_tokens
+            measurements["eval_count"] = eval_count
+
+        if "tokens_per_second" not in measurements:
+            if (
+                isinstance(eval_count, (int, float))
+                and eval_count > 0
+                and isinstance(eval_ms, (int, float))
+                and eval_ms > 0
+            ):
+                measurements["tokens_per_second"] = round(
+                    float(eval_count) / (float(eval_ms) / 1000.0), 2
+                )
+
+        if "prompt_eval_count" not in measurements and usage and usage.input_tokens is not None:
+            measurements["prompt_eval_count"] = usage.input_tokens
+        if "prompt_eval_duration_ms" not in measurements and isinstance(ttft_ms, (int, float)) and ttft_ms > 0:
+            measurements["prompt_eval_duration_ms"] = ttft_ms
+
+        allowed = set(RunRuntimeMeasurements.model_fields)
+        updates = {
+            key: value
+            for key, value in measurements.items()
+            if key in allowed
+            and key != "total_duration_ms"
+            and isinstance(value, (int, float))
+            and value >= 0
+        }
+        if updates:
+            self.runtime_measurements = self.runtime_measurements.model_copy(update=updates)
+
         self._persist(provider_ms=result.provider_ms)
-        if result.runtime_measurements:
-            allowed = set(RunRuntimeMeasurements.model_fields)
-            updates = {
-                key: value
-                for key, value in result.runtime_measurements.model_dump(exclude_none=True).items()
-                if key in allowed
-                and key != "total_duration_ms"
-                and isinstance(value, (int, float))
-                and value >= 0
-            }
-            if updates:
-                self.runtime_measurements = self.runtime_measurements.model_copy(update=updates)
-                record = self.handle.update_progress(runtime_measurements=self.runtime_measurements)
-                if record is not None:
-                    self.publish_activity(
-                        "runtime.updated",
-                        {"runtime_measurements": record.runtime_measurements.model_dump(mode="json")},
-                        record=record,
-                    )
         self._check()
         if self.retries > self.limits.max_retries:
             raise ExecutionLimitReached("max_retries")

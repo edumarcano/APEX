@@ -584,7 +584,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         self.assertEqual(measurements["prompt_eval_duration_ms"], 50.0)
         self.assertEqual(measurements["eval_duration_ms"], 100.0)
 
-    def test_normalized_runtime_measurements_fallback_throughput(self) -> None:
+    def test_normalized_runtime_measurements_delegates_fallback_throughput(self) -> None:
         from core.agent.providers.contract import TokenUsage
         from core.agent.providers.llama_cpp import _normalized_runtime_measurements
 
@@ -592,7 +592,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         usage = TokenUsage(input_tokens=10, output_tokens=20, total_tokens=30)
         measurements = _normalized_runtime_measurements(data, 1200.0, usage=usage)
         self.assertEqual(measurements["ttft_ms"], 200.0)
-        self.assertEqual(measurements["tokens_per_second"], 20.0)
+        self.assertNotIn("tokens_per_second", measurements)
 
 
 if __name__ == "__main__":

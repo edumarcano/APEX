@@ -47,11 +47,11 @@ export function parseAgentQueryResponse(body: unknown): AgentQueryResponseBody {
   // `metadata` envelope. Normalize both shapes before parsing the display
   // metadata used by CortexWorkspace.
   const metadataRecord = asRecord(record.metadata) ?? (
-    record.agent_used !== undefined || record.usage !== undefined || record.timing !== undefined ||
+    record.agent !== undefined || record.agent_used !== undefined || record.usage !== undefined || record.timing !== undefined ||
     record.cost_estimate !== undefined || record.citations !== undefined || record.grounding !== undefined ||
     record.resolved_tool_selection !== undefined
       ? {
-          agent: record.agent_used,
+          agent: record.agent ?? record.agent_used,
           usage: record.usage,
           timing: record.timing,
           cost: record.cost_estimate,

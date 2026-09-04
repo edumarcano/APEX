@@ -385,3 +385,28 @@ class RunCoordinatorTests(unittest.TestCase):
         self.assertEqual(record.limit_snapshot.max_total_tokens, 16384)
         if future is not None:
             future.result(timeout=2)
+
+    def test_after_model_turn_derives_universal_throughput_and_eval_timings(self) -> None:
+        from core.agent.types import TokenUsage
+
+        coordinator = CortexRunCoordinator(self.service, max_workers=1)
+        self.addCleanup(coordinator.close)
+        _conv_id, _user_id, _agent_id, _record, handle = self._create_run(coordinator=coordinator)
+        handle.start(resolved_model="deepseek/deepseek-v4-flash-0731", provider="openrouter", runtime="cloud")
+        control = RunExecutionControl(handle, threading.Event())
+
+        result = ProviderTurnResult(
+            message=AgentMessage(role="agent", content="Hello world"),
+            resolved_model="deepseek/deepseek-v4-flash-0731",
+            usage=TokenUsage(input_tokens=50, output_tokens=100, total_tokens=150),
+            provider_ms=1200.0,
+            runtime_measurements={"ttft_ms": 200.0},
+        )
+
+        control.after_model_turn(result)
+
+        self.assertAlmostEqual(control.runtime_measurements.ttft_ms, 200.0)
+        self.assertEqual(control.runtime_measurements.eval_count, 100)
+        self.assertEqual(control.runtime_measurements.prompt_eval_count, 50)
+        self.assertAlmostEqual(control.runtime_measurements.eval_duration_ms, 1000.0)
+        self.assertAlmostEqual(control.runtime_measurements.tokens_per_second, 100.0)

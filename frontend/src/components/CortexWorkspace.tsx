@@ -281,6 +281,9 @@ export function ResponseMetrics({ metadata }: { metadata: AgentQueryMetadata | u
   if (!metadata) return null
   const { agent, usage, timing, cost, citations, toolSelection } = metadata
   const supplementaryCitations = citations.filter((citation) => citation.source !== 'google_maps')
+  if (!usage && !timing && !cost && supplementaryCitations.length === 0 && !toolSelection && !agent?.resolvedModel) {
+    return null
+  }
   return <details className="mt-3 rounded-lg border border-white/10 bg-black/10">
     <summary className="cursor-pointer select-none px-3 py-2 font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500 outline-none marker:text-[#C084FC] hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-[#7EB3FF]">Response information</summary>
     <div className="space-y-3 border-t border-white/10 p-3">
