@@ -64,7 +64,7 @@ export function CortexActiveRunStrip({
         <button
           type="button"
           onClick={onInspect}
-          className="text-zinc-400 hover:text-[#9AC2FF] transition-colors p-0.5 rounded hover:bg-white/5"
+          className="text-zinc-400 hover:text-[#7EB3FF] transition-colors p-0.5 rounded hover:bg-white/5"
           aria-label="Inspect active run"
           title="Inspect run in Activity tab"
         >

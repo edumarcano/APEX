@@ -28,7 +28,7 @@ function statusBadgeClass(status: RunStatus): string {
     case 'queued':
       return 'border-amber-500/40 bg-amber-950/30 text-amber-300'
     case 'running':
-      return 'border-cyan-500/40 bg-cyan-950/30 text-cyan-300'
+      return 'border-purple-500/40 bg-purple-950/30 text-purple-300'
     case 'cancelling':
       return 'border-red-500/40 bg-red-950/30 text-red-300'
     case 'completed':
@@ -137,7 +137,7 @@ export function CortexActivity({
       {/* Top Header & Refresh */}
       <div className="flex items-center justify-between border-b border-white/10 pb-2">
         <div className="flex items-center gap-2">
-          <Activity className="size-4 text-cyan-400" aria-hidden="true" />
+          <Activity className="size-4 text-[#C084FC]" aria-hidden="true" />
           <h3 className="font-mono text-xs uppercase tracking-wider text-zinc-200">
             Cortex Live Activity
           </h3>

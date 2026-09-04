@@ -831,7 +831,7 @@ function GatedComposer({
           Stop
         </button>
       ) : (
-        <ComposerPrimitive.Send disabled={blocked || queryActive} onClick={(event) => { event.preventDefault(); void submit() }} className="rounded-lg border border-[#7E22CE]/45 bg-[#7E22CE]/15 px-3 py-2 font-mono text-xs uppercase tracking-wider text-[#E9D5FF] hover:bg-[#7E22CE]/25 disabled:cursor-not-allowed disabled:opacity-45">{edit ? 'Save' : 'Send'}</ComposerPrimitive.Send>
+        <ComposerPrimitive.Send disabled={blocked || queryActive} onClick={(event) => { event.preventDefault(); void submit() }} className="rounded-lg border border-[#7E22CE]/45 bg-[#7E22CE]/15 px-3 py-2 font-mono text-xs uppercase tracking-wider text-[#D8B4FE] hover:bg-[#7E22CE]/25 disabled:cursor-not-allowed disabled:opacity-45">{edit ? 'Save' : 'Send'}</ComposerPrimitive.Send>
       )}
     </div>
     {!edit && composer && error ? <CortexErrorFeedback error={error} /> : null}
