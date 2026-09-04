@@ -512,11 +512,11 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
             activeRunSlot={
               <CortexActiveRunStrip
                 run={activeRun}
+                agentName={assistantComposer?.activeAgentName ?? 'Agent'}
                 onInspect={() => {
                   setInspectorTab('activity')
                   if (compactLayout) setCompactPanel('inspector')
                 }}
-                className="mx-3 mb-0"
               />
             }
           />

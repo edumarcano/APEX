@@ -11,20 +11,29 @@ from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
+from unittest.mock import MagicMock, patch
+
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.types import AgentMessage
-from core.api.routers.cortex import _validate_replayed_turn
+from core.api.routers.cortex import (
+    CORTEX_RUNS_MAX_TOTAL_TOKENS,
+    _resolved_turn_metadata,
+    _submit_run,
+    _validate_replayed_turn,
+)
 from core.connectors.models import utc_now_iso
-from core.conversations.models import ConversationTurnRequest
+from core.conversations.models import ConversationCreateRequest, ConversationTurnRequest
+from core.conversations.service import ConversationService, set_conversation_service
 from core.runs.coordinator import (
     ActiveConversationRunError,
     CortexRunCoordinator,
     RunCapacityError,
     RunExecutionControl,
     RunHttpError,
+    set_run_coordinator,
 )
 from core.runs.models import RunCompletionEvidence, RunLimitSnapshot
-from core.runs.service import RunService
+from core.runs.service import RunService, set_run_service
 from core.runs.store import RunStore
 from core.conversations.store import ConversationStore
 
@@ -301,3 +310,79 @@ class RunCoordinatorTests(unittest.TestCase):
         runtime_events = [e for e in events if e.type == "runtime.updated"]
         self.assertTrue(len(runtime_events) > 0)
         self.assertIn("queue_duration_ms", runtime_events[0].payload["runtime_measurements"])
+
+    @patch("core.api.routers.cortex.is_dev_mode", return_value=True)
+    def test_resolved_turn_metadata_sets_effective_context_window(self, _dev_mode) -> None:
+        local_payload = ConversationTurnRequest(
+            user_message_id=uuid4(),
+            agent_message_id=uuid4(),
+            prompt="Hello",
+            model_id="qwen3:1.7b",
+            context_window=16384,
+        )
+        metadata = _resolved_turn_metadata(local_payload)
+        self.assertEqual(metadata["effective_context_window"], 16384)
+
+        default_local = ConversationTurnRequest(
+            user_message_id=uuid4(),
+            agent_message_id=uuid4(),
+            prompt="Hello",
+            model_id="qwen3:1.7b",
+        )
+        metadata_default = _resolved_turn_metadata(default_local)
+        self.assertIsInstance(metadata_default["effective_context_window"], int)
+        self.assertGreater(metadata_default["effective_context_window"], 0)
+
+        cloud_payload = ConversationTurnRequest(
+            user_message_id=uuid4(),
+            agent_message_id=uuid4(),
+            prompt="Hello",
+            model_id="deepseek/deepseek-v4-flash-0731",
+        )
+        metadata_cloud = _resolved_turn_metadata(cloud_payload)
+        self.assertEqual(metadata_cloud["effective_context_window"], 1_310_720)
+
+    @patch("core.api.routers.cortex.get_knowledge_service")
+    @patch("core.api.routers.cortex.get_retrieval_service")
+    @patch("core.api.routers.cortex.is_dev_mode", return_value=True)
+    @patch("core.api.routers.cortex.query_agent")
+    @patch("core.api.routers.cortex.ContextAssembler")
+    def test_submit_run_uses_effective_context_window_for_limit_snapshot(
+        self, mock_assembler, mock_query, _dev_mode, _mock_retrieval, _mock_knowledge
+    ) -> None:
+        mock_assembler.return_value.assemble.return_value = MagicMock()
+        mock_query.return_value = SimpleNamespace(
+            answer="Done",
+            error=None,
+            tool_trace=[],
+            tool_outputs=[],
+            measurements={},
+        )
+        coordinator = CortexRunCoordinator(self.service, max_workers=1)
+        self.addCleanup(coordinator.close)
+        set_run_coordinator(coordinator)
+        self.addCleanup(set_run_coordinator, None)
+        set_run_service(self.service)
+        self.addCleanup(set_run_service, None)
+
+        conv_service = ConversationService(self.conversations, history_limit=20)
+        set_conversation_service(conv_service)
+        self.addCleanup(set_conversation_service, None)
+
+        conv = conv_service.create(
+            ConversationCreateRequest(title="Context limit test", origin="hud", agent="apex")
+        )
+        payload = ConversationTurnRequest(
+            user_message_id=uuid4(),
+            agent_message_id=uuid4(),
+            prompt="Hello",
+            agent="apex",
+            model_id="qwen3:1.7b",
+            context_window=16384,
+        )
+
+        record, future = _submit_run(conv.id, payload)
+        self.assertIsNotNone(record)
+        self.assertEqual(record.limit_snapshot.max_total_tokens, 16384)
+        if future is not None:
+            future.result(timeout=2)

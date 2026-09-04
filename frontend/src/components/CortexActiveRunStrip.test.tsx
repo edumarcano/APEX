@@ -2,51 +2,54 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { RunRecord } from '../types/runs'
 import { CortexActiveRunStrip } from './CortexActiveRunStrip'
+import type { RunRecord } from '../types/runs'
 
 function createMockRun(overrides: Partial<RunRecord> = {}): RunRecord {
   return {
-    id: overrides.id ?? 'run-strip-1',
-    conversation_id: overrides.conversation_id ?? 'conv-strip',
+    id: 'run-strip-1',
+    conversation_id: 'conv-strip-1',
     partition: 'production',
-    user_message_id: 'msg-u',
-    agent_message_id: 'msg-a',
-    requested_model: overrides.requested_model ?? 'gemma-4-E2B-Q4_K_M.gguf',
-    resolved_model: overrides.resolved_model ?? 'gemma-4-E2B-Q4_K_M.gguf',
+    user_message_id: 'user-msg-strip-1',
+    agent_message_id: 'agent-msg-strip-1',
+    status: 'running',
+    stop_reason: null,
+    requested_model: 'gemma-4-E2B-Q4_K_M.gguf',
+    resolved_model: 'gemma-4-E2B-Q4_K_M.gguf',
     provider: 'llama_cpp',
     runtime: 'local',
-    status: overrides.status ?? 'running',
-    stop_reason: overrides.stop_reason ?? null,
-    created_at: new Date(Date.now() - 5000).toISOString(),
-    started_at: new Date(Date.now() - 4000).toISOString(),
-    completed_at: null,
-    updated_at: new Date().toISOString(),
-    limit_snapshot: {
-      max_elapsed_seconds: 60,
-      max_total_tokens: 4096,
-      max_retries: 3,
-      max_model_turns: 5,
-      max_tool_calls: 10,
-    },
     turns_count: 1,
     tool_calls_count: 0,
     retries_count: 0,
-    total_tokens: overrides.total_tokens ?? 250,
-    elapsed_seconds: 4,
+    total_tokens: 250,
     usage_quality: 'reported',
-    runtime_measurements: {
-      queue_duration_ms: 100,
-      prompt_eval_duration_ms: 200,
-      eval_duration_ms: 3700,
-      total_duration_ms: 4000,
-      ttft_ms: 300,
-      tokens_per_second: 42.1,
+    elapsed_seconds: 4.2,
+    created_at: new Date(Date.now() - 4200).toISOString(),
+    started_at: new Date(Date.now() - 4200).toISOString(),
+    completed_at: null,
+    updated_at: new Date(Date.now() - 4200).toISOString(),
+    limit_snapshot: {
+      max_elapsed_seconds: 600,
+      max_total_tokens: 16384,
+      max_retries: 4,
+      max_model_turns: 6,
+      max_tool_calls: 10,
     },
     evidence: {
-      answer_persisted: true,
+      final_message_status: null,
+      answer_persisted: false,
       tool_outcome_counts: {},
       action_ids: [],
+    },
+    runtime_measurements: {
+      queue_duration_ms: 10,
+      prompt_eval_duration_ms: 50,
+      eval_duration_ms: 120,
+      total_duration_ms: 170,
+      ttft_ms: 45,
+      tokens_per_second: 25,
+      eval_count: 3,
+      prompt_eval_count: 10,
     },
     trace_id: 'trace-strip-1',
     error: null,
@@ -66,16 +69,14 @@ describe('CortexActiveRunStrip', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('renders active run information with polite aria-live region', () => {
-    const run = createMockRun({ status: 'running', resolved_model: 'gemma-4-E2B-Q4_K_M.gguf' })
-    render(<CortexActiveRunStrip run={run} />)
+  it('renders compact active indicator with agent name, elapsed time, and aria-live region', () => {
+    const run = createMockRun({ status: 'running' })
+    render(<CortexActiveRunStrip run={run} agentName="Apex" />)
 
-    const strip = screen.getByTestId('cortex-active-run-strip')
-    expect(strip).toBeInTheDocument()
-    expect(strip).toHaveAttribute('aria-live', 'polite')
-    expect(screen.getByText('running')).toBeInTheDocument()
-    expect(screen.getByText('gemma-4-E2B-Q4_K_M.gguf')).toBeInTheDocument()
-    expect(screen.getByText('250 tokens')).toBeInTheDocument()
+    const indicator = screen.getByTestId('cortex-active-run-strip')
+    expect(indicator).toBeInTheDocument()
+    expect(indicator).toHaveAttribute('aria-live', 'polite')
+    expect(screen.getByText('Apex working')).toBeInTheDocument()
   })
 
   it('triggers onInspect when inspect button is clicked', async () => {
@@ -83,45 +84,19 @@ describe('CortexActiveRunStrip', () => {
     const run = createMockRun({ status: 'running' })
     const user = userEvent.setup()
 
-    render(<CortexActiveRunStrip run={run} onInspect={onInspect} />)
+    render(<CortexActiveRunStrip run={run} agentName="Apex" onInspect={onInspect} />)
 
-    const inspectBtn = screen.getByRole('button', { name: 'Inspect run details' })
+    const inspectBtn = screen.getByRole('button', { name: 'Inspect active run' })
     await user.click(inspectBtn)
 
     expect(onInspect).toHaveBeenCalledTimes(1)
   })
 
-  it('toggles between expanded docked tab and minimal collapsed pill', async () => {
-    const onInspect = vi.fn()
-    const run = createMockRun({ status: 'running', resolved_model: 'gemma-4-E2B-Q4_K_M.gguf' })
-    const user = userEvent.setup()
-
-    render(<CortexActiveRunStrip run={run} onInspect={onInspect} />)
-
-    // Initially expanded
+  it('reflects status-specific indicator styling for cancelling and queued states', () => {
+    const { rerender } = render(<CortexActiveRunStrip run={createMockRun({ status: 'cancelling' })} />)
     expect(screen.getByTestId('cortex-active-run-strip')).toBeInTheDocument()
-    expect(screen.getByText('gemma-4-E2B-Q4_K_M.gguf')).toBeInTheDocument()
 
-    // Collapse
-    const collapseBtn = screen.getByRole('button', { name: 'Collapse activity strip' })
-    await user.click(collapseBtn)
-
-    // Collapsed state
-    expect(screen.queryByTestId('cortex-active-run-strip')).not.toBeInTheDocument()
-    expect(screen.getByTestId('cortex-active-run-strip-collapsed')).toBeInTheDocument()
-    expect(screen.queryByText('gemma-4-E2B-Q4_K_M.gguf')).not.toBeInTheDocument()
-
-    // Inspect still works in collapsed pill
-    const inspectBtn = screen.getByRole('button', { name: 'Inspect active run' })
-    await user.click(inspectBtn)
-    expect(onInspect).toHaveBeenCalledTimes(1)
-
-    // Expand
-    const expandBtn = screen.getByRole('button', { name: 'Expand activity strip' })
-    await user.click(expandBtn)
-
-    // Expanded again
+    rerender(<CortexActiveRunStrip run={createMockRun({ status: 'queued' })} />)
     expect(screen.getByTestId('cortex-active-run-strip')).toBeInTheDocument()
-    expect(screen.getByText('gemma-4-E2B-Q4_K_M.gguf')).toBeInTheDocument()
   })
 })
