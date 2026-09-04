@@ -23,6 +23,7 @@ description: Validate and implement an approved APEX plan completely. Use when t
 ## Verify and hand off
 
 1. Run focused checks during implementation, then the broader commands required by `AGENTS.md`.
-2. Inspect the final diff for accidental scope, secret exposure, and documentation drift.
-3. Report the outcome, files or systems changed, validation actually run, and residual risks.
+2. Review the completed implementation against the reconciled plan and acceptance criteria. Inspect the final diff for accidental scope, secret exposure, regressions, unnecessary complexity, test gaps, and documentation drift.
+3. Resolve actionable findings, re-run affected validation, and review the result again. Repeat until no known actionable issue remains or a missing product decision blocks completion.
+4. Report the outcome, files or systems changed, validation actually run, and residual risks.
 
