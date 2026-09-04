@@ -25,6 +25,7 @@ APEX uses software distributed under the Apache License 2.0, including:
 - OpenAI Python SDK
 - Requests
 - Google Cloud Text-to-Speech, when installed
+- OpenTelemetry Python SDK and exporter libraries, when installed
 
 Redistributions must preserve the applicable Apache License 2.0 notices and any required upstream `NOTICE` material.
 
