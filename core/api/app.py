@@ -45,6 +45,7 @@ from core.mcp.manager import MCPClientManager
 from core.runtime_logging import configure_logging
 from core.reminders import ReminderService, set_reminder_service
 from core.settings.store import get_settings_store
+from core.tracing import get_tracing_service
 
 load_dotenv(dotenv_path=ENV_PATH)
 
@@ -55,6 +56,7 @@ _LOGGER = logging.getLogger(__name__)
 async def _app_lifespan(_app: FastAPI):
     """Start application-owned runtime resources and release them on shutdown."""
     configure_logging()
+    get_tracing_service().initialize()
     idle_model_task: asyncio.Task[None] | None = None
     mcp_manager: MCPClientManager | None = None
     microsoft_auth: MicrosoftTodoAuthenticationService | None = None
@@ -266,6 +268,7 @@ async def _app_lifespan(_app: FastAPI):
                                         await idle_model_task
                                     except asyncio.CancelledError:
                                         pass
+                                get_tracing_service().shutdown()
 
 
 app = FastAPI(title="APEX API", lifespan=_app_lifespan)

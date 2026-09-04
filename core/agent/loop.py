@@ -43,6 +43,7 @@ from core.agent.types import (
 
 # Import native handlers so capability registration runs at process start.
 import core.agent.tools as _native_agent_tools  # noqa: F401
+from core.tracing import trace_provider_turn, trace_tool_execution
 
 AgentModelProfile = GeminiModelProfile | OllamaModelProfile | ProviderProfile
 P = TypeVar("P", bound=AgentModelProfile, contravariant=True)
@@ -357,9 +358,15 @@ def run_agent_loop(
                 generate_kwargs["stream_observer"] = observe_stream
             if "output_schema" in parameters:
                 generate_kwargs["output_schema"] = output_schema if is_final_turn else None
-            turn_result = provider.generate_turn(
-                history, turn_tools, profile, **generate_kwargs
-            )
+            with trace_provider_turn(
+                model=profile.api_model,
+                provider=profile.provider,
+                turn=_turn + 1,
+            ) as provider_span_ctx:
+                turn_result = provider.generate_turn(
+                    history, turn_tools, profile, **generate_kwargs
+                )
+                provider_span_ctx.record_result(turn_result)
             if execution_control is not None:
                 execution_control.after_model_turn(turn_result)
             if activity_observer is not None:
@@ -457,110 +464,128 @@ def run_agent_loop(
                 tool_started = time.perf_counter()
                 status = "ok"
                 output: Any
+                error_cat: str | None = None
+                action_id: str | None = None
+                action_risk: str | None = None
                 if activity_observer is not None:
                     activity_observer(
                         "tool.started",
                         {"name": call.name, "origin": "apex"},
                     )
 
-                try:
-                    if call.name not in allowed_tools:
-                        raise CapabilityError(
-                            CapabilityErrorCategory.UNAVAILABLE,
-                            "Tool is outside the resolved Agent tool selection.",
-                        )
-                    descriptor = descriptors_by_name.get(call.name)
-                    if descriptor is None:
-                        raise CapabilityError(
-                            CapabilityErrorCategory.UNAVAILABLE,
-                            "Tool is outside the resolved Agent tool selection.",
-                        )
-                    if descriptor.risk == "read":
-                        output = tools_dispatcher(call.name, call.arguments)
-                    else:
-                        if DEMO_MODE:
+                with trace_tool_execution(
+                    tool_name=call.name,
+                    origin="apex",
+                ) as tool_span_ctx:
+                    try:
+                        if call.name not in allowed_tools:
                             raise CapabilityError(
                                 CapabilityErrorCategory.UNAVAILABLE,
-                                "Action capabilities are unavailable in demo mode.",
+                                "Tool is outside the resolved Agent tool selection.",
                             )
-                        action_service = get_action_service()
-                        if (
-                            descriptor.origin != "native"
-                            or action_service is None
-                            or not action_service.supports(call.name)
-                        ):
+                        descriptor = descriptors_by_name.get(call.name)
+                        if descriptor is None:
                             raise CapabilityError(
                                 CapabilityErrorCategory.UNAVAILABLE,
-                                "Action capability is unavailable.",
+                                "Tool is outside the resolved Agent tool selection.",
                             )
-                        arguments = validate_capability_arguments(
-                            call.name, call.arguments
-                        )
-                        if call.name == "remember_personal_context":
-                            from core.knowledge.capture import reject_secret_text, validate_effective_at
-
-                            reject_secret_text(str(arguments.get("text", "")))
-                            validate_effective_at(arguments.get("effective_at"))
-                            if action_provenance is None:
+                        if descriptor.risk == "read":
+                            output = tools_dispatcher(call.name, call.arguments)
+                        else:
+                            if DEMO_MODE:
                                 raise CapabilityError(
                                     CapabilityErrorCategory.UNAVAILABLE,
-                                    "Personal context capture requires a persisted conversation source.",
+                                    "Action capabilities are unavailable in demo mode.",
                                 )
-                            arguments["_apex_provenance"] = dict(action_provenance)
-                        action = action_service.propose(
-                            agent_key=agent_key or request.agent,
-                            capability_name=call.name,
-                            arguments=arguments,
-                            target=descriptor.title,
-                            risk=descriptor.risk,
-                            summary=f"Approve {descriptor.title}",
+                            action_service = get_action_service()
+                            if (
+                                descriptor.origin != "native"
+                                or action_service is None
+                                or not action_service.supports(call.name)
+                            ):
+                                raise CapabilityError(
+                                    CapabilityErrorCategory.UNAVAILABLE,
+                                    "Action capability is unavailable.",
+                                )
+                            arguments = validate_capability_arguments(
+                                call.name, call.arguments
+                            )
+                            if call.name == "remember_personal_context":
+                                from core.knowledge.capture import reject_secret_text, validate_effective_at
+
+                                reject_secret_text(str(arguments.get("text", "")))
+                                validate_effective_at(arguments.get("effective_at"))
+                                if action_provenance is None:
+                                    raise CapabilityError(
+                                        CapabilityErrorCategory.UNAVAILABLE,
+                                        "Personal context capture requires a persisted conversation source.",
+                                    )
+                                arguments["_apex_provenance"] = dict(action_provenance)
+                            action = action_service.propose(
+                                agent_key=agent_key or request.agent,
+                                capability_name=call.name,
+                                arguments=arguments,
+                                target=descriptor.title,
+                                risk=descriptor.risk,
+                                summary=f"Approve {descriptor.title}",
+                            )
+                            action_id = action.action_id
+                            action_risk = action.proposal.risk
+                            output = {
+                                "action_id": action.action_id,
+                                "status": action.status,
+                                "message": (
+                                    "Action proposed. It has not been executed and "
+                                    "requires operator approval."
+                                ),
+                                "version": action.version,
+                                "risk": action.proposal.risk,
+                                "summary": action.proposal.summary,
+                                "target": action.proposal.target,
+                            }
+                            if activity_observer is not None:
+                                activity_observer(
+                                    "action.proposed",
+                                    {
+                                        "action_id": action.action_id,
+                                        "status": action.status,
+                                        "risk": action.proposal.risk,
+                                    },
+                                )
+                    except CapabilityError as exc:
+                        status = "error"
+                        error_cat = exc.category.value
+                        _LOGGER.warning(
+                            "Agent capability failed: tool=%s category=%s",
+                            call.name,
+                            exc.category.value,
+                        )
+                        output = exc.as_output()
+                    except Exception as exc:
+                        status = "error"
+                        error_cat = CapabilityErrorCategory.UPSTREAM_FAILURE.value
+                        _LOGGER.warning(
+                            "Agent tool execution failed: tool=%s error_type=%s",
+                            call.name,
+                            type(exc).__name__,
                         )
                         output = {
-                            "action_id": action.action_id,
-                            "status": action.status,
-                            "message": (
-                                "Action proposed. It has not been executed and "
-                                "requires operator approval."
+                            "error": "Tool execution failed.",
+                            "error_category": (
+                                CapabilityErrorCategory.UPSTREAM_FAILURE.value
                             ),
-                            "version": action.version,
-                            "risk": action.proposal.risk,
-                            "summary": action.proposal.summary,
-                            "target": action.proposal.target,
                         }
-                        if activity_observer is not None:
-                            activity_observer(
-                                "action.proposed",
-                                {
-                                    "action_id": action.action_id,
-                                    "status": action.status,
-                                    "risk": action.proposal.risk,
-                                },
-                            )
-                except CapabilityError as exc:
-                    status = "error"
-                    _LOGGER.warning(
-                        "Agent capability failed: tool=%s category=%s",
-                        call.name,
-                        exc.category.value,
-                    )
-                    output = exc.as_output()
-                except Exception as exc:
-                    status = "error"
-                    _LOGGER.warning(
-                        "Agent tool execution failed: tool=%s error_type=%s",
-                        call.name,
-                        type(exc).__name__,
-                    )
-                    output = {
-                        "error": "Tool execution failed.",
-                        "error_category": (
-                            CapabilityErrorCategory.UPSTREAM_FAILURE.value
-                        ),
-                    }
 
-                duration_ms = round((time.perf_counter() - tool_started) * 1000, 2)
-                apex_tool_ms_total += duration_ms
-                total_tool_executions += 1
+                    duration_ms = round((time.perf_counter() - tool_started) * 1000, 2)
+                    apex_tool_ms_total += duration_ms
+                    total_tool_executions += 1
+                    tool_span_ctx.record_completion(
+                        duration_ms=duration_ms,
+                        status=status,
+                        error_category=error_cat,
+                        action_id=action_id,
+                        action_risk=action_risk,
+                    )
 
                 tool_trace.append(
                     {

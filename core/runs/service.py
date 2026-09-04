@@ -56,6 +56,7 @@ class RunHandle:
         resolved_model: str,
         provider: str,
         runtime: str,
+        trace_id: str | None = None,
     ) -> RunRecord:
         """Mark run as running in the bound partition."""
         return self.store.start_run(
@@ -64,6 +65,7 @@ class RunHandle:
             resolved_model=resolved_model,
             provider=provider,
             runtime=runtime,
+            trace_id=trace_id,
         )
 
     def update_progress(

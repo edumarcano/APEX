@@ -440,18 +440,22 @@ class RunStore:
         resolved_model: str,
         provider: str,
         runtime: str,
+        trace_id: str | None = None,
     ) -> RunRecord:
         """Transition run from queued to running with resolved model and runtime."""
+        if trace_id is not None and not _TRACE_ID_PATTERN.fullmatch(trace_id):
+            raise RunConflictError(f"Invalid trace_id format: {trace_id}")
         now = utc_now_iso()
         with self._connection() as conn, conn:
             res = conn.execute(
                 """
                 UPDATE cortex_runs
                 SET status = 'running', resolved_model = ?, provider = ?, runtime = ?,
-                    started_at = COALESCE(started_at, ?), updated_at = ?
+                    started_at = COALESCE(started_at, ?), updated_at = ?,
+                    trace_id = COALESCE(?, trace_id)
                 WHERE id = ? AND partition = ? AND status = 'queued'
                 """,
-                (resolved_model, provider, runtime, now, now, str(run_id), partition),
+                (resolved_model, provider, runtime, now, now, trace_id, str(run_id), partition),
             )
             if res.rowcount != 1:
                 row = conn.execute(

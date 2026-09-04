@@ -20,6 +20,10 @@ uv run apex actions show <action-id>
 uv run apex actions approve <action-id>
 uv run apex actions reject <action-id>
 uv run apex actions verify <action-id>
+uv run apex runs list
+uv run apex runs list --status running
+uv run apex runs show <run-id>
+uv run apex runs cancel <run-id>
 ```
 
 `status` checks backend readiness, including configuration and database access, and shows Apex Agent, its selected model, runtime, and saved cloud reasoning preference. `models` lists the unified model catalog and model-specific availability. Each `ask` invocation creates one persisted CLI conversation and submits one turn; it does not attach the current HUD snapshot. `--model` is optional; omitting it uses the persisted selected model. When `--profile` is omitted, the backend chooses the saved default profile for the selected model runtime.
@@ -37,6 +41,14 @@ loopback API and support `--json`.
 The CLI shows the same durable action records as Cortex. `show` includes frozen proposal arguments and audit events. Before `approve`, `reject`, or `verify`, the CLI reads the current action version and submits that version with the request. If another client changed the action first, APEX returns a conflict and the CLI does not retry.
 
 Running `approve` is explicit operator approval, including for destructive actions. A successful command can still report an uncertain or failed action outcome; inspect the returned action ID and the action history before deciding what to do next. The CLI never replays an action automatically.
+
+## Runs
+
+`runs` commands inspect and control bounded Cortex execution:
+
+- `list` returns recent runs in the active partition, newest first. Filter by `--status` (`queued`, `running`, `cancelling`, `completed`, `failed`, `cancelled`, `interrupted`) or limit results with `--limit` (default 25, maximum 100).
+- `show` displays run details, cumulative token consumption, timing, turn/tool counts, completion evidence, trace ID, and error information.
+- `cancel` explicitly cancels a queued or running run.
 
 ## JSON and exit codes
 

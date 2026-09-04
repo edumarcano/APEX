@@ -163,6 +163,35 @@ def build_parser() -> argparse.ArgumentParser:
             action.add_argument("action_id", help="Opaque action ID.")
         action.set_defaults(handler=handler)
 
+    runs = commands.add_parser("runs", help="Manage and inspect bounded Cortex runs.")
+    _add_json_option(runs)
+    runs_commands = runs.add_subparsers(dest="runs_command", required=True)
+
+    runs_list = runs_commands.add_parser("list", help="List recent Cortex runs.")
+    _add_json_option(runs_list)
+    runs_list.add_argument(
+        "--status",
+        choices=("queued", "running", "cancelling", "completed", "failed", "cancelled", "interrupted"),
+        help="Filter runs by status.",
+    )
+    runs_list.add_argument(
+        "--limit",
+        type=int,
+        default=25,
+        help="Maximum number of runs to return (1-100, default 25).",
+    )
+    runs_list.set_defaults(handler=_runs_list)
+
+    runs_show = runs_commands.add_parser("show", help="Show detail for one Cortex run.")
+    _add_json_option(runs_show)
+    runs_show.add_argument("run_id", help="UUID of the run.")
+    runs_show.set_defaults(handler=_runs_show)
+
+    runs_cancel = runs_commands.add_parser("cancel", help="Cancel an active Cortex run.")
+    _add_json_option(runs_cancel)
+    runs_cancel.add_argument("run_id", help="UUID of the run.")
+    runs_cancel.set_defaults(handler=_runs_cancel)
+
     return parser
 
 
@@ -522,6 +551,101 @@ def _render_action_result(payload: object) -> None:
         return
     print(f"Action ID: {payload.get('action_id', 'unknown')}")
     print(f"Status: {payload.get('status', 'unknown')}")
+
+
+def _runs_list(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    params: list[str] = []
+    if getattr(args, "status", None) is not None:
+        params.append(f"status={quote(args.status, safe='')}")
+    limit = getattr(args, "limit", 25)
+    params.append(f"limit={limit}")
+    query = f"?{'&'.join(params)}"
+    payload = client.request("GET", f"/api/v1/cortex/runs{query}")
+    _require_list(payload, "run list")
+    _emit(payload, json_mode, _render_runs_list)
+    return 0
+
+
+def _runs_show(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    run_id = args.run_id.strip()
+    if not run_id:
+        raise CliError("invalid_input", "Run ID must contain non-whitespace text.")
+    payload = client.request("GET", f"/api/v1/cortex/runs/{quote(run_id, safe='')}")
+    _require_mapping(payload, "run detail")
+    _emit(payload, json_mode, _render_run_detail)
+    return 0
+
+
+def _runs_cancel(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    run_id = args.run_id.strip()
+    if not run_id:
+        raise CliError("invalid_input", "Run ID must contain non-whitespace text.")
+    payload = client.request("POST", f"/api/v1/cortex/runs/{quote(run_id, safe='')}/cancel")
+    _require_mapping(payload, "run detail")
+    _emit(payload, json_mode, _render_run_cancelled)
+    return 0
+
+
+def _render_runs_list(payload: object) -> None:
+    if not isinstance(payload, list):
+        print("APEX returned an unexpected run list.")
+        return
+    if not payload:
+        print("No Cortex runs found.")
+        return
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        run_id = item.get("id", "unknown")
+        status = item.get("status", "unknown")
+        model = item.get("resolved_model") or item.get("requested_model", "unknown")
+        runtime = item.get("runtime", "unknown")
+        tokens = item.get("total_tokens", 0)
+        elapsed = item.get("elapsed_seconds", 0.0)
+        print(f"{run_id} | {status} | {model} ({runtime}) | {tokens} tok | {elapsed:.1f}s")
+
+
+def _render_run_detail(payload: object) -> None:
+    if not isinstance(payload, dict):
+        print("APEX returned an unexpected run response.")
+        return
+    print(f"Run ID: {payload.get('id', 'unknown')}")
+    print(f"Status: {payload.get('status', 'unknown')}")
+    if payload.get("stop_reason"):
+        print(f"Stop Reason: {payload.get('stop_reason')}")
+    print(f"Conversation ID: {payload.get('conversation_id', 'unknown')}")
+    model = payload.get("resolved_model") or payload.get("requested_model", "unknown")
+    runtime = payload.get("runtime") or "unknown"
+    provider = payload.get("provider") or "unknown"
+    print(f"Model: {model} ({runtime} / {provider})")
+    print(f"Tokens: {payload.get('total_tokens', 0)} ({payload.get('usage_quality', 'unavailable')})")
+    print(f"Elapsed: {payload.get('elapsed_seconds', 0.0):.1f}s")
+    print(f"Turns: {payload.get('turns_count', 0)} | Tool calls: {payload.get('tool_calls_count', 0)} | Retries: {payload.get('retries_count', 0)}")
+    if payload.get("trace_id"):
+        print(f"Trace ID: {payload.get('trace_id')}")
+    evidence = payload.get("evidence")
+    if isinstance(evidence, dict):
+        persisted = evidence.get("answer_persisted", False)
+        print(f"Answer Persisted: {persisted}")
+        counts = evidence.get("tool_outcome_counts")
+        if isinstance(counts, dict) and counts:
+            print(f"Tool Outcomes: {counts}")
+        action_ids = evidence.get("action_ids")
+        if isinstance(action_ids, list) and action_ids:
+            print(f"Action IDs: {', '.join(action_ids)}")
+    err = payload.get("error")
+    if isinstance(err, dict):
+        print(f"Error: {err.get('code', 'failed')} - {err.get('message', '')}")
+
+
+def _render_run_cancelled(payload: object) -> None:
+    if not isinstance(payload, dict):
+        print("APEX returned an unexpected cancel response.")
+        return
+    print(f"Run ID: {payload.get('id', 'unknown')}")
+    print(f"Status: {payload.get('status', 'unknown')}")
+    if payload.get("stop_reason"):
+        print(f"Stop Reason: {payload.get('stop_reason')}")
 
 
 if __name__ == "__main__":
