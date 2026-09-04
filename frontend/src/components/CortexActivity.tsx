@@ -78,7 +78,7 @@ function LimitGauge({
 }): ReactElement {
   const percent = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0
   const isHigh = percent >= 85
-  const barColor = isHigh ? 'bg-amber-400' : 'bg-[#7EB3FF]'
+  const barColor = isHigh ? 'bg-amber-400' : 'bg-[#1F6FE5]'
 
   return (
     <div className="space-y-1">

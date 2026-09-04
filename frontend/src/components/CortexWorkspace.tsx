@@ -395,7 +395,7 @@ function LocalModelLifecycle({ agent, busy, actionPending, onLoad, onUnload }: {
     ? 'border-red-400/35 bg-red-950/20 text-red-200'
     : lifecycleState === 'Loaded'
       ? 'border-orange-400/40 bg-orange-950/30 text-orange-100'
-      : 'border-amber-400/35 bg-amber-950/20 text-amber-100'
+      : 'border-zinc-500/30 bg-zinc-900/40 text-zinc-400'
   const action = async (): Promise<void> => {
     if (disabled) return
     setError(null)
