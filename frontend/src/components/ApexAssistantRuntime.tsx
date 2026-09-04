@@ -23,6 +23,8 @@ import remarkGfm from 'remark-gfm'
 import { createAssistantStream } from 'assistant-stream'
 
 import { API_ENDPOINTS } from '../lib/api'
+import { streamRunEvents } from '../lib/cortexStream'
+import type { RunRecord } from '../types/runs'
 import type { AgentKey, CloudEffort } from '../types/telemetry'
 import { CortexErrorFeedback, CortexQueryRim } from './AgentQueryBar'
 import { ToolsSelector, type ToolsSelectorProps } from './ToolsSelector'
@@ -604,7 +606,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
 
   const runtimeHook = useCallback(() => {
     const model: ChatModelAdapter = {
-      async run(options) {
+      async *run(options) {
         const localThreadId = options.unstable_threadId
         const remoteId = (localThreadId && uuidPattern.test(localThreadId) ? localThreadId : undefined)
           ?? (localThreadId ? remoteByLocal.current.get(localThreadId) : undefined)
@@ -637,8 +639,10 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
           if (parentMessage?.id) {
             parentMessageId = canonicalId(parentMessage.id, idMap)
           }
-          const response = await requestJson<Record<string, unknown>>(API_ENDPOINTS.cortexConversationTurns(remoteId), {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+
+          const runRecord = await requestJson<RunRecord>(API_ENDPOINTS.cortexConversationRuns(remoteId), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               prompt: user.content.filter((part) => part.type === 'text').map((part) => part.text).join('\n'),
               user_message_id: userMessageId,
@@ -655,16 +659,77 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
               briefing_id: current.briefingId ?? undefined,
             }),
           })
-          const responseError = typeof response.error === 'string' ? response.error : null
-          const responseStatus = response.message_status ?? response.status
-          const incomplete = responseError !== null || responseStatus === 'failed' || responseStatus === 'interrupted'
-          const persistedError = responseError ?? (typeof responseStatus === 'string' ? responseStatus : 'Agent turn did not complete.')
-          onResponseChangeRef.current?.(response, incomplete ? persistedError : null)
-          return {
-            content: [{ type: 'text' as const, text: String(response.answer ?? '') }],
-            ...(incomplete ? { status: { type: 'incomplete' as const, reason: 'error' as const, error: persistedError } } : {}),
-            metadata: { custom: { apex: response } },
+
+          const abortHandler = (): void => {
+            const isExplicitStop = (options.abortSignal.reason as { detach?: boolean } | undefined)?.detach !== true
+            if (isExplicitStop) {
+              void requestJson(API_ENDPOINTS.cortexRunCancel(runRecord.id), { method: 'POST' }).catch(() => undefined)
+            }
           }
+
+          if (options.abortSignal.aborted) {
+            abortHandler()
+          } else {
+            options.abortSignal.addEventListener('abort', abortHandler, { once: true })
+          }
+
+          let cumulativeAnswer = ''
+          try {
+            for await (const event of streamRunEvents(runRecord.id, { signal: options.abortSignal })) {
+              if (event.type === 'response.delta') {
+                const text = typeof event.payload?.text === 'string' ? event.payload.text : ''
+                cumulativeAnswer += text
+                yield {
+                  content: [{ type: 'text' as const, text: cumulativeAnswer }],
+                }
+              } else if (event.type === 'response.reset') {
+                cumulativeAnswer = ''
+                yield {
+                  content: [{ type: 'text' as const, text: '' }],
+                }
+              } else if (event.type === 'response.completed') {
+                const answer = typeof event.payload?.answer === 'string' ? event.payload.answer : ''
+                cumulativeAnswer = answer
+                yield {
+                  content: [{ type: 'text' as const, text: cumulativeAnswer }],
+                }
+              } else if (event.type === 'run.snapshot') {
+                const answer = typeof event.payload?.answer === 'string' ? event.payload.answer : ''
+                if (answer) {
+                  cumulativeAnswer = answer
+                  yield {
+                    content: [{ type: 'text' as const, text: cumulativeAnswer }],
+                  }
+                }
+              }
+            }
+          } finally {
+            options.abortSignal.removeEventListener('abort', abortHandler)
+          }
+
+          let durableMessage: ConversationMessage | undefined
+          try {
+            const detail = await requestJson<ConversationDetail>(API_ENDPOINTS.cortexConversation(remoteId))
+            durableMessage = detail.messages.find((m) => m.id === agentMessageId)
+          } catch {
+            // Fallback to accumulated text if durable conversation fetch is interrupted
+          }
+
+          const finalAnswer = durableMessage?.content ?? cumulativeAnswer
+          const metadata = (durableMessage?.response_metadata ?? {}) as Record<string, unknown>
+          const responseError = typeof metadata.error === 'string' ? metadata.error : null
+          const responseStatus = durableMessage?.status ?? 'completed'
+          const incomplete = responseError !== null || responseStatus === 'failed' || responseStatus === 'interrupted'
+          const persistedError = responseError ?? (responseStatus !== 'completed' ? responseStatus : 'Agent turn did not complete.')
+
+          onResponseChangeRef.current?.(metadata, incomplete ? persistedError : null)
+
+          yield {
+            content: [{ type: 'text' as const, text: finalAnswer }],
+            ...(incomplete ? { status: { type: 'incomplete' as const, reason: 'error' as const, error: persistedError } } : {}),
+            metadata: { custom: { apex: metadata } },
+          }
+          return
         } catch (error) {
           const message = error instanceof Error ? error.message : 'APEX request failed.'
           onResponseChangeRef.current?.(null, message)
@@ -756,7 +821,18 @@ function GatedComposer({
       <ComposerPrimitive.Input disabled={blocked} placeholder={edit ? 'Edit message…' : 'Ask APEX…'} className="min-h-11 flex-1 resize-none rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-[#7EB3FF] disabled:cursor-not-allowed disabled:opacity-45" />
       {!edit && composer ? <ToolsSelector {...composer.tools} compact disabled={blocked || queryActive} /> : null}
       {edit ? <ComposerPrimitive.Cancel disabled={blocked} className="rounded-lg border border-white/10 px-3 py-2 font-mono text-xs text-zinc-400 hover:text-white disabled:opacity-45">Cancel</ComposerPrimitive.Cancel> : null}
-      <ComposerPrimitive.Send disabled={blocked || queryActive} onClick={(event) => { event.preventDefault(); void submit() }} className="rounded-lg border border-[#7E22CE]/45 bg-[#7E22CE]/15 px-3 py-2 font-mono text-xs uppercase tracking-wider text-[#E9D5FF] hover:bg-[#7E22CE]/25 disabled:cursor-not-allowed disabled:opacity-45">{edit ? 'Save' : 'Send'}</ComposerPrimitive.Send>
+      {!edit && queryActive ? (
+        <button
+          type="button"
+          onClick={() => aui.thread.cancelRun()}
+          className="rounded-lg border border-red-500/40 bg-red-950/25 px-3 py-2 font-mono text-xs uppercase tracking-wider text-red-200 hover:bg-red-950/40"
+          aria-label="Stop generation"
+        >
+          Stop
+        </button>
+      ) : (
+        <ComposerPrimitive.Send disabled={blocked || queryActive} onClick={(event) => { event.preventDefault(); void submit() }} className="rounded-lg border border-[#7E22CE]/45 bg-[#7E22CE]/15 px-3 py-2 font-mono text-xs uppercase tracking-wider text-[#E9D5FF] hover:bg-[#7E22CE]/25 disabled:cursor-not-allowed disabled:opacity-45">{edit ? 'Save' : 'Send'}</ComposerPrimitive.Send>
+      )}
     </div>
     {!edit && composer && error ? <CortexErrorFeedback error={error} /> : null}
   </ComposerPrimitive.Root>
@@ -806,7 +882,7 @@ function ApexAssistantMessage(): ReactNode {
       void context.persistActiveLeaf(selectedId).catch(() => undefined)
     })
   }
-  if (status?.type === 'running') return null
+  if (status?.type === 'running' && !text) return null
   return <MessagePrimitive.Root ref={messageRef} className={role === 'user' ? 'flex justify-end' : 'max-w-5xl'}>
     {editing && role === 'user' ? <GatedComposer edit disabled={Boolean(composer?.disabled) || Boolean(context?.isTurnLocked)} /> : null}
     {editing && role === 'user' ? null : <>

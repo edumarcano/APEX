@@ -17,6 +17,17 @@ export const API_ENDPOINTS = {
   cortexConversations: `${API_BASE}/api/v1/cortex/conversations`,
   cortexConversation: (conversationId: string) => `${API_BASE}/api/v1/cortex/conversations/${encodeURIComponent(conversationId)}`,
   cortexConversationTurns: (conversationId: string) => `${API_BASE}/api/v1/cortex/conversations/${encodeURIComponent(conversationId)}/turns`,
+  cortexConversationRuns: (conversationId: string) => `${API_BASE}/api/v1/cortex/conversations/${encodeURIComponent(conversationId)}/runs`,
+  cortexRuns: (params?: { status?: string; limit?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.status) query.set('status', params.status)
+    if (params?.limit) query.set('limit', String(params.limit))
+    const qs = query.toString()
+    return qs ? `${API_BASE}/api/v1/cortex/runs?${qs}` : `${API_BASE}/api/v1/cortex/runs`
+  },
+  cortexRun: (runId: string) => `${API_BASE}/api/v1/cortex/runs/${encodeURIComponent(runId)}`,
+  cortexRunCancel: (runId: string) => `${API_BASE}/api/v1/cortex/runs/${encodeURIComponent(runId)}/cancel`,
+  cortexRunEvents: (runId: string) => `${API_BASE}/api/v1/cortex/runs/${encodeURIComponent(runId)}/events`,
   cortexContext: `${API_BASE}/api/v1/cortex/context`,
   cortexContextRecord: (recordId: string) => `${API_BASE}/api/v1/cortex/context/${encodeURIComponent(recordId)}`,
   cortexContextEntities: `${API_BASE}/api/v1/cortex/context/entities`,
