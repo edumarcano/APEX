@@ -185,12 +185,12 @@ describe('CortexActivity', () => {
     expect(screen.getByText('reminders')).toBeInTheDocument()
     expect(screen.getByText('action-1…')).toBeInTheDocument()
 
-    // Check system residency
-    expect(screen.getByText('18.5%')).toBeInTheDocument()
-    expect(screen.getByText('Idle unload: 180s')).toBeInTheDocument()
+    // Check resident local model
+    expect(screen.getByText('Resident Local Model')).toBeInTheDocument()
+    expect(screen.getByText('Idle unload in 180s')).toBeInTheDocument()
   })
 
-  it('allows stopping an active run and changing selection', async () => {
+  it('allows stopping an active run and changing selection via dropdown', async () => {
     const runActive = createMockRun({ id: 'run-active', status: 'running' })
     const runDone = createMockRun({ id: 'run-done', status: 'completed' })
     const cancelRun = vi.fn()
@@ -212,9 +212,27 @@ describe('CortexActivity', () => {
     await user.click(stopBtn)
     expect(cancelRun).toHaveBeenCalledWith('run-active')
 
-    // Click another run in the list
-    const otherRunBtn = screen.getByRole('button', { name: /run-done/i })
-    await user.click(otherRunBtn)
+    // Select another run via dropdown
+    const select = screen.getByRole('combobox', { name: 'Select run' })
+    await user.selectOptions(select, 'run-done')
     expect(selectRun).toHaveBeenCalledWith('run-done')
+  })
+
+  it('copies run ID to clipboard when copy button is clicked', async () => {
+    const run = createMockRun({ id: '00000000-0000-4000-8000-000000000042' })
+    const runsState = createMockRunsState({
+      runs: [run],
+      selectedRunId: run.id,
+      selectedRun: run,
+    })
+    const writeSpy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
+    const user = userEvent.setup()
+
+    render(<CortexActivity runsState={runsState} />)
+
+    const copyBtn = screen.getByRole('button', { name: 'Copy run ID' })
+    await user.click(copyBtn)
+    expect(writeSpy).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000042')
+    expect(screen.getByText('Copied')).toBeInTheDocument()
   })
 })
