@@ -526,6 +526,45 @@ the request. Cancellation writes an empty interrupted Agent message with a safe
 cancellation marker and finalizes the run as `cancelled`. A run from another
 partition or an unknown ID returns `404`.
 
+### GET `/api/v1/cortex/runs/{run_id}/events`
+
+Streams live run activity as Server-Sent Events. It is scoped to the current
+server-derived partition; an unknown or cross-partition run returns `404`.
+`Last-Event-ID` accepts a non-negative event sequence for reconnect replay.
+Malformed values return `400`.
+
+Each event uses the following JSON envelope:
+
+```json
+{
+  "sequence": 12,
+  "run_id": "6dce6f5e-9f1e-4b2f-9930-0ca2668bd248",
+  "type": "response.delta",
+  "timestamp": "2026-09-03T12:00:00Z",
+  "payload": { "text": "Working " }
+}
+```
+
+The closed event types are `run.snapshot`, `run.status`, `model.started`,
+`model.completed`, `response.delta`, `response.reset`, `response.completed`,
+`tool.started`, `tool.completed`, `action.proposed`, `usage.updated`,
+`runtime.updated`, and `run.completed`. Response text is provisional until
+`response.completed`; `response.reset` tells a client to discard provisional
+text after a late tool call.
+
+The stream replays events after the supplied cursor. If that cursor is older
+than the run's bounded replay buffer, APEX sends a fresh `run.snapshot`
+instead. A snapshot contains safe run metadata and visible answer text only
+while the process still holds that buffer. The backend keeps the 32 most
+recent terminal buffers; older runs and runs recovered after a restart return
+a durable snapshot with no replayed answer text. Comment heartbeats keep an
+active stream open, and the stream closes after its terminal event. Closing a
+client connection never cancels the run.
+
+Live events are process-local and are not written to the run ledger. They do
+not include prompts, provider reasoning or payloads, tool arguments/results,
+action targets, citations, or raw errors.
+
 ### POST `/api/v1/cortex/context/captures`
 
 Creates a `remember_personal_context` action proposal from direct operator input. It does not write a knowledge record until the normal action approval, execution, and verification flow completes. Structured captures require a subject, predicate, and exactly one entity or scalar value. Requests that resemble credentials or private keys are rejected before proposal creation.
@@ -684,6 +723,7 @@ APEX API contract version 19.
 | GET | `/api/v1/cortex/retrieval/status` | API route |
 | GET | `/api/v1/cortex/runs` | API route |
 | GET | `/api/v1/cortex/runs/{run_id}` | API route |
+| GET | `/api/v1/cortex/runs/{run_id}/events` | API route |
 | GET | `/api/v1/cortex/tool-catalog` | API route |
 | GET | `/api/v1/cortex/tool-profiles` | API route |
 | GET | `/api/v1/diagnostics` | API route |

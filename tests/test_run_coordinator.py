@@ -203,6 +203,10 @@ class RunCoordinatorTests(unittest.TestCase):
         self.assertEqual(failed.status, "failed")
         self.assertEqual(failed.stop_reason, "provider_error")
         self.assertEqual(failed.error.code, "provider_unavailable")
+        events, _gap, terminal = coordinator.events.get(record.id).replay(0)
+        self.assertTrue(terminal)
+        self.assertEqual(events[-2].type, "response.reset")
+        self.assertEqual(events[-1].type, "run.completed")
 
     def test_progress_preserves_provider_measurements_across_tool_updates(self) -> None:
         _conversation_id, _user_id, _agent_id, _record, handle = self._create_run()
@@ -219,6 +223,32 @@ class RunCoordinatorTests(unittest.TestCase):
         progress = handle.get_record()
         self.assertEqual(progress.runtime_measurements.eval_duration_ms, 12.5)
         self.assertGreaterEqual(progress.runtime_measurements.total_duration_ms or 0, 0)
+
+    def test_terminal_run_retains_replayable_lifecycle_events(self) -> None:
+        coordinator = CortexRunCoordinator(self.service, max_workers=1)
+        self.addCleanup(coordinator.close)
+        _conversation_id, _user_id, _agent_id, record, handle = self._create_run(
+            coordinator=coordinator
+        )
+        response = SimpleNamespace(error=None, tool_trace=[], tool_outputs=[])
+
+        completed = coordinator.submit(
+            handle=handle,
+            resolved_model="test-model",
+            provider="openai",
+            runtime="cloud",
+            execute=lambda control: (control.finish(), response)[1],
+            finalize_conversation=self._finalize,
+        ).result(timeout=2)
+
+        buffer = coordinator.events.get(record.id)
+        self.assertIsNotNone(buffer)
+        events, gap, terminal = buffer.replay(0)
+        self.assertFalse(gap)
+        self.assertTrue(terminal)
+        self.assertEqual(completed.status, "completed")
+        self.assertEqual(events[-1].type, "run.completed")
+        self.assertIn("run.snapshot", [event.type for event in events])
 
     def test_replay_validation_rejects_mismatched_turn_content(self) -> None:
         conversation_id, user_id, agent_id, record, _handle = self._create_run()
