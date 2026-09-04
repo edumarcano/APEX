@@ -1,4 +1,5 @@
 import logging
+import inspect
 import time
 from typing import Any, Callable, Mapping, Protocol, TypeGuard, TypeVar, runtime_checkable
 
@@ -20,6 +21,7 @@ from core.agent.providers.contract import (
     ProviderProfile,
     ProviderToolEvent,
     ProviderTurnResult,
+    ProviderStreamObserver,
     merge_token_usage,
     resolve_inference_provider,
 )
@@ -71,6 +73,9 @@ class ExecutionControl(Protocol):
     def after_model_turn(self, result: ProviderTurnResult) -> None: ...
     def before_tool(self) -> None: ...
     def after_tool(self) -> None: ...
+    def before_provider_attempt(self) -> None: ...
+    def before_retry(self, retry_number: int = 0) -> None: ...
+    def remaining_seconds(self) -> float: ...
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -184,6 +189,8 @@ def run_agent_loop(
     agent_key: str | None = None,
     action_provenance: Mapping[str, object] | None = None,
     execution_control: ExecutionControl | None = None,
+    stream_observer: ProviderStreamObserver | None = None,
+    output_schema: dict[str, Any] | None = None,
 ) -> AgentQueryResponse:
     history: list[AgentMessage] = list(request.history)
     history.append(AgentMessage(role="user", content=request.prompt))
@@ -324,11 +331,20 @@ def run_agent_loop(
                     system_instruction_override or profile.system_instruction
                 ) + FINAL_ANSWER_INSTRUCTION
 
+            generate_kwargs: dict[str, Any] = {
+                "system_instruction_override": turn_instruction,
+            }
+            # Existing test and extension providers may implement the small
+            # pre-beta.2 contract.  Pass the new seam only when supported.
+            parameters = inspect.signature(provider.generate_turn).parameters
+            if "execution_control" in parameters:
+                generate_kwargs["execution_control"] = execution_control
+            if "stream_observer" in parameters:
+                generate_kwargs["stream_observer"] = stream_observer
+            if "output_schema" in parameters:
+                generate_kwargs["output_schema"] = output_schema if is_final_turn else None
             turn_result = provider.generate_turn(
-                history,
-                turn_tools,
-                profile,
-                system_instruction_override=turn_instruction,
+                history, turn_tools, profile, **generate_kwargs
             )
             if execution_control is not None:
                 execution_control.after_model_turn(turn_result)

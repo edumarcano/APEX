@@ -372,13 +372,13 @@ Assigns an existing built-in or custom profile as the default for one runtime (`
 
 ### GET `/api/v1/cortex/agent`
 
-Returns the single Apex Agent and its ordered model catalog. Each entry supplies model/provider/runtime, stability, supported reasoning and local controls, grounded-tool state, pricing, and availability/lifecycle diagnostics.
+Returns the single Apex Agent and its ordered model catalog. Each entry supplies model/provider/runtime, stability, supported reasoning and local controls, grounded-tool state, pricing, and availability/lifecycle diagnostics. Provider capability fields describe `streaming` (`native` or `completed_turn`), `structured_output` (`native` or `unavailable`), `usage_reporting` (`reported`, `estimated`, or `unavailable`), and the allowlisted `supported_runtime_measurements`. Native streaming is available for OpenAI, OpenRouter, Gemini, and llama.cpp; Ollama remains a completed-turn development fallback. Structured output is enforced only on final tool-free turns by providers whose `structured_output` capability is `native`.
 
 Development-only models appear in the `model_catalog` list only when `DEV_MODE` is active. They are not separate Apex Agents.
 
 Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Local availability distinguishes an unreachable runtime, missing model, loading model, busy execution slot, and provider-reported residency. Local catalog entries publish model-specific context and reasoning values, options, and defaults.
 
-Registered cloud models include `deepseek/deepseek-v4-flash-0731`, `gpt-5.6-luna`, and development-only Gemini models. Registered local models include Gemma and Qwen GGUF profiles plus development-only Ollama profiles.
+Registered cloud models include `deepseek/deepseek-v4-flash-0731`, `gpt-5.6-luna`, and `gemini-3.7-flash`. Registered local models include Gemma and Qwen GGUF profiles plus development-only Ollama profiles.
 
 ### POST `/api/v1/cortex/models/verify`
 

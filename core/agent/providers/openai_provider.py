@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from core.agent.capabilities import CapabilityDescriptor
-from core.agent.providers.contract import ProviderTurnResult
+from core.agent.providers.contract import ProviderTurnResult, ProviderStreamObserver
+from typing import Any
 from core.agent.providers.responses_api import (
     ResponsesApiProvider,
     ResponsesModelProfile,
@@ -40,10 +41,17 @@ class OpenAIProvider:
         tools: list[CapabilityDescriptor],
         profile: ResponsesModelProfile,
         system_instruction_override: str | None = None,
+        *,
+        execution_control: Any | None = None,
+        stream_observer: ProviderStreamObserver | None = None,
+        output_schema: dict[str, Any] | None = None,
     ) -> ProviderTurnResult:
         return self._delegate.generate_turn(
             messages,
             tools,
             profile,
             system_instruction_override=system_instruction_override,
+            execution_control=execution_control,
+            stream_observer=stream_observer,
+            output_schema=output_schema,
         )

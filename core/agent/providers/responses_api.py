@@ -17,7 +17,12 @@ from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI, 
 
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.prompting import SECURITY_BOUNDARY_DIRECTIVE
-from core.agent.providers.contract import ProviderTurnResult, ProviderToolEvent
+from core.agent.providers.contract import (
+    ProviderTurnResult,
+    ProviderToolEvent,
+    ProviderStreamEvent,
+    ProviderStreamObserver,
+)
 from core.agent.providers.retries import (
     call_with_bounded_retries,
     exponential_backoff_seconds,
@@ -27,6 +32,7 @@ from core.agent.tool_schemas import descriptor_to_responses_tool
 from core.agent.types import AgentMessage, Citation, TokenUsage, ToolCall, ToolResult
 
 _LOGGER = logging.getLogger(__name__)
+RESPONSES_REQUEST_TIMEOUT_SECONDS = 120.0
 
 ResponsesProviderKind = Literal["openai"]
 
@@ -366,7 +372,10 @@ class ResponsesApiProvider:
         default_headers: dict[str, str] | None = None,
     ) -> None:
         self.provider_kind = provider_kind
-        client_kwargs: dict[str, Any] = {"api_key": api_key}
+        client_kwargs: dict[str, Any] = {
+            "api_key": api_key,
+            "timeout": RESPONSES_REQUEST_TIMEOUT_SECONDS,
+        }
         if base_url:
             client_kwargs["base_url"] = base_url
         if default_headers:
@@ -379,6 +388,10 @@ class ResponsesApiProvider:
         tools: list[CapabilityDescriptor],
         profile: ResponsesModelProfile,
         system_instruction_override: str | None = None,
+        *,
+        execution_control: Any | None = None,
+        stream_observer: ProviderStreamObserver | None = None,
+        output_schema: dict[str, Any] | None = None,
     ) -> ProviderTurnResult:
         system_instruction = (
             system_instruction_override or profile.system_instruction
@@ -402,10 +415,28 @@ class ResponsesApiProvider:
             request["reasoning"] = {"effort": profile.reasoning_effort}
             if profile.supports_encrypted_reasoning:
                 request["include"] = ["reasoning.encrypted_content"]
+        schema_applied = bool(output_schema and not tools)
+        if schema_applied and self.provider_kind == "openai":
+            request["text"] = {
+                "format": {
+                    "type": "json_schema",
+                    "name": "apex_output",
+                    "schema": output_schema,
+                    "strict": True,
+                }
+            }
 
         def _create() -> Any:
+            if execution_control is not None:
+                execution_control.before_provider_attempt()
+            call_request = dict(request)
+            if execution_control is not None:
+                call_request["timeout"] = min(
+                    RESPONSES_REQUEST_TIMEOUT_SECONDS,
+                    max(0.1, execution_control.remaining_seconds()),
+                )
             try:
-                return self.client.responses.create(**request)
+                return self.client.responses.create(**call_request, stream=True)
             except APIStatusError as exc:
                 if exc.status_code == 400:
                     _LOGGER.warning(
@@ -418,17 +449,109 @@ class ResponsesApiProvider:
                     )
                 raise
 
+        def _consume() -> Any:
+            stream = _create()
+            # Compatibility with lightweight fakes and providers that return a
+            # completed response despite stream=True.
+            completed_output = getattr(stream, "output", None)
+            if isinstance(completed_output, list) and completed_output:
+                return stream
+            text_parts: list[str] = []
+            stream_started = time.perf_counter()
+            ttft_ms: float | None = None
+            tool_state: dict[int, dict[str, Any]] = {}
+            output_items: list[dict[str, Any]] = []
+            final_model: str | None = None
+            final_usage: Any = None
+            try:
+                for raw_event in stream:
+                    if execution_control is not None:
+                        execution_control.before_provider_attempt()
+                    event = _item_to_dict(raw_event)
+                    event_type = str(event.get("type") or "")
+                    if event_type == "response.output_text.delta":
+                        delta = event.get("delta")
+                        if isinstance(delta, str):
+                            text_parts.append(delta)
+                            if ttft_ms is None:
+                                ttft_ms = round((time.perf_counter() - stream_started) * 1000, 2)
+                            if stream_observer is not None:
+                                stream_observer(ProviderStreamEvent(kind="text", text=delta))
+                    elif event_type == "response.output_item.added":
+                        item = event.get("item")
+                        item = _item_to_dict(item) if item is not None and not isinstance(item, dict) else (item or {})
+                        if item.get("type") == "function_call":
+                            index = int(event.get("output_index", len(tool_state)))
+                            tool_state[index] = {
+                                "id": item.get("call_id") or item.get("id") or f"call_{index}",
+                                "name": item.get("name") or "",
+                                "arguments": "",
+                            }
+                            if text_parts and stream_observer is not None:
+                                stream_observer(ProviderStreamEvent(kind="reset"))
+                    elif event_type == "response.function_call_arguments.delta":
+                        index = int(event.get("output_index", event.get("item_id", 0)) if str(event.get("output_index", "")).isdigit() else 0)
+                        state = tool_state.setdefault(index, {"id": f"call_{index}", "name": "", "arguments": ""})
+                        delta = event.get("delta")
+                        if isinstance(delta, str):
+                            state["arguments"] += delta
+                    elif event_type == "response.output_item.done":
+                        item = event.get("item")
+                        item = _item_to_dict(item) if item is not None and not isinstance(item, dict) else (item or {})
+                        if item.get("type") == "function_call":
+                            index = int(event.get("output_index", len(tool_state)))
+                            state = tool_state.setdefault(index, {})
+                            state.update(item)
+                    elif event_type in {"response.completed", "response.done"}:
+                        response = event.get("response") or event
+                        if isinstance(response, dict):
+                            if isinstance(response.get("output"), list):
+                                output_items = response["output"]
+                            final_model = response.get("model") if isinstance(response.get("model"), str) else None
+                            final_usage = response.get("usage")
+                response_obj = type("StreamResponse", (), {})()
+                response_obj.output = output_items
+                response_obj.model = final_model or profile.api_model
+                response_obj.usage = final_usage
+                response_obj._stream_text = "".join(text_parts)
+                response_obj._stream_tools = tool_state
+                response_obj._stream_measurements = {
+                    "ttft_ms": ttft_ms,
+                } if ttft_ms is not None else {}
+                return response_obj
+            finally:
+                close = getattr(stream, "close", None)
+                if callable(close):
+                    close()
+
         started = time.perf_counter()
         response, retry_count = call_with_bounded_retries(
-            _create,
+            _consume,
             is_retryable=_is_retryable_responses_error,
             wait_seconds=_responses_wait_seconds,
             log_label=f"{self.provider_kind}-responses",
+            check=execution_control.before_provider_attempt if execution_control is not None else None,
+            before_retry=execution_control.before_retry if execution_control is not None else None,
+            remaining_seconds=execution_control.remaining_seconds if execution_control is not None else None,
+            execution_control=execution_control,
         )
         provider_ms = round((time.perf_counter() - started) * 1000, 2)
 
         output = list(getattr(response, "output", None) or [])
         content, tool_calls, serialized_items = _extract_text_and_tools(output)
+        streamed_text = getattr(response, "_stream_text", None)
+        if isinstance(streamed_text, str):
+            content = streamed_text or None
+            stream_tools = getattr(response, "_stream_tools", {})
+            tool_calls = []
+            for index, item in (sorted(stream_tools.items()) if isinstance(stream_tools, dict) else []):
+                if not isinstance(item, dict):
+                    continue
+                tool_calls.append(ToolCall(
+                    id=str(item.get("call_id") or item.get("id") or f"call_{index}"),
+                    name=str(item.get("name") or ""),
+                    arguments=_parse_arguments(item.get("arguments", "")),
+                ))
         message = AgentMessage(
             role="agent",
             content=content,
@@ -441,7 +564,12 @@ class ResponsesApiProvider:
         citations = _extract_citations(serialized_items)
         provider_tool_events = _extract_provider_tool_events(serialized_items)
         _attribute_hosted_durations(provider_tool_events, provider_ms)
+        if stream_observer is not None:
+            stream_observer(ProviderStreamEvent(kind="completed"))
 
+        stream_measurements = getattr(response, "_stream_measurements", None)
+        if not isinstance(stream_measurements, dict):
+            stream_measurements = {}
         return ProviderTurnResult(
             message=message,
             resolved_model=resolved_model if isinstance(resolved_model, str) else None,
@@ -450,6 +578,11 @@ class ResponsesApiProvider:
             citations=citations,
             provider_tool_events=provider_tool_events,
             retry_count=retry_count,
+            output_schema_applied=schema_applied,
+            runtime_measurements={
+                "total_duration_ms": provider_ms,
+                **stream_measurements,
+            },
         )
 
 

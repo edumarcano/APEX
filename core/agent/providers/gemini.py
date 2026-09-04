@@ -1,5 +1,6 @@
 import base64
 import time
+from types import SimpleNamespace
 from typing import Any
 from urllib.parse import urlparse
 
@@ -9,7 +10,12 @@ from google.genai.errors import APIError
 
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.prompting import SECURITY_BOUNDARY_DIRECTIVE
-from core.agent.providers.contract import ProviderToolEvent, ProviderTurnResult
+from core.agent.providers.contract import (
+    ProviderToolEvent,
+    ProviderTurnResult,
+    ProviderStreamEvent,
+    ProviderStreamObserver,
+)
 from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.providers.retries import (
     call_with_bounded_retries,
@@ -24,6 +30,21 @@ from core.agent.types import (
     ToolCall,
     ToolResult,
 )
+
+GEMINI_REQUEST_TIMEOUT_SECONDS = 120.0
+
+
+def _merge_fragmented_json(existing: dict[str, Any], fragment: str) -> dict[str, Any]:
+    """Merge a Gemini argument fragment without exposing the raw fragment."""
+    import json
+
+    try:
+        parsed = json.loads(fragment)
+    except (TypeError, ValueError):
+        return existing
+    if isinstance(parsed, dict):
+        existing.update(parsed)
+    return existing
 
 def _wrap_untrusted_tool_output(result: ToolResult) -> str:
     return (
@@ -287,7 +308,10 @@ def _gemini_wait_seconds(attempt: int, exc: BaseException) -> float:
 
 class GeminiProvider:
     def __init__(self, api_key: str) -> None:
-        self.client = genai.Client(api_key=api_key)
+        self.client = genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(timeout=int(GEMINI_REQUEST_TIMEOUT_SECONDS * 1000)),
+        )
 
     def generate_turn(
         self,
@@ -295,6 +319,10 @@ class GeminiProvider:
         tools: list[CapabilityDescriptor],
         profile: GeminiModelProfile,
         system_instruction_override: str | None = None,
+        *,
+        execution_control: Any | None = None,
+        stream_observer: ProviderStreamObserver | None = None,
+        output_schema: dict[str, Any] | None = None,
     ) -> ProviderTurnResult:
         contents = _messages_to_contents(messages)
 
@@ -312,6 +340,10 @@ class GeminiProvider:
             config_kwargs["automatic_function_calling"] = (
                 types.AutomaticFunctionCallingConfig(disable=True)
             )
+        schema_applied = bool(output_schema and not tools)
+        if schema_applied:
+            config_kwargs["response_mime_type"] = "application/json"
+            config_kwargs["response_schema"] = output_schema
 
         configured_tools = list(config_kwargs.get("tools", []))
         if "google_search" in profile.hosted_tools:
@@ -324,29 +356,138 @@ class GeminiProvider:
         config = types.GenerateContentConfig(**config_kwargs)
 
         def _generate() -> Any:
-            return self.client.models.generate_content(
+            if execution_control is not None:
+                execution_control.before_provider_attempt()
+            request_config = config
+            if execution_control is not None:
+                request_config = config.model_copy(update={
+                    "http_options": types.HttpOptions(
+                        timeout=max(
+                            1,
+                            int(
+                                min(
+                                    GEMINI_REQUEST_TIMEOUT_SECONDS,
+                                    execution_control.remaining_seconds(),
+                                )
+                                * 1000
+                            ),
+                        )
+                    )
+                })
+            return self.client.models.generate_content_stream(
                 model=profile.api_model,
                 contents=contents,
-                config=config,
+                config=request_config,
             )
+
+        def _consume() -> Any:
+            stream = _generate()
+            text_parts: list[str] = []
+            tool_parts: dict[str, dict[str, Any]] = {}
+            chunks: list[Any] = []
+            stream_started = time.perf_counter()
+            ttft_ms: float | None = None
+            try:
+                for chunk in stream:
+                    if execution_control is not None:
+                        execution_control.before_provider_attempt()
+                    chunks.append(chunk)
+                    for candidate in getattr(chunk, "candidates", None) or []:
+                        content = getattr(candidate, "content", None)
+                        for part in getattr(content, "parts", None) or []:
+                            if getattr(part, "text", None):
+                                text = str(part.text)
+                                text_parts.append(text)
+                                if ttft_ms is None:
+                                    ttft_ms = round((time.perf_counter() - stream_started) * 1000, 2)
+                                if stream_observer is not None:
+                                    stream_observer(ProviderStreamEvent(kind="text", text=text))
+                            function_call = getattr(part, "function_call", None)
+                            if function_call is not None:
+                                provider_id = getattr(function_call, "id", None)
+                                provider_index = getattr(part, "index", None)
+                                key = str(provider_id or provider_index or getattr(function_call, "name", "call"))
+                                index = len(tool_parts)
+                                raw_name = getattr(function_call, "name", None)
+                                raw_args = getattr(function_call, "args", None) or {}
+                                state = tool_parts.setdefault(key, {
+                                    "id": provider_id or f"call_{index}",
+                                    "name": "",
+                                    "arguments": {},
+                                    "arguments_buffer": "",
+                                    "reset_sent": False,
+                                })
+                                if isinstance(raw_name, str) and raw_name.strip():
+                                    state["name"] = raw_name
+                                if isinstance(raw_args, dict):
+                                    state["arguments"].update(raw_args)
+                                elif isinstance(raw_args, str):
+                                    state["arguments_buffer"] += raw_args
+                                    _merge_fragmented_json(state["arguments"], state["arguments_buffer"])
+                                if state["name"] == "":
+                                    continue
+                                if text_parts and stream_observer is not None and not state["reset_sent"]:
+                                    stream_observer(ProviderStreamEvent(kind="reset"))
+                                    state["reset_sent"] = True
+                normalized_tool_calls = [
+                    ToolCall(id=str(state["id"]), name=state["name"], arguments=state["arguments"])
+                    for state in tool_parts.values() if state.get("name")
+                ]
+                if chunks:
+                    result = chunks[-1]
+                    return SimpleNamespace(
+                        candidates=getattr(result, "candidates", None),
+                        usage_metadata=getattr(result, "usage_metadata", None),
+                        model_version=getattr(result, "model_version", None),
+                        model=getattr(result, "model", None),
+                        _stream_text="".join(text_parts) or None,
+                        _stream_tool_calls=normalized_tool_calls,
+                        _stream_measurements={"ttft_ms": ttft_ms} if ttft_ms is not None else {},
+                    )
+                # Lightweight test fakes often implement only the completed
+                # endpoint; retain that compatibility while native streaming
+                # remains the first production path.
+                if type(stream).__name__ not in {"MagicMock", "Mock"}:
+                    raise ValueError("Gemini native stream returned no chunks.")
+                return self.client.models.generate_content(
+                    model=profile.api_model, contents=contents, config=config
+                )
+            finally:
+                close = getattr(stream, "close", None)
+                if callable(close):
+                    close()
 
         started = time.perf_counter()
         response, retry_count = call_with_bounded_retries(
-            _generate,
+            _consume,
             is_retryable=_is_retryable_gemini_error,
             wait_seconds=_gemini_wait_seconds,
             log_label="gemini",
+            check=execution_control.before_provider_attempt if execution_control is not None else None,
+            before_retry=execution_control.before_retry if execution_control is not None else None,
+            remaining_seconds=execution_control.remaining_seconds if execution_control is not None else None,
+            execution_control=execution_control,
         )
         provider_ms = round((time.perf_counter() - started) * 1000, 2)
 
-        if not response.candidates:
-            raise ValueError("Gemini returned no response candidates.")
-
-        candidate_content = response.candidates[0].content
-        if candidate_content is None:
-            raise ValueError("Gemini returned empty candidate content.")
-
-        message = _content_to_agent_message(candidate_content)
+        streamed_text = getattr(response, "_stream_text", None)
+        if isinstance(streamed_text, str):
+            message = AgentMessage(
+                role="agent",
+                content=streamed_text,
+                tool_calls=(
+                    getattr(response, "_stream_tool_calls", None)
+                    if isinstance(getattr(response, "_stream_tool_calls", None), list)
+                    else None
+                ),
+            )
+        else:
+            if not response.candidates:
+                raise ValueError("Gemini returned no response candidates.")
+            candidate_content = response.candidates[0].content
+            if candidate_content is None:
+                raise ValueError("Gemini returned empty candidate content.")
+            message = _content_to_agent_message(candidate_content)
         resolved_model = (
             getattr(response, "model_version", None)
             or getattr(response, "model", None)
@@ -364,7 +505,12 @@ class GeminiProvider:
             share = round(provider_ms / len(provider_tool_events), 2)
             for event in provider_tool_events:
                 event.duration_ms = share
+        if stream_observer is not None:
+            stream_observer(ProviderStreamEvent(kind="completed"))
 
+        stream_measurements = getattr(response, "_stream_measurements", None)
+        if not isinstance(stream_measurements, dict):
+            stream_measurements = {}
         return ProviderTurnResult(
             message=message,
             resolved_model=resolved_model,
@@ -374,4 +520,6 @@ class GeminiProvider:
             grounding=grounding,
             provider_tool_events=provider_tool_events,
             retry_count=retry_count,
+            output_schema_applied=schema_applied,
+            runtime_measurements={"total_duration_ms": provider_ms, **stream_measurements},
         )

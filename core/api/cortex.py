@@ -153,6 +153,14 @@ def _model_pricing_metadata(profile: ModelProfile) -> AgentPricingMetadata:
 
 
 def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
+    capability_defaults: dict[str, dict[str, object]] = {
+        "openai": {"streaming": "native", "structured_output": "native", "usage_reporting": "reported", "measurements": ["total_duration_ms", "ttft_ms"]},
+        "openrouter": {"streaming": "native", "structured_output": "unavailable", "usage_reporting": "reported", "measurements": ["total_duration_ms", "ttft_ms"]},
+        "gemini": {"streaming": "native", "structured_output": "native", "usage_reporting": "reported", "measurements": ["total_duration_ms", "ttft_ms"]},
+        "llama_cpp": {"streaming": "native", "structured_output": "native", "usage_reporting": "reported", "measurements": ["prompt_eval_duration_ms", "eval_duration_ms", "prompt_eval_count", "eval_count", "tokens_per_second", "total_duration_ms"]},
+        "ollama": {"streaming": "completed_turn", "structured_output": "unavailable", "usage_reporting": "reported", "measurements": ["total_duration_ms"]},
+    }
+    capability = capability_defaults[profile.provider]
     llama_runtime = (
         LLAMA_CPP_RUNTIME_CONFIGS.get(profile.model_id)
         if profile.provider == "llama_cpp"
@@ -212,6 +220,10 @@ def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
         reasoning_modes=reasoning_modes,
         default_reasoning_mode=default_reasoning_mode,
         supports_encrypted_reasoning=profile.supports_encrypted_reasoning,
+        streaming=capability["streaming"],
+        structured_output=capability["structured_output"],
+        usage_reporting=capability["usage_reporting"],
+        supported_runtime_measurements=capability["measurements"],
     )
 
 
