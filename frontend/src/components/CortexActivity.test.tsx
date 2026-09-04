@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { UseCortexRunsResult } from '../hooks/useCortexRuns'
 import type { RunRecord } from '../types/runs'
-import type { AgentStatus, SystemDiagnostics } from '../types/telemetry'
+import type { AgentStatus } from '../types/telemetry'
 import { CortexActivity } from './CortexActivity'
 
 function createMockRun(overrides: Partial<RunRecord> = {}): RunRecord {
@@ -97,17 +97,6 @@ describe('CortexActivity', () => {
       selectRun,
     })
 
-    const diagnostics: SystemDiagnostics = {
-      cpu: 18.5,
-      cpu_freq: 3200,
-      ram: 42.0,
-      ram_used: 14000,
-      ram_total: 32768,
-      disk: 65.0,
-      disk_used: 650,
-      disk_total: 1000,
-    }
-
     const agentsStatus: AgentStatus[] = [
       {
         key: 'apex',
@@ -166,7 +155,6 @@ describe('CortexActivity', () => {
     render(
       <CortexActivity
         runsState={runsState}
-        diagnostics={diagnostics}
         agentsStatus={agentsStatus}
       />,
     )

@@ -16,7 +16,6 @@ from unittest.mock import MagicMock, patch
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.types import AgentMessage
 from core.api.routers.cortex import (
-    CORTEX_RUNS_MAX_TOTAL_TOKENS,
     _resolved_turn_metadata,
     _submit_run,
     _validate_replayed_turn,

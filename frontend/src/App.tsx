@@ -1887,7 +1887,6 @@ export default function App(): ReactElement {
               snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
             }}
             onAssistantPreflight={runAssistantPreflight}
-            diagnostics={diagnostics}
           />
       )}
         </ApexAssistantRuntime>

@@ -15,12 +15,11 @@ import { useState, type ReactElement } from 'react'
 
 import type { UseCortexRunsResult } from '../hooks/useCortexRuns'
 import type { RunStatus } from '../types/runs'
-import type { AgentStatus, SystemDiagnostics } from '../types/telemetry'
+import type { AgentStatus } from '../types/telemetry'
 
 export interface CortexActivityProps {
   runsState: UseCortexRunsResult
   agentsStatus?: AgentStatus[]
-  diagnostics?: SystemDiagnostics | null
   className?: string
 }
 

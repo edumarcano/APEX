@@ -119,7 +119,7 @@ def _resolved_turn_metadata(payload: ConversationTurnRequest) -> dict[str, objec
             "runtime": profile.runtime,
             "provider": profile.provider,
             "effective_effort": resolve_effort(profile, payload.effort),
-            "effective_context_window": profile.maximum_context_window or CORTEX_RUNS_MAX_TOTAL_TOKENS,
+            "effective_context_window": profile.maximum_context_window,
             "effective_local_reasoning_mode": None,
         }
     if payload.effort is not None:
