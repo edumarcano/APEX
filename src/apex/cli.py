@@ -5,10 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time
 import uuid
 from dataclasses import dataclass
-from typing import Any, Generator, Sequence
+from typing import Any, Sequence
 from urllib.parse import quote
 
 import requests
@@ -82,92 +81,6 @@ class ApiClient:
                 detail=detail,
             )
         return _json_body(response)
-
-    def stream_events(
-        self,
-        path: str,
-        *,
-        last_event_id: int | None = None,
-    ) -> Generator[dict[str, Any], None, None]:
-        headers = {"Accept": "text/event-stream"}
-        if last_event_id is not None and last_event_id > 0:
-            headers["Last-Event-ID"] = str(last_event_id)
-        try:
-            response = self._session.get(
-                f"{API_ROOT}{path}",
-                headers=headers,
-                stream=True,
-                timeout=(_CONNECT_TIMEOUT_SECONDS, _LONG_READ_TIMEOUT_SECONDS),
-                allow_redirects=False,
-            )
-        except requests.RequestException as exc:
-            raise CliError(
-                "backend_unavailable",
-                "APEX is not reachable at http://127.0.0.1:8000.",
-            ) from exc
-
-        try:
-            if not 200 <= response.status_code < 300:
-                try:
-                    body = response.json()
-                except ValueError:
-                    body = None
-                detail = body.get("detail") if isinstance(body, dict) else None
-                raise CliError(
-                    "http_error",
-                    _http_error_message(response.status_code, detail),
-                    status_code=response.status_code,
-                    detail=detail,
-                )
-
-            current_id: int | None = None
-            current_event: str | None = None
-            current_data: list[str] = []
-
-            try:
-                for line in response.iter_lines(decode_unicode=True):
-                    if line is None:
-                        continue
-                    line_str = line.strip("\r")
-                    if not line_str:
-                        if current_data or current_event is not None:
-                            raw_data = "\n".join(current_data)
-                            payload: Any = None
-                            if raw_data:
-                                try:
-                                    payload = json.loads(raw_data)
-                                except ValueError:
-                                    payload = raw_data
-                            yield {
-                                "id": current_id,
-                                "type": current_event or "message",
-                                "payload": payload,
-                                "raw": raw_data,
-                            }
-                        current_id = None
-                        current_event = None
-                        current_data = []
-                        continue
-
-                    if line_str.startswith(":"):
-                        continue
-                    if line_str.startswith("id:"):
-                        val = line_str[3:].strip()
-                        try:
-                            current_id = int(val)
-                        except ValueError:
-                            pass
-                    elif line_str.startswith("event:"):
-                        current_event = line_str[6:].strip()
-                    elif line_str.startswith("data:"):
-                        current_data.append(line_str[5:].lstrip(" "))
-            except requests.RequestException as exc:
-                raise CliError(
-                    "backend_unavailable",
-                    "Connection to APEX stream was lost.",
-                ) from exc
-        finally:
-            response.close()
 
 
 def _json_body(response: requests.Response) -> object:
@@ -254,23 +167,6 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json_option(runs)
     runs_commands = runs.add_subparsers(dest="runs_command", required=True)
 
-    runs_start = runs_commands.add_parser("start", help="Start a Cortex run.")
-    _add_json_option(runs_start)
-    runs_start.add_argument("prompt", help="Prompt for Apex Agent.")
-    runs_start.add_argument("--model", help="Model ID. Defaults to the backend selection.")
-    runs_start.add_argument(
-        "--effort",
-        choices=("none", "minimal", "low", "medium", "high", "xhigh", "max"),
-        help="Cloud model reasoning effort override.",
-    )
-    runs_start.add_argument("--profile", help="Saved or built-in tool profile ID.")
-    runs_start.add_argument(
-        "--detach",
-        action="store_true",
-        help="Start in the background and output the run record without following.",
-    )
-    runs_start.set_defaults(handler=_runs_start)
-
     runs_list = runs_commands.add_parser("list", help="List recent Cortex runs.")
     _add_json_option(runs_list)
     runs_list.add_argument(
@@ -290,11 +186,6 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json_option(runs_show)
     runs_show.add_argument("run_id", help="UUID of the run.")
     runs_show.set_defaults(handler=_runs_show)
-
-    runs_follow = runs_commands.add_parser("follow", help="Stream live events from an active run.")
-    _add_json_option(runs_follow)
-    runs_follow.add_argument("run_id", help="UUID of the run.")
-    runs_follow.set_defaults(handler=_runs_follow)
 
     runs_cancel = runs_commands.add_parser("cancel", help="Cancel an active Cortex run.")
     _add_json_option(runs_cancel)
@@ -662,55 +553,6 @@ def _render_action_result(payload: object) -> None:
     print(f"Status: {payload.get('status', 'unknown')}")
 
 
-def _runs_start(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
-    prompt = args.prompt.strip()
-    if not prompt:
-        raise CliError("invalid_input", "Prompt must contain non-whitespace text.")
-    request_payload: dict[str, object] = {"prompt": prompt}
-    if args.model is not None:
-        request_payload["model_id"] = args.model
-    if args.effort is not None:
-        request_payload["effort"] = args.effort
-    if args.profile is not None:
-        request_payload["tool_profile_id"] = args.profile
-
-    conversation = _require_mapping(
-        client.request(
-            "POST",
-            "/api/v1/cortex/conversations",
-            payload={"origin": "cli", "title": _cli_conversation_title(prompt)},
-        ),
-        "conversation",
-    )
-    conversation_id = conversation.get("id")
-    if not isinstance(conversation_id, str):
-        raise CliError("invalid_response", "APEX did not return a conversation ID.")
-
-    request_payload["user_message_id"] = str(uuid.uuid4())
-    request_payload["agent_message_id"] = str(uuid.uuid4())
-
-    run_record = _require_mapping(
-        client.request(
-            "POST",
-            f"/api/v1/cortex/conversations/{quote(conversation_id, safe='')}/runs",
-            payload=request_payload,
-        ),
-        "run record",
-    )
-    run_id = run_record.get("id")
-    if not isinstance(run_id, str):
-        raise CliError("invalid_response", "APEX did not return a run ID.")
-
-    detach = bool(getattr(args, "detach", False))
-    if detach:
-        _emit(run_record, json_mode, _render_run_start_detached)
-        return 0
-
-    if not json_mode:
-        print(f"[Run started: {run_id}]", file=sys.stderr)
-    return _follow_run_stream(client, run_id, json_mode)
-
-
 def _runs_list(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
     params: list[str] = []
     if getattr(args, "status", None) is not None:
@@ -734,13 +576,6 @@ def _runs_show(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> 
     return 0
 
 
-def _runs_follow(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
-    run_id = args.run_id.strip()
-    if not run_id:
-        raise CliError("invalid_input", "Run ID must contain non-whitespace text.")
-    return _follow_run_stream(client, run_id, json_mode)
-
-
 def _runs_cancel(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
     run_id = args.run_id.strip()
     if not run_id:
@@ -749,147 +584,6 @@ def _runs_cancel(args: argparse.Namespace, client: ApiClient, json_mode: bool) -
     _require_mapping(payload, "run detail")
     _emit(payload, json_mode, _render_run_cancelled)
     return 0
-
-
-def _follow_run_stream(
-    client: ApiClient,
-    run_id: str,
-    json_mode: bool,
-    *,
-    max_reconnects: int = 3,
-) -> int:
-    path = f"/api/v1/cortex/runs/{quote(run_id, safe='')}/events"
-    last_id: int | None = None
-    terminal_reached = False
-    exit_code = 0
-    reconnect_attempts = 0
-
-    while not terminal_reached:
-        try:
-            for event in client.stream_events(path, last_event_id=last_id):
-                if event.get("id") is not None:
-                    last_id = event["id"]
-                reconnect_attempts = 0
-
-                event_type = event.get("type")
-                payload = event.get("payload")
-
-                if json_mode:
-                    raw = event.get("raw")
-                    if raw:
-                        print(raw, flush=True)
-                    elif isinstance(payload, dict):
-                        print(json.dumps(payload, ensure_ascii=False), flush=True)
-                else:
-                    _render_stream_event(event_type, payload)
-
-                if event_type == "run.completed":
-                    terminal_reached = True
-                    record = payload.get("record") if isinstance(payload, dict) else payload
-                    if isinstance(record, dict):
-                        status = record.get("status")
-                        exit_code = 0 if status == "completed" else 1
-                    break
-                elif event_type == "run.status" and isinstance(payload, dict):
-                    status = payload.get("status")
-                    if status in {"completed", "failed", "cancelled", "interrupted"}:
-                        terminal_reached = True
-                        exit_code = 0 if status == "completed" else 1
-                elif event_type == "run.snapshot" and isinstance(payload, dict):
-                    run_data = payload.get("run")
-                    if isinstance(run_data, dict):
-                        status = run_data.get("status")
-                        if status in {"completed", "failed", "cancelled", "interrupted"}:
-                            terminal_reached = True
-                            exit_code = 0 if status == "completed" else 1
-                            if not json_mode:
-                                _render_stream_event("run.completed", {"record": run_data})
-                            break
-
-            if terminal_reached:
-                break
-
-            if reconnect_attempts < max_reconnects:
-                reconnect_attempts += 1
-                time.sleep(0.2)
-                continue
-            else:
-                break
-        except KeyboardInterrupt:
-            if not json_mode:
-                print(f"\n[Detached from run {run_id}. Run continues in background.]", file=sys.stderr)
-            return 0
-        except CliError:
-            if reconnect_attempts < max_reconnects and not terminal_reached:
-                reconnect_attempts += 1
-                time.sleep(0.2)
-                continue
-            raise
-
-    return exit_code
-
-
-def _render_stream_event(event_type: str | None, payload: Any) -> None:
-    if not isinstance(payload, dict):
-        return
-
-    if event_type == "response.delta":
-        delta = payload.get("delta")
-        if isinstance(delta, str):
-            sys.stdout.write(delta)
-            sys.stdout.flush()
-    elif event_type == "response.reset":
-        sys.stdout.write("\n")
-        sys.stdout.flush()
-        print("[Provisional response reset for tool execution]", file=sys.stderr)
-    elif event_type == "model.started":
-        turn = payload.get("turn", 1)
-        print(f"[Model started: turn {turn}]", file=sys.stderr)
-    elif event_type == "tool.started":
-        name = payload.get("name", "tool")
-        print(f"[Tool started: {name}]", file=sys.stderr)
-    elif event_type == "tool.completed":
-        name = payload.get("name", "tool")
-        status = payload.get("status", "ok")
-        duration = payload.get("duration_ms")
-        dur_str = f" ({status}, {duration:.0f}ms)" if isinstance(duration, (int, float)) else f" ({status})"
-        print(f"[Tool completed: {name}{dur_str}]", file=sys.stderr)
-    elif event_type == "action.proposed":
-        action_id = payload.get("action_id", "unknown")
-        risk = payload.get("risk", "unknown")
-        print(f"[Action proposed: {action_id} | risk: {risk}]", file=sys.stderr)
-    elif event_type == "run.status":
-        status = payload.get("status", "unknown")
-        print(f"[Run status: {status}]", file=sys.stderr)
-    elif event_type == "run.snapshot":
-        answer = payload.get("answer")
-        if isinstance(answer, str) and answer:
-            sys.stdout.write(answer)
-            sys.stdout.flush()
-    elif event_type == "run.completed":
-        sys.stdout.write("\n")
-        sys.stdout.flush()
-        record = payload.get("record") if isinstance(payload.get("record"), dict) else payload
-        status = record.get("status", "completed")
-        elapsed = record.get("elapsed_seconds", 0.0)
-        tokens = record.get("total_tokens", 0)
-        model = record.get("resolved_model") or record.get("requested_model", "unknown")
-        print(f"[Run {status}: {elapsed:.1f}s | {tokens} tokens | {model}]", file=sys.stderr)
-        err = record.get("error")
-        if isinstance(err, dict):
-            msg = err.get("message") or err.get("code") or "failed"
-            print(f"Error: {msg}", file=sys.stderr)
-
-
-def _render_run_start_detached(payload: object) -> None:
-    if not isinstance(payload, dict):
-        print("APEX returned an unexpected run response.")
-        return
-    print(f"Run ID: {payload.get('id', 'unknown')}")
-    print(f"Status: {payload.get('status', 'unknown')}")
-    print(f"Model: {payload.get('requested_model', 'unknown')}")
-    print(f"Conversation ID: {payload.get('conversation_id', 'unknown')}")
-    print(f"To follow: uv run apex runs follow {payload.get('id', '<run_id>')}")
 
 
 def _render_runs_list(payload: object) -> None:

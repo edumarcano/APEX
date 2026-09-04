@@ -6,31 +6,21 @@ import io
 import json
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
-from typing import Any
 from unittest import mock
-
-import requests
 
 from apex import cli
 
 
 class _Response:
-    def __init__(self, status_code: int, payload: object | Exception, lines: list[Any] | None = None) -> None:
+    def __init__(self, status_code: int, payload: object | Exception) -> None:
         self.status_code = status_code
         self._payload = payload
-        self._lines = lines or []
         self.closed = False
 
     def json(self) -> object:
         if isinstance(self._payload, Exception):
             raise self._payload
         return self._payload
-
-    def iter_lines(self, decode_unicode: bool = True) -> Any:
-        for line in self._lines:
-            if isinstance(line, Exception):
-                raise line
-            yield line
 
     def close(self) -> None:
         self.closed = True
@@ -77,26 +67,6 @@ class CliRunsTests(unittest.TestCase):
             code = cli.main(argv)
         return code, output.getvalue(), errors.getvalue(), session
 
-    def test_runs_start_detached(self) -> None:
-        conversation = _Response(201, {"id": "conv-101"})
-        run_record = _Response(202, {
-            "id": "run-202",
-            "status": "queued",
-            "requested_model": "deepseek/deepseek-v4-flash-0731",
-            "conversation_id": "conv-101",
-        })
-        code, output, errors, session = self._run(
-            ["runs", "start", "What is the plan?", "--detach", "--model", "deepseek/deepseek-v4-flash-0731"],
-            [conversation, run_record],
-        )
-        self.assertEqual(code, 0)
-        self.assertIn("run-202", output)
-        self.assertIn("queued", output)
-        self.assertEqual(session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/conversations")
-        self.assertEqual(session.calls[1]["url"], f"{cli.API_ROOT}/api/v1/cortex/conversations/conv-101/runs")
-        self.assertEqual(session.calls[1]["json"]["prompt"], "What is the plan?")
-        self.assertEqual(session.calls[1]["json"]["model_id"], "deepseek/deepseek-v4-flash-0731")
-
     def test_runs_list(self) -> None:
         runs_response = _Response(200, [
             {
@@ -125,6 +95,24 @@ class CliRunsTests(unittest.TestCase):
         self.assertIn("completed", output)
         self.assertIn("512 tok", output)
         self.assertEqual(session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/runs?status=completed&limit=10")
+
+    def test_runs_list_json(self) -> None:
+        runs_data = [
+            {
+                "id": "run-1",
+                "status": "completed",
+                "total_tokens": 512,
+            }
+        ]
+        runs_response = _Response(200, runs_data)
+        code, output, _, _ = self._run(
+            ["runs", "list", "--json"],
+            [runs_response],
+        )
+        self.assertEqual(code, 0)
+        parsed = json.loads(output)
+        self.assertEqual(len(parsed), 1)
+        self.assertEqual(parsed[0]["id"], "run-1")
 
     def test_runs_show(self) -> None:
         run_detail = _Response(200, {
@@ -162,6 +150,32 @@ class CliRunsTests(unittest.TestCase):
         self.assertIn("Answer Persisted: True", output)
         self.assertEqual(session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/runs/run-abc")
 
+    def test_runs_show_json(self) -> None:
+        run_detail = {
+            "id": "run-abc",
+            "status": "completed",
+            "total_tokens": 1024,
+            "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        }
+        resp = _Response(200, run_detail)
+        code, output, _, _ = self._run(
+            ["runs", "show", "run-abc", "--json"],
+            [resp],
+        )
+        self.assertEqual(code, 0)
+        parsed = json.loads(output)
+        self.assertEqual(parsed["id"], "run-abc")
+        self.assertEqual(parsed["trace_id"], "4bf92f3577b34da6a3ce929d0e0e4736")
+
+    def test_runs_show_not_found(self) -> None:
+        resp = _Response(404, {"detail": "Run was not found."})
+        code, _, errors, _ = self._run(
+            ["runs", "show", "run-nonexistent"],
+            [resp],
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("Run was not found", errors)
+
     def test_runs_cancel(self) -> None:
         cancel_response = _Response(200, {
             "id": "run-abc",
@@ -178,171 +192,28 @@ class CliRunsTests(unittest.TestCase):
         self.assertEqual(session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/runs/run-abc/cancel")
         self.assertEqual(session.calls[0]["method"], "POST")
 
-    def test_runs_follow_channel_separation(self) -> None:
-        lines = [
-            "id: 1",
-            "event: model.started",
-            'data: {"turn": 1}',
-            "",
-            "id: 2",
-            "event: response.delta",
-            'data: {"delta": "Hello, "}',
-            "",
-            "id: 3",
-            "event: tool.started",
-            'data: {"name": "weather_forecast"}',
-            "",
-            "id: 4",
-            "event: tool.completed",
-            'data: {"name": "weather_forecast", "status": "ok", "duration_ms": 120.4}',
-            "",
-            "id: 5",
-            "event: response.delta",
-            'data: {"delta": "world!"}',
-            "",
-            "id: 6",
-            "event: run.completed",
-            'data: {"record": {"id": "run-xyz", "status": "completed", "total_tokens": 120, "elapsed_seconds": 0.8, "resolved_model": "deepseek"}}',
-            "",
-        ]
-        sse_response = _Response(200, {}, lines=lines)
-        code, stdout, stderr, session = self._run(
-            ["runs", "follow", "run-xyz"],
-            [sse_response],
-        )
-        self.assertEqual(code, 0)
-        # Verify text deltas routed to stdout
-        self.assertEqual(stdout.strip(), "Hello, world!")
-
-        # Verify activity and summary footer routed to stderr
-        self.assertIn("[Model started: turn 1]", stderr)
-        self.assertIn("[Tool started: weather_forecast]", stderr)
-        self.assertIn("[Tool completed: weather_forecast (ok, 120ms)]", stderr)
-        self.assertIn("[Run completed: 0.8s | 120 tokens | deepseek]", stderr)
-        self.assertEqual(session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/runs/run-xyz/events")
-
-    def test_runs_follow_json_emits_ndjson(self) -> None:
-        lines = [
-            "id: 1",
-            "event: response.delta",
-            'data: {"delta": "test"}',
-            "",
-            "id: 2",
-            "event: run.completed",
-            'data: {"record": {"status": "completed"}}',
-            "",
-        ]
-        sse_response = _Response(200, {}, lines=lines)
-        code, stdout, stderr, _ = self._run(
-            ["runs", "follow", "run-xyz", "--json"],
-            [sse_response],
-        )
-        self.assertEqual(code, 0)
-        ndjson_lines = [line for line in stdout.strip().split("\n") if line]
-        self.assertEqual(len(ndjson_lines), 2)
-        parsed_1 = json.loads(ndjson_lines[0])
-        parsed_2 = json.loads(ndjson_lines[1])
-        self.assertEqual(parsed_1.get("delta"), "test")
-        self.assertEqual(parsed_2.get("record", {}).get("status"), "completed")
-
-    def test_runs_follow_ctrl_c_detaches_cleanly(self) -> None:
-        class _InterruptingSession(_Session):
-            def get(self, url: str, **kwargs: object) -> object:
-                raise KeyboardInterrupt()
-
-        output = io.StringIO()
-        errors = io.StringIO()
-        with (
-            redirect_stdout(output),
-            redirect_stderr(errors),
-            mock.patch("apex.cli.ApiClient", return_value=cli.ApiClient(_InterruptingSession([]))),
-        ):
-            code = cli.main(["runs", "follow", "run-int"])
-
-        self.assertEqual(code, 0)
-        self.assertIn("Detached from run run-int", errors.getvalue())
-        self.assertIn("Run continues in background", errors.getvalue())
-
-    def test_runs_follow_reconnects_with_last_event_id(self) -> None:
-        # First connection drops after event 1; second connection continues with event 2 and 3
-        lines_1 = [
-            "id: 1",
-            "event: response.delta",
-            'data: {"delta": "Part 1. "}',
-            "",
-        ]
-        lines_2 = [
-            "id: 2",
-            "event: response.delta",
-            'data: {"delta": "Part 2."}',
-            "",
-            "id: 3",
-            "event: run.completed",
-            'data: {"record": {"status": "completed"}}',
-            "",
-        ]
-        resp_1 = _Response(200, {}, lines=lines_1)
-        resp_2 = _Response(200, {}, lines=lines_2)
-        code, stdout, _, session = self._run(
-            ["runs", "follow", "run-stream"],
-            [resp_1, resp_2],
-        )
-        self.assertEqual(code, 0)
-        self.assertEqual(stdout.strip(), "Part 1. Part 2.")
-        self.assertEqual(len(session.calls), 2)
-        # Check that second request passed Last-Event-ID: 1
-        self.assertEqual(session.calls[1]["headers"].get("Last-Event-ID"), "1")
-        self.assertTrue(resp_1.closed)
-        self.assertTrue(resp_2.closed)
-
-    def test_runs_follow_reconnects_on_midstream_network_drop(self) -> None:
-        lines_1 = [
-            "id: 1",
-            "event: response.delta",
-            'data: {"delta": "Hello "}',
-            "",
-            requests.RequestException("connection dropped mid-stream"),
-        ]
-        lines_2 = [
-            "id: 2",
-            "event: response.delta",
-            'data: {"delta": "world!"}',
-            "",
-            "id: 3",
-            "event: run.completed",
-            'data: {"record": {"status": "completed"}}',
-            "",
-        ]
-        resp_1 = _Response(200, {}, lines=lines_1)
-        resp_2 = _Response(200, {}, lines=lines_2)
-        code, stdout, _, session = self._run(
-            ["runs", "follow", "run-drop"],
-            [resp_1, resp_2],
-        )
-        self.assertEqual(code, 0)
-        self.assertEqual(stdout.strip(), "Hello world!")
-        self.assertEqual(len(session.calls), 2)
-        self.assertEqual(session.calls[1]["headers"].get("Last-Event-ID"), "1")
-        self.assertTrue(resp_1.closed)
-        self.assertTrue(resp_2.closed)
-
-    def test_runs_follow_terminal_snapshot_does_not_retry(self) -> None:
-        lines = [
-            "id: 0",
-            "event: run.snapshot",
-            'data: {"run": {"id": "run-old", "status": "completed", "total_tokens": 256, "elapsed_seconds": 1.5, "resolved_model": "deepseek"}, "answer": "Done."}',
-            "",
-        ]
-        resp = _Response(200, {}, lines=lines)
-        code, stdout, stderr, session = self._run(
-            ["runs", "follow", "run-old"],
+    def test_runs_cancel_json(self) -> None:
+        cancel_response = {
+            "id": "run-abc",
+            "status": "cancelled",
+            "stop_reason": "operator_cancelled",
+        }
+        resp = _Response(200, cancel_response)
+        code, output, _, _ = self._run(
+            ["runs", "cancel", "run-abc", "--json"],
             [resp],
         )
         self.assertEqual(code, 0)
-        self.assertEqual(stdout.strip(), "Done.")
-        self.assertIn("[Run completed: 1.5s | 256 tokens | deepseek]", stderr)
-        self.assertEqual(len(session.calls), 1)
-        self.assertTrue(resp.closed)
+        parsed = json.loads(output)
+        self.assertEqual(parsed["status"], "cancelled")
+
+    def test_runs_invalid_run_id(self) -> None:
+        code, _, errors, _ = self._run(
+            ["runs", "show", "   "],
+            [],
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("Run ID must contain non-whitespace text", errors)
 
 
 if __name__ == "__main__":

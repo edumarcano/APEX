@@ -20,12 +20,9 @@ uv run apex actions show <action-id>
 uv run apex actions approve <action-id>
 uv run apex actions reject <action-id>
 uv run apex actions verify <action-id>
-uv run apex runs start "What needs my attention?"
-uv run apex runs start "Review my plan" --model deepseek/deepseek-v4-flash-0731 --detach
 uv run apex runs list
 uv run apex runs list --status running
 uv run apex runs show <run-id>
-uv run apex runs follow <run-id>
 uv run apex runs cancel <run-id>
 ```
 
@@ -49,13 +46,9 @@ Running `approve` is explicit operator approval, including for destructive actio
 
 `runs` commands inspect and control bounded Cortex execution:
 
-- `start` creates a CLI conversation and submits a new run. By default, it immediately follows the live event stream until completion. Pass `--detach` to start the run in the background and output the run record immediately.
 - `list` returns recent runs in the active partition, newest first. Filter by `--status` (`queued`, `running`, `cancelling`, `completed`, `failed`, `cancelled`, `interrupted`) or limit results with `--limit` (default 25, maximum 100).
 - `show` displays run details, cumulative token consumption, timing, turn/tool counts, completion evidence, trace ID, and error information.
-- `follow` consumes live server-sent events for an active or completed run. Response text deltas stream to `stdout`, while compact activity notifications (models, tools, action proposals) and the completion summary footer stream to `stderr`. If disconnected unexpectedly, it reconnects up to three times with `Last-Event-ID`. Pressing `Ctrl-C` detaches cleanly without cancelling the run.
 - `cancel` explicitly cancels a queued or running run.
-
-Passing `--json` to `follow` (or interactive `start`) outputs newline-delimited JSON (NDJSON) events to `stdout`.
 
 ## JSON and exit codes
 
