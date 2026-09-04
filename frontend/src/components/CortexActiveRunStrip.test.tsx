@@ -91,20 +91,37 @@ describe('CortexActiveRunStrip', () => {
     expect(onInspect).toHaveBeenCalledTimes(1)
   })
 
-  it('triggers onCancel when stop button is clicked, and hides stop button when cancelling', async () => {
-    const onCancel = vi.fn()
-    const run = createMockRun({ id: 'test-run-id', status: 'running' })
+  it('toggles between expanded docked tab and minimal collapsed pill', async () => {
+    const onInspect = vi.fn()
+    const run = createMockRun({ status: 'running', resolved_model: 'gemma-4-E2B-Q4_K_M.gguf' })
     const user = userEvent.setup()
 
-    const { rerender } = render(<CortexActiveRunStrip run={run} onCancel={onCancel} />)
+    render(<CortexActiveRunStrip run={run} onInspect={onInspect} />)
 
-    const stopBtn = screen.getByRole('button', { name: 'Stop run' })
-    await user.click(stopBtn)
+    // Initially expanded
+    expect(screen.getByTestId('cortex-active-run-strip')).toBeInTheDocument()
+    expect(screen.getByText('gemma-4-E2B-Q4_K_M.gguf')).toBeInTheDocument()
 
-    expect(onCancel).toHaveBeenCalledWith('test-run-id')
+    // Collapse
+    const collapseBtn = screen.getByRole('button', { name: 'Collapse activity strip' })
+    await user.click(collapseBtn)
 
-    rerender(<CortexActiveRunStrip run={{ ...run, status: 'cancelling' }} onCancel={onCancel} />)
-    expect(screen.queryByRole('button', { name: 'Stop run' })).not.toBeInTheDocument()
-    expect(screen.getByText('cancelling')).toBeInTheDocument()
+    // Collapsed state
+    expect(screen.queryByTestId('cortex-active-run-strip')).not.toBeInTheDocument()
+    expect(screen.getByTestId('cortex-active-run-strip-collapsed')).toBeInTheDocument()
+    expect(screen.queryByText('gemma-4-E2B-Q4_K_M.gguf')).not.toBeInTheDocument()
+
+    // Inspect still works in collapsed pill
+    const inspectBtn = screen.getByRole('button', { name: 'Inspect active run' })
+    await user.click(inspectBtn)
+    expect(onInspect).toHaveBeenCalledTimes(1)
+
+    // Expand
+    const expandBtn = screen.getByRole('button', { name: 'Expand activity strip' })
+    await user.click(expandBtn)
+
+    // Expanded again
+    expect(screen.getByTestId('cortex-active-run-strip')).toBeInTheDocument()
+    expect(screen.getByText('gemma-4-E2B-Q4_K_M.gguf')).toBeInTheDocument()
   })
 })

@@ -902,7 +902,7 @@ function ApexAssistantMessage(): ReactNode {
 }
 
 /** APEX-owned presentation built from assistant-ui primitives, not its starter kit. */
-export function ApexAssistantThread({ disabled = false, renderAgent, composer, logoProps }: { disabled?: boolean; renderAgent?: (text: string, metadata: Record<string, unknown>) => ReactNode; composer?: ApexAssistantComposerProps; logoProps?: Omit<ApexLogoProps, 'className'> }): ReactNode {
+export function ApexAssistantThread({ disabled = false, renderAgent, composer, logoProps, activeRunSlot }: { disabled?: boolean; renderAgent?: (text: string, metadata: Record<string, unknown>) => ReactNode; composer?: ApexAssistantComposerProps; logoProps?: Omit<ApexLogoProps, 'className'>; activeRunSlot?: ReactNode }): ReactNode {
   const running = useAuiState((state) => state.thread.isRunning)
   const isEmpty = useAuiState((state) => state.thread.isEmpty)
   const context = useContext(ApexAssistantComposerContext)
@@ -916,6 +916,7 @@ export function ApexAssistantThread({ disabled = false, renderAgent, composer, l
       {!isEmpty && logoProps ? <div data-slot="cortex-chat-logo" className="my-8 flex items-center justify-center filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]"><ApexLogo {...logoProps} className="size-40 sm:size-48" /></div> : null}
     </ThreadPrimitive.Viewport>
     {context?.branchPersistenceError ? <p className="border-t border-red-500/20 bg-red-950/20 px-4 py-2 text-xs text-red-200" role="alert">{context.branchPersistenceError}</p> : null}
+    {activeRunSlot}
     <GatedComposer disabled={disabled} composer={composer} />
   </ThreadPrimitive.Root></ApexAssistantPresentationContext.Provider>
 }

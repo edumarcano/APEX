@@ -503,16 +503,26 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
     <div className={`${compactLayout ? 'flex' : 'hidden'} shrink-0 gap-2 border-b border-white/10 bg-black/20 p-2`}><button type="button" disabled={interactionDisabled} aria-expanded={compactPanel === 'conversations'} aria-controls="cortex-conversations-compact" onClick={() => setCompactPanel((panel) => panel === 'conversations' ? null : 'conversations')} className="rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 disabled:opacity-40">Conversations</button><button type="button" disabled={interactionDisabled} aria-expanded={compactPanel === 'inspector'} aria-controls="cortex-inspector-compact" onClick={() => setCompactPanel((panel) => panel === 'inspector' ? null : 'inspector')} className="rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 disabled:opacity-40">Inspector</button></div>
     {compactPanel === 'conversations' ? <div id="cortex-conversations-compact" className={compactLayout ? '' : 'xl:hidden'}><ApexConversationRail disabled={interactionDisabled} className="block w-full border-b border-r-0" /></div> : null}
     <div className={gridClassName}><ApexConversationRail disabled={interactionDisabled} className={compactLayout ? 'hidden' : 'hidden xl:block'} /><div className="order-1 flex min-h-0 flex-col">
-        <CortexActiveRunStrip
-          run={activeRun}
-          onInspect={() => {
-            setInspectorTab('activity')
-            if (compactLayout) setCompactPanel('inspector')
-          }}
-          onCancel={runsState.cancelRun}
-          className="mx-4 mt-3 mb-1"
-        />
-        {props.agentQueriesEnabled ? <ApexAssistantThread renderAgent={(text, metadata) => <AssistantResponseDisplay text={text} rawMetadata={metadata} onOpenRecord={openContextRecord} />} composer={assistantComposer} disabled={interactionDisabled || !props.selectionReady} logoProps={props.logoProps} /> : <footer className="border-t border-white/10 p-4 text-sm text-zinc-500">Agent queries are disabled in Settings.</footer>}</div>
+        {props.agentQueriesEnabled ? (
+          <ApexAssistantThread
+            renderAgent={(text, metadata) => <AssistantResponseDisplay text={text} rawMetadata={metadata} onOpenRecord={openContextRecord} />}
+            composer={assistantComposer}
+            disabled={interactionDisabled || !props.selectionReady}
+            logoProps={props.logoProps}
+            activeRunSlot={
+              <CortexActiveRunStrip
+                run={activeRun}
+                onInspect={() => {
+                  setInspectorTab('activity')
+                  if (compactLayout) setCompactPanel('inspector')
+                }}
+                className="mx-3 mb-0"
+              />
+            }
+          />
+        ) : (
+          <footer className="border-t border-white/10 p-4 text-sm text-zinc-500">Agent queries are disabled in Settings.</footer>
+        )}</div>
       <aside id="cortex-inspector-compact" className={`order-2 space-y-4 border-t border-white/10 bg-black/15 p-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 scrollbar-thin ${compactPanel !== 'inspector' ? (compactLayout ? 'hidden' : 'hidden xl:block') : ''}`} aria-label="Cortex inspector"><div role="tablist" aria-label="Cortex inspector sections" className="flex border-b border-white/10">{INSPECTOR_TABS.map((tab) => <button key={tab} id={`cortex-inspector-tab-${tab}`} type="button" role="tab" tabIndex={inspectorTab === tab ? 0 : -1} aria-selected={inspectorTab === tab} aria-controls={`cortex-inspector-${tab}`} onKeyDown={onInspectorTabKeyDown} onClick={() => selectInspectorTab(tab)} className={`px-2 py-2 font-mono text-[10px] uppercase tracking-wide outline-none focus-visible:ring-1 focus-visible:ring-[#7EB3FF] ${inspectorTab === tab ? 'text-[#9AC2FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>{tab}</button>)}</div>{inspectorTab === 'controls' ? <div id="cortex-inspector-controls" role="tabpanel" aria-labelledby="cortex-inspector-tab-controls" className="space-y-4"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Apex Agent</p><p className="text-[11px] text-zinc-500">Select a model to choose cloud or local execution.</p></section><RuntimeControls {...props} activeStatus={activeStatus ?? null} localContextLocked={localContextLocked} /><ContextControl {...props} /></div> : null}{inspectorTab === 'context' ? <div id="cortex-inspector-context" role="tabpanel" aria-labelledby="cortex-inspector-tab-context"><CortexContext inspector={contextInspector} demoModeActive={props.demoModeActive} /></div> : null}{inspectorTab === 'actions' ? <div id="cortex-inspector-actions" role="tabpanel" aria-labelledby="cortex-inspector-tab-actions"><CortexActions actions={props.actions} demoModeActive={props.demoModeActive} /></div> : null}{inspectorTab === 'activity' ? <div id="cortex-inspector-activity" role="tabpanel" aria-labelledby="cortex-inspector-tab-activity"><CortexActivity runsState={runsState} agentsStatus={props.agentsStatus} diagnostics={props.diagnostics} /></div> : null}
       </aside>
     </div>

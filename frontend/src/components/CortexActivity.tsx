@@ -9,12 +9,11 @@ import {
   Cpu,
   Loader2,
   RefreshCw,
-  Square,
   XCircle,
 } from 'lucide-react'
 import { useState, type ReactElement } from 'react'
 
-import { isRunActive, type UseCortexRunsResult } from '../hooks/useCortexRuns'
+import type { UseCortexRunsResult } from '../hooks/useCortexRuns'
 import type { RunStatus } from '../types/runs'
 import type { AgentStatus, SystemDiagnostics } from '../types/telemetry'
 
@@ -115,7 +114,7 @@ export function CortexActivity({
   agentsStatus = [],
   className = '',
 }: CortexActivityProps): ReactElement {
-  const { runs, selectedRunId, selectedRun, selectRun, cancelRun, refreshRuns, loading } = runsState
+  const { runs, selectedRunId, selectedRun, selectRun, refreshRuns, loading } = runsState
   const [copied, setCopied] = useState(false)
 
   const residentLocalModel = findResidentLocalModel(agentsStatus)
@@ -217,18 +216,6 @@ export function CortexActivity({
                       {selectedRun.resolved_model || selectedRun.requested_model}
                     </h4>
                   </div>
-
-                  {isRunActive(selectedRun.status) && selectedRun.status !== 'cancelling' && (
-                    <button
-                      type="button"
-                      onClick={() => void cancelRun(selectedRun.id)}
-                      className="flex items-center gap-1.5 rounded border border-red-500/40 bg-red-950/30 px-2.5 py-1 text-xs font-mono uppercase tracking-wider text-red-300 hover:bg-red-950/50 hover:border-red-500/60 transition-colors shrink-0"
-                      aria-label="Cancel this run"
-                    >
-                      <Square className="size-3 fill-current" aria-hidden="true" />
-                      <span>Stop Run</span>
-                    </button>
-                  )}
                 </div>
 
                 {/* Run ID with copy affordance */}

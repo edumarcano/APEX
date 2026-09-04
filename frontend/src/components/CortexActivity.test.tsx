@@ -190,32 +190,25 @@ describe('CortexActivity', () => {
     expect(screen.getByText('Idle unload in 180s')).toBeInTheDocument()
   })
 
-  it('allows stopping an active run and changing selection via dropdown', async () => {
-    const runActive = createMockRun({ id: 'run-active', status: 'running' })
-    const runDone = createMockRun({ id: 'run-done', status: 'completed' })
-    const cancelRun = vi.fn()
+  it('allows changing selection via dropdown', async () => {
+    const run1 = createMockRun({ id: 'run-1', status: 'running' })
+    const run2 = createMockRun({ id: 'run-2', status: 'completed' })
     const selectRun = vi.fn()
     const user = userEvent.setup()
 
     const runsState = createMockRunsState({
-      runs: [runActive, runDone],
-      selectedRunId: 'run-active',
-      selectedRun: runActive,
-      cancelRun,
+      runs: [run1, run2],
+      selectedRunId: 'run-1',
+      selectedRun: run1,
       selectRun,
     })
 
     render(<CortexActivity runsState={runsState} />)
 
-    // Stop button exists for active run
-    const stopBtn = screen.getByRole('button', { name: 'Cancel this run' })
-    await user.click(stopBtn)
-    expect(cancelRun).toHaveBeenCalledWith('run-active')
-
     // Select another run via dropdown
     const select = screen.getByRole('combobox', { name: 'Select run' })
-    await user.selectOptions(select, 'run-done')
-    expect(selectRun).toHaveBeenCalledWith('run-done')
+    await user.selectOptions(select, 'run-2')
+    expect(selectRun).toHaveBeenCalledWith('run-2')
   })
 
   it('copies run ID to clipboard when copy button is clicked', async () => {
