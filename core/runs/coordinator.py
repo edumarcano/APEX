@@ -24,6 +24,7 @@ from core.runs.models import (
 )
 from core.runs.service import RunHandle, RunService
 from core.runs.store import RunConflictError
+from core.tracing import trace_run
 
 _coordinator: CortexRunCoordinator | None = None
 
@@ -368,93 +369,174 @@ class CortexRunCoordinator:
         execute: ExecuteRun,
         finalize_conversation: FinalizeConversation,
     ) -> Any:
-        queue_duration_ms = (
-            round((time.perf_counter() - active.admitted_at) * 1000, 2)
-            if active.admitted_at is not None
-            else None
-        )
-        control = RunExecutionControl(
-            handle,
-            active.cancel_event,
-            lambda event_type, payload, record=None: self.events.publish(
-                handle.run_id,
-                event_type,
-                payload,
-                record=record,
-            ),
-            queue_duration_ms=queue_duration_ms,
-        )
-        try:
-            with self._lock:
-                if active.cancel_event.is_set() or handle.get_record().status == "cancelling":
-                    raise ExecutionCancelled()
-                try:
-                    record = handle.start(
-                        resolved_model=resolved_model,
-                        provider=provider,
-                        runtime=runtime,
-                    )
-                    if queue_duration_ms is not None:
-                        record = handle.update_progress(
-                            runtime_measurements=control.runtime_measurements,
-                        ) or record
-                    self.events.publish(
-                        handle.run_id,
-                        "run.status",
-                        {"status": record.status},
-                        record=record,
-                    )
-                    if queue_duration_ms is not None:
+        initial_record = handle.get_record()
+        with trace_run(
+            run_id=handle.run_id,
+            conversation_id=initial_record.conversation_id,
+            user_message_id=initial_record.user_message_id,
+            agent_message_id=initial_record.agent_message_id,
+            requested_model=initial_record.requested_model,
+            provider=provider,
+            runtime=runtime,
+            limit_snapshot=initial_record.limit_snapshot,
+        ) as span_context:
+            trace_id = span_context.trace_id
+            queue_duration_ms = (
+                round((time.perf_counter() - active.admitted_at) * 1000, 2)
+                if active.admitted_at is not None
+                else None
+            )
+            control = RunExecutionControl(
+                handle,
+                active.cancel_event,
+                lambda event_type, payload, record=None: self.events.publish(
+                    handle.run_id,
+                    event_type,
+                    payload,
+                    record=record,
+                ),
+                queue_duration_ms=queue_duration_ms,
+            )
+            try:
+                with self._lock:
+                    if active.cancel_event.is_set() or handle.get_record().status == "cancelling":
+                        raise ExecutionCancelled()
+                    try:
+                        record = handle.start(
+                            resolved_model=resolved_model,
+                            provider=provider,
+                            runtime=runtime,
+                            trace_id=trace_id,
+                        )
+                        if queue_duration_ms is not None:
+                            record = handle.update_progress(
+                                runtime_measurements=control.runtime_measurements,
+                            ) or record
                         self.events.publish(
                             handle.run_id,
-                            "runtime.updated",
-                            {"runtime_measurements": record.runtime_measurements.model_dump(mode="json")},
+                            "run.status",
+                            {"status": record.status},
                             record=record,
                         )
-                except RunConflictError:
-                    if handle.get_record().status == "cancelling":
-                        raise ExecutionCancelled() from None
-                    raise
-            response = execute(control)
-            control.finish()
-            message_status = "failed" if getattr(response, "error", None) else "completed"
-            conversation = finalize_conversation(response, message_status, None)
-            evidence = RunCompletionEvidence(
-                final_message_status=conversation.status,
-                answer_persisted=conversation.status == "completed",
-                tool_outcome_counts=_tool_outcomes(response),
-                action_ids=_action_ids(response),
-            )
-            record = handle.finalize(
-                status="completed" if conversation.status == "completed" else "failed",
-                stop_reason="end_turn" if conversation.status == "completed" else "provider_error",
-                evidence=evidence,
-                error=None if conversation.status == "completed" else RunError(code="provider_error"),
-            )
-            self._publish_terminal(record)
-            return record
-        except ExecutionCancelled:
-            return self._finalize_stopped(handle, control, finalize_conversation, "cancelled", "operator_cancelled", "operator_cancelled")
-        except ExecutionLimitReached as exc:
-            code = {"max_elapsed_seconds": "timeout", "max_total_tokens": "token_limit", "max_model_turns": "turn_limit", "max_tool_calls": "tool_limit", "max_retries": "retry_limit"}[exc.reason]
-            return self._finalize_stopped(handle, control, finalize_conversation, "failed", exc.reason, code)
-        except RunHttpError as exc:
-            stop_reason, error_code = _http_failure_mapping(exc.status_code)
-            self._finalize_stopped(
-                handle,
-                control,
-                finalize_conversation,
-                "failed",
-                stop_reason,
-                error_code,
-            )
-            raise
-        except Exception:
-            return self._finalize_stopped(handle, control, finalize_conversation, "failed", "internal_error", "internal_error")
-        finally:
-            with self._lock:
-                self._active.pop(handle.run_id, None)
-                self._slots.release()
+                        if queue_duration_ms is not None:
+                            self.events.publish(
+                                handle.run_id,
+                                "runtime.updated",
+                                {"runtime_measurements": record.runtime_measurements.model_dump(mode="json")},
+                                record=record,
+                            )
+                    except RunConflictError:
+                        if handle.get_record().status == "cancelling":
+                            raise ExecutionCancelled() from None
+                        raise
+                response = execute(control)
+                control.finish()
+                message_status = "failed" if getattr(response, "error", None) else "completed"
+                conversation = finalize_conversation(response, message_status, None)
+                evidence = RunCompletionEvidence(
+                    final_message_status=conversation.status,
+                    answer_persisted=conversation.status == "completed",
+                    tool_outcome_counts=_tool_outcomes(response),
+                    action_ids=_action_ids(response),
+                )
+                record = handle.finalize(
+                    status="completed" if conversation.status == "completed" else "failed",
+                    stop_reason="end_turn" if conversation.status == "completed" else "provider_error",
+                    evidence=evidence,
+                    error=None if conversation.status == "completed" else RunError(code="provider_error"),
+                )
+                self._publish_terminal(record)
+                span_context.record_progress(
+                    resolved_model=record.resolved_model,
+                    provider=record.provider,
+                    runtime=record.runtime,
+                    turns_count=record.turns_count,
+                    tool_calls_count=record.tool_calls_count,
+                    retries_count=record.retries_count,
+                    total_tokens=record.total_tokens,
+                    usage_quality=record.usage_quality,
+                    status=record.status,
+                    stop_reason=record.stop_reason,
+                    error_code=record.error.code if record.error else None,
+                )
+                return record
+            except ExecutionCancelled:
+                record = self._finalize_stopped(handle, control, finalize_conversation, "cancelled", "operator_cancelled", "operator_cancelled")
+                span_context.record_progress(
+                    resolved_model=record.resolved_model,
+                    provider=record.provider,
+                    runtime=record.runtime,
+                    turns_count=record.turns_count,
+                    tool_calls_count=record.tool_calls_count,
+                    retries_count=record.retries_count,
+                    total_tokens=record.total_tokens,
+                    usage_quality=record.usage_quality,
+                    status=record.status,
+                    stop_reason=record.stop_reason,
+                    error_code="operator_cancelled",
+                )
+                return record
+            except ExecutionLimitReached as exc:
+                code = {"max_elapsed_seconds": "timeout", "max_total_tokens": "token_limit", "max_model_turns": "turn_limit", "max_tool_calls": "tool_limit", "max_retries": "retry_limit"}[exc.reason]
+                record = self._finalize_stopped(handle, control, finalize_conversation, "failed", exc.reason, code)
+                span_context.record_progress(
+                    resolved_model=record.resolved_model,
+                    provider=record.provider,
+                    runtime=record.runtime,
+                    turns_count=record.turns_count,
+                    tool_calls_count=record.tool_calls_count,
+                    retries_count=record.retries_count,
+                    total_tokens=record.total_tokens,
+                    usage_quality=record.usage_quality,
+                    status=record.status,
+                    stop_reason=record.stop_reason,
+                    error_code=code,
+                )
+                return record
+            except RunHttpError as exc:
+                stop_reason, error_code = _http_failure_mapping(exc.status_code)
+                record = self._finalize_stopped(
+                    handle,
+                    control,
+                    finalize_conversation,
+                    "failed",
+                    stop_reason,
+                    error_code,
+                )
+                span_context.record_progress(
+                    resolved_model=record.resolved_model,
+                    provider=record.provider,
+                    runtime=record.runtime,
+                    turns_count=record.turns_count,
+                    tool_calls_count=record.tool_calls_count,
+                    retries_count=record.retries_count,
+                    total_tokens=record.total_tokens,
+                    usage_quality=record.usage_quality,
+                    status=record.status,
+                    stop_reason=record.stop_reason,
+                    error_code=error_code,
+                )
+                raise
+            except Exception:
+                record = self._finalize_stopped(handle, control, finalize_conversation, "failed", "internal_error", "internal_error")
+                span_context.record_progress(
+                    resolved_model=record.resolved_model,
+                    provider=record.provider,
+                    runtime=record.runtime,
+                    turns_count=record.turns_count,
+                    tool_calls_count=record.tool_calls_count,
+                    retries_count=record.retries_count,
+                    total_tokens=record.total_tokens,
+                    usage_quality=record.usage_quality,
+                    status=record.status,
+                    stop_reason=record.stop_reason,
+                    error_code="internal_error",
+                )
+                return record
+            finally:
+                with self._lock:
+                    self._active.pop(handle.run_id, None)
+                    self._slots.release()
 
     def _finalize_stopped(self, handle: RunHandle, control: RunExecutionControl, finalize_conversation: FinalizeConversation, status: str, reason: RunStopReason, error_code: RunErrorCode) -> RunRecord:
         try:
