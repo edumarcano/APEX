@@ -30,6 +30,7 @@ import { ReminderQuickAdd } from './components/ReminderQuickAdd'
 import { ReminderReviewDialog } from './components/ReminderReviewDialog'
 import { ReminderTaskDialog } from './components/ReminderTaskDialog'
 import { CompletedRemindersDialog } from './components/CompletedRemindersDialog'
+import { ScrollFadeContainer } from './components/ScrollFadeContainer'
 import SettingsPanel from './components/SettingsPanel'
 import { HomeCommandRail } from './components/HomeCommandRail'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
@@ -1661,7 +1662,7 @@ export default function App(): ReactElement {
                       </p>
                     )}
                     {emailInfo.items.length > 0 ? (
-                      <ul className="list-fade-mask min-h-0 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
+                      <ScrollFadeContainer as="ul" className="min-h-0 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
                         {emailInfo.items.map((item, index) => (
                           <li
                             key={`${item.subject}-${item.time}-${index}`}
@@ -1678,7 +1679,7 @@ export default function App(): ReactElement {
                             </span>
                           </li>
                         ))}
-                      </ul>
+                      </ScrollFadeContainer>
                     ) : hasSnapshot ? (
                       <p className="text-sm text-[color:var(--hud-muted-text)]">
                         No unread emails.
@@ -1709,7 +1710,7 @@ export default function App(): ReactElement {
                     Loading news…
                   </p>
                 ) : newsItems.length > 0 ? (
-                  <ul className="list-fade-mask min-h-0 overflow-y-auto pr-1 scrollbar-thin">
+                  <ScrollFadeContainer as="ul" className="min-h-0 overflow-y-auto pr-1 scrollbar-thin">
                     {newsItems.map((item, index) => (
                       <li
                         key={`${item.topic}-${index}`}
@@ -1728,7 +1729,7 @@ export default function App(): ReactElement {
                         </p>
                       </li>
                     ))}
-                  </ul>
+                  </ScrollFadeContainer>
                 ) : hasSnapshot ? (
                   <p className="text-sm text-[color:var(--hud-muted-text)]">
                     No news headlines available.
@@ -1780,7 +1781,7 @@ export default function App(): ReactElement {
                       </p>
                     </div>
                   ) : (
-                    <ul className="list-fade-mask min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1 scrollbar-thin">
+                    <ScrollFadeContainer as="ul" className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1 scrollbar-thin">
                       {activeReminders.map((reminder, index) => (
                         <ReminderListRow
                           key={reminder.id}
@@ -1791,7 +1792,7 @@ export default function App(): ReactElement {
                           onDelete={(id) => setReminderTaskDialog({ id, mode: 'delete' })}
                         />
                       ))}
-                    </ul>
+                    </ScrollFadeContainer>
                   )}
                   {reminderSourceState && reminderSourceState !== 'live' ? (
                     <p className="mt-2 font-mono text-[9px] uppercase tracking-wide text-amber-200">
