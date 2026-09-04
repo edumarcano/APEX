@@ -423,6 +423,13 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
   const [inspectorTab, setInspectorTab] = useState<typeof INSPECTOR_TABS[number]>('controls')
   const runsState = useCortexRuns({ pollingEnabled: true })
   const activeRun = runsState.activeRuns[0] ?? null
+  const { refreshRuns } = runsState
+
+  useEffect(() => {
+    if (props.isQuerying) {
+      void refreshRuns()
+    }
+  }, [props.isQuerying, refreshRuns])
   const selectInspectorTab = useCallback((tab: typeof INSPECTOR_TABS[number]) => setInspectorTab(tab), [])
   const onInspectorTabKeyDown = useCallback((event: KeyboardEvent<HTMLButtonElement>) => {
     const index = INSPECTOR_TABS.indexOf(inspectorTab)
@@ -508,14 +515,16 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
             disabled={interactionDisabled || !props.selectionReady}
             logoProps={props.logoProps}
             activeRunSlot={
-              <CortexActiveRunStrip
-                run={activeRun}
-                agentName={assistantComposer?.activeAgentName ?? 'Agent'}
-                onInspect={() => {
-                  setInspectorTab('activity')
-                  if (compactLayout) setCompactPanel('inspector')
-                }}
-              />
+              activeRun ? (
+                <CortexActiveRunStrip
+                  run={activeRun}
+                  agentName={assistantComposer?.activeAgentName ?? 'Agent'}
+                  onInspect={() => {
+                    setInspectorTab('activity')
+                    if (compactLayout) setCompactPanel('inspector')
+                  }}
+                />
+              ) : null
             }
           />
         ) : (

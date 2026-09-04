@@ -87,6 +87,7 @@ describe('CortexActiveRunStrip', () => {
     render(<CortexActiveRunStrip run={run} agentName="Apex" onInspect={onInspect} />)
 
     const inspectBtn = screen.getByRole('button', { name: 'Inspect active run' })
+    expect(inspectBtn).toHaveClass('hover:text-[#C084FC]')
     await user.click(inspectBtn)
 
     expect(onInspect).toHaveBeenCalledTimes(1)
