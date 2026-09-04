@@ -23,9 +23,8 @@ export function parseSSEBlock(block: string): ParseSSEBlockResult | null {
   const dataLines: string[] = []
   let hasContent = false
 
-  for (const rawLine of lines) {
-    const line = rawLine.trimEnd()
-    if (!line) continue
+  for (const line of lines) {
+    if (!line.trim()) continue
     if (line.startsWith(':')) {
       // Comment line (heartbeat)
       hasContent = true
@@ -46,7 +45,7 @@ export function parseSSEBlock(block: string): ParseSSEBlockResult | null {
     }
     if (line.startsWith('data:')) {
       hasContent = true
-      dataLines.push(line.slice(5).trim())
+      dataLines.push(line.startsWith('data: ') ? line.slice(6) : line.slice(5))
       continue
     }
   }

@@ -31,6 +31,12 @@ describe('cortexStream', () => {
       expect(result?.data).toEqual({ run: {} })
     })
 
+    it('strips only a single leading space after data:', () => {
+      const block = 'event: response.delta\ndata:   preserve extra leading spaces  '
+      const result = parseSSEBlock(block)
+      expect(result?.data).toEqual({ raw: '  preserve extra leading spaces  ' })
+    })
+
     it('returns null for empty blocks', () => {
       expect(parseSSEBlock('')).toBeNull()
       expect(parseSSEBlock('   \n\n  ')).toBeNull()

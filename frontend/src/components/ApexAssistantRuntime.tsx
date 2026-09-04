@@ -718,7 +718,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
           const finalAnswer = durableMessage?.content ?? cumulativeAnswer
           const metadata = (durableMessage?.response_metadata ?? {}) as Record<string, unknown>
           const responseError = typeof metadata.error === 'string' ? metadata.error : null
-          const responseStatus = durableMessage?.status ?? 'completed'
+          const responseStatus = durableMessage?.status ?? (options.abortSignal.aborted ? 'interrupted' : 'completed')
           const incomplete = responseError !== null || responseStatus === 'failed' || responseStatus === 'interrupted'
           const persistedError = responseError ?? (responseStatus !== 'completed' ? responseStatus : 'Agent turn did not complete.')
 
