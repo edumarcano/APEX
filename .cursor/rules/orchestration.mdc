@@ -1,0 +1,6 @@
+---
+description: Shared APEX agent orchestration policy.
+alwaysApply: true
+---
+
+Follow `@../../docs/agent-guidance/orchestration.md`.
