@@ -29,7 +29,7 @@ import type { AgentKey, CloudEffort } from '../types/telemetry'
 import { CortexErrorFeedback, CortexQueryRim } from './AgentQueryBar'
 import { ToolsSelector, type ToolsSelectorProps } from './ToolsSelector'
 import { OPERATION_PROMPT_CHIPS } from '../lib/promptChips'
-import { Trash2 } from 'lucide-react'
+import { Send, Square, Trash2 } from 'lucide-react'
 import { ApexLogo, type ApexLogoProps } from './ApexLogo'
 
 type ConversationSummary = {
@@ -859,20 +859,37 @@ function GatedComposer({
   return <ComposerPrimitive.Root onSubmit={handleSubmit} className="relative border-t border-white/10 bg-black/20 p-3 sm:p-4">
     {!edit && composer && queryActive ? <CortexQueryRim /> : null}
     <div className="flex items-end gap-2">
+      {!edit && composer ? (
+        <ToolsSelector
+          {...composer.tools}
+          compact
+          className="size-11 rounded-lg"
+          align="left"
+          disabled={blocked || queryActive}
+        />
+      ) : null}
       <ComposerPrimitive.Input disabled={blocked} placeholder={edit ? 'Edit message…' : 'Ask APEX…'} className="min-h-11 flex-1 resize-none rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 transition-[border-color,box-shadow] duration-300 focus:border-[#0F4DB8]/70 focus:shadow-[0_0_16px_rgba(15,77,184,0.24)] disabled:cursor-not-allowed disabled:opacity-45" />
-      {!edit && composer ? <ToolsSelector {...composer.tools} compact disabled={blocked || queryActive} /> : null}
-      {edit ? <ComposerPrimitive.Cancel disabled={blocked} className="rounded-lg border border-white/10 px-3 py-2 font-mono text-xs text-zinc-400 hover:text-white disabled:opacity-45">Cancel</ComposerPrimitive.Cancel> : null}
+      {edit ? <ComposerPrimitive.Cancel disabled={blocked} className="h-11 rounded-lg border border-white/10 px-3 py-2 font-mono text-xs text-zinc-400 hover:text-white disabled:opacity-45">Cancel</ComposerPrimitive.Cancel> : null}
       {!edit && queryActive ? (
         <button
           type="button"
           onClick={() => aui.thread.cancelRun()}
-          className="rounded-lg border border-red-500/40 bg-red-950/25 px-3 py-2 font-mono text-xs uppercase tracking-wider text-red-200 hover:bg-red-950/40"
+          className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg border border-red-500/40 bg-red-950/25 text-red-200 transition-colors hover:bg-red-950/40"
           aria-label="Stop generation"
         >
-          Stop
+          <Square className="size-3.5 fill-current" aria-hidden />
         </button>
       ) : (
-        <ComposerPrimitive.Send disabled={blocked || queryActive} onClick={(event) => { event.preventDefault(); void submit() }} className="rounded-lg border border-[#7E22CE]/45 bg-[#7E22CE]/15 px-3 py-2 font-mono text-xs uppercase tracking-wider text-[#D8B4FE] hover:bg-[#7E22CE]/25 disabled:cursor-not-allowed disabled:opacity-45">{edit ? 'Save' : 'Send'}</ComposerPrimitive.Send>
+        <ComposerPrimitive.Send
+          disabled={blocked || queryActive}
+          onClick={(event) => { event.preventDefault(); void submit() }}
+          className={edit
+            ? 'h-11 rounded-lg border border-[#7E22CE]/45 bg-[#7E22CE]/15 px-3 py-2 font-mono text-xs uppercase tracking-wider text-[#D8B4FE] hover:bg-[#7E22CE]/25 disabled:cursor-not-allowed disabled:opacity-45'
+            : 'inline-flex size-11 shrink-0 items-center justify-center rounded-lg border border-[#7E22CE]/45 bg-[#7E22CE]/15 text-[#D8B4FE] transition-colors hover:bg-[#7E22CE]/25 disabled:cursor-not-allowed disabled:opacity-45'}
+          aria-label={edit ? 'Save' : 'Send'}
+        >
+          {edit ? 'Save' : <Send className="size-4" aria-hidden />}
+        </ComposerPrimitive.Send>
       )}
     </div>
     {!edit && composer && error ? <CortexErrorFeedback error={error} /> : null}

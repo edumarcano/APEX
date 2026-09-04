@@ -1091,4 +1091,60 @@ describe('ApexAssistantRuntime', () => {
 
     await waitFor(() => expect(cancelCalled).toBe(true))
   })
+
+  it('renders tool selector at left of input and icon button for send in Cortex', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const convId = 'conv-composer-icons'
+    const convSummary = { ...summary, id: convId, title: 'Composer icon test' }
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([convSummary])
+      if (url.endsWith(`/api/v1/cortex/conversations/${convId}`)) {
+        return response({ ...convSummary, active_leaf_message_id: null, messages: [] })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    const toolCatalog = {
+      agent: 'apex' as const,
+      groups: [],
+      tools: [],
+      profiles: [],
+      default_profile_id: 'no_tools',
+      default_profile_name: 'No APEX Tools',
+      default_selected_tool_names: [],
+      provider_hosted_tools: [],
+      context_window: null,
+      reserved_response_tokens: null,
+    }
+
+    render(
+      <ApexAssistantRuntime
+        config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+      >
+        <ApexAssistantThread
+          composer={{
+            activeAgent: 'apex',
+            activeAgentName: 'Apex',
+            tools: {
+              catalog: toolCatalog,
+              selectedToolNames: [],
+              activeToolProfileId: null,
+              onSelectionChange: vi.fn(),
+              onProfileChange: vi.fn(),
+            },
+          }}
+        />
+      </ApexAssistantRuntime>,
+    )
+
+    await waitFor(() => expect(screen.getByPlaceholderText('Ask APEX…')).toBeInTheDocument())
+    const toolsButton = screen.getByRole('button', { name: /Tools:/ })
+    const input = screen.getByPlaceholderText('Ask APEX…')
+    const sendButton = screen.getByRole('button', { name: 'Send' })
+
+    expect(toolsButton.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(sendButton.textContent).toBe('')
+  })
 })

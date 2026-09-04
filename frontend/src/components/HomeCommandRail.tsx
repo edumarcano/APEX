@@ -13,7 +13,6 @@ import type {
 import { AgentQueryBar } from './AgentQueryBar'
 import { BriefingGenerateControl, BriefingModeSelector } from './BriefingControls'
 import { LocalModelControl } from './LocalModelControl'
-import { HomeModelSelector } from './HomeModelSelector'
 import { StandbyActions } from './StandbyActions'
 
 interface HomeCommandRailProps {
@@ -155,16 +154,7 @@ export function HomeCommandRail({
         <div className={`home-command-grid ${showAgentControls ? 'home-command-grid--with-agent' : 'home-command-grid--briefing-only'}`} data-slot="home-active-controls">
           {showAgentControls ? <>
             <div className="home-command-grid__agent-row" data-slot="home-agent-row">
-              <div className="home-command-grid__agent-selector min-w-0" data-slot="home-agent-selector">
-                <HomeModelSelector
-                  selectedModelId={selectedModelId}
-                  onModelChange={onModelChange}
-                  catalog={modelCatalog}
-                  disabled={isCortexQuerying || submissionPending}
-                  isQuerying={isCortexQuerying || submissionPending}
-                />
-              </div>
-              <div className="home-command-grid__agent-composer min-w-0" data-slot="home-agent-composer">
+              <div className="home-command-grid__agent-composer min-w-0 w-full" data-slot="home-agent-composer">
                 <AgentQueryBar
                   presentation="home"
                   activeAgent={inferredAgent}
@@ -192,6 +182,9 @@ export function HomeCommandRail({
                   onRestoreToolProfile={onRestoreToolProfile}
                   onSetDefaultToolProfile={onSetDefaultToolProfile}
                   isSubmitting={isCortexQuerying}
+                  selectedModelId={selectedModelId}
+                  onModelChange={onModelChange}
+                  modelCatalog={modelCatalog}
                 />
               </div>
             </div>

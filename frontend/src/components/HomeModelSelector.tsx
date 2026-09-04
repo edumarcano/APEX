@@ -42,6 +42,7 @@ export interface HomeModelSelectorProps {
   disabled?: boolean
   isQuerying?: boolean
   className?: string
+  presentation?: 'rail' | 'composer'
 }
 
 function statusLedClass(status: AgentAvailabilityStatus): string {
@@ -81,6 +82,7 @@ export function HomeModelSelector({
   disabled = false,
   isQuerying = false,
   className = '',
+  presentation = 'rail',
 }: HomeModelSelectorProps): ReactElement {
   const triggerRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -209,10 +211,14 @@ export function HomeModelSelector({
             close()
           }
         }}
-        className="flex h-full min-h-[46px] items-center gap-1.5 rounded-lg border border-white/10 bg-black/35 px-2.5 font-mono text-[10px] text-zinc-200 transition-colors hover:border-[#0F4DB8]/55 hover:bg-[#0F4DB8]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F4DB8] disabled:cursor-not-allowed disabled:opacity-40"
+        className={presentation === 'composer'
+          ? 'inline-flex h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2 font-mono text-[10px] text-zinc-200 transition-colors hover:border-white/20 hover:bg-white/[0.08] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F4DB8] disabled:cursor-not-allowed disabled:opacity-40'
+          : 'flex h-full min-h-[46px] items-center gap-1.5 rounded-lg border border-white/10 bg-black/35 px-2.5 font-mono text-[10px] text-zinc-200 transition-colors hover:border-[#0F4DB8]/55 hover:bg-[#0F4DB8]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F4DB8] disabled:cursor-not-allowed disabled:opacity-40'}
       >
-        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.03]">
-          <ModelMark modelId={selectedModel?.model_id} provider={selectedModel?.provider} size={14} />
+        <span className={presentation === 'composer'
+          ? 'inline-flex size-5 shrink-0 items-center justify-center rounded border border-white/10 bg-white/[0.02]'
+          : 'inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.03]'}>
+          <ModelMark modelId={selectedModel?.model_id} provider={selectedModel?.provider} size={presentation === 'composer' ? 12 : 14} />
         </span>
         <span className={`hud-led size-1.5 shrink-0 ${statusLedClass(selectedStatus)}`} aria-hidden />
         <ChevronDown

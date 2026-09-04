@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Copy,
   Pencil,
+  Plus,
   RotateCcw,
   Save,
   Search,
@@ -28,6 +29,8 @@ import type {
 
 export interface ToolsSelectorProps {
   compact?: boolean
+  className?: string
+  align?: 'left' | 'right'
   catalog: ToolCatalog | null
   selectedToolNames: string[]
   activeToolProfileId: string | null
@@ -113,6 +116,8 @@ function Utilization({
 
 export function ToolsSelector({
   compact = false,
+  className = '',
+  align = 'left',
   catalog,
   selectedToolNames,
   activeToolProfileId,
@@ -277,12 +282,21 @@ export function ToolsSelector({
     }
   }
 
+  const hasActiveTools = selectedToolNames.length > 0
+
   return (
     <div ref={selectorRef} className="relative shrink-0">
       <button
         type="button"
         className={compact
-          ? 'inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-[#7E22CE]/45 bg-[#7E22CE]/10 p-1.5 text-purple-100 transition-colors hover:border-[#C084FC] hover:bg-[#7E22CE]/20 disabled:cursor-not-allowed disabled:opacity-45'
+          ? [
+              'relative inline-flex shrink-0 items-center justify-center transition-colors',
+              className || 'size-8 rounded-md',
+              hasActiveTools
+                ? 'border border-[#7E22CE]/40 bg-[#7E22CE]/15 text-[#D8B4FE] hover:border-[#C084FC]/60 hover:bg-[#7E22CE]/25 hover:text-white'
+                : 'border border-transparent text-zinc-400 hover:bg-white/10 hover:text-white',
+              disabled ? 'cursor-not-allowed opacity-45' : '',
+            ].filter(Boolean).join(' ')
           : 'inline-flex min-h-8 items-center gap-1.5 rounded-md border border-[#7E22CE]/45 bg-[#7E22CE]/10 px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider text-purple-100 transition-colors hover:border-[#C084FC] hover:bg-[#7E22CE]/20 disabled:cursor-not-allowed disabled:opacity-45'}
         aria-expanded={open}
         aria-controls="apex-tools-selector-panel"
@@ -293,22 +307,29 @@ export function ToolsSelector({
           setOpen((current) => !current)
         }}
       >
-        {!compact ? (
+        {compact ? (
+          <>
+            <Plus className="size-4 shrink-0" strokeWidth={2} aria-hidden />
+            {hasActiveTools ? (
+              <span className="absolute top-1 right-1 size-1.5 rounded-full bg-[#A855F7] shadow-[0_0_6px_rgba(168,85,247,0.8)]" aria-hidden />
+            ) : null}
+          </>
+        ) : (
           <>
             <span>Tools</span>
             <span className="normal-case tracking-normal text-zinc-300">
               {activeProfile?.name ?? 'Custom'} · {selectedToolNames.length} · {formatTokens(selectedTokens)}
             </span>
+            {open ? <ChevronDown className="size-3.5" aria-hidden /> : <ChevronRight className="size-3.5" aria-hidden />}
           </>
-        ) : null}
-        {open ? <ChevronDown className="size-3.5" aria-hidden /> : <ChevronRight className="size-3.5" aria-hidden />}
+        )}
       </button>
       {open ? (
         <div
           id="apex-tools-selector-panel"
           role="dialog"
           aria-label="Tools selector"
-          className="absolute bottom-full right-0 z-50 mb-2 max-h-[min(75vh,38rem)] w-[min(92vw,34rem)] overflow-y-auto rounded-xl border border-white/15 bg-zinc-950/95 p-3 text-left shadow-2xl backdrop-blur-xl scrollbar-thin"
+          className={`absolute bottom-full ${align === 'right' ? 'right-0' : 'left-0'} z-50 mb-2 max-h-[min(75vh,38rem)] w-[min(92vw,34rem)] overflow-y-auto rounded-xl border border-white/15 bg-zinc-950/95 p-3 text-left shadow-2xl backdrop-blur-xl scrollbar-thin`}
         >
           <div className="flex items-center justify-between gap-2">
             <div>
