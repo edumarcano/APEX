@@ -12,9 +12,11 @@ import { CircleAlert, Loader2, Send } from 'lucide-react'
 import type {
   AgentStatus,
   AgentKey,
+  ModelCatalogEntry,
   ToolCatalog,
   ToolPreflightEstimate,
 } from '../types/telemetry'
+import { HomeModelSelector } from './HomeModelSelector'
 import { ToolsSelector } from './ToolsSelector'
 
 export function CortexQueryRim(): ReactElement {
@@ -94,6 +96,9 @@ export interface AgentQueryBarProps {
   onDraftChange?: (value: string) => void
   presentation?: 'home'
   error?: string | null
+  selectedModelId?: string
+  onModelChange?: (modelId: string) => void
+  modelCatalog?: ModelCatalogEntry[]
 }
 
 export function AgentQueryBar({
@@ -122,6 +127,9 @@ export function AgentQueryBar({
   selectionReady = true,
   draftPrompt,
   onDraftChange,
+  selectedModelId,
+  onModelChange,
+  modelCatalog,
 }: AgentQueryBarProps): ReactElement {
   const [localQuery, setLocalQuery] = useState('')
   const query = draftPrompt ?? localQuery
@@ -168,10 +176,19 @@ export function AgentQueryBar({
 
   return <div className="w-full max-w-full">
     <form onSubmit={handleSubmit} className={formClassName} aria-label="Agent query bar" aria-busy={isSubmitting || submissionPending}>
-      <div className="flex min-h-[46px] items-center gap-2.5 px-3 py-1.5">
-        <span className="shrink-0 font-mono text-sm font-semibold text-[#0F4DB8]" aria-hidden>&gt;_</span>
-        <input type="text" value={query} onChange={(event) => { draftRef.current = event.target.value; setLocalQuery(event.target.value); onDraftChange?.(event.target.value) }} onKeyDown={handleInputKeyDown} placeholder="Ask APEX" disabled={editorDisabled} className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-zinc-400 outline-none focus:ring-0" aria-label="Agent query" autoComplete="off" spellCheck={false} />
-        <ToolsSelector compact catalog={catalog} selectedToolNames={selectedToolNames} activeToolProfileId={activeToolProfileId} onSelectionChange={onToolSelectionChange ?? (() => undefined)} onProfileChange={onToolProfileChange ?? (() => undefined)} preflight={toolPreflight} preflightLoading={toolPreflightLoading} catalogError={toolCatalogError} preflightError={toolPreflightError} profileFeedback={toolProfileFeedback} profileError={toolProfileError} disabled={editorDisabled} onSaveProfile={onSaveToolProfile} onDuplicateProfile={onDuplicateToolProfile} onRenameProfile={onRenameToolProfile} onDeleteProfile={onDeleteToolProfile} onRestoreProfile={onRestoreToolProfile} onSetDefaultProfile={onSetDefaultToolProfile} />
+      <div className="flex min-h-[46px] items-center gap-2 px-2.5 py-1.5">
+        <ToolsSelector compact align="left" catalog={catalog} selectedToolNames={selectedToolNames} activeToolProfileId={activeToolProfileId} onSelectionChange={onToolSelectionChange ?? (() => undefined)} onProfileChange={onToolProfileChange ?? (() => undefined)} preflight={toolPreflight} preflightLoading={toolPreflightLoading} catalogError={toolCatalogError} preflightError={toolPreflightError} profileFeedback={toolProfileFeedback} profileError={toolProfileError} disabled={editorDisabled} onSaveProfile={onSaveToolProfile} onDuplicateProfile={onDuplicateToolProfile} onRenameProfile={onRenameToolProfile} onDeleteProfile={onDeleteToolProfile} onRestoreProfile={onRestoreToolProfile} onSetDefaultProfile={onSetDefaultToolProfile} />
+        <input type="text" value={query} onChange={(event) => { draftRef.current = event.target.value; setLocalQuery(event.target.value); onDraftChange?.(event.target.value) }} onKeyDown={handleInputKeyDown} placeholder="Ask APEX" disabled={editorDisabled} className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-zinc-400 outline-none focus:ring-0 px-1" aria-label="Agent query" autoComplete="off" spellCheck={false} />
+        {selectedModelId && onModelChange && modelCatalog ? (
+          <HomeModelSelector
+            selectedModelId={selectedModelId}
+            onModelChange={onModelChange}
+            catalog={modelCatalog}
+            disabled={editorDisabled || isSubmitting || submissionPending}
+            isQuerying={isSubmitting || submissionPending}
+            presentation="composer"
+          />
+        ) : null}
         <button type="submit" disabled={submitDisabled} className="inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-[#7E22CE]/45 bg-[#7E22CE]/15 text-[#D8B4FE] transition-colors hover:border-[#C084FC] hover:bg-[#7E22CE]/25 disabled:cursor-not-allowed disabled:opacity-40" aria-label={isSubmitting ? 'Sending query' : submissionPending ? 'Preparing query' : 'Send query'}>{isSubmitting || submissionPending ? <Loader2 className="cortex-query-spinner size-3.5" aria-hidden /> : <Send className="size-3.5" aria-hidden />}</button>
       </div>
     </form>

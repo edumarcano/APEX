@@ -16,6 +16,7 @@ import {
 } from '../lib/attentionTier'
 import { API_ENDPOINTS } from '../lib/api'
 import type { DigestPayload, SystemState } from '../types/telemetry'
+import { ScrollFadeContainer } from './ScrollFadeContainer'
 
 const BRIEFING_HISTORY_ENDPOINT = API_ENDPOINTS.briefingHistory
 
@@ -202,11 +203,11 @@ export function BriefingDigest({
           ) : (
             <div className="flex min-h-0 flex-1 flex-col gap-3">
               {statusMeta}
-              <div className="list-fade-mask min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-thin">
+              <ScrollFadeContainer as="div" className="min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-thin">
                 <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-200">
                   {trimmedBriefing}
                 </p>
-              </div>
+              </ScrollFadeContainer>
             </div>
           )
         ) : (
@@ -225,14 +226,14 @@ export function BriefingDigest({
               </div>
             ) : (
               <div className="flex min-h-0 flex-1 flex-col gap-3">
-                <ul className="list-fade-mask min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 scrollbar-thin">
+                <ScrollFadeContainer as="ul" className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 scrollbar-thin">
                   {insights.map((insight, index) => (
                     <li key={index} className="flex items-start gap-3 text-sm leading-relaxed text-[color:var(--hud-text)]">
                       <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
                       <span className="text-zinc-200">{insight}</span>
                     </li>
                   ))}
-                </ul>
+                </ScrollFadeContainer>
               </div>
             )}
           </>

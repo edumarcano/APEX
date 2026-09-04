@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type {
   AgentStatus,
+  ModelCatalogEntry,
   ToolCatalog,
   ToolPreflightEstimate,
 } from '../types/telemetry'
@@ -227,5 +228,42 @@ describe('AgentQueryBar unified tool selection', () => {
       ['get_weather_forecast'],
       'custom_weather',
     )
+  })
+
+  it('places the "+" tool selector button at the left before the input and omits terminal glyph', () => {
+    renderBar(vi.fn())
+
+    expect(screen.queryByText('>_')).toBeNull()
+    const toolsButton = screen.getByRole('button', { name: /Tools:/ })
+    const input = screen.getByLabelText('Agent query')
+    expect(toolsButton.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('renders the model selector right before the send button when model catalog is provided', () => {
+    const modelCatalog: ModelCatalogEntry[] = [
+      {
+        model_id: 'gpt-5.6-luna',
+        display_name: 'GPT-5.6 Luna',
+        provider: 'openai',
+        runtime: 'cloud',
+        stability: 'stable',
+        reasoning_options: ['none', 'medium'],
+        default_reasoning: 'medium',
+        hosted_capabilities: [],
+      },
+    ]
+    renderBar(vi.fn(), {
+      selectedModelId: 'gpt-5.6-luna',
+      onModelChange: vi.fn(),
+      modelCatalog,
+    })
+
+    const input = screen.getByLabelText('Agent query')
+    const modelTrigger = screen.getByRole('button', { name: /model: gpt-5\.6 luna/i })
+    const sendButton = screen.getByRole('button', { name: 'Send query' })
+
+    expect(modelTrigger).toBeInTheDocument()
+    expect(input.compareDocumentPosition(modelTrigger) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(modelTrigger.compareDocumentPosition(sendButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })
