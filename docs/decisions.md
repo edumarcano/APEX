@@ -198,6 +198,22 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 **Trade-off.** The adapter needs focused conversion coverage whenever the pinned assistant-ui release changes, because its message and thread identifiers are not a stable public contract. The boundary is isolated in `frontend/src/components/ApexAssistantRuntime.tsx`. APEX does not expose assistant-ui cancellation, client-side tools, attachments, cloud storage, feedback, or automatic title generation. Empty threads are transient until their first accepted turn. Permanent deletion is an APEX-owned capability limited to archived conversations and exposed through the archived-only API route.
 
+### Stream live run activity over process-local Server-Sent Events
+
+**Decision.** Live run updates stream over process-local Server-Sent Events rather than WebSockets, polling, or database-backed message queues.
+
+**Why.** SSE provides unidirectional streaming over standard HTTP with reconnect replay through `Last-Event-ID`. In-memory ring buffers let clients reconnect after transient network glitches without writing intermediate delta events to SQLite. Client disconnections do not cancel active backend runs.
+
+**Trade-off.** Live events are process-local and lost on backend restart. Durable run state remains limited to the completed run ledger and conversation messages.
+
+### Adopt OpenTelemetry GenAI semantics without an internal tracing platform
+
+**Decision.** APEX exports distributed traces adhering to OpenTelemetry GenAI semantic conventions via standard OTLP HTTP rather than building an in-tree tracing UI or observability store.
+
+**Why.** Standard OTLP output lets operators connect standard evaluation or visualization tools (such as Arize Phoenix or OpenTelemetry collectors) when desired. Tracing is failure-isolated and has zero runtime overhead when disabled. Spans enforce a zero-content privacy guarantee that omits prompts, completions, and raw exceptions.
+
+**Trade-off.** Inspecting detailed traces requires running an external OTLP-compatible collector.
+
 ### Enforce one resident model and non-blocking admission
 
 **Decision.** APEX keeps one selected local model resident across Ollama and llama.cpp and rejects competing local execution rather than queueing it.

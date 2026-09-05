@@ -128,6 +128,7 @@ APEX can start without most provider credentials. Enable only the integrations y
 | Local models through llama.cpp | Optional external or APEX-managed llama.cpp router with model-based aliases |
 | Microsoft To Do | Public/native Entra application with delegated `Tasks.ReadWrite` |
 | MCP providers | Provider credential plus explicit runtime and preset enablement |
+| OpenTelemetry GenAI tracing | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` in `.env` (optional headers or service name) |
 
 See [Configuration](configuration.md) for ownership, precedence, modes, model settings, and provider-specific boundaries.
 
@@ -169,7 +170,7 @@ uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model ge
 - **Start with Briefing** activates Home, refreshes telemetry, and generates a briefing with the selected mode.
 - Agent queries become available after activation when they are enabled in Settings.
 - Runtime Settings writes machine-local overrides to `config.local.json`.
-- Normal-mode briefing history is stored in `apex_memory.db`. APEX also keeps its Microsoft To Do reminder cache, offline queue, and action history there. Demo briefings are not persisted.
+- Normal-mode briefing history is stored in `apex_memory.db`. APEX also keeps its Microsoft To Do reminder cache, offline queue, durable action history, and bounded Cortex run ledger there. Demo briefings are not persisted.
 
 ## Troubleshooting
 

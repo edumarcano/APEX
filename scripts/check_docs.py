@@ -417,10 +417,17 @@ def check_release_version(root: Path) -> list[DocumentationIssue]:
     ]
 
 
-def check_frontend_owner_names(root: Path) -> list[DocumentationIssue]:
+def check_frontend_owner_names(
+    root: Path,
+    contents: Mapping[Path, str] | None = None,
+) -> list[DocumentationIssue]:
     """Keep the frontend state-ownership table on current hook names."""
     frontend_readme = root / "frontend" / "README.md"
-    text = frontend_readme.read_text(encoding="utf-8")
+    text = (
+        contents.get(frontend_readme, "")
+        if contents is not None
+        else frontend_readme.read_text(encoding="utf-8")
+    )
     issues: list[DocumentationIssue] = []
     if "useApexAssistant" in text:
         issues.append(
@@ -440,7 +447,17 @@ def check_frontend_owner_names(root: Path) -> list[DocumentationIssue]:
                 "current Cortex owner is missing",
             )
         )
+    if "useCortexRuns" not in text:
+        issues.append(
+            DocumentationIssue(
+                frontend_readme,
+                1,
+                "useCortexRuns",
+                "current Cortex runs owner is missing",
+            )
+        )
     return issues
+
 
 
 PROVIDER_DISPLAY_NAMES: dict[str, str] = {

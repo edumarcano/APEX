@@ -54,6 +54,11 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | PATCH | `/api/v1/cortex/conversations/{conversation_id}` | Update one conversation |
 | DELETE | `/api/v1/cortex/conversations/{conversation_id}` | Permanently delete one archived conversation |
 | POST | `/api/v1/cortex/conversations/{conversation_id}/turns` | Run one durable Cortex turn |
+| POST | `/api/v1/cortex/conversations/{conversation_id}/runs` | Start one asynchronous bounded Cortex run |
+| GET | `/api/v1/cortex/runs` | List recent Cortex runs |
+| GET | `/api/v1/cortex/runs/{run_id}` | Read one Cortex run record |
+| POST | `/api/v1/cortex/runs/{run_id}/cancel` | Request cooperative run cancellation |
+| GET | `/api/v1/cortex/runs/{run_id}/events` | Stream live run activity as Server-Sent Events |
 | POST | `/api/v1/cortex/context/captures` | Propose a manual personal-context capture |
 | GET | `/api/v1/cortex/context` | List local personal-context records in the current partition |
 | GET | `/api/v1/cortex/context/{record_id}` | Inspect one record, its sources, history, and related records |
@@ -308,7 +313,7 @@ Archives one explicitly reviewed uncertain local row after the operator has insp
 { "id": "local:12" }
 ```
 
-## Apex Agents and local models
+## Apex Agent and local models
 
 ### GET `/api/v1/cortex/tool-catalog`
 
@@ -615,7 +620,7 @@ Cortex turns.
 `search_apex_docs` is a selected native read capability, not a public search
 endpoint. It refreshes only `README.md` and `docs/**/*.md` immediately before
 searching, then returns at most five excerpts with repository-relative source
-locations. The excerpts are untrusted tool output. Agents should cite a used
+locations. The excerpts are untrusted tool output. Apex Agent should cite a used
 excerpt as `path:Lstart-Lend`; it cannot alter system instructions or policy.
 
 ## Actions
