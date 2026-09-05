@@ -9,10 +9,10 @@
 ## Current Focus
 
 **Current Phase:** [Phase V: APEX 2.0 Beta](#phase-v-apex-20-beta)
-**Active Milestone:** [v2.0.0-beta.2 - Cortex: Bounded Runs & Live Activity](#v200-beta2---cortex-bounded-runs--live-activity)
+**Active Milestone:** [v2.0.0-beta.3 - Trusted Context & Review](#v200-beta3---trusted-context--review)
 **Current Direction:** [APEX 2.0 Direction](#apex-20-direction)
 
-**Next Milestone:** [v2.0.0-beta.3 - Trusted Context & Review](#v200-beta3---trusted-context--review)
+**Next Milestone:** [v2.0.0-beta.4 - External Activity Inbox](#v200-beta4---external-activity-inbox)
 
 ### Navigation
 
@@ -440,34 +440,16 @@ Establish the APEX 2.0 foundation with persistent conversations, personal contex
 
 ## v2.0.0-beta.2 - Cortex: Bounded Runs & Live Activity
 
-**Status:** In Progress
+**Status:** Complete
 
 **Objective:**
-Let Apex Agent carry an APEX request through several visible, controlled steps without turning Cortex into a general autonomous Agent platform.
-
-A run can retrieve relevant context, reason, call approved tools, propose or complete allowed actions, check the result, and stop when it has enough evidence to finish.
-
-APEX, rather than the model alone, should set the limits for iterations, elapsed time, token use, retries, cancellation, and failure handling.
-
-Cortex should gain an APEX-owned streaming path for response text, tool activity, action proposals, runtime measurements, completion, and errors. The assistant-ui frontend can display that stream without owning the Cortex runtime.
-
-APEX should keep a durable run record with the selected model, provider, runtime, limits, counters, stop reason, completion evidence, and trace reference. Message text should remain in conversation storage rather than being copied into the run ledger.
-
-Detailed tracing should use standard OpenTelemetry output and may be viewed through an optional compatible tool such as Phoenix. APEX should not build its own tracing or evaluation platform.
-
-The Cortex Activity view should show active and recent runs, tool and action activity, cancellation controls, model state, local inference state, context use, and the resource limits that affect APEX. It should reuse existing runtime and operating-system information rather than becoming a full process monitor.
-
-Provider-supported generation controls, structured output, usage reporting, and runtime measurements should be capability-aware. APEX should not pretend every model supports the same settings or reports the same data.
-
-The CLI should be able to start and follow a run, cancel it, inspect completion evidence, and reference the related trace.
-
-The new measurements may also be used to tune existing llama.cpp settings for the current hardware. This should remain local runtime calibration rather than becoming a general benchmarking platform.
+Unify models and runtimes under a single Apex Agent, and introduce bounded execution with APEX-enforced limits, a durable run ledger, live event streaming, an in-HUD activity inspector, OpenTelemetry GenAI tracing, and CLI run controls.
 
 ---
 
 ## v2.0.0-beta.3 - Trusted Context & Review
 
-**Status:** Planned
+**Status:** In Progress
 
 **Objective:**
 Make the context introduced in beta.1 easier to trust, correct, and understand before APEX begins accepting larger amounts of information from outside tools.
@@ -796,4 +778,4 @@ The local-first model remains the default. APEX should continue to work without 
 APEX is currently in **Phase V: APEX 2.0 Beta**.
 
 **Active milestone:**
-[v2.0.0-beta.2 - Cortex: Bounded Runs & Live Activity](#v200-beta2---cortex-bounded-runs--live-activity)
+[v2.0.0-beta.3 - Trusted Context & Review](#v200-beta3---trusted-context--review)

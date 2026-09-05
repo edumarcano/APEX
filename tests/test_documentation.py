@@ -8,6 +8,7 @@ from scripts.check_docs import (
     check_agent_profiles,
     check_api_contract_version,
     check_default_briefing_provider,
+    check_frontend_owner_names,
     check_links,
     check_schema_versions,
     duplicate_route_headings,
@@ -147,6 +148,29 @@ class DocumentationCheckerTests(unittest.TestCase):
         reasons = {issue.reason for issue in issues}
         self.assertIn("obsolete Ollama briefing provider is documented", reasons)
         self.assertIn("briefing diagram omits a supported synthesis path", reasons)
+
+    def test_frontend_owner_names_reports_missing_cortex_runs(self) -> None:
+        root = Path("virtual-frontend").resolve()
+        source = root / "frontend" / "README.md"
+        contents = {source: "| `useCortex` | Browser conversation |\n"}
+        issues = check_frontend_owner_names(root, contents=contents)
+
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0].target, "useCortexRuns")
+        self.assertIn("current Cortex runs owner is missing", issues[0].reason)
+
+    def test_frontend_owner_names_accepts_valid_current_owners(self) -> None:
+        root = Path("virtual-frontend").resolve()
+        source = root / "frontend" / "README.md"
+        contents = {
+            source: (
+                "| `useCortex` | Browser conversation |\n"
+                "| `useCortexRuns` | Recent runs |\n"
+            )
+        }
+        issues = check_frontend_owner_names(root, contents=contents)
+        self.assertEqual(issues, [])
+
 
 if __name__ == "__main__":
     unittest.main()

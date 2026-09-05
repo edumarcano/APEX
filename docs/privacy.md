@@ -1,6 +1,6 @@
 # Privacy
 
-APEX is local-first: durable settings, conversation history, retrieval data, context records, action evidence, and briefing history remain on the local machine unless a selected operation requires an enabled connector or model provider.
+APEX is local-first: durable settings, conversation history, retrieval data, context records, action evidence, the Cortex run ledger, and briefing history remain on the local machine unless a selected operation requires an enabled connector or model provider.
 
 ## Interactive models
 
@@ -15,6 +15,10 @@ Focused briefings use the fixed OpenRouter DeepSeek V4 Flash route with its priv
 ## Tools and actions
 
 APEX tools pass only the arguments required for the requested operation. Tool output is treated as untrusted model data. Write operations are approval-gated, create local action evidence, and are not replayed automatically after ambiguous outcomes.
+
+## Distributed tracing
+
+OpenTelemetry tracing is optional and disabled by default. When an operator configures an OTLP export endpoint in `.env`, trace spans are sent to that destination. Tracing adheres to GenAI semantic conventions and preserves a zero-content privacy guarantee: spans capture run metadata, model names, token counts, timings, and status, but never include prompt text, model answers, or raw exception payloads.
 
 ## Development and demo
 

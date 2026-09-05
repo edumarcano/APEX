@@ -2,6 +2,63 @@
 
 ---
 
+## v2.0.0-beta.2 - Cortex: Bounded Runs & Live Activity
+
+**Released:** September 5, 2026
+
+This release consolidates cloud and local models under a single Apex Agent, introduces bounded run execution with APEX-enforced limits, adds real-time Server-Sent Events streaming, and provides an Activity inspector in the HUD. Execution history is stored in a dedicated SQLite run ledger that records token metrics, step counters, stop reasons, and OpenTelemetry trace references without mixing run metadata into conversation storage. OpenTelemetry distributed tracing follows GenAI semantic conventions with zero-content privacy defaults, and new CLI commands allow managing and inspecting runs headlessly. Composer layouts now include dynamic scroll-fade indicators, and Grok and legacy sandbox providers have been retired.
+
+---
+
+### What's New
+
+- Consolidated the Agent roster from Panthera and Felis into a single **Apex Agent**. Model selection in the catalog now determines whether a request routes to a cloud API or a local llama.cpp or Ollama runtime.
+- Added bounded Cortex runs. APEX limits run duration, loop iterations, token consumption, retry counts, and cancellation, rather than relying on model self-termination alone.
+- Added a dedicated SQLite run ledger (`cortex_runs` and `cortex_run_steps`) that tracks run status, step sequences, tool executions, token metrics, stop reasons, and trace identifiers separately from conversation messages.
+- Added live Server-Sent Events (SSE) streaming for Cortex runs, publishing real-time updates for tokens, step lifecycle transitions, tool execution start and completion, and termination events.
+- Added an **Activity** tab to the Cortex Workspace to monitor active and recent runs, view step details and tool execution state, review resource counters, and cancel runs in flight.
+- Added `apex runs` CLI subcommands (`list`, `show`, `cancel`) for viewing and managing runs without opening the HUD.
+- Added failure-isolated OpenTelemetry distributed tracing conforming to GenAI semantic conventions. By default, prompt content and completions are excluded from span attributes to ensure zero-content privacy.
+- Added dynamic scroll fade masks to the HUD composer and scroll containers, fading card text only when additional content remains below the fold.
+- Retired Grok, SpaceXAI, and legacy sandbox/free-tier providers.
+
+### Architecture Changes
+
+- Unified model routing under `core/agent/loop.py` and `core/agent/model_catalog.py`, replacing multi-agent specs with single-agent configuration.
+- Added `core/runs/` (`models.py`, `service.py`, `store.py`, `coordinator.py`, `events.py`) to manage run persistence, concurrency gating, step lifecycle, and live SSE event broadcasting.
+- Implemented native provider streaming across Gemini (`google-genai`), OpenRouter (`openai`), Ollama, and llama.cpp runtimes.
+- Added `core/tracing/` (`service.py`, `spans.py`) for OpenTelemetry tracer initialization, span generation, and error-handling isolation.
+- Settings schema version bumped to `17` with unified `ask_apex.apex` settings.
+
+### API Changes
+
+- Added `/api/v1/cortex/runs` endpoints:
+  - `GET /api/v1/cortex/runs`: List past and active runs with optional status and pagination filters.
+  - `GET /api/v1/cortex/runs/{run_id}`: Retrieve full execution details, step history, and tool records for a run.
+  - `GET /api/v1/cortex/runs/{run_id}/events`: Stream real-time SSE execution events for an active run.
+  - `POST /api/v1/cortex/runs/{run_id}/cancel`: Cancel an active run in progress.
+- `POST /api/v1/cortex/query` now supports run coordinator execution, streaming response delegation, and run ID tracking.
+- Replaced `/api/v1/agents` multi-agent payload with singular Apex Agent availability and model catalog.
+- Settings schema updated to version `17`.
+
+### Frontend Changes
+
+- Added `CortexActivity.tsx` and `useCortexRuns.ts` for real-time run telemetry inspection, active step tracking, and cancellation controls.
+- Added `CortexActiveRunStrip.tsx` to display in-thread run status and streaming progress.
+- Added `ScrollFadeContainer.tsx` and `useScrollFadeMask.ts` for dynamic scroll-fade masking.
+- Simplified `ModelSelector.tsx`, `HomeModelSelector.tsx`, and `SettingsPanel.tsx` to reflect the singular Apex Agent model architecture.
+- Aligned Cortex visual theme tokens and run status colors with the APEX design system.
+
+### Documentation Updates
+
+- Documented run limits, timeout settings, and OpenTelemetry configuration options in `.env.example` and `docs/configuration.md`.
+- Documented bounded run architecture, SSE event contracts, and zero-content tracing guarantees in `docs/architecture.md`, `docs/privacy.md`, and `docs/api.md`.
+- Added `apex runs` CLI usage to `docs/cli.md`.
+- Recorded architectural decisions for SSE streaming and OpenTelemetry GenAI tracing in `docs/decisions.md`.
+- Refreshed interface screenshots in `docs/assets/` for Cortex, Home, and Standby views.
+
+---
+
 ## v2.0.0-beta.1 - Cortex: Persistent Context, World Model & Retrieval
 
 **Released:** August 20, 2026

@@ -49,6 +49,7 @@ Do not expand `useApexData` into another global store. Use the focused owner for
 | `useBriefingPipeline` | Briefing generation, status polling, digest, and transcript |
 | `useVoiceDelivery` | Manual and automatic speech requests |
 | `useCortex` | Browser-held conversation, Agent/catalog status, explicit tool-selection diagnostics, tool traces and outputs |
+| `useCortexRuns` | Recent Cortex runs, active-run polling, selection, activity detail inspection, and cooperative cancellation |
 | `useActions` | Cortex-visible action list, expanded audit detail, bounded polling, and versioned action controls |
 | `useToolCatalog` | Agent-specific catalog, session-persistent selection, and profile application |
 | `useToolPreflight` | Debounced estimated token breakdown for the next request |

@@ -65,7 +65,7 @@ The HUD exposes connector health, CPU and memory use, active model state, briefi
 - **Safer model input:** Connectors produce structured results, and briefing models receive only selected facts marked as untrusted data.
 - **Three briefing modes:** Flash is the default local Gemma orientation, Focused is OpenRouter DeepSeek V4 Flash planning, and Structured is a model-free deterministic view.
 - **One local model at a time:** APEX avoids hidden local-inference queues and keeps model loading visible.
-- **Local storage:** SQLite keeps briefing history, the reminder cache and offline queue, the durable action ledger, and Cortex conversation trees with response metadata. Reloading APEX restores the active conversation branch and its per-conversation Agent/tool preferences.
+- **Local storage:** SQLite keeps briefing history, the reminder cache and offline queue, the durable action ledger, the bounded run ledger, and Cortex conversation trees with response metadata. Reloading APEX restores the active conversation branch and its per-conversation Agent/tool preferences.
 - **Visible failures:** Readiness checks, connector health, stable errors, run IDs, and preflight warnings make degraded states easier to understand.
 - **Credential isolation:** The backend receives credentials; the static server and browser receive a restricted child environment.
 
@@ -120,13 +120,14 @@ Demo mode bypasses live connectors and model calls, does not write briefing hist
 
 ## Use APEX without the HUD
 
-When the backend is already running, the included CLI can inspect APEX, run one Agent turn, generate a briefing, and review or resolve durable actions:
+When the backend is already running, the included CLI can inspect APEX, run one Agent turn, generate a briefing, inspect recent Cortex runs, and review or resolve durable actions:
 
 ```powershell
 uv run apex status
 uv run apex models
 uv run apex ask "What needs my attention?" --profile personal_ops
 uv run apex briefing --mode structured
+uv run apex runs list
 uv run apex actions list
 ```
 
