@@ -122,8 +122,17 @@ class StableAgentErrorTests(unittest.TestCase):
                 _tools: list[object],
                 _profile: object,
                 system_instruction_override: str | None = None,
+                *,
+                execution_control: object | None = None,
+                stream_observer: object | None = None,
+                output_schema: dict[str, object] | None = None,
             ) -> ProviderTurnResult:
-                del system_instruction_override
+                del (
+                    system_instruction_override,
+                    execution_control,
+                    stream_observer,
+                    output_schema,
+                )
                 self.calls += 1
                 if self.calls == 1:
                     return ProviderTurnResult(

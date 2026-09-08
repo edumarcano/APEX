@@ -60,8 +60,23 @@ class _ProposalProvider:
     def __init__(self) -> None:
         self.calls = 0
 
-    def generate_turn(self, _messages, _tools, _profile, system_instruction_override=None):
-        del system_instruction_override
+    def generate_turn(
+        self,
+        _messages,
+        _tools,
+        _profile,
+        system_instruction_override=None,
+        *,
+        execution_control=None,
+        stream_observer=None,
+        output_schema=None,
+    ):
+        del (
+            system_instruction_override,
+            execution_control,
+            stream_observer,
+            output_schema,
+        )
         self.calls += 1
         if self.calls == 1:
             return ProviderTurnResult(message=AgentMessage(

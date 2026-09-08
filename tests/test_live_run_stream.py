@@ -157,7 +157,18 @@ class LiveRunStreamTests(unittest.TestCase):
 
     def test_loop_forwards_stream_text_and_final_activity(self) -> None:
         class Provider:
-            def generate_turn(self, _history, _tools, _profile, *, stream_observer=None, **_kwargs):
+            def generate_turn(
+                self,
+                _history,
+                _tools,
+                _profile,
+                system_instruction_override=None,
+                *,
+                execution_control=None,
+                stream_observer=None,
+                output_schema=None,
+            ):
+                del system_instruction_override, execution_control, output_schema
                 stream_observer(ProviderStreamEvent(kind="text", text="done"))
                 stream_observer(ProviderStreamEvent(kind="completed"))
                 return ProviderTurnResult(message=AgentMessage(role="agent", content="done"))
@@ -181,7 +192,18 @@ class LiveRunStreamTests(unittest.TestCase):
         class Provider:
             calls = 0
 
-            def generate_turn(self, _history, _tools, _profile, *, stream_observer=None, **_kwargs):
+            def generate_turn(
+                self,
+                _history,
+                _tools,
+                _profile,
+                system_instruction_override=None,
+                *,
+                execution_control=None,
+                stream_observer=None,
+                output_schema=None,
+            ):
+                del system_instruction_override, execution_control, output_schema
                 self.calls += 1
                 if self.calls == 1:
                     stream_observer(ProviderStreamEvent(kind="text", text="discard me"))
