@@ -608,6 +608,7 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
     admitted = False
     try:
         detail = service.detail(conversation_id)
+        partition = detail.partition
         agent_key = payload.agent or detail.agent
         selected_tools = (
             payload.selected_tool_names
@@ -620,6 +621,7 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
             else detail.tool_profile_id
         )
         request_metadata = {
+            "partition": partition,
             "effort": payload.effort,
             "selected_tool_names": selected_tools,
             "tool_profile_id": tool_profile_id,
@@ -650,6 +652,7 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
             request_metadata=request_metadata,
             selected_tool_names=selected_tools,
             tool_profile_id=tool_profile_id,
+            partition=partition,
         )
         if replayed:
             coordinator.abandon_admission(payload.agent_message_id)
@@ -670,11 +673,11 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
         "prompt": payload.prompt,
         "agent": agent_key,
         "effort": payload.effort,
-        "model_id": payload.model_id,
-        "context_window": payload.context_window,
-        "local_reasoning_mode": payload.local_reasoning_mode,
+        "model_id": request_metadata["resolved_model"],
+        "context_window": request_metadata["effective_context_window"],
+        "local_reasoning_mode": request_metadata["effective_local_reasoning_mode"],
         "history": history,
-        "history_partition": service.partition(),
+        "history_partition": partition,
         "tool_profile_id": tool_profile_id,
         "snapshot_id": payload.snapshot_id,
         "briefing_id": payload.briefing_id,
@@ -686,9 +689,9 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
     )
     context_policy = ContextPolicy.from_settings(
         agent=agent_key,
-        partition=service.partition(),
+        partition=partition,
         settings=get_settings_store().get_snapshot(),
-        model_id=payload.model_id,
+        model_id=str(request_metadata["resolved_model"]),
     )
     try:
         context_bundle = ContextAssembler(
@@ -739,21 +742,37 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
         try:
             return query_agent(
                 execution_payload,
-                action_provenance={"source_kind": "conversation_message", "conversation_id": str(conversation_id), "message_id": str(user.id), "partition": service.partition()},
+                action_provenance={
+                    "source_kind": "conversation_message",
+                    "conversation_id": str(conversation_id),
+                    "message_id": str(user.id),
+                    "partition": partition,
+                },
                 context_bundle=context_bundle,
                 execution_control=control,
                 stream_observer=control.observe_provider_stream,
                 activity_observer=control.publish_activity,
+                execution_partition=partition,
             )
         except HTTPException as exc:
             raise RunHttpError(status_code=exc.status_code, detail=exc.detail) from exc
 
     def finalize(response, message_status: str, error_code: str | None):
-        response_data = ({"error": error_code} if response is None else response.model_dump(mode="json", exclude={"answer", "session_id"}))
-        completed = service.finalize(conversation_id, agent_message.id, answer="" if response is None else response.answer, status=message_status, response_metadata=response_data)
+        response_data = (
+            {"error": error_code}
+            if response is None
+            else response.model_dump(mode="json", exclude={"answer", "session_id"})
+        )
+        completed = service.finalize(
+            conversation_id,
+            agent_message.id,
+            answer="" if response is None else response.answer,
+            status=message_status,
+            response_metadata=response_data,
+        )
         if completed.status == "completed":
             try:
-                get_retrieval_service().index_turn(user, completed, partition=service.partition())
+                get_retrieval_service().index_turn(user, completed, partition=partition)
             except Exception:
                 pass
         return completed

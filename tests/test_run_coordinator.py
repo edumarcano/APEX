@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import tempfile
 import threading
@@ -35,6 +36,10 @@ from core.runs.models import RunCompletionEvidence, RunLimitSnapshot
 from core.runs.service import RunService, set_run_service
 from core.runs.store import RunStore
 from core.conversations.store import ConversationStore
+from core.retrieval.service import RetrievalService, set_retrieval_service
+from core.retrieval.store import RetrievalStore
+from core.settings.models import SettingsPatch
+from core.settings.store import RuntimeSettingsStore
 
 
 class _ProductionRunService(RunService):
@@ -385,6 +390,144 @@ class RunCoordinatorTests(unittest.TestCase):
         self.assertEqual(record.limit_snapshot.max_total_tokens, 16384)
         if future is not None:
             future.result(timeout=2)
+
+    def test_submit_run_keeps_accepted_context_when_settings_change_during_execution(
+        self,
+    ) -> None:
+        config_path = Path(self.temp_dir.name) / "config.json"
+        local_config_path = Path(self.temp_dir.name) / "config.local.json"
+        config_path.write_text(
+            json.dumps(
+                {
+                    "ask_apex": {
+                        "enabled": True,
+                        "selected_model": "qwen3:1.7b",
+                        "sandbox_mode": False,
+                        "local": {
+                            "context_window": 16384,
+                            "reasoning_mode": "none",
+                        },
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        settings = RuntimeSettingsStore(
+            config_path=config_path,
+            local_config_path=local_config_path,
+        )
+        retrieval_store = RetrievalStore(self.db_path)
+        retrieval_store.initialize()
+        self.addCleanup(retrieval_store.close)
+        retrieval = RetrievalService(retrieval_store, self.conversations)
+        set_retrieval_service(retrieval)
+        self.addCleanup(set_retrieval_service, None)
+
+        coordinator = CortexRunCoordinator(self.service, max_workers=1)
+        self.addCleanup(coordinator.close)
+        set_run_coordinator(coordinator)
+        self.addCleanup(set_run_coordinator, None)
+        set_run_service(self.service)
+        self.addCleanup(set_run_service, None)
+
+        conversation_service = ConversationService(self.conversations, history_limit=20)
+        set_conversation_service(conversation_service)
+        self.addCleanup(set_conversation_service, None)
+        entered_execution = threading.Event()
+        release_execution = threading.Event()
+        captured: dict[str, object] = {}
+        response = SimpleNamespace(
+            answer="Done",
+            error=None,
+            tool_trace=[],
+            tool_outputs=[],
+            measurements={},
+            model_dump=lambda **_kwargs: {},
+        )
+
+        def query(payload, **kwargs):
+            captured["payload"] = payload
+            captured["provenance"] = kwargs["action_provenance"]
+            captured["execution_partition"] = kwargs["execution_partition"]
+            entered_execution.set()
+            self.assertTrue(release_execution.wait(timeout=2))
+            return response
+
+        with (
+            patch("core.api.routers.cortex.get_settings_store", return_value=settings),
+            patch("core.api.routers.cortex.is_dev_mode", return_value=True),
+            patch("core.conversations.service.get_settings_store", return_value=settings),
+            patch("core.conversations.service.is_dev_mode", return_value=True),
+            patch("core.api.routers.cortex.ContextAssembler") as mock_assembler,
+            patch("core.api.routers.cortex.get_knowledge_service"),
+            patch("core.api.routers.cortex.query_agent", side_effect=query),
+        ):
+            mock_assembler.return_value.assemble.return_value = MagicMock()
+            conversation = conversation_service.create(
+                ConversationCreateRequest(
+                    title="Bound run context", origin="hud", agent="apex"
+                )
+            )
+            payload = ConversationTurnRequest(
+                user_message_id=uuid4(),
+                agent_message_id=uuid4(),
+                prompt="Keep this partition",
+                agent="apex",
+            )
+
+            record, future = _submit_run(conversation.id, payload)
+            self.assertIsNotNone(future)
+            self.assertTrue(entered_execution.wait(timeout=2))
+
+            settings.apply_patch(
+                SettingsPatch.model_validate(
+                    {
+                        "ask_apex": {
+                            "selected_model": "deepseek/deepseek-v4-flash-0731",
+                            "sandbox_mode": True,
+                        }
+                    }
+                )
+            )
+            release_execution.set()
+            future.result(timeout=2)
+
+        execution_payload = captured["payload"]
+        self.assertEqual(execution_payload.model_id, "qwen3:1.7b")
+        self.assertEqual(execution_payload.context_window, 16384)
+        self.assertEqual(execution_payload.local_reasoning_mode, "none")
+        self.assertEqual(execution_payload.history_partition, "production")
+        self.assertEqual(captured["execution_partition"], "production")
+        self.assertEqual(captured["provenance"]["partition"], "production")
+        self.assertEqual(record.requested_model, "qwen3:1.7b")
+
+        detail = self.conversations.detail(conversation.id, "production")
+        agent_message = next(
+            message
+            for message in detail.messages
+            if message.id == payload.agent_message_id
+        )
+        self.assertEqual(agent_message.request_metadata["partition"], "production")
+        self.assertEqual(agent_message.request_metadata["resolved_model"], "qwen3:1.7b")
+        self.assertEqual(
+            [
+                row[4]
+                for row in retrieval_store.scoped_items(
+                    namespace="conversation",
+                    source_type="message",
+                    partition="production",
+                )
+            ],
+            ["production", "production"],
+        )
+        self.assertEqual(
+            retrieval_store.scoped_items(
+                namespace="conversation",
+                source_type="message",
+                partition="sandbox",
+            ),
+            [],
+        )
 
     def test_after_model_turn_derives_universal_throughput_and_eval_timings(self) -> None:
         from core.agent.types import TokenUsage
