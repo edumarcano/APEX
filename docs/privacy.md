@@ -22,6 +22,6 @@ OpenTelemetry tracing is optional and disabled by default. When an operator conf
 
 ## Development and demo
 
-`DEV_MODE` masks sensitive briefing inputs before sandbox use. Sandbox uses a restricted non-personal tool allowlist and isolated history. `DEMO_MODE` uses deterministic fixtures and does not contact configured connectors or model providers on demo paths.
+`DEV_MODE` masks sensitive briefing inputs before sandbox use. Sandbox uses a restricted non-personal tool allowlist and isolated history. Accepted Cortex runs retain their server-derived production or sandbox partition through execution and retrieval indexing, so changing the sandbox setting affects later requests without moving in-flight history or context. `DEMO_MODE` uses deterministic fixtures and does not contact configured connectors or model providers on demo paths.
 
 Credentials belong in `.env` or the local environment, never in `config.json`, `config.local.json`, documents, or source control.

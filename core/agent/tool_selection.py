@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from core.actions.runtime import get_action_service
 from core.agent.capabilities import CapabilityDescriptor, get_capability_descriptor
@@ -149,13 +150,18 @@ def resolve_selected_tools(
     *,
     tool_profile_id: str | None = None,
     model_id: str | None = None,
+    execution_partition: Literal["production", "sandbox"] | None = None,
 ) -> ResolvedToolSelection:
     """Resolve explicit names through policy, exposure, runtime, and MCP state.
 
     No requested name is silently dropped.  Every invalid, unauthorized, or
     unavailable name is represented by a structured failure in the result.
     """
-    catalog = build_tool_catalog(agent_key, model_id=model_id)
+    catalog = build_tool_catalog(
+        agent_key,
+        model_id=model_id,
+        execution_partition=execution_partition,
+    )
     requested, active_profile_id, active_profile_name, profile_failure = _requested_names(
         agent_key,
         selected_tool_names,

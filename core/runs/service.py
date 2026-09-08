@@ -140,14 +140,16 @@ class RunService:
         requested_model: str,
         limit_snapshot: RunLimitSnapshot,
         trace_id: str | None = None,
+        partition: RunPartition | None = None,
     ) -> tuple[RunRecord, RunHandle, bool]:
         """
-        Create a run in the active partition and return a partition-bound RunHandle.
+        Create a run in the supplied or active partition and return a
+        partition-bound RunHandle.
 
         Returns:
             A tuple of (RunRecord, RunHandle, replayed: bool).
         """
-        partition = self.partition()
+        partition = partition or self.partition()
         record, replayed = self.store.create_run(
             run_id=run_id,
             conversation_id=conversation_id,

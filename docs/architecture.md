@@ -22,7 +22,7 @@ Home or Cortex
     -> durable conversation metadata and action evidence
 ```
 
-Conversation storage owns prompts and answers. Turn request metadata records the resolved model, provider, runtime, and effective controls so idempotent replay distinguishes executions that use the same Apex Agent identity.
+Conversation storage owns prompts and answers. Turn request metadata records the resolved model, provider, runtime, effective controls, and accepted partition so idempotent replay distinguishes executions that use the same Apex Agent identity. An accepted asynchronous run keeps those execution choices through completion even if later settings changes affect subsequent requests.
 
 ## Tool and action boundary
 

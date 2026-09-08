@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Literal, Mapping
 
 from fastapi import HTTPException, status
 
@@ -228,7 +228,13 @@ def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
     )
 
 
-def _is_sandbox_agent_query(agent_key: str) -> bool:
+def _is_sandbox_agent_query(
+    agent_key: str,
+    *,
+    execution_partition: Literal["production", "sandbox"] | None = None,
+) -> bool:
+    if execution_partition is not None:
+        return execution_partition == "sandbox"
     settings = get_settings_store().get_snapshot().ask_apex
     return is_sandbox_query(
         sandbox_mode=settings.sandbox_mode,
@@ -657,6 +663,7 @@ def _prepare_agent_payload(
     *,
     agent_key: str,
     model_id: str | None = None,
+    execution_partition: Literal["production", "sandbox"] | None = None,
 ) -> AgentQueryRequest:
     """Apply the same bounded history partition used by execution and preflight."""
     from core.agent.model_catalog import get_model_profile
@@ -679,7 +686,7 @@ def _prepare_agent_payload(
             )
         }
     )
-    if _is_sandbox_agent_query(agent_key):
+    if _is_sandbox_agent_query(agent_key, execution_partition=execution_partition):
         if prepared.briefing_id is not None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -693,7 +700,10 @@ def _prepare_agent_payload(
 
 
 def _build_hud_context(
-    payload: AgentQueryRequest, *, agent_key: str = "apex"
+    payload: AgentQueryRequest,
+    *,
+    agent_key: str = "apex",
+    execution_partition: Literal["production", "sandbox"] | None = None,
 ) -> str:
     """
     Build optional HUD context from explicit identifiers only.
@@ -703,7 +713,9 @@ def _build_hud_context(
     """
     sections: list[str] = []
 
-    if _is_sandbox_agent_query(agent_key):
+    if _is_sandbox_agent_query(
+        agent_key, execution_partition=execution_partition
+    ):
         if payload.snapshot_id is None:
             return ""
         masked = get_masked_briefing(payload.snapshot_id)
@@ -720,7 +732,12 @@ def _build_hud_context(
             f"- Active Summary Insights: {insight_text if insight_text else 'None'}"
         )
 
-    if not _is_sandbox_agent_query(agent_key) and payload.briefing_id is not None:
+    if (
+        not _is_sandbox_agent_query(
+            agent_key, execution_partition=execution_partition
+        )
+        and payload.briefing_id is not None
+    ):
         record = database.fetch_briefing_by_id(payload.briefing_id)
         if record is not None:
             insights_list = record["digest"].get("insights", [])
@@ -738,7 +755,12 @@ def _build_hud_context(
                 f"{insight_text if insight_text else 'None'}"
             )
 
-    if not _is_sandbox_agent_query(agent_key) and payload.snapshot_id is not None:
+    if (
+        not _is_sandbox_agent_query(
+            agent_key, execution_partition=execution_partition
+        )
+        and payload.snapshot_id is not None
+    ):
         from core.telemetry.service import get_telemetry_service
 
         snapshot = get_telemetry_service().latest()
@@ -801,13 +823,18 @@ def _execute_agent_turn(
     execution_control: ExecutionControl | None = None,
     stream_observer: ProviderStreamObserver | None = None,
     activity_observer: Callable[[str, dict[str, Any]], None] | None = None,
+    execution_partition: Literal["production", "sandbox"] | None = None,
 ) -> AgentQueryResponse:
     """Build HUD context, select the provider, and run the bounded agent loop."""
     try:
         hud_context = (
             ""
             if disable_hud_context
-            else _build_hud_context(payload, agent_key=agent_key)
+            else _build_hud_context(
+                payload,
+                agent_key=agent_key,
+                execution_partition=execution_partition,
+            )
         )
 
         if is_local_profile(profile):
@@ -1165,6 +1192,7 @@ def query_agent(
     execution_control: ExecutionControl | None = None,
     stream_observer: ProviderStreamObserver | None = None,
     activity_observer: Callable[[str, dict[str, Any]], None] | None = None,
+    execution_partition: Literal["production", "sandbox"] | None = None,
 ) -> AgentQueryResponse:
     """
     Execute one Cortex Engine Agent turn with optional tool calling.
@@ -1226,6 +1254,7 @@ def query_agent(
         _explicit_selection_names(payload),
         tool_profile_id=payload.tool_profile_id,
         model_id=payload.model_id,
+        execution_partition=execution_partition,
     )
     if selection.failures:
         raise HTTPException(
@@ -1263,7 +1292,10 @@ def query_agent(
         )
 
     payload = _prepare_agent_payload(
-        payload, agent_key=agent_key, model_id=payload.model_id
+        payload,
+        agent_key=agent_key,
+        model_id=payload.model_id,
+        execution_partition=execution_partition,
     )
 
     if is_local_profile(profile):
@@ -1329,6 +1361,7 @@ def query_agent(
                 execution_control=execution_control,
                 stream_observer=stream_observer,
                 activity_observer=activity_observer,
+                execution_partition=execution_partition,
             )
         finally:
             end_local_execution()
@@ -1354,4 +1387,5 @@ def query_agent(
         execution_control=execution_control,
         stream_observer=stream_observer,
         activity_observer=activity_observer,
+        execution_partition=execution_partition,
     )

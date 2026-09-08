@@ -61,8 +61,33 @@ class ConversationService:
     def delete(self, conversation_id: UUID) -> None:
         self.store.delete(conversation_id, self.partition())
 
-    def begin_turn(self, conversation_id: UUID, *, user_id: UUID, agent_id: UUID, parent_id: UUID | None, prompt: str, agent: str, request_metadata: dict[str, Any], selected_tool_names: list[str] | None, tool_profile_id: str | None):
-        return self.store.begin_turn(conversation_id=conversation_id, partition=self.partition(), user_id=user_id, agent_id=agent_id, parent_id=parent_id, prompt=prompt, agent=agent, request_metadata=request_metadata, selected_tool_names=selected_tool_names, tool_profile_id=tool_profile_id, history_limit=self.history_limit)
+    def begin_turn(
+        self,
+        conversation_id: UUID,
+        *,
+        user_id: UUID,
+        agent_id: UUID,
+        parent_id: UUID | None,
+        prompt: str,
+        agent: str,
+        request_metadata: dict[str, Any],
+        selected_tool_names: list[str] | None,
+        tool_profile_id: str | None,
+        partition: str | None = None,
+    ):
+        return self.store.begin_turn(
+            conversation_id=conversation_id,
+            partition=partition or self.partition(),
+            user_id=user_id,
+            agent_id=agent_id,
+            parent_id=parent_id,
+            prompt=prompt,
+            agent=agent,
+            request_metadata=request_metadata,
+            selected_tool_names=selected_tool_names,
+            tool_profile_id=tool_profile_id,
+            history_limit=self.history_limit,
+        )
 
     def finalize(self, conversation_id: UUID, agent_id: UUID, *, answer: str, status: str, response_metadata: dict[str, Any]):
         return self.store.finalize(conversation_id=conversation_id, agent_id=agent_id, answer=answer, status=status, response_metadata=response_metadata)
