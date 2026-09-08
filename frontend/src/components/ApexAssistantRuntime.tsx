@@ -146,6 +146,12 @@ type HistoryLoadState = {
   failureUntil: Map<string, number>
 }
 
+type PendingAssistantMessage = {
+  conversationId: string
+  messageId: string
+  content: string
+}
+
 function topologicalSortMessages(messages: ConversationMessage[]): ConversationMessage[] {
   if (messages.length <= 1) return messages
   const byId = new Map<string, ConversationMessage>()
@@ -183,7 +189,7 @@ function topologicalSortMessages(messages: ConversationMessage[]): ConversationM
   return sorted
 }
 
-function ThreadHistory({ children, getThreadIds, onConversationChangeRef, onPendingChangeRef, historyLoadStateRef, forceHistoryReloadRef }: { children?: ReactNode; getThreadIds: (remoteId: string) => Map<string, string>; onConversationChangeRef: React.MutableRefObject<((conversation: ConversationSummary | null) => void) | undefined>; onPendingChangeRef: React.MutableRefObject<((conversationId: string, agent: AgentKey, pending: boolean) => void) | undefined>; historyLoadStateRef: React.MutableRefObject<HistoryLoadState>; forceHistoryReloadRef: React.MutableRefObject<boolean> }): ReactNode {
+function ThreadHistory({ children, getThreadIds, onConversationChangeRef, onPendingChangeRef, historyLoadStateRef, forceHistoryReloadRef, pendingAssistantRef }: { children?: ReactNode; getThreadIds: (remoteId: string) => Map<string, string>; onConversationChangeRef: React.MutableRefObject<((conversation: ConversationSummary | null) => void) | undefined>; onPendingChangeRef: React.MutableRefObject<((conversationId: string, agent: AgentKey, pending: boolean) => void) | undefined>; historyLoadStateRef: React.MutableRefObject<HistoryLoadState>; forceHistoryReloadRef: React.MutableRefObject<boolean>; pendingAssistantRef: React.MutableRefObject<PendingAssistantMessage | null> }): ReactNode {
   const aui = useAui()
   const history = useMemo<ThreadHistoryAdapter>(() => ({
     async load() {
@@ -201,6 +207,13 @@ function ThreadHistory({ children, getThreadIds, onConversationChangeRef, onPend
           const detail = await requestJson<ConversationDetail>(API_ENDPOINTS.cortexConversation(remoteId))
           onConversationChangeRef.current?.(detail)
           onPendingChangeRef.current?.(detail.id, detail.agent, detail.messages.some((message) => message.role === 'agent' && message.status === 'pending'))
+          const pendingAssistant = pendingAssistantRef.current
+          const pendingMessage = pendingAssistant?.conversationId === detail.id
+            ? detail.messages.find((message) => message.id === pendingAssistant.messageId)
+            : undefined
+          if (pendingAssistant && pendingMessage && pendingMessage.status !== 'pending') {
+            pendingAssistantRef.current = null
+          }
           const orderedMessages = topologicalSortMessages(detail.messages)
           const idMap = getThreadIds(remoteId)
           idMap.clear()
@@ -224,7 +237,15 @@ function ThreadHistory({ children, getThreadIds, onConversationChangeRef, onPend
                 : {
                     id: message.id,
                     role: 'assistant' as const,
-                    content: [{ type: 'text' as const, text: message.content }],
+                    content: [{
+                      type: 'text' as const,
+                      text: message.status === 'pending'
+                        && pendingAssistant?.conversationId === detail.id
+                        && pendingAssistant.messageId === message.id
+                        && pendingAssistant.content
+                        ? pendingAssistant.content
+                        : message.content,
+                    }],
                     createdAt: new Date(message.created_at),
                     status: message.status === 'completed'
                       ? { type: 'complete' as const, reason: 'stop' as const }
@@ -248,7 +269,7 @@ function ThreadHistory({ children, getThreadIds, onConversationChangeRef, onPend
     },
     async append() {},
     async update() {},
-  }), [aui, forceHistoryReloadRef, getThreadIds, historyLoadStateRef, onConversationChangeRef, onPendingChangeRef])
+  }), [aui, forceHistoryReloadRef, getThreadIds, historyLoadStateRef, onConversationChangeRef, onPendingChangeRef, pendingAssistantRef])
   return <RuntimeAdapterProvider adapters={{ history }}>{children}</RuntimeAdapterProvider>
 }
 
@@ -469,6 +490,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
   const listFailureRef = useRef<{ error: Error; until: number } | null>(null)
   const historyLoadStateRef = useRef<HistoryLoadState>({ inFlight: new Map(), failureUntil: new Map() })
   const forceHistoryReloadRef = useRef(false)
+  const pendingAssistantRef = useRef<PendingAssistantMessage | null>(null)
   const syncTurnLock = useCallback((activeAgent?: AgentKey): void => {
     const pending = pendingTurnRef.current
     const running = launchTurnRef.current || modelTurnRef.current || pending !== null
@@ -608,7 +630,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
       onConversationChangeRef.current?.(item)
       return { remoteId: item.id, status: item.archived_at ? 'archived' : 'regular', title: item.title, lastMessageAt: new Date(item.updated_at), custom: item }
     },
-    unstable_Provider: ({ children }: { children?: ReactNode }) => <ThreadHistory forceHistoryReloadRef={forceHistoryReloadRef} getThreadIds={getThreadIds} historyLoadStateRef={historyLoadStateRef} onConversationChangeRef={onConversationChangeRef} onPendingChangeRef={onPendingChangeRef}>{children}</ThreadHistory>,
+    unstable_Provider: ({ children }: { children?: ReactNode }) => <ThreadHistory forceHistoryReloadRef={forceHistoryReloadRef} getThreadIds={getThreadIds} historyLoadStateRef={historyLoadStateRef} onConversationChangeRef={onConversationChangeRef} onPendingChangeRef={onPendingChangeRef} pendingAssistantRef={pendingAssistantRef}>{children}</ThreadHistory>,
   }), [getThreadIds, onConversationChangeRef])
 
   const runtimeHook = useCallback(() => {
@@ -763,9 +785,14 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
             // Fallback to accumulated text if durable conversation fetch is interrupted
           }
 
-          const finalAnswer = durableMessage?.content || cumulativeAnswer
-          const rawMetadata = (durableMessage?.response_metadata ?? {}) as Record<string, unknown>
           const streamObservationError = streamObservation.error
+          const responseStatus = durableMessage?.status ?? (
+            options.abortSignal.aborted || streamObservationError ? 'interrupted' : 'completed'
+          )
+          const finalAnswer = durableMessage
+            ? responseStatus === 'pending' ? (cumulativeAnswer || durableMessage.content) : durableMessage.content
+            : cumulativeAnswer
+          const rawMetadata = (durableMessage?.response_metadata ?? {}) as Record<string, unknown>
           const metadata: Record<string, unknown> = {
             agent_used: { key: current.agent },
             ...rawMetadata,
@@ -775,12 +802,12 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
             } : {}),
           }
           const responseError = typeof metadata.error === 'string' ? metadata.error : null
-          const responseStatus = durableMessage?.status ?? (
-            options.abortSignal.aborted || streamObservationError ? 'interrupted' : 'completed'
-          )
           const awaitingDurableCompletion = responseStatus === 'pending'
           if (awaitingDurableCompletion) {
+            pendingAssistantRef.current = { conversationId: remoteId, messageId: agentMessageId, content: finalAnswer }
             handlePendingChange(remoteId, current.agent, true)
+          } else if (pendingAssistantRef.current?.conversationId === remoteId && pendingAssistantRef.current.messageId === agentMessageId) {
+            pendingAssistantRef.current = null
           }
           const incomplete = responseError !== null || responseStatus === 'failed' || responseStatus === 'interrupted'
           const persistedError = responseError ?? (responseStatus !== 'completed' ? responseStatus : 'Agent turn did not complete.')

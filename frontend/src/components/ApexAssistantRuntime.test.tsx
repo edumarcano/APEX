@@ -1146,7 +1146,7 @@ describe('ApexAssistantRuntime', () => {
       if (url.endsWith(`/api/v1/cortex/conversations/${pendingConvId}`)) {
         if (!runStarted) return response({ ...pendingSummary, active_leaf_message_id: null, messages: [] })
         detailReadsAfterRun += 1
-        const completed = detailReadsAfterRun > 1
+        const completed = detailReadsAfterRun > 2
         return response({
           ...pendingSummary,
           active_leaf_message_id: runAgentMessageId,
@@ -1210,10 +1210,23 @@ describe('ApexAssistantRuntime', () => {
       expect(pendingPoll).not.toBeNull()
 
       const poll = pendingPoll as unknown as () => void
+      pendingPoll = null
       poll()
+      await waitFor(() => {
+        expect(detailReadsAfterRun).toBe(2)
+        expect(pendingPoll).not.toBeNull()
+      })
+      expect(screen.getByText(provisionalAnswer)).toBeInTheDocument()
+      expect(screen.getByPlaceholderText('Ask APEX…')).toBeDisabled()
+      expect(onRunningChange).toHaveBeenLastCalledWith(true, 'apex')
+
+      const secondPoll = pendingPoll as unknown as () => void
+      pendingPoll = null
+      secondPoll()
       await waitFor(() => expect(screen.getByText(durableAnswer)).toBeInTheDocument())
       expect(screen.getByPlaceholderText('Ask APEX…')).not.toBeDisabled()
       expect(onRunningChange).toHaveBeenLastCalledWith(false, null)
+      expect(cancelCalls).toBe(0)
     } finally {
       timeoutMock.mockRestore()
     }
