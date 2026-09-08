@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from typing import Literal
 
 from core.agent.capabilities import (
     CapabilityDescriptor,
@@ -332,8 +333,18 @@ def _default_profile(runtime: str) -> tuple[str, str]:
     return profile.id, profile.name
 
 
-def build_tool_catalog(agent_key: str = "apex", *, model_id: str | None = None) -> ToolCatalogResponse:
-    """Build the complete provider-neutral catalog for one Apex Agent."""
+def build_tool_catalog(
+    agent_key: str = "apex",
+    *,
+    model_id: str | None = None,
+    execution_partition: Literal["production", "sandbox"] | None = None,
+) -> ToolCatalogResponse:
+    """Build the complete provider-neutral catalog for one Apex Agent.
+
+    ``execution_partition`` binds sandbox policy to an already-admitted Cortex
+    run. Availability and revocation checks still use the live settings and
+    connector state read below.
+    """
     from core.agent.catalog import AGENT_SPECS
 
     if agent_key not in AGENT_SPECS:
@@ -347,9 +358,13 @@ def build_tool_catalog(agent_key: str = "apex", *, model_id: str | None = None) 
     model_profile = get_model_profile(resolved_model_id)
     if model_profile is None:
         raise ValueError(f"Unknown model: {resolved_model_id!r}")
-    sandbox_active = is_sandbox_active(
-        sandbox_mode=settings.ask_apex.sandbox_mode,
-        dev_mode=is_dev_mode(),
+    sandbox_active = (
+        execution_partition == "sandbox"
+        if execution_partition is not None
+        else is_sandbox_active(
+            sandbox_mode=settings.ask_apex.sandbox_mode,
+            dev_mode=is_dev_mode(),
+        )
     )
     google_search, google_maps = (
         settings.ask_apex.cloud.hosted_tools.google_search,
@@ -388,8 +403,8 @@ def build_tool_catalog(agent_key: str = "apex", *, model_id: str | None = None) 
         for descriptor in filter_agent_capabilities(
             agent_key,
             descriptors.values(),
-            sandbox_mode=settings.ask_apex.sandbox_mode,
-            dev_mode=is_dev_mode(),
+            sandbox_mode=sandbox_active,
+            dev_mode=True,
         )
         if descriptor.expose_to_agent
         and (descriptor.risk == "read" or action_allowed(descriptor))

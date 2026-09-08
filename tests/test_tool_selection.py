@@ -205,6 +205,29 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertEqual(selection.descriptors, ())
         self.assertEqual(selection.diagnostics.rejected_tools[0].code, "policy")
 
+    def test_execution_partition_keeps_sandbox_policy_after_setting_changes(self) -> None:
+        self.store.apply_patch(
+            SettingsPatch.model_validate({"ask_apex": {"sandbox_mode": True}})
+        )
+        accepted_partition = "sandbox"
+        self.store.apply_patch(
+            SettingsPatch.model_validate({"ask_apex": {"sandbox_mode": False}})
+        )
+
+        with patch("core.agent.tool_catalog.is_dev_mode", return_value=True), patch(
+            "core.agent.tool_catalog._native_availability", return_value=(True, None)
+        ):
+            selection = resolve_selected_tools(
+                "apex",
+                ["get_active_reminders"],
+                model_id="deepseek/deepseek-v4-flash-0731",
+                execution_partition=accepted_partition,
+            )
+
+        self.assertEqual(selection.descriptors, ())
+        self.assertEqual(selection.diagnostics.rejected_tool_names, ["get_active_reminders"])
+        self.assertEqual(selection.diagnostics.rejected_tools[0].code, "policy")
+
     def test_sandbox_catalog_disables_personal_native_tools(self) -> None:
         agent_settings = cloud_settings().model_copy(update={"sandbox_mode": True})
         snapshot = MagicMock()

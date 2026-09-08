@@ -1254,6 +1254,7 @@ def query_agent(
         _explicit_selection_names(payload),
         tool_profile_id=payload.tool_profile_id,
         model_id=payload.model_id,
+        execution_partition=execution_partition,
     )
     if selection.failures:
         raise HTTPException(

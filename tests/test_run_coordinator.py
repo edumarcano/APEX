@@ -529,6 +529,97 @@ class RunCoordinatorTests(unittest.TestCase):
             [],
         )
 
+    def test_submit_run_uses_admitted_partition_after_context_assembly_changes_settings(
+        self,
+    ) -> None:
+        config_path = Path(self.temp_dir.name) / "config.json"
+        local_config_path = Path(self.temp_dir.name) / "config.local.json"
+        config_path.write_text(
+            json.dumps(
+                {
+                    "ask_apex": {
+                        "enabled": True,
+                        "selected_model": "qwen3:1.7b",
+                        "sandbox_mode": False,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        settings = RuntimeSettingsStore(
+            config_path=config_path,
+            local_config_path=local_config_path,
+        )
+        run_service = RunService(self.store)
+        coordinator = CortexRunCoordinator(run_service, max_workers=1)
+        self.addCleanup(coordinator.close)
+        set_run_coordinator(coordinator)
+        self.addCleanup(set_run_coordinator, None)
+        set_run_service(run_service)
+        self.addCleanup(set_run_service, None)
+
+        conversation_service = ConversationService(self.conversations, history_limit=20)
+        set_conversation_service(conversation_service)
+        self.addCleanup(set_conversation_service, None)
+        entered_execution = threading.Event()
+        release_execution = threading.Event()
+        response = SimpleNamespace(
+            answer="Done",
+            error=None,
+            tool_trace=[],
+            tool_outputs=[],
+            measurements={},
+            model_dump=lambda **_kwargs: {},
+        )
+
+        def assemble(**_kwargs):
+            settings.apply_patch(
+                SettingsPatch.model_validate({"ask_apex": {"sandbox_mode": True}})
+            )
+            return MagicMock()
+
+        def query(*_args, **_kwargs):
+            entered_execution.set()
+            self.assertTrue(release_execution.wait(timeout=2))
+            return response
+
+        with (
+            patch("core.api.routers.cortex.get_settings_store", return_value=settings),
+            patch("core.api.routers.cortex.is_dev_mode", return_value=True),
+            patch("core.conversations.service.get_settings_store", return_value=settings),
+            patch("core.conversations.service.is_dev_mode", return_value=True),
+            patch("core.api.routers.cortex.ContextAssembler") as mock_assembler,
+            patch("core.api.routers.cortex.get_retrieval_service"),
+            patch("core.api.routers.cortex.get_knowledge_service"),
+            patch("core.api.routers.cortex.query_agent", side_effect=query),
+        ):
+            mock_assembler.return_value.assemble.side_effect = assemble
+            conversation = conversation_service.create(
+                ConversationCreateRequest(
+                    title="Admitted partition", origin="hud", agent="apex"
+                )
+            )
+            payload = ConversationTurnRequest(
+                user_message_id=uuid4(),
+                agent_message_id=uuid4(),
+                prompt="Keep the admitted partition",
+                agent="apex",
+            )
+
+            record, future = _submit_run(conversation.id, payload)
+            self.assertEqual(record.partition, "production")
+            self.assertTrue(entered_execution.wait(timeout=2))
+
+            settings.apply_patch(
+                SettingsPatch.model_validate({"ask_apex": {"sandbox_mode": False}})
+            )
+            release_execution.set()
+            assert future is not None
+            future.result(timeout=2)
+
+        stored = run_service.get_handle(record.id, partition="production").get_record()
+        self.assertEqual(stored.partition, "production")
+
     def test_after_model_turn_derives_universal_throughput_and_eval_timings(self) -> None:
         from core.agent.types import TokenUsage
 

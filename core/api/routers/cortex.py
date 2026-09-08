@@ -728,6 +728,7 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
             run_id=uuid4(), conversation_id=conversation_id, user_message_id=user.id,
             agent_message_id=agent_message.id, requested_model=str(metadata["resolved_model"]),
             limit_snapshot=limit_snapshot,
+            partition=partition,
         )
     except Exception:
         _compensate_submission_failure(
