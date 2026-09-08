@@ -676,11 +676,15 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
           let cumulativeAnswer = ''
           let lastYieldedAnswer = ''
           let lastYieldTime = 0
+          const streamObservation = { error: null as Error | null }
           const STREAM_YIELD_INTERVAL_MS = 32
           const streamingMetadata = { custom: { apex: { agent_used: { key: current.agent } } } }
 
           try {
-            for await (const event of streamRunEvents(runRecord.id, { signal: options.abortSignal })) {
+            for await (const event of streamRunEvents(runRecord.id, {
+              signal: options.abortSignal,
+              onExhausted: (error) => { streamObservation.error = error },
+            })) {
               if (event.type === 'response.delta') {
                 const text = typeof event.payload?.text === 'string' ? event.payload.text : ''
                 cumulativeAnswer += text
@@ -754,16 +758,26 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
 
           const finalAnswer = durableMessage?.content ?? cumulativeAnswer
           const rawMetadata = (durableMessage?.response_metadata ?? {}) as Record<string, unknown>
+          const streamObservationError = streamObservation.error
           const metadata: Record<string, unknown> = {
             agent_used: { key: current.agent },
             ...rawMetadata,
+            ...(streamObservationError ? {
+              stream_observation: 'lost',
+              stream_error: streamObservationError.message,
+            } : {}),
           }
           const responseError = typeof metadata.error === 'string' ? metadata.error : null
-          const responseStatus = durableMessage?.status ?? (options.abortSignal.aborted ? 'interrupted' : 'completed')
+          const responseStatus = durableMessage?.status ?? (
+            options.abortSignal.aborted || streamObservationError ? 'interrupted' : 'completed'
+          )
           const incomplete = responseError !== null || responseStatus === 'failed' || responseStatus === 'interrupted'
           const persistedError = responseError ?? (responseStatus !== 'completed' ? responseStatus : 'Agent turn did not complete.')
 
-          onResponseChangeRef.current?.(metadata, incomplete ? persistedError : null)
+          const observationError = streamObservationError
+            ? `Live run stream disconnected: ${streamObservationError.message}`
+            : null
+          onResponseChangeRef.current?.(metadata, responseError ?? observationError ?? (incomplete ? persistedError : null))
 
           yield {
             content: [{ type: 'text' as const, text: finalAnswer }],

@@ -1032,6 +1032,100 @@ describe('ApexAssistantRuntime', () => {
     await waitFor(() => expect(screen.getByText('Final text after reset.')).toBeInTheDocument())
   })
 
+  it('reconciles durable state and reports lost live observation after stream exhaustion', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const streamConvId = 'conv-stream-exhausted'
+    const streamSummary = { ...summary, id: streamConvId, title: 'Stream exhaustion test' }
+    const durableMessage = {
+      id: 'msg-stream-exhausted-agent',
+      parent_message_id: 'msg-stream-exhausted-user',
+      role: 'agent' as const,
+      content: 'Durable answer after stream loss.',
+      status: 'completed' as const,
+      created_at: new Date().toISOString(),
+      response_metadata: {},
+    }
+    let runStarted = false
+    let runAgentMessageId: string | null = null
+    let eventCalls = 0
+    let cancelCalls = 0
+    const onResponseChange = vi.fn()
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([streamSummary])
+      if (url.endsWith(`/api/v1/cortex/conversations/${streamConvId}`)) {
+        const reconciledMessage = { ...durableMessage, ...(runAgentMessageId ? { id: runAgentMessageId } : {}) }
+        return response({
+          ...streamSummary,
+          active_leaf_message_id: runStarted ? reconciledMessage.id : null,
+          messages: runStarted
+            ? [{
+                id: 'msg-stream-exhausted-user',
+                parent_message_id: null,
+                role: 'user' as const,
+                content: 'List my pending reminders.',
+                status: 'completed' as const,
+                created_at: new Date().toISOString(),
+              }, reconciledMessage]
+            : [],
+        })
+      }
+      if (url.endsWith(`/api/v1/cortex/conversations/${streamConvId}/runs`)) {
+        runStarted = true
+        const payload = JSON.parse(String(init?.body)) as { agent_message_id?: string }
+        runAgentMessageId = payload.agent_message_id ?? null
+        return response(mockRunRecord({ conversation_id: streamConvId, id: 'run-stream-exhausted' }))
+      }
+      if (url.endsWith('/api/v1/cortex/runs/run-stream-exhausted/cancel')) {
+        cancelCalls++
+        return response({ status: 'cancelling' })
+      }
+      if (url.includes('/runs/run-stream-exhausted/events')) {
+        eventCalls++
+        return sseResponse([])
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const originalSetTimeout = globalThis.setTimeout
+    const timeoutMock = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+      if (typeof timeout === 'number' && timeout >= 200 && timeout <= 900) {
+        if (typeof handler === 'function') handler(...args)
+        return 0 as unknown as ReturnType<typeof setTimeout>
+      }
+      return originalSetTimeout(handler, timeout, ...args)
+    }) as typeof globalThis.setTimeout)
+    const user = userEvent.setup()
+
+    try {
+      render(
+        <ApexAssistantRuntime
+          config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+          onResponseChange={onResponseChange}
+        >
+          <ApexAssistantThread />
+        </ApexAssistantRuntime>,
+      )
+
+      await waitFor(() => expect(screen.getByText('Reminders')).toBeInTheDocument())
+      await user.click(screen.getByText('Reminders'))
+      await user.click(screen.getByRole('button', { name: 'Send' }))
+
+      await waitFor(() => expect(screen.getByText('Durable answer after stream loss.')).toBeInTheDocument())
+      expect(eventCalls).toBe(4)
+      expect(cancelCalls).toBe(0)
+      expect(onResponseChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stream_observation: 'lost',
+          stream_error: 'Run event stream ended before a terminal event',
+        }),
+        expect.stringContaining('Live run stream disconnected'),
+      )
+    } finally {
+      timeoutMock.mockRestore()
+    }
+  })
+
   it('cancels active run on explicit stop', async () => {
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
     const cancelConvId = 'conv-cancel'

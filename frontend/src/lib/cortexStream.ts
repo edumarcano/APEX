@@ -7,6 +7,7 @@ export interface ConsumeRunStreamOptions {
   maxReconnectAttempts?: number
   onEvent?: (event: RunEvent) => void
   onError?: (error: Error) => void
+  onExhausted?: (error: Error) => void
 }
 
 export interface ParseSSEBlockResult {
@@ -103,7 +104,6 @@ export async function* streamRunEvents(
         throw new Error('Response body is null')
       }
 
-      reconnectAttempts = 0
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
@@ -164,11 +164,11 @@ export async function* streamRunEvents(
 
       // If the stream closed naturally without a terminal event:
       if (!isTerminal) {
-        // If max reconnects exceeded, stop
-        if (reconnectAttempts >= maxReconnectAttempts) {
+        reconnectAttempts++
+        if (reconnectAttempts > maxReconnectAttempts) {
+          options.onExhausted?.(new Error('Run event stream ended before a terminal event'))
           return
         }
-        reconnectAttempts++
         await new Promise((resolve) => setTimeout(resolve, 200 * reconnectAttempts))
       }
     } catch (err) {
@@ -179,7 +179,8 @@ export async function* streamRunEvents(
 
       reconnectAttempts++
       if (reconnectAttempts > maxReconnectAttempts) {
-        throw error
+        options.onExhausted?.(error)
+        return
       }
       await new Promise((resolve) => setTimeout(resolve, 300 * reconnectAttempts))
     }
