@@ -19,7 +19,6 @@ import { createPortal } from 'react-dom'
 
 import type {
   AgentAvailabilityStatus,
-  AgentStatus,
   LocalRuntime,
   ModelCatalogEntry,
 } from '../types/telemetry'
@@ -37,8 +36,6 @@ export interface HomeModelSelectorProps {
   selectedModelId: string
   onModelChange: (modelId: string) => void
   catalog: ModelCatalogEntry[]
-  /** @deprecated Ignored while callers migrate to per-model availability. */
-  agentsStatus?: AgentStatus[]
   disabled?: boolean
   isQuerying?: boolean
   className?: string

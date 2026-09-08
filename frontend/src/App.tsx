@@ -265,8 +265,9 @@ export default function App(): ReactElement {
   )
 
   const {
-    agentsStatus,
-    agentsStatusHydrated,
+    cortexAgent,
+    modelCatalog: fullModelCatalog,
+    cortexAgentHydrated,
     isLocalModelActionPending,
     verifyingCloudModel,
     loadLocalModel,
@@ -296,11 +297,6 @@ export default function App(): ReactElement {
       })),
     })
   }, [mcpRuntime.status])
-
-  const fullModelCatalog = useMemo(
-    () => agentsStatus[0]?.model_catalog ?? [],
-    [agentsStatus],
-  )
 
   const homeSelectedEntry = useMemo(
     () => fullModelCatalog.find((entry) => entry.model_id === selectedModel) ?? fullModelCatalog[0],
@@ -576,19 +572,19 @@ export default function App(): ReactElement {
   const isTelemetryCollecting =
     isRefreshingAll || telemetry.refreshingConnectors.size > 0
 
-  const loadingLocalAgent = useMemo(
-    () => agentsStatus.find((agent) => agent.loading) ?? null,
-    [agentsStatus],
+  const loadingLocalModel = useMemo(
+    () => fullModelCatalog.find((model) => model.runtime === 'local' && model.loading) ?? null,
+    [fullModelCatalog],
   )
   const activeLocalModel = useMemo(
     () =>
-      agentsStatus.find(
-        (agent) => agent.active,
+      fullModelCatalog.find(
+        (model) => model.runtime === 'local' && model.active,
       ) ?? null,
-    [agentsStatus],
+    [fullModelCatalog],
   )
   const isLocalModelLoading =
-    loadingLocalAgent !== null ||
+    loadingLocalModel !== null ||
     (liveSynthesis?.loading === true &&
       (liveSynthesis.provider === 'llama_cpp' ||
         liveSynthesis.model_id !== null))
@@ -761,7 +757,7 @@ export default function App(): ReactElement {
     return () => {
       ignore = true
     }
-  }, [agentsStatus])
+  }, [cortexAgent])
 
   const hasSnapshot = telemetry.snapshot !== null
   const briefingControlsBusy =
@@ -1373,8 +1369,8 @@ export default function App(): ReactElement {
           pipelineStep={activeStep}
           isSpeaking={isSpeaking}
           isCortexQuerying={isCortexQuerying}
-          agentsStatus={agentsStatus}
-          agentsStatusHydrated={agentsStatusHydrated}
+          modelCatalog={fullModelCatalog}
+          cortexAgentHydrated={cortexAgentHydrated}
           failedConnectors={briefing.failedConnectors}
           hasBriefingEvidence={briefing.status === 'success' || briefing.status === 'error'}
           onApplied={handleSettingsPanelApplied}
@@ -1589,7 +1585,6 @@ export default function App(): ReactElement {
                   selectedModelId={selectedModel}
                   onModelChange={handleHomeModelChange}
                   modelCatalog={fullModelCatalog}
-                  agentsStatus={agentsStatus}
                   isCortexQuerying={isCortexQuerying}
                   onAgentSubmit={handleHomeSubmit}
                   toolCatalog={toolCatalogState.catalog}
@@ -1627,7 +1622,7 @@ export default function App(): ReactElement {
                   onGenerateBriefing={() => void handleGenerateBriefing()}
                   onRefreshAllAndGenerate={() => void handleRefreshAllAndGenerate()}
                   activeLocalModel={activeLocalModel}
-                  loadingLocalAgent={loadingLocalAgent}
+                  loadingLocalModel={loadingLocalModel}
                   localLifecycleBusy={localLifecycleBusy}
                   onUnloadLocalModel={unloadLocalModel}
                 />
@@ -1831,8 +1826,7 @@ export default function App(): ReactElement {
             devModeActive={devModeActive}
             sandboxMode={sandboxMode}
             agentQueriesEnabled={Boolean(agentQueriesEnabled)}
-            agentsStatus={agentsStatus}
-            agentsStatusHydrated={agentsStatusHydrated}
+            cortexAgent={cortexAgent}
             latestTrace={cortexLatestTrace}
             error={cortexError}
             contextUsage={cortexContextUsage}

@@ -2,58 +2,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import type {
-  AgentStatus,
-  ModelCatalogEntry,
-  ToolCatalog,
-  ToolPreflightEstimate,
-} from '../types/telemetry'
+import type { ModelCatalogEntry, ToolCatalog, ToolPreflightEstimate } from '../types/telemetry'
 
 import { AgentQueryBar, CortexQueryRim } from './AgentQueryBar'
-
-const apex: AgentStatus = {
-  key: 'apex',
-  display_name: 'Apex Agent',
-  description: 'Balanced local profile.',
-  configured_model: 'gemma-4-E2B-Q4_K_M.gguf',
-  sort_order: 2,
-  capabilities: ['Larger model'],
-  native_tools: {},
-  provider: 'llama_cpp',
-  runtime: 'local',
-  model_stability: 'stable',
-  reasoning_options: null,
-  default_reasoning: null,
-  context_window: null,
-  context_window_options: null,
-  context_window_high_resource_options: null,
-  default_context_window: null,
-  reasoning_mode: 'none',
-  reasoning_mode_options: ['none'],
-  default_reasoning_mode: 'none',
-  status: 'available',
-  status_source: 'runtime',
-  status_checked_at: null,
-  provider_account_tier: null,
-  pricing: {
-    currency: 'USD',
-    pricing_version: '2026.08.02',
-    billing_basis: 'local',
-    input_per_million: 0,
-    output_per_million: 0,
-    cached_input_per_million: 0,
-    long_context_threshold_tokens: null,
-    long_context_input_per_million: null,
-    long_context_output_per_million: null,
-    long_context_cached_input_per_million: null,
-  },
-  active: false,
-  loading: false,
-  reason: null,
-  idle_unload_remaining_seconds: null,
-  loaded_model: null,
-  model_catalog: [],
-}
 
 const catalog: ToolCatalog = {
   agent: 'apex',
@@ -103,7 +54,6 @@ function renderBar(
     <AgentQueryBar
       activeAgent="apex"
       onSubmit={onSubmit}
-      agentsStatus={[apex]}
       catalog={catalog}
       selectedToolNames={['get_weather_forecast']}
       activeToolProfileId="custom_weather"
@@ -211,7 +161,6 @@ describe('AgentQueryBar unified tool selection', () => {
       <AgentQueryBar
         activeAgent="apex"
         onSubmit={onSubmit}
-        agentsStatus={[apex]}
         catalog={catalog}
         selectedToolNames={['get_weather_forecast']}
         activeToolProfileId="custom_weather"

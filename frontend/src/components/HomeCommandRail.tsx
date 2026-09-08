@@ -2,7 +2,6 @@ import type { ReactElement } from 'react'
 
 import type { BriefingMode } from '../types/settings'
 import type {
-  AgentStatus,
   AgentKey,
   ToolCatalog,
   ToolPreflightEstimate,
@@ -21,7 +20,6 @@ interface HomeCommandRailProps {
   selectedModelId: string
   onModelChange: (modelId: string) => void
   modelCatalog: ModelCatalogEntry[]
-  agentsStatus: AgentStatus[]
   briefingTargets?: BriefingTargetStatus[]
   isCortexQuerying: boolean
   onAgentSubmit: (
@@ -62,8 +60,8 @@ interface HomeCommandRailProps {
   onRefreshAll: () => void
   onGenerateBriefing: () => void
   onRefreshAllAndGenerate: () => void
-  activeLocalModel: AgentStatus | null
-  loadingLocalAgent: AgentStatus | null
+  activeLocalModel: ModelCatalogEntry | null
+  loadingLocalModel: ModelCatalogEntry | null
   localLifecycleBusy: boolean
   onUnloadLocalModel: () => Promise<boolean>
 }
@@ -74,7 +72,6 @@ export function HomeCommandRail({
   selectedModelId,
   onModelChange,
   modelCatalog,
-  agentsStatus,
   briefingTargets,
   isCortexQuerying,
   onAgentSubmit,
@@ -112,7 +109,7 @@ export function HomeCommandRail({
   onGenerateBriefing,
   onRefreshAllAndGenerate,
   activeLocalModel,
-  loadingLocalAgent,
+  loadingLocalModel,
   localLifecycleBusy,
   onUnloadLocalModel,
 }: HomeCommandRailProps): ReactElement {
@@ -142,8 +139,8 @@ export function HomeCommandRail({
             className="col-span-2 justify-self-center w-full max-w-[20rem]"
           />
           <LocalModelControl
-            agent={activeLocalModel}
-            loadingAgent={loadingLocalAgent}
+            model={activeLocalModel}
+            loadingModel={loadingLocalModel}
             busy={localLifecycleBusy}
             onUnload={onUnloadLocalModel}
             presentation="rail"
@@ -159,7 +156,6 @@ export function HomeCommandRail({
                   presentation="home"
                   activeAgent={inferredAgent}
                   onSubmit={(query, _agent, tools, profileId) => onAgentSubmit(query, tools, profileId)}
-                  agentsStatus={agentsStatus}
                   catalog={toolCatalog}
                   selectedToolNames={selectedToolNames}
                   activeToolProfileId={activeToolProfileId}
@@ -210,8 +206,8 @@ export function HomeCommandRail({
             </div>
           </div>
           <LocalModelControl
-            agent={activeLocalModel}
-            loadingAgent={loadingLocalAgent}
+            model={activeLocalModel}
+            loadingModel={loadingLocalModel}
             busy={localLifecycleBusy}
             onUnload={onUnloadLocalModel}
             presentation="rail"

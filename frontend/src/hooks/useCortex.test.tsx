@@ -38,8 +38,9 @@ describe('useCortex model lifecycle', () => {
     })
     const { result } = renderHook(() => useCortex(false))
     await act(async () => { await result.current.refreshAgentsStatus() })
-    expect(result.current.agentsStatus[0]?.key).toBe('apex')
-    expect(result.current.agentsStatus[0]?.configured_model).toBe(modelId)
+    expect(result.current.cortexAgent?.key).toBe('apex')
+    expect(result.current.cortexAgent?.selected_model).toBe(modelId)
+    expect(result.current.modelCatalog).toEqual(catalogResponse.model_catalog)
     await act(async () => { await result.current.loadLocalModel(modelId) })
     await waitFor(() => expect(statusRequests).toBe(2))
   })
@@ -52,12 +53,12 @@ describe('useCortex model lifecycle', () => {
 
     await act(async () => { await result.current.refreshAgentsStatus() })
 
-    expect(result.current.agentsStatus[0]).toMatchObject({
-      configured_model: 'deepseek/deepseek-v4-flash-0731',
-      runtime: 'cloud',
+    expect(result.current.cortexAgent?.selected_model).toBe('deepseek/deepseek-v4-flash-0731')
+    expect(result.current.modelCatalog).toContainEqual(expect.objectContaining({
+      model_id: modelId,
       active: true,
       idle_unload_remaining_seconds: 240,
-      loaded_model: { model: modelId, state: 'loaded' },
-    })
+      loaded_model: expect.objectContaining({ model: modelId, state: 'loaded' }),
+    }))
   })
 })

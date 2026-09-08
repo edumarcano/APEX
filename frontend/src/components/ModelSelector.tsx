@@ -8,7 +8,6 @@ import {
 } from 'react'
 
 import type { AgentAvailabilityStatus, ModelCatalogEntry } from '../types/telemetry'
-import type { AgentKey, AgentStatus } from '../types/telemetry'
 import {
   formatContextWindowLabel,
   providerDisplayName,
@@ -26,9 +25,6 @@ interface ModelSelectorProps {
   isQuerying?: boolean
   verifyingModelId?: string | null
   onVerify?: (modelId: string) => Promise<boolean>
-  /** @deprecated Ignored legacy test props. */
-  activeAgent?: AgentKey
-  activeStatus?: AgentStatus | null
 }
 
 const STATUS_LABELS: Record<AgentAvailabilityStatus, string> = {

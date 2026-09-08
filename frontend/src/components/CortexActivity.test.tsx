@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { UseCortexRunsResult } from '../hooks/useCortexRuns'
 import type { RunRecord } from '../types/runs'
-import type { AgentStatus } from '../types/telemetry'
+import type { ModelCatalogEntry } from '../types/telemetry'
 import { CortexActivity } from './CortexActivity'
 
 function createMockRun(overrides: Partial<RunRecord> = {}): RunRecord {
@@ -97,65 +97,25 @@ describe('CortexActivity', () => {
       selectRun,
     })
 
-    const agentsStatus: AgentStatus[] = [
+    const modelCatalog: ModelCatalogEntry[] = [
       {
-        key: 'apex',
-        display_name: 'Apex Agent',
-        description: 'Native',
-        configured_model: 'gemma-4',
-        native_tools: {},
+        model_id: 'gemma-4',
+        display_name: 'Gemma 4',
         provider: 'llama_cpp',
-        sort_order: 0,
-        capabilities: [],
         runtime: 'local',
-        model_stability: 'stable',
-        context_window: 16384,
-        context_window_options: null,
-        context_window_high_resource_options: null,
-        default_context_window: null,
-        reasoning_mode: null,
-        reasoning_mode_options: null,
-        default_reasoning_mode: null,
+        stability: 'stable',
+        hosted_capabilities: [],
         status: 'available',
-        status_source: 'configuration',
-        status_checked_at: null,
-        provider_account_tier: null,
-        pricing: {
-          currency: 'USD',
-          pricing_version: 'test',
-          billing_basis: 'local',
-          input_per_million: 0,
-          output_per_million: 0,
-          cached_input_per_million: null,
-          long_context_threshold_tokens: null,
-          long_context_input_per_million: null,
-          long_context_output_per_million: null,
-          long_context_cached_input_per_million: null,
-        },
         active: true,
         loading: false,
-        reason: null,
         idle_unload_remaining_seconds: 180,
-        loaded_model: null,
-        model_catalog: [
-          {
-            model_id: 'gemma-4',
-            display_name: 'Gemma 4',
-            provider: 'llama_cpp',
-            runtime: 'local',
-            stability: 'stable',
-            hosted_capabilities: [],
-            active: true,
-            idle_unload_remaining_seconds: 180,
-          },
-        ],
       },
     ]
 
     render(
       <CortexActivity
         runsState={runsState}
-        agentsStatus={agentsStatus}
+        modelCatalog={modelCatalog}
       />,
     )
 

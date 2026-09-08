@@ -30,7 +30,7 @@ import {
   resolveEffectiveTiming,
 } from '../lib/settings'
 import type {
-  AgentStatus,
+  ModelCatalogEntry,
   SystemState,
   TtsEngine,
 } from '../types/telemetry'
@@ -87,8 +87,8 @@ interface SettingsPanelProps {
   pipelineStep: number | null
   isSpeaking: boolean
   isCortexQuerying: boolean
-  agentsStatus: AgentStatus[]
-  agentsStatusHydrated: boolean
+  modelCatalog: ModelCatalogEntry[]
+  cortexAgentHydrated: boolean
   failedConnectors: string[]
   hasBriefingEvidence: boolean
   onApplied: (response: SettingsResponse) => void
@@ -161,8 +161,8 @@ export default function SettingsPanel({
   pipelineStep,
   isSpeaking,
   isCortexQuerying,
-  agentsStatus,
-  agentsStatusHydrated,
+  modelCatalog,
+  cortexAgentHydrated,
   failedConnectors,
   hasBriefingEvidence,
   onApplied,
@@ -246,21 +246,20 @@ export default function SettingsPanel({
   }, [save, mcpRuntime])
 
   const providerRows = useMemo(() => {
-    const models = agentsStatus.flatMap((agent) => agent.model_catalog)
-    const cloud = models.filter((model) => model.runtime === 'cloud')
-    const local = models.filter((model) => model.runtime === 'local')
+    const cloud = modelCatalog.filter((model) => model.runtime === 'cloud')
+    const local = modelCatalog.filter((model) => model.runtime === 'local')
     const configuredCloud = cloud.filter((model) => model.status !== 'disabled').length
     const verifiedCloud = cloud.filter((model) => model.status === 'verified').length
     const localAvailable = local.some((model) => model.status === 'available')
     const activeLocal = local.find((model) => model.active && model.loaded_model)
 
     return {
-      cloud: !agentsStatusHydrated
+      cloud: !cortexAgentHydrated
         ? { value: 'Checking…', tone: 'neutral' as const }
         : configuredCloud > 0
           ? { value: `${configuredCloud} configured · ${verifiedCloud} verified`, tone: verifiedCloud > 0 ? 'ok' as const : 'neutral' as const }
           : { value: 'Not configured', tone: 'error' as const },
-      local: !agentsStatusHydrated
+      local: !cortexAgentHydrated
         ? { value: 'Checking…', tone: 'neutral' as const }
         : localAvailable
           ? { value: 'Reachable', tone: 'ok' as const }
@@ -276,7 +275,7 @@ export default function SettingsPanel({
             },
       activeModel: activeLocal?.loaded_model?.model ?? activeLocal?.loaded_model?.name ?? 'None',
     }
-  }, [agentsStatus, agentsStatusHydrated])
+  }, [cortexAgentHydrated, modelCatalog])
 
   if (!open) {
     return null

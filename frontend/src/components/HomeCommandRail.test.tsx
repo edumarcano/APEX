@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { AgentStatus, ToolCatalog, ModelCatalogEntry } from '../types/telemetry'
+import type { ToolCatalog, ModelCatalogEntry } from '../types/telemetry'
 
 import { HomeCommandRail } from './HomeCommandRail'
 
@@ -31,40 +31,18 @@ const mockCatalog: ModelCatalogEntry[] = [
   },
 ]
 
-function profile(local = false, status: AgentStatus['status'] = 'available'): AgentStatus {
+function localModel(overrides: Partial<ModelCatalogEntry> = {}): ModelCatalogEntry {
   return {
-    key: 'apex',
-    display_name: 'Apex Agent',
-    description: 'Apex Agent.',
-    configured_model: local ? 'gemma-4-E2B-Q4_K_M.gguf' : 'gpt-5.6-luna',
-    sort_order: 1,
-    capabilities: [],
-    native_tools: {},
-    provider: local ? 'llama_cpp' : 'openai',
-    runtime: local ? 'local' : 'cloud',
-    model_stability: 'stable',
-    reasoning_options: local ? null : ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'],
-    default_reasoning: local ? null : 'medium',
-    context_window: local ? 16384 : null,
-    context_window_options: local ? [4096, 16384, 32768, 131072] : null,
-    context_window_high_resource_options: local ? [131072] : null,
-    default_context_window: local ? 16384 : null,
-    reasoning_mode: local ? 'none' : null,
-    reasoning_mode_options: local ? ['none', 'focused'] : null,
-    default_reasoning_mode: local ? 'none' : null,
-    status,
-    status_source: local ? 'runtime' : 'configuration',
-    status_checked_at: null,
-    provider_account_tier: null,
-    pricing: {
-      currency: 'USD', pricing_version: 'test', billing_basis: local ? 'local' : 'standard',
-      input_per_million: local ? 0 : 0.2, output_per_million: local ? 0 : 1.2,
-      cached_input_per_million: null, long_context_threshold_tokens: null,
-      long_context_input_per_million: null, long_context_output_per_million: null,
-      long_context_cached_input_per_million: null,
-    },
-    active: false, loading: false, reason: null, idle_unload_remaining_seconds: null, loaded_model: null,
-    model_catalog: mockCatalog,
+    model_id: 'gemma-4-E2B-Q4_K_M.gguf',
+    display_name: 'Gemma 4 E2B',
+    provider: 'llama_cpp',
+    runtime: 'local',
+    stability: 'stable',
+    hosted_capabilities: [],
+    status: 'available',
+    active: false,
+    loading: false,
+    ...overrides,
   }
 }
 
@@ -87,7 +65,6 @@ function renderRail(overrides: Partial<ComponentProps<typeof HomeCommandRail>> =
     selectedModelId: 'gpt-5.6-luna',
     onModelChange: vi.fn(),
     modelCatalog: mockCatalog,
-    agentsStatus: [profile()],
     isCortexQuerying: false,
     onAgentSubmit: vi.fn().mockResolvedValue(true),
     toolCatalog,
@@ -107,7 +84,7 @@ function renderRail(overrides: Partial<ComponentProps<typeof HomeCommandRail>> =
     onGenerateBriefing: vi.fn(),
     onRefreshAllAndGenerate: vi.fn(),
     activeLocalModel: null,
-    loadingLocalAgent: null,
+    loadingLocalModel: null,
     localLifecycleBusy: false,
     onUnloadLocalModel: vi.fn(async () => true),
     ...overrides,
@@ -178,9 +155,9 @@ describe('HomeCommandRail', () => {
 
   it('shows the resident local runtime beneath command rows and keeps its unload action separate from synthesis', async () => {
     const onUnloadLocalModel = vi.fn(async () => true)
-    const activeLocalModel = { ...profile(true), active: true, display_name: 'Apex Agent' }
+    const activeLocalModel = localModel({ active: true })
     const user = userEvent.setup()
-    renderRail({ activeLocalModel, agentsStatus: [profile(true)], selectedModelId: 'gemma-4-E2B-Q4_K_M.gguf', onUnloadLocalModel })
+    renderRail({ activeLocalModel, selectedModelId: 'gemma-4-E2B-Q4_K_M.gguf', onUnloadLocalModel })
 
     expect(document.querySelector('[data-slot="home-agent-row"]')).toBeVisible()
     expect(document.querySelector('[data-slot="home-briefing-row"]')).toBeVisible()
@@ -195,9 +172,8 @@ describe('HomeCommandRail', () => {
 
   it('includes active local model in the local runtime strip', () => {
     const activeLocalModel = {
-      ...profile(true),
+      ...localModel(),
       active: true,
-      display_name: 'Apex Agent',
       loaded_model: {
         provider: 'llama_cpp' as const,
         name: 'gemma-4-e2b-local',
@@ -217,7 +193,7 @@ describe('HomeCommandRail', () => {
   })
 
   it('keeps the local runtime strip visible and disables unloading while a model is loading', () => {
-    renderRail({ activeLocalModel: null, agentsStatus: [profile(true)], loadingLocalAgent: profile(true), selectedModelId: 'gemma-4-E2B-Q4_K_M.gguf' })
+    renderRail({ activeLocalModel: null, loadingLocalModel: localModel({ loading: true }), selectedModelId: 'gemma-4-E2B-Q4_K_M.gguf' })
 
     expect(screen.getByText('gemma-4-E2B-Q4_K_M.gguf · llama.cpp · Loading')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Unload gemma-4-E2B-Q4_K_M.gguf' })).toBeDisabled()
@@ -226,9 +202,8 @@ describe('HomeCommandRail', () => {
   it('renders local model control during standby below briefing mode selector when a model is active', async () => {
     const onUnloadLocalModel = vi.fn(async () => true)
     const activeLocalModel = {
-      ...profile(true),
+      ...localModel(),
       active: true,
-      display_name: 'Apex Agent',
       loaded_model: {
         provider: 'llama_cpp' as const,
         name: 'gemma-4-E2B-Q4_K_M.gguf',

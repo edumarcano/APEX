@@ -24,8 +24,8 @@ const DEFAULT_PROPS: ComponentProps<typeof SettingsPanel> = {
   pipelineStep: null,
   isSpeaking: false,
   isCortexQuerying: false,
-  agentsStatus: [],
-  agentsStatusHydrated: false,
+  modelCatalog: [],
+  cortexAgentHydrated: false,
   failedConnectors: [],
   hasBriefingEvidence: true,
   onApplied: vi.fn(),
@@ -229,7 +229,7 @@ describe('SettingsPanel', () => {
   it('exposes llama.cpp enablement and router URL in Runtime Settings', async () => {
     mockSettingsPanelFetches()
     const user = userEvent.setup()
-    renderPanel({ agentsStatusHydrated: true })
+    renderPanel({ cortexAgentHydrated: true })
 
     expect(await screen.findByRole('heading', { name: 'llama.cpp' })).toBeVisible()
     expect(screen.getByRole('switch', { name: 'Enable llama.cpp' })).toBeVisible()
