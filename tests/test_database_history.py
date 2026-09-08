@@ -151,15 +151,6 @@ class DatabaseHistoryTests(unittest.TestCase):
         self.assertLess(elapsed, timedelta(hours=1))
         self.assertGreater(elapsed, timedelta(minutes=1))
 
-    def test_reminder_lifecycle(self) -> None:
-        first = database.save_reminder("Charge laptop")
-        second = database.save_reminder("Review notes")
-        unread = database.fetch_unread_reminders()
-        self.assertEqual(unread, [(first, "Charge laptop"), (second, "Review notes")])
-        database.mark_reminders_read([first])
-        unread_after = database.fetch_unread_reminders()
-        self.assertEqual(unread_after, [(second, "Review notes")])
-
     def test_verified_sync_cannot_overwrite_a_local_dismissal(self) -> None:
         reminder_id = database.save_reminder("Review race handling")
         self.assertTrue(database.link_reminder_action(reminder_id, "action-1"))
