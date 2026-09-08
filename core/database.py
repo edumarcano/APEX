@@ -150,17 +150,6 @@ def save_reminder(note: str) -> int:
             return int(cursor.lastrowid)
 
 
-def fetch_unread_reminders() -> list[tuple[int, str]]:
-    """Fetch all unread reminders as ``(id, note)`` tuples."""
-    with _connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, note FROM reminders "
-            "WHERE is_read = 0 AND sync_state IN ('pending', 'unknown') ORDER BY id"
-        )
-        return list(cursor.fetchall())
-
-
 def save_briefing(
     briefing: str,
     digest_dict: dict,
@@ -330,23 +319,6 @@ def prune_historical_ledger() -> None:
                 "(SELECT id FROM briefings ORDER BY timestamp DESC LIMIT 50)"
             )
     _LOGGER.info("Historical briefing ledger pruned to 50 rows.")
-
-
-def mark_reminders_read(ids: list[int]) -> None:
-    """
-    Mark the reminders with the given IDs as read.
-
-    Args:
-        ids: The IDs of the reminders to mark as read.
-    """
-    with _connection() as conn:
-        with conn:
-            cursor = conn.cursor()
-            for reminder_id in ids:
-                cursor.execute(
-                    "UPDATE reminders SET is_read = 1, sync_state = 'dismissed' WHERE id = ?",
-                    (reminder_id,),
-                )
 
 
 def _initialize_reminder_schema(conn: sqlite3.Connection) -> None:
