@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import unittest
+from contextlib import ExitStack
 from unittest import mock
 
 from fastapi.testclient import TestClient
@@ -175,6 +177,127 @@ class ConnectorHttpSessionsTests(unittest.TestCase):
 
 
 class AppHttpSessionLifecycleTests(unittest.TestCase):
+    def _assert_lifespan_preserves_dependencies_on_drain_failure(
+        self,
+        *,
+        coordinator: mock.Mock,
+        expected_error: str,
+        task_drain: mock.AsyncMock | None = None,
+    ) -> None:
+        from core.api.app import app
+        from core.mcp.models import McpRuntimeConfig
+
+        conversation_store = mock.Mock()
+        run_store = mock.Mock()
+        retrieval_store = mock.Mock()
+        knowledge_store = mock.Mock()
+        registry = mock.Mock()
+        tracing = mock.Mock()
+        manager = mock.Mock()
+        manager.start = mock.AsyncMock()
+        manager.shutdown = mock.AsyncMock()
+        demo_db = mock.Mock()
+
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch("core.api.app.DEMO_MODE", True))
+            stack.enter_context(mock.patch("core.api.app.sqlite3.connect", return_value=demo_db))
+            stack.enter_context(mock.patch("core.api.app.configure_logging"))
+            stack.enter_context(
+                mock.patch("core.api.app.get_tracing_service", return_value=tracing)
+            )
+            stack.enter_context(mock.patch("core.api.app.database.initialize_db"))
+            stack.enter_context(
+                mock.patch("core.api.app.ConversationStore", return_value=conversation_store)
+            )
+            stack.enter_context(
+                mock.patch("core.api.app.ConversationService", return_value=mock.Mock())
+            )
+            stack.enter_context(mock.patch("core.api.app.RunStore", return_value=run_store))
+            stack.enter_context(mock.patch("core.api.app.RunService", return_value=mock.Mock()))
+            stack.enter_context(
+                mock.patch("core.api.app.CortexRunCoordinator", return_value=coordinator)
+            )
+            stack.enter_context(
+                mock.patch("core.api.app.RetrievalStore", return_value=retrieval_store)
+            )
+            stack.enter_context(
+                mock.patch("core.api.app.RetrievalService", return_value=mock.Mock())
+            )
+            stack.enter_context(
+                mock.patch("core.api.app.KnowledgeStore", return_value=knowledge_store)
+            )
+            stack.enter_context(
+                mock.patch("core.api.app.KnowledgeService", return_value=mock.Mock())
+            )
+            stack.enter_context(mock.patch("core.api.app.get_settings_store"))
+            stack.enter_context(mock.patch("core.api.app.speaker.initialize"))
+            stack.enter_context(mock.patch("core.api.app.speaker.shutdown"))
+            stack.enter_context(
+                mock.patch("core.api.app.get_llama_cpp_server_supervisor", return_value=mock.Mock())
+            )
+            stack.enter_context(mock.patch("core.api.app.any_local_runtime_enabled", return_value=False))
+            stack.enter_context(
+                mock.patch(
+                    "core.api.app.load_mcp_config",
+                    return_value=McpRuntimeConfig(enabled=False, servers={}),
+                )
+            )
+            stack.enter_context(mock.patch("core.api.app.MCPClientManager", return_value=manager))
+            stack.enter_context(
+                mock.patch("core.api.app.ConnectorHttpSessions", return_value=registry)
+            )
+            if task_drain is not None:
+                stack.enter_context(
+                    mock.patch("core.api.app._drain_application_tasks", task_drain)
+                )
+            for setter in (
+                "set_action_service",
+                "set_connector_http_sessions",
+                "set_conversation_service",
+                "set_knowledge_service",
+                "set_mcp_manager",
+                "set_reminder_service",
+                "set_retrieval_service",
+                "set_run_coordinator",
+                "set_run_service",
+            ):
+                stack.enter_context(mock.patch(f"core.api.app.{setter}"))
+            with self.assertRaisesRegex(RuntimeError, expected_error):
+                with TestClient(app):
+                    pass
+
+        conversation_store.close.assert_not_called()
+        run_store.close.assert_not_called()
+        retrieval_store.close.assert_not_called()
+        knowledge_store.close.assert_not_called()
+        registry.close.assert_not_called()
+        manager.shutdown.assert_not_awaited()
+        tracing.shutdown.assert_not_called()
+
+    def test_lifespan_keeps_dependencies_open_when_startup_task_drain_times_out(self) -> None:
+        coordinator = mock.Mock()
+        coordinator.close.return_value = True
+        task_drain = mock.AsyncMock(return_value=False)
+
+        self._assert_lifespan_preserves_dependencies_on_drain_failure(
+            coordinator=coordinator,
+            expected_error="Application task shutdown drain timed out",
+            task_drain=task_drain,
+        )
+
+        task_drain.assert_awaited_once()
+        self.assertEqual(len(task_drain.await_args.args[0]), 1)
+
+    def test_lifespan_keeps_dependencies_open_when_run_drain_errors(self) -> None:
+        coordinator = mock.Mock()
+        coordinator.close.side_effect = RuntimeError("drain failed")
+        self._assert_lifespan_preserves_dependencies_on_drain_failure(
+            coordinator=coordinator,
+            expected_error="Cortex run shutdown drain failed",
+        )
+
+        coordinator.close.assert_called_once()
+
     def test_lifespan_registers_action_handlers_before_recovery_and_publication(self) -> None:
         from core.api.app import app
         from core.mcp.models import McpRuntimeConfig
@@ -358,6 +481,94 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
 
         registry.close.assert_called_once_with()
         self.assertEqual(set_sessions.call_args_list[-1], mock.call(None))
+
+    def test_partial_lifespan_startup_closes_acquired_run_resources(self) -> None:
+        from core.api.app import app
+        from core.mcp.models import McpRuntimeConfig
+
+        manager = mock.Mock()
+        manager.start = mock.AsyncMock(side_effect=RuntimeError("MCP startup failed"))
+        manager.shutdown = mock.AsyncMock()
+        coordinator = mock.Mock()
+        coordinator.close.return_value = True
+        conversation_store = mock.Mock()
+        run_store = mock.Mock()
+        retrieval_store = mock.Mock()
+        knowledge_store = mock.Mock()
+        tracing = mock.Mock()
+        supervisor = mock.Mock()
+
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch("core.api.app.DEMO_MODE", True))
+            stack.enter_context(mock.patch("core.api.app.configure_logging"))
+            stack.enter_context(
+                mock.patch("core.api.app.get_tracing_service", return_value=tracing)
+            )
+            stack.enter_context(mock.patch("core.api.app.database.initialize_db"))
+            stack.enter_context(
+                mock.patch("core.api.app.ConversationStore", return_value=conversation_store)
+            )
+            stack.enter_context(
+                mock.patch("core.api.app.ConversationService", return_value=mock.Mock())
+            )
+            stack.enter_context(mock.patch("core.api.app.RunStore", return_value=run_store))
+            stack.enter_context(mock.patch("core.api.app.RunService", return_value=mock.Mock()))
+            stack.enter_context(
+                mock.patch("core.api.app.CortexRunCoordinator", return_value=coordinator)
+            )
+            stack.enter_context(
+                mock.patch("core.api.app.RetrievalStore", return_value=retrieval_store)
+            )
+            stack.enter_context(
+                mock.patch("core.api.app.RetrievalService", return_value=mock.Mock())
+            )
+            stack.enter_context(
+                mock.patch("core.api.app.KnowledgeStore", return_value=knowledge_store)
+            )
+            stack.enter_context(
+                mock.patch("core.api.app.KnowledgeService", return_value=mock.Mock())
+            )
+            stack.enter_context(mock.patch("core.api.app.get_settings_store"))
+            stack.enter_context(mock.patch("core.api.app.speaker.initialize"))
+            stack.enter_context(mock.patch("core.api.app.speaker.shutdown"))
+            stack.enter_context(
+                mock.patch("core.api.app.get_llama_cpp_server_supervisor", return_value=supervisor)
+            )
+            stack.enter_context(mock.patch("core.api.app.any_local_runtime_enabled", return_value=False))
+            stack.enter_context(
+                mock.patch(
+                    "core.api.app.load_mcp_config",
+                    return_value=McpRuntimeConfig(enabled=False, servers={}),
+                )
+            )
+            stack.enter_context(mock.patch("core.api.app.MCPClientManager", return_value=manager))
+            with self.assertRaisesRegex(RuntimeError, "MCP startup failed"):
+                with TestClient(app):
+                    pass
+
+        coordinator.close.assert_called_once_with(timeout_seconds=mock.ANY)
+        manager.shutdown.assert_awaited_once_with()
+        conversation_store.close.assert_called_once_with()
+        run_store.close.assert_called_once_with()
+        retrieval_store.close.assert_called_once_with()
+        knowledge_store.close.assert_called_once_with()
+        tracing.shutdown.assert_called_once_with()
+
+
+class ApplicationTaskDrainTests(unittest.IsolatedAsyncioTestCase):
+    async def test_reports_an_overdue_startup_task_without_cancelling_it(self) -> None:
+        from core.api.app import _drain_application_tasks
+
+        release = asyncio.Event()
+        task = asyncio.create_task(release.wait(), name="retrieval-warmup")
+        try:
+            self.assertFalse(
+                await _drain_application_tasks([task], timeout_seconds=0)
+            )
+            self.assertFalse(task.done())
+        finally:
+            release.set()
+            await task
 
 
 if __name__ == "__main__":

@@ -47,6 +47,7 @@ from core.conversations import get_conversation_service
 from core.runs import (
     ActiveConversationRunError,
     RunCapacityError,
+    RunCoordinatorClosingError,
     RunCompletionEvidence,
     RunError,
     RunHttpError,
@@ -666,6 +667,11 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
         raise _conversation_error(exc) from exc
     except RunCapacityError as exc:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Cortex run capacity is full.") from exc
+    except RunCoordinatorClosingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="APEX is shutting down; Cortex runs are temporarily unavailable.",
+        ) from exc
     except ActiveConversationRunError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A Cortex run is already active for this conversation.") from exc
 
@@ -782,6 +788,18 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
         future = coordinator.submit(
             handle=handle, resolved_model=str(metadata["resolved_model"]), provider=str(metadata["provider"]), runtime=str(metadata["runtime"]), execute=execute, finalize_conversation=finalize,
         )
+    except RunCoordinatorClosingError as exc:
+        _compensate_submission_failure(
+            service=service,
+            coordinator=coordinator,
+            conversation_id=conversation_id,
+            agent_message_id=agent_message.id,
+            handle=handle,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="APEX is shutting down; Cortex runs are temporarily unavailable.",
+        ) from exc
     except Exception:
         _compensate_submission_failure(
             service=service,

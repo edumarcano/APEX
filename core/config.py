@@ -21,6 +21,7 @@ __all__ = [
     "CORTEX_RUNS_MAX_ELAPSED_SECONDS",
     "CORTEX_RUNS_MAX_MODEL_TURNS",
     "CORTEX_RUNS_MAX_RETRIES",
+    "CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS",
     "CORTEX_RUNS_MAX_TOOL_CALLS",
     "CORTEX_RUNS_MAX_TOTAL_TOKENS",
     "CortexRunsConfig",
@@ -472,6 +473,7 @@ class CortexRunsConfig:
     max_model_turns: int
     max_tool_calls: int
     event_replay_limit: int
+    shutdown_drain_seconds: int
 
 
 try:
@@ -529,6 +531,13 @@ try:
         min_value=64,
         max_value=2048,
     )
+    CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS: Final[int] = _parse_config_int(
+        _cortex_runs_cfg.get("shutdown_drain_seconds"),
+        key="cortex_runs.shutdown_drain_seconds",
+        default=30,
+        min_value=1,
+        max_value=300,
+    )
 except Exception as exc:
     _LOGGER.warning("Unable to parse cortex_runs config: %s; using defaults.", exc)
     CORTEX_RUNS_MAX_CONCURRENT_RUNS = 2
@@ -538,6 +547,7 @@ except Exception as exc:
     CORTEX_RUNS_MAX_MODEL_TURNS = 6
     CORTEX_RUNS_MAX_TOOL_CALLS = 10
     CORTEX_RUNS_EVENT_REPLAY_LIMIT = 512
+    CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS = 30
 
 CORTEX_RUNS_CONFIG: Final[CortexRunsConfig] = CortexRunsConfig(
     max_concurrent_runs=CORTEX_RUNS_MAX_CONCURRENT_RUNS,
@@ -547,6 +557,7 @@ CORTEX_RUNS_CONFIG: Final[CortexRunsConfig] = CortexRunsConfig(
     max_model_turns=CORTEX_RUNS_MAX_MODEL_TURNS,
     max_tool_calls=CORTEX_RUNS_MAX_TOOL_CALLS,
     event_replay_limit=CORTEX_RUNS_EVENT_REPLAY_LIMIT,
+    shutdown_drain_seconds=CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS,
 )
 
 _DEFAULT_QWEN_17B_RAM: Final[float] = 88.0

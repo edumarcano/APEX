@@ -28,6 +28,7 @@ from core.runs.coordinator import (
     ActiveConversationRunError,
     CortexRunCoordinator,
     RunCapacityError,
+    RunCoordinatorClosingError,
     RunExecutionControl,
     RunHttpError,
     set_run_coordinator,
@@ -189,6 +190,75 @@ class RunCoordinatorTests(unittest.TestCase):
 
         self.assertEqual(completed.status, "cancelled")
         self.assertEqual(self.service.get_run(record.id).status, "cancelled")
+
+    def test_close_stops_admission_and_drains_active_worker_before_returning(self) -> None:
+        coordinator = CortexRunCoordinator(self.service, max_workers=1)
+        self.addCleanup(coordinator.close)
+        conversation_id, _user_id, _agent_id, record, handle = self._create_run(
+            coordinator=coordinator
+        )
+        entered_execute = threading.Event()
+
+        def execute(control):
+            entered_execute.set()
+            self.assertTrue(control.cancel_event.wait(timeout=2))
+            control.before_model_turn()
+            raise AssertionError("shutdown cancellation reached model execution")
+
+        future = coordinator.submit(
+            handle=handle,
+            resolved_model="test-model",
+            provider="openai",
+            runtime="cloud",
+            execute=execute,
+            finalize_conversation=self._finalize,
+        )
+        self.assertTrue(entered_execute.wait(timeout=2))
+
+        coordinator.close()
+
+        completed = future.result(timeout=2)
+        self.assertEqual(completed.status, "cancelled")
+        self.assertEqual(completed.stop_reason, "operator_cancelled")
+        self.assertEqual(self.service.get_run(record.id).status, "cancelled")
+        with self.assertRaises(RunCoordinatorClosingError):
+            coordinator.admit(conversation_id=conversation_id, agent_message_id=uuid4())
+
+    def test_close_times_out_without_releasing_an_uncooperative_worker(self) -> None:
+        coordinator = CortexRunCoordinator(self.service, max_workers=1)
+        self.addCleanup(coordinator.close)
+        conversation_id, _user_id, _agent_id, record, handle = self._create_run(
+            coordinator=coordinator
+        )
+        entered_execute = threading.Event()
+        release_execute = threading.Event()
+        response = SimpleNamespace(error=None, tool_trace=[], tool_outputs=[])
+
+        def execute(_control):
+            entered_execute.set()
+            self.assertTrue(release_execute.wait(timeout=2))
+            return response
+
+        future = coordinator.submit(
+            handle=handle,
+            resolved_model="test-model",
+            provider="openai",
+            runtime="cloud",
+            execute=execute,
+            finalize_conversation=self._finalize,
+        )
+        self.assertTrue(entered_execute.wait(timeout=2))
+
+        self.assertFalse(coordinator.close(timeout_seconds=0.01))
+        self.assertFalse(future.done())
+        self.assertEqual(self.service.get_run(record.id).status, "cancelling")
+        with self.assertRaises(RunCoordinatorClosingError):
+            coordinator.admit(conversation_id=conversation_id, agent_message_id=uuid4())
+
+        release_execute.set()
+        completed = future.result(timeout=2)
+        self.assertEqual(completed.status, "cancelled")
+        self.assertTrue(coordinator.close(timeout_seconds=0.1))
 
     def test_http_failure_is_persisted_safely_and_rethrown_to_sync_caller(self) -> None:
         coordinator = CortexRunCoordinator(self.service, max_workers=1)

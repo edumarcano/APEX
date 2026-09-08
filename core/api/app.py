@@ -25,7 +25,13 @@ from core.actions.microsoft_todo import (
     MicrosoftTodoTaskMutationVerifier,
 )
 from core.api.routers import actions, cortex, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
-from core.config import CORTEX_RUNS_MAX_CONCURRENT_RUNS, DEMO_MODE, ENV_PATH, MAX_RECENT_CONVERSATION_MESSAGES
+from core.config import (
+    CORTEX_RUNS_MAX_CONCURRENT_RUNS,
+    CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS,
+    DEMO_MODE,
+    ENV_PATH,
+    MAX_RECENT_CONVERSATION_MESSAGES,
+)
 from core.agent.local_runtime.coordinator import check_idle_local_models_loop
 from core.agent.local_runtime.registry import any_local_runtime_enabled
 from core.agent.providers.llama_cpp_supervisor import get_llama_cpp_server_supervisor
@@ -52,223 +58,291 @@ load_dotenv(dotenv_path=ENV_PATH)
 _LOGGER = logging.getLogger(__name__)
 
 
+async def _drain_application_tasks(
+    tasks: list[asyncio.Task[None]], *, timeout_seconds: float
+) -> bool:
+    """Wait a bounded interval for application-owned tasks without cancelling work."""
+    if not tasks:
+        return True
+
+    done, pending = await asyncio.wait(tasks, timeout=max(0.0, timeout_seconds))
+    if pending:
+        _LOGGER.error(
+            "Application task shutdown drain timed out after %.2fs; dependencies "
+            "must stay open: tasks=%s",
+            timeout_seconds,
+            [task.get_name() for task in pending],
+        )
+        return False
+
+    for task in done:
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            _LOGGER.warning("Application-owned task was cancelled during shutdown")
+        except Exception:
+            _LOGGER.exception("Application-owned task failed before shutdown completed")
+    return True
+
+
 @asynccontextmanager
 async def _app_lifespan(_app: FastAPI):
-    """Start application-owned runtime resources and release them on shutdown."""
+    """Start application-owned resources and release them in dependency order."""
     configure_logging()
     get_tracing_service().initialize()
     idle_model_task: asyncio.Task[None] | None = None
+    idle_model_stop: asyncio.Event | None = None
+    startup_tasks: list[asyncio.Task[None]] = []
     mcp_manager: MCPClientManager | None = None
     microsoft_auth: MicrosoftTodoAuthenticationService | None = None
     microsoft_todo_client: MicrosoftTodoClient | None = None
+    connector_sessions: ConnectorHttpSessions | None = None
     demo_db: sqlite3.Connection | None = None
     demo_db_lock: threading.RLock | None = None
-    if DEMO_MODE:
-        demo_db = sqlite3.connect(":memory:", check_same_thread=False)
-        demo_db.execute("PRAGMA foreign_keys=ON;")
-        demo_db_lock = threading.RLock()
     conversation_store: ConversationStore | None = None
     run_store: RunStore | None = None
     run_coordinator: CortexRunCoordinator | None = None
     retrieval_store: RetrievalStore | None = None
     knowledge_store: KnowledgeStore | None = None
-    if not DEMO_MODE:
-        microsoft_auth = MicrosoftTodoAuthenticationService()
-        await microsoft_auth.initialize()
-        microsoft_todo_client = MicrosoftTodoClient(microsoft_auth)
-        set_microsoft_auth_service(microsoft_auth)
-        set_microsoft_todo_client(microsoft_todo_client)
-    database.initialize_db(
-        include_actions=not DEMO_MODE,
-        connection=demo_db if DEMO_MODE else None,
-    )
-    conversation_store = ConversationStore(
-        None if DEMO_MODE else database.DB_NAME,
-        connection=demo_db,
-        lock=demo_db_lock,
-    )
-    conversation_store.initialize()
-    conversation_service = ConversationService(
-        conversation_store,
-        history_limit=MAX_RECENT_CONVERSATION_MESSAGES,
-    )
-    if not DEMO_MODE:
-        conversation_service.recover_interrupted()
-    set_conversation_service(conversation_service)
-    run_store = RunStore(
-        None if DEMO_MODE else database.DB_NAME,
-        connection=demo_db,
-        lock=demo_db_lock,
-    )
-    run_store.initialize()
-    run_service = RunService(run_store)
-    if not DEMO_MODE:
-        run_service.recover_interrupted()
-    set_run_service(run_service)
-    run_coordinator = CortexRunCoordinator(
-        run_service, max_workers=CORTEX_RUNS_MAX_CONCURRENT_RUNS
-    )
-    set_run_coordinator(run_coordinator)
-    retrieval_store = RetrievalStore(
-        None if DEMO_MODE else database.DB_NAME,
-        connection=demo_db,
-        lock=demo_db_lock,
-    )
-    retrieval_service = RetrievalService(
-        retrieval_store,
-        conversation_store,
-        enabled=not DEMO_MODE,
-    )
-    try:
-        await asyncio.to_thread(retrieval_service.initialize)
-    except Exception:
-        # Retrieval is optional and repairable; it must never block Cortex readiness.
-        pass
-    set_retrieval_service(retrieval_service)
-    if not DEMO_MODE:
-        async def _warm_retrieval() -> None:
-            try:
-                await asyncio.to_thread(lambda: retrieval_service.prepare(allow_download=False))
-            except Exception:
-                pass
-
-        asyncio.create_task(_warm_retrieval())
-    knowledge_store = KnowledgeStore(
-        None if DEMO_MODE else database.DB_NAME,
-        connection=demo_db,
-        lock=demo_db_lock,
-    )
-    knowledge_store.initialize()
-    set_knowledge_service(KnowledgeService(knowledge_store))
-    if not DEMO_MODE:
-        assert microsoft_todo_client is not None
-        action_service = ActionService()
-        action_service.register_handler(
-            CAPABILITY_NAME,
-            executor=ContextCaptureExecutor(knowledge_store, conversation_service),
-            verifier=ContextCaptureVerifier(knowledge_store),
-        )
-        action_service.register_handler(
-            RECONCILIATION_CAPABILITY_NAME,
-            executor=ContextReconciliationExecutor(knowledge_store),
-            verifier=ContextReconciliationVerifier(knowledge_store),
-        )
-        action_service.register_handler(
-            "create_microsoft_todo_task",
-            executor=CreateMicrosoftTodoTaskExecutor(microsoft_todo_client),
-            verifier=CreateMicrosoftTodoTaskVerifier(microsoft_todo_client),
-        )
-        for capability_name in (
-            "update_microsoft_todo_task",
-            "complete_microsoft_todo_task",
-            "reopen_microsoft_todo_task",
-            "delete_microsoft_todo_task",
-        ):
-            action_service.register_handler(
-                capability_name,
-                executor=MicrosoftTodoTaskMutationExecutor(
-                    microsoft_todo_client, capability_name
-                ),
-                verifier=MicrosoftTodoTaskMutationVerifier(
-                    microsoft_todo_client, capability_name
-                ),
-            )
-        action_service.recover_interrupted()
-        set_action_service(action_service)
-        reminder_service = ReminderService(microsoft_todo_client, action_service)
-        reminder_service.reconcile()
-        set_reminder_service(reminder_service)
-    get_settings_store()
-    speaker.initialize()
-
     llama_supervisor = get_llama_cpp_server_supervisor()
+    lifecycle_error: BaseException | None = None
 
-    async def _managed_llama_startup() -> None:
-        try:
-            await asyncio.to_thread(
-                lambda: llama_supervisor.ensure_ready(allow_restart=False)
-            )
-        except Exception:
-            _LOGGER.exception(
-                "Managed llama.cpp startup failed; continuing APEX boot without local "
-                "llama.cpp Agents"
-            )
-
-    asyncio.create_task(_managed_llama_startup())
-
-    if any_local_runtime_enabled():
-        idle_model_task = asyncio.create_task(check_idle_local_models_loop())
-        _LOGGER.info("Started local runtime idle model monitor")
-
-    mcp_config = load_mcp_config()
-    mcp_manager = MCPClientManager(mcp_config)
-    set_mcp_manager(mcp_manager)
-    await mcp_manager.start()
-    if mcp_config.enabled:
-        _LOGGER.info("Started MCP client runtime")
-
-    connector_sessions = ConnectorHttpSessions()
-    set_connector_http_sessions(connector_sessions)
     try:
-        yield
-    finally:
+        if DEMO_MODE:
+            demo_db = sqlite3.connect(":memory:", check_same_thread=False)
+            demo_db.execute("PRAGMA foreign_keys=ON;")
+            demo_db_lock = threading.RLock()
+        if not DEMO_MODE:
+            microsoft_auth = MicrosoftTodoAuthenticationService()
+            await microsoft_auth.initialize()
+            microsoft_todo_client = MicrosoftTodoClient(microsoft_auth)
+            set_microsoft_auth_service(microsoft_auth)
+            set_microsoft_todo_client(microsoft_todo_client)
+        database.initialize_db(
+            include_actions=not DEMO_MODE,
+            connection=demo_db if DEMO_MODE else None,
+        )
+        conversation_store = ConversationStore(
+            None if DEMO_MODE else database.DB_NAME,
+            connection=demo_db,
+            lock=demo_db_lock,
+        )
+        conversation_store.initialize()
+        conversation_service = ConversationService(
+            conversation_store,
+            history_limit=MAX_RECENT_CONVERSATION_MESSAGES,
+        )
+        if not DEMO_MODE:
+            conversation_service.recover_interrupted()
+        set_conversation_service(conversation_service)
+        run_store = RunStore(
+            None if DEMO_MODE else database.DB_NAME,
+            connection=demo_db,
+            lock=demo_db_lock,
+        )
+        run_store.initialize()
+        run_service = RunService(run_store)
+        if not DEMO_MODE:
+            run_service.recover_interrupted()
+        set_run_service(run_service)
+        run_coordinator = CortexRunCoordinator(
+            run_service, max_workers=CORTEX_RUNS_MAX_CONCURRENT_RUNS
+        )
+        set_run_coordinator(run_coordinator)
+        retrieval_store = RetrievalStore(
+            None if DEMO_MODE else database.DB_NAME,
+            connection=demo_db,
+            lock=demo_db_lock,
+        )
+        retrieval_service = RetrievalService(
+            retrieval_store,
+            conversation_store,
+            enabled=not DEMO_MODE,
+        )
         try:
-            speaker.shutdown()
-        finally:
-            try:
-                if mcp_manager is not None:
-                    try:
-                        await mcp_manager.shutdown()
-                    finally:
-                        set_mcp_manager(None)
-                        _LOGGER.info("Stopped MCP client runtime")
-            finally:
+            await asyncio.to_thread(retrieval_service.initialize)
+        except Exception:
+            # Retrieval is optional and repairable; it must never block Cortex readiness.
+            pass
+        set_retrieval_service(retrieval_service)
+        if not DEMO_MODE:
+            async def _warm_retrieval() -> None:
                 try:
-                    try:
-                        await asyncio.to_thread(llama_supervisor.shutdown_owned)
-                    except Exception:
-                        _LOGGER.exception("Error while stopping owned llama.cpp process")
-                finally:
-                    try:
-                        if microsoft_auth is not None:
-                            await microsoft_auth.shutdown()
-                    finally:
-                        try:
-                            if microsoft_todo_client is not None:
-                                microsoft_todo_client.close()
-                        finally:
-                            set_microsoft_todo_client(None)
-                            set_microsoft_auth_service(None)
-                            try:
-                                connector_sessions.close()
-                            finally:
-                                set_connector_http_sessions(None)
-                                set_action_service(None)
-                                set_reminder_service(None)
-                                set_conversation_service(None)
-                                set_run_service(None)
-                                set_run_coordinator(None)
-                                set_retrieval_service(None)
-                                set_knowledge_service(None)
-                                if conversation_store is not None:
-                                    conversation_store.close()
-                                if run_coordinator is not None:
-                                    run_coordinator.close()
-                                if run_store is not None:
-                                    run_store.close()
-                                if retrieval_store is not None:
-                                    retrieval_store.close()
-                                if knowledge_store is not None:
-                                    knowledge_store.close()
-                                if demo_db is not None:
-                                    demo_db.close()
-                                if idle_model_task is not None:
-                                    idle_model_task.cancel()
-                                    try:
-                                        await idle_model_task
-                                    except asyncio.CancelledError:
-                                        pass
-                                get_tracing_service().shutdown()
+                    await asyncio.to_thread(
+                        lambda: retrieval_service.prepare(allow_download=False)
+                    )
+                except Exception:
+                    _LOGGER.exception("Retrieval warmup failed; continuing with lexical search")
+
+            startup_tasks.append(asyncio.create_task(_warm_retrieval()))
+        knowledge_store = KnowledgeStore(
+            None if DEMO_MODE else database.DB_NAME,
+            connection=demo_db,
+            lock=demo_db_lock,
+        )
+        knowledge_store.initialize()
+        set_knowledge_service(KnowledgeService(knowledge_store))
+        if not DEMO_MODE:
+            assert microsoft_todo_client is not None
+            action_service = ActionService()
+            action_service.register_handler(
+                CAPABILITY_NAME,
+                executor=ContextCaptureExecutor(knowledge_store, conversation_service),
+                verifier=ContextCaptureVerifier(knowledge_store),
+            )
+            action_service.register_handler(
+                RECONCILIATION_CAPABILITY_NAME,
+                executor=ContextReconciliationExecutor(knowledge_store),
+                verifier=ContextReconciliationVerifier(knowledge_store),
+            )
+            action_service.register_handler(
+                "create_microsoft_todo_task",
+                executor=CreateMicrosoftTodoTaskExecutor(microsoft_todo_client),
+                verifier=CreateMicrosoftTodoTaskVerifier(microsoft_todo_client),
+            )
+            for capability_name in (
+                "update_microsoft_todo_task",
+                "complete_microsoft_todo_task",
+                "reopen_microsoft_todo_task",
+                "delete_microsoft_todo_task",
+            ):
+                action_service.register_handler(
+                    capability_name,
+                    executor=MicrosoftTodoTaskMutationExecutor(
+                        microsoft_todo_client, capability_name
+                    ),
+                    verifier=MicrosoftTodoTaskMutationVerifier(
+                        microsoft_todo_client, capability_name
+                    ),
+                )
+            action_service.recover_interrupted()
+            set_action_service(action_service)
+            reminder_service = ReminderService(microsoft_todo_client, action_service)
+            reminder_service.reconcile()
+            set_reminder_service(reminder_service)
+        get_settings_store()
+        speaker.initialize()
+
+        async def _managed_llama_startup() -> None:
+            try:
+                await asyncio.to_thread(
+                    lambda: llama_supervisor.ensure_ready(allow_restart=False)
+                )
+            except Exception:
+                _LOGGER.exception(
+                    "Managed llama.cpp startup failed; continuing APEX boot without local "
+                    "llama.cpp Agents"
+                )
+
+        startup_tasks.append(asyncio.create_task(_managed_llama_startup()))
+        if any_local_runtime_enabled():
+            idle_model_stop = asyncio.Event()
+            idle_model_task = asyncio.create_task(
+                check_idle_local_models_loop(idle_model_stop)
+            )
+            _LOGGER.info("Started local runtime idle model monitor")
+
+        mcp_config = load_mcp_config()
+        mcp_manager = MCPClientManager(mcp_config)
+        set_mcp_manager(mcp_manager)
+        await mcp_manager.start()
+        if mcp_config.enabled:
+            _LOGGER.info("Started MCP client runtime")
+
+        connector_sessions = ConnectorHttpSessions()
+        set_connector_http_sessions(connector_sessions)
+        yield
+    except BaseException as exc:
+        lifecycle_error = exc
+        raise
+    finally:
+        cleanup_error: Exception | None = None
+
+        async def _cleanup(step: str, operation):
+            nonlocal cleanup_error
+            try:
+                result = operation()
+                if hasattr(result, "__await__"):
+                    return await result
+                return result
+            except Exception as exc:
+                _LOGGER.exception("Error while %s", step)
+                cleanup_error = cleanup_error or exc
+                return None
+
+        shutdown_deadline = (
+            asyncio.get_running_loop().time() + CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS
+        )
+
+        def _remaining_shutdown_seconds() -> float:
+            return max(0.0, shutdown_deadline - asyncio.get_running_loop().time())
+
+        if run_coordinator is not None:
+            try:
+                runs_drained = await asyncio.to_thread(
+                    run_coordinator.close,
+                    timeout_seconds=_remaining_shutdown_seconds(),
+                )
+            except Exception as exc:
+                _LOGGER.exception("Error while draining active Cortex runs")
+                raise RuntimeError(
+                    "Cortex run shutdown drain failed; application dependencies remain open."
+                ) from exc
+            if runs_drained is not True:
+                raise RuntimeError(
+                    "Cortex run shutdown drain timed out; application dependencies remain open."
+                )
+        if idle_model_stop is not None:
+            idle_model_stop.set()
+        application_tasks = startup_tasks + (
+            [idle_model_task] if idle_model_task is not None else []
+        )
+        if not await _drain_application_tasks(
+            application_tasks,
+            timeout_seconds=_remaining_shutdown_seconds(),
+        ):
+            raise RuntimeError(
+                "Application task shutdown drain timed out; dependencies remain open."
+            )
+        await _cleanup("stopping speech runtime", speaker.shutdown)
+        if mcp_manager is not None:
+            await _cleanup("stopping MCP client runtime", mcp_manager.shutdown)
+            set_mcp_manager(None)
+            _LOGGER.info("Stopped MCP client runtime")
+        await _cleanup(
+            "stopping owned llama.cpp process",
+            lambda: asyncio.to_thread(llama_supervisor.shutdown_owned),
+        )
+        if microsoft_auth is not None:
+            await _cleanup("stopping Microsoft authentication", microsoft_auth.shutdown)
+        if microsoft_todo_client is not None:
+            await _cleanup("closing Microsoft To Do client", microsoft_todo_client.close)
+        if connector_sessions is not None:
+            await _cleanup("closing connector HTTP sessions", connector_sessions.close)
+
+        set_connector_http_sessions(None)
+        set_microsoft_todo_client(None)
+        set_microsoft_auth_service(None)
+        set_action_service(None)
+        set_reminder_service(None)
+        set_conversation_service(None)
+        set_run_service(None)
+        set_run_coordinator(None)
+        set_retrieval_service(None)
+        set_knowledge_service(None)
+        if conversation_store is not None:
+            await _cleanup("closing conversation store", conversation_store.close)
+        if run_store is not None:
+            await _cleanup("closing run store", run_store.close)
+        if retrieval_store is not None:
+            await _cleanup("closing retrieval store", retrieval_store.close)
+        if knowledge_store is not None:
+            await _cleanup("closing knowledge store", knowledge_store.close)
+        if demo_db is not None:
+            await _cleanup("closing demo database", demo_db.close)
+        await _cleanup("stopping tracing", get_tracing_service().shutdown)
+        if cleanup_error is not None and lifecycle_error is None:
+            raise cleanup_error
 
 
 app = FastAPI(title="APEX API", lifespan=_app_lifespan)

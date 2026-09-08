@@ -42,6 +42,7 @@ Cortex runs execute asynchronously through the `CortexRunCoordinator`. A run car
 - **Durable run ledger:** SQLite records run metadata in the `cortex_runs` table partitioned by `production` and `sandbox`. Records capture limits, token totals, turn/tool counts, timings, stop reasons, and completion evidence. Message text stays in conversation persistence rather than being duplicated in the ledger. On startup, unfinished runs are safely finalized as `interrupted`.
 - **Live streaming:** Process-local Server-Sent Events stream live status, deltas, tool activity, and runtime measurements. Streams support reconnect replay from bounded in-memory buffers; disconnecting a client does not cancel the underlying run.
 - **Cooperative cancellation:** Active runs poll for cancellation at turn and tool boundaries, writing a cancellation marker and finalizing as `cancelled`.
+- **Shutdown ownership:** Application shutdown first closes run admission and signals active runs, then drains the retrieval warmup, managed llama.cpp startup, and idle-model monitor before releasing conversation, run, retrieval, connector, and action dependencies. One bounded shutdown window reports failure and leaves those dependencies open if a run worker or application-owned task remains active.
 
 ## Distributed tracing
 

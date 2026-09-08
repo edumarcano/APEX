@@ -56,7 +56,8 @@
     "max_retries": 4,
     "max_model_turns": 6,
     "max_tool_calls": 10,
-    "event_replay_limit": 512
+    "event_replay_limit": 512,
+    "shutdown_drain_seconds": 30
   },
   "ollama": {
     "enabled": true,
