@@ -424,6 +424,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
   const onRunningChangeRef = useRef(onRunningChange)
   const onResponseChangeRef = useRef(onResponseChange)
   const pendingTurnRef = useRef<{ conversationId: string; agent: AgentKey } | null>(null)
+  const [pendingTurnRevision, setPendingTurnRevision] = useState(0)
   const launchTurnRef = useRef(false)
   const modelTurnRef = useRef(false)
   const [isTurnLocked, setIsTurnLocked] = useState(false)
@@ -487,8 +488,14 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
   }, [syncTurnLock])
   const handlePendingChange = useCallback((conversationId: string, agent: AgentKey, pending: boolean): void => {
     const current = pendingTurnRef.current
-    if (pending) pendingTurnRef.current = { conversationId, agent }
-    else if (current?.conversationId === conversationId) pendingTurnRef.current = null
+    if (pending) {
+      const changed = current?.conversationId !== conversationId || current?.agent !== agent
+      pendingTurnRef.current = { conversationId, agent }
+      if (changed) setPendingTurnRevision((revision) => revision + 1)
+    } else if (current?.conversationId === conversationId) {
+      pendingTurnRef.current = null
+      setPendingTurnRevision((revision) => revision + 1)
+    }
     syncTurnLock()
   }, [syncTurnLock])
   const onPendingChangeRef = useRef(handlePendingChange)
@@ -756,7 +763,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
             // Fallback to accumulated text if durable conversation fetch is interrupted
           }
 
-          const finalAnswer = durableMessage?.content ?? cumulativeAnswer
+          const finalAnswer = durableMessage?.content || cumulativeAnswer
           const rawMetadata = (durableMessage?.response_metadata ?? {}) as Record<string, unknown>
           const streamObservationError = streamObservation.error
           const metadata: Record<string, unknown> = {
@@ -771,6 +778,10 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
           const responseStatus = durableMessage?.status ?? (
             options.abortSignal.aborted || streamObservationError ? 'interrupted' : 'completed'
           )
+          const awaitingDurableCompletion = responseStatus === 'pending'
+          if (awaitingDurableCompletion) {
+            handlePendingChange(remoteId, current.agent, true)
+          }
           const incomplete = responseError !== null || responseStatus === 'failed' || responseStatus === 'interrupted'
           const persistedError = responseError ?? (responseStatus !== 'completed' ? responseStatus : 'Agent turn did not complete.')
 
@@ -781,7 +792,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
 
           yield {
             content: [{ type: 'text' as const, text: finalAnswer }],
-            ...(incomplete ? { status: { type: 'incomplete' as const, reason: 'error' as const, error: persistedError } } : {}),
+            ...(awaitingDurableCompletion ? {} : incomplete ? { status: { type: 'incomplete' as const, reason: 'error' as const, error: persistedError } } : {}),
             metadata: { custom: { apex: metadata } },
           }
           return
@@ -795,7 +806,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
     // assistant-ui invokes this callback as a hook host for each active thread.
     // eslint-disable-next-line react-hooks/rules-of-hooks
     return useLocalRuntime(model, { maxSteps: 1 })
-  }, [finishTurn, getThreadIds, syncTurnLock])
+  }, [finishTurn, getThreadIds, handlePendingChange, syncTurnLock])
 
   const handleThreadIdChange = useCallback((nextThreadId: string | undefined): void => {
     activeRemoteIdRef.current = nextThreadId
@@ -821,7 +832,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
     }
     const timeout = window.setTimeout(() => { void poll() }, 1_500)
     return () => { cancelled = true; window.clearTimeout(timeout) }
-  }, [isTurnLocked, runtime])
+  }, [isTurnLocked, pendingTurnRevision, runtime])
   const reloadThreads = useCallback(async (): Promise<void> => {
     forceListReloadRef.current = true
     await runtime.threads.reload()

@@ -1126,6 +1126,99 @@ describe('ApexAssistantRuntime', () => {
     }
   })
 
+  it('retains provisional text and the turn lock while an exhausted stream finishes durably', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const pendingConvId = 'conv-stream-pending'
+    const pendingSummary = { ...summary, id: pendingConvId, title: 'Pending stream test' }
+    const provisionalAnswer = 'Provisional answer while the run continues.'
+    const durableAnswer = 'Durable answer after the backend finishes.'
+    let runStarted = false
+    let runAgentMessageId: string | null = null
+    let detailReadsAfterRun = 0
+    let eventCalls = 0
+    let cancelCalls = 0
+    let pendingPoll: (() => void) | null = null
+    const onRunningChange = vi.fn()
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([pendingSummary])
+      if (url.endsWith(`/api/v1/cortex/conversations/${pendingConvId}`)) {
+        if (!runStarted) return response({ ...pendingSummary, active_leaf_message_id: null, messages: [] })
+        detailReadsAfterRun += 1
+        const completed = detailReadsAfterRun > 1
+        return response({
+          ...pendingSummary,
+          active_leaf_message_id: runAgentMessageId,
+          messages: [
+            { id: 'msg-stream-pending-user', parent_message_id: null, role: 'user' as const, content: 'Continue the pending run.', status: 'completed' as const, created_at: new Date().toISOString() },
+            { id: runAgentMessageId ?? 'msg-stream-pending-agent', parent_message_id: 'msg-stream-pending-user', role: 'agent' as const, content: completed ? durableAnswer : '', status: completed ? 'completed' as const : 'pending' as const, created_at: new Date().toISOString(), response_metadata: {} },
+          ],
+        })
+      }
+      if (url.endsWith(`/api/v1/cortex/conversations/${pendingConvId}/runs`)) {
+        runStarted = true
+        const payload = JSON.parse(String(init?.body)) as { agent_message_id?: string }
+        runAgentMessageId = payload.agent_message_id ?? null
+        return response(mockRunRecord({ conversation_id: pendingConvId, id: 'run-stream-pending' }))
+      }
+      if (url.endsWith('/api/v1/cortex/runs/run-stream-pending/cancel')) {
+        cancelCalls += 1
+        return response({ status: 'cancelling' })
+      }
+      if (url.includes('/runs/run-stream-pending/events')) {
+        eventCalls += 1
+        return eventCalls === 1
+          ? sseResponse([{ sequence: 1, type: 'response.delta', payload: { text: provisionalAnswer } }])
+          : sseResponse([])
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const originalSetTimeout = globalThis.setTimeout
+    const timeoutMock = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+      if (typeof timeout === 'number' && timeout >= 200 && timeout <= 900) {
+        if (typeof handler === 'function') handler(...args)
+        return 0 as unknown as ReturnType<typeof setTimeout>
+      }
+      if (timeout === 1_500 && typeof handler === 'function') {
+        pendingPoll = () => handler(...args)
+        return 0 as unknown as ReturnType<typeof setTimeout>
+      }
+      return originalSetTimeout(handler, timeout, ...args)
+    }) as typeof globalThis.setTimeout)
+    const user = userEvent.setup()
+
+    try {
+      render(
+        <ApexAssistantRuntime
+          config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+          onRunningChange={onRunningChange}
+        >
+          <ApexAssistantThread />
+        </ApexAssistantRuntime>,
+      )
+
+      await waitFor(() => expect(screen.getByText('Reminders')).toBeInTheDocument())
+      await user.click(screen.getByText('Reminders'))
+      await user.click(screen.getByRole('button', { name: 'Send' }))
+
+      await waitFor(() => expect(screen.getByText(provisionalAnswer)).toBeInTheDocument())
+      expect(cancelCalls).toBe(0)
+      expect(eventCalls).toBe(4)
+      expect(screen.getByPlaceholderText('Ask APEX…')).toBeDisabled()
+      expect(onRunningChange).toHaveBeenCalledWith(true, 'apex')
+      expect(pendingPoll).not.toBeNull()
+
+      const poll = pendingPoll as unknown as () => void
+      poll()
+      await waitFor(() => expect(screen.getByText(durableAnswer)).toBeInTheDocument())
+      expect(screen.getByPlaceholderText('Ask APEX…')).not.toBeDisabled()
+      expect(onRunningChange).toHaveBeenLastCalledWith(false, null)
+    } finally {
+      timeoutMock.mockRestore()
+    }
+  })
+
   it('cancels active run on explicit stop', async () => {
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
     const cancelConvId = 'conv-cancel'
