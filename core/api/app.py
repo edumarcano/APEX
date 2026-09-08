@@ -25,7 +25,13 @@ from core.actions.microsoft_todo import (
     MicrosoftTodoTaskMutationVerifier,
 )
 from core.api.routers import actions, cortex, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
-from core.config import CORTEX_RUNS_MAX_CONCURRENT_RUNS, DEMO_MODE, ENV_PATH, MAX_RECENT_CONVERSATION_MESSAGES
+from core.config import (
+    CORTEX_RUNS_MAX_CONCURRENT_RUNS,
+    CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS,
+    DEMO_MODE,
+    ENV_PATH,
+    MAX_RECENT_CONVERSATION_MESSAGES,
+)
 from core.agent.local_runtime.coordinator import check_idle_local_models_loop
 from core.agent.local_runtime.registry import any_local_runtime_enabled
 from core.agent.providers.llama_cpp_supervisor import get_llama_cpp_server_supervisor
@@ -50,6 +56,33 @@ from core.tracing import get_tracing_service
 load_dotenv(dotenv_path=ENV_PATH)
 
 _LOGGER = logging.getLogger(__name__)
+
+
+async def _drain_application_tasks(
+    tasks: list[asyncio.Task[None]], *, timeout_seconds: float
+) -> bool:
+    """Wait a bounded interval for application-owned tasks without cancelling work."""
+    if not tasks:
+        return True
+
+    done, pending = await asyncio.wait(tasks, timeout=max(0.0, timeout_seconds))
+    if pending:
+        _LOGGER.error(
+            "Application task shutdown drain timed out after %.2fs; dependencies "
+            "must stay open: tasks=%s",
+            timeout_seconds,
+            [task.get_name() for task in pending],
+        )
+        return False
+
+    for task in done:
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            _LOGGER.warning("Application-owned task was cancelled during shutdown")
+        except Exception:
+            _LOGGER.exception("Application-owned task failed before shutdown completed")
+    return True
 
 
 @asynccontextmanager
@@ -237,23 +270,39 @@ async def _app_lifespan(_app: FastAPI):
                 cleanup_error = cleanup_error or exc
                 return None
 
+        shutdown_deadline = (
+            asyncio.get_running_loop().time() + CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS
+        )
+
+        def _remaining_shutdown_seconds() -> float:
+            return max(0.0, shutdown_deadline - asyncio.get_running_loop().time())
+
         if run_coordinator is not None:
-            runs_drained = await _cleanup(
-                "draining active Cortex runs",
-                lambda: asyncio.to_thread(run_coordinator.close),
-            )
-            if runs_drained is False:
+            try:
+                runs_drained = await asyncio.to_thread(
+                    run_coordinator.close,
+                    timeout_seconds=_remaining_shutdown_seconds(),
+                )
+            except Exception as exc:
+                _LOGGER.exception("Error while draining active Cortex runs")
+                raise RuntimeError(
+                    "Cortex run shutdown drain failed; application dependencies remain open."
+                ) from exc
+            if runs_drained is not True:
                 raise RuntimeError(
                     "Cortex run shutdown drain timed out; application dependencies remain open."
                 )
         if idle_model_stop is not None:
             idle_model_stop.set()
-        if idle_model_task is not None:
-            await _cleanup("stopping local runtime idle monitor", lambda: idle_model_task)
-        if startup_tasks:
-            await _cleanup(
-                "waiting for application startup tasks",
-                lambda: asyncio.gather(*startup_tasks, return_exceptions=True),
+        application_tasks = startup_tasks + (
+            [idle_model_task] if idle_model_task is not None else []
+        )
+        if not await _drain_application_tasks(
+            application_tasks,
+            timeout_seconds=_remaining_shutdown_seconds(),
+        ):
+            raise RuntimeError(
+                "Application task shutdown drain timed out; dependencies remain open."
             )
         await _cleanup("stopping speech runtime", speaker.shutdown)
         if mcp_manager is not None:

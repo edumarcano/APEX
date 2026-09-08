@@ -53,7 +53,7 @@ Configure llama.cpp aliases with one preset per exposed context size. A tracked 
 }
 ```
 
-`max_concurrent_runs` limits active execution slots before the API returns `429`. `event_replay_limit` sets the in-memory event buffer size per run for Server-Sent Events reconnects. `shutdown_drain_seconds` bounds how long APEX waits for cancelled run workers before it reports shutdown failure and leaves their dependencies open. The remaining fields define the immutable limit snapshot applied to each run.
+`max_concurrent_runs` limits active execution slots before the API returns `429`. `event_replay_limit` sets the in-memory event buffer size per run for Server-Sent Events reconnects. `shutdown_drain_seconds` bounds the full application shutdown window for cancelled run workers and application-owned startup tasks; if either remains active, APEX reports shutdown failure and leaves their dependencies open. The remaining fields define the immutable limit snapshot applied to each run.
 
 ## OpenTelemetry GenAI tracing
 
