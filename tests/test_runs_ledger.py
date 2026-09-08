@@ -21,6 +21,7 @@ from core.config import (
     CORTEX_RUNS_MAX_RETRIES,
     CORTEX_RUNS_MAX_TOOL_CALLS,
     CORTEX_RUNS_MAX_TOTAL_TOKENS,
+    CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS,
     _parse_config_int,
 )
 from core.connectors.models import utc_now_iso
@@ -159,6 +160,7 @@ class RunsLedgerTests(unittest.TestCase):
         self.assertEqual(CORTEX_RUNS_CONFIG.max_model_turns, 6)
         self.assertEqual(CORTEX_RUNS_CONFIG.max_tool_calls, 10)
         self.assertEqual(CORTEX_RUNS_CONFIG.event_replay_limit, 512)
+        self.assertEqual(CORTEX_RUNS_CONFIG.shutdown_drain_seconds, 30)
 
         self.assertEqual(CORTEX_RUNS_MAX_CONCURRENT_RUNS, 2)
         self.assertEqual(CORTEX_RUNS_MAX_ELAPSED_SECONDS, 600)
@@ -167,6 +169,7 @@ class RunsLedgerTests(unittest.TestCase):
         self.assertEqual(CORTEX_RUNS_MAX_MODEL_TURNS, 6)
         self.assertEqual(CORTEX_RUNS_MAX_TOOL_CALLS, 10)
         self.assertEqual(CORTEX_RUNS_EVENT_REPLAY_LIMIT, 512)
+        self.assertEqual(CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS, 30)
 
         # Clamping checks
         self.assertEqual(_parse_config_int(0, key="k", default=2, min_value=1, max_value=4), 1)
@@ -183,6 +186,8 @@ class RunsLedgerTests(unittest.TestCase):
         self.assertEqual(_parse_config_int(100, key="k", default=10, min_value=1, max_value=32), 32)
         self.assertEqual(_parse_config_int(10, key="k", default=512, min_value=64, max_value=2048), 64)
         self.assertEqual(_parse_config_int(5000, key="k", default=512, min_value=64, max_value=2048), 2048)
+        self.assertEqual(_parse_config_int(0, key="k", default=30, min_value=1, max_value=300), 1)
+        self.assertEqual(_parse_config_int(500, key="k", default=30, min_value=1, max_value=300), 300)
 
     def test_schema_initialization_and_versioning(self) -> None:
         """Verify schema versions table and domain migration rejection."""

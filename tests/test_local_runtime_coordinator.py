@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import threading
 import unittest
 from dataclasses import dataclass
@@ -490,6 +491,16 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertEqual(self.llama_backend.unload_calls, ["gemma-e2b-16k"])
         self.assertEqual(self.backend.unload_calls, [])
         self.assertIsNone(coord.get_active_local_model())
+
+
+class IdleMonitorShutdownTests(unittest.IsolatedAsyncioTestCase):
+    async def test_stop_event_ends_monitor_without_waiting_for_poll_interval(self) -> None:
+        stop_event = asyncio.Event()
+        stop_event.set()
+
+        await asyncio.wait_for(
+            coord.check_idle_local_models_loop(stop_event), timeout=0.1
+        )
 
 
 if __name__ == "__main__":

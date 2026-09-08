@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from typing import Any, Callable
 from uuid import UUID
 
 from core.agent.loop import ExecutionCancelled, ExecutionLimitReached
 from core.agent.providers.contract import ProviderTurnResult
-from core.config import CORTEX_RUNS_EVENT_REPLAY_LIMIT
+from core.config import (
+    CORTEX_RUNS_EVENT_REPLAY_LIMIT,
+    CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS,
+)
 from core.runs.events import RunEventRegistry
 from core.runs.models import (
     RunCompletionEvidence,
@@ -27,6 +31,7 @@ from core.runs.store import RunConflictError
 from core.tracing import trace_run
 
 _coordinator: CortexRunCoordinator | None = None
+_LOGGER = logging.getLogger(__name__)
 
 
 def set_run_coordinator(coordinator: CortexRunCoordinator | None) -> None:
@@ -48,6 +53,10 @@ class ActiveConversationRunError(RuntimeError):
     """A different active run owns the requested conversation."""
 
 
+class RunCoordinatorClosingError(RuntimeError):
+    """The application is shutting down and cannot admit another run."""
+
+
 class RunHttpError(RuntimeError):
     """A request error that the synchronous route must re-raise."""
 
@@ -62,6 +71,7 @@ class _ActiveRun:
     conversation_id: UUID
     cancel_event: threading.Event
     future: Future[Any] | None = None
+    handle: RunHandle | None = None
     admitted_at: float | None = None
 
 
@@ -123,6 +133,10 @@ class RunExecutionControl:
         return max(0.0, self.limits.max_elapsed_seconds - (time.monotonic() - self.started))
 
     def before_provider_attempt(self) -> None:
+        self._check()
+
+    def check_cancelled(self) -> None:
+        """Check for cancellation after work outside the control boundary returns."""
         self._check()
 
     def before_retry(self, _retry_number: int = 0) -> None:
@@ -279,14 +293,94 @@ class CortexRunCoordinator:
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="apex-run")
         self._lock = threading.RLock()
         self._active: dict[UUID, _ActiveRun] = {}
+        self._closing = False
+        self._closed = False
         self.events = RunEventRegistry(replay_limit=CORTEX_RUNS_EVENT_REPLAY_LIMIT)
 
-    def close(self) -> None:
-        self._executor.shutdown(wait=False, cancel_futures=False)
+    def close(
+        self,
+        *,
+        timeout_seconds: float = CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS,
+    ) -> bool:
+        """Stop admission and wait a bounded interval for workers to finalize.
+
+        A worker owns conversation and run finalization, so application teardown
+        must keep those dependencies available until each worker reaches its
+        cooperative cancellation checkpoint. ``ThreadPoolExecutor`` cannot
+        stop a running thread. A timeout therefore leaves the worker and its
+        dependencies intact and returns ``False`` for the application lifespan
+        to report a failed shutdown instead of closing resources underneath it.
+        """
+        with self._lock:
+            if self._closed:
+                return True
+            if not self._closing:
+                self._closing = True
+                for key, active in list(self._active.items()):
+                    active.cancel_event.set()
+                    if active.handle is None:
+                        # This request was admitted but never received a durable run.
+                        self._active.pop(key, None)
+                        self._slots.release()
+                        continue
+                    try:
+                        record = active.handle.set_cancelling()
+                        self.events.publish(
+                            active.handle.run_id,
+                            "run.status",
+                            {"status": record.status},
+                            record=record,
+                        )
+                    except Exception:
+                        _LOGGER.exception(
+                            "Unable to persist Cortex run cancellation during shutdown: run_id=%s",
+                            active.handle.run_id,
+                        )
+
+        deadline = time.monotonic() + max(0.0, timeout_seconds)
+        while True:
+            with self._lock:
+                futures = [
+                    active.future
+                    for active in self._active.values()
+                    if active.future is not None
+                ]
+            if not futures:
+                self._executor.shutdown(wait=True, cancel_futures=True)
+                with self._lock:
+                    self._closed = True
+                return True
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            _done, pending = wait(futures, timeout=remaining)
+            if not pending:
+                self._executor.shutdown(wait=True, cancel_futures=True)
+                with self._lock:
+                    self._closed = True
+                return True
+
+        self._executor.shutdown(wait=False, cancel_futures=True)
+        with self._lock:
+            pending_run_ids = [
+                str(run_id)
+                for run_id, active in self._active.items()
+                if active.future is not None and not active.future.done()
+            ]
+        _LOGGER.error(
+            "Cortex shutdown drain timed out after %.2fs; active runs remain "
+            "cancelling and application dependencies must stay open: run_ids=%s",
+            timeout_seconds,
+            pending_run_ids,
+        )
+        return False
 
     def admit(self, *, conversation_id: UUID, agent_message_id: UUID) -> RunRecord | None:
         """Reserve capacity before durable conversation mutation, or return a replay."""
         with self._lock:
+            if self._closing:
+                raise RunCoordinatorClosingError()
             existing = self.service.get_run_by_agent_message_id(agent_message_id)
             if existing is not None:
                 return existing
@@ -325,6 +419,11 @@ class CortexRunCoordinator:
                 if active is None:
                     raise RuntimeError("Run was not admitted.")
                 self._active[handle.run_id] = active
+            if self._closing:
+                self._active.pop(handle.run_id, None)
+                self._slots.release()
+                raise RunCoordinatorClosingError()
+            active.handle = handle
             try:
                 self.events.start(handle.get_record())
                 future = self._executor.submit(
@@ -430,6 +529,7 @@ class CortexRunCoordinator:
                             raise ExecutionCancelled() from None
                         raise
                 response = execute(control)
+                control.check_cancelled()
                 control.finish()
                 message_status = "failed" if getattr(response, "error", None) else "completed"
                 conversation = finalize_conversation(response, message_status, None)

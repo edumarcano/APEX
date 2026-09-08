@@ -463,7 +463,7 @@ def _maybe_unload_idle_model() -> None:
         end_local_execution()
 
 
-async def check_idle_local_models_loop() -> None:
+async def check_idle_local_models_loop(stop_event: asyncio.Event | None = None) -> None:
     """
     Background worker that periodically unloads idle local models.
 
@@ -471,9 +471,18 @@ async def check_idle_local_models_loop() -> None:
     backend's idle threshold, so wall-clock jumps cannot trigger premature
     unloads.
     """
-    while True:
+    while stop_event is None or not stop_event.is_set():
         try:
-            await asyncio.sleep(_IDLE_CHECK_INTERVAL_SECONDS)
+            if stop_event is None:
+                await asyncio.sleep(_IDLE_CHECK_INTERVAL_SECONDS)
+            else:
+                try:
+                    await asyncio.wait_for(
+                        stop_event.wait(), timeout=_IDLE_CHECK_INTERVAL_SECONDS
+                    )
+                    return
+                except asyncio.TimeoutError:
+                    pass
             await asyncio.to_thread(_maybe_unload_idle_model)
         except asyncio.CancelledError:
             raise

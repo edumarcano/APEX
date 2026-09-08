@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from contextlib import ExitStack
 from unittest import mock
 
 from fastapi.testclient import TestClient
@@ -358,6 +359,77 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
 
         registry.close.assert_called_once_with()
         self.assertEqual(set_sessions.call_args_list[-1], mock.call(None))
+
+    def test_partial_lifespan_startup_closes_acquired_run_resources(self) -> None:
+        from core.api.app import app
+        from core.mcp.models import McpRuntimeConfig
+
+        manager = mock.Mock()
+        manager.start = mock.AsyncMock(side_effect=RuntimeError("MCP startup failed"))
+        manager.shutdown = mock.AsyncMock()
+        coordinator = mock.Mock()
+        conversation_store = mock.Mock()
+        run_store = mock.Mock()
+        retrieval_store = mock.Mock()
+        knowledge_store = mock.Mock()
+        tracing = mock.Mock()
+        supervisor = mock.Mock()
+
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch("core.api.app.DEMO_MODE", True))
+            stack.enter_context(mock.patch("core.api.app.configure_logging"))
+            stack.enter_context(
+                mock.patch("core.api.app.get_tracing_service", return_value=tracing)
+            )
+            stack.enter_context(mock.patch("core.api.app.database.initialize_db"))
+            stack.enter_context(
+                mock.patch("core.api.app.ConversationStore", return_value=conversation_store)
+            )
+            stack.enter_context(
+                mock.patch("core.api.app.ConversationService", return_value=mock.Mock())
+            )
+            stack.enter_context(mock.patch("core.api.app.RunStore", return_value=run_store))
+            stack.enter_context(mock.patch("core.api.app.RunService", return_value=mock.Mock()))
+            stack.enter_context(
+                mock.patch("core.api.app.CortexRunCoordinator", return_value=coordinator)
+            )
+            stack.enter_context(
+                mock.patch("core.api.app.RetrievalStore", return_value=retrieval_store)
+            )
+            stack.enter_context(
+                mock.patch("core.api.app.RetrievalService", return_value=mock.Mock())
+            )
+            stack.enter_context(
+                mock.patch("core.api.app.KnowledgeStore", return_value=knowledge_store)
+            )
+            stack.enter_context(
+                mock.patch("core.api.app.KnowledgeService", return_value=mock.Mock())
+            )
+            stack.enter_context(mock.patch("core.api.app.get_settings_store"))
+            stack.enter_context(mock.patch("core.api.app.speaker.initialize"))
+            stack.enter_context(mock.patch("core.api.app.speaker.shutdown"))
+            stack.enter_context(
+                mock.patch("core.api.app.get_llama_cpp_server_supervisor", return_value=supervisor)
+            )
+            stack.enter_context(mock.patch("core.api.app.any_local_runtime_enabled", return_value=False))
+            stack.enter_context(
+                mock.patch(
+                    "core.api.app.load_mcp_config",
+                    return_value=McpRuntimeConfig(enabled=False, servers={}),
+                )
+            )
+            stack.enter_context(mock.patch("core.api.app.MCPClientManager", return_value=manager))
+            with self.assertRaisesRegex(RuntimeError, "MCP startup failed"):
+                with TestClient(app):
+                    pass
+
+        coordinator.close.assert_called_once_with()
+        manager.shutdown.assert_awaited_once_with()
+        conversation_store.close.assert_called_once_with()
+        run_store.close.assert_called_once_with()
+        retrieval_store.close.assert_called_once_with()
+        knowledge_store.close.assert_called_once_with()
+        tracing.shutdown.assert_called_once_with()
 
 
 if __name__ == "__main__":
