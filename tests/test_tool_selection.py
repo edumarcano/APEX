@@ -77,8 +77,17 @@ class _AnswerProvider:
         tools: list[CapabilityDescriptor],
         _profile: object,
         system_instruction_override: str | None = None,
+        *,
+        execution_control: object | None = None,
+        stream_observer: object | None = None,
+        output_schema: dict[str, object] | None = None,
     ) -> ProviderTurnResult:
-        del system_instruction_override
+        del (
+            system_instruction_override,
+            execution_control,
+            stream_observer,
+            output_schema,
+        )
         self.tool_names.append([tool.name for tool in tools])
         return ProviderTurnResult(message=AgentMessage(role="agent", content="Done."))
 

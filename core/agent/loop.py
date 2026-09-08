@@ -1,5 +1,4 @@
 import logging
-import inspect
 import time
 from typing import Any, Callable, Mapping, Protocol, TypeGuard, TypeVar, runtime_checkable
 
@@ -83,12 +82,22 @@ _LOGGER = logging.getLogger(__name__)
 
 @runtime_checkable
 class AgentProvider(Protocol[P]):
+    """Provider contract for one bounded Cortex model turn.
+
+    Providers receive the coordinator and stream seams on every turn. A
+    provider that does not use one of them should accept it and leave it idle.
+    """
+
     def generate_turn(
         self,
         messages: list[AgentMessage],
         tools: list[CapabilityDescriptor],
         profile: P,
         system_instruction_override: str | None = None,
+        *,
+        execution_control: ExecutionControl | None = None,
+        stream_observer: ProviderStreamObserver | None = None,
+        output_schema: dict[str, Any] | None = None,
     ) -> ProviderTurnResult:
         ...
 
@@ -333,9 +342,6 @@ def run_agent_loop(
                     system_instruction_override or profile.system_instruction
                 ) + FINAL_ANSWER_INSTRUCTION
 
-            generate_kwargs: dict[str, Any] = {
-                "system_instruction_override": turn_instruction,
-            }
             provisional_text = False
 
             def observe_stream(event) -> None:
@@ -349,22 +355,19 @@ def run_agent_loop(
 
             if activity_observer is not None:
                 activity_observer("model.started", {"turn": _turn + 1})
-            # Existing test and extension providers may implement the small
-            # pre-beta.2 contract.  Pass the new seam only when supported.
-            parameters = inspect.signature(provider.generate_turn).parameters
-            if "execution_control" in parameters:
-                generate_kwargs["execution_control"] = execution_control
-            if "stream_observer" in parameters:
-                generate_kwargs["stream_observer"] = observe_stream
-            if "output_schema" in parameters:
-                generate_kwargs["output_schema"] = output_schema if is_final_turn else None
             with trace_provider_turn(
                 model=profile.api_model,
                 provider=profile.provider,
                 turn=_turn + 1,
             ) as provider_span_ctx:
                 turn_result = provider.generate_turn(
-                    history, turn_tools, profile, **generate_kwargs
+                    history,
+                    turn_tools,
+                    profile,
+                    system_instruction_override=turn_instruction,
+                    execution_control=execution_control,
+                    stream_observer=observe_stream,
+                    output_schema=output_schema if is_final_turn else None,
                 )
                 provider_span_ctx.record_result(turn_result)
             if execution_control is not None:

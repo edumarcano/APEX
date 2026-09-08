@@ -115,7 +115,23 @@ class HostedGroundingTests(unittest.TestCase):
 
     def test_agent_loop_returns_grounding_presentation_to_the_client(self) -> None:
         class Provider:
-            def generate_turn(self, *_args, **_kwargs) -> ProviderTurnResult:
+            def generate_turn(
+                self,
+                _messages: list[AgentMessage],
+                _tools: list[CapabilityDescriptor],
+                _profile: object,
+                system_instruction_override: str | None = None,
+                *,
+                execution_control: object | None = None,
+                stream_observer: object | None = None,
+                output_schema: dict[str, object] | None = None,
+            ) -> ProviderTurnResult:
+                del (
+                    system_instruction_override,
+                    execution_control,
+                    stream_observer,
+                    output_schema,
+                )
                 return ProviderTurnResult(
                     message=AgentMessage(role="agent", content="Grounded answer."),
                     grounding=GroundingPresentation(
@@ -268,7 +284,23 @@ class SandboxContextTests(unittest.TestCase):
             def __init__(self) -> None:
                 self.calls = 0
 
-            def generate_turn(self, *_args, **_kwargs) -> ProviderTurnResult:
+            def generate_turn(
+                self,
+                _messages: list[AgentMessage],
+                _tools: list[CapabilityDescriptor],
+                _profile: object,
+                system_instruction_override: str | None = None,
+                *,
+                execution_control: object | None = None,
+                stream_observer: object | None = None,
+                output_schema: dict[str, object] | None = None,
+            ) -> ProviderTurnResult:
+                del (
+                    system_instruction_override,
+                    execution_control,
+                    stream_observer,
+                    output_schema,
+                )
                 self.calls += 1
                 if self.calls == 1:
                     return ProviderTurnResult(
@@ -318,8 +350,17 @@ class SandboxContextTests(unittest.TestCase):
                 _tools: list[object],
                 _profile: object,
                 system_instruction_override: str | None = None,
+                *,
+                execution_control: object | None = None,
+                stream_observer: object | None = None,
+                output_schema: dict[str, object] | None = None,
             ) -> ProviderTurnResult:
-                del system_instruction_override
+                del (
+                    system_instruction_override,
+                    execution_control,
+                    stream_observer,
+                    output_schema,
+                )
                 self.calls += 1
                 tool_msgs = [m for m in messages if m.role == "tool"]
                 turn_history_snapshots.append(

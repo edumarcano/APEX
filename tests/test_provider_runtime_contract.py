@@ -27,6 +27,7 @@ from core.agent.pricing import (
     estimate_inference_cost,
 )
 from core.agent.providers.contract import (
+    ProviderStreamEvent,
     ProviderToolEvent,
     ProviderTurnResult,
     is_local_inference_provider,
@@ -200,7 +201,24 @@ class ProviderContractTests(unittest.TestCase):
         self.assertTrue(is_local_profile(profile))
 
         class Provider:
-            def generate_turn(self, messages, tools, _profile, system_instruction_override=None):
+            def generate_turn(
+                self,
+                messages,
+                tools,
+                _profile,
+                system_instruction_override=None,
+                *,
+                execution_control=None,
+                stream_observer=None,
+                output_schema=None,
+            ):
+                del (
+                    messages,
+                    system_instruction_override,
+                    execution_control,
+                    stream_observer,
+                    output_schema,
+                )
                 self.tools = tools
                 return ProviderTurnResult(
                     message=AgentMessage(role="agent", content="ok"),
@@ -218,6 +236,75 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(response.answer, "ok")
         self.assertIsNone(response.error)
         self.assertIsNotNone(response.local_context_usage)
+
+    def test_loop_passes_the_operational_turn_contract_to_providers(self) -> None:
+        class Control:
+            def before_model_turn(self) -> None:
+                pass
+
+            def after_model_turn(self, _result: ProviderTurnResult) -> None:
+                pass
+
+            def before_tool(self) -> None:
+                pass
+
+            def after_tool(self) -> None:
+                pass
+
+            def before_provider_attempt(self) -> None:
+                pass
+
+            def before_retry(self, _retry_number: int = 0) -> None:
+                pass
+
+            def remaining_seconds(self) -> float:
+                return 30.0
+
+        class Provider:
+            def generate_turn(
+                self,
+                _messages: list[AgentMessage],
+                _tools: list[CapabilityDescriptor],
+                _profile: object,
+                system_instruction_override: str | None = None,
+                *,
+                execution_control: object | None = None,
+                stream_observer: object | None = None,
+                output_schema: dict[str, object] | None = None,
+            ) -> ProviderTurnResult:
+                self.system_instruction_override = system_instruction_override
+                self.execution_control = execution_control
+                self.stream_observer = stream_observer
+                self.output_schema = output_schema
+                assert callable(stream_observer)
+                stream_observer(ProviderStreamEvent(kind="text", text="done"))
+                return ProviderTurnResult(
+                    message=AgentMessage(role="agent", content="done")
+                )
+
+        provider = Provider()
+        control = Control()
+        events: list[ProviderStreamEvent] = []
+        output_schema = {"type": "object"}
+        profile = _concrete_profile("gemini-3.7-flash").model_copy(
+            update={"max_tool_turns": 1}
+        )
+
+        response = run_agent_loop(
+            AgentQueryRequest(prompt="hello", agent="apex"),
+            provider,
+            profile,
+            system_instruction_override="override",
+            execution_control=control,
+            stream_observer=events.append,
+            output_schema=output_schema,
+        )
+
+        self.assertEqual(response.answer, "done")
+        self.assertTrue(provider.system_instruction_override.startswith("override"))
+        self.assertIs(provider.execution_control, control)
+        self.assertEqual(provider.output_schema, output_schema)
+        self.assertEqual(events, [ProviderStreamEvent(kind="text", text="done")])
 
     def test_merge_token_usage_sums_nullable_fields(self) -> None:
         merged = merge_token_usage(
@@ -243,8 +330,17 @@ class ProviderContractTests(unittest.TestCase):
                 _tools: list[CapabilityDescriptor],
                 _profile: object,
                 system_instruction_override: str | None = None,
+                *,
+                execution_control: object | None = None,
+                stream_observer: object | None = None,
+                output_schema: dict[str, object] | None = None,
             ) -> ProviderTurnResult:
-                del system_instruction_override
+                del (
+                    system_instruction_override,
+                    execution_control,
+                    stream_observer,
+                    output_schema,
+                )
                 self.calls += 1
                 if self.calls == 1:
                     return ProviderTurnResult(
@@ -298,8 +394,17 @@ class ProviderContractTests(unittest.TestCase):
                 _tools: list[CapabilityDescriptor],
                 _profile: object,
                 system_instruction_override: str | None = None,
+                *,
+                execution_control: object | None = None,
+                stream_observer: object | None = None,
+                output_schema: dict[str, object] | None = None,
             ) -> ProviderTurnResult:
-                del system_instruction_override
+                del (
+                    system_instruction_override,
+                    execution_control,
+                    stream_observer,
+                    output_schema,
+                )
                 return ProviderTurnResult(
                     message=AgentMessage(role="agent", content="Grounded."),
                     provider_tool_events=[
