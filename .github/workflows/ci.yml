@@ -46,6 +46,9 @@ jobs:
           uv sync --locked --all-extras
           uv run python -c "import google.cloud.texttospeech; import kokoro_onnx; import numpy; import onnxruntime"
 
+      - name: Run tracing tests with optional dependencies
+        run: uv run python -m unittest -v tests.test_runs_tracing
+
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
