@@ -146,6 +146,12 @@ type HistoryLoadState = {
   failureUntil: Map<string, number>
 }
 
+type PendingAssistantMessage = {
+  conversationId: string
+  messageId: string
+  content: string
+}
+
 function topologicalSortMessages(messages: ConversationMessage[]): ConversationMessage[] {
   if (messages.length <= 1) return messages
   const byId = new Map<string, ConversationMessage>()
@@ -183,7 +189,7 @@ function topologicalSortMessages(messages: ConversationMessage[]): ConversationM
   return sorted
 }
 
-function ThreadHistory({ children, getThreadIds, onConversationChangeRef, onPendingChangeRef, historyLoadStateRef, forceHistoryReloadRef }: { children?: ReactNode; getThreadIds: (remoteId: string) => Map<string, string>; onConversationChangeRef: React.MutableRefObject<((conversation: ConversationSummary | null) => void) | undefined>; onPendingChangeRef: React.MutableRefObject<((conversationId: string, agent: AgentKey, pending: boolean) => void) | undefined>; historyLoadStateRef: React.MutableRefObject<HistoryLoadState>; forceHistoryReloadRef: React.MutableRefObject<boolean> }): ReactNode {
+function ThreadHistory({ children, getThreadIds, onConversationChangeRef, onPendingChangeRef, historyLoadStateRef, forceHistoryReloadRef, pendingAssistantRef }: { children?: ReactNode; getThreadIds: (remoteId: string) => Map<string, string>; onConversationChangeRef: React.MutableRefObject<((conversation: ConversationSummary | null) => void) | undefined>; onPendingChangeRef: React.MutableRefObject<((conversationId: string, agent: AgentKey, pending: boolean) => void) | undefined>; historyLoadStateRef: React.MutableRefObject<HistoryLoadState>; forceHistoryReloadRef: React.MutableRefObject<boolean>; pendingAssistantRef: React.MutableRefObject<PendingAssistantMessage | null> }): ReactNode {
   const aui = useAui()
   const history = useMemo<ThreadHistoryAdapter>(() => ({
     async load() {
@@ -201,6 +207,13 @@ function ThreadHistory({ children, getThreadIds, onConversationChangeRef, onPend
           const detail = await requestJson<ConversationDetail>(API_ENDPOINTS.cortexConversation(remoteId))
           onConversationChangeRef.current?.(detail)
           onPendingChangeRef.current?.(detail.id, detail.agent, detail.messages.some((message) => message.role === 'agent' && message.status === 'pending'))
+          const pendingAssistant = pendingAssistantRef.current
+          const pendingMessage = pendingAssistant?.conversationId === detail.id
+            ? detail.messages.find((message) => message.id === pendingAssistant.messageId)
+            : undefined
+          if (pendingAssistant && pendingMessage && pendingMessage.status !== 'pending') {
+            pendingAssistantRef.current = null
+          }
           const orderedMessages = topologicalSortMessages(detail.messages)
           const idMap = getThreadIds(remoteId)
           idMap.clear()
@@ -224,7 +237,15 @@ function ThreadHistory({ children, getThreadIds, onConversationChangeRef, onPend
                 : {
                     id: message.id,
                     role: 'assistant' as const,
-                    content: [{ type: 'text' as const, text: message.content }],
+                    content: [{
+                      type: 'text' as const,
+                      text: message.status === 'pending'
+                        && pendingAssistant?.conversationId === detail.id
+                        && pendingAssistant.messageId === message.id
+                        && pendingAssistant.content
+                        ? pendingAssistant.content
+                        : message.content,
+                    }],
                     createdAt: new Date(message.created_at),
                     status: message.status === 'completed'
                       ? { type: 'complete' as const, reason: 'stop' as const }
@@ -248,7 +269,7 @@ function ThreadHistory({ children, getThreadIds, onConversationChangeRef, onPend
     },
     async append() {},
     async update() {},
-  }), [aui, forceHistoryReloadRef, getThreadIds, historyLoadStateRef, onConversationChangeRef, onPendingChangeRef])
+  }), [aui, forceHistoryReloadRef, getThreadIds, historyLoadStateRef, onConversationChangeRef, onPendingChangeRef, pendingAssistantRef])
   return <RuntimeAdapterProvider adapters={{ history }}>{children}</RuntimeAdapterProvider>
 }
 
@@ -424,6 +445,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
   const onRunningChangeRef = useRef(onRunningChange)
   const onResponseChangeRef = useRef(onResponseChange)
   const pendingTurnRef = useRef<{ conversationId: string; agent: AgentKey } | null>(null)
+  const [pendingTurnRevision, setPendingTurnRevision] = useState(0)
   const launchTurnRef = useRef(false)
   const modelTurnRef = useRef(false)
   const [isTurnLocked, setIsTurnLocked] = useState(false)
@@ -468,6 +490,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
   const listFailureRef = useRef<{ error: Error; until: number } | null>(null)
   const historyLoadStateRef = useRef<HistoryLoadState>({ inFlight: new Map(), failureUntil: new Map() })
   const forceHistoryReloadRef = useRef(false)
+  const pendingAssistantRef = useRef<PendingAssistantMessage | null>(null)
   const syncTurnLock = useCallback((activeAgent?: AgentKey): void => {
     const pending = pendingTurnRef.current
     const running = launchTurnRef.current || modelTurnRef.current || pending !== null
@@ -487,8 +510,14 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
   }, [syncTurnLock])
   const handlePendingChange = useCallback((conversationId: string, agent: AgentKey, pending: boolean): void => {
     const current = pendingTurnRef.current
-    if (pending) pendingTurnRef.current = { conversationId, agent }
-    else if (current?.conversationId === conversationId) pendingTurnRef.current = null
+    if (pending) {
+      const changed = current?.conversationId !== conversationId || current?.agent !== agent
+      pendingTurnRef.current = { conversationId, agent }
+      if (changed) setPendingTurnRevision((revision) => revision + 1)
+    } else if (current?.conversationId === conversationId) {
+      pendingTurnRef.current = null
+      setPendingTurnRevision((revision) => revision + 1)
+    }
     syncTurnLock()
   }, [syncTurnLock])
   const onPendingChangeRef = useRef(handlePendingChange)
@@ -601,7 +630,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
       onConversationChangeRef.current?.(item)
       return { remoteId: item.id, status: item.archived_at ? 'archived' : 'regular', title: item.title, lastMessageAt: new Date(item.updated_at), custom: item }
     },
-    unstable_Provider: ({ children }: { children?: ReactNode }) => <ThreadHistory forceHistoryReloadRef={forceHistoryReloadRef} getThreadIds={getThreadIds} historyLoadStateRef={historyLoadStateRef} onConversationChangeRef={onConversationChangeRef} onPendingChangeRef={onPendingChangeRef}>{children}</ThreadHistory>,
+    unstable_Provider: ({ children }: { children?: ReactNode }) => <ThreadHistory forceHistoryReloadRef={forceHistoryReloadRef} getThreadIds={getThreadIds} historyLoadStateRef={historyLoadStateRef} onConversationChangeRef={onConversationChangeRef} onPendingChangeRef={onPendingChangeRef} pendingAssistantRef={pendingAssistantRef}>{children}</ThreadHistory>,
   }), [getThreadIds, onConversationChangeRef])
 
   const runtimeHook = useCallback(() => {
@@ -676,11 +705,15 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
           let cumulativeAnswer = ''
           let lastYieldedAnswer = ''
           let lastYieldTime = 0
+          const streamObservation = { error: null as Error | null }
           const STREAM_YIELD_INTERVAL_MS = 32
           const streamingMetadata = { custom: { apex: { agent_used: { key: current.agent } } } }
 
           try {
-            for await (const event of streamRunEvents(runRecord.id, { signal: options.abortSignal })) {
+            for await (const event of streamRunEvents(runRecord.id, {
+              signal: options.abortSignal,
+              onExhausted: (error) => { streamObservation.error = error },
+            })) {
               if (event.type === 'response.delta') {
                 const text = typeof event.payload?.text === 'string' ? event.payload.text : ''
                 cumulativeAnswer += text
@@ -752,22 +785,41 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
             // Fallback to accumulated text if durable conversation fetch is interrupted
           }
 
-          const finalAnswer = durableMessage?.content ?? cumulativeAnswer
+          const streamObservationError = streamObservation.error
+          const responseStatus = durableMessage?.status ?? (
+            options.abortSignal.aborted || streamObservationError ? 'interrupted' : 'completed'
+          )
+          const finalAnswer = durableMessage
+            ? responseStatus === 'pending' ? (cumulativeAnswer || durableMessage.content) : durableMessage.content
+            : cumulativeAnswer
           const rawMetadata = (durableMessage?.response_metadata ?? {}) as Record<string, unknown>
           const metadata: Record<string, unknown> = {
             agent_used: { key: current.agent },
             ...rawMetadata,
+            ...(streamObservationError ? {
+              stream_observation: 'lost',
+              stream_error: streamObservationError.message,
+            } : {}),
           }
           const responseError = typeof metadata.error === 'string' ? metadata.error : null
-          const responseStatus = durableMessage?.status ?? (options.abortSignal.aborted ? 'interrupted' : 'completed')
+          const awaitingDurableCompletion = responseStatus === 'pending'
+          if (awaitingDurableCompletion) {
+            pendingAssistantRef.current = { conversationId: remoteId, messageId: agentMessageId, content: finalAnswer }
+            handlePendingChange(remoteId, current.agent, true)
+          } else if (pendingAssistantRef.current?.conversationId === remoteId && pendingAssistantRef.current.messageId === agentMessageId) {
+            pendingAssistantRef.current = null
+          }
           const incomplete = responseError !== null || responseStatus === 'failed' || responseStatus === 'interrupted'
           const persistedError = responseError ?? (responseStatus !== 'completed' ? responseStatus : 'Agent turn did not complete.')
 
-          onResponseChangeRef.current?.(metadata, incomplete ? persistedError : null)
+          const observationError = streamObservationError
+            ? `Live run stream disconnected: ${streamObservationError.message}`
+            : null
+          onResponseChangeRef.current?.(metadata, responseError ?? observationError ?? (incomplete ? persistedError : null))
 
           yield {
             content: [{ type: 'text' as const, text: finalAnswer }],
-            ...(incomplete ? { status: { type: 'incomplete' as const, reason: 'error' as const, error: persistedError } } : {}),
+            ...(awaitingDurableCompletion ? {} : incomplete ? { status: { type: 'incomplete' as const, reason: 'error' as const, error: persistedError } } : {}),
             metadata: { custom: { apex: metadata } },
           }
           return
@@ -781,7 +833,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
     // assistant-ui invokes this callback as a hook host for each active thread.
     // eslint-disable-next-line react-hooks/rules-of-hooks
     return useLocalRuntime(model, { maxSteps: 1 })
-  }, [finishTurn, getThreadIds, syncTurnLock])
+  }, [finishTurn, getThreadIds, handlePendingChange, syncTurnLock])
 
   const handleThreadIdChange = useCallback((nextThreadId: string | undefined): void => {
     activeRemoteIdRef.current = nextThreadId
@@ -807,7 +859,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
     }
     const timeout = window.setTimeout(() => { void poll() }, 1_500)
     return () => { cancelled = true; window.clearTimeout(timeout) }
-  }, [isTurnLocked, runtime])
+  }, [isTurnLocked, pendingTurnRevision, runtime])
   const reloadThreads = useCallback(async (): Promise<void> => {
     forceListReloadRef.current = true
     await runtime.threads.reload()

@@ -60,6 +60,18 @@ describe('cortexStream', () => {
       })
     }
 
+    function createReadFailureResponse(message: string): Response {
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.error(new Error(message))
+        },
+      })
+      return new Response(stream, {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      })
+    }
+
     it('yields parsed events and stops on run.completed', async () => {
       const runId = '00000000-0000-4000-8000-000000000001'
       const chunks = [
@@ -151,6 +163,64 @@ describe('cortexStream', () => {
       expect(events[0].sequence).toBe(1)
       expect(events[1].sequence).toBe(2)
       expect(callCount).toBe(2)
+    })
+
+    it('bounds repeated successful responses that close before a terminal event', async () => {
+      const timeoutMock = vi.spyOn(globalThis, 'setTimeout').mockImplementation((handler) => {
+        if (typeof handler === 'function') handler()
+        return 0 as unknown as ReturnType<typeof setTimeout>
+      })
+      try {
+        const runId = '00000000-0000-4000-8000-000000000004'
+        const onExhausted = vi.fn()
+        const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(createStreamResponse([]))
+        const events: unknown[] = []
+        const consume = (async () => {
+          for await (const event of streamRunEvents(runId, { maxReconnectAttempts: 2, onExhausted })) {
+            events.push(event)
+          }
+        })()
+
+        await consume
+
+        expect(events).toHaveLength(0)
+        expect(fetchMock).toHaveBeenCalledTimes(3)
+        expect(onExhausted).toHaveBeenCalledExactlyOnceWith(expect.any(Error))
+        expect(onExhausted.mock.calls[0]?.[0]).toMatchObject({
+          message: 'Run event stream ended before a terminal event',
+        })
+      } finally {
+        timeoutMock.mockRestore()
+      }
+    })
+
+    it('bounds repeated read failures after successful HTTP responses', async () => {
+      const timeoutMock = vi.spyOn(globalThis, 'setTimeout').mockImplementation((handler) => {
+        if (typeof handler === 'function') handler()
+        return 0 as unknown as ReturnType<typeof setTimeout>
+      })
+      try {
+        const runId = '00000000-0000-4000-8000-000000000005'
+        const onError = vi.fn()
+        const onExhausted = vi.fn()
+        const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => createReadFailureResponse('stream read failed'))
+        const events: unknown[] = []
+        const consume = (async () => {
+          for await (const event of streamRunEvents(runId, { maxReconnectAttempts: 2, onError, onExhausted })) {
+            events.push(event)
+          }
+        })()
+
+        await consume
+
+        expect(events).toHaveLength(0)
+        expect(fetchMock).toHaveBeenCalledTimes(3)
+        expect(onError).toHaveBeenCalledTimes(3)
+        expect(onExhausted).toHaveBeenCalledExactlyOnceWith(expect.any(Error))
+        expect(onExhausted.mock.calls[0]?.[0]).toMatchObject({ message: 'stream read failed' })
+      } finally {
+        timeoutMock.mockRestore()
+      }
     })
 
     it('aborts immediately when signal is cancelled', async () => {
