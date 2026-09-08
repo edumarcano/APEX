@@ -43,7 +43,6 @@ Configure llama.cpp aliases with one preset per exposed context size. A tracked 
   "cortex_runs": {
     "max_concurrent_runs": 2,
     "max_elapsed_seconds": 600,
-    "max_total_tokens": 128000,
     "max_retries": 4,
     "max_model_turns": 6,
     "max_tool_calls": 10,
@@ -53,7 +52,9 @@ Configure llama.cpp aliases with one preset per exposed context size. A tracked 
 }
 ```
 
-`max_concurrent_runs` limits active execution slots before the API returns `429`. `event_replay_limit` sets the in-memory event buffer size per run for Server-Sent Events reconnects. `shutdown_drain_seconds` bounds the full application shutdown window for cancelled run workers and application-owned startup tasks; if either remains active, APEX reports shutdown failure and leaves their dependencies open. The remaining fields define the immutable limit snapshot applied to each run.
+`max_concurrent_runs` limits active execution slots before the API returns `429`. `event_replay_limit` sets the in-memory event buffer size per run for Server-Sent Events reconnects. `shutdown_drain_seconds` bounds the full application shutdown window for cancelled run workers and application-owned startup tasks; if either remains active, APEX reports shutdown failure and leaves their dependencies open. The remaining fields define the immutable stop-limit snapshot applied to each run.
+
+`total_tokens` remains cumulative usage accounting for every provider turn. It does not stop a run: multi-turn requests may resend conversation context, while the provider's context-window checks still protect each individual request. Previous `max_total_tokens` configuration values are ignored after beta.3, and old run records retain their recorded ceiling for history inspection.
 
 ## OpenTelemetry GenAI tracing
 

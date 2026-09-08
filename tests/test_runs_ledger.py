@@ -20,7 +20,6 @@ from core.config import (
     CORTEX_RUNS_MAX_MODEL_TURNS,
     CORTEX_RUNS_MAX_RETRIES,
     CORTEX_RUNS_MAX_TOOL_CALLS,
-    CORTEX_RUNS_MAX_TOTAL_TOKENS,
     CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS,
     _parse_config_int,
 )
@@ -90,7 +89,6 @@ class RunsLedgerTests(unittest.TestCase):
     def _default_limits(self) -> RunLimitSnapshot:
         return RunLimitSnapshot(
             max_elapsed_seconds=600,
-            max_total_tokens=128000,
             max_retries=4,
             max_model_turns=6,
             max_tool_calls=10,
@@ -155,7 +153,6 @@ class RunsLedgerTests(unittest.TestCase):
         """Verify cortex_runs configuration bounds clamping and defaults."""
         self.assertEqual(CORTEX_RUNS_CONFIG.max_concurrent_runs, 2)
         self.assertEqual(CORTEX_RUNS_CONFIG.max_elapsed_seconds, 600)
-        self.assertEqual(CORTEX_RUNS_CONFIG.max_total_tokens, 128000)
         self.assertEqual(CORTEX_RUNS_CONFIG.max_retries, 4)
         self.assertEqual(CORTEX_RUNS_CONFIG.max_model_turns, 6)
         self.assertEqual(CORTEX_RUNS_CONFIG.max_tool_calls, 10)
@@ -164,7 +161,6 @@ class RunsLedgerTests(unittest.TestCase):
 
         self.assertEqual(CORTEX_RUNS_MAX_CONCURRENT_RUNS, 2)
         self.assertEqual(CORTEX_RUNS_MAX_ELAPSED_SECONDS, 600)
-        self.assertEqual(CORTEX_RUNS_MAX_TOTAL_TOKENS, 128000)
         self.assertEqual(CORTEX_RUNS_MAX_RETRIES, 4)
         self.assertEqual(CORTEX_RUNS_MAX_MODEL_TURNS, 6)
         self.assertEqual(CORTEX_RUNS_MAX_TOOL_CALLS, 10)
@@ -176,8 +172,6 @@ class RunsLedgerTests(unittest.TestCase):
         self.assertEqual(_parse_config_int(10, key="k", default=2, min_value=1, max_value=4), 4)
         self.assertEqual(_parse_config_int(5, key="k", default=600, min_value=30, max_value=3600), 30)
         self.assertEqual(_parse_config_int(10000, key="k", default=600, min_value=30, max_value=3600), 3600)
-        self.assertEqual(_parse_config_int(100, key="k", default=128000, min_value=8192, max_value=2000000), 8192)
-        self.assertEqual(_parse_config_int(5000000, key="k", default=128000, min_value=8192, max_value=2000000), 2000000)
         self.assertEqual(_parse_config_int(-1, key="k", default=4, min_value=0, max_value=10), 0)
         self.assertEqual(_parse_config_int(20, key="k", default=4, min_value=0, max_value=10), 10)
         self.assertEqual(_parse_config_int(0, key="k", default=6, min_value=1, max_value=12), 1)
@@ -204,6 +198,30 @@ class RunsLedgerTests(unittest.TestCase):
             conn.execute("UPDATE schema_versions SET version = 99 WHERE domain = 'cortex_runs'")
         with self.assertRaises(RunStoreError):
             self.store.initialize()
+
+    def test_limit_snapshot_retains_legacy_token_ceiling_but_omits_it_for_new_runs(self) -> None:
+        legacy_limits = RunLimitSnapshot(
+            max_elapsed_seconds=600,
+            max_total_tokens=128000,
+            max_retries=4,
+            max_model_turns=6,
+            max_tool_calls=10,
+        )
+        legacy_run, _ = self._create_run(limits=legacy_limits)
+        current_run, _ = self._create_run()
+
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            legacy_json = conn.execute(
+                "SELECT limit_snapshot_json FROM cortex_runs WHERE id = ?", (str(legacy_run.id),)
+            ).fetchone()[0]
+            current_json = conn.execute(
+                "SELECT limit_snapshot_json FROM cortex_runs WHERE id = ?", (str(current_run.id),)
+            ).fetchone()[0]
+
+        self.assertEqual(self.store.get_run(legacy_run.id, "production").limit_snapshot.max_total_tokens, 128000)
+        self.assertIsNone(self.store.get_run(current_run.id, "production").limit_snapshot.max_total_tokens)
+        self.assertIn("max_total_tokens", legacy_json)
+        self.assertNotIn("max_total_tokens", current_json)
 
     def test_rejects_pre_release_run_ledger_schema(self) -> None:
         """Verify beta.2 rejects rather than migrates an unreleased ledger schema."""

@@ -15,7 +15,7 @@ from uuid import UUID, uuid4
 from unittest.mock import MagicMock, patch
 
 from core.agent.providers.contract import ProviderTurnResult
-from core.agent.types import AgentMessage
+from core.agent.types import AgentMessage, TokenUsage
 from core.api.routers.cortex import (
     _resolved_turn_metadata,
     _submit_run,
@@ -68,14 +68,16 @@ class RunCoordinatorTests(unittest.TestCase):
     def _limits() -> RunLimitSnapshot:
         return RunLimitSnapshot(
             max_elapsed_seconds=600,
-            max_total_tokens=128000,
             max_retries=4,
             max_model_turns=6,
             max_tool_calls=10,
         )
 
     def _create_run(
-        self, *, coordinator: CortexRunCoordinator | None = None
+        self,
+        *,
+        coordinator: CortexRunCoordinator | None = None,
+        limits: RunLimitSnapshot | None = None,
     ) -> tuple[UUID, UUID, UUID, object, object]:
         conversation_id = uuid4()
         user_id = uuid4()
@@ -112,7 +114,7 @@ class RunCoordinatorTests(unittest.TestCase):
             user_message_id=user_id,
             agent_message_id=agent_id,
             requested_model="test-model",
-            limit_snapshot=self._limits(),
+            limit_snapshot=limits or self._limits(),
         )
         return conversation_id, user_id, agent_id, record, handle
 
@@ -421,7 +423,7 @@ class RunCoordinatorTests(unittest.TestCase):
     @patch("core.api.routers.cortex.is_dev_mode", return_value=True)
     @patch("core.api.routers.cortex.query_agent")
     @patch("core.api.routers.cortex.ContextAssembler")
-    def test_submit_run_uses_effective_context_window_for_limit_snapshot(
+    def test_submit_run_keeps_context_window_out_of_stop_limit_snapshot(
         self, mock_assembler, mock_query, _dev_mode, _mock_retrieval, _mock_knowledge
     ) -> None:
         mock_assembler.return_value.assemble.return_value = MagicMock()
@@ -457,9 +459,33 @@ class RunCoordinatorTests(unittest.TestCase):
 
         record, future = _submit_run(conv.id, payload)
         self.assertIsNotNone(record)
-        self.assertEqual(record.limit_snapshot.max_total_tokens, 16384)
+        self.assertIsNone(record.limit_snapshot.max_total_tokens)
         if future is not None:
             future.result(timeout=2)
+
+    def test_legacy_token_ceiling_does_not_stop_cumulative_usage_accounting(self) -> None:
+        legacy_limits = RunLimitSnapshot(
+            max_elapsed_seconds=600,
+            max_total_tokens=100,
+            max_retries=4,
+            max_model_turns=6,
+            max_tool_calls=10,
+        )
+        _conv_id, _user_id, _agent_id, record, handle = self._create_run(
+            limits=legacy_limits
+        )
+        handle.start(resolved_model="test-model", provider="openai", runtime="cloud")
+        control = RunExecutionControl(handle, threading.Event())
+
+        control.after_model_turn(
+            ProviderTurnResult(
+                message=AgentMessage(role="agent", content="complete"),
+                usage=TokenUsage(input_tokens=60, output_tokens=60, total_tokens=120),
+            )
+        )
+
+        self.assertEqual(control.tokens, 120)
+        self.assertEqual(handle.get_record().total_tokens, 120)
 
     def test_submit_run_keeps_accepted_context_when_settings_change_during_execution(
         self,

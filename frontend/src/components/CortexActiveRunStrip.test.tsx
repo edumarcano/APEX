@@ -30,7 +30,6 @@ function createMockRun(overrides: Partial<RunRecord> = {}): RunRecord {
     updated_at: new Date(Date.now() - 4200).toISOString(),
     limit_snapshot: {
       max_elapsed_seconds: 600,
-      max_total_tokens: 16384,
       max_retries: 4,
       max_model_turns: 6,
       max_tool_calls: 10,

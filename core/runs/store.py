@@ -281,7 +281,9 @@ class RunStore:
             raise RunConflictError("Trace ID must be a 32-character lowercase hexadecimal value.")
 
         now = utc_now_iso()
-        snapshot_json = _json(limit_snapshot.model_dump())
+        # New runs omit the retired cumulative-token ceiling. Existing rows
+        # retain it and are parsed by RunLimitSnapshot for history inspection.
+        snapshot_json = _json(limit_snapshot.model_dump(exclude_none=True))
 
         with self._connection() as conn, conn:
             conv_row = conn.execute(

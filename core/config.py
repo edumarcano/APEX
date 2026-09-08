@@ -23,7 +23,6 @@ __all__ = [
     "CORTEX_RUNS_MAX_RETRIES",
     "CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS",
     "CORTEX_RUNS_MAX_TOOL_CALLS",
-    "CORTEX_RUNS_MAX_TOTAL_TOKENS",
     "CortexRunsConfig",
     "AGENT_SYSTEM_PROMPT",
     "LOCAL_AGENT_SYSTEM_PROMPT",
@@ -468,7 +467,6 @@ LOCAL_MAX_RECENT_CONVERSATION_MESSAGES: Final[int] = 6
 class CortexRunsConfig:
     max_concurrent_runs: int
     max_elapsed_seconds: int
-    max_total_tokens: int
     max_retries: int
     max_model_turns: int
     max_tool_calls: int
@@ -496,13 +494,10 @@ try:
         min_value=30,
         max_value=3600,
     )
-    CORTEX_RUNS_MAX_TOTAL_TOKENS: Final[int] = _parse_config_int(
-        _cortex_runs_cfg.get("max_total_tokens"),
-        key="cortex_runs.max_total_tokens",
-        default=128000,
-        min_value=8192,
-        max_value=2000000,
-    )
+    if "max_total_tokens" in _cortex_runs_cfg:
+        _LOGGER.warning(
+            'Config key "cortex_runs.max_total_tokens" no longer stops Cortex runs and is ignored; remove it from config.json.'
+        )
     CORTEX_RUNS_MAX_RETRIES: Final[int] = _parse_config_int(
         _cortex_runs_cfg.get("max_retries"),
         key="cortex_runs.max_retries",
@@ -542,7 +537,6 @@ except Exception as exc:
     _LOGGER.warning("Unable to parse cortex_runs config: %s; using defaults.", exc)
     CORTEX_RUNS_MAX_CONCURRENT_RUNS = 2
     CORTEX_RUNS_MAX_ELAPSED_SECONDS = 600
-    CORTEX_RUNS_MAX_TOTAL_TOKENS = 128000
     CORTEX_RUNS_MAX_RETRIES = 4
     CORTEX_RUNS_MAX_MODEL_TURNS = 6
     CORTEX_RUNS_MAX_TOOL_CALLS = 10
@@ -552,7 +546,6 @@ except Exception as exc:
 CORTEX_RUNS_CONFIG: Final[CortexRunsConfig] = CortexRunsConfig(
     max_concurrent_runs=CORTEX_RUNS_MAX_CONCURRENT_RUNS,
     max_elapsed_seconds=CORTEX_RUNS_MAX_ELAPSED_SECONDS,
-    max_total_tokens=CORTEX_RUNS_MAX_TOTAL_TOKENS,
     max_retries=CORTEX_RUNS_MAX_RETRIES,
     max_model_turns=CORTEX_RUNS_MAX_MODEL_TURNS,
     max_tool_calls=CORTEX_RUNS_MAX_TOOL_CALLS,

@@ -26,7 +26,6 @@ function createMockRun(overrides: Partial<RunRecord> = {}): RunRecord {
     updated_at: '2026-09-03T14:00:04Z',
     limit_snapshot: {
       max_elapsed_seconds: 60,
-      max_total_tokens: 4096,
       max_retries: 3,
       max_model_turns: 5,
       max_tool_calls: 10,
@@ -125,6 +124,7 @@ describe('CortexActivity', () => {
 
     // Check gauges and metrics
     expect(screen.getByText('Limit Consumption')).toBeInTheDocument()
+    expect(screen.queryByText('Tokens', { exact: true })).not.toBeInTheDocument()
     expect(screen.getByText('Runtime Measurements')).toBeInTheDocument()
     expect(screen.getByText('38.2 tok/s')).toBeInTheDocument()
 

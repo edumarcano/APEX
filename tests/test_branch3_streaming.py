@@ -223,7 +223,7 @@ class Branch3StreamingTests(unittest.TestCase):
         from core.agent.providers.contract import ProviderRuntimeMeasurements, ProviderTurnResult
         from core.runs.models import RunLimitSnapshot
         updates = []
-        record = SimpleNamespace(limit_snapshot=RunLimitSnapshot(max_elapsed_seconds=600, max_total_tokens=100, max_retries=2, max_model_turns=2, max_tool_calls=2))
+        record = SimpleNamespace(limit_snapshot=RunLimitSnapshot(max_elapsed_seconds=600, max_retries=2, max_model_turns=2, max_tool_calls=2))
         handle = Mock()
         handle.get_record.return_value = record
         handle.update_progress.side_effect = lambda **kwargs: updates.append(kwargs)

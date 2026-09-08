@@ -490,10 +490,12 @@ Cortex Engine loops are bounded by the selected model profile. The final model t
 ### Cortex runs
 
 The run-control routes expose the durable metadata for the same Cortex Engine
-path used by synchronous turns. Run records contain status, the immutable limit
-snapshot, cumulative counters, runtime measurements, completion evidence, and
-safe error information; conversation messages remain the source of prompt and
-answer text. Responses are limited to the current server-derived partition.
+path used by synchronous turns. Run records contain status, the immutable
+stop-limit snapshot, cumulative token accounting, runtime measurements,
+completion evidence, and safe error information; conversation messages remain
+the source of prompt and answer text. Per-request provider context-window
+checks remain independent of cumulative usage. Responses are limited to the
+current server-derived partition.
 
 ### POST `/api/v1/cortex/conversations/{conversation_id}/runs`
 

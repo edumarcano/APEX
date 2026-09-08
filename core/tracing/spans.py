@@ -147,10 +147,11 @@ def trace_run(
                         "apex.limit.max_elapsed_seconds",
                         limit_snapshot.max_elapsed_seconds,
                     )
-                    span.set_attribute(
-                        "apex.limit.max_total_tokens",
-                        limit_snapshot.max_total_tokens,
-                    )
+                    if limit_snapshot.max_total_tokens is not None:
+                        span.set_attribute(
+                            "apex.limit.max_total_tokens",
+                            limit_snapshot.max_total_tokens,
+                        )
                     span.set_attribute(
                         "apex.limit.max_retries",
                         limit_snapshot.max_retries,

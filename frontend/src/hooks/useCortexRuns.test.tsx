@@ -23,7 +23,6 @@ function createMockRun(overrides: Partial<RunRecord> = {}): RunRecord {
     updated_at: overrides.updated_at ?? '2026-09-03T12:00:05Z',
     limit_snapshot: {
       max_elapsed_seconds: 60,
-      max_total_tokens: 4096,
       max_retries: 3,
       max_model_turns: 5,
       max_tool_calls: 10,
