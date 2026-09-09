@@ -4,7 +4,7 @@ APEX keeps portable defaults in `config.json` and machine-specific settings, cre
 
 ## Runtime Settings
 
-Runtime Settings persist the editable parts of the resolved configuration. `ask_apex` uses schema version 19 and has one native identity plus model-based routing:
+Runtime Settings persist the editable parts of the resolved configuration. `ask_apex` uses schema version 20 and has one native identity plus model-based routing:
 
 ```json
 {
@@ -19,6 +19,23 @@ Runtime Settings persist the editable parts of the resolved configuration. `ask_
 Current default model mapping is `apex` -> `deepseek/deepseek-v4-flash-0731`; `selected_model` is authoritative. Selecting a cloud or local model remembers that choice and its controls in the matching runtime section. Cloud and local personal-context preferences are independent. Cloud tool profiles default to All APEX Tools; local profiles default to No APEX Tools.
 
 Home and Cortex share this model selection. Home applies per-turn overrides: the lowest supported cloud effort, or a 16K local context with reasoning disabled. Those overrides never change saved Cortex preferences.
+
+## Google Calendar selection
+
+When Calendar is enabled, Runtime Settings lists readable primary, secondary, subscribed, and hidden Google calendars. APEX reads only the selected IDs; a fresh configuration selects `primary`, but it may be unchecked and an empty selection remains empty. Calendar labels are shown with events by default in Home, briefings, and Agent tool results. Turning off `calendar.show_calendar_names` suppresses those event labels without changing the picker.
+
+Calendar IDs and this display preference are local runtime settings:
+
+```json
+{
+  "calendar": {
+    "selected_calendar_ids": ["primary"],
+    "show_calendar_names": true
+  }
+}
+```
+
+APEX keeps unavailable saved IDs so they can be removed deliberately. It does not create events, alter Google Calendar visibility, or use webhooks or a remote cache.
 
 ## Models and credentials
 

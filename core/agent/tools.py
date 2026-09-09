@@ -112,9 +112,8 @@ def get_f1_season_calendar() -> dict[str, Any]:
 def get_upcoming_calendar_events(days: int = 14) -> dict[str, Any]:
     """Retrieve upcoming Google Calendar events for Agent requests.
 
-    Queries the operator's primary Google Calendar for scheduled events within
-    a configurable forward-looking window independent of the HUD's seven-day
-    telemetry horizon.
+    Queries the Runtime Settings-selected Google calendars through the same
+    bounded path used by HUD telemetry.
 
     Args:
         days: Number of days into the future to query. Must be between 1 and
@@ -128,10 +127,17 @@ def get_upcoming_calendar_events(days: int = 14) -> dict[str, Any]:
             ``{"error": "Calendar data unavailable."}``.
     """
     days = max(1, min(14, days))
+    from core.config import DEMO_MODE
+    from core.settings import get_settings_store
+
+    settings = get_settings_store().get_snapshot().calendar
+    if not settings.selected_calendar_ids:
+        return {"days_queried": days, "events": [], "selected_calendar_count": 0}
+
     try:
         from clients.google_auth import get_service
 
-        service = get_service("calendar", "v3")
+        service = object() if DEMO_MODE else get_service("calendar", "v3")
         if not service:
             return {
                 "error": (
@@ -148,12 +154,23 @@ def get_upcoming_calendar_events(days: int = 14) -> dict[str, Any]:
         }
 
     try:
-        from clients.calendar_client import (
-            get_upcoming_calendar_events as fetch_events,
-        )
+        from clients.calendar_client import fetch_selected_calendar_events
 
-        events = fetch_events(service, days=days)
-        return {"days_queried": days, "events": events}
+        fetched = fetch_selected_calendar_events(
+            service,
+            calendar_ids=settings.selected_calendar_ids,
+            days=days,
+            show_calendar_names=settings.show_calendar_names,
+        )
+        if fetched.successful_calendar_count == 0 and fetched.failed_calendar_count:
+            return {"error": "Calendar data unavailable."}
+        return {
+            "days_queried": days,
+            "events": fetched.events[:100],
+            "selected_calendar_count": fetched.selected_calendar_count,
+            "successful_calendar_count": fetched.successful_calendar_count,
+            "failed_calendar_count": fetched.failed_calendar_count,
+        }
     except Exception as exc:
         _LOGGER.warning(
             "Agent tool unavailable: tool=get_upcoming_calendar_events error_type=%s",

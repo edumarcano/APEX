@@ -45,6 +45,7 @@ export const API_ENDPOINTS = {
   briefingsGenerate: `${API_BASE}/api/v1/briefings/generate`,
   config: `${API_BASE}/api/v1/config`,
   diagnostics: `${API_BASE}/api/v1/diagnostics`,
+  googleCalendarCalendars: `${API_BASE}/api/v1/google-calendar/calendars`,
   market: `${API_BASE}/api/v1/market`,
   mcpStatus: `${API_BASE}/api/v1/mcp/status`,
   llamaCppStatus: `${API_BASE}/api/v1/llama-cpp/status`,

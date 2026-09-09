@@ -38,6 +38,12 @@ def sanitize_fact(value: object, limit: int = 240) -> str:
     return text[:limit].strip()
 
 
+def _calendar_name_field(value: str | None) -> dict[str, str]:
+    """Return an optional, bounded calendar attribution for model-facing facts."""
+    name = sanitize_fact(value, 96) if value else ""
+    return {"calendar_name": name} if name else {}
+
+
 def _shrink_candidates(data: dict[str, Any]) -> list[tuple[Any, Any, str]]:
     """Return mutable (container, key_or_index, kind) shrink targets."""
     candidates: list[tuple[Any, Any, str]] = []
@@ -131,6 +137,7 @@ def _compact_flash_payload(
             "title": sanitize_fact(event.title, 120),
             "start": sanitize_fact(event.start, 64),
             "all_day": event.all_day,
+            **_calendar_name_field(event.calendar_name),
         }
         for event in source.calendar_events[:2]
     ]
@@ -264,7 +271,14 @@ def compact_payload(
             for item in source.weather_hourly
         ],
         "calendar_events": [
-            {"title": sanitize_fact(item.title, 160), "start": sanitize_fact(item.start, 64), "end": sanitize_fact(item.end, 64) or None, "all_day": item.all_day, "location": sanitize_fact(item.location, 120) or None}
+            {
+                "title": sanitize_fact(item.title, 160),
+                "start": sanitize_fact(item.start, 64),
+                "end": sanitize_fact(item.end, 64) or None,
+                "all_day": item.all_day,
+                "location": sanitize_fact(item.location, 120) or None,
+                **_calendar_name_field(item.calendar_name),
+            }
             for item in source.calendar_events
         ],
         "reminders": [
@@ -288,6 +302,7 @@ def compact_payload(
             "title": sanitize_fact(source.next_calendar_event.title),
             "start": sanitize_fact(source.next_calendar_event.start, 96),
             "all_day": source.next_calendar_event.all_day,
+            **_calendar_name_field(source.next_calendar_event.calendar_name),
         }
     if source.f1_upcoming:
         data["f1_upcoming"] = {
@@ -423,7 +438,9 @@ def render_structured_briefing(source: BriefingFacts) -> tuple[str, list[str]]:
         entries = []
         for event in sorted(source.calendar_events, key=lambda item: item.start):
             location = f" @ {sanitize_fact(event.location, 80)}" if event.location else ""
-            entries.append(f"{sanitize_fact(event.start, 64)} — {sanitize_fact(event.title, 160)}{location}")
+            calendar_name = _calendar_name_field(event.calendar_name).get("calendar_name")
+            attribution = f" [{calendar_name}]" if calendar_name else ""
+            entries.append(f"{sanitize_fact(event.start, 64)} — {sanitize_fact(event.title, 160)}{attribution}{location}")
         suffix = " [TRUNCATED]" if source.calendar_truncated else ""
         lines.append("CALENDAR" + suffix + ": " + " | ".join(entries))
     if source.reminders or source.pending_reminder_count:

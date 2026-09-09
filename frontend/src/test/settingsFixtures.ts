@@ -24,6 +24,10 @@ export const BASE_SETTINGS: RuntimeSettings = {
   market: {
     symbols: [],
   },
+  calendar: {
+    selected_calendar_ids: ['primary'],
+    show_calendar_names: true,
+  },
   ask_apex: {
     enabled: true,
     selected_model: 'deepseek/deepseek-v4-flash-0731',

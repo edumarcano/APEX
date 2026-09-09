@@ -145,6 +145,7 @@ def _build_synthesis_input(
                 title=str(raw_event.get("summary", "Untitled event")),
                 start=raw_start or "Time unavailable",
                 all_day=bool(raw_start and "T" not in raw_start),
+                calendar_name=str(raw_event["calendar_name"]) if isinstance(raw_event.get("calendar_name"), str) else None,
             )
 
     f1_fact: F1Fact | None = None
@@ -274,6 +275,7 @@ def _build_synthesis_input(
                         all_day=bool(raw_event.get("all_day")),
                         location=str(raw_event["location"]) if isinstance(raw_event.get("location"), str) else None,
                         time_zone=str(raw_event["time_zone"]) if isinstance(raw_event.get("time_zone"), str) else None,
+                        calendar_name=str(raw_event["calendar_name"]) if isinstance(raw_event.get("calendar_name"), str) else None,
                     )
                 )
 

@@ -146,6 +146,7 @@ class TelemetryService:
         collected = collect_connector_results(
             features=settings.features,
             modules=settings.modules,
+            calendar=settings.calendar,
             connectors=names,
             force=force,
         )

@@ -504,12 +504,16 @@ export default function App(): ReactElement {
   const handleSettingsPanelApplied = useCallback(
     async (response: SettingsResponse, previousSettings: RuntimeSettings) => {
       const shouldRefreshMarket = marketSettingsChanged(previousSettings, response.settings)
+      const shouldRefreshCalendar = previousSettings.features.calendar !== response.settings.features.calendar || JSON.stringify(previousSettings.calendar) !== JSON.stringify(response.settings.calendar)
       if (shouldRefreshMarket) {
         setMarketSymbols(response.settings.market.symbols)
       }
       handleSettingsApplied(response)
       if (activated && shouldRefreshMarket) {
         await telemetry.refreshConnector('market', { force: true })
+      }
+      if (activated && shouldRefreshCalendar) {
+        await telemetry.refreshConnector('calendar', { force: true })
       }
       await refreshAgentsStatus()
       await toolCatalogState.refreshCatalog()

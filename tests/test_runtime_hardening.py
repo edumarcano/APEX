@@ -102,7 +102,7 @@ class StableAgentErrorTests(unittest.TestCase):
         with mock.patch(
             "clients.google_auth.get_service", return_value=object()
         ), mock.patch(
-            "clients.calendar_client.get_upcoming_calendar_events",
+            "clients.calendar_client.fetch_selected_calendar_events",
             side_effect=RuntimeError("private-provider-detail"),
         ):
             result = agent_tools.get_upcoming_calendar_events()

@@ -29,6 +29,7 @@ from core.settings.models import (
     VALID_VOICE_MODES,
     AgentSettings,
     BriefingSettings,
+    CalendarSettings,
     FeaturesSettings,
     LocalSettings,
     FootballSettings,
@@ -63,6 +64,7 @@ EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
         "modules",
         "football",
         "market",
+        "calendar",
         "ask_apex",
         "tool_profiles",
         "briefing",
@@ -172,6 +174,10 @@ def normalize_layer(
             market = _normalize_market(value, layer_name, issues)
             if market is not None:
                 normalized["market"] = market
+        elif key == "calendar":
+            calendar = _normalize_calendar(value, layer_name, issues)
+            if calendar is not None:
+                normalized["calendar"] = calendar
         elif key == "ask_apex":
             agent_settings = _normalize_agent_settings(value, layer_name, issues)
             if agent_settings:
@@ -228,6 +234,39 @@ def _normalize_microsoft_todo(
         _LOGGER.warning("microsoft_todo.reminder_list_id in %s is invalid; ignoring.", layer_name)
         return {}
     return {"reminder_list_id": list_id}
+
+
+def _normalize_calendar(
+    value: Any, layer_name: str, issues: NormalizationIssues | None
+) -> dict[str, Any] | None:
+    """Normalize bounded selected calendar identifiers without resolving them."""
+    if not isinstance(value, dict):
+        _record_error(issues, "calendar must be an object")
+        _LOGGER.warning("calendar in %s must be an object; ignoring.", layer_name)
+        return None
+    unknown = set(value) - {"selected_calendar_ids", "show_calendar_names"}
+    if unknown:
+        _record_warning(issues, "calendar contains unknown fields")
+        _LOGGER.warning("Ignoring unknown calendar fields in %s.", layer_name)
+    result: dict[str, Any] = {}
+    if "selected_calendar_ids" in value:
+        ids = value["selected_calendar_ids"]
+        if not isinstance(ids, list) or len(ids) > 25:
+            _record_error(issues, "calendar.selected_calendar_ids must contain zero to 25 identifiers")
+            return None
+        if any(not isinstance(calendar_id, str) or not calendar_id or len(calendar_id) > 512 or calendar_id != calendar_id.strip() for calendar_id in ids):
+            _record_error(issues, "calendar.selected_calendar_ids contains an invalid identifier")
+            return None
+        if len(set(ids)) != len(ids):
+            _record_error(issues, "calendar.selected_calendar_ids must be unique")
+            return None
+        result["selected_calendar_ids"] = ids
+    if "show_calendar_names" in value:
+        if not isinstance(value["show_calendar_names"], bool):
+            _record_error(issues, "calendar.show_calendar_names must be a boolean")
+            return None
+        result["show_calendar_names"] = value["show_calendar_names"]
+    return result
 
 
 def _normalize_user_designation(
@@ -620,7 +659,7 @@ def _normalize_modules(
 def _normalize_agent_settings(
     value: Any, layer_name: str, errors: NormalizationIssues | None
 ) -> dict[str, Any]:
-    """Normalize the current v19 Apex Agent settings shape."""
+    """Normalize the current v20 Apex Agent settings shape."""
     if not isinstance(value, dict):
         if value is not None:
             _record_error(errors, "ask_apex must be a JSON object")
@@ -972,6 +1011,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     modules_raw = merged.get("modules") if isinstance(merged.get("modules"), dict) else {}
     football_raw = merged.get("football") if isinstance(merged.get("football"), dict) else {}
     market_raw = merged.get("market") if isinstance(merged.get("market"), dict) else {}
+    calendar_raw = merged.get("calendar") if isinstance(merged.get("calendar"), dict) else {}
     agent_settings_raw = merged.get("ask_apex") if isinstance(merged.get("ask_apex"), dict) else {}
     tool_profiles_raw = (
         merged.get("tool_profiles")
@@ -1011,6 +1051,16 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
             if isinstance(symbol, str) and symbol.strip()
         )
     )
+    selected_calendar_ids = calendar_raw.get("selected_calendar_ids", ["primary"])
+    if not isinstance(selected_calendar_ids, list):
+        selected_calendar_ids = ["primary"]
+    try:
+        calendar = CalendarSettings(
+            selected_calendar_ids=tuple(selected_calendar_ids),
+            show_calendar_names=calendar_raw.get("show_calendar_names", True),
+        )
+    except ValueError:
+        calendar = CalendarSettings()
     agent_settings_snapshot = AgentSettings.model_validate(agent_settings)
     custom_profiles: list[ToolProfile] = []
     for raw_profile in tool_profiles_raw.get("custom_profiles", []):
@@ -1141,6 +1191,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         modules=modules,
         football=football,
         market=market,
+        calendar=calendar,
         ask_apex=agent_settings_snapshot,
         tool_profiles=tool_profiles,
         briefing=briefing,
@@ -1157,6 +1208,7 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
         "user_designation": snapshot.user_designation,
         "features": snapshot.features.model_dump(),
         "modules": snapshot.modules.model_dump(),
+        "calendar": snapshot.calendar.model_dump(),
         "ask_apex": {
             "enabled": snapshot.ask_apex.enabled,
             "selected_model": snapshot.ask_apex.selected_model,
@@ -1223,6 +1275,14 @@ def patch_to_ondisk(patch: SettingsPatch) -> dict[str, Any]:
         ondisk["market"] = {
             "symbols": [symbol.strip().upper() for symbol in patch.market.symbols if symbol.strip()]
         }
+    if patch.calendar is not None:
+        calendar: dict[str, Any] = {}
+        if patch.calendar.selected_calendar_ids is not None:
+            calendar["selected_calendar_ids"] = list(patch.calendar.selected_calendar_ids)
+        if patch.calendar.show_calendar_names is not None:
+            calendar["show_calendar_names"] = patch.calendar.show_calendar_names
+        if calendar:
+            ondisk["calendar"] = calendar
     if patch.ask_apex is not None:
         agent_settings_payload: dict[str, Any] = {}
         agent_settings_patch = patch.ask_apex.model_dump(exclude_none=True)

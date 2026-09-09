@@ -81,7 +81,7 @@ class SettingsApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/settings")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["schema_version"], 19)
+        self.assertEqual(payload["schema_version"], 20)
         self.assertTrue(payload["settings"]["features"]["market"])
         self.assertTrue(payload["settings"]["features"]["weather"])
         self.assertEqual(payload["settings"]["briefing"]["default_mode"], "flash")
@@ -93,6 +93,10 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(ask_apex["local"]["last_model"], "gemma-4-E2B-Q4_K_M.gguf")
         self.assertTrue(ask_apex["cloud"]["hosted_tools"]["google_maps"])
         self.assertEqual(payload["settings"]["voice"]["engine"], "google")
+        self.assertEqual(
+            payload["settings"]["calendar"],
+            {"selected_calendar_ids": ["primary"], "show_calendar_names": True},
+        )
         self.assertFalse(payload["settings"]["mcp"]["enabled"])
         self.assertFalse(payload["settings"]["mcp"]["servers"]["github"]["enabled"])
         self.assertIn("local_file_present", payload)

@@ -7,7 +7,7 @@ import logging
 from clients import market_client, news_client, sports_client, weather_client
 from core.connectors.collect import collect_calendar, collect_email, collect_reminders
 from core.connectors.models import CONNECTOR_NAMES, ConnectorResult, utc_now_iso
-from core.settings import FeaturesSettings, ModulesSettings
+from core.settings import CalendarSettings, FeaturesSettings, ModulesSettings
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -73,6 +73,7 @@ def collect_connector_results(
     *,
     features: FeaturesSettings,
     modules: ModulesSettings,
+    calendar: CalendarSettings | None = None,
     connectors: list[str] | None = None,
     force: bool = False,
 ) -> dict[str, ConnectorResult]:
@@ -135,7 +136,7 @@ def collect_connector_results(
 
     if _wanted("calendar"):
         if is_connector_enabled("calendar", features=features, modules=modules):
-            results["calendar"] = collect_calendar()
+            results["calendar"] = collect_calendar(settings=calendar)
         else:
             _LOGGER.info("Calendar module bypassed via user preference")
             results["calendar"] = disabled_result("calendar")
