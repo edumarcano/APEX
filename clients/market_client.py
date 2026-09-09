@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -404,6 +405,16 @@ def _simulate_history(symbol: str, now: datetime) -> list[dict[str, Any]]:
     return history
 
 
+def _demo_collection_revision(session_date: date, symbols: list[str]) -> int:
+    """Return a stable, runtime-independent revision for one demo data shape."""
+    material = json.dumps(
+        [session_date.isoformat(), *symbols],
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return int.from_bytes(hashlib.sha256(material).digest()[:6], "big")
+
+
 def _demo_snapshot() -> dict[str, Any]:
     now = _now_utc()
     symbols = _configured_symbols() or list(_DEMO_SYMBOLS)
@@ -411,7 +422,7 @@ def _demo_snapshot() -> dict[str, Any]:
     session_date = now.date()
     while session_date.weekday() >= 5:
         session_date -= timedelta(days=1)
-    cache["collection_revision"] = int(session_date.strftime("%Y%m%d"))
+    cache["collection_revision"] = _demo_collection_revision(session_date, symbols)
     for symbol in symbols:
         cache["symbols"][symbol] = {"history": _simulate_history(symbol, now), "market_fetched_at": _iso_utc(now)}
     return _build_snapshot(cache, symbols, fetched_live=set(symbols))

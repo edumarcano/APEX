@@ -293,6 +293,29 @@ class MarketClientTests(unittest.TestCase):
         self.assertEqual(len(response["tickers"][0]["history"]), 20)
         MarketResponse.model_validate(response)
 
+    def test_demo_revision_changes_when_symbols_change_on_same_session(self) -> None:
+        anchor = datetime(2026, 9, 12, 14, 0, tzinfo=timezone.utc)
+        settings = mock.Mock()
+        settings.get_snapshot.return_value = RuntimeSettingsSnapshot(
+            features=FeaturesSettings(market=True),
+            market=MarketSettings(symbols=("SPY",)),
+        )
+        with (
+            mock.patch.object(market_client, "DEMO_MODE", True),
+            mock.patch.object(market_client, "_now_utc", return_value=anchor),
+            mock.patch.object(market_client, "get_settings_store", return_value=settings),
+        ):
+            first = market_client.read_market_data()
+            repeat = market_client.read_market_data()
+            settings.get_snapshot.return_value = RuntimeSettingsSnapshot(
+                features=FeaturesSettings(market=True),
+                market=MarketSettings(symbols=("AAPL",)),
+            )
+            changed = market_client.read_market_data()
+
+        self.assertEqual(first["collection_revision"], repeat["collection_revision"])
+        self.assertNotEqual(first["collection_revision"], changed["collection_revision"])
+
     def test_demo_disabled_market_stays_disabled_for_display_and_collection(self) -> None:
         with (
             mock.patch.object(market_client, "DEMO_MODE", True),
