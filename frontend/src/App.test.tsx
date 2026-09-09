@@ -1,10 +1,12 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useEffect, useState, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
 import type { AgentKey, ToolCatalog } from './types/telemetry'
+import type { RuntimeSettings, SettingsResponse } from './types/settings'
+import { BASE_SETTINGS, buildSettingsResponse } from './test/settingsFixtures'
 
 const appMocks = vi.hoisted(() => ({
   initialAgent: 'apex' as AgentKey,
@@ -25,6 +27,8 @@ const appMocks = vi.hoisted(() => ({
   deleteReminderTask: vi.fn(),
   reopenReminderTask: vi.fn(),
   activate: vi.fn(),
+  activated: true,
+  settingsPanelApplied: null as unknown,
   marketEnabled: false,
   telemetryRefreshingAll: false,
   telemetryRefreshingConnectors: new Set<string>(),
@@ -98,7 +102,12 @@ vi.mock('./components/TelemetryCard', () => ({
   ) : null,
 }))
 vi.mock('./components/VoiceSignalGlyph', () => ({ VoiceSignalGlyph: () => null }))
-vi.mock('./components/SettingsPanel', () => ({ default: () => null }))
+vi.mock('./components/SettingsPanel', () => ({
+  default: ({ onApplied }: { onApplied: unknown }) => {
+    appMocks.settingsPanelApplied = onApplied
+    return null
+  },
+}))
 vi.mock('./components/HomeCommandRail', () => ({ HomeCommandRail: () => null }))
 vi.mock('./components/SystemDiagnostics', () => ({
   SystemDiagnostics: ({ workspaceNavigation }: { workspaceNavigation?: ReactNode }) => (
@@ -224,7 +233,7 @@ vi.mock('./hooks/useApexData', () => ({
   }),
 }))
 vi.mock('./hooks/useAppActivation', () => ({
-  useAppActivation: () => ({ activated: true, activate: appMocks.activate }),
+  useAppActivation: () => ({ activated: appMocks.activated, activate: appMocks.activate }),
 }))
 vi.mock('./hooks/useBriefingPipeline', () => ({
   useBriefingPipeline: () => ({
@@ -440,14 +449,25 @@ function settingsResponse(
   })
 }
 
+function applySavedSettings(response: SettingsResponse, previousSettings: RuntimeSettings): Promise<void> {
+  if (typeof appMocks.settingsPanelApplied !== 'function') {
+    throw new Error('SettingsPanel has not supplied an onApplied callback.')
+  }
+  return (appMocks.settingsPanelApplied as (saved: SettingsResponse, previous: RuntimeSettings) => Promise<void>)(response, previousSettings)
+}
+
 describe('App catalog-affecting settings', () => {
   afterEach(() => {
     appMocks.initialAgent = 'apex'
     appMocks.devModeActive = false
     appMocks.marketEnabled = false
+    appMocks.activated = true
+    appMocks.settingsPanelApplied = null
     appMocks.telemetryRefreshingAll = false
     appMocks.telemetryRefreshingConnectors = new Set<string>()
     appMocks.weatherSnapshot = null
+    appMocks.refreshConnector.mockClear()
+    appMocks.applyBootSettings.mockClear()
     vi.restoreAllMocks()
   })
 
@@ -614,6 +634,51 @@ describe('App market loading feedback', () => {
     appMocks.telemetryRefreshingConnectors = new Set(['calendar'])
     rerender(<App />)
     expect(screen.getByTestId('market-loading-state')).toHaveTextContent('idle')
+  })
+})
+
+describe('App Market settings refresh', () => {
+  afterEach(() => {
+    appMocks.activated = true
+    appMocks.settingsPanelApplied = null
+    appMocks.refreshConnector.mockClear()
+    appMocks.applyBootSettings.mockClear()
+  })
+
+  it('refreshes changed Market settings only while the application is activated', async () => {
+    const { rerender } = render(<App />)
+    const baseline = structuredClone(BASE_SETTINGS)
+    const unrelated = structuredClone(baseline)
+    unrelated.voice.mode = 'off'
+
+    await act(async () => {
+      await applySavedSettings(buildSettingsResponse(unrelated), baseline)
+    })
+    expect(appMocks.refreshConnector).not.toHaveBeenCalled()
+
+    const changedSymbols = structuredClone(baseline)
+    changedSymbols.market.symbols = ['SPY', 'AAPL']
+    await act(async () => {
+      await applySavedSettings(buildSettingsResponse(changedSymbols), baseline)
+    })
+    expect(appMocks.refreshConnector).toHaveBeenCalledWith('market', { force: true })
+
+    const disabled = structuredClone(changedSymbols)
+    disabled.features.market = false
+    await act(async () => {
+      await applySavedSettings(buildSettingsResponse(disabled), changedSymbols)
+    })
+    expect(appMocks.applyBootSettings).toHaveBeenLastCalledWith(expect.objectContaining({ marketEnabled: false }))
+    expect(appMocks.refreshConnector).toHaveBeenCalledTimes(2)
+
+    appMocks.activated = false
+    rerender(<App />)
+    const inactiveChange = structuredClone(disabled)
+    inactiveChange.market.symbols = ['QQQ']
+    await act(async () => {
+      await applySavedSettings(buildSettingsResponse(inactiveChange), disabled)
+    })
+    expect(appMocks.refreshConnector).toHaveBeenCalledTimes(2)
   })
 })
 

@@ -80,7 +80,7 @@ describe('useSettingsEditor', () => {
     expect(result.current.baseline).toEqual(savedSettings)
     expect(result.current.draft).toEqual(savedSettings)
     expect(result.current.isDirty).toBe(false)
-    expect(applied).toHaveBeenCalledWith(buildSettingsResponse(savedSettings))
+    expect(applied).toHaveBeenCalledWith(buildSettingsResponse(savedSettings), BASE_SETTINGS)
   })
 
   it('preserves the dirty draft and reports an API failure', async () => {

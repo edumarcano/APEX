@@ -27,9 +27,21 @@ describe('MarketTickerCard', () => {
     const data = { status: 'healthy' as const, freshness: 'live' as const, reason_code: 'ok', observed_at: null, collection_revision: 1, tickers: Array.from({ length: 8 }, (_, index) => ({ ...ticker, symbol: `S${index}` })) }
     render(<MarketTickerCard data={data} enabled />)
     expect(screen.getAllByRole('button')).toHaveLength(8)
-    fireEvent.focus(screen.getByRole('button', { name: /S0/i }))
-    expect(screen.getByRole('tooltip')).toHaveTextContent('Period return')
-    expect(screen.getByRole('tooltip')).toHaveTextContent('Close date')
+    const trigger = screen.getByRole('button', { name: /S0/i })
+    fireEvent.focus(trigger)
+    const tooltip = screen.getByRole('tooltip')
+    expect(tooltip).toHaveTextContent('Period return')
+    expect(tooltip).toHaveTextContent('Close date')
+    expect(tooltip).toHaveTextContent('2 sessions available')
+    expect(trigger).toHaveAttribute('aria-describedby', tooltip.id)
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+
+    fireEvent.mouseEnter(trigger)
+    expect(screen.getByRole('tooltip')).toBeVisible()
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 
   it('shows sanitized failure and retry details for an unavailable symbol', () => {

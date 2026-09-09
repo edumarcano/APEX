@@ -91,7 +91,7 @@ interface SettingsPanelProps {
   cortexAgentHydrated: boolean
   failedConnectors: string[]
   hasBriefingEvidence: boolean
-  onApplied: (response: SettingsResponse) => void
+  onApplied: (response: SettingsResponse, previousSettings: RuntimeSettings) => void
   mcpRuntime?: McpStatusState
 }
 

@@ -74,12 +74,17 @@ import type {
 import type {
   BriefingMode,
   CloudHostedToolsSettings,
+  RuntimeSettings,
   SettingsResponse,
   VoiceMode,
 } from './types/settings'
 
 function sameToolNames(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((name) => right.includes(name))
+}
+
+function marketSettingsChanged(previous: RuntimeSettings, next: RuntimeSettings): boolean {
+  return previous.features.market !== next.features.market || previous.market.symbols.length !== next.market.symbols.length || previous.market.symbols.some((symbol, index) => symbol !== next.market.symbols[index])
 }
 
 interface ParsedEmail {
@@ -495,9 +500,10 @@ export default function App(): ReactElement {
   )
 
   const handleSettingsPanelApplied = useCallback(
-    async (response: SettingsResponse) => {
+    async (response: SettingsResponse, previousSettings: RuntimeSettings) => {
+      const shouldRefreshMarket = marketSettingsChanged(previousSettings, response.settings)
       handleSettingsApplied(response)
-      if (activated) {
+      if (activated && shouldRefreshMarket) {
         await telemetry.refreshConnector('market', { force: true })
       }
       await refreshAgentsStatus()
