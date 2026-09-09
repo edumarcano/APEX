@@ -6,6 +6,7 @@ import logging
 import threading
 from datetime import datetime, timezone
 
+from clients import market_client
 from core import config
 from core.connectors.models import (
     CONNECTOR_NAMES,
@@ -40,11 +41,21 @@ def _demo_snapshot() -> TelemetrySnapshot:
     from core.api.demo import load_demo_bundle_or_raise
 
     bundle = load_demo_bundle_or_raise()
+    modules = dict(bundle.modules)
+    modules["market"] = TelemetryModuleEntry.from_connector_result(
+        market_client.collect_demo_market()
+    )
+    report = compute_sync_health(
+        {
+            name: (None if entry.status == "disabled" else entry.to_connector_result())
+            for name, entry in modules.items()
+        }
+    )
     return TelemetrySnapshot(
-        modules=bundle.modules,
-        sync_health_score=bundle.digest.sync_health_score or 100.0,
-        connector_health=list(bundle.digest.connector_health),
-        failed_connectors=list(bundle.digest.failed_connectors),
+        modules=modules,
+        sync_health_score=report.sync_health_score,
+        connector_health=report.connector_health,
+        failed_connectors=report.failed_connectors,
         collected_at=bundle.collected_at,
     )
 

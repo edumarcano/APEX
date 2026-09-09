@@ -55,4 +55,15 @@ describe('SystemDiagnostics', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Refresh checks' }))
     expect(onRefreshConnectors).toHaveBeenCalledOnce()
   })
+
+  it('identifies Market rate limits in connector diagnostics', () => {
+    renderDiagnostics({
+      connectorHealth: [
+        { name: 'market', status: 'degraded', freshness: 'fresh_cache', reason_code: 'daily_rate_limit', observed_at: new Date().toISOString() },
+      ],
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Connectors/i }))
+    expect(screen.getByRole('dialog', { name: 'Connector health' })).toHaveTextContent('Market')
+    expect(screen.getByRole('dialog', { name: 'Connector health' })).toHaveTextContent('Rate limited')
+  })
 })

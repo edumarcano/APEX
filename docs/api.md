@@ -66,7 +66,7 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | POST | `/api/v1/cortex/context/actions` | Propose an approval-gated context reconciliation operation |
 | GET | `/api/v1/cortex/retrieval/status` | Show local retrieval readiness and indexing state |
 | POST | `/api/v1/cortex/retrieval/prepare` | Explicitly prepare the local embedding model and backfill vectors |
-| GET | `/api/v1/market` | Independent EOD market data |
+| GET | `/api/v1/market` | Cache-backed EOD market display data |
 | GET | `/api/v1/mcp/status` | Sanitized MCP runtime status |
 | GET | `/api/v1/llama-cpp/status` | Sanitized llama.cpp server ownership status |
 | GET | `/api/v1/microsoft-todo/status` | Microsoft To Do authorization status |
@@ -196,6 +196,8 @@ Returns `404` before the first successful snapshot or after a process restart.
 ### POST `/api/v1/telemetry/refresh`
 
 Refreshes all enabled connectors or a selected subset.
+
+Market participates in this lifecycle and in Sync Health. Each symbol can make at most one Alpha Vantage request per UTC calendar day. Successful results remain fresh cached data for that day even when the latest trading close is older, such as on weekends. Failed symbols wait until a later UTC date according to their failure backoff. Market remains excluded from briefing synthesis.
 
 ```json
 { "connectors": ["weather", "calendar"], "force": true }
@@ -644,7 +646,7 @@ The approve, reject, and verify routes require `{"expected_version": 0}` with th
 
 ### GET `/api/v1/market`
 
-Returns independently polled end-of-day ticker data, status, cooldown state, update time, and sparklines. Provider-error cooldown prevents repeated quota-consuming failures. Missing configuration returns a not-configured response with no tickers; demo mode returns simulated data.
+Returns cache-backed end-of-day display data after telemetry has collected Market. It never calls Alpha Vantage. The response uses the common connector `status`, `freshness`, `reason_code`, and `observed_at` fields, plus a collection revision and up to 20 chronological daily OHLCV bars per configured symbol. Per-symbol fields expose the last successful fetch date, last attempt date, and next eligible retry date. It also includes derived period return, range, volume comparison, and the trading date of the displayed close. Missing Market configuration is reported as unavailable; it does not block activation. Demo mode returns simulated history without network access.
 
 ### GET `/api/v1/mcp/status`
 

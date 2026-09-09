@@ -238,7 +238,7 @@ def _build_synthesis_input(
             observed_at=result.observed_at,
         )
         for result in results.values()
-        if result is not None and result.status != "disabled"
+        if result is not None and result.status != "disabled" and result.name != "market"
     ]
 
     weather_summary = None
@@ -420,7 +420,7 @@ def _build_synthesis_input(
         sports_events=sports_events,
         sports_truncated=False,
         connector_health=connector_health,
-        failed_connectors=failed_connectors,
+        failed_connectors=[name for name in failed_connectors if name != "market"],
         generated_at=datetime.now(timezone.utc).isoformat(),
         local_time=now_local.isoformat(),
         timezone=timezone_name,

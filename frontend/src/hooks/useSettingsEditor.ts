@@ -17,7 +17,7 @@ export type SettingsLoadStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 export interface UseSettingsEditorOptions {
   open: boolean
-  onApplied?: (response: SettingsResponse) => void
+  onApplied?: (response: SettingsResponse, previousSettings: RuntimeSettings) => void
 }
 
 export interface UseSettingsEditorResult {
@@ -170,7 +170,7 @@ export function useSettingsEditor({
       setEnvelope(parsed)
       setBaseline(cloneRuntimeSettings(parsed.settings))
       setDraftState(cloneRuntimeSettings(parsed.settings))
-      onApplied?.(parsed)
+      onApplied?.(parsed, baseline)
       return true
     } catch (error) {
       const message =

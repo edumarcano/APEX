@@ -17,14 +17,13 @@ router = APIRouter(tags=["market"])
 @router.get("/api/v1/market", response_model=MarketResponse)
 def get_market_snapshot() -> MarketResponse:
     """
-    Return cache-first EOD market snapshots for configured symbols.
+    Return cache-backed EOD market display data for configured symbols.
 
-    A single TIME_SERIES_DAILY call per symbol supplies price, change metrics,
-    and sparkline data. Network IO is isolated behind a file-backed aggregator
-    so HUD polling does not block on third-party rate limits.
+    Provider refreshes are owned by telemetry collection. This route never
+    sends a request to Alpha Vantage and is safe for UI reads.
     """
     try:
-        payload = market_client.fetch_market_data()
+        payload = market_client.read_market_data()
         return MarketResponse.model_validate(payload)
     except Exception:
         _LOGGER.exception("Market snapshot endpoint failed")

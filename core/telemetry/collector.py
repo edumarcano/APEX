@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from clients import news_client, sports_client, weather_client
+from clients import market_client, news_client, sports_client, weather_client
 from core.connectors.collect import collect_calendar, collect_email, collect_reminders
 from core.connectors.models import CONNECTOR_NAMES, ConnectorResult, utc_now_iso
 from core.settings import FeaturesSettings, ModulesSettings
@@ -33,6 +33,8 @@ def is_connector_enabled(
         return features.sports and modules.football
     if name == "reminders":
         return True
+    if name == "market":
+        return features.market
     raise ValueError(f"Unknown connector name: {name!r}")
 
 
@@ -141,5 +143,12 @@ def collect_connector_results(
     if _wanted("reminders"):
         # Reminders remain a local DB read and are always collected when requested.
         results["reminders"] = collect_reminders()
+
+    if _wanted("market"):
+        if is_connector_enabled("market", features=features, modules=modules):
+            results["market"] = market_client.collect_market()
+        else:
+            _LOGGER.info("Market module bypassed via user preference")
+            results["market"] = disabled_result("market")
 
     return results

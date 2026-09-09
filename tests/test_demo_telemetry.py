@@ -6,8 +6,10 @@ import unittest
 from datetime import datetime, timezone
 from unittest import mock
 
+from clients import market_client
 from core.api.demo import build_demo_briefing, load_mock_telemetry
 from core.mock.demo_fixture import load_demo_bundle, resolve_relative_time
+from core.settings.models import FeaturesSettings, MarketSettings, RuntimeSettingsSnapshot
 from core.telemetry.service import get_telemetry_service, reset_telemetry_service_for_tests
 
 
@@ -136,6 +138,42 @@ class DemoSnapshotIntegrationTests(unittest.TestCase):
         assert snapshot is not None
         self.assertTrue(snapshot.connector_health)
         self.assertGreater(snapshot.sync_health_score, 90.0)
+
+    def test_demo_market_uses_configured_weekday_snapshot_for_route_and_telemetry(self) -> None:
+        anchor = datetime(2026, 9, 12, 14, 0, tzinfo=timezone.utc)
+        settings = mock.Mock()
+        settings.get_snapshot.return_value = RuntimeSettingsSnapshot(
+            features=FeaturesSettings(market=True),
+            market=MarketSettings(symbols=("TSLA",)),
+        )
+        with (
+            mock.patch.object(market_client, "DEMO_MODE", True),
+            mock.patch.object(market_client, "_now_utc", return_value=anchor),
+            mock.patch.object(market_client, "get_settings_store", return_value=settings),
+            mock.patch("core.telemetry.service.config.DEMO_MODE", True),
+        ):
+            route_payload = market_client.read_market_data()
+            telemetry = get_telemetry_service().refresh(force=True)
+
+        market_module = telemetry.modules["market"]
+        self.assertEqual(route_payload["status"], market_module.status)
+        self.assertEqual(route_payload["freshness"], market_module.freshness)
+        self.assertEqual(route_payload["reason_code"], market_module.reason_code)
+        self.assertEqual(
+            route_payload["collection_revision"],
+            market_module.data["collection_revision"],
+        )
+        self.assertEqual([ticker["symbol"] for ticker in route_payload["tickers"]], ["TSLA"])
+        self.assertEqual(
+            [ticker["symbol"] for ticker in market_module.data["tickers"]],
+            ["TSLA"],
+        )
+        self.assertTrue(
+            all(
+                datetime.fromisoformat(bar["date"]).weekday() < 5
+                for bar in route_payload["tickers"][0]["history"]
+            )
+        )
 
 
 if __name__ == "__main__":

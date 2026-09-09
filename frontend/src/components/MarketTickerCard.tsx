@@ -1,11 +1,8 @@
 import { LineChart } from 'lucide-react'
-import { useId, useMemo, type CSSProperties, type ReactElement } from 'react'
+import { createPortal } from 'react-dom'
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactElement } from 'react'
 
-import {
-  attentionCurtainRevealed,
-  attentionShellClass,
-  type AttentionTier,
-} from '../lib/attentionTier'
+import { attentionCurtainRevealed, attentionShellClass, type AttentionTier } from '../lib/attentionTier'
 import type { MarketResponse, MarketTickerItem } from '../types/telemetry'
 
 type MarketTickerCardProps = {
@@ -13,457 +10,122 @@ type MarketTickerCardProps = {
   isLoading?: boolean
   enabled?: boolean
   className?: string
-  /** When true, renders a single condensed row of symbol/percent chips instead of the full ticker grid. */
   isCompact?: boolean
-  /** Pipeline attention tier — glass power + body curtain (shell-only in compact). */
   attentionTier?: AttentionTier
-  /** Curtain unlock delay in ms for staggered reveals within a shared step. */
   attentionStaggerMs?: number
 }
 
-const POSITIVE_COLOR = '#39FF88'
-const NEGATIVE_COLOR = '#ef4444'
+const POSITIVE = '#39FF88'
+const NEGATIVE = '#ef4444'
 
-type MarketLedState = 'live' | 'stale' | 'loading' | 'error' | 'none'
-
-function resolveMarketLedState(
-  data: MarketResponse | null,
-  isLoading: boolean,
-): MarketLedState {
-  if (!data) {
-    return isLoading ? 'loading' : 'error'
-  }
-  if (data.status === 'not_configured') {
-    return 'none'
-  }
-  if (data.status === 'provider_unavailable' || data.status === 'unavailable') {
-    return 'error'
-  }
-  if (data.status === 'stale' || data.cooldown_active) {
-    return 'stale'
-  }
-  return 'live'
+function formatPrice(value: number | null): string {
+  if (value === null) return '--.--'
+  return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-const MARKET_LED_CLASS: Record<MarketLedState, string> = {
-  live: 'hud-led hud-led--live size-1.5',
-  stale: 'hud-led hud-led--stale size-1.5',
-  loading: 'hud-led hud-led--loading size-1.5',
-  error: 'hud-led hud-led--error size-1.5',
-  none: '',
+function formatPercent(value: number | null): string {
+  if (value === null) return '--%'
+  return `${value > 0 ? '+' : ''}${value.toFixed(2)}%`
 }
 
-function formatPrice(price: number | null): string {
-  if (price === null) {
-    return '--.--'
-  }
-  return price.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
+function formatReason(value: string): string {
+  return value.replaceAll('_', ' ')
 }
 
-function formatChangePercent(changePercent: number | null): string {
-  if (changePercent === null) {
-    return '--%'
-  }
-  const sign = changePercent > 0 ? '+' : ''
-  return `${sign}${changePercent.toFixed(2)}%`
+function trend(ticker: MarketTickerItem): 'positive' | 'negative' | 'neutral' {
+  if (ticker.period_return_percent === null || ticker.period_return_percent === 0) return 'neutral'
+  return ticker.period_return_percent > 0 ? 'positive' : 'negative'
 }
 
-function resolveSparklineTrend(values: number[]): 'positive' | 'negative' | 'neutral' {
-  if (values.length < 2) {
-    return 'neutral'
-  }
-  // Backend sparkline is newest-first (index 0 = latest close).
-  const newest = values[0]
-  const oldest = values[values.length - 1]
-  if (newest >= oldest) {
-    return 'positive'
-  }
-  if (newest < oldest) {
-    return 'negative'
-  }
-  return 'neutral'
+function color(ticker: MarketTickerItem): string {
+  return trend(ticker) === 'positive' ? POSITIVE : trend(ticker) === 'negative' ? NEGATIVE : '#9ca3af'
 }
 
-function resolveTrendDirection(
-  change: number | null,
-  changePercent: number | null,
-  sparkline: number[],
-): 'positive' | 'negative' | 'neutral' {
-  if (change !== null && change !== 0) {
-    return change > 0 ? 'positive' : 'negative'
-  }
-  if (changePercent !== null && changePercent !== 0) {
-    return changePercent > 0 ? 'positive' : 'negative'
-  }
-  return resolveSparklineTrend(sparkline)
+function points(ticker: MarketTickerItem): string {
+  const values = ticker.history.map((bar) => bar.close)
+  if (values.length < 2) return ''
+  const minimum = Math.min(...values)
+  const maximum = Math.max(...values)
+  const range = maximum - minimum || 1
+  return values.map((value, index) => `${(index / (values.length - 1) * 100).toFixed(2)},${(30 - (value - minimum) / range * 30).toFixed(2)}`).join(' ')
 }
 
-function buildSparklinePoints(values: number[]): string {
-  if (values.length === 0) {
-    return ''
-  }
-
-  const width = 100
-  const height = 30
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  const range = max - min || 1
-
-  return values
-    .map((value, index) => {
-      const x = values.length === 1 ? width / 2 : (index / (values.length - 1)) * width
-      const y = height - ((value - min) / range) * height
-      return `${x.toFixed(2)},${y.toFixed(2)}`
-    })
-    .join(' ')
-}
-
-function Sparkline({ values }: { values: number[] }): ReactElement {
+function Sparkline({ ticker, dense = false }: { ticker: MarketTickerItem; dense?: boolean }): ReactElement {
   const filterId = useId()
-  const points = useMemo(() => buildSparklinePoints(values), [values])
-  const sparkTrend = useMemo(() => resolveSparklineTrend(values), [values])
-  const stroke =
-    sparkTrend === 'positive'
-      ? POSITIVE_COLOR
-      : sparkTrend === 'negative'
-        ? NEGATIVE_COLOR
-        : '#6b7280'
-
-  if (!points) {
-    return (
-      <svg
-        viewBox="0 0 100 30"
-        className="h-5 w-full min-w-[4rem] max-w-[5rem] overflow-visible opacity-30"
-        aria-hidden
-      >
-        <line x1="0" y1="15" x2="100" y2="15" stroke="#4b5563" strokeWidth="1" />
-      </svg>
-    )
-  }
-
-  return (
-    <svg
-      viewBox="0 0 100 30"
-      className="h-5 w-full min-w-[4rem] max-w-[5rem] overflow-visible"
-      aria-hidden
-    >
-      <defs>
-        <filter id={filterId} x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow
-            dx="0"
-            dy="0"
-            stdDeviation="1.5"
-            floodColor={stroke}
-            floodOpacity="0.6"
-          />
-        </filter>
-      </defs>
-      <polyline
-        points={points}
-        fill="none"
-        stroke={stroke}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        filter={`url(#${filterId})`}
-      />
-    </svg>
-  )
+  const line = useMemo(() => points(ticker), [ticker])
+  const stroke = color(ticker)
+  return <svg viewBox="0 0 100 30" className={`${dense ? 'h-3.5' : 'h-5'} w-full min-w-0`} aria-hidden>
+    <defs><filter id={filterId} x="-20%" y="-20%" width="140%" height="140%"><feDropShadow stdDeviation="1.25" floodColor={stroke} floodOpacity="0.55" /></filter></defs>
+    {line ? <polyline points={line} fill="none" stroke={stroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" filter={`url(#${filterId})`} /> : <line x1="0" y1="15" x2="100" y2="15" stroke="#4b5563" strokeWidth="1" />}
+  </svg>
 }
 
-function SetupPanel({
-  title,
-  message,
-  tone,
-}: {
-  title: string
-  message: string
-  tone: 'muted' | 'error'
-}): ReactElement {
-  const toneClasses =
-    tone === 'error'
-      ? 'border-red-500/20 bg-red-950/10 text-red-300/90'
-      : 'border-amber-500/20 bg-amber-950/10 text-amber-200/90'
-
-  return (
-    <div
-      className={`flex min-h-[4.5rem] flex-col justify-center rounded-xl border px-3 py-2.5 ${toneClasses}`}
-    >
-      <p className="font-orbitron text-[10px] font-semibold uppercase tracking-[0.18em]">{title}</p>
-      <p className="mt-1 text-[11px] leading-relaxed text-zinc-300/90">{message}</p>
-    </div>
-  )
+function DetailPopover({ id, ticker, anchor, onClose }: { id: string; ticker: MarketTickerItem; anchor: DOMRect; onClose: () => void }): ReactElement {
+  const style: CSSProperties = { left: Math.max(8, Math.min(anchor.left, window.innerWidth - 230)), top: Math.max(8, Math.min(anchor.bottom + 8, window.innerHeight - 230)), width: 222 }
+  useEffect(() => {
+    const dismiss = (event: KeyboardEvent): void => { if (event.key === 'Escape') onClose() }
+    window.addEventListener('keydown', dismiss)
+    return () => window.removeEventListener('keydown', dismiss)
+  }, [onClose])
+  return <div id={id} role="tooltip" style={style} className="hud-glass hud-glass-solid fixed z-[100] rounded-xl border border-white/10 px-3 py-2.5 shadow-2xl">
+    <p className="font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200">{ticker.symbol} · daily close</p>
+    <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 font-mono text-[10px]">
+      <dt className="text-zinc-500">Period return</dt><dd style={{ color: color(ticker) }} className="text-right">{formatPercent(ticker.period_return_percent)}</dd>
+      <dt className="text-zinc-500">Range</dt><dd className="text-right text-zinc-200">{ticker.period_low === null || ticker.period_high === null ? '—' : `$${formatPrice(ticker.period_low)}–${formatPrice(ticker.period_high)}`}</dd>
+      <dt className="text-zinc-500">Volume</dt><dd className="text-right text-zinc-200">{ticker.volume_ratio === null ? '—' : `${ticker.volume_ratio.toFixed(2)}× avg`}</dd>
+      <dt className="text-zinc-500">History</dt><dd className="text-right text-zinc-200">{ticker.history.length} {ticker.history.length === 1 ? 'session' : 'sessions'} available</dd>
+      <dt className="text-zinc-500">Close date</dt><dd className="text-right text-zinc-200">{ticker.close_date ?? '—'}</dd>
+      <dt className="text-zinc-500">Freshness</dt><dd className="text-right text-zinc-200">{ticker.freshness.replace('_', ' ')}</dd>
+      {ticker.reason_code !== 'ok' ? <><dt className="text-zinc-500">Last result</dt><dd className="text-right text-zinc-200">{formatReason(ticker.reason_code)}</dd></> : null}
+      {ticker.last_attempt_date ? <><dt className="text-zinc-500">Last attempt</dt><dd className="text-right text-zinc-200">{ticker.last_attempt_date}</dd></> : null}
+      {ticker.next_attempt_date ? <><dt className="text-zinc-500">Next retry</dt><dd className="text-right text-zinc-200">{ticker.next_attempt_date}</dd></> : null}
+    </dl>
+  </div>
 }
 
-function TickerRow({
-  ticker,
-  globalStatus,
-  cooldownActive,
-  forceUnavailable,
-}: {
-  ticker: MarketTickerItem
-  globalStatus: MarketResponse['status']
-  cooldownActive: boolean
-  forceUnavailable: boolean
-}): ReactElement {
-  const isUnavailable =
-    forceUnavailable || globalStatus === 'unavailable' || ticker.status === 'unavailable'
-  const isStale =
-    !isUnavailable &&
-    (globalStatus === 'stale' || ticker.status === 'stale' || cooldownActive)
-
-  const trend = resolveTrendDirection(ticker.change, ticker.change_percent, ticker.sparkline)
-  const trendColor =
-    trend === 'positive' ? POSITIVE_COLOR : trend === 'negative' ? NEGATIVE_COLOR : '#9ca3af'
-
-  const glowClass =
-    !isUnavailable && !isStale && trend === 'positive'
-      ? 'shadow-[0_0_14px_rgba(57,255,136,0.28)] animate-[pulse_3s_ease-in-out_infinite]'
-      : !isUnavailable && !isStale && trend === 'negative'
-        ? 'shadow-[0_0_14px_rgba(239,68,68,0.28)] animate-[pulse_3s_ease-in-out_infinite]'
-        : ''
-
-  const staleBadge = cooldownActive ? '[COOLDOWN]' : '[STALE]'
-
-  return (
-    <div
-      className={`flex min-h-[4.25rem] min-w-[8rem] flex-1 flex-col justify-between gap-1 rounded-lg border border-white/[0.06] bg-zinc-950/20 px-2 py-2 ${glowClass}`}
-    >
-      <div className={`flex items-start justify-between gap-2 ${isStale ? 'opacity-70' : ''}`}>
-        <div className="min-w-0 space-y-1">
-          <span className="block font-mono text-[11px] font-semibold uppercase tracking-wider text-zinc-200">
-            {ticker.symbol}
-          </span>
-          <p
-            className={`tabular-nums text-base font-semibold leading-none ${
-              isUnavailable ? 'text-zinc-500' : trend !== 'neutral' ? 'mix-blend-screen' : ''
-            }`}
-            style={isUnavailable ? undefined : { color: trendColor }}
-          >
-            {isUnavailable ? '--.--' : `$${formatPrice(ticker.price)}`}
-          </p>
-          <p
-            className={`mt-0.5 font-mono text-[10px] tabular-nums ${
-              isUnavailable ? 'text-zinc-600' : trend !== 'neutral' ? 'mix-blend-screen' : ''
-            }`}
-            style={isUnavailable ? undefined : { color: trendColor }}
-          >
-            {isUnavailable ? '--%' : formatChangePercent(ticker.change_percent)}
-          </p>
-        </div>
-        {isStale ? (
-          <span className="shrink-0 font-mono text-[9px] font-semibold uppercase tracking-wider text-amber-400/80">
-            {staleBadge}
-          </span>
-        ) : null}
-      </div>
-
-      <div className="mt-1 flex min-h-0 w-full justify-end">
-        <Sparkline values={isUnavailable ? [] : ticker.sparkline} />
-      </div>
-    </div>
-  )
+function TickerCell({ ticker, onOpen, detailId, isDetailOpen, className, dense = false }: { ticker: MarketTickerItem; onOpen: (ticker: MarketTickerItem, target: HTMLElement) => void; detailId: string; isDetailOpen: boolean; className?: string; dense?: boolean }): ReactElement {
+  const unavailable = ticker.status === 'unavailable'
+  return <button type="button" aria-describedby={isDetailOpen ? detailId : undefined} onClick={(event) => onOpen(ticker, event.currentTarget)} onFocus={(event) => onOpen(ticker, event.currentTarget)} onMouseEnter={(event) => onOpen(ticker, event.currentTarget)} className={`flex min-h-0 min-w-0 flex-col justify-center overflow-hidden rounded-lg border border-white/[0.06] bg-zinc-950/20 px-2 text-left transition-colors hover:border-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F4DB8] ${dense ? 'py-1' : 'py-1.5'} ${className ?? ''}`}>
+    <span className="flex w-full items-center justify-between gap-1 leading-none"><span className={`truncate font-mono font-semibold uppercase tracking-wider text-zinc-200 ${dense ? 'text-[9px]' : 'text-[10px]'}`}>{ticker.symbol}</span><span className={`font-mono text-[9px] ${ticker.freshness === 'stale' ? 'text-amber-400/80' : 'text-zinc-500'}`}>{ticker.freshness === 'stale' ? 'STALE' : ''}</span></span>
+    <span className={`block w-full truncate tabular-nums font-semibold leading-none ${dense ? 'mt-0.5 text-[13px]' : 'mt-1 text-sm'} ${unavailable ? 'text-zinc-500' : ''}`} style={unavailable ? undefined : { color: color(ticker) }}>{unavailable ? '--.--' : `$${formatPrice(ticker.price)}`}</span>
+    <span className={`block w-full font-mono text-[9px] leading-none tabular-nums ${dense ? 'mt-0.5' : ''} ${unavailable ? 'text-zinc-600' : ''}`} style={unavailable ? undefined : { color: ticker.change_percent === null || ticker.change_percent === 0 ? '#9ca3af' : ticker.change_percent > 0 ? POSITIVE : NEGATIVE }}>{unavailable ? '--%' : formatPercent(ticker.change_percent)}</span>
+    <span className={`block w-full shrink-0 ${dense ? 'mt-0.5' : 'mt-1'}`}><Sparkline ticker={ticker} dense={dense} /></span>
+  </button>
 }
 
-function CompactTickerChip({ ticker }: { ticker: MarketTickerItem }): ReactElement {
-  const trend = resolveTrendDirection(ticker.change, ticker.change_percent, ticker.sparkline)
-  const trendColor =
-    trend === 'positive' ? POSITIVE_COLOR : trend === 'negative' ? NEGATIVE_COLOR : '#9ca3af'
-  const isUnavailable = ticker.status === 'unavailable'
-
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/[0.06] bg-zinc-950/30 px-2 py-1 font-mono text-[10px] uppercase tracking-wider">
-      <span className="text-zinc-300">{ticker.symbol}</span>
-      <span style={isUnavailable ? undefined : { color: trendColor }} className={isUnavailable ? 'text-zinc-500' : ''}>
-        {isUnavailable ? '--%' : formatChangePercent(ticker.change_percent)}
-      </span>
-    </span>
-  )
+function tickerGridClasses(count: number): string {
+  if (count === 1) return 'grid-cols-1'
+  if (count === 2) return 'grid-cols-2'
+  if (count === 3) return 'grid-cols-2 sm:grid-cols-3'
+  if (count === 4) return 'grid-cols-2 sm:grid-cols-4'
+  if (count === 5) return 'grid-cols-2 sm:grid-cols-6'
+  if (count === 6) return 'grid-cols-2 sm:grid-cols-3'
+  if (count === 7) return 'grid-cols-2 sm:grid-cols-12'
+  return 'grid-cols-2 sm:grid-cols-4'
 }
 
-export function MarketTickerCard({
-  data,
-  isLoading = false,
-  enabled = true,
-  className,
-  isCompact = false,
-  attentionTier = 'dormant',
-  attentionStaggerMs = 0,
-}: MarketTickerCardProps): ReactElement {
+function tickerCellClasses(count: number, index: number): string {
+  const isLast = index === count - 1
+  if (count === 3) return isLast ? 'col-span-2 sm:col-span-1' : ''
+  if (count === 5) return `${isLast ? 'col-span-2 ' : ''}${index < 3 ? 'sm:col-span-2' : 'sm:col-span-3'}`.trim()
+  if (count === 7) return `${isLast ? 'col-span-2 ' : ''}${index < 4 ? 'sm:col-span-3' : 'sm:col-span-4'}`.trim()
+  return ''
+}
+
+export function MarketTickerCard({ data, isLoading = false, enabled = true, className, isCompact = false, attentionTier = 'dormant', attentionStaggerMs = 0 }: MarketTickerCardProps): ReactElement {
+  const [detail, setDetail] = useState<{ ticker: MarketTickerItem; anchor: DOMRect } | null>(null)
+  const detailId = useId()
+  const sectionRef = useRef<HTMLElement>(null)
   const curtainRevealed = attentionCurtainRevealed(attentionTier)
-  const curtainStyle: CSSProperties | undefined =
-    attentionStaggerMs > 0
-      ? ({ '--attention-stagger': `${attentionStaggerMs}ms` } as CSSProperties)
-      : undefined
-
-  const sectionClassName = [
-    'hud-corner-brackets hud-interactive-shell relative flex overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] hud-glass transition-all duration-700 ease-in-out',
-    isCompact
-      ? 'h-auto min-h-[3.75rem] shrink-0 flex-none flex-row items-center px-4 py-3'
-      : 'h-auto min-h-0 w-full flex-none flex-col p-[var(--hud-panel-pad)]',
-    attentionShellClass(attentionTier),
-    className,
-  ]
-    .filter(Boolean)
-    .join(' ')
-
-  const ledState = resolveMarketLedState(data, isLoading)
-
-  const content = (() => {
-    if (!enabled) {
-      return (
-        <SetupPanel
-          tone="muted"
-          title="MARKET MONITOR DISABLED"
-          message="Market connector disabled in Runtime Settings."
-        />
-      )
-    }
-
-    if (!data) {
-      if (isLoading) {
-        return (
-          <SetupPanel
-            tone="muted"
-            title="Market Monitor"
-            message="Initializing market telemetry feed…"
-          />
-        )
-      }
-      return (
-        <SetupPanel
-          tone="muted"
-          title="Market Unavailable"
-          message="Market telemetry could not be reached. Retrying on the next poll cycle."
-        />
-      )
-    }
-
-    if (data.status === 'not_configured') {
-      return (
-        <SetupPanel
-          tone="muted"
-          title="MARKET MONITOR OFFLINE"
-          message="Add ticker symbols in Runtime Settings and define `ALPHA_VANTAGE_API_KEY` in `.env` to initialize market telemetry."
-        />
-      )
-    }
-
-    if (data.status === 'provider_unavailable') {
-      return (
-        <SetupPanel
-          tone="error"
-          title="PROVIDER ERROR"
-          message="Verify `ALPHA_VANTAGE_API_KEY` is configured and active."
-        />
-      )
-    }
-
-    const forceUnavailable = data.status === 'unavailable'
-
-    if (data.tickers.length === 0) {
-      return (
-        <SetupPanel
-          tone="muted"
-          title="Market Unavailable"
-          message="No ticker symbols are available for display."
-        />
-      )
-    }
-
-    return (
-      <div className="flex h-full min-h-0 flex-wrap items-stretch gap-1.5 sm:gap-2">
-        {data.tickers.map((ticker) => (
-          <TickerRow
-            key={ticker.symbol}
-            ticker={ticker}
-            globalStatus={data.status}
-            cooldownActive={data.cooldown_active}
-            forceUnavailable={forceUnavailable}
-          />
-        ))}
-      </div>
-    )
-  })()
-
-  if (isCompact) {
-    return (
-      <section className={sectionClassName} aria-label="Market ticker">
-        <span className="hud-corner-bl" aria-hidden />
-        <span className="hud-corner-br" aria-hidden />
-        <div className="hud-inner-lift flex min-w-0 flex-1 items-center">
-          <span className="hud-icon-badge size-7 shrink-0">
-            <LineChart className="size-4 text-[color:var(--hud-accent)]" strokeWidth={1.75} aria-hidden />
-          </span>
-          <span className="ml-3 w-16 shrink-0 truncate font-orbitron text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--hud-text)]">
-            Market
-          </span>
-          <div className="ml-2.5 flex min-w-0 flex-1 items-center gap-2 overflow-x-auto scrollbar-none">
-            {data && data.tickers.length > 0 ? (
-              data.tickers.map((ticker) => <CompactTickerChip key={ticker.symbol} ticker={ticker} />)
-            ) : (
-              <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">No tickers</span>
-            )}
-          </div>
-          {ledState !== 'none' ? (
-            <span
-              className={`ml-2 shrink-0 ${MARKET_LED_CLASS[ledState]}`}
-              role="status"
-              aria-label={`Market feed ${ledState}`}
-              title={`Market feed ${ledState}`}
-            />
-          ) : null}
-        </div>
-      </section>
-    )
-  }
-
-  return (
-    <section className={sectionClassName} aria-label="Market ticker">
-      <span className="hud-corner-bl" aria-hidden />
-      <span className="hud-corner-br" aria-hidden />
-      <header className="hud-inner-lift mb-2 shrink-0">
-        <div className="flex min-h-9 items-center gap-2.5">
-          <span className="hud-icon-badge size-7 shrink-0">
-            <LineChart
-              className="size-4 text-[color:var(--hud-accent)]"
-              strokeWidth={1.75}
-              aria-hidden
-            />
-          </span>
-          <h2 className="min-w-0 flex-1 truncate font-orbitron text-sm font-semibold tracking-[0.12em] text-[color:var(--hud-text)]">
-            Market
-          </h2>
-          {data && data.status !== 'not_configured' && data.status !== 'provider_unavailable' ? (
-            <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.18em] text-zinc-500">
-              {data.status}
-            </span>
-          ) : null}
-          {ledState !== 'none' ? (
-            <span
-              className={MARKET_LED_CLASS[ledState]}
-              role="status"
-              aria-label={`Market feed ${ledState}`}
-              title={`Market feed ${ledState}`}
-            />
-          ) : null}
-        </div>
-        <div className="hud-header-divider mt-2" aria-hidden />
-      </header>
-      <div
-        className={[
-          'hud-inner-lift min-h-0 w-full flex-1 attention-curtain',
-          curtainRevealed ? 'attention-curtain--revealed' : '',
-        ]
-          .filter(Boolean)
-          .join(' ')}
-        style={curtainStyle}
-      >
-        {content}
-      </div>
-    </section>
-  )
+  const curtainStyle = attentionStaggerMs > 0 ? ({ '--attention-stagger': `${attentionStaggerMs}ms` } as CSSProperties) : undefined
+  useEffect(() => {
+    const closeOutside = (event: MouseEvent): void => { if (sectionRef.current && !sectionRef.current.contains(event.target as Node)) setDetail(null) }
+    document.addEventListener('mousedown', closeOutside)
+    return () => document.removeEventListener('mousedown', closeOutside)
+  }, [])
+  const openDetail = (ticker: MarketTickerItem, target: HTMLElement): void => setDetail({ ticker, anchor: target.getBoundingClientRect() })
+  const shell = ['hud-corner-brackets hud-interactive-shell relative flex overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] hud-glass transition-all duration-700 ease-in-out', isCompact ? 'h-auto min-h-[3.75rem] shrink-0 flex-row items-center px-4 py-3' : 'h-auto min-h-0 w-full flex-none flex-col p-[var(--hud-panel-pad)]', attentionShellClass(attentionTier), className].filter(Boolean).join(' ')
+  const content = !enabled ? <p className="text-[11px] text-amber-200/90">Market connector disabled in Runtime Settings.</p> : !data ? <p role="status" className={isLoading ? 'animate-pulse text-sm text-[color:var(--hud-muted-text)]' : 'text-[11px] text-zinc-400'}>{isLoading ? 'Loading market…' : 'Market telemetry is unavailable. Refresh telemetry to retry.'}</p> : data.status === 'unavailable' && data.reason_code === 'not_configured' ? <p className="text-[11px] text-amber-200/90">Add ticker symbols in Runtime Settings and define `ALPHA_VANTAGE_API_KEY` in `.env`.</p> : data.tickers.length === 0 ? <p className="text-[11px] text-zinc-400">No ticker symbols are available for display.</p> : <div data-testid="market-ticker-grid" className={`grid h-full min-h-0 w-full auto-rows-fr gap-1.5 sm:gap-2 ${tickerGridClasses(data.tickers.length)}`}>{data.tickers.map((ticker, index) => <TickerCell key={ticker.symbol} ticker={ticker} onOpen={openDetail} detailId={detailId} isDetailOpen={detail?.ticker.symbol === ticker.symbol} className={tickerCellClasses(data.tickers.length, index)} dense={data.tickers.length >= 5} />)}</div>
+  if (isCompact) return <section ref={sectionRef} className={shell} aria-label="Market ticker"><span className="hud-corner-bl" aria-hidden /><span className="hud-corner-br" aria-hidden /><LineChart className="size-4 shrink-0 text-[color:var(--hud-accent)]" aria-hidden /><span className="ml-3 mr-2 font-orbitron text-[10px] uppercase tracking-[0.12em]">Market</span><div className="flex min-w-0 gap-2 overflow-x-auto">{data?.tickers.map((ticker) => <span key={ticker.symbol} className="font-mono text-[10px] text-zinc-300">{ticker.symbol} {formatPercent(ticker.change_percent)}</span>)}</div></section>
+  return <section ref={sectionRef} className={shell} aria-label="Market ticker"><span className="hud-corner-bl" aria-hidden /><span className="hud-corner-br" aria-hidden /><header className="hud-inner-lift mb-2 shrink-0"><div className="flex min-h-9 items-center gap-2.5"><span className="hud-icon-badge size-7 shrink-0"><LineChart className="size-4 text-[color:var(--hud-accent)]" aria-hidden /></span><h2 className="flex-1 font-orbitron text-sm font-semibold tracking-[0.12em] text-[color:var(--hud-text)]">Market</h2><span className="font-mono text-[9px] uppercase tracking-[0.18em] text-zinc-500">Daily · 20 sessions</span></div><div className="hud-header-divider mt-2" aria-hidden /></header><div className={`hud-inner-lift min-h-0 w-full flex-1 attention-curtain ${curtainRevealed ? 'attention-curtain--revealed' : ''}`} style={curtainStyle}>{content}</div>{detail && typeof document !== 'undefined' ? createPortal(<DetailPopover id={detailId} ticker={detail.ticker} anchor={detail.anchor} onClose={() => setDetail(null)} />, document.body) : null}</section>
 }

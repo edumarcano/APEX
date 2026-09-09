@@ -610,6 +610,17 @@ def _build_module(
     if name == "football":
         entry, _ = _build_football_module(module, now=now)
         return entry
+    if name == "market":
+        data = _require_dict(module.get("data"), path="modules.market.data")
+        return TelemetryModuleEntry(
+            name="market",
+            status=module["status"],
+            freshness=module["freshness"],
+            reason_code=module["reason_code"],
+            observed_at=_module_observed_at(module, now=now),
+            display_text="Simulated daily market data.",
+            data=data,
+        )
     raise DemoFixtureError(f"Unsupported demo module: {name!r}")
 
 
@@ -679,7 +690,7 @@ def load_demo_bundle(*, now: datetime | None = None) -> DemoBundle:
             observed_at=entry.observed_at,
         )
         for entry in modules.values()
-        if entry.status != "disabled"
+        if entry.status != "disabled" and entry.name != "market"
     ]
 
     fixture_insights = payload.get("insights")
@@ -699,7 +710,7 @@ def load_demo_bundle(*, now: datetime | None = None) -> DemoBundle:
         sync_health_score=report.sync_health_score,
         connector_health=connector_health,
         confidence_score=report.sync_health_score,
-        failed_connectors=list(report.failed_connectors),
+        failed_connectors=[name for name in report.failed_connectors if name != "market"],
         insights=_derive_insights(
             weather_data=structured["weather"],
             email_data=structured["email"],

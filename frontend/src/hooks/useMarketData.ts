@@ -1,188 +1,133 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-import type { MarketResponse, MarketResponseStatus, MarketTickerItem } from '../types/telemetry'
+import type {
+  ConnectorFreshness,
+  ConnectorHealthStatus,
+  MarketDailyBar,
+  MarketResponse,
+  MarketTickerItem,
+} from '../types/telemetry'
 import { API_ENDPOINTS } from '../lib/api'
 
 const MARKET_ENDPOINT = API_ENDPOINTS.market
-const MARKET_POLL_INTERVAL_MS = 30_000
+const VALID_STATUSES: readonly ConnectorHealthStatus[] = ['healthy', 'degraded', 'unavailable', 'disabled']
+const VALID_FRESHNESS: readonly ConnectorFreshness[] = ['live', 'fresh_cache', 'stale', 'none']
 
-const VALID_MARKET_STATUSES: readonly MarketResponseStatus[] = [
-  'live',
-  'partial',
-  'stale',
-  'unavailable',
-  'not_configured',
-  'provider_unavailable',
-]
+export type MarketDataState = { data: MarketResponse | null; isLoading: boolean }
 
-const VALID_TICKER_STATUSES: readonly MarketTickerItem['status'][] = [
-  'live',
-  'stale',
-  'unavailable',
-]
-
-export type MarketDataState = {
-  data: MarketResponse | null
-  isLoading: boolean
+function numberOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
-function parseNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value
-  }
-  return null
+function parseBar(value: unknown): MarketDailyBar | null {
+  if (!value || typeof value !== 'object') return null
+  const row = value as Record<string, unknown>
+  if (typeof row.date !== 'string') return null
+  const open = numberOrNull(row.open)
+  const high = numberOrNull(row.high)
+  const low = numberOrNull(row.low)
+  const close = numberOrNull(row.close)
+  const volume = numberOrNull(row.volume)
+  if (open === null || high === null || low === null || close === null || volume === null) return null
+  return { date: row.date, open, high, low, close, volume }
 }
 
-function parseMarketTickerItem(entry: unknown): MarketTickerItem | null {
-  if (!entry || typeof entry !== 'object') {
-    return null
-  }
-
-  const record = entry as Record<string, unknown>
-  const symbol = typeof record.symbol === 'string' ? record.symbol.trim() : ''
-  if (!symbol) {
-    return null
-  }
-
-  const status = record.status
-  if (typeof status !== 'string' || !VALID_TICKER_STATUSES.includes(status as MarketTickerItem['status'])) {
-    return null
-  }
-
-  const sparklineRaw = Array.isArray(record.sparkline) ? record.sparkline : []
-  const sparkline = sparklineRaw
-    .map((value) => parseNumber(value))
-    .filter((value): value is number => value !== null)
-
+function parseTicker(value: unknown): MarketTickerItem | null {
+  if (!value || typeof value !== 'object') return null
+  const row = value as Record<string, unknown>
+  if (typeof row.symbol !== 'string' || !VALID_STATUSES.includes(row.status as ConnectorHealthStatus)) return null
+  if (!VALID_FRESHNESS.includes(row.freshness as ConnectorFreshness)) return null
   return {
-    symbol,
-    price: parseNumber(record.price),
-    change: parseNumber(record.change),
-    change_percent: parseNumber(record.change_percent),
-    status: status as MarketTickerItem['status'],
-    last_updated: typeof record.last_updated === 'string' ? record.last_updated : null,
-    sparkline,
+    symbol: row.symbol,
+    status: row.status as ConnectorHealthStatus,
+    freshness: row.freshness as ConnectorFreshness,
+    reason_code: typeof row.reason_code === 'string' ? row.reason_code : '',
+    observed_at: typeof row.observed_at === 'string' ? row.observed_at : null,
+    close_date: typeof row.close_date === 'string' ? row.close_date : null,
+    last_successful_fetch_date: typeof row.last_successful_fetch_date === 'string' ? row.last_successful_fetch_date : null,
+    last_attempt_date: typeof row.last_attempt_date === 'string' ? row.last_attempt_date : null,
+    next_attempt_date: typeof row.next_attempt_date === 'string' ? row.next_attempt_date : null,
+    price: numberOrNull(row.price),
+    change: numberOrNull(row.change),
+    change_percent: numberOrNull(row.change_percent),
+    history: Array.isArray(row.history) ? row.history.map(parseBar).filter((bar): bar is MarketDailyBar => bar !== null) : [],
+    period_return_percent: numberOrNull(row.period_return_percent),
+    period_low: numberOrNull(row.period_low),
+    period_high: numberOrNull(row.period_high),
+    volume_ratio: numberOrNull(row.volume_ratio),
   }
 }
 
-function parseMarketResponse(body: unknown): MarketResponse | null {
-  if (!body || typeof body !== 'object') {
-    return null
-  }
-
-  const record = body as Record<string, unknown>
-  const status = record.status
-  if (typeof status !== 'string' || !VALID_MARKET_STATUSES.includes(status as MarketResponseStatus)) {
-    return null
-  }
-
-  const tickersRaw = Array.isArray(record.tickers) ? record.tickers : []
-  const tickers = tickersRaw
-    .map((entry) => parseMarketTickerItem(entry))
-    .filter((entry): entry is MarketTickerItem => entry !== null)
-
-  const cooldownRemaining = parseNumber(record.cooldown_remaining_seconds)
-
+function parseResponse(body: unknown): MarketResponse | null {
+  if (!body || typeof body !== 'object') return null
+  const row = body as Record<string, unknown>
+  if (!VALID_STATUSES.includes(row.status as ConnectorHealthStatus) || !VALID_FRESHNESS.includes(row.freshness as ConnectorFreshness)) return null
+  if (typeof row.collection_revision !== 'number' || !Number.isInteger(row.collection_revision) || row.collection_revision < 0) return null
   return {
-    status: status as MarketResponseStatus,
-    cooldown_active: record.cooldown_active === true,
-    cooldown_remaining_seconds:
-      cooldownRemaining !== null ? Math.max(0, Math.floor(cooldownRemaining)) : 0,
-    tickers,
+    status: row.status as ConnectorHealthStatus,
+    freshness: row.freshness as ConnectorFreshness,
+    reason_code: typeof row.reason_code === 'string' ? row.reason_code : '',
+    observed_at: typeof row.observed_at === 'string' ? row.observed_at : null,
+    collection_revision: row.collection_revision,
+    tickers: Array.isArray(row.tickers) ? row.tickers.map(parseTicker).filter((ticker): ticker is MarketTickerItem => ticker !== null) : [],
   }
 }
 
-function toStaleFallback(previous: MarketResponse): MarketResponse {
+function staleFallback(previous: MarketResponse): MarketResponse {
   return {
     ...previous,
-    status: previous.status === 'live' || previous.status === 'partial' ? 'stale' : previous.status,
+    status: previous.status === 'healthy' ? 'degraded' : previous.status,
+    freshness: previous.status === 'disabled' ? 'none' : 'stale',
+    reason_code: 'display_request_failed',
     tickers: previous.tickers.map((ticker) => ({
       ...ticker,
-      status: ticker.status === 'live' ? 'stale' : ticker.status,
+      status: ticker.status === 'healthy' ? 'degraded' : ticker.status,
+      freshness: ticker.status === 'unavailable' ? 'none' : 'stale',
+      reason_code: 'display_request_failed',
     })),
   }
 }
 
-export function useMarketData(enabled: boolean, pollKey = 0): MarketDataState {
+/** Load cache-backed market display data when telemetry publishes a new revision. */
+export function useMarketData(enabled: boolean, collectionRevision: number | null, configuredSymbols: readonly string[] | null = null): MarketDataState {
   const [data, setData] = useState<MarketResponse | null>(null)
   const [isLoading, setIsLoading] = useState(enabled)
   const dataRef = useRef<MarketResponse | null>(null)
-  // eslint-disable-next-line react-hooks/refs -- Poll fallback needs the latest committed market payload without resubscribing the interval.
-  dataRef.current = data
 
   useEffect(() => {
-    if (!enabled) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Disabled is an explicit external lifecycle state.
+    dataRef.current = data
+  }, [data])
+
+  useEffect(() => {
+    if (!enabled || collectionRevision === null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Disabled and missing telemetry revision are explicit lifecycle resets.
       setData(null)
       setIsLoading(false)
       return
     }
-
-    let cancelled = false
+    const controller = new AbortController()
     setIsLoading(true)
-
-    const pollMarket = async (): Promise<void> => {
+    void (async (): Promise<void> => {
       try {
-        const response = await fetch(MARKET_ENDPOINT)
-
-        if (cancelled) {
-          return
-        }
-
-        if (!response.ok) {
-          if (dataRef.current) {
-            setData(toStaleFallback(dataRef.current))
-          }
-          return
-        }
-
-        let body: unknown = null
-        try {
-          body = await response.json()
-        } catch {
-          if (!cancelled) {
-            if (dataRef.current) {
-              setData(toStaleFallback(dataRef.current))
-            }
-          }
-          return
-        }
-
-        const parsed = parseMarketResponse(body)
-        if (cancelled || !parsed) {
-          if (!cancelled) {
-            if (dataRef.current) {
-              setData(toStaleFallback(dataRef.current))
-            }
-          }
-          return
-        }
-
-        setData(parsed)
+        const response = await fetch(MARKET_ENDPOINT, { signal: controller.signal })
+        const parsed = response.ok ? parseResponse(await response.json()) : null
+        if (controller.signal.aborted) return
+        if (parsed) setData(parsed)
+        else if (dataRef.current) setData(staleFallback(dataRef.current))
       } catch {
-        if (!cancelled) {
-          if (dataRef.current) {
-            setData(toStaleFallback(dataRef.current))
-          }
-        }
+        if (!controller.signal.aborted && dataRef.current) setData(staleFallback(dataRef.current))
       } finally {
-        if (!cancelled) {
-          setIsLoading(false)
-        }
+        if (!controller.signal.aborted) setIsLoading(false)
       }
-    }
+    })()
+    return () => controller.abort()
+  }, [enabled, collectionRevision])
 
-    void pollMarket()
+  const displayData = useMemo(() => {
+    if (!data || configuredSymbols === null) return data
+    const tickers = data.tickers.filter((ticker) => configuredSymbols.includes(ticker.symbol))
+    return tickers.length === data.tickers.length ? data : { ...data, tickers }
+  }, [configuredSymbols, data])
 
-    const intervalId = window.setInterval(() => {
-      void pollMarket()
-    }, MARKET_POLL_INTERVAL_MS)
-
-    return () => {
-      cancelled = true
-      window.clearInterval(intervalId)
-    }
-  }, [enabled, pollKey])
-
-  return { data, isLoading }
+  return { data: displayData, isLoading }
 }

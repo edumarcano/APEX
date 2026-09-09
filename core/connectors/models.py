@@ -18,6 +18,7 @@ CONNECTOR_NAMES = (
     "f1",
     "football",
     "reminders",
+    "market",
 )
 
 EXTERNAL_CONNECTOR_NAMES = tuple(
