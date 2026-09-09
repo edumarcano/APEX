@@ -23,12 +23,10 @@ load_dotenv()
 
 _MARKET_LOCK = threading.Lock()
 _CACHE_FILENAME = ".market_cache.json"
-_CACHE_VERSION = 2
+_CACHE_VERSION = 3
 _ALPHA_VANTAGE_BASE = "https://www.alphavantage.co/query"
-_REQUEST_TIMEOUT_SECONDS = 2.5
-_MARKET_TTL = timedelta(hours=12)
-_COOLDOWN_DURATION = timedelta(minutes=15)
-_SYMBOL_COOLDOWN_DURATION = timedelta(minutes=15)
+_REQUEST_TIMEOUT_SECONDS = 10.0
+_MAX_FAILURE_BACKOFF_DAYS = 8
 _DISPLAY_HISTORY_LENGTH = 20
 _MAX_HISTORY_LENGTH = 100
 
@@ -67,7 +65,52 @@ def _parse_float(value: object) -> float | None:
 
 
 def _empty_cache() -> dict[str, Any]:
-    return {"version": _CACHE_VERSION, "cooldown_until": None, "collection_revision": 0, "symbols": {}}
+    return {
+        "version": _CACHE_VERSION,
+        "provider_next_attempt_date": None,
+        "collection_revision": 0,
+        "symbols": {},
+    }
+
+
+def _parse_date(raw: object) -> date | None:
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+def _utc_today() -> date:
+    return _now_utc().date()
+
+
+def _date_from_timestamp(raw: object) -> str | None:
+    parsed = _parse_iso(raw)
+    return parsed.date().isoformat() if parsed is not None else None
+
+
+def _normalize_cache_entry(raw: object) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    entry = dict(raw)
+    successful_date = _parse_date(entry.get("last_successful_fetch_date"))
+    if successful_date is None:
+        derived = _date_from_timestamp(entry.get("market_fetched_at"))
+        if derived is not None:
+            entry["last_successful_fetch_date"] = derived
+    attempt_date = _parse_date(entry.get("last_attempt_date"))
+    if attempt_date is None and _parse_date(entry.get("last_successful_fetch_date")) is not None:
+        entry["last_attempt_date"] = entry["last_successful_fetch_date"]
+    failures = entry.get("consecutive_failures")
+    entry["consecutive_failures"] = failures if isinstance(failures, int) and failures >= 0 else 0
+    if _parse_date(entry.get("next_attempt_date")) is None:
+        entry.pop("next_attempt_date", None)
+    if not isinstance(entry.get("last_error_code"), str):
+        entry.pop("last_error_code", None)
+    entry.pop("cooldown_until", None)
+    return entry
 
 
 def _read_cache() -> dict[str, Any]:
@@ -78,29 +121,36 @@ def _read_cache() -> dict[str, Any]:
         return _empty_cache()
     if not isinstance(raw, dict):
         return _empty_cache()
-    symbols = raw.get("symbols") if isinstance(raw.get("symbols"), dict) else {}
+    raw_symbols = raw.get("symbols") if isinstance(raw.get("symbols"), dict) else {}
+    symbols = {symbol: _normalize_cache_entry(entry) for symbol, entry in raw_symbols.items() if isinstance(symbol, str)}
     revision = raw.get("collection_revision")
     return {
         "version": _CACHE_VERSION,
-        "cooldown_until": raw.get("cooldown_until") if isinstance(raw.get("cooldown_until"), str) else None,
+        "provider_next_attempt_date": (
+            raw.get("provider_next_attempt_date")
+            if _parse_date(raw.get("provider_next_attempt_date")) is not None
+            else None
+        ),
         "collection_revision": revision if isinstance(revision, int) and revision >= 0 else 0,
         "symbols": symbols,
     }
 
 
-def _write_cache(cache: dict[str, Any]) -> None:
+def _write_cache(cache: dict[str, Any]) -> bool:
     path = _cache_path()
     temporary = path.with_suffix(".tmp")
     try:
         with temporary.open("w", encoding="utf-8") as handle:
             json.dump(cache, handle, separators=(",", ":"))
         temporary.replace(path)
+        return True
     except (OSError, TypeError) as exc:
         sys.stderr.write(f"[MARKET][CACHE] {exc}\n")
         try:
             temporary.unlink(missing_ok=True)
         except OSError:
             pass
+        return False
 
 
 def _configured_symbols() -> list[str] | None:
@@ -117,16 +167,59 @@ def _get_api_key() -> str | None:
     return raw.strip() if raw and raw.strip() else None
 
 
-def _is_fresh(raw: object, ttl: timedelta) -> bool:
-    parsed = _parse_iso(raw)
-    return parsed is not None and _now_utc() - parsed <= ttl
+def _successful_today(entry: dict[str, Any], today: date | None = None) -> bool:
+    return _parse_date(entry.get("last_successful_fetch_date")) == (today or _utc_today())
 
 
-def _cooldown_remaining(raw: object) -> int:
-    until = _parse_iso(raw)
-    if until is None:
-        return 0
-    return max(0, int((until - _now_utc()).total_seconds()))
+def _attempted_today(entry: dict[str, Any], today: date | None = None) -> bool:
+    return _parse_date(entry.get("last_attempt_date")) == (today or _utc_today())
+
+
+def _backoff_active(entry: dict[str, Any], today: date | None = None) -> bool:
+    next_attempt = _parse_date(entry.get("next_attempt_date"))
+    return next_attempt is not None and (today or _utc_today()) < next_attempt
+
+
+def _provider_backoff_active(cache: dict[str, Any], today: date | None = None) -> bool:
+    next_attempt = _parse_date(cache.get("provider_next_attempt_date"))
+    return next_attempt is not None and (today or _utc_today()) < next_attempt
+
+
+def _record_failure(entry: dict[str, Any], reason_code: str, today: date) -> None:
+    previous = entry.get("consecutive_failures")
+    failures = (previous if isinstance(previous, int) and previous >= 0 else 0) + 1
+    delay_days = min(2 ** (failures - 1), _MAX_FAILURE_BACKOFF_DAYS)
+    entry.update(
+        {
+            "last_attempt_date": today.isoformat(),
+            "consecutive_failures": failures,
+            "next_attempt_date": (today + timedelta(days=delay_days)).isoformat(),
+            "last_error_code": reason_code,
+        }
+    )
+
+
+def _record_success(entry: dict[str, Any], history: list[dict[str, Any]], today: date) -> None:
+    now_iso = _iso_utc()
+    last, prior = history[-1], history[-2]
+    entry.update(
+        {
+            "history": history,
+            "price": last["close"],
+            "change": last["close"] - prior["close"],
+            "change_percent": (
+                (last["close"] - prior["close"]) / prior["close"] * 100
+                if prior["close"]
+                else None
+            ),
+            "market_fetched_at": now_iso,
+            "last_successful_fetch_date": today.isoformat(),
+            "last_attempt_date": today.isoformat(),
+            "consecutive_failures": 0,
+            "next_attempt_date": None,
+            "last_error_code": None,
+        }
+    )
 
 
 def _alpha_vantage_get(params: dict[str, str]) -> tuple[dict[str, Any] | None, str | None]:
@@ -139,14 +232,35 @@ def _alpha_vantage_get(params: dict[str, str]) -> tuple[dict[str, Any] | None, s
         payload = response.json()
     except requests.Timeout:
         return None, "timeout"
+    except requests.HTTPError as exc:
+        status_code = exc.response.status_code if exc.response is not None else None
+        if status_code in {401, 403}:
+            return None, "invalid_credentials"
+        if status_code == 429:
+            return None, "rate_limited"
+        return None, "provider_error" if status_code is not None and status_code >= 500 else "http_error"
+    except requests.ConnectionError:
+        return None, "connection_error"
     except requests.RequestException:
         return None, "http_error"
     except ValueError:
         return None, "invalid_json"
     if not isinstance(payload, dict):
         return None, "invalid_payload"
-    if payload.get("Note") or payload.get("Information"):
-        return None, "rate_limited"
+    note = payload.get("Note")
+    information = payload.get("Information")
+    provider_message = note if isinstance(note, str) else information if isinstance(information, str) else ""
+    normalized_message = provider_message.casefold()
+    if provider_message:
+        if "25 requests per day" in normalized_message or "daily" in normalized_message and "limit" in normalized_message:
+            return None, "daily_rate_limit"
+        if any(fragment in normalized_message for fragment in ("rate limit", "call frequency", "api call volume")):
+            return None, "rate_limited"
+        if "api key" in normalized_message and any(fragment in normalized_message for fragment in ("invalid", "missing", "please claim")):
+            return None, "invalid_credentials"
+        return None, "provider_error"
+    if payload.get("Error Message"):
+        return None, "invalid_symbol"
     return payload, None
 
 
@@ -194,10 +308,11 @@ def _ticker_from_entry(symbol: str, entry: dict[str, Any], *, fetched_live: bool
     status, freshness = "unavailable", "none"
     if len(bars) >= 2:
         status, freshness = "healthy", ("live" if fetched_live else "fresh_cache")
-        if not _is_fresh(entry.get("market_fetched_at"), _MARKET_TTL):
+        if not fetched_live and not _successful_today(entry):
             status, freshness = "degraded", "stale"
     elif _usable_entry(entry):
         status, freshness = "degraded", "stale"
+    last_error = entry.get("last_error_code") if isinstance(entry.get("last_error_code"), str) else None
     period_return = low = high = volume_ratio = None
     if len(bars) >= 2 and close is not None:
         first_close = _parse_float(bars[0].get("close"))
@@ -215,9 +330,12 @@ def _ticker_from_entry(symbol: str, entry: dict[str, Any], *, fetched_live: bool
             volume_ratio = latest_volume / average
     return {
         "symbol": symbol, "status": status, "freshness": freshness,
-        "reason_code": "ok" if status == "healthy" else ("stale_cache" if status == "degraded" else "unavailable"),
+        "reason_code": "ok" if status == "healthy" else (last_error or ("stale_cache" if status == "degraded" else "unavailable")),
         "observed_at": entry.get("market_fetched_at") if isinstance(entry.get("market_fetched_at"), str) else None,
         "close_date": bars[-1].get("date") if bars else None,
+        "last_successful_fetch_date": entry.get("last_successful_fetch_date") if _parse_date(entry.get("last_successful_fetch_date")) is not None else None,
+        "last_attempt_date": entry.get("last_attempt_date") if _parse_date(entry.get("last_attempt_date")) is not None else None,
+        "next_attempt_date": entry.get("next_attempt_date") if _parse_date(entry.get("next_attempt_date")) is not None else None,
         "price": close, "change": change, "change_percent": change_percent, "history": bars,
         "period_return_percent": period_return, "period_low": low, "period_high": high, "volume_ratio": volume_ratio,
     }
@@ -237,11 +355,28 @@ def _build_snapshot(cache: dict[str, Any], symbols: list[str], *, fetched_live: 
             freshness = "live" if entries and all(entry["freshness"] == "live" for entry in entries) else "fresh_cache"
         elif usable:
             status = "degraded"
-            freshness = "stale" if any(entry["freshness"] == "stale" for entry in usable) else "live"
-            reason_code = "partial_data"
+            if any(entry["freshness"] == "stale" for entry in usable):
+                freshness = "stale"
+            elif any(entry["freshness"] == "live" for entry in usable):
+                freshness = "live"
+            else:
+                freshness = "fresh_cache"
+            specific_reason = next(
+                (
+                    entry["reason_code"]
+                    for entry in entries
+                    if entry["reason_code"] not in {"ok", "unavailable", "stale_cache"}
+                ),
+                None,
+            )
+            reason_code = specific_reason or (reason_code if reason_code != "ok" else "partial_data")
         else:
             status, freshness = "unavailable", "none"
-            reason_code = reason_code if reason_code != "ok" else "unavailable"
+            specific_reason = next(
+                (entry["reason_code"] for entry in entries if entry["reason_code"] != "unavailable"),
+                None,
+            )
+            reason_code = specific_reason or (reason_code if reason_code != "ok" else "unavailable")
     return {"status": status, "freshness": freshness, "reason_code": reason_code, "observed_at": _iso_utc(), "collection_revision": cache["collection_revision"], "tickers": entries}
 
 
@@ -280,32 +415,54 @@ def refresh_market_data() -> dict[str, Any]:
         entries: dict[str, Any] = cache["symbols"]
         fetched_live: set[str] = set()
         reason_code = "ok"
-        global_cooldown = _cooldown_remaining(cache.get("cooldown_until")) > 0
+        today = _utc_today()
+        provider_backoff = _provider_backoff_active(cache, today)
         for symbol in symbols:
             entry = entries.get(symbol)
             if not isinstance(entry, dict):
                 entry = {}
                 entries[symbol] = entry
-            if _is_fresh(entry.get("market_fetched_at"), _MARKET_TTL):
+            if _successful_today(entry, today) or _attempted_today(entry, today) or _backoff_active(entry, today):
                 continue
-            if global_cooldown or _cooldown_remaining(entry.get("cooldown_until")) > 0:
-                reason_code = "cooldown"
+            if provider_backoff:
+                reason_code = "provider_backoff"
+                continue
+            previous_attempt_date = entry.get("last_attempt_date")
+            entry["last_attempt_date"] = today.isoformat()
+            if not _write_cache(cache):
+                if previous_attempt_date is None:
+                    entry.pop("last_attempt_date", None)
+                else:
+                    entry["last_attempt_date"] = previous_attempt_date
+                reason_code = "cache_write_error"
                 continue
             payload, error = _alpha_vantage_get({"function": "TIME_SERIES_DAILY", "symbol": symbol, "apikey": api_key})
             if error:
                 reason_code = error
-                cache["cooldown_until"] = _iso_utc(_now_utc() + _COOLDOWN_DURATION)
-                global_cooldown = True
+                _record_failure(entry, error, today)
+                if error in {
+                    "connection_error",
+                    "daily_rate_limit",
+                    "http_error",
+                    "invalid_credentials",
+                    "invalid_json",
+                    "invalid_payload",
+                    "provider_error",
+                    "rate_limited",
+                    "timeout",
+                }:
+                    cache["provider_next_attempt_date"] = (today + timedelta(days=1)).isoformat()
+                    provider_backoff = True
                 continue
             history = _parse_daily_history(payload or {})
             if history is None:
                 reason_code = "invalid_series"
-                entry["cooldown_until"] = _iso_utc(_now_utc() + _SYMBOL_COOLDOWN_DURATION)
+                _record_failure(entry, reason_code, today)
                 continue
-            now_iso = _iso_utc()
-            last, prior = history[-1], history[-2]
-            entry.update({"history": history, "price": last["close"], "change": last["close"] - prior["close"], "change_percent": ((last["close"] - prior["close"]) / prior["close"] * 100 if prior["close"] else None), "market_fetched_at": now_iso})
+            _record_success(entry, history, today)
             fetched_live.add(symbol)
+        if not provider_backoff:
+            cache["provider_next_attempt_date"] = None
         cache["collection_revision"] += 1
         _write_cache(cache)
         return _build_snapshot(cache, symbols, fetched_live=fetched_live, reason_code=reason_code)

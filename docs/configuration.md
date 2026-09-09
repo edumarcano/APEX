@@ -72,4 +72,4 @@ Personal context is off by default for both runtimes. Sandbox mode is available 
 
 # Market data
 
-Enable `features.market`, add one to eight `market.symbols`, and place `ALPHA_VANTAGE_API_KEY` in `.env`. Market reads daily closing data and refreshes the provider cache no more often than every 12 hours. An enabled connector without symbols or an API key reports unavailable in Sync Health but does not prevent APEX activation.
+Enable `features.market`, add one to eight `market.symbols`, and place `ALPHA_VANTAGE_API_KEY` in `.env`. Market reads daily closing data, and each symbol can contact Alpha Vantage at most once per UTC calendar day. A successful response remains fresh cached data for that UTC day even when the latest close came from an earlier trading day. Failed symbols retry on a later date with exponential backoff. An enabled connector without symbols or an API key reports unavailable in Sync Health but does not prevent APEX activation.

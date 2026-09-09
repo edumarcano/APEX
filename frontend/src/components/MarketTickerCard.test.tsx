@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { MarketTickerCard } from './MarketTickerCard'
 
-const ticker = { symbol: 'SPY', status: 'healthy' as const, freshness: 'live' as const, reason_code: 'ok', observed_at: null, close_date: '2026-09-08', price: 500, change: 1, change_percent: 0.2, history: [{ date: '2026-09-05', open: 499, high: 501, low: 498, close: 499, volume: 10 }, { date: '2026-09-08', open: 500, high: 502, low: 499, close: 500, volume: 12 }], period_return_percent: 0.2, period_low: 498, period_high: 502, volume_ratio: 1.2 }
+const ticker = { symbol: 'SPY', status: 'healthy' as const, freshness: 'live' as const, reason_code: 'ok', observed_at: null, close_date: '2026-09-08', last_successful_fetch_date: '2026-09-09', last_attempt_date: '2026-09-09', next_attempt_date: null, price: 500, change: 1, change_percent: 0.2, history: [{ date: '2026-09-05', open: 499, high: 501, low: 498, close: 499, volume: 10 }, { date: '2026-09-08', open: 500, high: 502, low: 499, close: 500, volume: 12 }], period_return_percent: 0.2, period_low: 498, period_high: 502, volume_ratio: 1.2 }
 
 describe('MarketTickerCard', () => {
   it('renders disabled and unconfigured states', () => {
@@ -28,6 +28,14 @@ describe('MarketTickerCard', () => {
     fireEvent.focus(screen.getByRole('button', { name: /S0/i }))
     expect(screen.getByRole('tooltip')).toHaveTextContent('Period return')
     expect(screen.getByRole('tooltip')).toHaveTextContent('Close date')
+  })
+
+  it('shows sanitized failure and retry details for an unavailable symbol', () => {
+    const failed = { ...ticker, symbol: 'SPCX', status: 'unavailable' as const, freshness: 'none' as const, reason_code: 'daily_rate_limit', price: null, history: [], next_attempt_date: '2026-09-11' }
+    render(<MarketTickerCard data={{ status: 'degraded', freshness: 'fresh_cache', reason_code: 'daily_rate_limit', observed_at: null, collection_revision: 2, tickers: [ticker, failed] }} enabled />)
+    fireEvent.focus(screen.getByRole('button', { name: /SPCX/i }))
+    expect(screen.getByRole('tooltip')).toHaveTextContent('daily rate limit')
+    expect(screen.getByRole('tooltip')).toHaveTextContent('2026-09-11')
   })
 
   it.each([

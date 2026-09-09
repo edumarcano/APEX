@@ -195,6 +195,9 @@ class ExtractedRouterHttpTests(unittest.TestCase):
                     "reason_code": "ok",
                     "observed_at": "2026-07-13T12:00:00+00:00",
                     "close_date": "2026-07-13",
+                    "last_successful_fetch_date": None,
+                    "last_attempt_date": None,
+                    "next_attempt_date": None,
                     "history": [
                         {"date": "2026-07-11", "open": 518.0, "high": 520.0, "low": 517.0, "close": 518.5, "volume": 100.0},
                         {"date": "2026-07-13", "open": 519.0, "high": 521.0, "low": 518.0, "close": 520.0, "volume": 110.0},

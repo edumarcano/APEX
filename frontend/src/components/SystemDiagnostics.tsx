@@ -7,6 +7,7 @@ import {
   Cpu,
   Globe,
   HardDrive,
+  LineChart,
   Mail,
   MemoryStick,
   Newspaper,
@@ -54,6 +55,7 @@ const CONNECTOR_LABELS: Record<string, string> = {
   sports_f1: 'Formula 1',
   sports_football: 'Football',
   reminders: 'Reminders',
+  market: 'Market',
 }
 
 const CONNECTOR_ICONS: Record<string, LucideIcon> = {
@@ -64,6 +66,7 @@ const CONNECTOR_ICONS: Record<string, LucideIcon> = {
   f1: Trophy,
   football: Trophy,
   reminders: Bell,
+  market: LineChart,
 }
 
 function formatConnectorLabel(connectorId: string): string {
@@ -94,7 +97,14 @@ function getSafeErrorCategory(reasonCode: string | undefined): string | null {
     case 'connection_error':
       return 'Connection unavailable'
     case 'throttled':
+    case 'rate_limited':
+    case 'daily_rate_limit':
       return 'Rate limited'
+    case 'provider_backoff':
+      return 'Retry deferred'
+    case 'invalid_symbol':
+    case 'invalid_series':
+      return 'Symbol unavailable'
     case 'provider_error':
       return 'Provider error'
     case 'partial_failure':
@@ -102,6 +112,7 @@ function getSafeErrorCategory(reasonCode: string | undefined): string | null {
     case 'invalid_payload':
       return 'Partial data'
     case 'database_error':
+    case 'cache_write_error':
       return 'Local data error'
     default:
       return reasonCode && reasonCode !== 'ok' && reasonCode !== 'disabled'

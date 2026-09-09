@@ -28,6 +28,10 @@ function formatPercent(value: number | null): string {
   return `${value > 0 ? '+' : ''}${value.toFixed(2)}%`
 }
 
+function formatReason(value: string): string {
+  return value.replaceAll('_', ' ')
+}
+
 function trend(ticker: MarketTickerItem): 'positive' | 'negative' | 'neutral' {
   if (ticker.period_return_percent === null || ticker.period_return_percent === 0) return 'neutral'
   return ticker.period_return_percent > 0 ? 'positive' : 'negative'
@@ -57,7 +61,7 @@ function Sparkline({ ticker, dense = false }: { ticker: MarketTickerItem; dense?
 }
 
 function DetailPopover({ ticker, anchor, onClose }: { ticker: MarketTickerItem; anchor: DOMRect; onClose: () => void }): ReactElement {
-  const style: CSSProperties = { left: Math.max(8, Math.min(anchor.left, window.innerWidth - 230)), top: Math.min(anchor.bottom + 8, window.innerHeight - 170), width: 222 }
+  const style: CSSProperties = { left: Math.max(8, Math.min(anchor.left, window.innerWidth - 230)), top: Math.max(8, Math.min(anchor.bottom + 8, window.innerHeight - 230)), width: 222 }
   useEffect(() => {
     const dismiss = (event: KeyboardEvent): void => { if (event.key === 'Escape') onClose() }
     window.addEventListener('keydown', dismiss)
@@ -71,6 +75,9 @@ function DetailPopover({ ticker, anchor, onClose }: { ticker: MarketTickerItem; 
       <dt className="text-zinc-500">Volume</dt><dd className="text-right text-zinc-200">{ticker.volume_ratio === null ? '—' : `${ticker.volume_ratio.toFixed(2)}× avg`}</dd>
       <dt className="text-zinc-500">Close date</dt><dd className="text-right text-zinc-200">{ticker.close_date ?? '—'}</dd>
       <dt className="text-zinc-500">Freshness</dt><dd className="text-right text-zinc-200">{ticker.freshness.replace('_', ' ')}</dd>
+      {ticker.reason_code !== 'ok' ? <><dt className="text-zinc-500">Last result</dt><dd className="text-right text-zinc-200">{formatReason(ticker.reason_code)}</dd></> : null}
+      {ticker.last_attempt_date ? <><dt className="text-zinc-500">Last attempt</dt><dd className="text-right text-zinc-200">{ticker.last_attempt_date}</dd></> : null}
+      {ticker.next_attempt_date ? <><dt className="text-zinc-500">Next retry</dt><dd className="text-right text-zinc-200">{ticker.next_attempt_date}</dd></> : null}
     </dl>
   </div>
 }

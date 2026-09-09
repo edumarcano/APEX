@@ -996,6 +996,18 @@ class MarketTickerItem(BaseModel):
     reason_code: str = "ok"
     observed_at: str | None = None
     close_date: str | None = Field(default=None, description="Trading date for the displayed close.")
+    last_successful_fetch_date: str | None = Field(
+        default=None,
+        description="UTC calendar date of the last successful provider request.",
+    )
+    last_attempt_date: str | None = Field(
+        default=None,
+        description="UTC calendar date of the last provider request attempt.",
+    )
+    next_attempt_date: str | None = Field(
+        default=None,
+        description="Earliest UTC calendar date allowed by failure backoff.",
+    )
     history: list[MarketDailyBar] = Field(default_factory=list, max_length=20)
     period_return_percent: float | None = None
     period_low: float | None = None

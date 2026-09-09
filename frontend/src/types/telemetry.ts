@@ -441,6 +441,9 @@ export interface MarketTickerItem {
   reason_code: string
   observed_at: string | null
   close_date: string | null
+  last_successful_fetch_date: string | null
+  last_attempt_date: string | null
+  next_attempt_date: string | null
   history: MarketDailyBar[]
   period_return_percent: number | null
   period_low: number | null
