@@ -1,8 +1,8 @@
 import { Loader2 } from 'lucide-react'
 import { useCallback, useState, type ReactElement } from 'react'
 
-import type { AgentStatus } from '../types/telemetry'
-import { agentShortName, providerDisplayName } from '../lib/agents'
+import type { ModelCatalogEntry } from '../types/telemetry'
+import { providerDisplayName } from '../lib/agents'
 
 function formatCountdown(seconds: number | null): string {
   if (seconds === null) return '--:--'
@@ -10,30 +10,29 @@ function formatCountdown(seconds: number | null): string {
   return `${String(Math.floor(safe / 60)).padStart(2, '0')}:${String(safe % 60).padStart(2, '0')}`
 }
 
-function localRuntimeLabel(agent: AgentStatus, runtimeState: string): string {
+function localRuntimeLabel(model: ModelCatalogEntry, runtimeState: string): string {
   const modelName =
-    agent.loaded_model?.name ??
-    agent.loaded_model?.model ??
-    agent.configured_model ??
-    agentShortName(agent.display_name)
+    model.loaded_model?.name ??
+    model.loaded_model?.model ??
+    model.model_id
   const parts = [
     modelName,
-    providerDisplayName(agent.loaded_model?.provider ?? agent.provider),
+    providerDisplayName(model.loaded_model?.provider ?? model.provider),
     runtimeState,
   ]
   return parts.join(' · ')
 }
 
 export function LocalModelControl({
-  agent,
-  loadingAgent,
+  model,
+  loadingModel,
   busy,
   onUnload,
   presentation = 'default',
   className,
 }: {
-  agent: AgentStatus | null
-  loadingAgent: AgentStatus | null
+  model: ModelCatalogEntry | null
+  loadingModel: ModelCatalogEntry | null
   busy: boolean
   onUnload: () => Promise<boolean>
   presentation?: 'default' | 'rail'
@@ -41,32 +40,31 @@ export function LocalModelControl({
 }): ReactElement | null {
   const [unloading, setUnloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const visibleAgent = loadingAgent ?? agent
-  const loading = loadingAgent !== null
+  const visibleModel = loadingModel ?? model
+  const loading = loadingModel !== null
 
   const handleUnload = useCallback(async (): Promise<void> => {
-    if (!agent || loading || busy || unloading) return
+    if (!model || loading || busy || unloading) return
     setUnloading(true)
     setError(null)
     const succeeded = await onUnload()
     if (!succeeded) setError('Unload failed')
     setUnloading(false)
-  }, [agent, loading, busy, unloading, onUnload])
+  }, [model, loading, busy, unloading, onUnload])
 
-  if (!visibleAgent) return null
+  if (!visibleModel) return null
 
   const modelName =
-    visibleAgent.loaded_model?.name ??
-    visibleAgent.loaded_model?.model ??
-    visibleAgent.configured_model ??
-    visibleAgent.display_name
+    visibleModel.loaded_model?.name ??
+    visibleModel.loaded_model?.model ??
+    visibleModel.model_id
 
-  const disabled = loading || busy || unloading || agent === null
+  const disabled = loading || busy || unloading || model === null
   const stateText = loading
     ? 'Loading local model…'
     : busy
       ? 'In use · auto-unload paused'
-      : `Auto-unload in ${formatCountdown(agent?.idle_unload_remaining_seconds ?? null)}`
+      : `Auto-unload in ${formatCountdown(model?.idle_unload_remaining_seconds ?? null)}`
 
   if (presentation === 'rail') {
     const runtimeState = loading ? 'Loading' : busy ? 'In use' : unloading ? 'Unloading' : 'Loaded'
@@ -76,7 +74,7 @@ export function LocalModelControl({
         data-slot="home-local-runtime"
       >
         <span className="min-w-0 flex-1 font-mono text-[10px] text-orange-100 truncate">
-          {localRuntimeLabel(visibleAgent, runtimeState)}
+          {localRuntimeLabel(visibleModel, runtimeState)}
         </span>
         <button
           type="button"

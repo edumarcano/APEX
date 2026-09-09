@@ -265,36 +265,12 @@ export interface LocalLoadedModelStatus {
   expires_at: string | null
 }
 
-export interface AgentStatus {
+/** The singular native Agent response returned by `/api/v1/cortex/agent`. */
+export interface CortexAgent {
   key: AgentKey
-  description: string
-  configured_model: string
-  native_tools: Record<string, boolean>
   display_name: string
-  provider: CloudProvider | LocalRuntime
-  sort_order: number
-  capabilities: string[]
-  runtime: AgentRuntime
-  model_stability: AgentStability | null
-  reasoning_options?: CloudEffort[] | null
-  default_reasoning?: CloudEffort | null
-  context_window: number | null
-  context_window_options: number[] | null
-  context_window_high_resource_options: number[] | null
-  default_context_window: number | null
-  reasoning_mode: LocalReasoningMode | null
-  reasoning_mode_options: LocalReasoningMode[] | null
-  default_reasoning_mode: LocalReasoningMode | null
-  status: AgentAvailabilityStatus
-  status_source: AgentStatusSource
-  status_checked_at: string | null
-  provider_account_tier: string | null
-  pricing: AgentPricingMetadata
-  active: boolean
-  loading: boolean
-  reason: string | null
-  idle_unload_remaining_seconds: number | null
-  loaded_model: LocalLoadedModelStatus | null
+  description: string
+  selected_model: string
   model_catalog: ModelCatalogEntry[]
 }
 

@@ -10,7 +10,6 @@ import {
 import { CircleAlert, Loader2, Send } from 'lucide-react'
 
 import type {
-  AgentStatus,
   AgentKey,
   ModelCatalogEntry,
   ToolCatalog,
@@ -70,7 +69,6 @@ export interface AgentQueryBarProps {
     selectedToolNames: string[],
     toolProfileId: string | null,
   ) => Promise<boolean>
-  agentsStatus: AgentStatus[]
   catalog: ToolCatalog | null
   selectedToolNames: string[]
   activeToolProfileId: string | null

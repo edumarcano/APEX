@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 
 import {
   AGENT_KEYS,
-  canVerifyCloudProvider,
   formatContextWindowLabel,
   formatReasoningLabel,
   isAgentKey,
@@ -52,30 +51,6 @@ describe('agents helpers', () => {
     expect(usesSandboxHistory(false, true)).toBe(false)
     expect(usesSandboxHistory(true, false)).toBe(false)
     expect(usesSandboxHistory(true, true)).toBe(true)
-  })
-
-  it('allows cloud verification only for an enabled cloud model', () => {
-    expect(
-      canVerifyCloudProvider({
-        key: 'apex',
-        runtime: 'cloud',
-        status: 'configured',
-      }),
-    ).toBe(true)
-    expect(
-      canVerifyCloudProvider({
-        key: 'apex',
-        runtime: 'cloud',
-        status: 'disabled',
-      }),
-    ).toBe(false)
-    expect(
-      canVerifyCloudProvider({
-        key: 'apex',
-        runtime: 'local',
-        status: 'available',
-      }),
-    ).toBe(false)
   })
 
   it('uses briefing targets as the sole source of model-mode availability', () => {

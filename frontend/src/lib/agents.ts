@@ -3,7 +3,6 @@ import type {
   AgentAvailabilityStatus,
   AgentKey,
   AgentStability,
-  AgentStatus,
   BriefingTargetStatus,
   CloudEffort,
   HostedTool,
@@ -20,22 +19,6 @@ export function agentShortName(displayName: string): string {
 /** True for any selectable Cortex Agent key. */
 export function isAgentKey(value: unknown): value is AgentKey {
   return value === 'apex'
-}
-
-/** True when the operator may switch HUD focus to this Agent identity. */
-export function isAgentIdentitySelectable(_agent: Pick<AgentStatus, 'key'>): boolean {
-  return isAgentKey(_agent.key)
-}
-
-/** True when the selected model's cloud provider can run verification. */
-export function canVerifyCloudProvider(
-  agent: Pick<AgentStatus, 'key' | 'runtime' | 'status'>,
-): boolean {
-  return agent.runtime === 'cloud' && agent.status !== 'disabled'
-}
-
-export function isLocalAgentStatus(agent: Pick<AgentStatus, 'runtime'>): boolean {
-  return agent.runtime === 'local'
 }
 
 export function providerDisplayName(provider: string | null | undefined): string {
@@ -106,13 +89,6 @@ export function formatReasoningLabel(option: string | null | undefined): string 
     default:
       return option.charAt(0).toUpperCase() + option.slice(1)
   }
-}
-
-export function resolveModelCatalog(
-  agentStatus: AgentStatus | undefined,
-): ModelCatalogEntry[] {
-  if (!agentStatus?.model_catalog) return []
-  return agentStatus.model_catalog
 }
 
 export function findModelCatalogEntry(

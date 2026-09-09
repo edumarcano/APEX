@@ -15,11 +15,11 @@ import { useState, type ReactElement } from 'react'
 
 import type { UseCortexRunsResult } from '../hooks/useCortexRuns'
 import type { RunStatus } from '../types/runs'
-import type { AgentStatus } from '../types/telemetry'
+import type { ModelCatalogEntry } from '../types/telemetry'
 
 export interface CortexActivityProps {
   runsState: UseCortexRunsResult
-  agentsStatus?: AgentStatus[]
+  modelCatalog?: ModelCatalogEntry[]
   className?: string
 }
 
@@ -100,23 +100,19 @@ function LimitGauge({
   )
 }
 
-function findResidentLocalModel(agentsStatus: AgentStatus[]): { agent: AgentStatus; model: NonNullable<AgentStatus['model_catalog']>[number] } | null {
-  for (const agent of agentsStatus) {
-    const active = agent.model_catalog?.find((m) => m.runtime === 'local' && m.active)
-    if (active) return { agent, model: active }
-  }
-  return null
+function findResidentLocalModel(modelCatalog: ModelCatalogEntry[]): ModelCatalogEntry | null {
+  return modelCatalog.find((model) => model.runtime === 'local' && model.active) ?? null
 }
 
 export function CortexActivity({
   runsState,
-  agentsStatus = [],
+  modelCatalog = [],
   className = '',
 }: CortexActivityProps): ReactElement {
   const { runs, selectedRunId, selectedRun, selectRun, refreshRuns, loading } = runsState
   const [copied, setCopied] = useState(false)
 
-  const residentLocalModel = findResidentLocalModel(agentsStatus)
+  const residentLocalModel = findResidentLocalModel(modelCatalog)
 
   const handleCopyId = async (id: string): Promise<void> => {
     try {
@@ -416,11 +412,11 @@ export function CortexActivity({
             </span>
           </div>
           <span className="block font-semibold text-xs text-orange-100 truncate">
-            {residentLocalModel.model.model_id}
+            {residentLocalModel.model_id}
           </span>
-          {residentLocalModel.model.idle_unload_remaining_seconds != null && (
+          {residentLocalModel.idle_unload_remaining_seconds != null && (
             <span className="text-[10px] text-orange-200/60 block">
-              Idle unload in {residentLocalModel.model.idle_unload_remaining_seconds}s
+              Idle unload in {residentLocalModel.idle_unload_remaining_seconds}s
             </span>
           )}
         </div>
