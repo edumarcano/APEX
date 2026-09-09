@@ -43,8 +43,8 @@ class KnowledgeStoreTests(unittest.TestCase):
         try:
             with conn:
                 version = conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()
-                self.assertEqual(version[0], 4)
-                conn.execute("UPDATE schema_versions SET version = 5 WHERE domain = 'knowledge'")
+                self.assertEqual(version[0], 5)
+                conn.execute("UPDATE schema_versions SET version = 6 WHERE domain = 'knowledge'")
         finally:
             conn.close()
         with self.assertRaises(KnowledgeStoreError):
@@ -70,6 +70,7 @@ class KnowledgeStoreTests(unittest.TestCase):
         self.assertEqual(detail.source_links[0].source.occurred_at, "2026-09-09T12:00:00+00:00")
         self.assertEqual(detail.source_links[0].derivation, "model_interpretation")
         self.assertEqual([event.operation for event in detail.history], ["created", "source_linked"])
+        self.assertEqual(detail.history[1].source_id, source.id)
 
     def test_duplicate_evidence_keeps_each_claim_source_derivation(self) -> None:
         first, _, _ = self.store.apply_capture(

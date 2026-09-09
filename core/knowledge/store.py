@@ -30,7 +30,7 @@ _SOURCE_KINDS = {"conversation_message", "manual"}
 _SOURCE_ORIGINS = {"operator_input", "connected_service", "external_tool", "unknown"}
 _DERIVATIONS = {"direct", "model_interpretation", "unknown"}
 _PARTITIONS = {"production", "sandbox"}
-_KNOWLEDGE_SCHEMA_VERSION = 4
+_KNOWLEDGE_SCHEMA_VERSION = 5
 _SOURCE_SELECT = "id,kind,partition,locator,original_text,content_hash,created_at,origin,occurred_at"
 _RECORD_SELECT = (
     "id,partition,kind,text,status,subject_entity_id,predicate,object_entity_id,object_value,"
@@ -141,7 +141,7 @@ class KnowledgeStore:
                     conn.execute("ALTER TABLE entities ADD COLUMN merged_into_entity_id TEXT REFERENCES entities(id)")
                 version = int(row[0]) if row is not None else 0
                 if version < _KNOWLEDGE_SCHEMA_VERSION:
-                    self._migrate_to_v4(conn)
+                    self._migrate_to_v5(conn)
                 conn.execute(
                     "INSERT INTO schema_versions(domain, version) VALUES ('knowledge', ?) "
                     "ON CONFLICT(domain) DO UPDATE SET version = excluded.version",
@@ -207,7 +207,8 @@ class KnowledgeStore:
             """CREATE TABLE IF NOT EXISTS knowledge_history (
                 id TEXT PRIMARY KEY NOT NULL, record_id TEXT NOT NULL REFERENCES knowledge_records(id),
                 operation TEXT NOT NULL, actor TEXT NOT NULL, reason_code TEXT NOT NULL,
-                related_record_id TEXT REFERENCES knowledge_records(id), action_id TEXT, review_id TEXT, created_at TEXT NOT NULL
+                related_record_id TEXT REFERENCES knowledge_records(id), source_id TEXT REFERENCES knowledge_sources(id),
+                action_id TEXT, review_id TEXT, created_at TEXT NOT NULL
             )""",
             """CREATE TABLE IF NOT EXISTS knowledge_action_effects (
                 action_id TEXT PRIMARY KEY NOT NULL, record_id TEXT NOT NULL REFERENCES knowledge_records(id),
@@ -223,13 +224,13 @@ class KnowledgeStore:
             "CREATE INDEX IF NOT EXISTS idx_knowledge_records_object ON knowledge_records(partition, object_entity_id, status)",
             "CREATE INDEX IF NOT EXISTS idx_knowledge_record_sources_source ON knowledge_record_sources(source_id)",
             "CREATE INDEX IF NOT EXISTS idx_knowledge_predecessors_predecessor ON knowledge_record_predecessors(predecessor_record_id)",
-            "CREATE INDEX IF NOT EXISTS idx_knowledge_history_record ON knowledge_history(record_id, created_at, id)",
+            "CREATE INDEX IF NOT EXISTS idx_knowledge_history_record ON knowledge_history(record_id, created_at)",
         )
         for statement in statements:
             conn.execute(statement)
 
     @staticmethod
-    def _migrate_to_v4(conn: sqlite3.Connection) -> None:
+    def _migrate_to_v5(conn: sqlite3.Connection) -> None:
         source_columns = {str(column[1]) for column in conn.execute("PRAGMA table_info(knowledge_sources)")}
         if "origin" not in source_columns:
             conn.execute(
@@ -244,6 +245,9 @@ class KnowledgeStore:
                 "ALTER TABLE knowledge_record_sources ADD COLUMN derivation TEXT NOT NULL DEFAULT 'unknown' "
                 "CHECK(derivation IN ('direct', 'model_interpretation', 'unknown'))"
             )
+        history_columns = {str(column[1]) for column in conn.execute("PRAGMA table_info(knowledge_history)")}
+        if "source_id" not in history_columns:
+            conn.execute("ALTER TABLE knowledge_history ADD COLUMN source_id TEXT REFERENCES knowledge_sources(id)")
         now = utc_now_iso()
         conn.execute(
             "INSERT OR IGNORE INTO knowledge_record_predecessors(record_id,predecessor_record_id,relation,linked_at) "
@@ -256,7 +260,7 @@ class KnowledgeStore:
             ).fetchone()
             if exists is None:
                 conn.execute(
-                    "INSERT INTO knowledge_history VALUES (?, ?, 'baseline', 'system', 'migration_baseline', NULL, NULL, NULL, ?)",
+                    "INSERT INTO knowledge_history VALUES (?, ?, 'baseline', 'system', 'migration_baseline', NULL, NULL, NULL, NULL, ?)",
                     (str(uuid4()), str(record_id), now),
                 )
 
@@ -273,20 +277,21 @@ class KnowledgeStore:
         return KnowledgeHistoryEvent(
             id=UUID(str(row[0])), record_id=UUID(str(row[1])), operation=str(row[2]), actor=str(row[3]),
             reason_code=str(row[4]), related_record_id=UUID(str(row[5])) if row[5] else None,
-            action_id=str(row[6]) if row[6] else None, review_id=str(row[7]) if row[7] else None,
-            created_at=str(row[8]),
+            source_id=UUID(str(row[6])) if row[6] else None, action_id=str(row[7]) if row[7] else None,
+            review_id=str(row[8]) if row[8] else None, created_at=str(row[9]),
         )
 
     @staticmethod
     def _record_history(
         conn: sqlite3.Connection, *, record_id: UUID | str, operation: str, actor: str = "system",
         reason_code: str, related_record_id: UUID | str | None = None, action_id: str | None = None,
-        review_id: str | None = None, created_at: str,
+        source_id: UUID | str | None = None, review_id: str | None = None, created_at: str,
     ) -> None:
         conn.execute(
-            "INSERT INTO knowledge_history VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO knowledge_history VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (str(uuid4()), str(record_id), operation, actor, reason_code,
-             str(related_record_id) if related_record_id else None, action_id, review_id, created_at),
+             str(related_record_id) if related_record_id else None, str(source_id) if source_id else None,
+             action_id, review_id, created_at),
         )
 
     @staticmethod
@@ -564,7 +569,7 @@ class KnowledgeStore:
                 self._record_history(conn, record_id=predecessor_id, operation="superseded", reason_code="record_replacement", related_record_id=identifier, action_id=action_id, created_at=now)
             self._record_history(conn, record_id=identifier, operation="created", reason_code="record_created", action_id=action_id, created_at=now)
             for source_id in dict.fromkeys(source_ids):
-                self._record_history(conn, record_id=identifier, operation="source_linked", reason_code=derivations.get(source_id, "unknown"), action_id=action_id, created_at=now)
+                self._record_history(conn, record_id=identifier, operation="source_linked", reason_code=derivations.get(source_id, "unknown"), source_id=source_id, action_id=action_id, created_at=now)
             self._sync_retrieval(conn)
             row = conn.execute(f"SELECT {_RECORD_SELECT} FROM knowledge_records WHERE id = ?", (str(identifier),)).fetchone()
         assert row is not None
@@ -610,8 +615,8 @@ class KnowledgeStore:
                 (str(record_id),),
             ).fetchall()
             history = conn.execute(
-                "SELECT id,record_id,operation,actor,reason_code,related_record_id,action_id,review_id,created_at "
-                "FROM knowledge_history WHERE record_id=? ORDER BY created_at,id",
+                "SELECT id,record_id,operation,actor,reason_code,related_record_id,source_id,action_id,review_id,created_at "
+                "FROM knowledge_history WHERE record_id=? ORDER BY created_at,rowid",
                 (str(record_id),),
             ).fetchall()
         source_links = tuple(
@@ -843,7 +848,7 @@ class KnowledgeStore:
                 )
                 self._record_history(conn, record_id=target_id, operation="superseded", actor="operator", reason_code="record_correction", related_record_id=created.id, action_id=action_id, created_at=now)
                 self._record_history(conn, record_id=created.id, operation="created", actor="operator", reason_code="correction_created", related_record_id=target_id, action_id=action_id, created_at=now)
-                self._record_history(conn, record_id=created.id, operation="source_linked", actor="operator", reason_code="direct", action_id=action_id, created_at=now)
+                self._record_history(conn, record_id=created.id, operation="source_linked", actor="operator", reason_code="direct", source_id=source_id, action_id=action_id, created_at=now)
                 target_id, outcome = str(created.id), "corrected"
                 self._sync_retrieval(conn)
             else:
@@ -949,7 +954,7 @@ class KnowledgeStore:
                 (str(record.id), str(source.id), action_id, now, derivation),
             )
             if linked.rowcount:
-                self._record_history(conn, record_id=record.id, operation="source_linked", reason_code=derivation, action_id=action_id, created_at=now)
+                self._record_history(conn, record_id=record.id, operation="source_linked", reason_code=derivation, source_id=source.id, action_id=action_id, created_at=now)
             conn.execute("INSERT INTO knowledge_action_effects VALUES (?, ?, ?, ?, ?)", (action_id, str(record.id), str(source.id), outcome, now))
             if outcome == "created":
                 self._record_history(conn, record_id=record.id, operation="created", reason_code="capture_created", action_id=action_id, created_at=now)

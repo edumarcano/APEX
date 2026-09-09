@@ -44,6 +44,7 @@ export interface ContextHistoryEvent {
   actor: string
   reason_code: string
   related_record_id: string | null
+  source_id: string | null
   action_id: string | null
   review_id: string | null
   created_at: string

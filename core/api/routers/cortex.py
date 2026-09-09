@@ -266,6 +266,7 @@ def get_context_record(record_id: str) -> ContextRecordDetailResponse:
                     id=str(event.id), record_id=str(event.record_id), operation=event.operation,
                     actor=event.actor, reason_code=event.reason_code,
                     related_record_id=str(event.related_record_id) if event.related_record_id else None,
+                    source_id=str(event.source_id) if event.source_id else None,
                     action_id=event.action_id, review_id=event.review_id, created_at=event.created_at,
                 )
                 for event in detail.history

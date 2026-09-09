@@ -18,13 +18,14 @@ from core.retrieval.store import RetrievalStore
 
 
 class _ConversationStore:
-    def __init__(self, message_id, text: str) -> None:
+    def __init__(self, message_id, text: str, created_at: str = "2026-09-09T12:00:00+00:00") -> None:
         self.message_id = message_id
         self.text = text
+        self.created_at = created_at
 
     def detail(self, _conversation_id, _partition):
         return SimpleNamespace(messages=[SimpleNamespace(
-            id=self.message_id, role="user", status="completed", content=self.text,
+            id=self.message_id, role="user", status="completed", content=self.text, created_at=self.created_at,
         )])
 
 
@@ -78,6 +79,8 @@ class ContextCaptureTests(unittest.TestCase):
         self.assertEqual(len(records), 1)
         detail = self.knowledge.get_record(records[0].id, partition="production")
         self.assertEqual(detail.sources[0].original_text, "Keep the project plan concise.")
+        self.assertEqual(detail.source_links[0].source.occurred_at, "2026-09-09T12:00:00+00:00")
+        self.assertEqual(detail.source_links[0].derivation, "model_interpretation")
         self.assertIsNotNone(self.knowledge.capture_effect(action.action_id))
 
     def test_duplicate_confirms_existing_record_and_new_evidence(self) -> None:
@@ -110,10 +113,9 @@ class ContextCaptureTests(unittest.TestCase):
             "verified",
         )
         record = self.knowledge.list_records(partition="production")[0]
-        self.assertEqual(
-            self.knowledge.get_record(record.id, partition="production").sources[0].kind,
-            "manual",
-        )
+        source_link = self.knowledge.get_record(record.id, partition="production").source_links[0]
+        self.assertEqual(source_link.source.kind, "manual")
+        self.assertEqual(source_link.derivation, "direct")
         with self.assertRaises(HTTPException) as rejected:
             propose_context_capture(ContextCaptureRequest(kind="note", text="api_key=very-secret-value"))
         self.assertEqual(rejected.exception.status_code, 422)

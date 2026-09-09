@@ -499,6 +499,7 @@ class ContextHistoryResponse(BaseModel):
     actor: str
     reason_code: str
     related_record_id: str | None = None
+    source_id: str | None = None
     action_id: str | None = None
     review_id: str | None = None
     created_at: str

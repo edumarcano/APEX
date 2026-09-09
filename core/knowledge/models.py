@@ -37,6 +37,7 @@ class KnowledgeHistoryEvent:
     actor: str
     reason_code: str
     related_record_id: UUID | None
+    source_id: UUID | None
     action_id: str | None
     review_id: str | None
     created_at: str
