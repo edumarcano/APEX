@@ -13,6 +13,14 @@ describe('MarketTickerCard', () => {
     expect(screen.getByText('Add ticker symbols in Runtime Settings and define `ALPHA_VANTAGE_API_KEY` in `.env`.')).toBeVisible()
   })
 
+  it('shows loading instead of unavailable while telemetry is collecting', () => {
+    const { rerender } = render(<MarketTickerCard data={null} enabled isLoading />)
+    expect(screen.getByRole('status')).toHaveTextContent('Loading market telemetry…')
+    expect(screen.queryByText('Market telemetry is unavailable. Refresh telemetry to retry.')).not.toBeInTheDocument()
+    rerender(<MarketTickerCard data={null} enabled isLoading={false} />)
+    expect(screen.getByText('Market telemetry is unavailable. Refresh telemetry to retry.')).toBeVisible()
+  })
+
   it('renders all eight cells and accessible daily-close detail', () => {
     const data = { status: 'healthy' as const, freshness: 'live' as const, reason_code: 'ok', observed_at: null, collection_revision: 1, tickers: Array.from({ length: 8 }, (_, index) => ({ ...ticker, symbol: `S${index}` })) }
     render(<MarketTickerCard data={data} enabled />)
@@ -20,5 +28,19 @@ describe('MarketTickerCard', () => {
     fireEvent.focus(screen.getByRole('button', { name: /S0/i }))
     expect(screen.getByRole('tooltip')).toHaveTextContent('Period return')
     expect(screen.getByRole('tooltip')).toHaveTextContent('Close date')
+  })
+
+  it.each([
+    [5, 'sm:grid-cols-6', 'sm:col-span-3'],
+    [7, 'sm:grid-cols-12', 'sm:col-span-4'],
+  ])('fills the grid for %i symbols', (count, gridClass, finalRowClass) => {
+    const data = { status: 'healthy' as const, freshness: 'live' as const, reason_code: 'ok', observed_at: null, collection_revision: 1, tickers: Array.from({ length: count }, (_, index) => ({ ...ticker, symbol: `S${index}` })) }
+    render(<MarketTickerCard data={data} enabled />)
+    expect(screen.getByTestId('market-ticker-grid')).toHaveClass(gridClass)
+    const cells = screen.getAllByRole('button')
+    expect(cells).toHaveLength(count)
+    expect(cells[0]).toHaveClass('overflow-hidden', 'py-1')
+    expect(cells[0].querySelector('svg')).toHaveClass('h-3.5')
+    expect(cells[cells.length - 1]).toHaveClass('col-span-2', finalRowClass)
   })
 })

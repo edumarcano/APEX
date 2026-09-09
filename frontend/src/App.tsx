@@ -254,7 +254,7 @@ export default function App(): ReactElement {
   const marketRevision = typeof telemetry.snapshot?.modules.market?.data.collection_revision === 'number'
     ? telemetry.snapshot.modules.market.data.collection_revision
     : null
-  const { data: marketData, isLoading: isMarketLoading } = useMarketData(
+  const { data: marketData, isLoading: isMarketDisplayLoading } = useMarketData(
     marketEnabled && activated,
     marketRevision,
   )
@@ -574,6 +574,14 @@ export default function App(): ReactElement {
   const isRefreshingAll = telemetry.isRefreshingAll
   const isTelemetryCollecting =
     isRefreshingAll || telemetry.refreshingConnectors.size > 0
+  const isMarketTelemetryRefreshing =
+    isRefreshingAll || telemetry.refreshingConnectors.has('market')
+  const isMarketLoading =
+    isMarketDisplayLoading || (
+      marketEnabled &&
+      activated &&
+      isMarketTelemetryRefreshing
+    )
 
   const loadingLocalModel = useMemo(
     () => fullModelCatalog.find((model) => model.runtime === 'local' && model.loading) ?? null,

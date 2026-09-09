@@ -25,6 +25,9 @@ const appMocks = vi.hoisted(() => ({
   deleteReminderTask: vi.fn(),
   reopenReminderTask: vi.fn(),
   activate: vi.fn(),
+  marketEnabled: false,
+  telemetryRefreshingAll: false,
+  telemetryRefreshingConnectors: new Set<string>(),
   requestOperation: vi.fn().mockResolvedValue('proceed'),
   refreshAll: vi.fn().mockResolvedValue(null),
   refreshConnector: vi.fn().mockResolvedValue(undefined),
@@ -52,7 +55,11 @@ vi.mock('./components/CelestialBackground', () => ({ CelestialBackground: () => 
 vi.mock('./components/BriefingDigest', () => ({ BriefingDigest: () => null }))
 vi.mock('./components/CalendarEventList', () => ({ CalendarEventList: () => null }))
 vi.mock('./components/FootballFixtureList', () => ({ FootballFixtureList: () => null }))
-vi.mock('./components/MarketTickerCard', () => ({ MarketTickerCard: () => null }))
+vi.mock('./components/MarketTickerCard', () => ({
+  MarketTickerCard: ({ isLoading }: { isLoading?: boolean }) => (
+    <output data-testid="market-loading-state">{isLoading ? 'loading' : 'idle'}</output>
+  ),
+}))
 vi.mock('./components/PreflightDialog', () => ({ PreflightDialog: () => null }))
 vi.mock('./components/ReminderListRow', () => ({ ReminderListRow: () => null }))
 vi.mock('./components/ReminderQuickAdd', () => ({
@@ -195,7 +202,7 @@ vi.mock('./hooks/useApexData', () => ({
     demoModeActive: false,
     devModeActive: appMocks.devModeActive,
     agentQueriesEnabled: true,
-    marketEnabled: false,
+    marketEnabled: appMocks.marketEnabled,
     defaultAgent: 'apex' as AgentKey,
     agentInitialSelection: {
       runtime: 'cloud',
@@ -299,8 +306,8 @@ vi.mock('./hooks/useSystemDiagnostics', () => ({
 vi.mock('./hooks/useTelemetrySnapshot', () => ({
   useTelemetrySnapshot: () => ({
     snapshot: appMocks.weatherSnapshot,
-    isRefreshingAll: false,
-    refreshingConnectors: new Set<string>(),
+    isRefreshingAll: appMocks.telemetryRefreshingAll,
+    refreshingConnectors: appMocks.telemetryRefreshingConnectors,
     refreshAll: appMocks.refreshAll,
     refreshConnector: appMocks.refreshConnector,
     loadLatest: appMocks.loadLatest,
@@ -437,6 +444,9 @@ describe('App catalog-affecting settings', () => {
   afterEach(() => {
     appMocks.initialAgent = 'apex'
     appMocks.devModeActive = false
+    appMocks.marketEnabled = false
+    appMocks.telemetryRefreshingAll = false
+    appMocks.telemetryRefreshingConnectors = new Set<string>()
     appMocks.weatherSnapshot = null
     vi.restoreAllMocks()
   })
@@ -580,6 +590,30 @@ describe('App catalog-affecting settings', () => {
     await waitFor(() => {
       expect(screen.getByTestId('actions-pending-count')).toHaveTextContent('1')
     })
+  })
+})
+
+describe('App market loading feedback', () => {
+  afterEach(() => {
+    appMocks.marketEnabled = false
+    appMocks.telemetryRefreshingAll = false
+    appMocks.telemetryRefreshingConnectors = new Set<string>()
+  })
+
+  it('shows loading only while Market participates in telemetry refresh', () => {
+    appMocks.marketEnabled = true
+    appMocks.telemetryRefreshingAll = true
+    const { rerender } = render(<App />)
+    expect(screen.getByTestId('market-loading-state')).toHaveTextContent('loading')
+
+    appMocks.telemetryRefreshingAll = false
+    appMocks.telemetryRefreshingConnectors = new Set(['market'])
+    rerender(<App />)
+    expect(screen.getByTestId('market-loading-state')).toHaveTextContent('loading')
+
+    appMocks.telemetryRefreshingConnectors = new Set(['calendar'])
+    rerender(<App />)
+    expect(screen.getByTestId('market-loading-state')).toHaveTextContent('idle')
   })
 })
 
