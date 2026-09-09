@@ -29,6 +29,7 @@ const appMocks = vi.hoisted(() => ({
   activate: vi.fn(),
   activated: true,
   settingsPanelApplied: null as unknown,
+  marketSymbols: null as string[] | null,
   marketEnabled: false,
   telemetryRefreshingAll: false,
   telemetryRefreshingConnectors: new Set<string>(),
@@ -295,7 +296,10 @@ vi.mock('./hooks/useCortex', () => ({
   }),
 }))
 vi.mock('./hooks/useMarketData', () => ({
-  useMarketData: () => ({ data: null, isLoading: false }),
+  useMarketData: (_enabled: boolean, _revision: number | null, symbols: string[] | null) => {
+    appMocks.marketSymbols = symbols
+    return { data: null, isLoading: false }
+  },
 }))
 vi.mock('./hooks/usePreflight', () => ({
   usePreflight: () => ({
@@ -662,6 +666,7 @@ describe('App Market settings refresh', () => {
       await applySavedSettings(buildSettingsResponse(changedSymbols), baseline)
     })
     expect(appMocks.refreshConnector).toHaveBeenCalledWith('market', { force: true })
+    expect(appMocks.marketSymbols).toEqual(['SPY', 'AAPL'])
 
     const disabled = structuredClone(changedSymbols)
     disabled.features.market = false

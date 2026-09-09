@@ -256,12 +256,14 @@ export default function App(): ReactElement {
   const { activated, activate } = useAppActivation()
   const preflight = usePreflight()
   const telemetry = useTelemetrySnapshot()
+  const [marketSymbols, setMarketSymbols] = useState<readonly string[] | null>(null)
   const marketRevision = typeof telemetry.snapshot?.modules.market?.data.collection_revision === 'number'
     ? telemetry.snapshot.modules.market.data.collection_revision
     : null
   const { data: marketData, isLoading: isMarketDisplayLoading } = useMarketData(
     marketEnabled && activated,
     marketRevision,
+    marketSymbols,
   )
   const briefing = useBriefingPipeline()
   const voiceDelivery = useVoiceDelivery(
@@ -502,6 +504,9 @@ export default function App(): ReactElement {
   const handleSettingsPanelApplied = useCallback(
     async (response: SettingsResponse, previousSettings: RuntimeSettings) => {
       const shouldRefreshMarket = marketSettingsChanged(previousSettings, response.settings)
+      if (shouldRefreshMarket) {
+        setMarketSymbols(response.settings.market.symbols)
+      }
       handleSettingsApplied(response)
       if (activated && shouldRefreshMarket) {
         await telemetry.refreshConnector('market', { force: true })

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type {
   ConnectorFreshness,
@@ -89,7 +89,7 @@ function staleFallback(previous: MarketResponse): MarketResponse {
 }
 
 /** Load cache-backed market display data when telemetry publishes a new revision. */
-export function useMarketData(enabled: boolean, collectionRevision: number | null): MarketDataState {
+export function useMarketData(enabled: boolean, collectionRevision: number | null, configuredSymbols: readonly string[] | null = null): MarketDataState {
   const [data, setData] = useState<MarketResponse | null>(null)
   const [isLoading, setIsLoading] = useState(enabled)
   const dataRef = useRef<MarketResponse | null>(null)
@@ -123,5 +123,11 @@ export function useMarketData(enabled: boolean, collectionRevision: number | nul
     return () => controller.abort()
   }, [enabled, collectionRevision])
 
-  return { data, isLoading }
+  const displayData = useMemo(() => {
+    if (!data || configuredSymbols === null) return data
+    const tickers = data.tickers.filter((ticker) => configuredSymbols.includes(ticker.symbol))
+    return tickers.length === data.tickers.length ? data : { ...data, tickers }
+  }, [configuredSymbols, data])
+
+  return { data: displayData, isLoading }
 }

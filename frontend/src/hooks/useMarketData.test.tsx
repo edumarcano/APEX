@@ -41,4 +41,43 @@ describe('useMarketData', () => {
     expect(result.current.data?.status).toBe('degraded')
     expect(result.current.data?.freshness).toBe('stale')
   })
+
+  it('immediately hides removed symbols without adding unavailable saved symbols', async () => {
+    const marketResponse = {
+      ...RESPONSE,
+      tickers: [
+        RESPONSE.tickers[0],
+        { ...RESPONSE.tickers[0], symbol: 'AAPL' },
+      ],
+    }
+    vi.mocked(fetch).mockResolvedValueOnce(response(marketResponse))
+    const { result, rerender } = renderHook(
+      ({ symbols }: { symbols: readonly string[] | null }) => useMarketData(true, 1, symbols),
+      { initialProps: { symbols: null as readonly string[] | null } },
+    )
+    await act(async () => { await Promise.resolve() })
+    expect(result.current.data?.tickers.map((ticker) => ticker.symbol)).toEqual(['SPY', 'AAPL'])
+
+    rerender({ symbols: ['AAPL', 'QQQ'] })
+    expect(result.current.data?.tickers.map((ticker) => ticker.symbol)).toEqual(['AAPL'])
+  })
+
+  it('keeps removed symbols hidden when an in-flight cache read completes', async () => {
+    let resolveFetch!: (value: Response) => void
+    vi.mocked(fetch).mockImplementationOnce(() => new Promise<Response>((resolve) => {
+      resolveFetch = resolve
+    }))
+    const { result, rerender } = renderHook(
+      ({ symbols }: { symbols: readonly string[] | null }) => useMarketData(true, 1, symbols),
+      { initialProps: { symbols: ['SPY', 'AAPL'] as readonly string[] | null } },
+    )
+
+    rerender({ symbols: ['AAPL'] })
+    await act(async () => {
+      resolveFetch(response({ ...RESPONSE, tickers: [RESPONSE.tickers[0], { ...RESPONSE.tickers[0], symbol: 'AAPL' }] }))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(result.current.data?.tickers.map((ticker) => ticker.symbol)).toEqual(['AAPL'])
+  })
 })
