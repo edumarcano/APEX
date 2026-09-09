@@ -82,7 +82,6 @@ class GenAISpansTests(unittest.TestCase):
 
         limit_snapshot = RunLimitSnapshot(
             max_elapsed_seconds=300,
-            max_total_tokens=64000,
             max_retries=3,
             max_model_turns=5,
             max_tool_calls=8,
@@ -135,7 +134,7 @@ class GenAISpansTests(unittest.TestCase):
         self.assertEqual(attrs.get("apex.status"), "completed")
         self.assertEqual(attrs.get("apex.stop_reason"), "end_turn")
         self.assertEqual(attrs.get("apex.limit.max_elapsed_seconds"), 300)
-        self.assertEqual(attrs.get("apex.limit.max_total_tokens"), 64000)
+        self.assertNotIn("apex.limit.max_total_tokens", attrs)
         self.assertEqual(root_span.status.status_code, StatusCode.OK)
 
         # STRICT PRIVACY GUARANTEE: ensure no prompts, answers, or sensitive content

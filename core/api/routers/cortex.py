@@ -32,7 +32,6 @@ from core.config import (
     CORTEX_RUNS_MAX_MODEL_TURNS,
     CORTEX_RUNS_MAX_RETRIES,
     CORTEX_RUNS_MAX_TOOL_CALLS,
-    CORTEX_RUNS_MAX_TOTAL_TOKENS,
     is_dev_mode,
 )
 from core.api.cortex import (
@@ -715,15 +714,8 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
             agent_message_id=agent_message.id,
         )
         raise
-    effective_window = request_metadata.get("effective_context_window")
-    max_tokens = (
-        int(effective_window)
-        if isinstance(effective_window, (int, float)) and effective_window > 0
-        else CORTEX_RUNS_MAX_TOTAL_TOKENS
-    )
     limit_snapshot = RunLimitSnapshot(
         max_elapsed_seconds=CORTEX_RUNS_MAX_ELAPSED_SECONDS,
-        max_total_tokens=max_tokens,
         max_retries=CORTEX_RUNS_MAX_RETRIES,
         max_model_turns=CORTEX_RUNS_MAX_MODEL_TURNS,
         max_tool_calls=CORTEX_RUNS_MAX_TOOL_CALLS,

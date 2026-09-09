@@ -83,12 +83,21 @@ _OPAQUE_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_\-\.]{1,64}$")
 
 
 class RunLimitSnapshot(BaseModel):
-    """Immutable limit snapshot captured at run creation."""
+    """Immutable stop-limit snapshot captured at run creation.
+
+    ``max_total_tokens`` remains readable only for runs created before beta.3.
+    Token usage is cumulative accounting, not a run-stopping limit.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     max_elapsed_seconds: int = Field(ge=1)
-    max_total_tokens: int = Field(ge=1)
+    max_total_tokens: int | None = Field(
+        default=None,
+        ge=1,
+        description="Deprecated historical token ceiling; not enforced for new runs.",
+        json_schema_extra={"deprecated": True},
+    )
     max_retries: int = Field(ge=0)
     max_model_turns: int = Field(ge=1)
     max_tool_calls: int = Field(ge=1)

@@ -283,11 +283,6 @@ export function CortexActivity({
                       max={selectedRun.limit_snapshot.max_retries}
                     />
                     <LimitGauge
-                      label="Tokens"
-                      value={selectedRun.total_tokens}
-                      max={selectedRun.limit_snapshot.max_total_tokens}
-                    />
-                    <LimitGauge
                       label="Elapsed Time"
                       value={Math.round(selectedRun.elapsed_seconds)}
                       max={selectedRun.limit_snapshot.max_elapsed_seconds}

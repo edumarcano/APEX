@@ -52,7 +52,6 @@
   "cortex_runs": {
     "max_concurrent_runs": 2,
     "max_elapsed_seconds": 600,
-    "max_total_tokens": 128000,
     "max_retries": 4,
     "max_model_turns": 6,
     "max_tool_calls": 10,

@@ -264,8 +264,6 @@ class RunExecutionControl:
         self._check()
         if self.retries > self.limits.max_retries:
             raise ExecutionLimitReached("max_retries")
-        if self.tokens > self.limits.max_total_tokens:
-            raise ExecutionLimitReached("max_total_tokens")
 
     def before_tool(self) -> None:
         self._check()
@@ -553,7 +551,12 @@ class CortexRunCoordinator:
                 span_context.record_terminal(record, error_code="operator_cancelled")
                 return record
             except ExecutionLimitReached as exc:
-                code = {"max_elapsed_seconds": "timeout", "max_total_tokens": "token_limit", "max_model_turns": "turn_limit", "max_tool_calls": "tool_limit", "max_retries": "retry_limit"}[exc.reason]
+                code = {
+                    "max_elapsed_seconds": "timeout",
+                    "max_model_turns": "turn_limit",
+                    "max_tool_calls": "tool_limit",
+                    "max_retries": "retry_limit",
+                }[exc.reason]
                 record = self._finalize_stopped(handle, control, finalize_conversation, "failed", exc.reason, code)
                 span_context.record_terminal(record, error_code=code)
                 return record

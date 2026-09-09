@@ -38,7 +38,6 @@ def _record(*, status: str = "running") -> RunRecord:
         updated_at=now,
         limit_snapshot=RunLimitSnapshot(
             max_elapsed_seconds=60,
-            max_total_tokens=1000,
             max_retries=1,
             max_model_turns=2,
             max_tool_calls=2,

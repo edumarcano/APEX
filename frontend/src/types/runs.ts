@@ -28,7 +28,8 @@ export type FinalMessageStatus = 'completed' | 'failed' | 'interrupted'
 
 export interface RunLimitSnapshot {
   max_elapsed_seconds: number
-  max_total_tokens: number
+  /** Deprecated historical ceiling, retained for runs created before beta.3. */
+  max_total_tokens?: number | null
   max_retries: number
   max_model_turns: number
   max_tool_calls: number
