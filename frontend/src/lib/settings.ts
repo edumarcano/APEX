@@ -8,6 +8,7 @@ import type {
 } from '../types/telemetry'
 import type {
   BriefingMode,
+  CalendarSettings,
   FeaturesSettings,
   FootballSettings,
   MarketSettings,
@@ -399,6 +400,22 @@ function parseMarketSettings(value: unknown): MarketSettings {
   return { symbols }
 }
 
+function parseCalendarSettings(value: unknown): CalendarSettings | null {
+  if (value === undefined) {
+    return { selected_calendar_ids: ['primary'], show_calendar_names: true }
+  }
+  if (!isRecord(value) || !Array.isArray(value.selected_calendar_ids) || typeof value.show_calendar_names !== 'boolean') {
+    return null
+  }
+  const ids = value.selected_calendar_ids
+  if (
+    ids.length > 25 ||
+    !ids.every((id) => typeof id === 'string' && id.length > 0 && id.length <= 512 && id === id.trim()) ||
+    new Set(ids).size !== ids.length
+  ) return null
+  return { selected_calendar_ids: [...ids], show_calendar_names: value.show_calendar_names }
+}
+
 function footballTeamsEqual(
   left: FootballSettings['teams'],
   right: FootballSettings['teams'],
@@ -422,6 +439,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   const modules = parseModules(value.modules)
   const football = parseFootballSettings(value.football)
   const market = parseMarketSettings(value.market)
+  const calendar = parseCalendarSettings(value.calendar)
   const mcp = parseMcpSettings(value.mcp)
   const hasToolProfiles = isRecord(value.tool_profiles)
   const tool_profiles = parseToolProfiles(value.tool_profiles)
@@ -433,6 +451,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     !mcp ||
     !llama_cpp ||
     !microsoft_todo ||
+    !calendar ||
     !isRecord(value.ask_apex) ||
     !isRecord(value.briefing) ||
     !isRecord(value.voice)
@@ -475,6 +494,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     modules,
     football,
     market,
+    calendar,
     ask_apex: {
       enabled: value.ask_apex.enabled,
       selected_model: value.ask_apex.selected_model.trim(),
@@ -512,6 +532,10 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
     },
     market: {
       symbols: [...settings.market.symbols],
+    },
+    calendar: {
+      selected_calendar_ids: [...settings.calendar.selected_calendar_ids],
+      show_calendar_names: settings.calendar.show_calendar_names,
     },
     ask_apex: {
       ...settings.ask_apex,
@@ -643,6 +667,13 @@ export function diffSettingsPatch(
     }
   }
 
+  if (JSON.stringify(baseline.calendar) !== JSON.stringify(draft.calendar)) {
+    patch.calendar = {
+      selected_calendar_ids: [...draft.calendar.selected_calendar_ids],
+      show_calendar_names: draft.calendar.show_calendar_names,
+    }
+  }
+
   const agentSettings = diffSection(baseline.ask_apex, draft.ask_apex)
   if (agentSettings) {
     patch.ask_apex = agentSettings
@@ -711,6 +742,7 @@ export function isSettingsPatchEmpty(patch: SettingsPatch): boolean {
     patch.modules === undefined &&
     patch.football === undefined &&
     patch.market === undefined &&
+    patch.calendar === undefined &&
     patch.ask_apex === undefined &&
     patch.briefing === undefined &&
     patch.voice === undefined &&
@@ -752,6 +784,10 @@ export function resolveEffectiveTiming(
 
   if (group === 'market') {
     return 'Active'
+  }
+
+  if (group === 'calendar') {
+    return runtime.briefingActive ? 'Applies next briefing' : 'Active'
   }
 
   if (group === 'agent_queries') {

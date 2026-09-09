@@ -37,6 +37,7 @@ export function CalendarEventList({
                 </span>
                 <span className="break-words text-sm text-zinc-200">
                   {item.summary}
+                  {item.calendarName ? <span className="ml-1.5 text-xs text-zinc-500">· {item.calendarName}</span> : null}
                 </span>
               </span>
               <span className="shrink-0 font-mono text-xs text-zinc-500">

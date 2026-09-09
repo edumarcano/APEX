@@ -9,6 +9,7 @@ from pydantic import (
     ConfigDict,
     Field,
     StrictInt,
+    StrictStr,
     field_validator,
     model_validator,
 )
@@ -45,7 +46,7 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 19
+SETTINGS_SCHEMA_VERSION: int = 20
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 LlamaCppServerState = Literal[
@@ -231,6 +232,25 @@ class MarketSettings(BaseModel):
     symbols: tuple[str, ...] = ()
 
 
+class CalendarSettings(BaseModel):
+    """Selected readable Google calendars and event-attribution preference."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    selected_calendar_ids: tuple[StrictStr, ...] = Field(default=("primary",), max_length=25)
+    show_calendar_names: bool = True
+
+    @field_validator("selected_calendar_ids")
+    @classmethod
+    def _validate_calendar_ids(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(set(value)) != len(value):
+            raise ValueError("selected_calendar_ids must be unique")
+        for calendar_id in value:
+            if not calendar_id or len(calendar_id) > 512 or calendar_id != calendar_id.strip():
+                raise ValueError("selected_calendar_ids must contain trimmed identifiers up to 512 characters")
+        return value
+
+
 class ToolProfile(BaseModel):
     """One persisted or built-in stable tool selection."""
 
@@ -345,6 +365,7 @@ class RuntimeSettingsSnapshot(BaseModel):
     modules: ModulesSettings = Field(default_factory=ModulesSettings)
     football: FootballSettings = Field(default_factory=FootballSettings)
     market: MarketSettings = Field(default_factory=MarketSettings)
+    calendar: CalendarSettings = Field(default_factory=CalendarSettings)
     ask_apex: AgentSettings = Field(default_factory=AgentSettings)
     tool_profiles: ToolProfilesSettings = Field(default_factory=ToolProfilesSettings)
     briefing: BriefingSettings = Field(default_factory=BriefingSettings)
@@ -399,6 +420,27 @@ class MarketPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     symbols: list[str] | None = None
+
+
+class CalendarPatch(BaseModel):
+    """Partial selected-calendar update."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    selected_calendar_ids: list[StrictStr] | None = Field(default=None, max_length=25)
+    show_calendar_names: bool | None = None
+
+    @field_validator("selected_calendar_ids")
+    @classmethod
+    def _validate_calendar_ids(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return value
+        if len(set(value)) != len(value):
+            raise ValueError("selected_calendar_ids must be unique")
+        for calendar_id in value:
+            if not calendar_id or len(calendar_id) > 512 or calendar_id != calendar_id.strip():
+                raise ValueError("selected_calendar_ids must contain trimmed identifiers up to 512 characters")
+        return value
 
 
 class CloudHostedToolsPatch(BaseModel):
@@ -568,6 +610,7 @@ class SettingsPatch(BaseModel):
     modules: ModulesPatch | None = None
     football: FootballPatch | None = None
     market: MarketPatch | None = None
+    calendar: CalendarPatch | None = None
     ask_apex: AgentSettingsPatch | None = None
     tool_profiles: ToolProfilesPatch | None = None
     briefing: BriefingPatch | None = None

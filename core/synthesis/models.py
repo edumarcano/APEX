@@ -36,6 +36,7 @@ class CalendarFact(BaseModel):
     all_day: bool = False
     location: str | None = None
     time_zone: str | None = None
+    calendar_name: str | None = None
 
 
 class F1Fact(BaseModel):

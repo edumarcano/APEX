@@ -52,4 +52,11 @@ describe('resolveCalendarTelemetry', () => {
     expect(result.totalCount).toBe(2)
   })
 
+  it('preserves optional calendar attribution for Home display', () => {
+    const telemetry = resolveCalendarTelemetry(calendarModule({
+      window_days: 14, total_count: 1, events: [{ summary: 'Planning', start: '2030-01-01T10:00:00Z', all_day: false, calendar_name: 'Team' }],
+    }))
+    expect(telemetry.items[0]?.calendarName).toBe('Team')
+  })
+
 })

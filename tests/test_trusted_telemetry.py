@@ -250,6 +250,40 @@ class AdversarialSynthesisTests(unittest.TestCase):
         self.assertIn("NEWS:", briefing)
         self.assertIn("REMINDERS:", briefing)
 
+    def test_calendar_names_reach_model_and_structured_briefing_only_when_present(self) -> None:
+        named_event = CalendarFact(
+            title="Planning",
+            start="2026-07-13T14:00:00+00:00",
+            calendar_name="<b>Work</b> Calendar",
+        )
+        named = sample_input(
+            next_calendar_event=named_event,
+            calendar_events=[named_event],
+        )
+
+        flash = json.loads(compact_payload(named, mode="flash"))
+        focused = json.loads(compact_payload(named, max_chars=28_000, mode="focused"))
+        briefing, _insights = render_structured_briefing(named.structured_view())
+
+        self.assertEqual(flash["calendar"][0]["calendar_name"], "Work Calendar")
+        self.assertEqual(focused["calendar_events"][0]["calendar_name"], "Work Calendar")
+        self.assertEqual(focused["next_calendar_event"]["calendar_name"], "Work Calendar")
+        self.assertIn("[Work Calendar]", briefing)
+
+        suppressed_event = named_event.model_copy(update={"calendar_name": None})
+        suppressed = sample_input(
+            next_calendar_event=suppressed_event,
+            calendar_events=[suppressed_event],
+        )
+        suppressed_flash = json.loads(compact_payload(suppressed, mode="flash"))
+        suppressed_focused = json.loads(compact_payload(suppressed, max_chars=28_000, mode="focused"))
+        suppressed_briefing, _insights = render_structured_briefing(suppressed.structured_view())
+
+        self.assertNotIn("calendar_name", suppressed_flash["calendar"][0])
+        self.assertNotIn("calendar_name", suppressed_focused["calendar_events"][0])
+        self.assertNotIn("calendar_name", suppressed_focused["next_calendar_event"])
+        self.assertNotIn("Work Calendar", suppressed_briefing)
+
 
 class CompatibilityFacadeTests(unittest.TestCase):
     def test_weather_facade_returns_display_text(self) -> None:

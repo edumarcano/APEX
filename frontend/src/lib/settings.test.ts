@@ -167,6 +167,16 @@ describe('settings cloning and mutations', () => {
     })
   })
 
+  it('includes explicit empty calendar selection and attribution changes in settings patches', () => {
+    const draft = cloneRuntimeSettings(BASE_SETTINGS)
+    draft.calendar.selected_calendar_ids = []
+    draft.calendar.show_calendar_names = false
+
+    expect(diffSettingsPatch(BASE_SETTINGS, draft)).toMatchObject({
+      calendar: { selected_calendar_ids: [], show_calendar_names: false },
+    })
+  })
+
   it('generates a patch containing only dirty fields', () => {
     const draft = cloneRuntimeSettings(BASE_SETTINGS)
     draft.user_designation = 'Chief'

@@ -53,6 +53,11 @@ export interface MarketSettings {
   symbols: string[]
 }
 
+export interface CalendarSettings {
+  selected_calendar_ids: string[]
+  show_calendar_names: boolean
+}
+
 export interface CloudHostedToolsSettings {
   google_search: boolean
   google_maps: boolean
@@ -121,6 +126,7 @@ export interface RuntimeSettings {
   modules: ModulesSettings
   football: FootballSettings
   market: MarketSettings
+  calendar: CalendarSettings
   ask_apex: AgentSettings
   tool_profiles?: ToolProfilesSettings
   briefing: BriefingSettings
@@ -155,6 +161,11 @@ export interface FootballPatch {
 
 export interface MarketPatch {
   symbols?: string[]
+}
+
+export interface CalendarPatch {
+  selected_calendar_ids?: string[]
+  show_calendar_names?: boolean
 }
 
 export interface CloudHostedToolsPatch {
@@ -247,6 +258,7 @@ export interface SettingsPatch {
   modules?: ModulesPatch
   football?: FootballPatch
   market?: MarketPatch
+  calendar?: CalendarPatch
   ask_apex?: AgentSettingsPatch
   tool_profiles?: ToolProfilesPatch
   briefing?: BriefingPatch
@@ -276,6 +288,7 @@ export type SettingsEffectiveTiming =
 export type SettingsTimingFieldGroup =
   | 'features'
   | 'market'
+  | 'calendar'
   | 'football'
   | 'modules'
   | 'agent_queries'

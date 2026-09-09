@@ -17,6 +17,12 @@
   "market": {
     "symbols": []
   },
+  "calendar": {
+    "selected_calendar_ids": [
+      "primary"
+    ],
+    "show_calendar_names": true
+  },
   "tts_settings": {
     "primary_tts": "google",
     "voice_gender": "female"

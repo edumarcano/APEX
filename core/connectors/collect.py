@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from clients import calendar_client, gmail_client, google_auth
 from core import database
 from core.connectors.models import ConnectorResult, utc_now_iso
+from core.settings import CalendarSettings, get_settings_store
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -131,6 +132,10 @@ def _calendar_data(
     calendar_data: list[dict[str, Any]],
     *,
     now: datetime,
+    selected_calendar_count: int = 1,
+    successful_calendar_count: int = 1,
+    failed_calendar_count: int = 0,
+    source_truncated: bool = False,
 ) -> dict[str, Any]:
     if now.tzinfo is None:
         raise ValueError("Calendar window boundary must be timezone-aware.")
@@ -160,12 +165,13 @@ def _calendar_data(
                     else None
                 ),
                 "location": str(event.get("location")) if event.get("location") else None,
+                **({"calendar_name": str(event["calendar_name"])} if isinstance(event.get("calendar_name"), str) else {}),
             }
         )
 
-    events.sort(key=lambda event: str(event["start"]))
+    events.sort(key=lambda event: _calendar_event_start(event) or datetime.max.replace(tzinfo=timezone.utc))
     total_count = len(events)
-    truncated = total_count > _CALENDAR_EVENT_CAP
+    truncated = source_truncated or total_count > _CALENDAR_EVENT_CAP
     events = events[:_CALENDAR_EVENT_CAP]
 
     return {
@@ -173,24 +179,37 @@ def _calendar_data(
         "events": events,
         "total_count": total_count,
         "truncated": truncated,
+        "selected_calendar_count": selected_calendar_count,
+        "successful_calendar_count": successful_calendar_count,
+        "failed_calendar_count": failed_calendar_count,
     }
 
 
-def collect_calendar(*, now: datetime | None = None) -> ConnectorResult:
+def collect_calendar(*, now: datetime | None = None, settings: CalendarSettings | None = None) -> ConnectorResult:
     """Collect upcoming calendar events as a typed connector result."""
     observed_at = utc_now_iso()
+    calendar_settings = settings or get_settings_store().get_snapshot().calendar
+    if not calendar_settings.selected_calendar_ids:
+        return ConnectorResult(
+            name="calendar", status="unavailable", freshness="none", reason_code="no_calendars_selected", observed_at=observed_at,
+            display_text="Calendar Telemetry: No calendars selected.",
+            data={"window_days": _CALENDAR_WINDOW_DAYS, "events": [], "total_count": 0, "truncated": False, "selected_calendar_count": 0, "successful_calendar_count": 0, "failed_calendar_count": 0},
+        )
     try:
         calendar_service = google_auth.get_service("calendar", "v3")
-        calendar_data = calendar_client.get_upcoming_calendar_events(
+        fetched = calendar_client.fetch_selected_calendar_events(
             calendar_service,
+            calendar_ids=calendar_settings.selected_calendar_ids,
             days=_CALENDAR_WINDOW_DAYS,
+            show_calendar_names=calendar_settings.show_calendar_names,
         )
-        if not isinstance(calendar_data, list):
-            calendar_data = []
-
         data = _calendar_data(
-            calendar_data,
+            fetched.events,
             now=now or datetime.now(timezone.utc),
+            selected_calendar_count=fetched.selected_calendar_count,
+            successful_calendar_count=fetched.successful_calendar_count,
+            failed_calendar_count=fetched.failed_calendar_count,
+            source_truncated=bool(getattr(fetched, "truncated", False)),
         )
         events = data["events"]
 
@@ -203,11 +222,17 @@ def collect_calendar(*, now: datetime | None = None) -> ConnectorResult:
         else:
             display = "Calendar Telemetry (14d): No upcoming events"
 
+        if fetched.successful_calendar_count == 0:
+            connector_status, freshness, reason_code = "unavailable", "none", "connection_error"
+        elif fetched.failed_calendar_count:
+            connector_status, freshness, reason_code = "degraded", "live", "partial_failure"
+        else:
+            connector_status, freshness, reason_code = "healthy", "live", "ok"
         return ConnectorResult(
             name="calendar",
-            status="healthy",
-            freshness="live",
-            reason_code="ok",
+            status=connector_status,
+            freshness=freshness,
+            reason_code=reason_code,
             observed_at=observed_at,
             display_text=display,
             data=data,
@@ -226,6 +251,9 @@ def collect_calendar(*, now: datetime | None = None) -> ConnectorResult:
                 "events": [],
                 "total_count": 0,
                 "truncated": False,
+                "selected_calendar_count": len(calendar_settings.selected_calendar_ids),
+                "successful_calendar_count": 0,
+                "failed_calendar_count": len(calendar_settings.selected_calendar_ids),
             },
         )
 

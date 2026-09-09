@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom'
 import { Settings, X } from 'lucide-react'
 
 import McpSettingsSection from './McpSettingsSection'
+import CalendarSettingsSection from './CalendarSettingsSection'
 import MicrosoftTodoSettingsSection from './MicrosoftTodoSettingsSection'
 import { FootballTeamsEditor, MarketSymbolsEditor } from './SettingsListEditors'
 import {
@@ -202,6 +203,7 @@ export default function SettingsPanel({
 
   const featuresTiming = resolveEffectiveTiming('features', timingRuntime)
   const marketTiming = resolveEffectiveTiming('market', timingRuntime)
+  const calendarTiming = resolveEffectiveTiming('calendar', timingRuntime)
   const modulesTiming = resolveEffectiveTiming('modules', timingRuntime)
   const agentQueriesTiming = resolveEffectiveTiming('agent_queries', timingRuntime)
   const voiceTiming = resolveEffectiveTiming('voice', timingRuntime)
@@ -398,6 +400,17 @@ export default function SettingsPanel({
                             }
                           />
                         </div>
+                      ) : null}
+                      {control.key === 'calendar' ? (
+                        <CalendarSettingsSection
+                          sectionId={`${titleId}-calendar`}
+                          enabled={draft.features.calendar}
+                          settings={draft.calendar}
+                          timing={calendarTiming}
+                          onChange={(calendar) =>
+                            setDraft((prev) => ({ ...prev, calendar }))
+                          }
+                        />
                       ) : null}
                     </div>
                   ))}

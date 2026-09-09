@@ -5,6 +5,7 @@ export interface CalendarDisplayEvent {
   start: string
   end: string | null
   allDay: boolean
+  calendarName?: string | null
 }
 
 export interface CalendarTelemetry {
@@ -61,6 +62,7 @@ function parseStructuredEvent(value: unknown): CalendarDisplayEvent | null {
     start: formatStart(start, allDay),
     end: typeof value.end === 'string' ? value.end : null,
     allDay,
+    calendarName: typeof value.calendar_name === 'string' && value.calendar_name.trim() ? value.calendar_name.trim() : null,
   }
 }
 

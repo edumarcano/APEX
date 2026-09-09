@@ -244,6 +244,25 @@ async def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
             await asyncio.to_thread(end_local_runtime_transition)
 
 
+@router.get("/api/v1/google-calendar/calendars")
+def get_google_calendar_choices() -> dict[str, Any]:
+    """Return bounded, sanitized Google Calendar picker choices."""
+    try:
+        from clients.calendar_client import list_readable_calendars
+        from clients.google_auth import get_service
+
+        service = object() if DEMO_MODE else get_service("calendar", "v3")
+        if not service:
+            raise RuntimeError("calendar service unavailable")
+        return list_readable_calendars(service)
+    except Exception as exc:
+        _LOGGER.warning("Google calendar discovery failed: error_type=%s", type(exc).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google Calendar is unavailable.",
+        ) from None
+
+
 @router.get("/api/v1/llama-cpp/status", response_model=LlamaCppServerStatusResponse)
 def get_llama_cpp_server_status() -> LlamaCppServerStatusResponse:
     """

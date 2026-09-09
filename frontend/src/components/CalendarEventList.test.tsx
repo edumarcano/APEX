@@ -84,6 +84,20 @@ describe('CalendarEventList', () => {
     expect(screen.queryByText(/more events?/i)).not.toBeInTheDocument()
   })
 
+  it('renders a calendar name when telemetry provides attribution', () => {
+    render(
+      <CalendarEventList
+        hasSnapshot
+        telemetry={telemetry({
+          items: [{ summary: 'Planning', start: 'Fri, 9:00 AM', end: null, allDay: false, calendarName: 'Team' }],
+          totalCount: 1,
+        })}
+      />,
+    )
+
+    expect(screen.getByText(/Team/)).toBeInTheDocument()
+  })
+
   it('shows the empty seven-day state', () => {
     render(
       <CalendarEventList

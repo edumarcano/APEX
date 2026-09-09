@@ -77,6 +77,7 @@ interface CalendarEventEntry {
   start: string
   end?: string | null
   all_day?: boolean
+  calendar_name?: string | null
 }
 
 interface CalendarEventsPayload {
@@ -508,6 +509,7 @@ function parseCalendarEventsPayload(output: unknown): CalendarEventsPayload | nu
             start,
             end: typeof entry.end === 'string' ? entry.end : null,
             all_day: entry.all_day === true,
+            calendar_name: typeof entry.calendar_name === 'string' && entry.calendar_name.trim() ? entry.calendar_name.trim() : null,
           }
         })
         .filter((entry): entry is CalendarEventEntry => entry !== null)
@@ -1115,7 +1117,7 @@ function CalendarEventsCard({
               key={`${event.summary}-${event.start}-${index}`}
               className="flex items-start justify-between gap-3 rounded-lg border border-white/5 bg-white/[0.02] px-2.5 py-2"
             >
-              <p className="min-w-0 flex-1 text-sm text-zinc-200">{event.summary}</p>
+              <p className="min-w-0 flex-1 text-sm text-zinc-200">{event.summary}{event.calendar_name ? <span className="ml-1.5 text-xs text-zinc-500">· {event.calendar_name}</span> : null}</p>
               <span className="shrink-0 font-mono text-[10px] text-[#FBBF24]">
                 {formatEventStart(event.start, event.all_day)}
               </span>

@@ -103,17 +103,18 @@ Returns boot-time HUD values such as Agent query enablement, the effective model
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `19`.
+Returns the resolved settings envelope. The current contract version is `20`.
 
 ```json
 {
-  "schema_version": 19,
+  "schema_version": 20,
   "settings": {
     "user_designation": "",
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": false },
     "modules": { "football": false, "f1": true },
     "football": { "teams": [] },
     "market": { "symbols": [] },
+    "calendar": { "selected_calendar_ids": ["primary"], "show_calendar_names": true },
     "ask_apex": {
       "enabled": true,
       "selected_model": "deepseek/deepseek-v4-flash-0731",
@@ -710,7 +711,7 @@ Compatibility fields and aliases remain documented where clients can still use t
 
 ## Current route inventory
 
-APEX API contract version 19.
+APEX API contract version 20.
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -736,6 +737,7 @@ APEX API contract version 19.
 | GET | `/api/v1/cortex/tool-catalog` | API route |
 | GET | `/api/v1/cortex/tool-profiles` | API route |
 | GET | `/api/v1/diagnostics` | API route |
+| GET | `/api/v1/google-calendar/calendars` | Up to 250 sanitized readable Google Calendar choices for Runtime Settings; returns `503` when discovery is unavailable. |
 | GET | `/api/v1/health/live` | API route |
 | GET | `/api/v1/health/ready` | API route |
 | GET | `/api/v1/llama-cpp/status` | API route |
