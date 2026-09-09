@@ -27,14 +27,33 @@ export interface ContextRecord {
 export interface ContextSource {
   id: string
   kind: 'conversation_message' | 'manual'
+  origin: 'operator_input' | 'connected_service' | 'external_tool' | 'unknown'
   locator: string
   original_text: string
+  occurred_at: string | null
+  captured_at: string
+  created_at: string
+  derivation: 'direct' | 'model_interpretation' | 'unknown'
+  linked_at: string
+}
+
+export interface ContextHistoryEvent {
+  id: string
+  record_id: string
+  operation: string
+  actor: string
+  reason_code: string
+  related_record_id: string | null
+  action_id: string | null
+  review_id: string | null
   created_at: string
 }
 
 export interface ContextRecordDetail extends ContextRecord {
   sources: ContextSource[]
   superseded_by: string[]
+  predecessors: string[]
+  history: ContextHistoryEvent[]
   related_records: ContextRecord[]
 }
 

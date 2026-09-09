@@ -482,14 +482,33 @@ class ContextRecordResponse(BaseModel):
 class ContextSourceResponse(BaseModel):
     id: str
     kind: Literal["conversation_message", "manual"]
+    origin: Literal["operator_input", "connected_service", "external_tool", "unknown"]
     locator: str
     original_text: str
+    occurred_at: str | None = None
+    captured_at: str
+    created_at: str
+    derivation: Literal["direct", "model_interpretation", "unknown"]
+    linked_at: str
+
+
+class ContextHistoryResponse(BaseModel):
+    id: str
+    record_id: str
+    operation: str
+    actor: str
+    reason_code: str
+    related_record_id: str | None = None
+    action_id: str | None = None
+    review_id: str | None = None
     created_at: str
 
 
 class ContextRecordDetailResponse(ContextRecordResponse):
     sources: list[ContextSourceResponse] = Field(default_factory=list)
     superseded_by: list[str] = Field(default_factory=list)
+    predecessors: list[str] = Field(default_factory=list)
+    history: list[ContextHistoryResponse] = Field(default_factory=list)
     related_records: list[ContextRecordResponse] = Field(default_factory=list)
 
 

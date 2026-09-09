@@ -587,9 +587,11 @@ When an Agent proposes the same capability from a durable Cortex turn, APEX stor
 server-derived `production` or `sandbox` partition. It accepts repeated
 `status` filters, an optional record kind, and a local text query over saved
 text and structured entity fields. `GET /api/v1/cortex/context/{record_id}`
-adds immutable source snapshots, supersession links, and nearby relationship
-records. `GET /api/v1/cortex/context/entities` exposes only current entities
-and their exact aliases for the local merge selector.
+adds immutable source snapshots, source origin, source occurrence and capture
+times, per-claim derivation, predecessor and successor links, and append-only
+knowledge history. Legacy rows with unavailable provenance report `unknown`
+rather than inferred attribution. `GET /api/v1/cortex/context/entities` exposes
+only current entities and their exact aliases for the local merge selector.
 
 `POST /api/v1/cortex/context/actions` creates a normal durable action proposal
 for `correct`, `retract`, `restore`, `set_current`, `add_alias`, or

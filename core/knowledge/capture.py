@@ -59,9 +59,13 @@ class ContextCaptureExecutor:
                 if message is None or message.role != "user" or message.status != "completed":
                     raise ContextCaptureError("capture_source_unavailable")
                 original_text, locator = message.content, f"conversation/{conversation_id}/message/{message_id}"
+                source_occurred_at = str(getattr(message, "created_at", "")) or None
+                derivation = "model_interpretation"
             elif source_kind == "manual":
                 original_text = str(provenance["original_text"])
                 locator = f"manual/action/{action.action_id}"
+                source_occurred_at = None
+                derivation = "direct"
             else:
                 raise ContextCaptureError("capture_provenance_invalid")
             reject_secret_text(original_text)
@@ -69,7 +73,8 @@ class ContextCaptureExecutor:
             validate_effective_at(arguments.get("effective_at"))
             record, source, outcome = self._knowledge.apply_capture(
                 action_id=action.action_id, partition=partition, source_kind=source_kind,
-                locator=locator, original_text=original_text, **arguments,
+                locator=locator, original_text=original_text, source_origin="operator_input",
+                source_occurred_at=source_occurred_at, derivation=derivation, **arguments,
             )
             return ExecutionOutcome(True, "context_captured", {
                 "record_id": str(record.id), "source_id": str(source.id), "outcome": outcome,

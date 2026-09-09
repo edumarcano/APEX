@@ -10,7 +10,7 @@ const RECORD = {
 }
 const STATUS = { enabled: true, mode: 'fts_only', state: 'unprepared', indexed_items: 1, embedding_items: 0, pending_items: 1, last_prepared_at: null, error_category: null, model_fingerprint: null }
 const ACTION = { action_id: 'action-1', proposal: { capability_name: 'remember_personal_context' }, status: 'proposed', version: 0, updated_at: '2026-08-18T00:00:00Z' }
-const DETAIL = { ...RECORD, sources: [], superseded_by: [], related_records: [] }
+const DETAIL = { ...RECORD, sources: [], superseded_by: [], predecessors: [], history: [], related_records: [] }
 
 function response(body: unknown, status = 200): Response {
   return { ok: status >= 200 && status < 300, status, json: vi.fn().mockResolvedValue(body) } as unknown as Response

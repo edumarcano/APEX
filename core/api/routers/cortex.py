@@ -97,6 +97,7 @@ from core.api.models import (
     ContextEntityResponse,
     ContextRecordDetailResponse,
     ContextRecordResponse,
+    ContextHistoryResponse,
     ContextSourceResponse,
 )
 
@@ -249,8 +250,26 @@ def get_context_record(record_id: str) -> ContextRecordDetailResponse:
         base = _context_record(detail.record)
         return ContextRecordDetailResponse(
             **base.model_dump(),
-            sources=[ContextSourceResponse(id=str(source.id), kind=source.kind, locator=source.locator, original_text=source.original_text, created_at=source.created_at) for source in detail.sources],
+            sources=[
+                ContextSourceResponse(
+                    id=str(link.source.id), kind=link.source.kind, origin=link.source.origin,
+                    locator=link.source.locator, original_text=link.source.original_text,
+                    occurred_at=link.source.occurred_at, captured_at=link.source.created_at,
+                    created_at=link.source.created_at, derivation=link.derivation, linked_at=link.linked_at,
+                )
+                for link in detail.source_links
+            ],
             superseded_by=[str(identifier) for identifier in detail.superseded_by],
+            predecessors=[str(identifier) for identifier in detail.predecessors],
+            history=[
+                ContextHistoryResponse(
+                    id=str(event.id), record_id=str(event.record_id), operation=event.operation,
+                    actor=event.actor, reason_code=event.reason_code,
+                    related_record_id=str(event.related_record_id) if event.related_record_id else None,
+                    action_id=event.action_id, review_id=event.review_id, created_at=event.created_at,
+                )
+                for event in detail.history
+            ],
             related_records=[_context_record(record) for record in list(related_by_id.values())[:20]],
         )
     except Exception as exc:
