@@ -99,6 +99,15 @@ class ContextCaptureTests(unittest.TestCase):
         self.assertEqual(self.actions.approve_and_execute(second.action_id, actor="operator", expected_version=0).status, "verified")
         records = self.knowledge.list_records(partition="production", statuses=("conflicting",))
         self.assertEqual(len(records), 2)
+        first_record = next(record for record in records if record.text == "Project status is active.")
+        second_record = next(record for record in records if record.text == "Project status is paused.")
+        first_history = self.knowledge.get_record(first_record.id, partition="production").history
+        second_history = self.knowledge.get_record(second_record.id, partition="production").history
+        self.assertEqual([event.operation for event in first_history], ["created", "source_linked", "status_changed"])
+        self.assertEqual(first_history[-1].reason_code, "status_conflicting")
+        self.assertEqual(first_history[-1].related_record_id, second_record.id)
+        self.assertEqual([event.operation for event in second_history], ["created", "source_linked"])
+        self.assertEqual(second_history[0].reason_code, "initial_conflicting")
 
     def test_manual_endpoint_proposes_without_writing_and_rejects_secret(self) -> None:
         payload = ContextCaptureRequest(kind="note", text="Remember this for later.")

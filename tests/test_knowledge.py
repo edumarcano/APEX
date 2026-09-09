@@ -43,8 +43,8 @@ class KnowledgeStoreTests(unittest.TestCase):
         try:
             with conn:
                 version = conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()
-                self.assertEqual(version[0], 5)
-                conn.execute("UPDATE schema_versions SET version = 6 WHERE domain = 'knowledge'")
+                self.assertEqual(version[0], 4)
+                conn.execute("UPDATE schema_versions SET version = 5 WHERE domain = 'knowledge'")
         finally:
             conn.close()
         with self.assertRaises(KnowledgeStoreError):
@@ -287,10 +287,16 @@ class KnowledgeStoreTests(unittest.TestCase):
             action_id="alias-1", operation="add_alias", partition="production",
             arguments={"entity_id": str(source_entity.id), "alias": "J"},
         )
+        history = self.store.get_record(record.id, partition="production").history
         self.assertIn(
             "entity_alias_added",
-            [event.operation for event in self.store.get_record(record.id, partition="production").history],
+            [event.operation for event in history],
         )
+        self.store.reconcile(
+            action_id="alias-duplicate", operation="add_alias", partition="production",
+            arguments={"entity_id": str(source_entity.id), "alias": "j"},
+        )
+        self.assertEqual(self.store.get_record(record.id, partition="production").history, history)
         result = self.store.reconcile(
             action_id="merge-1", operation="merge_entities", partition="production",
             arguments={"source_entity_id": str(source_entity.id), "target_entity_id": str(target_entity.id)},

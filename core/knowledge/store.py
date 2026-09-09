@@ -30,7 +30,7 @@ _SOURCE_KINDS = {"conversation_message", "manual"}
 _SOURCE_ORIGINS = {"operator_input", "connected_service", "external_tool", "unknown"}
 _DERIVATIONS = {"direct", "model_interpretation", "unknown"}
 _PARTITIONS = {"production", "sandbox"}
-_KNOWLEDGE_SCHEMA_VERSION = 5
+_KNOWLEDGE_SCHEMA_VERSION = 4
 _SOURCE_SELECT = "id,kind,partition,locator,original_text,content_hash,created_at,origin,occurred_at"
 _RECORD_SELECT = (
     "id,partition,kind,text,status,subject_entity_id,predicate,object_entity_id,object_value,"
@@ -141,7 +141,7 @@ class KnowledgeStore:
                     conn.execute("ALTER TABLE entities ADD COLUMN merged_into_entity_id TEXT REFERENCES entities(id)")
                 version = int(row[0]) if row is not None else 0
                 if version < _KNOWLEDGE_SCHEMA_VERSION:
-                    self._migrate_to_v5(conn)
+                    self._migrate_to_v4(conn)
                 conn.execute(
                     "INSERT INTO schema_versions(domain, version) VALUES ('knowledge', ?) "
                     "ON CONFLICT(domain) DO UPDATE SET version = excluded.version",
@@ -230,7 +230,7 @@ class KnowledgeStore:
             conn.execute(statement)
 
     @staticmethod
-    def _migrate_to_v5(conn: sqlite3.Connection) -> None:
+    def _migrate_to_v4(conn: sqlite3.Connection) -> None:
         source_columns = {str(column[1]) for column in conn.execute("PRAGMA table_info(knowledge_sources)")}
         if "origin" not in source_columns:
             conn.execute(
@@ -245,9 +245,6 @@ class KnowledgeStore:
                 "ALTER TABLE knowledge_record_sources ADD COLUMN derivation TEXT NOT NULL DEFAULT 'unknown' "
                 "CHECK(derivation IN ('direct', 'model_interpretation', 'unknown'))"
             )
-        history_columns = {str(column[1]) for column in conn.execute("PRAGMA table_info(knowledge_history)")}
-        if "source_id" not in history_columns:
-            conn.execute("ALTER TABLE knowledge_history ADD COLUMN source_id TEXT REFERENCES knowledge_sources(id)")
         now = utc_now_iso()
         conn.execute(
             "INSERT OR IGNORE INTO knowledge_record_predecessors(record_id,predecessor_record_id,relation,linked_at) "
@@ -260,7 +257,8 @@ class KnowledgeStore:
             ).fetchone()
             if exists is None:
                 conn.execute(
-                    "INSERT INTO knowledge_history VALUES (?, ?, 'baseline', 'system', 'migration_baseline', NULL, NULL, NULL, NULL, ?)",
+                    "INSERT INTO knowledge_history(id,record_id,operation,actor,reason_code,related_record_id,source_id,action_id,review_id,created_at) "
+                    "VALUES (?, ?, 'baseline', 'system', 'migration_baseline', NULL, NULL, NULL, NULL, ?)",
                     (str(uuid4()), str(record_id), now),
                 )
 
@@ -288,7 +286,8 @@ class KnowledgeStore:
         source_id: UUID | str | None = None, review_id: str | None = None, created_at: str,
     ) -> None:
         conn.execute(
-            "INSERT INTO knowledge_history VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO knowledge_history(id,record_id,operation,actor,reason_code,related_record_id,source_id,action_id,review_id,created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (str(uuid4()), str(record_id), operation, actor, reason_code,
              str(related_record_id) if related_record_id else None, str(source_id) if source_id else None,
              action_id, review_id, created_at),
@@ -766,16 +765,17 @@ class KnowledgeStore:
                 ).fetchone()
                 if existing is not None and str(existing[0]) != entity_id:
                     raise KnowledgeConflictError("alias_conflict")
-                conn.execute(
+                inserted = conn.execute(
                     "INSERT INTO entity_aliases VALUES (?, ?, ?, ?) ON CONFLICT(normalized_alias) DO NOTHING",
                     (normalized, entity_id, alias, now),
                 )
-                affected_records = conn.execute(
-                    "SELECT id FROM knowledge_records WHERE partition=? AND (subject_entity_id=? OR object_entity_id=?)",
-                    (partition, entity_id, entity_id),
-                ).fetchall()
-                for (record_id,) in affected_records:
-                    self._record_history(conn, record_id=str(record_id), operation="entity_alias_added", actor="operator", reason_code="entity_alias", action_id=action_id, created_at=now)
+                if inserted.rowcount:
+                    affected_records = conn.execute(
+                        "SELECT id FROM knowledge_records WHERE partition=? AND (subject_entity_id=? OR object_entity_id=?)",
+                        (partition, entity_id, entity_id),
+                    ).fetchall()
+                    for (record_id,) in affected_records:
+                        self._record_history(conn, record_id=str(record_id), operation="entity_alias_added", actor="operator", reason_code="entity_alias", action_id=action_id, created_at=now)
                 target_id, outcome = entity_id, "alias_added"
             elif operation == "merge_entities":
                 source_id = str(arguments.get("source_entity_id", ""))
@@ -932,9 +932,16 @@ class KnowledgeStore:
                 if same is not None:
                     record = self._record(same)
                     outcome = "confirmed"
+                    transitioned = []
                 else:
-                    if rows:
-                        conn.execute("UPDATE knowledge_records SET status='conflicting', updated_at=? WHERE id IN (%s)" % ",".join("?" for _ in rows), (now, *(str(row[0]) for row in rows)))
+                    transitioned = [row for row in rows if str(row[4]) != "conflicting"]
+                    if transitioned:
+                        conn.execute(
+                            "UPDATE knowledge_records SET status='conflicting', updated_at=? WHERE id IN (%s)" % ",".join("?" for _ in transitioned),
+                            (now, *(str(row[0]) for row in transitioned)),
+                        )
+                        status, outcome = "conflicting", "conflicting"
+                    elif rows:
                         status, outcome = "conflicting", "conflicting"
                     else:
                         status, outcome = "active", "created"
@@ -947,8 +954,21 @@ class KnowledgeStore:
                 rows = [row for row in candidates if normalize_alias(str(row[3])) == normalized]
                 if rows:
                     record, outcome = self._record(rows[0]), "confirmed"
+                    transitioned = []
                 else:
                     record, outcome = self._insert_record_in_transaction(conn, partition=partition, kind=kind, text=text, status="active", now=now), "created"
+                    transitioned = []
+            if outcome in {"created", "conflicting"}:
+                for peer in transitioned:
+                    self._record_history(
+                        conn, record_id=str(peer[0]), operation="status_changed", reason_code="status_conflicting",
+                        related_record_id=record.id, action_id=action_id, created_at=now,
+                    )
+                self._record_history(
+                    conn, record_id=record.id, operation="created",
+                    reason_code="initial_conflicting" if outcome == "conflicting" else "initial_active",
+                    action_id=action_id, created_at=now,
+                )
             linked = conn.execute(
                 "INSERT OR IGNORE INTO knowledge_record_sources(record_id,source_id,action_id,linked_at,derivation) VALUES (?, ?, ?, ?, ?)",
                 (str(record.id), str(source.id), action_id, now, derivation),
@@ -956,8 +976,6 @@ class KnowledgeStore:
             if linked.rowcount:
                 self._record_history(conn, record_id=record.id, operation="source_linked", reason_code=derivation, source_id=source.id, action_id=action_id, created_at=now)
             conn.execute("INSERT INTO knowledge_action_effects VALUES (?, ?, ?, ?, ?)", (action_id, str(record.id), str(source.id), outcome, now))
-            if outcome == "created":
-                self._record_history(conn, record_id=record.id, operation="created", reason_code="capture_created", action_id=action_id, created_at=now)
             self._sync_retrieval(conn)
         return record, source, outcome
 
