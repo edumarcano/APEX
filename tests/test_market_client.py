@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 from clients import market_client
@@ -152,6 +152,55 @@ class MarketClientTests(unittest.TestCase):
         self.assertEqual(response["reason_code"], "cache_write_error")
         self.assertNotIn("last_attempt_date", cache["symbols"]["SPY"])
 
+    def test_final_cache_write_failure_returns_persisted_cache_and_keeps_daily_gate(self) -> None:
+        cache = market_client._empty_cache()
+        cache["collection_revision"] = 4
+        cache["symbols"]["SPY"] = _history_entry(
+            fetched_at=datetime(2026, 9, 8, 14, 0, tzinfo=timezone.utc)
+        )
+        provider_payload = _daily_payload()
+        provider_payload["Time Series (Daily)"]["2026-09-08"]["4. close"] = "110"
+        provider_payload["Time Series (Daily)"]["2026-09-08"]["2. high"] = "111"
+        provider_payload["Time Series (Daily)"]["2026-09-08"]["5. volume"] = "200"
+        provider = mock.Mock(return_value=(provider_payload, None))
+        with (
+            mock.patch.object(market_client, "DEMO_MODE", False),
+            mock.patch.object(market_client, "_now_utc", return_value=_NOW),
+            mock.patch.object(market_client, "_read_cache", return_value=cache),
+            mock.patch.object(market_client, "_write_cache", side_effect=[True, False]) as write_cache,
+            mock.patch.object(market_client, "get_settings_store", return_value=_store(["SPY"])),
+            mock.patch.dict(market_client.os.environ, {"ALPHA_VANTAGE_API_KEY": "configured"}, clear=True),
+            mock.patch.object(market_client, "_alpha_vantage_get", provider),
+        ):
+            response = market_client.refresh_market_data()
+
+        self.assertEqual(write_cache.call_count, 2)
+        provider.assert_called_once()
+        self.assertEqual(response["status"], "degraded")
+        self.assertEqual(response["freshness"], "stale")
+        self.assertEqual(response["reason_code"], "cache_write_error")
+        self.assertEqual(response["collection_revision"], 4)
+        self.assertEqual(response["tickers"][0]["price"], 103.0)
+        self.assertEqual(cache["symbols"]["SPY"]["last_attempt_date"], "2026-09-09")
+
+    def test_missing_api_key_hides_cached_display_as_unavailable(self) -> None:
+        cache = market_client._empty_cache()
+        cache["collection_revision"] = 4
+        cache["symbols"]["SPY"] = _history_entry()
+        with (
+            mock.patch.object(market_client, "DEMO_MODE", False),
+            mock.patch.object(market_client, "_read_cache", return_value=cache),
+            mock.patch.object(market_client, "get_settings_store", return_value=_store(["SPY"])),
+            mock.patch.dict(market_client.os.environ, {}, clear=True),
+        ):
+            response = market_client.read_market_data()
+
+        self.assertEqual(response["status"], "unavailable")
+        self.assertEqual(response["freshness"], "none")
+        self.assertEqual(response["reason_code"], "not_configured")
+        self.assertEqual(len(response["tickers"]), 1)
+        self.assertEqual(response["tickers"][0]["status"], "unavailable")
+
     def test_weekend_fetch_keeps_older_trading_close_fresh_for_that_day(self) -> None:
         weekend = datetime(2026, 9, 12, 14, 0, tzinfo=timezone.utc)
         cache = market_client._empty_cache()
@@ -164,6 +213,35 @@ class MarketClientTests(unittest.TestCase):
         self.assertEqual(cached["freshness"], "fresh_cache")
         self.assertEqual(cached["tickers"][0]["close_date"], "2026-09-08")
         self.assertEqual(cached["tickers"][0]["last_successful_fetch_date"], "2026-09-12")
+
+    def test_volume_ratio_uses_exactly_twenty_preceding_bars(self) -> None:
+        history = [
+            {
+                "date": (datetime(2026, 8, 3, tzinfo=timezone.utc) + timedelta(days=index)).date().isoformat(),
+                "open": 100.0,
+                "high": 101.0,
+                "low": 99.0,
+                "close": 100.0 + index,
+                "volume": float(index + 1),
+            }
+            for index in range(21)
+        ]
+        ticker = market_client._ticker_from_entry(
+            "SPY",
+            {"history": history, "market_fetched_at": market_client._iso_utc()},
+            fetched_live=True,
+        )
+
+        self.assertEqual(len(ticker["history"]), 20)
+        self.assertEqual(ticker["history"][0]["volume"], 2.0)
+        self.assertAlmostEqual(ticker["volume_ratio"], 2.0, places=6)
+
+        insufficient = market_client._ticker_from_entry(
+            "SPY",
+            {"history": history[:-1], "market_fetched_at": market_client._iso_utc()},
+            fetched_live=True,
+        )
+        self.assertIsNone(insufficient["volume_ratio"])
 
     def test_provider_messages_are_reduced_to_sanitized_reason_codes(self) -> None:
         response = mock.Mock()
@@ -214,6 +292,21 @@ class MarketClientTests(unittest.TestCase):
         self.assertEqual(response["status"], "healthy")
         self.assertEqual(len(response["tickers"][0]["history"]), 20)
         MarketResponse.model_validate(response)
+
+    def test_demo_disabled_market_stays_disabled_for_display_and_collection(self) -> None:
+        with (
+            mock.patch.object(market_client, "DEMO_MODE", True),
+            mock.patch.object(market_client, "get_settings_store", return_value=_store(["SPY"], enabled=False)),
+        ):
+            display = market_client.read_market_data()
+            collected = market_client.refresh_market_data()
+            demo_result = market_client.collect_demo_market()
+
+        self.assertEqual(display["status"], "disabled")
+        self.assertEqual(display["reason_code"], "disabled")
+        self.assertEqual(display["tickers"], [])
+        self.assertEqual(collected["status"], "disabled")
+        self.assertEqual(demo_result.status, "disabled")
 
     def test_market_contributes_to_snapshot_health_but_not_briefing_facts(self) -> None:
         market = ConnectorResult(

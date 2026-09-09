@@ -7,6 +7,7 @@ import math
 import os
 import sys
 import threading
+from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -300,7 +301,8 @@ def _usable_entry(entry: dict[str, Any]) -> bool:
 
 def _ticker_from_entry(symbol: str, entry: dict[str, Any], *, fetched_live: bool = False) -> dict[str, Any]:
     history = entry.get("history") if isinstance(entry.get("history"), list) else []
-    bars = [bar for bar in history if isinstance(bar, dict)][-_DISPLAY_HISTORY_LENGTH:]
+    stored_bars = [bar for bar in history if isinstance(bar, dict)]
+    bars = stored_bars[-_DISPLAY_HISTORY_LENGTH:]
     close = _parse_float(bars[-1].get("close")) if bars else _parse_float(entry.get("price"))
     previous = _parse_float(bars[-2].get("close")) if len(bars) >= 2 else None
     change = close - previous if close is not None and previous is not None else _parse_float(entry.get("change"))
@@ -323,11 +325,14 @@ def _ticker_from_entry(symbol: str, entry: dict[str, Any], *, fetched_live: bool
         if all(value is not None for value in lows + highs):
             low = min(value for value in lows if value is not None)
             high = max(value for value in highs if value is not None)
-        latest_volume = _parse_float(bars[-1].get("volume"))
-        preceding = [_parse_float(bar.get("volume")) for bar in bars[:-1]]
-        valid = [value for value in preceding if value is not None]
-        if latest_volume is not None and valid and (average := sum(valid) / len(valid)) > 0:
-            volume_ratio = latest_volume / average
+        if len(stored_bars) >= _DISPLAY_HISTORY_LENGTH + 1:
+            volume_window = stored_bars[-(_DISPLAY_HISTORY_LENGTH + 1):]
+            latest_volume = _parse_float(volume_window[-1].get("volume"))
+            preceding = [_parse_float(bar.get("volume")) for bar in volume_window[:-1]]
+            if latest_volume is not None and all(value is not None for value in preceding):
+                average = sum(value for value in preceding if value is not None) / _DISPLAY_HISTORY_LENGTH
+                if average > 0:
+                    volume_ratio = latest_volume / average
     return {
         "symbol": symbol, "status": status, "freshness": freshness,
         "reason_code": "ok" if status == "healthy" else (last_error or ("stale_cache" if status == "degraded" else "unavailable")),
@@ -383,11 +388,19 @@ def _build_snapshot(cache: dict[str, Any], symbols: list[str], *, fetched_live: 
 def _simulate_history(symbol: str, now: datetime) -> list[dict[str, Any]]:
     base = _DEMO_BASE_PRICES.get(symbol, 100.0)
     history: list[dict[str, Any]] = []
-    for index in range(_DISPLAY_HISTORY_LENGTH):
-        stamp = now - timedelta(days=_DISPLAY_HISTORY_LENGTH - index - 1)
-        close = round(base * (1 + math.sin(stamp.timestamp() / 86_400 + index) * 0.015 + index * 0.001), 2)
+    session_date = now.date()
+    while session_date.weekday() >= 5:
+        session_date -= timedelta(days=1)
+    session_dates: list[date] = []
+    while len(session_dates) < _DISPLAY_HISTORY_LENGTH + 1:
+        if session_date.weekday() < 5:
+            session_dates.append(session_date)
+        session_date -= timedelta(days=1)
+    session_dates.reverse()
+    for index, trading_date in enumerate(session_dates):
+        close = round(base * (1 + math.sin(trading_date.toordinal() + index) * 0.015 + index * 0.001), 2)
         opening = round(close * 0.997, 2)
-        history.append({"date": stamp.date().isoformat(), "open": opening, "high": round(close * 1.006, 2), "low": round(close * 0.994, 2), "close": close, "volume": round(base * 100_000 * (1 + index / 100), 2)})
+        history.append({"date": trading_date.isoformat(), "open": opening, "high": round(close * 1.006, 2), "low": round(close * 0.994, 2), "close": close, "volume": round(base * 100_000 * (1 + index / 100), 2)})
     return history
 
 
@@ -395,15 +408,48 @@ def _demo_snapshot() -> dict[str, Any]:
     now = _now_utc()
     symbols = _configured_symbols() or list(_DEMO_SYMBOLS)
     cache = _empty_cache()
-    cache["collection_revision"] = int(now.timestamp())
+    session_date = now.date()
+    while session_date.weekday() >= 5:
+        session_date -= timedelta(days=1)
+    cache["collection_revision"] = int(session_date.strftime("%Y%m%d"))
     for symbol in symbols:
         cache["symbols"][symbol] = {"history": _simulate_history(symbol, now), "market_fetched_at": _iso_utc(now)}
     return _build_snapshot(cache, symbols, fetched_live=set(symbols))
 
 
+def _as_connector_result(payload: dict[str, Any]) -> ConnectorResult:
+    summaries = [
+        {
+            key: ticker[key]
+            for key in ("symbol", "status", "freshness", "reason_code", "close_date", "price", "change_percent")
+        }
+        for ticker in payload["tickers"]
+    ]
+    return ConnectorResult(
+        name="market",
+        status=payload["status"],
+        freshness=payload["freshness"],
+        reason_code=payload["reason_code"],
+        observed_at=payload["observed_at"],
+        display_text=f"{len(summaries)} market symbols",
+        data={"collection_revision": payload["collection_revision"], "tickers": summaries},
+    )
+
+
+def collect_demo_market() -> ConnectorResult:
+    """Build the configured synthetic market result used by DEMO_MODE telemetry."""
+    if not _market_enabled():
+        return _as_connector_result(
+            _build_snapshot(_empty_cache(), [], disabled=True, reason_code="disabled")
+        )
+    return _as_connector_result(_demo_snapshot())
+
+
 def refresh_market_data() -> dict[str, Any]:
     """Refresh provider-backed cache. Only telemetry collection may call this."""
     if DEMO_MODE:
+        if not _market_enabled():
+            return _build_snapshot(_empty_cache(), [], disabled=True, reason_code="disabled")
         return _demo_snapshot()
     symbols = _configured_symbols()
     if not symbols or not _get_api_key():
@@ -412,6 +458,7 @@ def refresh_market_data() -> dict[str, Any]:
     assert api_key is not None
     with _MARKET_LOCK:
         cache = _read_cache()
+        persisted_cache = deepcopy(cache)
         entries: dict[str, Any] = cache["symbols"]
         fetched_live: set[str] = set()
         reason_code = "ok"
@@ -436,6 +483,7 @@ def refresh_market_data() -> dict[str, Any]:
                     entry["last_attempt_date"] = previous_attempt_date
                 reason_code = "cache_write_error"
                 continue
+            persisted_cache = deepcopy(cache)
             payload, error = _alpha_vantage_get({"function": "TIME_SERIES_DAILY", "symbol": symbol, "apikey": api_key})
             if error:
                 reason_code = error
@@ -464,24 +512,30 @@ def refresh_market_data() -> dict[str, Any]:
         if not provider_backoff:
             cache["provider_next_attempt_date"] = None
         cache["collection_revision"] += 1
-        _write_cache(cache)
+        if not _write_cache(cache):
+            snapshot = _build_snapshot(persisted_cache, symbols, reason_code="cache_write_error")
+            if snapshot["status"] == "healthy":
+                snapshot["status"] = "degraded"
+                snapshot["freshness"] = "fresh_cache"
+            return snapshot
         return _build_snapshot(cache, symbols, fetched_live=fetched_live, reason_code=reason_code)
 
 
 def read_market_data() -> dict[str, Any]:
     """Return display data without provider, cache, or cooldown mutation."""
     if DEMO_MODE:
+        if not _market_enabled():
+            return _build_snapshot(_empty_cache(), [], disabled=True, reason_code="disabled")
         return _demo_snapshot()
     symbols = _configured_symbols() or []
     if not _market_enabled():
         return _build_snapshot(_read_cache(), symbols, disabled=True, reason_code="disabled")
     if not symbols or not _get_api_key():
-        return _build_snapshot(_read_cache(), symbols, reason_code="not_configured")
+        return _build_snapshot(_empty_cache(), symbols, reason_code="not_configured")
     return _build_snapshot(_read_cache(), symbols)
 
 
 def collect_market() -> ConnectorResult:
     """Translate market collection into the common telemetry connector contract."""
     payload = refresh_market_data()
-    summaries = [{key: ticker[key] for key in ("symbol", "status", "freshness", "reason_code", "close_date", "price", "change_percent")} for ticker in payload["tickers"]]
-    return ConnectorResult(name="market", status=payload["status"], freshness=payload["freshness"], reason_code=payload["reason_code"], observed_at=payload["observed_at"], display_text=f"{len(summaries)} market symbols", data={"collection_revision": payload["collection_revision"], "tickers": summaries})
+    return _as_connector_result(payload)
