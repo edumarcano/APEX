@@ -169,6 +169,19 @@
           "Send stakeholder recap"
         ]
       }
+    },
+    "market": {
+      "status": "healthy",
+      "freshness": "live",
+      "reason_code": "ok",
+      "observed_at_offset": "now-1m",
+      "data": {
+        "collection_revision": 1,
+        "tickers": [
+          {"symbol": "SPY", "status": "healthy", "freshness": "live", "reason_code": "ok", "price": 520.0, "change_percent": 0.5},
+          {"symbol": "AAPL", "status": "healthy", "freshness": "live", "reason_code": "ok", "price": 190.0, "change_percent": -0.2}
+        ]
+      }
     }
   }
 }

@@ -2,6 +2,10 @@
 
 APEX is a local-first personal intelligence HUD. FastAPI serves the backend, React provides Home and Cortex, SQLite owns durable application state, and optional providers and connectors stay behind explicit capability and privacy boundaries.
 
+## Market telemetry
+
+Market is a telemetry connector for Home rather than a briefing fact source. Telemetry refreshes it in the normal sequential connector lifecycle and records its health in the shared snapshot. The Market client owns Alpha Vantage access, a 12-hour file-backed cache, and provider cooldowns; the Market route only reads that cache. Daily OHLCV history stays in the Market display projection, while the telemetry snapshot carries only bounded symbol summaries and a collection revision. This keeps chart data out of briefing payloads and lets Home update the card only after collection.
+
 ## Core model
 
 - **Home** presents briefings, telemetry, reminders, and quick interaction.

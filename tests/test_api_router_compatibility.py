@@ -179,30 +179,42 @@ class ExtractedRouterHttpTests(unittest.TestCase):
 
     def test_market_route_delegates_and_validates_payload(self) -> None:
         market_payload = {
-            "status": "live",
-            "cooldown_active": False,
-            "cooldown_remaining_seconds": 0,
+            "status": "healthy",
+            "freshness": "fresh_cache",
+            "reason_code": "ok",
+            "observed_at": "2026-07-13T12:00:00+00:00",
+            "collection_revision": 4,
             "tickers": [
                 {
                     "symbol": "SPY",
                     "price": 520.0,
                     "change": 1.5,
                     "change_percent": 0.29,
-                    "status": "live",
-                    "last_updated": "2026-07-13T12:00:00+00:00",
-                    "sparkline": [520.0, 518.5],
+                    "status": "healthy",
+                    "freshness": "fresh_cache",
+                    "reason_code": "ok",
+                    "observed_at": "2026-07-13T12:00:00+00:00",
+                    "close_date": "2026-07-13",
+                    "history": [
+                        {"date": "2026-07-11", "open": 518.0, "high": 520.0, "low": 517.0, "close": 518.5, "volume": 100.0},
+                        {"date": "2026-07-13", "open": 519.0, "high": 521.0, "low": 518.0, "close": 520.0, "volume": 110.0},
+                    ],
+                    "period_return_percent": 0.29,
+                    "period_low": 517.0,
+                    "period_high": 521.0,
+                    "volume_ratio": 1.1,
                 }
             ],
         }
         with mock.patch(
-            "core.api.routers.market.market_client.fetch_market_data",
+            "core.api.routers.market.market_client.read_market_data",
             return_value=market_payload,
-        ) as fetch_market:
+        ) as read_market:
             response = self.client.get("/api/v1/market")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), market_payload)
-        fetch_market.assert_called_once_with()
+        read_market.assert_called_once_with()
 
     def test_cortex_routes_delegate_and_preserve_payloads(self) -> None:
         response = self.client.get("/api/v1/cortex/agent")

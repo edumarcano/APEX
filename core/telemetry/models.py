@@ -24,6 +24,7 @@ ModuleName = Literal[
     "f1",
     "football",
     "reminders",
+    "market",
 ]
 
 FRESHNESS_WINDOW_SECONDS = 300

@@ -69,3 +69,7 @@ When `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is unset, tracing is disabled with zer
 ## Privacy and development modes
 
 Personal context is off by default for both runtimes. Sandbox mode is available only in `DEV_MODE`, uses a restricted non-personal tool allowlist, and stores conversation history in the sandbox partition. `DEMO_MODE` takes precedence for demo paths and does not contact configured providers.
+
+# Market data
+
+Enable `features.market`, add one to eight `market.symbols`, and place `ALPHA_VANTAGE_API_KEY` in `.env`. Market reads daily closing data and refreshes the provider cache no more often than every 12 hours. An enabled connector without symbols or an API key reports unavailable in Sync Health but does not prevent APEX activation.

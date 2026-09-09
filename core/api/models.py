@@ -15,7 +15,7 @@ from core.agent.types import (
     TokenUsage,
     ToolProfileMetadata,
 )
-from core.connectors.models import ConnectorHealthEntry
+from core.connectors.models import ConnectorFreshness, ConnectorHealthEntry, ConnectorStatus
 
 
 DigestStatus = Literal[
@@ -969,15 +969,15 @@ class PipelineStatusSnapshot(BaseModel):
     synthesis: PipelineSynthesisState | None = None
 
 
-MarketTickerStatus = Literal["live", "stale", "unavailable"]
-MarketGlobalStatus = Literal[
-    "live",
-    "partial",
-    "stale",
-    "unavailable",
-    "not_configured",
-    "provider_unavailable",
-]
+class MarketDailyBar(BaseModel):
+    """One validated end-of-day OHLCV observation."""
+
+    date: str = Field(description="Trading date in ISO-8601 calendar format.")
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float = Field(ge=0)
 
 
 class MarketTickerItem(BaseModel):
@@ -991,30 +991,24 @@ class MarketTickerItem(BaseModel):
         default=None,
         description="Percent close-to-close change without the trailing percent sign.",
     )
-    status: MarketTickerStatus = Field(
-        description="Per-symbol freshness state (live, stale, or unavailable).",
-    )
-    last_updated: str | None = Field(
-        default=None,
-        description="UTC ISO-8601 timestamp of the last successful market data fetch.",
-    )
-    sparkline: list[float] = Field(
-        default_factory=list,
-        description="Up to seven recent daily closing prices, newest first.",
-    )
+    status: ConnectorStatus
+    freshness: ConnectorFreshness = "none"
+    reason_code: str = "ok"
+    observed_at: str | None = None
+    close_date: str | None = Field(default=None, description="Trading date for the displayed close.")
+    history: list[MarketDailyBar] = Field(default_factory=list, max_length=20)
+    period_return_percent: float | None = None
+    period_low: float | None = None
+    period_high: float | None = None
+    volume_ratio: float | None = Field(default=None, ge=0)
 
 
 class MarketResponse(BaseModel):
-    status: MarketGlobalStatus = Field(
-        description="Aggregate market feed state for the configured symbol set.",
-    )
-    cooldown_active: bool = Field(
-        description="True when outgoing Alpha Vantage requests are globally paused.",
-    )
-    cooldown_remaining_seconds: int = Field(
-        ge=0,
-        description="Seconds remaining in the active provider cooldown window.",
-    )
+    status: ConnectorStatus
+    freshness: ConnectorFreshness = "none"
+    reason_code: str = "ok"
+    observed_at: str | None = None
+    collection_revision: int = Field(ge=0)
     tickers: list[MarketTickerItem] = Field(
         default_factory=list,
         description="Ordered market ticker snapshots for configured symbols.",

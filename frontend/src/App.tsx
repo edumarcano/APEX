@@ -203,7 +203,6 @@ export default function App(): ReactElement {
   } | null>(null)
   const [isReminderRefreshPending, setIsReminderRefreshPending] = useState(false)
   const [reminderActionError, setReminderActionError] = useState<string | null>(null)
-  const [marketPollKey, setMarketPollKey] = useState(0)
   const [briefingTargets, setBriefingTargets] = useState<BriefingTargetStatus[]>([])
   const assistantRuntimeRef = useRef<ApexAssistantRuntimeHandle | null>(null)
   const [assistantRunning, setAssistantRunning] = useState(false)
@@ -249,14 +248,16 @@ export default function App(): ReactElement {
   const actions = useActions(
     workspace === 'cortex' && !demoModeActive,
   )
-  const { data: marketData, isLoading: isMarketLoading } = useMarketData(
-    marketEnabled,
-    marketPollKey,
-  )
-
   const { activated, activate } = useAppActivation()
   const preflight = usePreflight()
   const telemetry = useTelemetrySnapshot()
+  const marketRevision = typeof telemetry.snapshot?.modules.market?.data.collection_revision === 'number'
+    ? telemetry.snapshot.modules.market.data.collection_revision
+    : null
+  const { data: marketData, isLoading: isMarketLoading } = useMarketData(
+    marketEnabled && activated,
+    marketRevision,
+  )
   const briefing = useBriefingPipeline()
   const voiceDelivery = useVoiceDelivery(
     briefing.briefing,
@@ -496,11 +497,13 @@ export default function App(): ReactElement {
   const handleSettingsPanelApplied = useCallback(
     async (response: SettingsResponse) => {
       handleSettingsApplied(response)
-      setMarketPollKey((key) => key + 1)
+      if (activated) {
+        await telemetry.refreshConnector('market', { force: true })
+      }
       await refreshAgentsStatus()
       await toolCatalogState.refreshCatalog()
     },
-    [handleSettingsApplied, refreshAgentsStatus, toolCatalogState],
+    [activated, handleSettingsApplied, refreshAgentsStatus, telemetry, toolCatalogState],
   )
 
   // Cortex remembers both production runtime choices. This is deliberately
@@ -800,7 +803,7 @@ export default function App(): ReactElement {
   const wingGapClass = 'gap-4'
   const weatherPanelLayoutClass = 'xl:flex-[0.5_1_0] xl:min-h-0'
   const eventsPanelLayoutClass = 'xl:flex-[1.5_1_0] xl:min-h-0'
-  const marketPanelLayoutClass = 'xl:flex-[1_1_0]'
+  const marketPanelLayoutClass = 'xl:flex-[1.35_1_0]'
   const rightTelemetryPanelClass = 'flex-none xl:flex-1 xl:min-h-0'
 
   const attentionTiers = useMemo(() => {

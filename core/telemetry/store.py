@@ -19,6 +19,10 @@ def _parse_collected_at(value: str) -> datetime:
 
 def _is_retaining_failure(new: ConnectorResult, prior: TelemetryModuleEntry | None) -> bool:
     """True when a failed refresh should keep the previous healthy/degraded module."""
+    # Market owns its own per-symbol cache fallback. Retaining the prior module
+    # here could resurrect symbols removed in Runtime Settings.
+    if new.name == "market":
+        return False
     if prior is None:
         return False
     if prior.status in {"disabled", "unavailable"}:

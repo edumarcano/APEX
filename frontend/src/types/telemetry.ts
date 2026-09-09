@@ -422,30 +422,38 @@ export interface TelemetryPayload {
 
 export type SystemState = 'idle' | 'loading' | 'success' | 'error'
 
-export type MarketTickerStatus = 'live' | 'stale' | 'unavailable'
-
-export type MarketResponseStatus =
-  | 'live'
-  | 'partial'
-  | 'stale'
-  | 'unavailable'
-  | 'not_configured'
-  | 'provider_unavailable'
+export interface MarketDailyBar {
+  date: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+}
 
 export interface MarketTickerItem {
   symbol: string
   price: number | null
   change: number | null
   change_percent: number | null
-  status: MarketTickerStatus
-  last_updated: string | null
-  sparkline: number[]
+  status: ConnectorHealthStatus
+  freshness: ConnectorFreshness
+  reason_code: string
+  observed_at: string | null
+  close_date: string | null
+  history: MarketDailyBar[]
+  period_return_percent: number | null
+  period_low: number | null
+  period_high: number | null
+  volume_ratio: number | null
 }
 
 export interface MarketResponse {
-  status: MarketResponseStatus
-  cooldown_active: boolean
-  cooldown_remaining_seconds: number
+  status: ConnectorHealthStatus
+  freshness: ConnectorFreshness
+  reason_code: string
+  observed_at: string | null
+  collection_revision: number
   tickers: MarketTickerItem[]
 }
 
