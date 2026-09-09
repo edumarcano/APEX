@@ -15,7 +15,9 @@ describe('MarketTickerCard', () => {
 
   it('shows loading instead of unavailable while telemetry is collecting', () => {
     const { rerender } = render(<MarketTickerCard data={null} enabled isLoading />)
-    expect(screen.getByRole('status')).toHaveTextContent('Loading market telemetry…')
+    const status = screen.getByRole('status')
+    expect(status).toHaveTextContent('Loading market…')
+    expect(status).toHaveClass('animate-pulse', 'text-sm', 'text-[color:var(--hud-muted-text)]')
     expect(screen.queryByText('Market telemetry is unavailable. Refresh telemetry to retry.')).not.toBeInTheDocument()
     rerender(<MarketTickerCard data={null} enabled isLoading={false} />)
     expect(screen.getByText('Market telemetry is unavailable. Refresh telemetry to retry.')).toBeVisible()
