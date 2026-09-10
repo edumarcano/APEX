@@ -44,11 +44,25 @@ class KnowledgeStoreTests(unittest.TestCase):
             with conn:
                 version = conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()
                 self.assertEqual(version[0], 4)
-                conn.execute("UPDATE schema_versions SET version = 5 WHERE domain = 'knowledge'")
+                conn.execute("UPDATE schema_versions SET version = 6 WHERE domain = 'knowledge'")
         finally:
             conn.close()
         with self.assertRaises(KnowledgeStoreError):
             self.store.initialize()
+
+    def test_accepts_compatible_unreleased_v5_schema_without_downgrading(self) -> None:
+        conn = sqlite3.connect(self.path)
+        try:
+            with conn:
+                conn.execute("UPDATE schema_versions SET version = 5 WHERE domain = 'knowledge'")
+        finally:
+            conn.close()
+        self.store.initialize()
+        conn = sqlite3.connect(self.path)
+        try:
+            self.assertEqual(conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()[0], 5)
+        finally:
+            conn.close()
 
     def test_sources_keep_origin_occurrence_and_per_claim_derivation(self) -> None:
         with self.assertRaises(KnowledgeStoreError):

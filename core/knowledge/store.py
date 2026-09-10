@@ -134,19 +134,21 @@ class KnowledgeStore:
                     "domain TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL CHECK(version >= 1))"
                 )
                 row = conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()
-                if row is not None and int(row[0]) > _KNOWLEDGE_SCHEMA_VERSION:
-                    raise KnowledgeStoreError("Knowledge schema is newer than this APEX build.")
+                version = int(row[0]) if row is not None else 0
+                if version > _KNOWLEDGE_SCHEMA_VERSION:
+                    if not self._is_compatible_forward_schema(conn, version):
+                        raise KnowledgeStoreError("Knowledge schema is newer than this APEX build.")
                 self._create_schema(conn)
                 if "merged_into_entity_id" not in {str(column[1]) for column in conn.execute("PRAGMA table_info(entities)")}:
                     conn.execute("ALTER TABLE entities ADD COLUMN merged_into_entity_id TEXT REFERENCES entities(id)")
-                version = int(row[0]) if row is not None else 0
                 if version < _KNOWLEDGE_SCHEMA_VERSION:
                     self._migrate_to_v4(conn)
-                conn.execute(
-                    "INSERT INTO schema_versions(domain, version) VALUES ('knowledge', ?) "
-                    "ON CONFLICT(domain) DO UPDATE SET version = excluded.version",
-                    (_KNOWLEDGE_SCHEMA_VERSION,),
-                )
+                if version <= _KNOWLEDGE_SCHEMA_VERSION:
+                    conn.execute(
+                        "INSERT INTO schema_versions(domain, version) VALUES ('knowledge', ?) "
+                        "ON CONFLICT(domain) DO UPDATE SET version = excluded.version",
+                        (_KNOWLEDGE_SCHEMA_VERSION,),
+                    )
                 conn.commit()
             except Exception:
                 conn.rollback()
@@ -228,6 +230,25 @@ class KnowledgeStore:
         )
         for statement in statements:
             conn.execute(statement)
+
+    @staticmethod
+    def _is_compatible_forward_schema(conn: sqlite3.Connection, version: int) -> bool:
+        """Accept only the earlier unreleased v5 layout already used locally."""
+        if version != 5:
+            return False
+        required_columns = {
+            "knowledge_sources": {"origin", "occurred_at"},
+            "knowledge_record_sources": {"derivation"},
+            "knowledge_record_predecessors": {"record_id", "predecessor_record_id", "relation", "linked_at"},
+            "knowledge_history": {
+                "record_id", "operation", "actor", "reason_code", "related_record_id", "source_id",
+                "action_id", "review_id", "created_at",
+            },
+        }
+        return all(
+            columns.issubset({str(column[1]) for column in conn.execute(f"PRAGMA table_info({table})")})
+            for table, columns in required_columns.items()
+        )
 
     @staticmethod
     def _migrate_to_v4(conn: sqlite3.Connection) -> None:
