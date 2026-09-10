@@ -456,6 +456,27 @@ class ContextCaptureRequest(BaseModel):
         return self
 
 
+class ContextSaveRequest(ContextCaptureRequest):
+    """Direct operator input, with explicit sensitivity and retry identity."""
+
+    sensitive: bool = False
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=128)
+    correction_record_id: str | None = None
+    expected_updated_at: str | None = Field(default=None, max_length=64)
+
+    @model_validator(mode="after")
+    def correction_has_revision(self):
+        if bool(self.correction_record_id) != bool(self.expected_updated_at):
+            raise ValueError("A correction target requires its observed record revision.")
+        return self
+
+
+class ContextSaveResponse(BaseModel):
+    outcome: Literal["saved", "review_required"]
+    record_id: str | None = None
+    review_id: str | None = None
+
+
 class ContextEntityResponse(BaseModel):
     id: str
     name: str
@@ -511,6 +532,25 @@ class ContextRecordDetailResponse(ContextRecordResponse):
     predecessors: list[str] = Field(default_factory=list)
     history: list[ContextHistoryResponse] = Field(default_factory=list)
     related_records: list[ContextRecordResponse] = Field(default_factory=list)
+    pending_review_ids: list[str] = Field(default_factory=list)
+
+
+class ContextReviewResponse(BaseModel):
+    id: str
+    partition: Literal["production", "sandbox"]
+    operation: str
+    proposal: dict[str, Any]
+    evidence: dict[str, Any]
+    expected_revisions: dict[str, str]
+    reason_codes: list[str]
+    decision: Literal["pending", "accepted", "rejected", "stale"]
+    action_id: str | None = None
+    decision_at: str | None = None
+    created_at: str
+
+
+class ContextReviewDecisionRequest(BaseModel):
+    expected_revisions: dict[str, str] = Field(default_factory=dict)
 
 
 class ContextRetractActionRequest(BaseModel):

@@ -1,5 +1,6 @@
 import logging
 import time
+from uuid import uuid4
 from typing import Any, Callable, Mapping, Protocol, TypeGuard, TypeVar, runtime_checkable
 
 from core.agent.capabilities import (
@@ -524,6 +525,37 @@ def run_agent_loop(
                                         "Personal context capture requires a persisted conversation source.",
                                     )
                                 arguments["_apex_provenance"] = dict(action_provenance)
+                            if call.name == "remember_personal_context":
+                                from core.knowledge import get_knowledge_service
+
+                                provenance = dict(arguments["_apex_provenance"])
+                                source_kind = str(provenance["source_kind"])
+                                original_text = str(provenance.get("original_text", ""))
+                                if not original_text:
+                                    raise CapabilityError(
+                                        CapabilityErrorCategory.UNAVAILABLE,
+                                        "Personal context capture requires frozen source evidence.",
+                                    )
+                                knowledge = get_knowledge_service()
+                                policy = knowledge.store.capture_decision(
+                                    partition=str(provenance["partition"]),
+                                    **{key: value for key, value in arguments.items() if key != "_apex_provenance"},
+                                )
+                                action_id = str(uuid4())
+                                review = knowledge.create_action_review(
+                                    partition=str(provenance["partition"]), operation="capture",
+                                    proposal={key: value for key, value in arguments.items() if key != "_apex_provenance"},
+                                    evidence={
+                                        "source_kind": source_kind,
+                                        "locator": f"conversation/{provenance['conversation_id']}/message/{provenance['message_id']}",
+                                        "original_text": original_text, "source_origin": "operator_input",
+                                        "derivation": "model_interpretation", "occurred_at": provenance.get("occurred_at"),
+                                    },
+                                    expected_revisions=policy["expected_revisions"], reason_codes=("agent_interpretation", *policy["reason_codes"]), action_id=action_id,
+                                )
+                                arguments["review_id"] = str(review.id)
+                            else:
+                                action_id = None
                             action = action_service.propose(
                                 agent_key=agent_key or request.agent,
                                 capability_name=call.name,
@@ -531,6 +563,7 @@ def run_agent_loop(
                                 target=descriptor.title,
                                 risk=descriptor.risk,
                                 summary=f"Approve {descriptor.title}",
+                                action_id=action_id,
                             )
                             action_id = action.action_id
                             action_risk = action.proposal.risk

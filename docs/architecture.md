@@ -40,6 +40,15 @@ Personal context keeps immutable source evidence separate from the normalized cl
 
 Knowledge history records later status changes, evidence links, corrections, conflict decisions, and entity reconciliation against the affected claim. Records upgraded from earlier schemas receive a `migration_baseline` history entry with unknown provenance; it marks the start of durable history without inventing older events or attribution.
 
+## Context review
+
+The knowledge store owns durable review proposals. A review freezes source
+evidence, the proposed mutation, reason codes, and affected record, entity, and
+alias snapshots before a decision. Pending proposals remain outside retrieval. Acceptance uses
+the existing action executor and verifier, and commits the knowledge mutation,
+history, retrieval synchronization, and review decision in one SQLite write
+transaction.
+
 ## Local runtime coordination
 
 APEX permits one local inference execution across Ollama and llama.cpp. The coordinator validates reachability, resident models, installed aliases, and resource gates before loading. The selected model’s context and reasoning controls apply on the next relevant request; unloading remains provider-neutral.

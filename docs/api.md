@@ -60,6 +60,12 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | POST | `/api/v1/cortex/runs/{run_id}/cancel` | Request cooperative run cancellation |
 | GET | `/api/v1/cortex/runs/{run_id}/events` | Stream live run activity as Server-Sent Events |
 | POST | `/api/v1/cortex/context/captures` | Propose a manual personal-context capture |
+| POST | `/api/v1/cortex/context/saves` | Save clear operator input or return a durable review |
+| GET | `/api/v1/cortex/context/reviews` | List bounded durable context reviews |
+| GET | `/api/v1/cortex/context/reviews/{review_id}` | Inspect a frozen review |
+| POST | `/api/v1/cortex/context/reviews/{review_id}/accept` | Execute and verify a review |
+| POST | `/api/v1/cortex/context/reviews/{review_id}/refresh` | Revalidate a stale review before another decision |
+| POST | `/api/v1/cortex/context/reviews/{review_id}/reject` | Reject a review |
 | GET | `/api/v1/cortex/context` | List local personal-context records in the current partition |
 | GET | `/api/v1/cortex/context/{record_id}` | Inspect one record, its sources, history, and related records |
 | GET | `/api/v1/cortex/context/entities` | Search unmerged local entities and exact aliases |
@@ -601,6 +607,20 @@ operation fails safely when the underlying record changes. Retraction is a
 destructive action; all other reconciliation operations are write actions.
 Entity merges are explicit and one-way: record references and aliases move to
 the selected target, while the source is retained only as a merged entity.
+
+### Context saves and review
+
+`POST /api/v1/cortex/context/saves` applies clear direct operator input and
+returns `review_required` for sensitive entries or known structured conflicts.
+Exact duplicates attach evidence only when kind, structured value, and effective
+time agree. A review retains frozen evidence, proposal fields, reasons, and
+the affected record, entity, and alias snapshot; pending proposals do not enter
+retrieval. Acceptance checks the same snapshot and runs through a verified
+action. A `409` refresh-required response leaves the review untouched;
+`POST .../refresh` creates a new review marked `refresh_revalidated` for a
+deliberate subsequent decision. Expired attempts are replaced after
+revalidation, and unknown outcomes are verified before a replacement is created.
+Rejection preserves the current claim. Record detail includes pending review IDs.
 
 ### Local retrieval foundation
 

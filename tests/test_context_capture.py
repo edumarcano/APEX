@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -9,11 +10,12 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from core.actions import ActionService, ActionStore
-from core.api.models import ContextCaptureRequest
-from core.api.routers.cortex import propose_context_capture
+from core.actions import ActionService, ActionStore, ExecutionOutcome
+from core.api.models import ActionMutationRequest, ContextCaptureRequest, ContextReviewDecisionRequest
+from core.api.routers.cortex import accept_context_review, propose_context_capture, refresh_context_review, reject_context_review
 from core.knowledge.capture import CAPABILITY_NAME, ContextCaptureExecutor, ContextCaptureVerifier
-from core.knowledge.store import KnowledgeStore
+from core.knowledge.store import KnowledgeConflictError, KnowledgeStore
+from core.knowledge import KnowledgeService
 from core.retrieval.store import RetrievalStore
 
 
@@ -37,16 +39,28 @@ class _ConversationService:
         return "production"
 
 
+class _UnknownOnceCaptureExecutor:
+    def __init__(self, delegate) -> None:
+        self.delegate = delegate
+        self.calls = 0
+
+    def execute(self, action):
+        self.calls += 1
+        if self.calls == 1:
+            return ExecutionOutcome(None, "capture_transport_unknown", {})
+        return self.delegate.execute(action)
+
+
 class ContextCaptureTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
-        path = Path(self.tempdir.name) / "apex.db"
-        RetrievalStore(path).initialize()
-        self.knowledge = KnowledgeStore(path)
+        self.path = Path(self.tempdir.name) / "apex.db"
+        RetrievalStore(self.path).initialize()
+        self.knowledge = KnowledgeStore(self.path)
         self.knowledge.initialize()
         self.message_id = uuid4()
         self.conversations = _ConversationService(self.message_id, "Keep the project plan concise.")
-        self.actions = ActionService(ActionStore(path))
+        self.actions = ActionService(ActionStore(self.path))
         self.actions.register_handler(
             CAPABILITY_NAME,
             executor=ContextCaptureExecutor(self.knowledge, self.conversations),
@@ -103,16 +117,17 @@ class ContextCaptureTests(unittest.TestCase):
         second_record = next(record for record in records if record.text == "Project status is paused.")
         first_history = self.knowledge.get_record(first_record.id, partition="production").history
         second_history = self.knowledge.get_record(second_record.id, partition="production").history
-        self.assertEqual([event.operation for event in first_history], ["created", "source_linked", "status_changed"])
+        self.assertEqual([event.operation for event in first_history], ["created", "source_linked", "review_accepted", "status_changed"])
         self.assertEqual(first_history[-1].reason_code, "status_conflicting")
         self.assertEqual(first_history[-1].related_record_id, second_record.id)
-        self.assertEqual([event.operation for event in second_history], ["created", "source_linked"])
+        self.assertEqual([event.operation for event in second_history], ["created", "source_linked", "review_accepted"])
         self.assertEqual(second_history[0].reason_code, "initial_conflicting")
 
     def test_manual_endpoint_proposes_without_writing_and_rejects_secret(self) -> None:
         payload = ContextCaptureRequest(kind="note", text="Remember this for later.")
         with patch("core.api.routers.cortex.get_action_service", return_value=self.actions), patch(
             "core.api.routers.cortex.get_conversation_service", return_value=self.conversations
+        ), patch("core.api.routers.cortex.get_knowledge_service", return_value=KnowledgeService(self.knowledge)
         ):
             response = propose_context_capture(payload)
         self.assertEqual(response.status, "proposed")
@@ -128,6 +143,149 @@ class ContextCaptureTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as rejected:
             propose_context_capture(ContextCaptureRequest(kind="note", text="api_key=very-secret-value"))
         self.assertEqual(rejected.exception.status_code, 422)
+
+    def test_review_routes_accept_once_and_replay_the_decision(self) -> None:
+        knowledge_service = KnowledgeService(self.knowledge)
+        with patch("core.api.routers.cortex.get_action_service", return_value=self.actions), patch(
+            "core.api.routers.cortex.get_conversation_service", return_value=self.conversations
+        ), patch("core.api.routers.cortex.get_knowledge_service", return_value=knowledge_service):
+            proposal = propose_context_capture(ContextCaptureRequest(kind="note", text="Route lifecycle evidence."))
+            review = self.knowledge.review_for_action(proposal.action_id, partition="production")
+            assert review is not None
+            payload = ContextReviewDecisionRequest(expected_revisions=review.expected_revisions)
+            accepted = accept_context_review(review.id, payload)
+            replay = accept_context_review(review.id, payload)
+        self.assertEqual((accepted.decision, replay.decision), ("accepted", "accepted"))
+        self.assertEqual(len(self.knowledge.list_records(partition="production")), 1)
+
+    def test_review_accept_after_linked_action_expiry_replaces_and_verifies(self) -> None:
+        now = [datetime(2026, 9, 10, tzinfo=UTC)]
+        actions = ActionService(ActionStore(self.path), clock=lambda: now[0])
+        actions.register_handler(
+            CAPABILITY_NAME,
+            executor=ContextCaptureExecutor(self.knowledge, self.conversations),
+            verifier=ContextCaptureVerifier(self.knowledge),
+        )
+        knowledge_service = KnowledgeService(self.knowledge)
+        with patch("core.api.routers.cortex.get_action_service", return_value=actions), patch(
+            "core.api.routers.cortex.get_conversation_service", return_value=self.conversations
+        ), patch("core.api.routers.cortex.get_knowledge_service", return_value=knowledge_service):
+            proposal = propose_context_capture(ContextCaptureRequest(kind="note", text="Expired review evidence."))
+            review = self.knowledge.review_for_action(proposal.action_id, partition="production")
+            assert review is not None
+            now[0] += timedelta(hours=25)
+            accepted = accept_context_review(
+                review.id, ContextReviewDecisionRequest(expected_revisions=review.expected_revisions),
+            )
+        self.assertEqual(accepted.decision, "accepted")
+        self.assertEqual(actions.get(proposal.action_id).status, "expired")
+        self.assertNotEqual(accepted.action_id, proposal.action_id)
+        self.assertEqual(actions.get(accepted.action_id).status, "verified")
+
+    def test_generic_approve_after_expiry_uses_review_replacement_lifecycle(self) -> None:
+        now = [datetime(2026, 9, 10, tzinfo=UTC)]
+        actions = ActionService(ActionStore(self.path), clock=lambda: now[0])
+        actions.register_handler(
+            CAPABILITY_NAME,
+            executor=ContextCaptureExecutor(self.knowledge, self.conversations),
+            verifier=ContextCaptureVerifier(self.knowledge),
+        )
+        knowledge_service = KnowledgeService(self.knowledge)
+        with patch("core.api.routers.cortex.get_action_service", return_value=actions), patch(
+            "core.api.routers.cortex.get_conversation_service", return_value=self.conversations
+        ), patch("core.api.routers.cortex.get_knowledge_service", return_value=knowledge_service):
+            proposal = propose_context_capture(ContextCaptureRequest(kind="note", text="Generic expiry evidence."))
+        now[0] += timedelta(hours=25)
+        from core.api.routers.actions import approve_action
+
+        with patch("core.api.routers.actions.get_action_service", return_value=actions), patch(
+            "core.knowledge.get_knowledge_service", return_value=knowledge_service,
+        ):
+            response = approve_action(proposal.action_id, ActionMutationRequest(expected_version=0))
+        self.assertEqual(actions.get(proposal.action_id).status, "expired")
+        self.assertNotEqual(response.action_id, proposal.action_id)
+        self.assertEqual(response.status, "verified")
+
+    def test_unknown_attempt_is_verified_before_review_replacement_executes(self) -> None:
+        actions = ActionService(ActionStore(self.path))
+        executor = _UnknownOnceCaptureExecutor(ContextCaptureExecutor(self.knowledge, self.conversations))
+        actions.register_handler(
+            CAPABILITY_NAME, executor=executor, verifier=ContextCaptureVerifier(self.knowledge),
+        )
+        knowledge_service = KnowledgeService(self.knowledge)
+        with patch("core.api.routers.cortex.get_action_service", return_value=actions), patch(
+            "core.api.routers.cortex.get_conversation_service", return_value=self.conversations
+        ), patch("core.api.routers.cortex.get_knowledge_service", return_value=knowledge_service):
+            proposal = propose_context_capture(ContextCaptureRequest(kind="note", text="Verify before retry."))
+            review = self.knowledge.review_for_action(proposal.action_id, partition="production")
+            assert review is not None
+            with self.assertRaisesRegex(KnowledgeConflictError, "review_verification_required"):
+                knowledge_service.decide_review_accept(
+                    actions, review.id, partition="production", expected_revisions=review.expected_revisions,
+                )
+            accepted = knowledge_service.decide_review_accept(
+                actions, review.id, partition="production", expected_revisions=review.expected_revisions,
+            )
+        self.assertEqual(accepted.decision, "accepted")
+        self.assertEqual(executor.calls, 2)
+        self.assertEqual(actions.get(proposal.action_id).status, "verification_failed")
+        self.assertEqual(actions.events(proposal.action_id)[-1].result_code, "context_capture_missing")
+
+    def test_stale_review_route_refreshes_the_current_snapshot(self) -> None:
+        knowledge_service = KnowledgeService(self.knowledge)
+        payload = ContextCaptureRequest(
+            kind="fact", text="Project status is paused.", subject="Project", predicate="status", object_value="paused",
+        )
+        with patch("core.api.routers.cortex.get_action_service", return_value=self.actions), patch(
+            "core.api.routers.cortex.get_conversation_service", return_value=self.conversations
+        ), patch("core.api.routers.cortex.get_knowledge_service", return_value=knowledge_service):
+            proposal = propose_context_capture(payload)
+            review = self.knowledge.review_for_action(proposal.action_id, partition="production")
+            assert review is not None
+            self.knowledge.apply_capture(
+                action_id="refresh-peer", partition="production", source_kind="manual", locator="manual/refresh-peer",
+                original_text="Project status is active.", kind="fact", text="Project status is active.",
+                subject="Project", predicate="status", object_value="active", derivation="direct",
+            )
+            decision = ContextReviewDecisionRequest(expected_revisions=review.expected_revisions)
+            with self.assertRaises(HTTPException) as stale:
+                accept_context_review(review.id, decision)
+            self.assertEqual(stale.exception.status_code, 409)
+            refreshed = refresh_context_review(review.id, decision)
+        self.assertEqual(refreshed.decision, "pending")
+        self.assertNotEqual(refreshed.id, str(review.id))
+        self.assertEqual(self.knowledge.get_review(review.id, partition="production").decision, "stale")
+
+    def test_review_route_rejects_the_linked_action(self) -> None:
+        knowledge_service = KnowledgeService(self.knowledge)
+        with patch("core.api.routers.cortex.get_action_service", return_value=self.actions), patch(
+            "core.api.routers.cortex.get_conversation_service", return_value=self.conversations
+        ), patch("core.api.routers.cortex.get_knowledge_service", return_value=knowledge_service):
+            proposal = propose_context_capture(ContextCaptureRequest(kind="note", text="Reject route evidence."))
+            review = self.knowledge.review_for_action(proposal.action_id, partition="production")
+            assert review is not None
+            rejected = reject_context_review(
+                review.id, ContextReviewDecisionRequest(expected_revisions=review.expected_revisions),
+            )
+        self.assertEqual(rejected.decision, "rejected")
+        self.assertEqual(self.actions.get(proposal.action_id).status, "rejected")
+
+    def test_generic_reject_resolves_a_capture_review_with_frozen_mapping(self) -> None:
+        knowledge_service = KnowledgeService(self.knowledge)
+        with patch("core.api.routers.cortex.get_action_service", return_value=self.actions), patch(
+            "core.api.routers.cortex.get_conversation_service", return_value=self.conversations
+        ), patch("core.api.routers.cortex.get_knowledge_service", return_value=knowledge_service):
+            proposal = propose_context_capture(ContextCaptureRequest(kind="note", text="Generic reject evidence."))
+        from core.api.routers.actions import reject_action
+
+        with patch("core.api.routers.actions.get_action_service", return_value=self.actions), patch(
+            "core.knowledge.get_knowledge_service", return_value=knowledge_service,
+        ):
+            rejected = reject_action(proposal.action_id, ActionMutationRequest(expected_version=0))
+        self.assertEqual(rejected.status, "rejected")
+        review = self.knowledge.review_for_action(proposal.action_id, partition="production")
+        assert review is not None
+        self.assertEqual(review.decision, "rejected")
 
 
 if __name__ == "__main__":
