@@ -126,9 +126,19 @@ def get_action(action_id: str) -> ActionDetailResponse:
 def approve_action(action_id: str, payload: ActionMutationRequest) -> ActionResponse:
     _require_normal_mode()
     try:
-        return _record_response(_service().approve_and_execute(
-            action_id, actor="operator", expected_version=payload.expected_version
-        ))
+        service = _service()
+        action = service.get(action_id)
+        if action.proposal.capability_name in {"remember_personal_context", "reconcile_personal_context"}:
+            from core.knowledge import get_knowledge_service
+
+            record = get_knowledge_service().approve_linked_action(
+                service, action_id, expected_version=payload.expected_version,
+            )
+        else:
+            record = service.approve_and_execute(
+                action_id, actor="operator", expected_version=payload.expected_version,
+            )
+        return _record_response(record)
     except Exception as exc:
         _raise_action_error(exc)
 
@@ -137,9 +147,16 @@ def approve_action(action_id: str, payload: ActionMutationRequest) -> ActionResp
 def reject_action(action_id: str, payload: ActionMutationRequest) -> ActionResponse:
     _require_normal_mode()
     try:
-        return _record_response(_service().reject(
-            action_id, actor="operator", expected_version=payload.expected_version
-        ))
+        service = _service()
+        action = service.get(action_id)
+        if action.proposal.capability_name in {"remember_personal_context", "reconcile_personal_context"}:
+            from core.knowledge import get_knowledge_service
+            record = get_knowledge_service().reject_linked_action(
+                service, action_id, expected_version=payload.expected_version,
+            )
+        else:
+            record = service.reject(action_id, actor="operator", expected_version=payload.expected_version)
+        return _record_response(record)
     except Exception as exc:
         _raise_action_error(exc)
 

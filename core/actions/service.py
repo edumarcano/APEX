@@ -90,6 +90,7 @@ class ActionService:
         risk: CapabilityRisk,
         summary: str,
         actor: str = "agent",
+        action_id: str | None = None,
     ) -> ActionRecord:
         """Create a frozen action proposal without executing it."""
         now = self._now()
@@ -103,7 +104,7 @@ class ActionService:
             proposed_at=now,
             expires_at=now + DEFAULT_APPROVAL_WINDOW,
         )
-        return self._store.propose(proposal, actor=actor)
+        return self._store.propose(proposal, actor=actor, action_id=action_id)
 
     def get(self, action_id: str) -> ActionRecord:
         """Load one action's authoritative current state."""

@@ -136,9 +136,9 @@ class ActionStore:
             with conn:
                 initialize_action_schema(conn)
 
-    def propose(self, proposal: ActionProposal, *, actor: str = "system") -> ActionRecord:
+    def propose(self, proposal: ActionProposal, *, actor: str = "system", action_id: str | None = None) -> ActionRecord:
         """Store a proposal and its first audit event in one transaction."""
-        action_id = str(uuid.uuid4())
+        action_id = action_id or str(uuid.uuid4())
         with self._connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:

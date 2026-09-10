@@ -8,6 +8,7 @@ from unittest.mock import patch
 from core.actions import ActionService, ActionStore
 from core.knowledge.reconciliation import CAPABILITY_NAME, ContextReconciliationExecutor, ContextReconciliationVerifier
 from core.knowledge.store import KnowledgeStore
+from core.knowledge import KnowledgeService
 from core.retrieval.store import RetrievalStore
 
 
@@ -63,6 +64,55 @@ class ContextReconciliationActionTests(unittest.TestCase):
         result = self.actions.approve_and_execute(action.action_id, actor="operator", expected_version=0)
         self.assertEqual(result.status, "execution_failed")
         self.assertEqual(self.knowledge.get_record(self.record.id, partition="production").record.status, "conflicting")
+
+    def test_sensitive_direct_correction_review_builds_server_owned_attempt_arguments(self) -> None:
+        service = KnowledgeService(self.knowledge)
+        record, review = service.correct_operator_context(
+            partition="production", record_id=str(self.record.id), expected_updated_at=self.record.updated_at,
+            values={"kind": "preference", "text": "Keep meetings after lunch.", "effective_at": None},
+            sensitive=True, idempotency_key="sensitive-correction",
+        )
+        self.assertIsNone(record)
+        assert review is not None
+        accepted = service.decide_review_accept(
+            self.actions, review.id, partition="production", expected_revisions=review.expected_revisions,
+        )
+        self.assertEqual(accepted.decision, "accepted")
+        action = self.actions.get(accepted.action_id)
+        self.assertEqual(action.proposal.arguments["operation"], "correct")
+        self.assertEqual(action.proposal.arguments["partition"], "production")
+        replacement = self.knowledge.list_records(partition="production", statuses=("active",))[0]
+        source_link = self.knowledge.get_record(replacement.id, partition="production").source_links[0]
+        self.assertEqual(source_link.source.original_text, "Keep meetings after lunch.")
+        self.assertEqual(source_link.derivation, "direct")
+
+    def test_stale_correction_refreshes_the_target_revision_without_writing(self) -> None:
+        service = KnowledgeService(self.knowledge)
+        current = self.knowledge.get_record(self.record.id, partition="production").record
+        record, review = service.correct_operator_context(
+            partition="production", record_id=str(current.id), expected_updated_at=current.updated_at,
+            values={"kind": "preference", "text": "Keep meetings after lunch.", "effective_at": None},
+            sensitive=True, idempotency_key="refresh-correction",
+        )
+        self.assertIsNone(record)
+        assert review is not None
+        self.knowledge.apply_capture(
+            action_id="revision-change", partition="production", source_kind="manual", locator="manual/revision-change",
+            original_text="Keep meetings in the morning.", kind="preference", text="Keep meetings in the morning.",
+            derivation="direct",
+        )
+        with self.assertRaisesRegex(Exception, "review_refresh_required"):
+            service.decide_review_accept(
+                self.actions, review.id, partition="production", expected_revisions=review.expected_revisions,
+            )
+        refreshed = service.decide_review_refresh(
+            review.id, partition="production", expected_revisions=review.expected_revisions,
+        )
+        updated = self.knowledge.get_record(self.record.id, partition="production").record
+        self.assertEqual(refreshed.decision, "pending")
+        self.assertEqual(refreshed.proposal["expected_updated_at"], updated.updated_at)
+        self.assertEqual(self.knowledge.get_review(review.id, partition="production").decision, "stale")
+        self.assertEqual(len(self.knowledge.list_records(partition="production")), 1)
 
     def test_context_read_and_action_routes_use_current_partition_and_action_boundary(self) -> None:
         from core.api.routers.cortex import get_context_record, list_context_records, propose_context_action

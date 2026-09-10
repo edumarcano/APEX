@@ -14,6 +14,7 @@ KnowledgeKind = Literal[
     "idea", "preference", "decision", "goal", "fact", "constraint", "note", "observation",
 ]
 KnowledgeStatus = Literal["active", "conflicting", "superseded", "retracted"]
+KnowledgeReviewDecision = Literal["pending", "accepted", "rejected", "stale"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +76,23 @@ class KnowledgeRecord:
     supersedes_record_id: UUID | None
     created_at: str
     updated_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeReview:
+    """A durable, frozen proposal awaiting an operator decision."""
+
+    id: UUID
+    partition: KnowledgePartition
+    operation: str
+    proposal: dict[str, object]
+    evidence: dict[str, object]
+    expected_revisions: dict[str, str]
+    reason_codes: tuple[str, ...]
+    decision: KnowledgeReviewDecision
+    action_id: str | None
+    decision_at: str | None
+    created_at: str
 
 
 @dataclass(frozen=True, slots=True)

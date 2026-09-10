@@ -11,6 +11,7 @@ from core.actions import ExecutionOutcome, VerificationOutcome
 from core.actions.models import ActionRecord
 from core.conversations.service import ConversationService
 from core.knowledge.store import KnowledgeStore
+from core.knowledge.store import KnowledgeConflictError
 
 CAPABILITY_NAME = "remember_personal_context"
 _SECRET_PATTERNS = (
@@ -51,15 +52,34 @@ class ContextCaptureExecutor:
                 raise ContextCaptureError("capture_provenance_invalid")
             partition = str(provenance.get("partition", ""))
             source_kind = str(provenance.get("source_kind", ""))
+            requested_review_id = arguments.pop("review_id", None)
+            review = self._knowledge.review_for_action(action.action_id, partition=partition)
+            if requested_review_id is not None and (
+                review is None or str(review.id) != str(requested_review_id)
+            ):
+                raise ContextCaptureError("capture_review_link_invalid")
+            if review is not None:
+                if review.action_id != action.action_id:
+                    raise ContextCaptureError("capture_review_attempt_superseded")
+                accepted = self._knowledge.accept_review(review.id, partition=partition, action_id=action.action_id)
+                return ExecutionOutcome(True, "context_review_accepted", {"review_id": str(accepted.id)})
             if source_kind == "conversation_message":
                 conversation_id = UUID(str(provenance["conversation_id"]))
                 message_id = UUID(str(provenance["message_id"]))
-                detail = self._conversations.store.detail(conversation_id, partition)
-                message = next((item for item in detail.messages if item.id == message_id), None)
-                if message is None or message.role != "user" or message.status != "completed":
-                    raise ContextCaptureError("capture_source_unavailable")
-                original_text, locator = message.content, f"conversation/{conversation_id}/message/{message_id}"
-                source_occurred_at = str(getattr(message, "created_at", "")) or None
+                frozen_text = provenance.get("original_text")
+                frozen_at = provenance.get("occurred_at")
+                if isinstance(frozen_text, str) and frozen_text:
+                    original_text, locator = frozen_text, f"conversation/{conversation_id}/message/{message_id}"
+                    source_occurred_at = str(frozen_at) if frozen_at else None
+                else:
+                    # Existing action records predate frozen review evidence. Keep
+                    # them executable during upgrade; new proposals always freeze.
+                    detail = self._conversations.store.detail(conversation_id, partition)
+                    message = next((item for item in detail.messages if item.id == message_id), None)
+                    if message is None or message.role != "user" or message.status != "completed":
+                        raise ContextCaptureError("capture_source_unavailable")
+                    original_text, locator = message.content, f"conversation/{conversation_id}/message/{message_id}"
+                    source_occurred_at = str(getattr(message, "created_at", "")) or None
                 derivation = "model_interpretation"
             elif source_kind == "manual":
                 original_text = str(provenance["original_text"])
@@ -71,15 +91,22 @@ class ContextCaptureExecutor:
             reject_secret_text(original_text)
             reject_secret_text(str(arguments.get("text", "")))
             validate_effective_at(arguments.get("effective_at"))
-            record, source, outcome = self._knowledge.apply_capture(
-                action_id=action.action_id, partition=partition, source_kind=source_kind,
-                locator=locator, original_text=original_text, source_origin="operator_input",
-                source_occurred_at=source_occurred_at, derivation=derivation, **arguments,
+            # Pre-review action records are upgraded on their first use only
+            # when they contain frozen, server-owned evidence.  They follow the
+            # same snapshot and acceptance path as newly created proposals.
+            legacy_review = self._knowledge.create_review(
+                partition=partition, operation="capture", proposal=arguments,
+                evidence={
+                    "source_kind": source_kind, "locator": locator,
+                    "original_text": original_text, "source_origin": "operator_input",
+                    "derivation": derivation, "occurred_at": source_occurred_at,
+                },
+                expected_revisions=self._knowledge.capture_decision(partition=partition, **arguments)["expected_revisions"],
+                reason_codes=("legacy_revalidation",), action_id=action.action_id,
             )
-            return ExecutionOutcome(True, "context_captured", {
-                "record_id": str(record.id), "source_id": str(source.id), "outcome": outcome,
-            })
-        except (ContextCaptureError, KeyError, TypeError, ValueError) as exc:
+            accepted = self._knowledge.accept_review(legacy_review.id, partition=partition, action_id=action.action_id)
+            return ExecutionOutcome(True, "context_review_accepted", {"review_id": str(accepted.id)})
+        except (ContextCaptureError, KnowledgeConflictError, KeyError, TypeError, ValueError) as exc:
             return ExecutionOutcome(False, "context_capture_rejected", {"category": type(exc).__name__})
         except Exception:
             return ExecutionOutcome(None, "context_capture_unknown", {})

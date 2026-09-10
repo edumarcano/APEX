@@ -15,6 +15,8 @@ from core.knowledge.store import (
     KnowledgeStore,
     KnowledgeStoreError,
 )
+from core.knowledge import KnowledgeService
+from core.knowledge.capture import ContextCaptureError
 from core.retrieval.store import RetrievalStore
 
 
@@ -43,8 +45,8 @@ class KnowledgeStoreTests(unittest.TestCase):
         try:
             with conn:
                 version = conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()
-                self.assertEqual(version[0], 4)
-                conn.execute("UPDATE schema_versions SET version = 6 WHERE domain = 'knowledge'")
+                self.assertEqual(version[0], 9)
+                conn.execute("UPDATE schema_versions SET version = 10 WHERE domain = 'knowledge'")
         finally:
             conn.close()
         with self.assertRaises(KnowledgeStoreError):
@@ -57,12 +59,287 @@ class KnowledgeStoreTests(unittest.TestCase):
                 conn.execute("UPDATE schema_versions SET version = 5 WHERE domain = 'knowledge'")
         finally:
             conn.close()
+
+    def test_v8_review_migration_preserves_attempts_and_scopes_retry_keys(self) -> None:
+        legacy_path = Path(self.temp_dir.name) / "review-v8.db"
+        RetrievalStore(legacy_path).initialize()
+        review_id = UUID(int=404)
+        conn = sqlite3.connect(legacy_path)
+        try:
+            with conn:
+                conn.execute("INSERT INTO schema_versions(domain,version) VALUES ('knowledge',8)")
+                conn.execute(
+                    "CREATE TABLE knowledge_reviews ("
+                    "id TEXT PRIMARY KEY NOT NULL, partition TEXT NOT NULL, operation TEXT NOT NULL, "
+                    "proposal_json TEXT NOT NULL, evidence_json TEXT NOT NULL, expected_revisions_json TEXT NOT NULL, "
+                    "reason_codes_json TEXT NOT NULL, decision TEXT NOT NULL, action_id TEXT UNIQUE, decision_at TEXT, "
+                    "created_at TEXT NOT NULL, idempotency_key TEXT UNIQUE)"
+                )
+                conn.execute(
+                    "CREATE TABLE knowledge_review_actions (review_id TEXT NOT NULL, action_id TEXT NOT NULL UNIQUE, "
+                    "created_at TEXT NOT NULL, PRIMARY KEY(review_id,action_id))"
+                )
+                conn.execute(
+                    "INSERT INTO knowledge_reviews VALUES (?, 'production', 'capture', ?, ?, '{}', '[\"sensitive\"]', "
+                    "'pending', 'old-action', NULL, '2026-09-10T00:00:00+00:00', 'shared-key')",
+                    (str(review_id), '{"kind":"note","text":"Legacy review.","effective_at":null}',
+                     '{"source_kind":"manual","original_text":"Legacy review."}'),
+                )
+                conn.execute(
+                    "INSERT INTO knowledge_review_actions VALUES (?, 'old-action', '2026-09-10T00:00:00+00:00')",
+                    (str(review_id),),
+                )
+        finally:
+            conn.close()
+        migrated = KnowledgeStore(legacy_path)
+        migrated.initialize()
+        self.assertEqual(migrated.get_review(review_id, partition="production").action_id, "old-action")
+        independent = migrated.create_review(
+            partition="sandbox", operation="capture",
+            proposal={"kind": "note", "text": "Sandbox review.", "effective_at": None},
+            evidence={"source_kind": "manual", "original_text": "Sandbox review."},
+            expected_revisions={}, reason_codes=("sensitive",), idempotency_key="shared-key",
+        )
+        self.assertEqual(independent.partition, "sandbox")
+        migrated.close()
         self.store.initialize()
         conn = sqlite3.connect(self.path)
         try:
-            self.assertEqual(conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()[0], 5)
+            self.assertEqual(conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()[0], 9)
         finally:
             conn.close()
+
+    def test_review_acceptance_is_durable_and_stale_snapshot_writes_nothing(self) -> None:
+        review = self.store.create_review(
+            partition="production", operation="capture",
+            proposal={"kind": "note", "text": "Freeze this evidence.", "effective_at": None},
+            evidence={"source_kind": "manual", "locator": "manual/review-one", "original_text": "Freeze this evidence.", "source_origin": "operator_input", "derivation": "direct"},
+            expected_revisions={}, reason_codes=("sensitive",),
+        )
+        accepted = self.store.accept_review(review.id, partition="production")
+        self.assertEqual(accepted.decision, "accepted")
+        self.assertEqual(len(self.store.list_records(partition="production")), 1)
+
+        original = self.store.list_records(partition="production")[0]
+        stale = self.store.create_review(
+            partition="production", operation="capture",
+            proposal={"kind": "note", "text": "A challenged replacement.", "effective_at": None},
+            evidence={"source_kind": "manual", "locator": "manual/review-two", "original_text": "A challenged replacement.", "source_origin": "operator_input", "derivation": "direct"},
+            expected_revisions={str(original.id): original.updated_at}, reason_codes=("known_conflict",),
+        )
+        self.store.set_status(original.id, partition="production", status="conflicting")
+        with self.assertRaises(KnowledgeConflictError):
+            self.store.accept_review(stale.id, partition="production")
+        self.assertEqual(self.store.get_review(stale.id, partition="production").decision, "pending")
+        self.assertEqual(len(self.store.list_records(partition="production", statuses=("active", "conflicting"))), 1)
+        self.store.initialize()
+        conn = sqlite3.connect(self.path)
+        try:
+            self.assertEqual(conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()[0], 9)
+        finally:
+            conn.close()
+
+    def test_operator_save_preserves_dates_and_replays_one_bound_submission(self) -> None:
+        service = KnowledgeService(self.store)
+        values = {"kind": "note", "text": "Ship the release notes.", "effective_at": "2026-09-09"}
+        record, review = service.save_operator_context(
+            partition="production", values=values, idempotency_key="save-one",
+        )
+        self.assertIsNone(review)
+        assert record is not None
+        self.assertEqual(record.effective_at, "2026-09-09")
+        replay, replay_review = service.save_operator_context(
+            partition="production", values=values, idempotency_key="save-one",
+        )
+        self.assertIsNone(replay_review)
+        self.assertEqual(replay.id, record.id)
+        with self.assertRaises(KnowledgeConflictError):
+            service.save_operator_context(
+                partition="production", values={**values, "text": "Different text."}, idempotency_key="save-one",
+            )
+        other_date, _ = service.save_operator_context(
+            partition="production", values={**values, "effective_at": "2026-09-10"}, idempotency_key="save-two",
+        )
+        self.assertNotEqual(other_date.id, record.id)
+
+    def test_unstructured_capture_does_not_duplicate_a_structured_claim_with_same_text(self) -> None:
+        service = KnowledgeService(self.store)
+        structured, structured_review = service.save_operator_context(
+            partition="production",
+            values={
+                "kind": "fact", "text": "Project is blue.", "subject": "Project",
+                "predicate": "color", "object_entity": None, "object_value": "blue", "effective_at": None,
+            },
+        )
+        unstructured, unstructured_review = service.save_operator_context(
+            partition="production", values={"kind": "fact", "text": "Project is blue.", "effective_at": None},
+        )
+        assert structured is not None and unstructured is not None
+        self.assertIsNone(structured_review)
+        self.assertIsNone(unstructured_review)
+        self.assertNotEqual(structured.id, unstructured.id)
+        self.assertEqual(
+            {record.id for record in self.store.list_records(partition="production", statuses=("active",))},
+            {structured.id, unstructured.id},
+        )
+        self.assertEqual(
+            {hit.source_id for hit in self.retrieval.search_fts("Project", namespace="personal_context", source_type=None, partition="production", limit=10)},
+            {str(structured.id), str(unstructured.id)},
+        )
+
+    def test_same_group_structured_correction_applies_without_review(self) -> None:
+        service = KnowledgeService(self.store)
+        original, review = service.save_operator_context(
+            partition="production",
+            values={
+                "kind": "fact", "text": "A is blue.", "subject": "A", "predicate": "color",
+                "object_entity": None, "object_value": "blue", "effective_at": None,
+            },
+        )
+        self.assertIsNone(review)
+        assert original is not None
+        original = self.store.get_record(original.id, partition="production").record
+        replacement, correction_review = service.correct_operator_context(
+            partition="production", record_id=str(original.id), expected_updated_at=original.updated_at,
+            values={
+                "kind": "fact", "text": "A is red.", "subject": "A", "predicate": "color",
+                "object_entity": None, "object_value": "red", "effective_at": None,
+            },
+            sensitive=False, idempotency_key="same-group-correction",
+        )
+        self.assertIsNone(correction_review)
+        assert replacement is not None
+        self.assertEqual(self.store.get_record(original.id, partition="production").record.status, "superseded")
+        self.assertEqual(self.store.get_record(replacement.id, partition="production").record.status, "active")
+        self.assertEqual(
+            self.retrieval.search_fts("blue", namespace="personal_context", source_type=None, partition="production", limit=10),
+            [],
+        )
+        self.assertEqual(
+            [hit.source_id for hit in self.retrieval.search_fts("red", namespace="personal_context", source_type=None, partition="production", limit=10)],
+            [str(replacement.id)],
+        )
+
+    def test_review_keys_are_partition_scoped_and_review_snapshots_include_aliases(self) -> None:
+        proposal = {"kind": "note", "text": "Retry independently.", "effective_at": None}
+        evidence = {
+            "source_kind": "manual", "locator": "manual/retry", "original_text": "Retry independently.",
+            "source_origin": "operator_input", "derivation": "direct",
+        }
+        production = self.store.create_review(
+            partition="production", operation="capture", proposal=proposal, evidence=evidence,
+            expected_revisions={}, reason_codes=("sensitive",), idempotency_key="same-key",
+        )
+        sandbox = self.store.create_review(
+            partition="sandbox", operation="capture", proposal=proposal, evidence=evidence,
+            expected_revisions={}, reason_codes=("sensitive",), idempotency_key="same-key",
+        )
+        self.assertNotEqual(production.id, sandbox.id)
+
+        entity = self.store.create_entity("Jordan")
+        source = self._source("Jordan owns APEX")
+        self.store.create_record(
+            partition="production", kind="fact", text="Jordan owns APEX.", source_ids=[source.id],
+            subject_entity_id=entity.id, predicate="owns", object_value="APEX",
+        )
+        alias_proposal = {"entity_id": str(entity.id), "alias": "J"}
+        review = self.store.create_review(
+            partition="production", operation="add_alias", proposal=alias_proposal, evidence={},
+            expected_revisions=self.store.review_snapshot(
+                partition="production", operation="add_alias", proposal=alias_proposal,
+            ), reason_codes=("ambiguous_entity",),
+        )
+        self.store.reconcile(
+            action_id="alias-snapshot-change", operation="add_alias", partition="production",
+            arguments={"entity_id": str(entity.id), "alias": "Jay"},
+        )
+        with self.assertRaisesRegex(KnowledgeConflictError, "review_refresh_required"):
+            self.store.accept_review(review.id, partition="production")
+        refreshed = self.store.refresh_review(review.id, partition="production")
+        self.assertIn("refresh_revalidated", refreshed.reason_codes)
+
+    def test_correction_snapshot_rejects_a_new_peer_and_store_rejects_secrets(self) -> None:
+        entity = self.store.create_entity("Project")
+        source = self._source("Project status is active")
+        original = self.store.create_record(
+            partition="production", kind="fact", text="Project status is active.", source_ids=[source.id],
+            subject_entity_id=entity.id, predicate="status", object_value="active",
+        )
+        service = KnowledgeService(self.store)
+        record, review = service.correct_operator_context(
+            partition="production", record_id=str(original.id), expected_updated_at=original.updated_at,
+            values={"kind": "fact", "text": "The project is active.", "subject": "Project", "predicate": "status", "object_entity": None, "object_value": "active", "effective_at": None},
+            sensitive=True, idempotency_key="correction-peer",
+        )
+        self.assertIsNone(record)
+        assert review is not None
+        peer_source = self._source("Project status is paused")
+        self.store.create_record(
+            partition="production", kind="fact", text="Project status is paused.", source_ids=[peer_source.id],
+            status="conflicting", subject_entity_id=entity.id, predicate="status", object_value="paused",
+        )
+        with self.assertRaisesRegex(KnowledgeConflictError, "review_refresh_required"):
+            self.store.accept_review(review.id, partition="production")
+        with self.assertRaises(ContextCaptureError):
+            self.store.apply_capture(
+                action_id="secret-write", partition="production", source_kind="manual", locator="manual/secret",
+                original_text="api_key=private", kind="note", text="api_key=private",
+            )
+        with self.assertRaises(ContextCaptureError):
+            self.store.create_review(
+                partition="production", operation="capture", proposal={"kind": "note", "text": "api_key=private", "effective_at": None},
+                evidence={"source_kind": "manual", "original_text": "api_key=private"},
+                expected_revisions={}, reason_codes=("sensitive",),
+            )
+
+    def test_correction_into_an_occupied_destination_requires_review(self) -> None:
+        service = KnowledgeService(self.store)
+        first, _ = service.save_operator_context(
+            partition="production", values={"kind": "fact", "text": "A is blue.", "subject": "A", "predicate": "color", "object_entity": None, "object_value": "blue", "effective_at": None},
+        )
+        service.save_operator_context(
+            partition="production", values={"kind": "fact", "text": "B is green.", "subject": "B", "predicate": "color", "object_entity": None, "object_value": "green", "effective_at": None},
+        )
+        assert first is not None
+        record, review = service.correct_operator_context(
+            partition="production", record_id=str(first.id), expected_updated_at=first.updated_at,
+            values={"kind": "fact", "text": "B is red.", "subject": "B", "predicate": "color", "object_entity": None, "object_value": "red", "effective_at": None},
+            sensitive=False, idempotency_key="move-into-occupied",
+        )
+        self.assertIsNone(record)
+        self.assertIsNotNone(review)
+        assert review is not None
+        self.store.accept_review(review.id, partition="production")
+        active = self.store.list_records(partition="production", statuses=("active",))
+        self.assertEqual([item.text for item in active], ["B is red."])
+        self.assertEqual(
+            self.retrieval.search_fts("green", namespace="personal_context", source_type=None, partition="production", limit=10),
+            [],
+        )
+        replacement = active[0]
+        self.assertIn(
+            "review_accepted",
+            [event.operation for event in self.store.get_record(replacement.id, partition="production").history],
+        )
+
+    def test_new_peer_after_review_snapshot_requires_refresh_without_writing(self) -> None:
+        review = self.store.create_review(
+            partition="production", operation="capture",
+            proposal={"kind": "fact", "text": "Project is paused.", "subject": "Project", "predicate": "status", "object_entity": None, "object_value": "paused", "effective_at": None},
+            evidence={"source_kind": "manual", "locator": "manual/pending", "original_text": "Project is paused.", "source_origin": "operator_input", "derivation": "direct", "occurred_at": None},
+            expected_revisions={}, reason_codes=("sensitive",),
+        )
+        KnowledgeService(self.store).save_operator_context(
+            partition="production",
+            values={"kind": "fact", "text": "Project is active.", "subject": "Project", "predicate": "status", "object_entity": None, "object_value": "active", "effective_at": None},
+        )
+        with self.assertRaisesRegex(KnowledgeConflictError, "review_refresh_required"):
+            self.store.accept_review(review.id, partition="production")
+        self.assertEqual(self.store.get_review(review.id, partition="production").decision, "pending")
+        self.assertEqual(
+            [record.text for record in self.store.list_records(partition="production", statuses=("active", "conflicting"))],
+            ["Project is active."],
+        )
 
     def test_sources_keep_origin_occurrence_and_per_claim_derivation(self) -> None:
         with self.assertRaises(KnowledgeStoreError):

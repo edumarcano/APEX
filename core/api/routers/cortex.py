@@ -93,12 +93,16 @@ from core.api.models import (
     RetrievalPrepareResponse,
     RetrievalStatusResponse,
     ContextCaptureRequest,
+    ContextSaveRequest,
+    ContextSaveResponse,
     ContextActionRequest,
     ContextEntityResponse,
     ContextRecordDetailResponse,
     ContextRecordResponse,
     ContextHistoryResponse,
     ContextSourceResponse,
+    ContextReviewResponse,
+    ContextReviewDecisionRequest,
 )
 
 router = APIRouter(tags=["cortex"])
@@ -163,11 +167,31 @@ def _context_record(record) -> ContextRecordResponse:
     )
 
 
+def _context_review(review) -> ContextReviewResponse:
+    return ContextReviewResponse(
+        id=str(review.id), partition=review.partition, operation=review.operation,
+        proposal=review.proposal, evidence=review.evidence,
+        expected_revisions=review.expected_revisions, reason_codes=list(review.reason_codes),
+        decision=review.decision, action_id=review.action_id, decision_at=review.decision_at,
+        created_at=review.created_at,
+    )
+
+
+def _affected_revisions(knowledge, detail, *, partition: str) -> dict[str, str]:
+    """Freeze the target and every current structured peer that a decision can change."""
+    return knowledge.affected_revisions(detail.record.id, partition=partition)
+
+
 def _context_error(exc: Exception) -> HTTPException:
     if isinstance(exc, KnowledgeNotFoundError):
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Context record was not found.")
     if isinstance(exc, KnowledgeConflictError):
-        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Context changed or cannot be reconciled.")
+        messages = {
+            "review_refresh_required": "Context changed; refresh the review and decide again.",
+            "review_verification_required": "The previous review attempt must be verified before retrying.",
+            "idempotency_key_reused": "This idempotency key was used with different context input.",
+        }
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=messages.get(str(exc), "Context changed or cannot be reconciled."))
     if isinstance(exc, (KnowledgeStoreError, ValueError)):
         return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Context request is invalid.")
     raise exc
@@ -188,14 +212,54 @@ def propose_context_capture(payload: ContextCaptureRequest) -> ActionResponse:
     service = get_action_service()
     if service is None or not service.supports(CAPABILITY_NAME):
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Personal context capture is unavailable.")
+    partition = get_conversation_service().partition()
+    knowledge = get_knowledge_service()
+    decision = knowledge.store.capture_decision(partition=partition, **payload.model_dump())
+    action_id = str(uuid4())
+    review = knowledge.create_action_review(
+        partition=partition, operation="capture", proposal=payload.model_dump(),
+        evidence={"source_kind": "manual", "locator": f"manual/action/{action_id}", "original_text": payload.text, "source_origin": "operator_input", "derivation": "direct", "occurred_at": None},
+        expected_revisions=decision["expected_revisions"], reason_codes=("approval_requested", *decision["reason_codes"]), action_id=action_id,
+    )
+    arguments = {**payload.model_dump(), "_apex_provenance": {
+        "source_kind": "manual", "partition": partition,
+        "original_text": payload.text,
+    }, "review_id": str(review.id)}
     action = service.propose(
         agent_key="operator", capability_name=CAPABILITY_NAME,
-        arguments={**payload.model_dump(), "_apex_provenance": {
-            "source_kind": "manual", "partition": get_conversation_service().partition(),
-            "original_text": payload.text,
-        }}, target="Personal Context", risk="write", summary="Approve personal context capture", actor="operator",
+        arguments=arguments, target="Personal Context", risk="write", summary="Approve personal context capture", actor="operator", action_id=action_id,
     )
     return _record_response(action)
+
+
+@router.post("/api/v1/cortex/context/saves", response_model=ContextSaveResponse)
+def save_context(payload: ContextSaveRequest) -> ContextSaveResponse:
+    """Save clear operator input immediately, retaining uncertain changes for review."""
+    from core.config import DEMO_MODE
+    if DEMO_MODE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Context writes are unavailable in demo mode.")
+    try:
+        values = payload.model_dump(exclude={"sensitive", "idempotency_key", "correction_record_id", "expected_updated_at"})
+        knowledge, partition = get_knowledge_service(), get_conversation_service().partition()
+        if payload.correction_record_id:
+            record, review = knowledge.correct_operator_context(
+                partition=partition, record_id=payload.correction_record_id,
+                expected_updated_at=payload.expected_updated_at or "", values=values,
+                sensitive=payload.sensitive, idempotency_key=payload.idempotency_key,
+            )
+        else:
+            record, review = knowledge.save_operator_context(
+                partition=partition, values=values, sensitive=payload.sensitive,
+                idempotency_key=payload.idempotency_key,
+            )
+        return ContextSaveResponse(
+            outcome="saved" if record else "review_required",
+            record_id=str(record.id) if record else None, review_id=str(review.id) if review else None,
+        )
+    except ContextCaptureError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except Exception as exc:
+        raise _context_error(exc) from exc
 
 
 @router.get("/api/v1/cortex/context", response_model=list[ContextRecordResponse])
@@ -231,6 +295,79 @@ def list_context_entities(
                 partition=get_conversation_service().partition(), query=q, limit=limit,
             )
         ]
+    except Exception as exc:
+        raise _context_error(exc) from exc
+
+
+@router.get("/api/v1/cortex/context/reviews", response_model=list[ContextReviewResponse])
+def list_context_reviews(
+    decision: list[str] | None = Query(default=None), limit: int = Query(default=50, ge=1, le=100),
+) -> list[ContextReviewResponse]:
+    try:
+        reviews = get_knowledge_service().list_reviews(
+            partition=get_conversation_service().partition(), decisions=tuple(decision or ("pending",)), limit=limit,
+        )
+        return [_context_review(review) for review in reviews]
+    except Exception as exc:
+        raise _context_error(exc) from exc
+
+
+@router.get("/api/v1/cortex/context/reviews/{review_id}", response_model=ContextReviewResponse)
+def get_context_review(review_id: UUID) -> ContextReviewResponse:
+    try:
+        return _context_review(get_knowledge_service().get_review(review_id, partition=get_conversation_service().partition()))
+    except Exception as exc:
+        raise _context_error(exc) from exc
+
+
+@router.post("/api/v1/cortex/context/reviews/{review_id}/accept", response_model=ContextReviewResponse)
+def accept_context_review(review_id: UUID, payload: ContextReviewDecisionRequest) -> ContextReviewResponse:
+    from core.config import DEMO_MODE
+    if DEMO_MODE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Context writes are unavailable in demo mode.")
+    try:
+        service = get_knowledge_service()
+        partition = get_conversation_service().partition()
+        actions = get_action_service()
+        if actions is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Personal context review is unavailable.")
+        return _context_review(service.decide_review_accept(
+            actions, review_id, partition=partition, expected_revisions=payload.expected_revisions,
+        ))
+    except Exception as exc:
+        raise _context_error(exc) from exc
+
+
+@router.post("/api/v1/cortex/context/reviews/{review_id}/refresh", response_model=ContextReviewResponse)
+def refresh_context_review(review_id: UUID, payload: ContextReviewDecisionRequest) -> ContextReviewResponse:
+    """Create a new frozen review after the operator deliberately revalidates it."""
+    from core.config import DEMO_MODE
+    if DEMO_MODE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Context writes are unavailable in demo mode.")
+    try:
+        service = get_knowledge_service()
+        partition = get_conversation_service().partition()
+        return _context_review(service.decide_review_refresh(
+            review_id, partition=partition, expected_revisions=payload.expected_revisions,
+        ))
+    except Exception as exc:
+        raise _context_error(exc) from exc
+
+
+@router.post("/api/v1/cortex/context/reviews/{review_id}/reject", response_model=ContextReviewResponse)
+def reject_context_review(review_id: UUID, payload: ContextReviewDecisionRequest) -> ContextReviewResponse:
+    from core.config import DEMO_MODE
+    if DEMO_MODE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Context writes are unavailable in demo mode.")
+    try:
+        service = get_knowledge_service()
+        partition = get_conversation_service().partition()
+        actions = get_action_service()
+        if actions is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Personal context review is unavailable.")
+        return _context_review(service.decide_review_reject(
+            actions, review_id, partition=partition, expected_revisions=payload.expected_revisions,
+        ))
     except Exception as exc:
         raise _context_error(exc) from exc
 
@@ -272,6 +409,7 @@ def get_context_record(record_id: str) -> ContextRecordDetailResponse:
                 for event in detail.history
             ],
             related_records=[_context_record(record) for record in list(related_by_id.values())[:20]],
+            pending_review_ids=[str(identifier) for identifier in service.pending_reviews_for_record(detail.record.id, partition=detail.record.partition)],
         )
     except Exception as exc:
         raise _context_error(exc) from exc
@@ -294,12 +432,20 @@ def propose_context_action(payload: ContextActionRequest) -> ActionResponse:
         partition = get_conversation_service().partition()
         arguments = payload.model_dump(mode="json")
         operation = str(arguments["operation"])
+        action_id = str(uuid4())
         target = "Personal Context"
+        review_evidence: dict[str, object] = {}
         if operation in {"retract", "restore", "set_current", "correct"}:
             detail = knowledge.get_record(UUID(str(arguments["record_id"])), partition=partition)
             arguments["expected_updated_at"] = detail.record.updated_at
             if operation == "correct":
                 reject_secret_text(str(arguments["capture"]["text"]))
+                review_evidence = {
+                    "source_kind": "manual", "locator": f"manual/action/{action_id}",
+                    "original_text": str(arguments["capture"]["text"]), "source_origin": "operator_input",
+                    "derivation": "direct", "occurred_at": None,
+                    "predecessor_source_ids": [str(link.source.id) for link in detail.source_links],
+                }
             target = detail.record.text[:120]
         elif operation == "add_alias":
             entity = knowledge.get_entity(UUID(str(arguments["entity_id"])))
@@ -315,11 +461,23 @@ def propose_context_action(payload: ContextActionRequest) -> ActionResponse:
                 raise KnowledgeConflictError("entity_merge_invalid")
             target = f"{source.name} → {target_entity.name}"
         arguments["partition"] = partition
+        expected_revisions = knowledge.store.review_snapshot(
+            partition=partition, operation=operation, proposal=arguments,
+        )
+        reason = {
+            "correct": "correction", "retract": "status_change", "restore": "restore",
+            "set_current": "conflict_resolution", "add_alias": "ambiguous_entity", "merge_entities": "entity_merge",
+        }[operation]
+        review = knowledge.create_action_review(
+            partition=partition, operation=operation, proposal=arguments, evidence=review_evidence,
+            expected_revisions=expected_revisions, reason_codes=(reason,), action_id=action_id,
+        )
+        arguments["review_id"] = str(review.id)
         action = service.propose(
             agent_key="operator", capability_name=RECONCILIATION_CAPABILITY_NAME,
             arguments=arguments, target=target,
             risk="destructive" if operation == "retract" else "write",
-            summary=f"Approve personal context {operation.replace('_', ' ')}", actor="operator",
+            summary=f"Approve personal context {operation.replace('_', ' ')}", actor="operator", action_id=action_id,
         )
         return _record_response(action)
     except Exception as exc:
@@ -766,6 +924,8 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
                     "conversation_id": str(conversation_id),
                     "message_id": str(user.id),
                     "partition": partition,
+                    "original_text": user.content,
+                    "occurred_at": str(user.created_at),
                 },
                 context_bundle=context_bundle,
                 execution_control=control,
