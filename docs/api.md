@@ -622,6 +622,14 @@ deliberate subsequent decision. Expired attempts are replaced after
 revalidation, and unknown outcomes are verified before a replacement is created.
 Rejection preserves the current claim. Record detail includes pending review IDs.
 
+When personal context is enabled for an Apex Agent turn, prompt assembly reloads
+the selected records from canonical storage. It excludes rejected proposals and
+superseded or retracted records even if retrieval still returns an old entry.
+Current records with pending reviews are labeled as uncertain without exposing
+the proposed text. The prompt includes concise provenance, effective-time, and
+record source/history pointers; full evidence and history stay available through
+record detail rather than being injected into the prompt.
+
 ### Local retrieval foundation
 
 `GET /api/v1/cortex/retrieval/status` reports whether local retrieval is disabled,

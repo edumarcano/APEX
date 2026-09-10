@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from core.knowledge.service import KnowledgeService
+from core.knowledge.store import KnowledgeNotFoundError
 from core.retrieval.models import RetrievalHit
 from core.retrieval.service import RetrievalService
 
@@ -111,27 +112,28 @@ class ContextAssembler:
             if hit.source_id in seen:
                 continue
             seen.add(hit.source_id)
-            try:
-                detail = self._knowledge.get_record(UUID(hit.source_id), partition="production")
-            except Exception:
+            candidate = self._personal_candidate(
+                hit.source_id, label="Personal context", partition=policy.partition,
+            )
+            if candidate is None:
                 continue
-            record = detail.record
-            if record.status not in {"active", "conflicting"}:
-                continue
-            label = "Unresolved personal-context conflict" if record.status == "conflicting" else "Personal context"
-            personal_candidates.append((f"{label} ({record.kind}): {record.text}", ContextReference("personal_context", "record", str(record.id), f"knowledge/record/{record.id}", record.status)))
+            personal_candidates.append(candidate)
             if len(personal_candidates) >= policy.max_personal_records:
                 break
 
         for entity in self._knowledge.entities_mentioned_in(prompt):
             if len(personal_candidates) >= policy.max_personal_records:
                 break
-            for record in self._knowledge.one_hop_relationships(entity.id, partition="production"):
-                if record.status not in {"active", "conflicting"} or str(record.id) in seen:
+            for record in self._knowledge.one_hop_relationships(entity.id, partition=policy.partition):
+                if str(record.id) in seen:
                     continue
                 seen.add(str(record.id))
-                label = "Unresolved personal-context conflict" if record.status == "conflicting" else "Related personal context"
-                personal_candidates.append((f"{label} ({record.kind}): {record.text}", ContextReference("personal_context", "record", str(record.id), f"knowledge/record/{record.id}", record.status)))
+                candidate = self._personal_candidate(
+                    str(record.id), label="Related personal context", partition=policy.partition,
+                )
+                if candidate is None:
+                    continue
+                personal_candidates.append(candidate)
                 if len(personal_candidates) >= policy.max_personal_records:
                     break
 
@@ -145,6 +147,39 @@ class ContextAssembler:
 
         candidates = personal_candidates + conversation_candidates
         return self._bounded(candidates, max_tokens=policy.max_retrieved_tokens)
+
+    def _personal_candidate(
+        self, record_id: str, *, label: str, partition: str,
+    ) -> tuple[str, ContextReference] | None:
+        """Render only the current canonical record and concise inspection pointers."""
+        try:
+            detail = self._knowledge.get_record(UUID(record_id), partition=partition)
+        except (KnowledgeNotFoundError, TypeError, ValueError):
+            return None
+        record = detail.record
+        if record.status not in {"active", "conflicting"}:
+            return None
+
+        labels = [
+            "Unresolved personal-context conflict" if record.status == "conflicting" else label,
+        ]
+        if self._knowledge.pending_reviews_for_record(record.id, partition=partition):
+            labels.append("Pending challenge; treat this claim as uncertain")
+
+        provenance = ", ".join(
+            f"{link.source.origin.replace('_', ' ')} ({link.derivation.replace('_', ' ')})"
+            for link in detail.source_links
+        ) or "unknown"
+        effective = record.effective_at or "not recorded"
+        locator = f"knowledge/record/{record.id}"
+        rendered = (
+            f"{' — '.join(labels)} ({record.kind}): {record.text} "
+            f"[provenance: {provenance}; effective: {effective}; "
+            f"sources: {locator}#sources; history: {locator}#history]"
+        )
+        return rendered, ContextReference(
+            "personal_context", "record", str(record.id), locator, record.status,
+        )
 
     @staticmethod
     def _render_hit(label: str, hit: RetrievalHit) -> str:
