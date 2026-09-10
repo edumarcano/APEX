@@ -31,9 +31,11 @@ class ContextReconciliationActionTests(unittest.TestCase):
         )
         source = self.knowledge.create_source(
             kind="manual", partition="production", locator="manual/seed", original_text="Keep meetings in the morning.",
+            origin="external_tool", occurred_at="2026-09-09T09:00:00+00:00",
         )
         self.record = self.knowledge.create_record(
             partition="production", kind="preference", text="Keep meetings in the morning.", source_ids=[source.id],
+            source_derivations={source.id: "model_interpretation"},
         )
 
     def tearDown(self) -> None:
@@ -75,9 +77,23 @@ class ContextReconciliationActionTests(unittest.TestCase):
             self.assertEqual([record.id for record in records], [str(self.record.id)])
             detail = get_context_record(str(self.record.id))
             self.assertEqual(detail.sources[0].original_text, "Keep meetings in the morning.")
-            proposed = propose_context_action(ContextRetractActionRequest(operation="retract", record_id=str(self.record.id)))
+            self.assertEqual(detail.sources[0].origin, "external_tool")
+            self.assertEqual(detail.sources[0].derivation, "model_interpretation")
+            self.assertEqual(detail.sources[0].occurred_at, "2026-09-09T09:00:00+00:00")
+            self.assertEqual(detail.sources[0].captured_at, detail.sources[0].created_at)
+            self.assertEqual(detail.history[1].source_id, detail.sources[0].id)
+            successor_source = self.knowledge.create_source(
+                kind="manual", partition="production", locator="manual/successor", original_text="Meetings start after lunch.",
+            )
+            successor = self.knowledge.create_record(
+                partition="production", kind="preference", text="Meetings start after lunch.", source_ids=[successor_source.id],
+                supersedes_record_id=self.record.id,
+            )
+            successor_detail = get_context_record(str(successor.id))
+            self.assertEqual(successor_detail.predecessors, [str(self.record.id)])
+            proposed = propose_context_action(ContextRetractActionRequest(operation="retract", record_id=str(successor.id)))
         self.assertEqual(proposed.status, "proposed")
-        self.assertEqual(self.knowledge.get_record(self.record.id, partition="production").record.status, "active")
+        self.assertEqual(self.knowledge.get_record(successor.id, partition="production").record.status, "active")
 
 
 if __name__ == "__main__":

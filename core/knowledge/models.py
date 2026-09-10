@@ -8,6 +8,8 @@ from uuid import UUID
 
 KnowledgePartition = Literal["production", "sandbox"]
 KnowledgeSourceKind = Literal["conversation_message", "manual"]
+KnowledgeSourceOrigin = Literal["operator_input", "connected_service", "external_tool", "unknown"]
+KnowledgeDerivation = Literal["direct", "model_interpretation", "unknown"]
 KnowledgeKind = Literal[
     "idea", "preference", "decision", "goal", "fact", "constraint", "note", "observation",
 ]
@@ -23,6 +25,30 @@ class KnowledgeSource:
     original_text: str
     content_hash: str
     created_at: str
+    origin: KnowledgeSourceOrigin
+    occurred_at: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeHistoryEvent:
+    id: UUID
+    record_id: UUID
+    operation: str
+    actor: str
+    reason_code: str
+    related_record_id: UUID | None
+    source_id: UUID | None
+    action_id: str | None
+    review_id: str | None
+    created_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeRecordSource:
+    source: KnowledgeSource
+    derivation: KnowledgeDerivation
+    action_id: str | None
+    linked_at: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,4 +81,7 @@ class KnowledgeRecord:
 class KnowledgeRecordDetail:
     record: KnowledgeRecord
     sources: tuple[KnowledgeSource, ...] = field(default_factory=tuple)
+    source_links: tuple[KnowledgeRecordSource, ...] = field(default_factory=tuple)
     superseded_by: tuple[UUID, ...] = field(default_factory=tuple)
+    predecessors: tuple[UUID, ...] = field(default_factory=tuple)
+    history: tuple[KnowledgeHistoryEvent, ...] = field(default_factory=tuple)
