@@ -487,19 +487,16 @@ export function useApexData(): UseApexDataReturn {
   )
 
   const markReminderAsRead = useCallback(async (id: string): Promise<void> => {
-    let removedReminder: ActiveReminder | undefined
+    const removedReminder = stateRef.current.activeReminders.find((reminder) => reminder.id === id)
+    if (!removedReminder) {
+      return
+    }
 
     // Invalidate an older list read before starting the mutation. Otherwise an
     // in-flight response captured before completion could restore the task.
     ++reminderRefreshSequenceRef.current
 
     setState((prev) => {
-      const target = prev.activeReminders.find((reminder) => reminder.id === id)
-      if (!target) {
-        return prev
-      }
-
-      removedReminder = target
       const nextActiveReminders = prev.activeReminders.filter(
         (reminder) => reminder.id !== id,
       )
@@ -518,10 +515,6 @@ export function useApexData(): UseApexDataReturn {
           : prev.data,
       }
     })
-
-    if (!removedReminder) {
-      return
-    }
 
     try {
       const response = await fetch(REMINDERS_COMPLETE_ENDPOINT, {
@@ -542,7 +535,7 @@ export function useApexData(): UseApexDataReturn {
           return prev
         }
 
-        const restored = [...prev.activeReminders, removedReminder!].sort((a, b) => a.id.localeCompare(b.id))
+        const restored = [...prev.activeReminders, removedReminder].sort((a, b) => a.id.localeCompare(b.id))
         const nextRecords: ReminderRecord[] = restored.map((reminder) => ({ ...reminder }))
         const reminders = assembleRemindersTelemetry(nextRecords)
 

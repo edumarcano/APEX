@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from clients.microsoft_todo_client import MicrosoftTodoUpstreamError
+from clients.microsoft_todo_client import MicrosoftTodoNotFoundError, MicrosoftTodoUpstreamError
 from core import database
 from core.reminders.service import ReminderService, ReminderServiceError
 
@@ -168,6 +168,58 @@ class ReminderServiceTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in result["items"]], ["todo:done"])
         self.client.list_tasks.assert_called_once_with("list-a", include_completed=True, max_results=50)
         self.assertIsNone(database.fetch_microsoft_todo_reminder_cache("list-a"))
+
+    def test_complete_replaces_cached_timestamp_with_exact_live_task_timestamp(self) -> None:
+        database.replace_microsoft_todo_reminder_cache(
+            "list-a",
+            fetched_at="2026-08-13T12:00:00Z",
+            tasks=[{"id": "task-a", "title": "Cached task", "last_modified_at": "stale"}],
+        )
+        self.client.get_status.return_value = SimpleNamespace(state="connected")
+        self.client.get_task.return_value = SimpleNamespace(
+            id="task-a", last_modified_at="live",
+        )
+        proposal = SimpleNamespace(action_id="action-1", version=0)
+        self.actions.propose.return_value = proposal
+        self.actions.approve_and_execute.return_value = SimpleNamespace(
+            status="verified", action_id="action-1"
+        )
+
+        result = self._service("list-a").complete("todo:task-a")
+
+        self.assertEqual(result["outcome"], "synced")
+        self.client.get_task.assert_called_once_with("list-a", "task-a")
+        self.actions.propose.assert_called_once_with(
+            agent_key="operator", capability_name="complete_microsoft_todo_task",
+            arguments={"list_id": "list-a", "task_id": "task-a", "last_modified_at": "live"},
+            target="Complete Microsoft To Do Task", risk="write",
+            summary="Approve Complete Microsoft To Do Task", actor="operator",
+        )
+
+    def test_complete_does_not_propose_when_exact_read_cannot_validate_target(self) -> None:
+        database.replace_microsoft_todo_reminder_cache(
+            "list-a",
+            fetched_at="2026-08-13T12:00:00Z",
+            tasks=[{"id": "task-a", "title": "Cached task", "last_modified_at": "stale"}],
+        )
+        self.client.get_status.return_value = SimpleNamespace(state="connected")
+        cases = (
+            (MicrosoftTodoNotFoundError("gone"), "reminder_not_found"),
+            (MicrosoftTodoUpstreamError("offline"), "microsoft_todo_unavailable"),
+            (SimpleNamespace(id="other", last_modified_at="live"), "reminder_target_changed"),
+            (SimpleNamespace(id="task-a", last_modified_at=""), "reminder_target_unavailable"),
+        )
+        for current, code in cases:
+            with self.subTest(code=code):
+                self.actions.reset_mock()
+                self.client.get_task.reset_mock()
+                self.client.get_task.side_effect = current if isinstance(current, Exception) else None
+                self.client.get_task.return_value = current
+
+                with self.assertRaisesRegex(ReminderServiceError, code):
+                    self._service("list-a").complete("todo:task-a")
+
+                self.actions.propose.assert_not_called()
 
     def test_update_uses_an_immediate_operator_action_with_the_observed_timestamp(self) -> None:
         self.client.get_status.return_value = SimpleNamespace(state="connected")
