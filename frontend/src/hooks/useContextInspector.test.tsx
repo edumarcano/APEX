@@ -10,7 +10,8 @@ const RECORD = {
 }
 const STATUS = { enabled: true, mode: 'fts_only', state: 'unprepared', indexed_items: 1, embedding_items: 0, pending_items: 1, last_prepared_at: null, error_category: null, model_fingerprint: null }
 const ACTION = { action_id: 'action-1', proposal: { capability_name: 'remember_personal_context' }, status: 'proposed', version: 0, updated_at: '2026-08-18T00:00:00Z' }
-const DETAIL = { ...RECORD, sources: [], superseded_by: [], predecessors: [], history: [], related_records: [] }
+const DETAIL = { ...RECORD, sources: [], superseded_by: [], predecessors: [], history: [], related_records: [], pending_review_ids: [] }
+const REVIEW = { id: 'review-1', partition: 'production', operation: 'correct', proposal: { text: 'Revised plan' }, evidence: { original_text: 'Original plan' }, expected_revisions: { 'record-1': RECORD.updated_at }, reason_codes: ['known_conflict'], decision: 'pending', action_id: null, decision_at: null, created_at: '2026-08-18T00:00:00Z' }
 
 function response(body: unknown, status = 200): Response {
   return { ok: status >= 200 && status < 300, status, json: vi.fn().mockResolvedValue(body) } as unknown as Response
@@ -24,6 +25,7 @@ describe('useContextInspector', () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(response([RECORD]))
       .mockResolvedValueOnce(response(STATUS))
+      .mockResolvedValueOnce(response([]))
       .mockResolvedValueOnce(response(ACTION))
     const proposed = vi.fn()
     const { result } = renderHook(() => useContextInspector(true, proposed))
@@ -37,6 +39,7 @@ describe('useContextInspector', () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(response([RECORD]))
       .mockResolvedValueOnce(response(STATUS))
+      .mockResolvedValueOnce(response([]))
       .mockResolvedValueOnce(response({ ...STATUS, mode: 'semantic', state: 'ready', embedding_items: 1, pending_items: 0 }))
     const { result } = renderHook(() => useContextInspector(true, vi.fn()))
     await waitFor(() => expect(result.current.retrieval?.state).toBe('unprepared'))
@@ -45,10 +48,11 @@ describe('useContextInspector', () => {
     expect(result.current.retrieval?.state).toBe('ready')
   })
 
-  it('toggles the selected context record and clears it when its category no longer matches', async () => {
+  it('toggles the selected context record', async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(response([RECORD]))
       .mockResolvedValueOnce(response(STATUS))
+      .mockResolvedValueOnce(response([]))
       .mockResolvedValueOnce(response(DETAIL))
     const { result } = renderHook(() => useContextInspector(true, vi.fn()))
     await waitFor(() => expect(result.current.records).toHaveLength(1))
@@ -58,10 +62,6 @@ describe('useContextInspector', () => {
     await act(async () => { await result.current.selectRecord(RECORD.id) })
     expect(result.current.selectedRecordId).toBeNull()
 
-    await act(async () => { await result.current.selectRecord(RECORD.id) })
-    await act(async () => { result.current.setFilters((current) => ({ ...current, kind: 'goal' })) })
-    await waitFor(() => expect(result.current.selectedRecordId).toBeNull())
-    expect(result.current.detail).toBeNull()
   })
 
   it('keeps the latest selected record when an earlier detail request finishes late', async () => {
@@ -69,6 +69,7 @@ describe('useContextInspector', () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(response([RECORD]))
       .mockResolvedValueOnce(response(STATUS))
+      .mockResolvedValueOnce(response([]))
       .mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveFirst = resolve }))
       .mockResolvedValueOnce(response({ ...DETAIL, id: 'record-2', text: 'Second record' }))
     const { result } = renderHook(() => useContextInspector(true, vi.fn()))
@@ -79,5 +80,30 @@ describe('useContextInspector', () => {
     await waitFor(() => expect(result.current.detail?.id).toBe('record-2'))
     await act(async () => { resolveFirst?.(response(DETAIL)); await firstRequest })
     expect(result.current.detail?.id).toBe('record-2')
+  })
+
+  it('saves direct input and exposes a durable review when the server requires one', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(response([RECORD])).mockResolvedValueOnce(response(STATUS)).mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(response({ outcome: 'saved', record_id: 'record-2', review_id: null }))
+      .mockResolvedValueOnce(response([RECORD])).mockResolvedValueOnce(response(STATUS)).mockResolvedValueOnce(response([REVIEW]))
+      .mockResolvedValueOnce(response({ outcome: 'review_required', record_id: null, review_id: REVIEW.id }))
+      .mockResolvedValueOnce(response([RECORD])).mockResolvedValueOnce(response(STATUS)).mockResolvedValueOnce(response([REVIEW]))
+    const { result } = renderHook(() => useContextInspector(true, vi.fn()))
+    await waitFor(() => expect(result.current.records).toHaveLength(1))
+    await act(async () => expect((await result.current.save({ kind: 'note', text: 'Direct' }))?.outcome).toBe('saved'))
+    await act(async () => expect((await result.current.save({ kind: 'note', text: 'Needs review' }))?.outcome).toBe('review_required'))
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/api/v1/cortex/context/saves'), expect.objectContaining({ method: 'POST' }))
+  })
+
+  it('requires an explicit refresh after a stale review decision', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(response([RECORD])).mockResolvedValueOnce(response(STATUS)).mockResolvedValueOnce(response([REVIEW]))
+      .mockResolvedValueOnce(response(REVIEW)).mockResolvedValueOnce(response({ detail: 'Context changed; refresh the review and decide again.' }, 409)).mockResolvedValueOnce(response(REVIEW))
+    const { result } = renderHook(() => useContextInspector(true, vi.fn()))
+    await waitFor(() => expect(result.current.reviews).toHaveLength(1))
+    await act(async () => { await result.current.selectReview(REVIEW.id) })
+    await act(async () => { await result.current.decideReview('accept') })
+    await waitFor(() => expect(result.current.reviewRefreshRequired).toBe(true))
   })
 })

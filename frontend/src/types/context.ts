@@ -56,6 +56,35 @@ export interface ContextRecordDetail extends ContextRecord {
   predecessors: string[]
   history: ContextHistoryEvent[]
   related_records: ContextRecord[]
+  pending_review_ids: string[]
+}
+
+export type ContextReviewDecision = 'pending' | 'accepted' | 'rejected' | 'stale'
+
+export interface ContextReview {
+  id: string
+  partition: 'production' | 'sandbox'
+  operation: string
+  proposal: Record<string, unknown>
+  evidence: Record<string, unknown>
+  expected_revisions: Record<string, string>
+  reason_codes: string[]
+  decision: ContextReviewDecision
+  action_id: string | null
+  decision_at: string | null
+  created_at: string
+}
+
+export interface ContextSaveInput extends ContextCaptureInput {
+  sensitive?: boolean
+  correction_record_id?: string
+  expected_updated_at?: string
+}
+
+export interface ContextSaveResult {
+  outcome: 'saved' | 'review_required'
+  record_id: string | null
+  review_id: string | null
 }
 
 export interface RetrievalStatus {

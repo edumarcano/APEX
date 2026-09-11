@@ -58,6 +58,13 @@ labels the current claim as uncertain without adding the proposed text.
 Retrieved context remains inside the untrusted reference boundary and counts
 against the existing cloud or local context budget.
 
+Cortex's Context inspector keeps record evidence and review decisions separate.
+Its Records view shows current normalized wording beside immutable source text,
+times, history, and related records. Its Review view compares pending proposed
+information with current evidence; proposed text remains non-current until the
+operator accepts it. A stale decision must be refreshed and deliberately
+decided again.
+
 ## Local runtime coordination
 
 APEX permits one local inference execution across Ollama and llama.cpp. The coordinator validates reachability, resident models, installed aliases, and resource gates before loading. The selected model’s context and reasoning controls apply on the next relevant request; unloading remains provider-neutral.
