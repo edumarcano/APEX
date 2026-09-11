@@ -11,7 +11,7 @@ const RECORD = {
 const STATUS = { enabled: true, mode: 'fts_only', state: 'unprepared', indexed_items: 1, embedding_items: 0, pending_items: 1, last_prepared_at: null, error_category: null, model_fingerprint: null }
 const ACTION = { action_id: 'action-1', proposal: { capability_name: 'remember_personal_context' }, status: 'proposed', version: 0, updated_at: '2026-08-18T00:00:00Z' }
 const DETAIL = { ...RECORD, sources: [], superseded_by: [], predecessors: [], history: [], related_records: [], pending_review_ids: [] }
-const REVIEW = { id: 'review-1', partition: 'production', operation: 'correct', proposal: { text: 'Revised plan' }, evidence: { original_text: 'Original plan' }, expected_revisions: { 'record-1': RECORD.updated_at }, reason_codes: ['known_conflict'], decision: 'pending', action_id: null, decision_at: null, created_at: '2026-08-18T00:00:00Z' }
+const REVIEW = { id: 'review-1', partition: 'production', operation: 'correct', proposal: { record_id: 'record-1', capture: { kind: 'note', text: 'Revised plan' } }, evidence: { original_text: 'Proposed source text' }, expected_revisions: { 'record-1': RECORD.updated_at }, reason_codes: ['known_conflict'], decision: 'pending', action_id: null, decision_at: null, created_at: '2026-08-18T00:00:00Z' }
 
 function response(body: unknown, status = 200): Response {
   return { ok: status >= 200 && status < 300, status, json: vi.fn().mockResolvedValue(body) } as unknown as Response
@@ -99,7 +99,7 @@ describe('useContextInspector', () => {
   it('requires an explicit refresh after a stale review decision', async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(response([RECORD])).mockResolvedValueOnce(response(STATUS)).mockResolvedValueOnce(response([REVIEW]))
-      .mockResolvedValueOnce(response(REVIEW)).mockResolvedValueOnce(response({ detail: 'Context changed; refresh the review and decide again.' }, 409)).mockResolvedValueOnce(response(REVIEW))
+      .mockResolvedValueOnce(response(REVIEW)).mockResolvedValueOnce(response(DETAIL)).mockResolvedValueOnce(response({ detail: 'Context changed; refresh the review and decide again.' }, 409)).mockResolvedValueOnce(response(REVIEW)).mockResolvedValueOnce(response(DETAIL))
     const { result } = renderHook(() => useContextInspector(true, vi.fn()))
     await waitFor(() => expect(result.current.reviews).toHaveLength(1))
     await act(async () => { await result.current.selectReview(REVIEW.id) })
