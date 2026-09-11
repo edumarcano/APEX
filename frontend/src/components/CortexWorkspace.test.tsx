@@ -8,6 +8,10 @@ import { CortexWorkspace, ResponseMetrics } from './CortexWorkspace'
 import type { AgentQueryMetadata } from '../lib/cortexResponse'
 import type { CortexAgent, ModelCatalogEntry, ToolCatalog } from '../types/telemetry'
 
+vi.mock('./CortexContext', () => ({
+  CortexContext: ({ onOpenActions }: { onOpenActions: (actionId: string) => void }) => <button type="button" onClick={() => onOpenActions('linked-action')}>Open linked action</button>,
+}))
+
 const cloudModel: ModelCatalogEntry = { model_id: 'deepseek/deepseek-v4-flash-0731', display_name: 'DeepSeek V4 Flash', provider: 'openrouter', runtime: 'cloud', stability: 'stable', hosted_capabilities: [], status: 'configured', reasoning_options: ['none', 'low', 'high'], default_reasoning: 'low' }
 const localModel: ModelCatalogEntry = { model_id: 'gemma-4-E2B-Q4_K_M.gguf', display_name: 'Gemma 4 E2B', provider: 'llama_cpp', runtime: 'local', stability: 'stable', hosted_capabilities: [], status: 'available', context_options: [4096, 16384], default_context_window: 16384, reasoning_modes: ['none', 'focused'], default_reasoning_mode: 'none', active: false, loading: false }
 const apex: CortexAgent = { key: 'apex', display_name: 'Apex Agent', description: 'Native assistant.', selected_model: cloudModel.model_id, model_catalog: [cloudModel, localModel] }
@@ -96,5 +100,17 @@ describe('CortexWorkspace', () => {
 
     await user.keyboard('{End}')
     expect(activityTab).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('selects the linked action before opening the actions inspector', async () => {
+    const setSelectedActionId = vi.fn()
+    const user = userEvent.setup()
+    renderWorkspace({ actions: { ...props().actions, setSelectedActionId } })
+
+    await user.click(screen.getByRole('tab', { name: 'context' }))
+    await user.click(screen.getByRole('button', { name: 'Open linked action' }))
+
+    expect(setSelectedActionId).toHaveBeenCalledWith('linked-action')
+    expect(screen.getByRole('tab', { name: 'actions' })).toHaveAttribute('aria-selected', 'true')
   })
 })
