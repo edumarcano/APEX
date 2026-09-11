@@ -49,6 +49,15 @@ the existing action executor and verifier, and commits the knowledge mutation,
 history, retrieval synchronization, and review decision in one SQLite write
 transaction.
 
+Context assembly reloads each selected personal record from the knowledge store
+before it enters a prompt. It includes only active or explicitly conflicting
+records, so stale retrieval entries cannot restore superseded or retracted
+claims. Each rendered claim carries concise provenance and effective-time labels
+plus pointers to its source and history inspection views. A pending review
+labels the current claim as uncertain without adding the proposed text.
+Retrieved context remains inside the untrusted reference boundary and counts
+against the existing cloud or local context budget.
+
 ## Local runtime coordination
 
 APEX permits one local inference execution across Ollama and llama.cpp. The coordinator validates reachability, resident models, installed aliases, and resource gates before loading. The selected model’s context and reasoning controls apply on the next relevant request; unloading remains provider-neutral.

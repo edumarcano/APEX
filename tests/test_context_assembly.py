@@ -3,11 +3,12 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from uuid import uuid4
 
 from core.context import ContextAssembler, ContextPolicy
 from core.knowledge.service import KnowledgeService
-from core.knowledge.store import KnowledgeStore
+from core.knowledge.store import KnowledgeStore, KnowledgeStoreError
 from core.retrieval.models import RetrievalItem
 from core.retrieval.service import RetrievalService
 from core.retrieval.store import RetrievalStore
@@ -32,6 +33,13 @@ class ContextAssemblyTests(unittest.TestCase):
 
     def test_policy_blocks_context_outside_enabled_production(self) -> None:
         conversation_id = uuid4()
+        source = self.knowledge_store.create_source(
+            kind="manual", partition="production", locator="manual/disabled",
+            original_text="Context must stay disabled.",
+        )
+        self.knowledge_store.create_record(
+            partition="production", kind="note", text="Do not inject this record.", source_ids=[source.id],
+        )
         disabled = self.assembler.assemble(
             prompt="project", conversation_id=conversation_id,
             policy=ContextPolicy("apex", "production", False),
@@ -230,6 +238,249 @@ class ContextAssemblyTests(unittest.TestCase):
         ref_ids = [r.source_id for r in bundle.references]
         self.assertNotIn(str(rec_superseded.id), ref_ids)
         self.assertNotIn(str(rec_retracted.id), ref_ids)
+
+    def test_canonical_replacement_wins_over_a_stale_retrieval_hit(self) -> None:
+        source = self.knowledge_store.create_source(
+            kind="manual", partition="production", locator="manual/correction",
+            original_text="The weekly planning day changed.",
+        )
+        old = self.knowledge_store.create_record(
+            partition="production", kind="fact", text="Weekly planning happens on Monday.",
+            source_ids=[source.id],
+        )
+        replacement = self.knowledge_store.create_record(
+            partition="production", kind="fact", text="Weekly planning happens on Tuesday.",
+            source_ids=[source.id], supersedes_record_id=old.id,
+        )
+        # Simulate a stale embedding surviving a correction synchronization.
+        self.retrieval_store.upsert_item(RetrievalItem(
+            namespace="personal_context", source_type="knowledge_record", source_id=str(old.id),
+            partition="production", conversation_id=None, message_id=None, role=None,
+            timestamp=old.updated_at, locator=f"knowledge/record/{old.id}", content_hash="stale-old",
+            text=old.text,
+        ))
+
+        bundle = self.assembler.assemble(
+            prompt="weekly planning", conversation_id=uuid4(),
+            policy=ContextPolicy("apex", "production", True),
+        )
+
+        self.assertIn(replacement.text, bundle.rendered)
+        self.assertNotIn(old.text, bundle.rendered)
+        self.assertNotIn(str(old.id), [reference.source_id for reference in bundle.references])
+
+    def test_pending_challenge_labels_current_record_without_proposal_text(self) -> None:
+        source = self.knowledge_store.create_source(
+            kind="manual", partition="production", locator="manual/challenge",
+            original_text="Coffee preference.",
+        )
+        current = self.knowledge_store.create_record(
+            partition="production", kind="fact", text="Preferred coffee roast is dark.",
+            source_ids=[source.id],
+        )
+        self.knowledge_store.create_review(
+            partition="production", operation="correct",
+            proposal={
+                "record_id": str(current.id),
+                "capture": {"kind": "fact", "text": "Preferred coffee roast is light.", "effective_at": None},
+            },
+            evidence={"source_kind": "manual", "original_text": "A proposed preference."},
+            expected_revisions={str(current.id): current.updated_at}, reason_codes=("known_conflict",),
+        )
+
+        bundle = self.assembler.assemble(
+            prompt="coffee roast", conversation_id=uuid4(),
+            policy=ContextPolicy("apex", "production", True),
+        )
+
+        self.assertIn(current.text, bundle.rendered)
+        self.assertIn("Pending challenge; treat this claim as uncertain", bundle.rendered)
+        self.assertNotIn("Preferred coffee roast is light.", bundle.rendered)
+
+    def test_rejected_proposals_and_stale_inactive_hits_are_not_rendered(self) -> None:
+        source = self.knowledge_store.create_source(
+            kind="manual", partition="production", locator="manual/inactive",
+            original_text="Inactive claims.",
+        )
+        superseded = self.knowledge_store.create_record(
+            partition="production", kind="fact", text="Superseded stale claim.", source_ids=[source.id],
+        )
+        replacement = self.knowledge_store.create_record(
+            partition="production", kind="fact", text="Current claim.", source_ids=[source.id],
+            supersedes_record_id=superseded.id,
+        )
+        retracted = self.knowledge_store.create_record(
+            partition="production", kind="fact", text="Retracted stale claim.", source_ids=[source.id],
+        )
+        self.knowledge_store.set_status(retracted.id, partition="production", status="retracted")
+        rejected = self.knowledge_store.create_review(
+            partition="production", operation="capture",
+            proposal={"kind": "fact", "text": "Rejected proposed claim.", "effective_at": None},
+            evidence={"source_kind": "manual", "original_text": "Rejected proposal."},
+            expected_revisions={}, reason_codes=("sensitive",),
+        )
+        self.knowledge_store.reject_review(rejected.id, partition="production")
+        for record, text in ((superseded, superseded.text), (retracted, retracted.text)):
+            self.retrieval_store.upsert_item(RetrievalItem(
+                namespace="personal_context", source_type="knowledge_record", source_id=str(record.id),
+                partition="production", conversation_id=None, message_id=None, role=None,
+                timestamp=record.updated_at, locator=f"knowledge/record/{record.id}",
+                content_hash=f"stale-{record.id}", text=text,
+            ))
+        self.retrieval_store.upsert_item(RetrievalItem(
+            namespace="personal_context", source_type="knowledge_record", source_id=str(rejected.id),
+            partition="production", conversation_id=None, message_id=None, role=None,
+            timestamp=rejected.created_at, locator=f"knowledge/review/{rejected.id}",
+            content_hash="rejected-proposal", text="Rejected proposed claim.",
+        ))
+
+        bundle = self.assembler.assemble(
+            prompt="claim", conversation_id=uuid4(), policy=ContextPolicy("apex", "production", True),
+        )
+
+        self.assertIn(replacement.text, bundle.rendered)
+        self.assertNotIn(superseded.text, bundle.rendered)
+        self.assertNotIn(retracted.text, bundle.rendered)
+        self.assertNotIn("Rejected proposed claim.", bundle.rendered)
+
+    def test_renders_concise_provenance_effective_time_and_inspection_pointers(self) -> None:
+        source = self.knowledge_store.create_source(
+            kind="manual", partition="production", locator="tool/calendar/event-1",
+            original_text="Calendar event", origin="external_tool", occurred_at="2026-09-10T09:00:00+00:00",
+        )
+        record = self.knowledge_store.create_record(
+            partition="production", kind="fact", text="Planning starts at 9 AM.", source_ids=[source.id],
+            effective_at="2026-09-10", source_derivations={source.id: "model_interpretation"},
+        )
+
+        bundle = self.assembler.assemble(
+            prompt="planning", conversation_id=uuid4(), policy=ContextPolicy("apex", "production", True),
+        )
+
+        locator = f"knowledge/record/{record.id}"
+        self.assertIn("provenance: external tool (model interpretation)", bundle.rendered)
+        self.assertIn("effective: 2026-09-10", bundle.rendered)
+        self.assertIn(f"sources: {locator}#sources", bundle.rendered)
+        self.assertIn(f"history: {locator}#history", bundle.rendered)
+
+    def test_personal_context_labels_count_against_the_token_budget(self) -> None:
+        source = self.knowledge_store.create_source(
+            kind="manual", partition="production", locator="manual/budget", original_text="Budget claim.",
+        )
+        record = self.knowledge_store.create_record(
+            partition="production", kind="fact", text="Short claim.", source_ids=[source.id],
+        )
+        old_rendering = f"Personal context ({record.kind}): {record.text}"
+        policy = ContextPolicy(
+            "apex", "production", True, max_retrieved_tokens=(len(old_rendering) + 3) // 4,
+            max_conversation_excerpts=0, max_personal_records=1,
+        )
+
+        bundle = self.assembler.assemble(prompt="short claim", conversation_id=uuid4(), policy=policy)
+
+        self.assertFalse(bundle.enabled)
+        self.assertTrue(bundle.truncated)
+
+    def test_duplicate_provenance_categories_do_not_consume_the_local_budget(self) -> None:
+        sources = [
+            self.knowledge_store.create_source(
+                kind="manual", partition="production", locator=f"manual/duplicate-{index}",
+                original_text=f"Repeated direct evidence {index}.",
+            )
+            for index in range(4)
+        ]
+        record = self.knowledge_store.create_record(
+            partition="production", kind="fact", text="This claim has repeated direct evidence.",
+            source_ids=[source.id for source in sources],
+            source_derivations={source.id: "direct" for source in sources},
+        )
+        candidate = self.assembler._personal_candidate(
+            str(record.id), label="Personal context", partition="production",
+        )
+        assert candidate is not None
+        rendered, _ = candidate
+        category = "operator input (direct)"
+        duplicated = rendered.replace(category, ", ".join([category] * len(sources)))
+        budget = (len(rendered) + 3) // 4
+
+        bundle = self.assembler.assemble(
+            prompt="repeated direct evidence", conversation_id=uuid4(),
+            policy=ContextPolicy(
+                "apex", "production", True, max_retrieved_tokens=budget,
+                max_conversation_excerpts=0, max_personal_records=1,
+            ),
+        )
+
+        self.assertEqual(rendered.count(category), 1)
+        self.assertGreater((len(duplicated) + 3) // 4, budget)
+        self.assertIn(record.text, bundle.rendered)
+        self.assertFalse(bundle.truncated)
+
+    def test_store_read_failures_skip_unverifiable_context_and_keep_conversation(self) -> None:
+        current = uuid4()
+        other = uuid4()
+        source = self.knowledge_store.create_source(
+            kind="manual", partition="production", locator="manual/unverifiable",
+            original_text="Unverifiable claim.",
+        )
+        record = self.knowledge_store.create_record(
+            partition="production", kind="fact", text="Unverifiable personal claim.", source_ids=[source.id],
+        )
+        self.retrieval_store.upsert_item(RetrievalItem(
+            namespace="conversation", source_type="message", source_id="survives-read-error",
+            partition="production", conversation_id=str(other), message_id="survives-read-error",
+            role="user", timestamp="2026-09-10T00:00:00+00:00",
+            locator=f"conversation/{other}/message/survives-read-error", content_hash="survives-read-error",
+            text="Conversation context survives a knowledge read error.",
+        ))
+        original_get_record = self.knowledge.get_record
+
+        def unavailable_record(record_id, *, partition: str):
+            if record_id == record.id:
+                raise KnowledgeStoreError("read_failed")
+            return original_get_record(record_id, partition=partition)
+
+        with patch.object(
+            self.knowledge, "get_record",
+            side_effect=unavailable_record,
+        ):
+            bundle = self.assembler.assemble(
+                prompt="unverifiable conversation", conversation_id=current,
+                policy=ContextPolicy("apex", "production", True),
+            )
+
+        self.assertNotIn(record.text, bundle.rendered)
+        self.assertIn("Conversation context survives a knowledge read error.", bundle.rendered)
+
+    def test_pending_review_read_failure_skips_claim_and_keeps_conversation(self) -> None:
+        current = uuid4()
+        other = uuid4()
+        source = self.knowledge_store.create_source(
+            kind="manual", partition="production", locator="manual/pending-read",
+            original_text="Pending state unavailable.",
+        )
+        record = self.knowledge_store.create_record(
+            partition="production", kind="fact", text="Claim with unavailable review state.", source_ids=[source.id],
+        )
+        self.retrieval_store.upsert_item(RetrievalItem(
+            namespace="conversation", source_type="message", source_id="survives-pending-error",
+            partition="production", conversation_id=str(other), message_id="survives-pending-error",
+            role="user", timestamp="2026-09-10T00:00:00+00:00",
+            locator=f"conversation/{other}/message/survives-pending-error", content_hash="survives-pending-error",
+            text="Conversation context survives a pending-review read error.",
+        ))
+
+        with patch.object(
+            self.knowledge, "pending_reviews_for_record",
+            side_effect=KnowledgeStoreError("pending_read_failed"),
+        ):
+            bundle = self.assembler.assemble(
+                prompt="unavailable review conversation", conversation_id=current,
+                policy=ContextPolicy("apex", "production", True),
+            )
+
+        self.assertNotIn(record.text, bundle.rendered)
+        self.assertIn("Conversation context survives a pending-review read error.", bundle.rendered)
 
     def test_entity_alias_deduplication_and_relationship_expansion(self) -> None:
         entity = self.knowledge_store.create_entity("Apex Core")
