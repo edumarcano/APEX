@@ -163,6 +163,237 @@ class CliTests(unittest.TestCase):
         self.assertEqual(session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/retrieval/prepare")
         self.assertEqual(session.calls[0]["timeout"], (3.0, 600.0))
 
+    def test_context_list_encodes_repeated_filters_and_query(self) -> None:
+        code, output, _, session = self._run(
+            [
+                "context",
+                "list",
+                "--status",
+                "active",
+                "--status",
+                "conflicting",
+                "--kind",
+                "preference",
+                "--query",
+                "plan/review now",
+                "--limit",
+                "7",
+            ],
+            [_Response(200, [{"id": "record-1", "kind": "preference", "status": "active", "text": "Plan."}])],
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("record-1", output)
+        self.assertEqual(
+            session.calls[0]["url"],
+            f"{cli.API_ROOT}/api/v1/cortex/context?status=active&status=conflicting&kind=preference&q=plan%2Freview%20now&limit=7",
+        )
+
+    def test_context_show_renders_sources_history_and_related_ids(self) -> None:
+        detail = {
+            "id": "record/1",
+            "kind": "preference",
+            "status": "active",
+            "text": "I prefer short plans.",
+            "subject": {"id": "entity-1", "name": "Operator", "aliases": []},
+            "predicate": "prefers",
+            "object_value": "short plans",
+            "created_at": "2026-09-11T10:00:00Z",
+            "updated_at": "2026-09-11T10:00:00Z",
+            "sources": [{
+                "id": "source-1",
+                "kind": "conversation_message",
+                "origin": "operator_input",
+                "derivation": "direct",
+                "locator": "conversation/1/message/2",
+                "occurred_at": None,
+                "captured_at": "2026-09-11T10:00:01Z",
+                "linked_at": "2026-09-11T10:00:02Z",
+                "original_text": "I prefer short plans.",
+            }],
+            "history": [{
+                "id": "history-1",
+                "operation": "created",
+                "reason_code": "direct_save",
+                "actor": "operator",
+                "created_at": "2026-09-11T10:00:00Z",
+                "source_id": "source-1",
+            }],
+            "related_records": [{"id": "record-2"}],
+            "pending_review_ids": ["review-1"],
+            "predecessors": [],
+            "superseded_by": [],
+        }
+        code, output, _, session = self._run(
+            ["context", "show", "record/1"], [_Response(200, detail)]
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("conversation_message", output)
+        self.assertIn("operator_input", output)
+        self.assertIn("direct", output)
+        self.assertIn("Locator: conversation/1/message/2", output)
+        self.assertIn("Occurred At: Not recorded", output)
+        self.assertIn("Captured At: 2026-09-11T10:00:01Z", output)
+        self.assertIn("Linked At: 2026-09-11T10:00:02Z", output)
+        self.assertIn("Original: I prefer short plans.", output)
+        self.assertIn("direct_save", output)
+        self.assertIn("Related record IDs: record-2", output)
+        self.assertIn("Pending review IDs: review-1", output)
+        self.assertEqual(session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/context/record%2F1")
+
+    def test_context_add_sends_save_fields_and_reports_saved(self) -> None:
+        code, output, _, session = self._run(
+            [
+                "context",
+                "add",
+                "I prefer short plans.",
+                "--kind",
+                "preference",
+                "--subject",
+                "Operator",
+                "--predicate",
+                "prefers",
+                "--object-value",
+                "short plans",
+                "--effective-at",
+                "2026-09-11",
+                "--sensitive",
+                "--idempotency-key",
+                "save-1",
+            ],
+            [_Response(200, {"outcome": "saved", "record_id": "record-1", "review_id": None})],
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("Saved", output)
+        self.assertEqual(session.calls[0]["method"], "POST")
+        self.assertEqual(session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/context/saves")
+        self.assertEqual(
+            session.calls[0]["json"],
+            {
+                "text": "I prefer short plans.",
+                "kind": "preference",
+                "subject": "Operator",
+                "predicate": "prefers",
+                "object_value": "short plans",
+                "effective_at": "2026-09-11",
+                "sensitive": True,
+                "idempotency_key": "save-1",
+            },
+        )
+
+    def test_context_add_reports_review_required_without_failure(self) -> None:
+        code, output, _, _ = self._run(
+            ["context", "add", "Possible conflict.", "--kind", "note"],
+            [_Response(200, {"outcome": "review_required", "review_id": "review-1"})],
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("Needs review: review-1", output)
+
+    def test_context_correct_reads_updated_at_before_save(self) -> None:
+        code, _, _, session = self._run(
+            ["context", "correct", "record/1", "Corrected text.", "--kind", "fact", "--idempotency-key", "correct-1"],
+            [
+                _Response(200, {"id": "record/1", "updated_at": "2026-09-11T10:00:00Z"}),
+                _Response(200, {"outcome": "saved", "record_id": "record-2"}),
+            ],
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(session.calls[0]["method"], "GET")
+        self.assertEqual(session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/context/record%2F1")
+        self.assertEqual(session.calls[1]["method"], "POST")
+        self.assertEqual(
+            session.calls[1]["json"],
+            {
+                "text": "Corrected text.",
+                "kind": "fact",
+                "sensitive": False,
+                "idempotency_key": "correct-1",
+                "correction_record_id": "record/1",
+                "expected_updated_at": "2026-09-11T10:00:00Z",
+            },
+        )
+
+    def test_context_retract_reports_action_and_review_ids(self) -> None:
+        code, output, _, session = self._run(
+            ["context", "retract", "record-1"],
+            [_Response(200, {
+                "action_id": "action-1",
+                "status": "proposed",
+                "proposal": {"arguments": {"review_id": "review-1"}},
+            })],
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("Action ID: action-1", output)
+        self.assertIn("Review ID: review-1", output)
+        self.assertEqual(session.calls[0]["json"], {"operation": "retract", "record_id": "record-1"})
+
+    def test_context_review_list_and_show_use_review_routes(self) -> None:
+        code, output, _, session = self._run(
+            ["context", "review", "list", "--decision", "pending", "--decision", "stale", "--limit", "4"],
+            [_Response(200, [{"id": "review-1", "decision": "pending", "operation": "capture", "reason_codes": ["sensitive"]}])],
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("review-1", output)
+        self.assertEqual(
+            session.calls[0]["url"],
+            f"{cli.API_ROOT}/api/v1/cortex/context/reviews?decision=pending&decision=stale&limit=4",
+        )
+
+        code, output, _, session = self._run(
+            ["context", "review", "show", "review/1"],
+            [_Response(200, {
+                "id": "review/1",
+                "decision": "pending",
+                "operation": "capture",
+                "partition": "production",
+                "reason_codes": ["sensitive"],
+                "expected_revisions": {"record-1": "revision-1"},
+                "proposal": {"text": "Secret preference"},
+                "evidence": {"original_text": "Secret preference"},
+            })],
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("Expected revisions", output)
+        self.assertIn("record-1: revision-1", output)
+        self.assertEqual(session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/context/reviews/review%2F1")
+
+    def test_context_review_decisions_read_revisions_and_reject_succeeds(self) -> None:
+        for operation, decision in (("accept", "accepted"), ("reject", "rejected")):
+            with self.subTest(operation=operation):
+                code, output, _, session = self._run(
+                    ["context", "review", operation, "review-1"],
+                    [
+                        _Response(200, {"id": "review-1", "expected_revisions": {"record-1": "revision-1"}}),
+                        _Response(200, {"id": "review-1", "decision": decision, "action_id": "action-1"}),
+                    ],
+                )
+                self.assertEqual(code, 0)
+                self.assertIn(f"Decision: {decision}", output)
+                self.assertEqual(session.calls[0]["method"], "GET")
+                self.assertEqual(session.calls[1]["method"], "POST")
+                self.assertEqual(session.calls[1]["json"], {"expected_revisions": {"record-1": "revision-1"}})
+
+    def test_context_review_stale_conflict_reports_server_message_without_retry(self) -> None:
+        code, _, errors, session = self._run(
+            ["context", "review", "accept", "review-1"],
+            [
+                _Response(200, {"id": "review-1", "expected_revisions": {"record-1": "revision-1"}}),
+                _Response(409, {"detail": "Context changed; refresh the review and decide again."}),
+            ],
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("refresh the review", errors)
+        self.assertEqual(len(session.calls), 2)
+
+    def test_context_json_returns_complete_success_payload(self) -> None:
+        response = {"outcome": "review_required", "record_id": None, "review_id": "review-1"}
+        code, output, errors, _ = self._run(
+            ["context", "add", "Needs review.", "--kind", "note", "--json"],
+            [_Response(200, response)],
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(errors, "")
+        self.assertEqual(json.loads(output), response)
+
     def test_action_mutations_fetch_current_version_once_then_submit_it(self) -> None:
         for operation, expected_status in (("approve", "verified"), ("reject", "rejected"), ("verify", "verified")):
             with self.subTest(operation=operation):
