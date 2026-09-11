@@ -39,11 +39,31 @@ function statusClass(status: string): string {
 function display(value: unknown): string {
   return typeof value === "string" && value.trim() ? value : "Not recorded";
 }
-function proposalText(review: ContextReview): string {
+function proposalSummary(review: ContextReview): string {
   const capture = review.proposal.capture;
-  return capture && typeof capture === "object" && !Array.isArray(capture)
-    ? display((capture as Record<string, unknown>).text)
-    : display(review.proposal.text);
+  const nestedText =
+    capture && typeof capture === "object" && !Array.isArray(capture)
+      ? (capture as Record<string, unknown>).text
+      : null;
+  const captureText =
+    typeof nestedText === "string" && nestedText.trim()
+      ? nestedText
+      : review.proposal.text;
+  if (review.operation === "capture" || review.operation === "correct") {
+    return display(captureText);
+  }
+  if (review.operation === "retract") return `Retract record ${display(review.proposal.record_id)}`;
+  if (review.operation === "restore") return `Restore record ${display(review.proposal.record_id)}`;
+  if (review.operation === "set_current") return `Set current record ${display(review.proposal.record_id)}`;
+  if (review.operation === "add_alias") return `Add alias ${display(review.proposal.alias)} to entity ${display(review.proposal.entity_id)}`;
+  if (review.operation === "merge_entities") return `Merge entity ${display(review.proposal.source_entity_id)} into ${display(review.proposal.target_entity_id)}`;
+  return `${review.operation.replaceAll("_", " ")} proposal`;
+}
+function proposalEvidence(review: ContextReview): string {
+  const originalText = review.evidence.original_text;
+  return typeof originalText === "string" && originalText.trim()
+    ? `Proposal evidence: ${originalText}`
+    : "No proposal evidence recorded";
 }
 
 function SaveForm({
@@ -469,7 +489,7 @@ function ReviewPanel({
           className="block w-full rounded border border-white/10 p-2 text-left text-xs"
         >
           <span className={statusClass(item.decision)}>{item.decision}</span> · {item.operation} ·{" "}
-          {item.created_at} · {proposalText(item)} ·{" "}
+          {item.created_at} · {proposalSummary(item)} ·{" "}
           {item.reason_codes.map((code) => code.replaceAll("_", " ")).join(", ") || "No reason recorded"}
         </button>
       ))}
@@ -504,9 +524,9 @@ function ReviewPanel({
             <p className="font-mono text-[10px] uppercase text-zinc-500">
               Proposed information
             </p>
-            <p className="text-xs text-amber-100">{proposalText(review)}</p>
+            <p className="text-xs text-amber-100">{proposalSummary(review)}</p>
             <p className="text-xs text-zinc-500">
-              Proposal evidence: {display(review.evidence.original_text)}
+              {proposalEvidence(review)}
             </p>
           </div>
           {review.action_id ? (

@@ -227,6 +227,34 @@ describe("CortexContext", () => {
     expect(screen.getByText(/note · active · Not recorded · Current plan/)).toBeInTheDocument();
   });
 
+  it.each([
+    ["add_alias", { entity_id: "entity-1", alias: "Apex HUD" }, "Add alias Apex HUD to entity entity-1"],
+    ["merge_entities", { source_entity_id: "entity-1", target_entity_id: "entity-2" }, "Merge entity entity-1 into entity-2"],
+    ["retract", { record_id: "record-1" }, "Retract record record-1"],
+  ])("summarizes %s proposals without text", (operation, proposal, summary) => {
+    const actionReview = {
+      ...review,
+      operation,
+      proposal,
+      evidence: {},
+    };
+    render(
+      <CortexContext
+        inspector={inspectorFixture({
+          reviews: [actionReview],
+          reviewDetail: actionReview,
+        })}
+        demoModeActive={false}
+        onOpenActions={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /Review/ }));
+    expect(screen.getByRole("button", { name: new RegExp(summary) })).toBeInTheDocument();
+    expect(screen.getByText(summary)).toBeInTheDocument();
+    expect(screen.getByText("No proposal evidence recorded")).toBeInTheDocument();
+  });
+
   it("uses the selected record kind for corrections and clears correction state on navigation", async () => {
     const save = vi.fn().mockResolvedValue({ outcome: "saved" });
     const first = { ...detail, id: "record-a", kind: "note" as const };
