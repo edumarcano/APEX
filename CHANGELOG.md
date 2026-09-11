@@ -2,6 +2,47 @@
 
 ---
 
+## v2.0.0-beta.3 — Trusted Context & Review
+
+**Released:** September 11, 2026
+
+This release makes personal context inspectable, attributable, and safe to change. It adds durable evidence and review workflows, expands connector selection and health reporting, and tightens the boundaries around Cortex runs and external task mutations.
+
+### What's New
+
+- Added personal-context records with original evidence, provenance, effective-time data, normalized claims, related records, and append-only history.
+- Added revision-aware context reviews. Clear operator input can be saved directly; sensitive, conflicting, and model-interpreted changes remain outside retrieval until a review is accepted and its action is executed and verified.
+- Added Records and Review views in Cortex and `apex context` commands for inspecting records, evidence, history, corrections, retractions, and review decisions.
+- Added Google Calendar discovery and multi-calendar selection. Events from selected calendars are merged, labeled when enabled, and keep successful results when another calendar fails.
+- Reworked Market data around shared telemetry with bounded daily refreshes, cache-backed end-of-day values, per-symbol backoff, and visible connector health.
+- Refreshed Microsoft To Do completion against the exact live task before proposing a mutation, preventing stale displayed data from authorizing a write.
+
+### Architecture Changes
+
+- Separated original context evidence, canonical claims, history, retrieval indexes, and pending review proposals so proposed replacements cannot silently become current context.
+- Bound accepted Cortex runs to their admitted context partition, resolved tool policy, and provenance; run shutdown now drains active work before dependency teardown, and streamed turns retain pending text across reconnects.
+- Retired the cumulative token ceiling as an enforced stop condition for new runs while preserving historical values for inspection; token usage remains accounted in run records.
+
+### API Changes
+
+- Added `GET /api/v1/google-calendar/calendars` and expanded settings to persist selected calendar IDs and calendar-label display.
+- Added context capture, save, record, entity, action, and durable review routes, including stale-review refresh and accept/reject decisions.
+- Updated telemetry responses to report selected-calendar partial failures and shared Market health state.
+- Updated Microsoft To Do mutations to return explicit missing, changed, unavailable, and uncertain outcomes; completion now rereads the live task timestamp before proposing its action.
+
+### Frontend Changes
+
+- Added context Records and Review surfaces to the Cortex workspace, including provenance, evidence, history, related records, and review state.
+- Added multi-calendar settings and calendar labels in event views, with partial connector health visible in the HUD.
+- Kept streamed Cortex turns recoverable when a stream exhausts or reconnects, and aligned Market cards with shared telemetry data.
+
+### Documentation Updates
+
+- Updated the API, architecture, configuration, privacy, CLI, getting-started, README, and frontend ownership documentation for trusted context, review lifecycle, calendar selection, Market telemetry, and the current contract boundaries.
+- Marked the beta.3 roadmap outcome complete and moved the active milestone to beta.4, External Activity Inbox.
+
+---
+
 ## v2.0.0-beta.2 - Cortex: Bounded Runs & Live Activity
 
 **Released:** September 5, 2026
