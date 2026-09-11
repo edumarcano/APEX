@@ -180,18 +180,99 @@ describe("CortexContext", () => {
     expect(
       screen.getByRole("tabpanel", { name: /Review/ }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Current plan")).toBeInTheDocument();
+    expect(screen.getByText(/note · active · Not recorded · Current plan/)).toBeInTheDocument();
     expect(screen.getByText("Proposed replacement")).toBeInTheDocument();
     fireEvent.click(screen.getByText("Open linked action"));
     expect(onOpenActions).toHaveBeenCalledWith("action-42");
   });
 
+  it("opens a record's pending review and selects its exact id", () => {
+    const inspector = inspectorFixture({
+      detail: { ...detail, pending_review_ids: ["review-pending"] },
+    });
+    render(
+      <CortexContext
+        inspector={inspector}
+        demoModeActive={false}
+        onOpenActions={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open review review-pending" }));
+
+    expect(inspector.selectReview).toHaveBeenCalledWith("review-pending");
+    expect(screen.getByRole("tab", { name: /Review/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("tabpanel", { name: /Review/ })).toBeInTheDocument();
+  });
+
+  it("keeps one review decision selected and displays review context", () => {
+    const setReviewFilters = vi.fn();
+    render(
+      <CortexContext
+        inspector={inspectorFixture({ setReviewFilters })}
+        demoModeActive={false}
+        onOpenActions={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: /Review/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "pending" }));
+
+    const update = setReviewFilters.mock.calls[0][0] as (current: { decisions: string[] }) => unknown;
+    expect(update({ decisions: ["pending"] })).toEqual({ decisions: ["pending"] });
+    expect(screen.getByText(/correct · 2026-09-10T12:00:00Z/)).toBeInTheDocument();
+    expect(screen.getAllByText(/known conflict/)).toHaveLength(2);
+    expect(screen.getByText(/note · active · Not recorded · Current plan/)).toBeInTheDocument();
+  });
+
+  it("uses the selected record kind for corrections and clears correction state on navigation", async () => {
+    const save = vi.fn().mockResolvedValue({ outcome: "saved" });
+    const first = { ...detail, id: "record-a", kind: "note" as const };
+    const second = { ...detail, id: "record-b", kind: "decision" as const };
+    const { rerender } = render(
+      <CortexContext
+        inspector={inspectorFixture({ detail: first })}
+        demoModeActive={false}
+        onOpenActions={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Correct" }));
+    expect(screen.getByLabelText("Correction kind")).toHaveValue("note");
+
+    rerender(
+      <CortexContext
+        inspector={inspectorFixture({ detail: second, save })}
+        demoModeActive={false}
+        onOpenActions={vi.fn()}
+      />,
+    );
+    expect(screen.queryByLabelText("Correction text")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Correct" }));
+    fireEvent.change(screen.getByLabelText("Correction text"), {
+      target: { value: "Decide differently" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save context" }));
+    expect(await screen.findByText(/Saved. This is now/)).toBeInTheDocument();
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "decision",
+        correction_record_id: "record-b",
+      }),
+    );
+  });
+
   it("disables writes in demo mode and shows representative empty states", () => {
+    const entityDetail = {
+      ...detail,
+      subject: { id: "entity-1", name: "Apex", aliases: [] },
+    };
     render(
       <CortexContext
         inspector={inspectorFixture({
           records: [],
-          detail: null,
+          detail: entityDetail,
           reviews: [],
           reviewDetail: null,
         })}
@@ -200,6 +281,11 @@ describe("CortexContext", () => {
       />,
     );
     expect(screen.getByText("Capture")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Correct" }));
+    expect(screen.getByLabelText("Add entity alias")).toBeDisabled();
+    expect(screen.getByLabelText("Merge entity into")).toBeDisabled();
+    fireEvent.click(screen.getByText("Capture"));
+    expect(screen.queryByLabelText("Manual context text")).not.toBeInTheDocument();
     expect(screen.getByText(/No context records/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: /Review/ }));
     expect(screen.getByText(/No reviews match/)).toBeInTheDocument();

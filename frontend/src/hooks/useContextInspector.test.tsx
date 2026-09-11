@@ -12,6 +12,7 @@ const STATUS = { enabled: true, mode: 'fts_only', state: 'unprepared', indexed_i
 const ACTION = { action_id: 'action-1', proposal: { capability_name: 'remember_personal_context' }, status: 'proposed', version: 0, updated_at: '2026-08-18T00:00:00Z' }
 const DETAIL = { ...RECORD, sources: [], superseded_by: [], predecessors: [], history: [], related_records: [], pending_review_ids: [] }
 const REVIEW = { id: 'review-1', partition: 'production', operation: 'correct', proposal: { record_id: 'record-1', capture: { kind: 'note', text: 'Revised plan' } }, evidence: { original_text: 'Proposed source text' }, expected_revisions: { 'record-1': RECORD.updated_at }, reason_codes: ['known_conflict'], decision: 'pending', action_id: null, decision_at: null, created_at: '2026-08-18T00:00:00Z' }
+const NEXT_REVIEW = { ...REVIEW, id: 'review-2', expected_revisions: { 'record-1': '2026-08-19T00:00:00Z' } }
 
 function response(body: unknown, status = 200): Response {
   return { ok: status >= 200 && status < 300, status, json: vi.fn().mockResolvedValue(body) } as unknown as Response
@@ -86,6 +87,54 @@ describe('useContextInspector', () => {
     expect(result.current.detail?.id).toBe('record-2')
   })
 
+  it('clears a selected record when its kind no longer matches the category filter', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(response([RECORD]))
+      .mockResolvedValueOnce(response(STATUS))
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(response(DETAIL))
+    const { result } = renderHook(() => useContextInspector(true, vi.fn()))
+    await waitFor(() => expect(result.current.records).toHaveLength(1))
+
+    await act(async () => { await result.current.selectRecord(RECORD.id) })
+    expect(result.current.selectedRecordId).toBe(RECORD.id)
+    act(() => {
+      result.current.setFilters((current) => ({ ...current, kind: 'decision' }))
+    })
+    await waitFor(() => expect(result.current.selectedRecordId).toBeNull())
+    expect(result.current.detail).toBeNull()
+  })
+
+  it('keeps the latest selected review when an earlier review request finishes late', async () => {
+    let resolveFirst: ((value: Response) => void) | undefined
+    const reviewA = { ...REVIEW, id: 'review-a' }
+    const reviewB = { ...REVIEW, id: 'review-b', expected_revisions: { 'record-2': RECORD.updated_at } }
+    vi.mocked(fetch).mockImplementation((url) => {
+      const target = String(url)
+      if (target.endsWith('/reviews/review-a')) {
+        return new Promise<Response>((resolve) => { resolveFirst = resolve })
+      }
+      if (target.endsWith('/reviews/review-b')) return Promise.resolve(response(reviewB))
+      if (target.endsWith('/context/record-2')) return Promise.resolve(response({ ...DETAIL, id: 'record-2', text: 'Second record' }))
+      if (target.includes('/context?')) return Promise.resolve(response([RECORD]))
+      if (target.endsWith('/retrieval/status')) return Promise.resolve(response(STATUS))
+      if (target.includes('/reviews?')) return Promise.resolve(response([]))
+      throw new Error(`Unexpected request ${target}`)
+    })
+    const { result } = renderHook(() => useContextInspector(true, vi.fn()))
+    await waitFor(() => expect(result.current.records).toHaveLength(1))
+    let firstRequest: Promise<void>
+    act(() => { firstRequest = result.current.selectReview(reviewA.id) })
+    await act(async () => { await result.current.selectReview(reviewB.id) })
+    await waitFor(() => expect(result.current.reviewDetail?.id).toBe(reviewB.id))
+
+    await act(async () => { resolveFirst?.(response(reviewA)); await firstRequest })
+    expect(result.current.selectedReviewId).toBe(reviewB.id)
+    expect(result.current.reviewDetail?.id).toBe(reviewB.id)
+    expect(result.current.reviewRecords.map((record) => record.id)).toEqual(['record-2'])
+  })
+
   it('saves direct input and exposes a durable review when the server requires one', async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(response([RECORD])).mockResolvedValueOnce(response(STATUS)).mockResolvedValueOnce(response([])).mockResolvedValueOnce(response([]))
@@ -100,14 +149,54 @@ describe('useContextInspector', () => {
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/api/v1/cortex/context/saves'), expect.objectContaining({ method: 'POST' }))
   })
 
-  it('requires an explicit refresh after a stale review decision', async () => {
+  it.each(['accept', 'reject'] as const)('posts expected revisions when it %ss a review', async (decision) => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(response([RECORD])).mockResolvedValueOnce(response(STATUS)).mockResolvedValueOnce(response([REVIEW])).mockResolvedValueOnce(response([REVIEW]))
-      .mockResolvedValueOnce(response(REVIEW)).mockResolvedValueOnce(response(DETAIL)).mockResolvedValueOnce(response({ detail: 'Context changed; refresh the review and decide again.' }, 409)).mockResolvedValueOnce(response(REVIEW)).mockResolvedValueOnce(response(DETAIL))
+      .mockResolvedValueOnce(response(REVIEW)).mockResolvedValueOnce(response(DETAIL))
+      .mockResolvedValueOnce(response(NEXT_REVIEW))
+      .mockResolvedValueOnce(response([RECORD])).mockResolvedValueOnce(response(STATUS)).mockResolvedValueOnce(response([NEXT_REVIEW])).mockResolvedValueOnce(response([NEXT_REVIEW]))
+      .mockResolvedValueOnce(response(NEXT_REVIEW)).mockResolvedValueOnce(response(DETAIL))
+    const { result } = renderHook(() => useContextInspector(true, vi.fn()))
+    await waitFor(() => expect(result.current.reviews).toHaveLength(1))
+    await act(async () => { await result.current.selectReview(REVIEW.id) })
+    await act(async () => { await result.current.decideReview(decision) })
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining(`/api/v1/cortex/context/reviews/${REVIEW.id}/${decision}`),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ expected_revisions: REVIEW.expected_revisions }),
+      }),
+    )
+  })
+
+  it('refreshes a stale review with old revisions, then accepts the new review id', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(response([RECORD])).mockResolvedValueOnce(response(STATUS)).mockResolvedValueOnce(response([REVIEW])).mockResolvedValueOnce(response([REVIEW]))
+      .mockResolvedValueOnce(response(REVIEW)).mockResolvedValueOnce(response(DETAIL))
+      .mockResolvedValueOnce(response({ detail: 'Context changed; refresh the review and decide again.' }, 409))
+      .mockResolvedValueOnce(response(REVIEW)).mockResolvedValueOnce(response(DETAIL))
+      .mockResolvedValueOnce(response(NEXT_REVIEW))
+      .mockResolvedValueOnce(response([RECORD])).mockResolvedValueOnce(response(STATUS)).mockResolvedValueOnce(response([NEXT_REVIEW])).mockResolvedValueOnce(response([NEXT_REVIEW]))
+      .mockResolvedValueOnce(response(NEXT_REVIEW)).mockResolvedValueOnce(response(DETAIL))
+      .mockResolvedValueOnce(response(NEXT_REVIEW))
+      .mockResolvedValueOnce(response([RECORD])).mockResolvedValueOnce(response(STATUS)).mockResolvedValueOnce(response([NEXT_REVIEW])).mockResolvedValueOnce(response([NEXT_REVIEW]))
+      .mockResolvedValueOnce(response(NEXT_REVIEW)).mockResolvedValueOnce(response(DETAIL))
     const { result } = renderHook(() => useContextInspector(true, vi.fn()))
     await waitFor(() => expect(result.current.reviews).toHaveLength(1))
     await act(async () => { await result.current.selectReview(REVIEW.id) })
     await act(async () => { await result.current.decideReview('accept') })
     await waitFor(() => expect(result.current.reviewRefreshRequired).toBe(true))
+    await act(async () => { await result.current.decideReview('refresh') })
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining(`/api/v1/cortex/context/reviews/${REVIEW.id}/refresh`),
+      expect.objectContaining({ body: JSON.stringify({ expected_revisions: REVIEW.expected_revisions }) }),
+    )
+    expect(result.current.reviewDetail?.id).toBe(NEXT_REVIEW.id)
+    await act(async () => { await result.current.decideReview('accept') })
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining(`/api/v1/cortex/context/reviews/${NEXT_REVIEW.id}/accept`),
+      expect.objectContaining({ body: JSON.stringify({ expected_revisions: NEXT_REVIEW.expected_revisions }) }),
+    )
   })
 })

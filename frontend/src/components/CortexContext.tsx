@@ -49,15 +49,17 @@ function proposalText(review: ContextReview): string {
 function SaveForm({
   label,
   disabled,
+  initialKind = "note",
   onSave,
 }: {
   label: string;
   disabled: boolean;
+  initialKind?: ContextKind;
   onSave: (
     input: ContextCaptureInput,
   ) => Promise<"saved" | "review_required" | null>;
 }): ReactElement {
-  const [kind, setKind] = useState<ContextKind>("note");
+  const [kind, setKind] = useState<ContextKind>(initialKind);
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
   const [outcome, setOutcome] = useState<"saved" | "review_required" | null>(
@@ -93,6 +95,7 @@ function SaveForm({
         value={text}
         disabled={disabled || saving}
         onChange={(event) => setText(event.target.value)}
+        maxLength={10000}
         rows={3}
         className="w-full rounded border border-white/10 bg-zinc-950 p-2 text-xs"
       />
@@ -146,10 +149,12 @@ function RecordRow({
 function RecordDetail({
   inspector,
   demoModeActive,
+  onOpenReview,
   onSave,
 }: {
   inspector: Inspector;
   demoModeActive: boolean;
+  onOpenReview: (reviewId: string) => void;
   onSave: (
     input: ContextCaptureInput,
     correction?: boolean,
@@ -261,7 +266,7 @@ function RecordDetail({
             <button
               key={id}
               type="button"
-              onClick={() => void inspector.selectReview(id)}
+              onClick={() => onOpenReview(id)}
               className="mr-2 text-xs text-[#7EB3FF]"
             >
               Open review {id}
@@ -338,6 +343,7 @@ function RecordDetail({
         <SaveForm
           label="Correction"
           disabled={demoModeActive}
+          initialKind={detail.kind}
           onSave={(input) => onSave(input, true)}
         />
       ) : null}
@@ -347,6 +353,7 @@ function RecordDetail({
           <input
             aria-label="Add entity alias"
             value={alias}
+            disabled={demoModeActive}
             onChange={(event) => setAlias(event.target.value)}
             className="rounded border border-white/10 bg-zinc-950 p-1 text-xs"
           />
@@ -368,6 +375,7 @@ function RecordDetail({
           <select
             aria-label="Merge entity into"
             value={target}
+            disabled={demoModeActive}
             onChange={(event) => setTarget(event.target.value)}
             className="block rounded border border-white/10 bg-zinc-950 p-1 text-xs"
           >
@@ -413,12 +421,15 @@ function ReviewPanel({
 }): ReactElement {
   const toggle = (
     decision: Inspector["reviewFilters"]["decisions"][number],
-  ): void =>
-    inspector.setReviewFilters((current) => ({
-      decisions: current.decisions.includes(decision)
-        ? current.decisions.filter((item) => item !== decision)
-        : [...current.decisions, decision],
-    }));
+  ): void => {
+    inspector.setReviewFilters((current) => {
+      if (current.decisions.includes(decision)) {
+        if (current.decisions.length === 1) return current;
+        return { decisions: current.decisions.filter((item) => item !== decision) };
+      }
+      return { decisions: [...current.decisions, decision] };
+    });
+  };
   const review = inspector.reviewDetail;
   return (
     <div
@@ -435,7 +446,7 @@ function ReviewPanel({
               checked={inspector.reviewFilters.decisions.includes(decision)}
               onChange={() => toggle(decision)}
             />{" "}
-            {decision}
+            {decision.replaceAll("_", " ")}
           </label>
         ))}
       </div>
@@ -457,9 +468,9 @@ function ReviewPanel({
           onClick={() => void inspector.selectReview(item.id)}
           className="block w-full rounded border border-white/10 p-2 text-left text-xs"
         >
-          <span className={statusClass(item.decision)}>{item.decision}</span> ·{" "}
-          {proposalText(item)} ·{" "}
-          {item.reason_codes.join(", ") || "No reason recorded"}
+          <span className={statusClass(item.decision)}>{item.decision}</span> · {item.operation} ·{" "}
+          {item.created_at} · {proposalText(item)} ·{" "}
+          {item.reason_codes.map((code) => code.replaceAll("_", " ")).join(", ") || "No reason recorded"}
         </button>
       ))}
       {inspector.isReviewLoading ? (
@@ -471,7 +482,7 @@ function ReviewPanel({
       {review ? (
         <div className="space-y-2 rounded border border-white/10 p-3">
           <p className="text-xs text-amber-200">
-            Reason: {review.reason_codes.join(", ") || "No reason recorded"}
+            Reason: {review.reason_codes.map((code) => code.replaceAll("_", " ")).join(", ") || "No reason recorded"}
           </p>
           <div>
             <p className="font-mono text-[10px] uppercase text-zinc-500">
@@ -480,7 +491,7 @@ function ReviewPanel({
             {inspector.reviewRecords.length ? (
               inspector.reviewRecords.map((record) => (
                 <p key={record.id} className="text-xs text-zinc-200">
-                  {record.text}
+                  {record.kind} · {record.status} · {record.effective_at ?? "Not recorded"} · {record.text}
                 </p>
               ))
             ) : (
@@ -575,6 +586,10 @@ export function CortexContext({
   const selectView = (next: View): void => {
     setView(next);
     tabs.current[next === "records" ? 0 : 1]?.focus();
+  };
+  const openReview = (reviewId: string): void => {
+    setView("review");
+    void inspector.selectReview(reviewId);
   };
   const onTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>): void => {
     const index = view === "records" ? 0 : 1;
@@ -789,8 +804,10 @@ export function CortexContext({
             <p className="text-xs text-zinc-500">Loading record details…</p>
           ) : null}
           <RecordDetail
+            key={inspector.detail?.id}
             inspector={inspector}
             demoModeActive={demoModeActive}
+            onOpenReview={openReview}
             onSave={save}
           />
           {inspector.lastCreatedRecordId ? (
