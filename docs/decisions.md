@@ -26,11 +26,19 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Use SQLite for local durable state
 
-**Decision.** SQLite stores APEX's local durable state, including run history, briefing history, the reminder cache and outbox, and the action ledger. Microsoft To Do remains authoritative for synced reminders.
+**Decision.** SQLite stores APEX's local durable state, including conversation and run history, briefing history, personal context and retrieval indexes, review proposals, the reminder cache and outbox, and the action ledger. Microsoft To Do remains authoritative for synced reminders.
 
 **Why.** This data needs identity, ordering, transactions, or reliable recovery that would be awkward to maintain in JSON or flat files. SQLite provides those properties without adding another service.
 
 **Trade-off.** The database is not encrypted by APEX and requires schema compatibility and transaction discipline.
+
+### Keep context evidence separate from current claims
+
+**Decision.** Personal context keeps immutable source evidence separate from normalized claims and records later changes in append-only history. Clear direct operator input may save immediately; sensitive, conflicting, or model-interpreted changes use a durable review with frozen evidence and expected revisions. Pending proposals stay out of retrieval. Acceptance runs through the action executor and verifier, while the knowledge mutation, history, retrieval update, and review decision commit together.
+
+**Why.** APEX needs to explain both what was originally supplied and what it currently treats as true. Separating those records prevents a model interpretation or stale proposal from silently becoming trusted context.
+
+**Trade-off.** Context changes require more schema and lifecycle handling, and old evidence remains in the unencrypted local database after a correction or retraction. Prompt assembly therefore sends bounded current claims and provenance labels rather than full evidence or history.
 
 ### Keep full trigger execution synchronous
 

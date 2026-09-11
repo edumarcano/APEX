@@ -2,10 +2,6 @@
 
 APEX is a local-first personal intelligence HUD. FastAPI serves the backend, React provides Home and Cortex, SQLite owns durable application state, and optional providers and connectors stay behind explicit capability and privacy boundaries.
 
-## Market telemetry
-
-Market is a telemetry connector for Home rather than a briefing fact source. Telemetry refreshes it in the normal sequential connector lifecycle and records its health in the shared snapshot. The Market client owns Alpha Vantage access, a versioned file-backed cache, and per-symbol daily request gates; the Market route only reads that cache. A symbol can make at most one request per UTC calendar day. Repeated failures back off for 1, 2, 4, then up to 8 days, while provider-wide transport, authentication, or rate failures defer remaining requests until the next UTC day. Daily OHLCV history stays in the Market display projection, while the telemetry snapshot carries only bounded symbol summaries and a collection revision. This keeps chart data out of briefing payloads and lets Home update the card only after collection.
-
 ## Core model
 
 - **Home** presents briefings, telemetry, reminders, and quick interaction.
@@ -64,6 +60,10 @@ times, history, and related records. Its Review view compares pending proposed
 information with current evidence; proposed text remains non-current until the
 operator accepts it. A stale decision must be refreshed and deliberately
 decided again.
+
+## Market telemetry
+
+Market is a telemetry connector for Home rather than a briefing fact source. Telemetry refreshes it in the normal sequential connector lifecycle and records its health in the shared snapshot. The Market client owns Alpha Vantage access, a versioned file-backed cache, and per-symbol daily request gates; the Market route only reads that cache. A symbol can make at most one request per UTC calendar day. Repeated failures back off for 1, 2, 4, then up to 8 days, while provider-wide transport, authentication, or rate failures defer remaining requests until the next UTC day. Daily OHLCV history stays in the Market display projection, while the telemetry snapshot carries only bounded symbol summaries and a collection revision. This keeps chart data out of briefing payloads and lets Home update the card only after collection.
 
 ## Local runtime coordination
 

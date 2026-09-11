@@ -10,7 +10,7 @@
 
 APEX started as a small, fun experiment: could I build something that gave me a spoken daily briefing with a little of the Jarvis feeling from *Iron Man*? As it grew, it became a playground for a new interest in AI tools and software development, a place to experiment, learn, and find out what I could actually build.
 
-Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, and Apex Agent work into one deliberate workspace. It turns those signals into Home telemetry, concise briefings, and Agent queries while keeping the local machine, not a hosted account, at the center of the system.
+Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, sourced personal context, and Apex Agent work into one deliberate workspace. It turns those signals into Home telemetry, concise briefings, and Agent queries while keeping the local machine, not a hosted account, at the center of the system.
 
 APEX has two main workspaces: Home, which shows telemetry and briefings, and Cortex, which is the workspace for interacting directly with Apex Agent. Telemetry means structured status collected from connected services; a briefing summarizes that status; and an Agent query is a request sent to the selected model through Apex Agent.
 
@@ -38,7 +38,9 @@ A briefing uses Flash, Focused, or Structured. Flash uses a fixed local Gemma E2
 
 ### Operates the Apex Agent
 
-Agent queries can use approved read tools for live data, briefing history, Gmail, Microsoft To Do, and optional MCP (Model Context Protocol) providers. Reads run directly. Supported native writes create action proposals that require local approval and verification before they are considered complete.
+Agent queries can use approved read tools for live data, briefing history, Gmail, Microsoft To Do, personal context, and optional MCP (Model Context Protocol) providers. Reads run directly. Supported native writes create action proposals that require local approval and verification before they are considered complete.
+
+Cortex keeps normalized personal-context records separate from their original evidence and append-only history. Clear operator input can be saved or corrected directly; sensitive, conflicting, or model-interpreted changes wait in a durable review queue. Pending proposals do not enter retrieval, and the Records and Review views expose the evidence behind the current claim before the operator accepts or rejects a change.
 
 After a Microsoft To Do list is selected, its incomplete tasks become the Home reminder source. SQLite keeps a small cache for stale display and an offline queue for local reminders that still need to sync. The Home Reminders panel can edit, complete, delete, reopen, and review completed tasks directly without adding the Agent approval step. Apex Agent uses one Tools selector; cloud and local model defaults remain runtime-scoped, while policy and MCP permissions remain separate boundaries.
 
@@ -65,7 +67,7 @@ The HUD exposes connector health, CPU and memory use, active model state, briefi
 - **Safer model input:** Connectors produce structured results, and briefing models receive only selected facts marked as untrusted data.
 - **Three briefing modes:** Flash is the default local Gemma orientation, Focused is OpenRouter DeepSeek V4 Flash planning, and Structured is a model-free deterministic view.
 - **One local model at a time:** APEX avoids hidden local-inference queues and keeps model loading visible.
-- **Local storage:** SQLite keeps briefing history, the reminder cache and offline queue, the durable action ledger, the bounded run ledger, and Cortex conversation trees with response metadata. Reloading APEX restores the active conversation branch and its per-conversation Agent/tool preferences.
+- **Local storage:** SQLite keeps briefing history, the reminder cache and offline queue, Cortex conversations and run records, personal-context sources and history, retrieval indexes, context reviews, and the durable action ledger. Reloading APEX restores the active conversation branch and its per-conversation Agent/tool preferences.
 - **Visible failures:** Readiness checks, connector health, stable errors, run IDs, and preflight warnings make degraded states easier to understand.
 - **Credential isolation:** The backend receives credentials; the static server and browser receive a restricted child environment.
 
@@ -120,13 +122,15 @@ Demo mode bypasses live connectors and model calls, does not write briefing hist
 
 ## Use APEX without the HUD
 
-When the backend is already running, the included CLI can inspect APEX, run one Agent turn, generate a briefing, inspect recent Cortex runs, and review or resolve durable actions:
+When the backend is already running, the included CLI can inspect APEX, run one Agent turn, generate a briefing, inspect and review personal context, inspect recent Cortex runs, and resolve durable actions:
 
 ```powershell
 uv run apex status
 uv run apex models
 uv run apex ask "What needs my attention?" --profile personal_ops
 uv run apex briefing --mode structured
+uv run apex context list
+uv run apex context review list
 uv run apex runs list
 uv run apex actions list
 ```
