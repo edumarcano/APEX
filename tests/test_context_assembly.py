@@ -3,11 +3,12 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from uuid import uuid4
 
 from core.context import ContextAssembler, ContextPolicy
 from core.knowledge.service import KnowledgeService
-from core.knowledge.store import KnowledgeStore
+from core.knowledge.store import KnowledgeStore, KnowledgeStoreError
 from core.retrieval.models import RetrievalItem
 from core.retrieval.service import RetrievalService
 from core.retrieval.store import RetrievalStore
@@ -379,6 +380,107 @@ class ContextAssemblyTests(unittest.TestCase):
 
         self.assertFalse(bundle.enabled)
         self.assertTrue(bundle.truncated)
+
+    def test_duplicate_provenance_categories_do_not_consume_the_local_budget(self) -> None:
+        sources = [
+            self.knowledge_store.create_source(
+                kind="manual", partition="production", locator=f"manual/duplicate-{index}",
+                original_text=f"Repeated direct evidence {index}.",
+            )
+            for index in range(4)
+        ]
+        record = self.knowledge_store.create_record(
+            partition="production", kind="fact", text="This claim has repeated direct evidence.",
+            source_ids=[source.id for source in sources],
+            source_derivations={source.id: "direct" for source in sources},
+        )
+        candidate = self.assembler._personal_candidate(
+            str(record.id), label="Personal context", partition="production",
+        )
+        assert candidate is not None
+        rendered, _ = candidate
+        category = "operator input (direct)"
+        duplicated = rendered.replace(category, ", ".join([category] * len(sources)))
+        budget = (len(rendered) + 3) // 4
+
+        bundle = self.assembler.assemble(
+            prompt="repeated direct evidence", conversation_id=uuid4(),
+            policy=ContextPolicy(
+                "apex", "production", True, max_retrieved_tokens=budget,
+                max_conversation_excerpts=0, max_personal_records=1,
+            ),
+        )
+
+        self.assertEqual(rendered.count(category), 1)
+        self.assertGreater((len(duplicated) + 3) // 4, budget)
+        self.assertIn(record.text, bundle.rendered)
+        self.assertFalse(bundle.truncated)
+
+    def test_store_read_failures_skip_unverifiable_context_and_keep_conversation(self) -> None:
+        current = uuid4()
+        other = uuid4()
+        source = self.knowledge_store.create_source(
+            kind="manual", partition="production", locator="manual/unverifiable",
+            original_text="Unverifiable claim.",
+        )
+        record = self.knowledge_store.create_record(
+            partition="production", kind="fact", text="Unverifiable personal claim.", source_ids=[source.id],
+        )
+        self.retrieval_store.upsert_item(RetrievalItem(
+            namespace="conversation", source_type="message", source_id="survives-read-error",
+            partition="production", conversation_id=str(other), message_id="survives-read-error",
+            role="user", timestamp="2026-09-10T00:00:00+00:00",
+            locator=f"conversation/{other}/message/survives-read-error", content_hash="survives-read-error",
+            text="Conversation context survives a knowledge read error.",
+        ))
+        original_get_record = self.knowledge.get_record
+
+        def unavailable_record(record_id, *, partition: str):
+            if record_id == record.id:
+                raise KnowledgeStoreError("read_failed")
+            return original_get_record(record_id, partition=partition)
+
+        with patch.object(
+            self.knowledge, "get_record",
+            side_effect=unavailable_record,
+        ):
+            bundle = self.assembler.assemble(
+                prompt="unverifiable conversation", conversation_id=current,
+                policy=ContextPolicy("apex", "production", True),
+            )
+
+        self.assertNotIn(record.text, bundle.rendered)
+        self.assertIn("Conversation context survives a knowledge read error.", bundle.rendered)
+
+    def test_pending_review_read_failure_skips_claim_and_keeps_conversation(self) -> None:
+        current = uuid4()
+        other = uuid4()
+        source = self.knowledge_store.create_source(
+            kind="manual", partition="production", locator="manual/pending-read",
+            original_text="Pending state unavailable.",
+        )
+        record = self.knowledge_store.create_record(
+            partition="production", kind="fact", text="Claim with unavailable review state.", source_ids=[source.id],
+        )
+        self.retrieval_store.upsert_item(RetrievalItem(
+            namespace="conversation", source_type="message", source_id="survives-pending-error",
+            partition="production", conversation_id=str(other), message_id="survives-pending-error",
+            role="user", timestamp="2026-09-10T00:00:00+00:00",
+            locator=f"conversation/{other}/message/survives-pending-error", content_hash="survives-pending-error",
+            text="Conversation context survives a pending-review read error.",
+        ))
+
+        with patch.object(
+            self.knowledge, "pending_reviews_for_record",
+            side_effect=KnowledgeStoreError("pending_read_failed"),
+        ):
+            bundle = self.assembler.assemble(
+                prompt="unavailable review conversation", conversation_id=current,
+                policy=ContextPolicy("apex", "production", True),
+            )
+
+        self.assertNotIn(record.text, bundle.rendered)
+        self.assertIn("Conversation context survives a pending-review read error.", bundle.rendered)
 
     def test_entity_alias_deduplication_and_relationship_expansion(self) -> None:
         entity = self.knowledge_store.create_entity("Apex Core")

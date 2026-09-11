@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from core.knowledge.service import KnowledgeService
-from core.knowledge.store import KnowledgeNotFoundError
+from core.knowledge.store import KnowledgeNotFoundError, KnowledgeStoreError
 from core.retrieval.models import RetrievalHit
 from core.retrieval.service import RetrievalService
 
@@ -154,7 +154,10 @@ class ContextAssembler:
         """Render only the current canonical record and concise inspection pointers."""
         try:
             detail = self._knowledge.get_record(UUID(record_id), partition=partition)
-        except (KnowledgeNotFoundError, TypeError, ValueError):
+            pending_reviews = self._knowledge.pending_reviews_for_record(
+                detail.record.id, partition=partition,
+            )
+        except (KnowledgeNotFoundError, KnowledgeStoreError, TypeError, ValueError):
             return None
         record = detail.record
         if record.status not in {"active", "conflicting"}:
@@ -163,12 +166,15 @@ class ContextAssembler:
         labels = [
             "Unresolved personal-context conflict" if record.status == "conflicting" else label,
         ]
-        if self._knowledge.pending_reviews_for_record(record.id, partition=partition):
+        if pending_reviews:
             labels.append("Pending challenge; treat this claim as uncertain")
 
+        provenance_categories = dict.fromkeys(
+            (link.source.origin, link.derivation) for link in detail.source_links
+        )
         provenance = ", ".join(
-            f"{link.source.origin.replace('_', ' ')} ({link.derivation.replace('_', ' ')})"
-            for link in detail.source_links
+            f"{origin.replace('_', ' ')} ({derivation.replace('_', ' ')})"
+            for origin, derivation in provenance_categories
         ) or "unknown"
         effective = record.effective_at or "not recorded"
         locator = f"knowledge/record/{record.id}"
