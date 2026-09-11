@@ -17,6 +17,18 @@ API_ROOT = "http://127.0.0.1:8000"
 _CONNECT_TIMEOUT_SECONDS = 3.0
 _DEFAULT_READ_TIMEOUT_SECONDS = 30.0
 _LONG_READ_TIMEOUT_SECONDS = 600.0
+_CONTEXT_KINDS = (
+    "idea",
+    "preference",
+    "decision",
+    "goal",
+    "fact",
+    "constraint",
+    "note",
+    "observation",
+)
+_CONTEXT_STATUSES = ("active", "conflicting", "superseded", "retracted")
+_CONTEXT_REVIEW_DECISIONS = ("pending", "accepted", "rejected", "stale")
 
 
 @dataclass(frozen=True)
@@ -128,7 +140,7 @@ def build_parser() -> argparse.ArgumentParser:
     ask.add_argument("--profile", help="Saved or built-in tool profile ID.")
     ask.set_defaults(handler=_ask)
 
-    context = commands.add_parser("context", help="Inspect or prepare local retrieval.")
+    context = commands.add_parser("context", help="Inspect, save, or resolve personal context.")
     _add_json_option(context)
     context_commands = context.add_subparsers(dest="context_command", required=True)
     context_status = context_commands.add_parser("status", help="Show retrieval readiness.")
@@ -137,6 +149,83 @@ def build_parser() -> argparse.ArgumentParser:
     context_prepare = context_commands.add_parser("prepare", help="Download and prepare the local embedding model.")
     _add_json_option(context_prepare)
     context_prepare.set_defaults(handler=_context_prepare)
+
+    context_list = context_commands.add_parser("list", help="List personal-context records.")
+    _add_json_option(context_list)
+    context_list.add_argument(
+        "--status",
+        action="append",
+        choices=_CONTEXT_STATUSES,
+        help="Filter records by status. Repeat to include multiple statuses.",
+    )
+    context_list.add_argument(
+        "--kind",
+        choices=_CONTEXT_KINDS,
+        help="Filter records by kind.",
+    )
+    context_list.add_argument("--query", help="Search saved text and structured fields.")
+    context_list.add_argument(
+        "--limit",
+        type=int,
+        default=100,
+        help="Maximum number of records to return (1-100, default 100).",
+    )
+    context_list.set_defaults(handler=_context_list)
+
+    context_show = context_commands.add_parser("show", help="Show one personal-context record.")
+    _add_json_option(context_show)
+    context_show.add_argument("record_id", help="Opaque context record ID.")
+    context_show.set_defaults(handler=_context_show)
+
+    context_add = context_commands.add_parser("add", help="Save direct operator context.")
+    _add_json_option(context_add)
+    _add_context_capture_arguments(context_add, require_kind=True)
+    context_add.set_defaults(handler=_context_add)
+
+    context_correct = context_commands.add_parser("correct", help="Correct one context record.")
+    _add_json_option(context_correct)
+    context_correct.add_argument("record_id", help="Opaque context record ID.")
+    _add_context_capture_arguments(context_correct, require_kind=True)
+    context_correct.set_defaults(handler=_context_correct)
+
+    context_retract = context_commands.add_parser("retract", help="Propose retracting one context record.")
+    _add_json_option(context_retract)
+    context_retract.add_argument("record_id", help="Opaque context record ID.")
+    context_retract.set_defaults(handler=_context_retract)
+
+    context_review = context_commands.add_parser("review", help="Inspect or resolve context reviews.")
+    _add_json_option(context_review)
+    review_commands = context_review.add_subparsers(dest="review_command", required=True)
+
+    review_list = review_commands.add_parser("list", help="List context reviews.")
+    _add_json_option(review_list)
+    review_list.add_argument(
+        "--decision",
+        action="append",
+        choices=_CONTEXT_REVIEW_DECISIONS,
+        help="Filter reviews by decision. Repeat to include multiple decisions.",
+    )
+    review_list.add_argument(
+        "--limit",
+        type=int,
+        default=50,
+        help="Maximum number of reviews to return (1-100, default 50).",
+    )
+    review_list.set_defaults(handler=_context_review_list)
+
+    review_show = review_commands.add_parser("show", help="Show one context review.")
+    _add_json_option(review_show)
+    review_show.add_argument("review_id", help="Opaque context review ID.")
+    review_show.set_defaults(handler=_context_review_show)
+
+    for name, help_text, handler in (
+        ("accept", "Accept one context review.", _context_review_accept),
+        ("reject", "Reject one context review.", _context_review_reject),
+    ):
+        review_decision = review_commands.add_parser(name, help=help_text)
+        _add_json_option(review_decision)
+        review_decision.add_argument("review_id", help="Opaque context review ID.")
+        review_decision.set_defaults(handler=handler)
 
     briefing = commands.add_parser("briefing", help="Refresh and generate a briefing.")
     _add_json_option(briefing)
@@ -203,6 +292,27 @@ def _add_json_option(parser: argparse.ArgumentParser) -> None:
         default=argparse.SUPPRESS,
         help="Print the complete API response as JSON.",
     )
+
+
+def _add_context_capture_arguments(parser: argparse.ArgumentParser, *, require_kind: bool) -> None:
+    parser.add_argument("text", help="Context text.")
+    parser.add_argument(
+        "--kind",
+        required=require_kind,
+        choices=_CONTEXT_KINDS,
+        help="Context kind.",
+    )
+    parser.add_argument("--subject", help="Structured subject entity name.")
+    parser.add_argument("--predicate", help="Structured predicate.")
+    parser.add_argument("--object-entity", dest="object_entity", help="Structured object entity name.")
+    parser.add_argument("--object-value", dest="object_value", help="Structured scalar object value.")
+    parser.add_argument("--effective-at", dest="effective_at", help="Effective date or timestamp in ISO-8601 format.")
+    parser.add_argument(
+        "--sensitive",
+        action="store_true",
+        help="Mark the context as sensitive and require review.",
+    )
+    parser.add_argument("--idempotency-key", dest="idempotency_key", help="Stable key for retry-safe submission.")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -310,6 +420,181 @@ def _context_prepare(_args: argparse.Namespace, client: ApiClient, json_mode: bo
     )
     _emit(payload, json_mode, _render_context_status)
     return 0
+
+
+def _context_list(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    query: list[tuple[str, object]] = []
+    for status in args.status or []:
+        query.append(("status", status))
+    if args.kind is not None:
+        query.append(("kind", args.kind))
+    if args.query is not None:
+        query.append(("q", args.query))
+    query.append(("limit", args.limit))
+    payload = client.request("GET", _query_path("/api/v1/cortex/context", query))
+    _require_list(payload, "context record list")
+    _emit(payload, json_mode, _render_context_list)
+    return 0
+
+
+def _context_show(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    payload = client.request("GET", _context_record_path(args.record_id))
+    _require_mapping(payload, "context record detail")
+    _emit(payload, json_mode, _render_context_detail)
+    return 0
+
+
+def _context_add(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    payload = client.request(
+        "POST",
+        "/api/v1/cortex/context/saves",
+        payload=_context_capture_payload(args),
+    )
+    _require_context_save_response(payload)
+    _emit(payload, json_mode, _render_context_save)
+    return 0
+
+
+def _context_correct(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    detail = _require_mapping(
+        client.request("GET", _context_record_path(args.record_id)),
+        "context record detail",
+    )
+    updated_at = detail.get("updated_at")
+    if not isinstance(updated_at, str) or not updated_at.strip():
+        raise CliError("invalid_response", "APEX context record detail did not include updated_at.")
+    request_payload = _context_capture_payload(args)
+    request_payload["correction_record_id"] = args.record_id
+    request_payload["expected_updated_at"] = updated_at
+    payload = client.request(
+        "POST",
+        "/api/v1/cortex/context/saves",
+        payload=request_payload,
+    )
+    _require_context_save_response(payload)
+    _emit(payload, json_mode, _render_context_save)
+    return 0
+
+
+def _context_retract(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    payload = client.request(
+        "POST",
+        "/api/v1/cortex/context/actions",
+        payload={"operation": "retract", "record_id": args.record_id},
+    )
+    result = _require_mapping(payload, "context action proposal")
+    if not isinstance(result.get("action_id"), str):
+        raise CliError("invalid_response", "APEX context action did not include an action ID.")
+    if _context_action_review_id(result) is None:
+        raise CliError("invalid_response", "APEX context action did not include a review ID.")
+    _emit(result, json_mode, _render_context_action)
+    return 0
+
+
+def _context_review_list(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    query: list[tuple[str, object]] = []
+    for decision in args.decision or []:
+        query.append(("decision", decision))
+    query.append(("limit", args.limit))
+    payload = client.request(
+        "GET",
+        _query_path("/api/v1/cortex/context/reviews", query),
+    )
+    _require_list(payload, "context review list")
+    _emit(payload, json_mode, _render_context_review_list)
+    return 0
+
+
+def _context_review_show(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    payload = client.request("GET", _context_review_path(args.review_id))
+    _require_mapping(payload, "context review detail")
+    _emit(payload, json_mode, _render_context_review_detail)
+    return 0
+
+
+def _context_review_accept(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    return _resolve_context_review(args.review_id, "accept", client, json_mode)
+
+
+def _context_review_reject(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    return _resolve_context_review(args.review_id, "reject", client, json_mode)
+
+
+def _resolve_context_review(
+    review_id: str,
+    operation: str,
+    client: ApiClient,
+    json_mode: bool,
+) -> int:
+    detail = _require_mapping(
+        client.request("GET", _context_review_path(review_id)),
+        "context review detail",
+    )
+    expected_revisions = detail.get("expected_revisions")
+    if not isinstance(expected_revisions, dict) or not all(
+        isinstance(key, str) and isinstance(value, str)
+        for key, value in expected_revisions.items()
+    ):
+        raise CliError("invalid_response", "APEX context review detail did not include expected revisions.")
+    payload = client.request(
+        "POST",
+        f"{_context_review_path(review_id)}/{operation}",
+        payload={"expected_revisions": expected_revisions},
+    )
+    result = _require_mapping(payload, "context review result")
+    _emit(result, json_mode, _render_context_review_result)
+    return 0
+
+
+def _context_capture_payload(args: argparse.Namespace) -> dict[str, object]:
+    text = args.text.strip()
+    if not text:
+        raise CliError("invalid_input", "Context text must contain non-whitespace text.")
+    payload: dict[str, object] = {
+        "text": text,
+        "kind": args.kind,
+        "sensitive": bool(args.sensitive),
+    }
+    for name in ("subject", "predicate", "object_entity", "object_value", "effective_at", "idempotency_key"):
+        value = getattr(args, name, None)
+        if value is not None:
+            payload[name] = value
+    return payload
+
+
+def _require_context_save_response(payload: object) -> dict[str, object]:
+    result = _require_mapping(payload, "context save response")
+    outcome = result.get("outcome")
+    if outcome not in {"saved", "review_required"}:
+        raise CliError("invalid_response", "APEX returned an invalid context save outcome.")
+    required_id = "record_id" if outcome == "saved" else "review_id"
+    if not isinstance(result.get(required_id), str) or not str(result[required_id]).strip():
+        raise CliError("invalid_response", f"APEX context save did not include {required_id}.")
+    return result
+
+
+def _query_path(path: str, query: list[tuple[str, object]]) -> str:
+    if not query:
+        return path
+    return path + "?" + "&".join(
+        f"{quote(str(key), safe='')}={quote(str(value), safe='')}"
+        for key, value in query
+    )
+
+
+def _context_record_path(record_id: str) -> str:
+    return _opaque_path(record_id, "Context record ID", "/api/v1/cortex/context")
+
+
+def _context_review_path(review_id: str) -> str:
+    return _opaque_path(review_id, "Context review ID", "/api/v1/cortex/context/reviews")
+
+
+def _opaque_path(identifier: str, label: str, prefix: str) -> str:
+    value = identifier.strip()
+    if not value:
+        raise CliError("invalid_input", f"{label} must contain non-whitespace text.")
+    return f"{prefix}/{quote(value, safe='')}"
 
 
 def _cli_conversation_title(prompt: str) -> str:
@@ -477,6 +762,229 @@ def _render_ask(payload: object) -> None:
             print(f"\n{message}")
         if isinstance(action_id, str):
             print(f"Action ID: {action_id}")
+
+
+def _render_context_list(payload: object) -> None:
+    if not isinstance(payload, list):
+        print("APEX returned an unexpected context record list.")
+        return
+    if not payload:
+        print("No personal-context records found.")
+        return
+    for record in payload:
+        if not isinstance(record, dict):
+            continue
+        record_id = record.get("id", "unknown")
+        kind = record.get("kind", "unknown")
+        status = record.get("status", "unknown")
+        text = record.get("text", "")
+        print(f"{record_id} | {kind} | {status}")
+        if isinstance(text, str) and text:
+            print(f"  {text}")
+
+
+def _render_context_detail(payload: object) -> None:
+    if not isinstance(payload, dict):
+        print("APEX returned an unexpected context record response.")
+        return
+    print(f"Record ID: {payload.get('id', 'unknown')}")
+    print(f"Kind: {payload.get('kind', 'unknown')}")
+    print(f"Status: {payload.get('status', 'unknown')}")
+    print(f"Text: {payload.get('text', '')}")
+    _render_context_structured_fields(payload)
+    if payload.get("effective_at"):
+        print(f"Effective At: {payload.get('effective_at')}")
+    print(f"Created At: {payload.get('created_at', 'unknown')}")
+    print(f"Updated At: {payload.get('updated_at', 'unknown')}")
+
+    print("Sources:")
+    sources = payload.get("sources")
+    if isinstance(sources, list) and sources:
+        for source in sources:
+            if not isinstance(source, dict):
+                continue
+            source_id = source.get("id", "unknown")
+            source_kind = source.get("kind", "unknown")
+            origin = source.get("origin", "unknown")
+            derivation = source.get("derivation", "unknown")
+            locator = source.get("locator", "unknown")
+            occurred_at = source.get("occurred_at") or "Not recorded"
+            captured_at = source.get("captured_at") or "Not recorded"
+            linked_at = source.get("linked_at") or "Not recorded"
+            original_text = source.get("original_text", "")
+            print(f"- {source_id} | {source_kind} | {origin} | {derivation}")
+            print(f"  Locator: {locator}")
+            print(f"  Occurred At: {occurred_at}")
+            print(f"  Captured At: {captured_at}")
+            print(f"  Linked At: {linked_at}")
+            if isinstance(original_text, str) and original_text:
+                print(f"  Original: {original_text}")
+    else:
+        print("- None")
+
+    print("History:")
+    history = payload.get("history")
+    if isinstance(history, list) and history:
+        for event in history:
+            if not isinstance(event, dict):
+                continue
+            line = (
+                f"- {event.get('created_at', 'unknown')} | "
+                f"{event.get('operation', 'unknown')} | "
+                f"{event.get('reason_code', 'unknown')} | "
+                f"{event.get('actor', 'unknown')}"
+            )
+            references = []
+            for key in ("related_record_id", "source_id", "action_id", "review_id"):
+                value = event.get(key)
+                if isinstance(value, str) and value:
+                    references.append(f"{key}={value}")
+            if references:
+                line += " | " + ", ".join(references)
+            print(line)
+    else:
+        print("- None")
+
+    print(f"Related record IDs: {_display_ids(payload.get('related_records'), 'id')}")
+    print(f"Pending review IDs: {_display_ids(payload.get('pending_review_ids'))}")
+    print(f"Predecessor IDs: {_display_ids(payload.get('predecessors'))}")
+    print(f"Superseded by IDs: {_display_ids(payload.get('superseded_by'))}")
+
+
+def _render_context_structured_fields(payload: dict[str, object]) -> None:
+    subject = payload.get("subject")
+    predicate = payload.get("predicate")
+    object_entity = payload.get("object_entity")
+    object_value = payload.get("object_value")
+    if not any(value is not None for value in (subject, predicate, object_entity, object_value)):
+        return
+    print("Structured:")
+    if isinstance(subject, dict):
+        print(f"  Subject: {_entity_display(subject)}")
+    elif subject is not None:
+        print(f"  Subject: {subject}")
+    if predicate is not None:
+        print(f"  Predicate: {predicate}")
+    if isinstance(object_entity, dict):
+        print(f"  Object Entity: {_entity_display(object_entity)}")
+    elif object_entity is not None:
+        print(f"  Object Entity: {object_entity}")
+    if object_value is not None:
+        print(f"  Object Value: {object_value}")
+
+
+def _entity_display(entity: dict[str, object]) -> str:
+    name = entity.get("name")
+    identifier = entity.get("id")
+    if isinstance(name, str) and isinstance(identifier, str):
+        return f"{name} ({identifier})"
+    if isinstance(name, str):
+        return name
+    if isinstance(identifier, str):
+        return identifier
+    return "unknown"
+
+
+def _display_ids(items: object, key: str | None = None) -> str:
+    if not isinstance(items, list):
+        return "None"
+    identifiers: list[str] = []
+    for item in items:
+        value = item.get(key) if key and isinstance(item, dict) else item
+        if isinstance(value, str) and value:
+            identifiers.append(value)
+    return ", ".join(identifiers) if identifiers else "None"
+
+
+def _render_context_save(payload: object) -> None:
+    if not isinstance(payload, dict):
+        print("APEX returned an unexpected context save response.")
+        return
+    outcome = payload.get("outcome")
+    if outcome == "saved":
+        print(f"Saved context record: {payload.get('record_id', 'unknown')}")
+    elif outcome == "review_required":
+        print(f"Needs review: {payload.get('review_id', 'unknown')}")
+    else:
+        print(f"Context save outcome: {outcome or 'unknown'}")
+
+
+def _render_context_action(payload: object) -> None:
+    if not isinstance(payload, dict):
+        print("APEX returned an unexpected context action response.")
+        return
+    print(f"Action ID: {payload.get('action_id', 'unknown')}")
+    review_id = _context_action_review_id(payload)
+    print(f"Review ID: {review_id if isinstance(review_id, str) else 'unknown'}")
+    print(f"Status: {payload.get('status', 'proposed')}")
+
+
+def _context_action_review_id(payload: dict[str, object]) -> str | None:
+    review_id = payload.get("review_id")
+    if isinstance(review_id, str) and review_id.strip():
+        return review_id
+    proposal = payload.get("proposal")
+    arguments = proposal.get("arguments") if isinstance(proposal, dict) else None
+    review_id = arguments.get("review_id") if isinstance(arguments, dict) else None
+    return review_id if isinstance(review_id, str) and review_id.strip() else None
+
+
+def _render_context_review_list(payload: object) -> None:
+    if not isinstance(payload, list):
+        print("APEX returned an unexpected context review list.")
+        return
+    if not payload:
+        print("No context reviews found.")
+        return
+    for review in payload:
+        if not isinstance(review, dict):
+            continue
+        reasons = review.get("reason_codes")
+        reason_text = ", ".join(str(item) for item in reasons) if isinstance(reasons, list) else ""
+        line = (
+            f"{review.get('id', 'unknown')} | {review.get('decision', 'unknown')} | "
+            f"{review.get('operation', 'unknown')}"
+        )
+        if reason_text:
+            line += f" | {reason_text}"
+        print(line)
+
+
+def _render_context_review_detail(payload: object) -> None:
+    if not isinstance(payload, dict):
+        print("APEX returned an unexpected context review response.")
+        return
+    print(f"Review ID: {payload.get('id', 'unknown')}")
+    print(f"Decision: {payload.get('decision', 'unknown')}")
+    print(f"Operation: {payload.get('operation', 'unknown')}")
+    print(f"Partition: {payload.get('partition', 'unknown')}")
+    reason_codes = payload.get("reason_codes")
+    if isinstance(reason_codes, list):
+        print(f"Reasons: {', '.join(str(item) for item in reason_codes) or 'None'}")
+    if payload.get("action_id"):
+        print(f"Action ID: {payload.get('action_id')}")
+    print("Expected revisions:")
+    revisions = payload.get("expected_revisions")
+    if isinstance(revisions, dict) and revisions:
+        for record_id, revision in revisions.items():
+            print(f"- {record_id}: {revision}")
+    else:
+        print("- None")
+    for label in ("proposal", "evidence"):
+        value = payload.get(label)
+        if isinstance(value, dict) and value:
+            print(f"{label.capitalize()}:")
+            print(json.dumps(value, ensure_ascii=False, indent=2, default=str))
+
+
+def _render_context_review_result(payload: object) -> None:
+    if not isinstance(payload, dict):
+        print("APEX returned an unexpected context review response.")
+        return
+    print(f"Review ID: {payload.get('id', 'unknown')}")
+    print(f"Decision: {payload.get('decision', 'unknown')}")
+    if payload.get("action_id"):
+        print(f"Action ID: {payload.get('action_id')}")
 
 
 def _render_context_status(payload: object) -> None:

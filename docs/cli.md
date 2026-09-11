@@ -15,6 +15,17 @@ uv run apex briefing
 uv run apex briefing --mode structured
 uv run apex context status
 uv run apex context prepare
+uv run apex context list
+uv run apex context list --status active --status conflicting --kind preference --query "short plans" --limit 20
+uv run apex context show <record-id>
+uv run apex context add "I prefer short plans." --kind preference
+uv run apex context correct <record-id> "I prefer concise plans." --kind preference
+uv run apex context retract <record-id>
+uv run apex context review list
+uv run apex context review list --decision pending --decision stale --limit 20
+uv run apex context review show <review-id>
+uv run apex context review accept <review-id>
+uv run apex context review reject <review-id>
 uv run apex actions list
 uv run apex actions show <action-id>
 uv run apex actions approve <action-id>
@@ -33,6 +44,32 @@ and any safe degraded category. `context prepare` explicitly prepares the local
 FastEmbed model and backfills semantic vectors; it may take a while and is the
 only CLI command that can download model files. Both commands talk only to the
 loopback API and support `--json`.
+
+`context list` filters current personal-context records by repeated `--status`,
+`--kind`, and `--query` values, bounded by `--limit`. `context show` displays a
+record's current fields together with source kind, locator, occurrence, capture,
+and link times, source origin and derivation, original evidence, concise
+knowledge-history entries, related record IDs, and pending review IDs. The
+detail response is the place to inspect original evidence and recorded changes.
+
+`context add` sends direct operator input to the save route. Use `--subject`,
+`--predicate`, and exactly one of `--object-entity` or `--object-value` for a
+structured claim; `--effective-at` accepts an ISO-8601 date or timestamp. Use
+`--sensitive` for an explicitly sensitive entry and `--idempotency-key` for a
+retry-safe submission. A clear save reports `Saved`; a sensitive or conflicting
+entry reports `Needs review` with its review ID. `context correct` reads the
+record first, then submits its returned revision with the replacement fields.
+`context retract` creates the existing approval-gated reconciliation proposal
+and prints both its action and review IDs. These commands do not prompt for
+confirmation.
+
+`context review list` accepts repeated `--decision` filters (`pending`,
+`accepted`, `rejected`, or `stale`) and a `--limit`. `context review show`
+displays the frozen proposal, evidence, reasons, and expected record revisions.
+Before `accept` or `reject`, the CLI reads the review detail and submits those
+expected revisions. A stale `409` is reported as an error and requires a new
+command invocation; the CLI does not refresh or retry it. Rejecting a review
+successfully exits with code `0`.
 
 `briefing` uses the normal full refresh-and-generate route. Omitting `--mode` uses the saved Flash default; supported overrides are `flash`, `focused`, and `structured`. These are breaking identifiers: the former Agent-named values are rejected.
 
