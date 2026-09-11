@@ -450,7 +450,7 @@ export function SystemDiagnostics({
           >
             <PlugZap className="size-3.5 shrink-0 text-zinc-500" aria-hidden />
             <span className={`size-1.5 shrink-0 rounded-full ${connectorSummary.ledClass}`} aria-hidden />
-            <span className="whitespace-nowrap text-[10px] tracking-[0.04em] text-zinc-300">{connectorSummary.text}</span>
+            <span className="whitespace-nowrap text-[10px] tracking-[0.04em] text-zinc-300">{connectorSummary.text.replace('Connectors · ', '')}</span>
           </button>
 
           <div
