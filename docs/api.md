@@ -1,6 +1,6 @@
 # APEX API
 
-This is the behavioral reference for APEX's loopback HTTP API at `http://127.0.0.1:8000`. It explains workflows, ownership, and meaningful errors. FastAPI's generated [`/docs`](http://127.0.0.1:8000/docs) and [`/openapi.json`](http://127.0.0.1:8000/openapi.json) are the canonical exhaustive request and response schemas.
+This is the behavioral reference for APEX's loopback HTTP API at `http://127.0.0.1:8000`. It explains workflows, ownership, and meaningful errors. FastAPI's generated [`/docs`](http://127.0.0.1:8000/docs) and [`/openapi.json`](http://127.0.0.1:8000/openapi.json) are the canonical exhaustive request and response schemas. The current documented contract version is `20`.
 
 The API has no authentication and is intentionally bound to loopback. `APEX_ALLOWED_ORIGINS` controls browser CORS policy; it does not authorize non-browser clients or make remote binding safe. See [Configuration](configuration.md) and [Privacy](privacy.md).
 
@@ -16,6 +16,7 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | GET | `/api/v1/config` | HUD boot configuration |
 | GET | `/api/v1/settings` | Resolved runtime settings |
 | PATCH | `/api/v1/settings` | Persist runtime-setting changes |
+| GET | `/api/v1/google-calendar/calendars` | Readable Google Calendar choices for Runtime Settings |
 | GET | `/api/v1/status` | Active full-run pipeline state |
 | GET | `/api/v1/diagnostics` | Host resource diagnostics |
 | POST | `/api/v1/trigger` | Full refresh-and-briefing compatibility flow |
@@ -153,13 +154,13 @@ Returns the resolved settings envelope. The current contract version is `20`.
 }
 ```
 
-`football.teams`, `market.symbols`, `tool_profiles`, and `microsoft_todo.reminder_list_id` are returned in the resolved settings snapshot. Apex Agent settings persist the selected model and independent cloud/local controls; the model catalog derives provider or local runtime. The selected provider/runtime remains in execution metadata and historical records. The optional list ID is opaque, bounded to 512 characters, and is never selected or cleared automatically. OpenAPI contains the complete shape. Tool profiles persist through the same settings store, but the dedicated `/api/v1/cortex/tool-profiles` routes are the canonical mutation workflow for built-in/custom profiles and per-runtime defaults.
+`football.teams`, `market.symbols`, `calendar`, `tool_profiles`, and `microsoft_todo.reminder_list_id` are returned in the resolved settings snapshot. Apex Agent settings persist the selected model and independent cloud/local controls; the model catalog derives provider or local runtime. The selected provider/runtime remains in execution metadata and historical records. The optional Microsoft To Do list ID is opaque, bounded to 512 characters, and is never selected or cleared automatically. OpenAPI contains the complete shape. Tool profiles persist through the same settings store, but the dedicated `/api/v1/cortex/tool-profiles` routes are the canonical mutation workflow for built-in/custom profiles and per-runtime defaults.
 
 `settings.briefing.default_mode` remains a persisted compatibility field. The Home command rail is the visible control for changing it and writes the selected mode immediately; the value is returned by `/api/v1/config` on the next startup.
 
 ### PATCH `/api/v1/settings`
 
-Accepts a strict partial patch for the optional user designation, connectors, sports modules, followed football teams, market symbols, Agent query settings, tool profiles, briefing, voice, llama.cpp enablement, loopback host, optional managed-server paths, and tracked MCP enablement. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
+Accepts a strict partial patch for the optional user designation, connectors, sports modules, followed football teams, market symbols, Google Calendar selection and label display, Agent query settings, tool profiles, briefing, voice, llama.cpp enablement, loopback host, optional managed-server paths, and tracked MCP enablement. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
 
 ```json
 {
@@ -175,6 +176,10 @@ The store validates and transactionally replaces `config.local.json` before publ
 `ask_apex.local.reasoning_mode` accepts `none` or `focused` for llama.cpp models and only `none` for Ollama models. `focused` is request-level and does not trigger a local model unload/reload; unsupported model/mode combinations return `422`.
 
 Environment modes, prompt text, credentials, endpoints, commands, allowlists, and tool risks are not patchable. The optional `user_designation` is the only personalization field and is persisted to the gitignored local settings overlay. Machine-local llama.cpp `executable_path` and `preset_path` also persist only to `config.local.json`.
+
+### GET `/api/v1/google-calendar/calendars`
+
+Returns up to 250 sanitized calendars that APEX can read for event details, including hidden calendars. The primary calendar uses the stable ID `primary`; each choice also includes its display name and primary/hidden flags. `truncated` reports whether the bounded discovery stopped before every page was read. Demo mode returns fixed non-personal choices, and unavailable Google authorization or discovery returns `503`.
 
 ## Runtime status
 
@@ -205,6 +210,8 @@ Returns `404` before the first successful snapshot or after a process restart.
 Refreshes all enabled connectors or a selected subset.
 
 Market participates in this lifecycle and in Sync Health. Each symbol can make at most one Alpha Vantage request per UTC calendar day. Successful results remain fresh cached data for that day even when the latest trading close is older, such as on weekends. Failed symbols wait until a later UTC date according to their failure backoff. Market remains excluded from briefing synthesis.
+
+Calendar reads every selected calendar independently and merges successful results in start-time order. If one selected calendar fails, the snapshot keeps events from the others and reports `degraded` with `partial_failure`; no selected calendars reports `unavailable` with `no_calendars_selected`. The calendar data includes selected, successful, and failed counts plus a truncation flag.
 
 ```json
 { "connectors": ["weather", "calendar"], "force": true }
@@ -583,7 +590,7 @@ action targets, citations, or raw errors.
 
 ### POST `/api/v1/cortex/context/captures`
 
-Creates a `remember_personal_context` action proposal from direct operator input. It does not write a knowledge record until the normal action approval, execution, and verification flow completes. Structured captures require a subject, predicate, and exactly one entity or scalar value. Requests that resemble credentials or private keys are rejected before proposal creation.
+Creates a `remember_personal_context` action proposal and a linked durable review from direct operator input. The review freezes the evidence and expected record revisions; no knowledge record is written until the normal action approval, execution, and verification flow completes. Structured captures require a subject, predicate, and exactly one entity or scalar value. Requests that resemble credentials or private keys are rejected before proposal creation.
 
 When an Agent proposes the same capability from a durable Cortex turn, APEX stores the initiating user message as the source evidence. The model cannot select another conversation or source message.
 
@@ -600,11 +607,12 @@ rather than inferred attribution. `GET /api/v1/cortex/context/entities` exposes
 only current entities and their exact aliases for the local merge selector.
 
 `POST /api/v1/cortex/context/actions` creates a normal durable action proposal
-for `correct`, `retract`, `restore`, `set_current`, `add_alias`, or
-`merge_entities`. It never changes knowledge directly. The server freezes the
-selected record revision and current partition with the proposal, so a queued
-operation fails safely when the underlying record changes. Retraction is a
-destructive action; all other reconciliation operations are write actions.
+and linked review for `correct`, `retract`, `restore`, `set_current`,
+`add_alias`, or `merge_entities`. It never changes knowledge directly. The
+server freezes the selected record revision and current partition with the
+proposal, so a queued operation fails safely when the underlying record
+changes. Retraction is a destructive action; all other reconciliation
+operations are write actions.
 Entity merges are explicit and one-way: record references and aliases move to
 the selected target, while the source is retained only as a merged entity.
 
@@ -621,6 +629,8 @@ action. A `409` refresh-required response leaves the review untouched;
 deliberate subsequent decision. Expired attempts are replaced after
 revalidation, and unknown outcomes are verified before a replacement is created.
 Rejection preserves the current claim. Record detail includes pending review IDs.
+
+Demo mode leaves context inspection available but rejects saves, action proposals, and review decisions with `403`. Context capture text that resembles credentials or private keys is rejected with `422` rather than stored as evidence.
 
 When personal context is enabled for an Apex Agent turn, prompt assembly reloads
 the selected records from canonical storage. It excludes rejected proposals and
@@ -662,7 +672,7 @@ excerpt as `path:Lstart-Lend`; it cannot alter system instructions or policy.
 
 Actions are loopback-only, durable proposals for supported native write capabilities. A Cortex turn validates and freezes the requested arguments, then returns a proposed action instead of performing the write. The API exposes the proposal, its ordered audit events, and the current lifecycle version.
 
-Supported Microsoft To Do action capabilities are `create_microsoft_todo_task`, `update_microsoft_todo_task`, `complete_microsoft_todo_task`, `reopen_microsoft_todo_task`, and destructive `delete_microsoft_todo_task`. Every mutation requires an opaque list ID, task ID, and the task's observed `last_modified_at` from `list_microsoft_todo_tasks`; approval rereads that exact task and fails without writing when it changed. Updates can alter only title, due date, and importance; completion and reopening alter only status. Deletion verifies only through a confirmed exact-task `404`. A timeout or other ambiguous write outcome remains `outcome_unknown`; APEX never retries a write automatically, while explicit verification retry rereads only the frozen target.
+Supported Microsoft To Do action capabilities are `create_microsoft_todo_task`, `update_microsoft_todo_task`, `complete_microsoft_todo_task`, `reopen_microsoft_todo_task`, and destructive `delete_microsoft_todo_task`. Existing-task mutations require an opaque list ID, task ID, and the task's observed `last_modified_at` from `list_microsoft_todo_tasks`; approval rereads that exact task and fails without writing when it changed. Updates can alter only title, due date, and importance; completion and reopening alter only status. Deletion verifies only through a confirmed exact-task `404`. A timeout or other ambiguous write outcome remains `outcome_unknown`; APEX never retries a write automatically, while explicit verification retry rereads only the frozen target.
 
 `GET /api/v1/actions` returns newest-first records, accepts repeated `status` filters, and accepts `limit` from `1` through `50` (default `50`). The limit is applied after status filtering. `GET /api/v1/actions/{action_id}` also returns audit events. In demo mode the list is empty and detail is unavailable, so demo requests never read the real action ledger.
 
@@ -730,86 +740,11 @@ The endpoint does not generate or persist a briefing. Voice mode determines whet
 ## Error and compatibility conventions
 
 - `400` indicates invalid operation input not represented by schema validation.
-- `403` indicates a locally disabled capability.
-- `404` indicates absent process-local or active state.
+- `403` indicates the current mode or capability policy forbids the operation.
+- `404` indicates the requested resource or process-local state is absent.
 - `409` indicates stale identity or resource ownership conflict.
 - `422` indicates Pydantic request validation failure.
-- `429` is reserved for non-blocking local-inference contention.
+- `429` indicates non-blocking local-inference contention or saturated Cortex run capacity.
 - `503` indicates a required local/provider dependency could not perform the selected operation.
 
 Compatibility fields and aliases remain documented where clients can still use them. New integrations should prefer canonical routes and the generated OpenAPI contract.
-
-## Current route inventory
-
-APEX API contract version 20.
-
-| Method | Path | Purpose |
-|---|---|---|
-| DELETE | `/api/v1/cortex/conversations/{conversation_id}` | API route |
-| DELETE | `/api/v1/cortex/tool-profiles/{profile_id}` | API route |
-| DELETE | `/api/v1/microsoft-todo/auth` | API route |
-| GET | `/` | API route |
-| GET | `/api/v1/actions` | API route |
-| GET | `/api/v1/actions/{action_id}` | API route |
-| GET | `/api/v1/briefings/history` | API route |
-| GET | `/api/v1/briefings/targets` | API route |
-| GET | `/api/v1/config` | API route |
-| GET | `/api/v1/cortex/agent` | API route |
-| GET | `/api/v1/cortex/context` | API route |
-| GET | `/api/v1/cortex/context/entities` | API route |
-| GET | `/api/v1/cortex/context/{record_id}` | API route |
-| GET | `/api/v1/cortex/conversations` | API route |
-| GET | `/api/v1/cortex/conversations/{conversation_id}` | API route |
-| GET | `/api/v1/cortex/retrieval/status` | API route |
-| GET | `/api/v1/cortex/runs` | API route |
-| GET | `/api/v1/cortex/runs/{run_id}` | API route |
-| GET | `/api/v1/cortex/runs/{run_id}/events` | API route |
-| GET | `/api/v1/cortex/tool-catalog` | API route |
-| GET | `/api/v1/cortex/tool-profiles` | API route |
-| GET | `/api/v1/diagnostics` | API route |
-| GET | `/api/v1/google-calendar/calendars` | Up to 250 sanitized readable Google Calendar choices for Runtime Settings; returns `503` when discovery is unavailable. |
-| GET | `/api/v1/health/live` | API route |
-| GET | `/api/v1/health/ready` | API route |
-| GET | `/api/v1/llama-cpp/status` | API route |
-| GET | `/api/v1/market` | API route |
-| GET | `/api/v1/mcp/status` | API route |
-| GET | `/api/v1/microsoft-todo/lists` | API route |
-| GET | `/api/v1/microsoft-todo/status` | API route |
-| GET | `/api/v1/reminders` | API route |
-| GET | `/api/v1/reminders/completed` | API route |
-| GET | `/api/v1/reminders/task` | API route |
-| GET | `/api/v1/settings` | API route |
-| GET | `/api/v1/status` | API route |
-| GET | `/api/v1/telemetry/latest` | API route |
-| PATCH | `/api/v1/cortex/conversations/{conversation_id}` | API route |
-| PATCH | `/api/v1/cortex/tool-profiles/{profile_id}` | API route |
-| PATCH | `/api/v1/settings` | API route |
-| POST | `/api/v1/actions/{action_id}/approve` | API route |
-| POST | `/api/v1/actions/{action_id}/reject` | API route |
-| POST | `/api/v1/actions/{action_id}/verify` | API route |
-| POST | `/api/v1/briefings/generate` | API route |
-| POST | `/api/v1/cortex/context/actions` | API route |
-| POST | `/api/v1/cortex/context/captures` | API route |
-| POST | `/api/v1/cortex/conversations` | API route |
-| POST | `/api/v1/cortex/conversations/{conversation_id}/runs` | API route |
-| POST | `/api/v1/cortex/conversations/{conversation_id}/turns` | API route |
-| POST | `/api/v1/cortex/local-model/load` | API route |
-| POST | `/api/v1/cortex/local-model/unload` | API route |
-| POST | `/api/v1/cortex/models/verify` | API route |
-| POST | `/api/v1/cortex/retrieval/prepare` | API route |
-| POST | `/api/v1/cortex/runs/{run_id}/cancel` | API route |
-| POST | `/api/v1/cortex/tool-preflight` | API route |
-| POST | `/api/v1/cortex/tool-profiles` | API route |
-| POST | `/api/v1/cortex/tool-profiles/default` | API route |
-| POST | `/api/v1/microsoft-todo/auth/start` | API route |
-| POST | `/api/v1/preflight` | API route |
-| POST | `/api/v1/reminders` | API route |
-| POST | `/api/v1/reminders/complete` | API route |
-| POST | `/api/v1/reminders/delete` | API route |
-| POST | `/api/v1/reminders/dismiss` | API route |
-| POST | `/api/v1/reminders/reopen` | API route |
-| POST | `/api/v1/reminders/sync` | API route |
-| POST | `/api/v1/reminders/update` | API route |
-| POST | `/api/v1/telemetry/refresh` | API route |
-| POST | `/api/v1/trigger` | API route |
-| POST | `/api/v1/voice/speak` | API route |

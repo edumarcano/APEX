@@ -1,12 +1,18 @@
 # Privacy
 
-APEX is local-first: durable settings, conversation history, retrieval data, context records, action evidence, the Cortex run ledger, and briefing history remain on the local machine unless a selected operation requires an enabled connector or model provider.
+APEX is local-first: durable settings, conversation history, retrieval data, context sources and history, review proposals, action evidence, the Cortex run ledger, and briefing history remain on the local machine unless a selected operation requires an enabled connector or model provider.
 
 ## Interactive models
 
 The selected model determines the inference boundary. Cloud model requests may send the bounded prompt, active-branch history, explicitly selected APEX or MCP schemas, and any context allowed by the relevant runtime policy. Local model requests use the configured Ollama or llama.cpp endpoint. Personal-context retrieval is disabled by default for both runtimes.
 
 Provider-hosted grounding is separate from APEX-managed tool calls. It is enabled only when the selected cloud model supports it and the corresponding Runtime Settings switch is enabled.
+
+## Personal context
+
+Original evidence, normalized claims, provenance, and append-only knowledge history are stored separately in the local SQLite database. APEX does not encrypt that database. Corrections and retractions preserve earlier evidence and history rather than erasing them, and pending review proposals remain outside normal retrieval.
+
+When personal context is enabled for a model runtime, APEX can send selected current claims with concise provenance and effective-time labels as untrusted reference context. Full source evidence and knowledge history stay out of the prompt, and a pending proposal's replacement text is not sent as current knowledge. A cloud model provider receives the selected context included in that request; local models keep it on the configured local inference boundary.
 
 ## Briefings
 

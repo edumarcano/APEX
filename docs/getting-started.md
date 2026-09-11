@@ -169,8 +169,9 @@ uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model ge
 - **Start APEX** activates Home and refreshes its data.
 - **Start with Briefing** activates Home, refreshes telemetry, and generates a briefing with the selected mode.
 - Agent queries become available after activation when they are enabled in Settings.
+- Personal-context retrieval is off by default for both cloud and local models. The Cortex Context inspector remains available for adding, inspecting, correcting, retracting, and reviewing local records.
 - Runtime Settings writes machine-local overrides to `config.local.json`.
-- Normal-mode briefing history is stored in `apex_memory.db`. APEX also keeps its Microsoft To Do reminder cache, offline queue, durable action history, and bounded Cortex run ledger there. Demo briefings are not persisted.
+- `apex_memory.db` stores normal-mode briefing history, Cortex conversations and run records, personal-context sources and history, retrieval indexes, context reviews, the Microsoft To Do reminder cache and offline queue, and durable action history. Demo briefings are not persisted.
 
 ## Troubleshooting
 

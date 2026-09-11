@@ -55,7 +55,7 @@ Do not expand `useApexData` into another global store. Use the focused owner for
 | `useToolPreflight` | Debounced estimated token breakdown for the next request |
 | `useMarketData` | Independent market polling with stale fallback |
 | `useSystemDiagnostics` | Independent host diagnostics polling |
-| `useContextInspector` | Context assembly preview, reference list, and namespace breakdown for the current request |
+| `useContextInspector` | Personal-context records and detail, retrieval status, entity lookup, direct saves, reconciliation proposals, and durable review decisions |
 
 `App.tsx` coordinates these owners but should not duplicate their internal state machines.
 
@@ -63,7 +63,7 @@ Do not expand `useApexData` into another global store. Use the focused owner for
 
 `src/lib/api.ts` centralizes the FastAPI base URL at `http://127.0.0.1:8000`. The HUD does not read `.env`, `config.json`, or `config.local.json` directly. Configuration and runtime state arrive through HTTP responses.
 
-The browser owns ephemeral UI state and assistant conversation history. FastAPI owns connectors, settings persistence, telemetry collection, models, tools, speech, and SQLite. See the [API guide](../docs/api.md) for behavioral contracts.
+The browser owns ephemeral UI state, including unsaved scratch-conversation state and the active view. FastAPI owns connectors, settings persistence, telemetry collection, models, tools, context and action services, and speech. SQLite owns accepted Cortex conversation history and other durable application records. See the [API guide](../docs/api.md) for behavioral contracts.
 
 ## Frontend rules
 
