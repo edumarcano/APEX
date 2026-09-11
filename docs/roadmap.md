@@ -9,10 +9,8 @@
 ## Current Focus
 
 **Current Phase:** [Phase V: APEX 2.0 Beta](#phase-v-apex-20-beta)
-**Active Milestone:** [v2.0.0-beta.3 - Trusted Context & Review](#v200-beta3---trusted-context--review)
+**Active Milestone:** [v2.0.0-beta.4 - External Activity Inbox](#v200-beta4---external-activity-inbox)
 **Current Direction:** [APEX 2.0 Direction](#apex-20-direction)
-
-**Next Milestone:** [v2.0.0-beta.4 - External Activity Inbox](#v200-beta4---external-activity-inbox)
 
 ### Navigation
 
@@ -449,29 +447,12 @@ Unify models and runtimes under a single Apex Agent, and introduce bounded execu
 
 ## v2.0.0-beta.3 - Trusted Context & Review
 
-**Status:** In Progress
+**Status:** Complete
 
 **Objective:**
-Make the context introduced in beta.1 easier to trust, correct, and understand before APEX begins accepting larger amounts of information from outside tools.
+Make personal context inspectable and safe to change. SQLite now keeps original evidence, provenance, effective time, normalized claims, and append-only history as separate records. Clear operator input can save directly, while sensitive, conflicting, and model-interpreted changes remain outside retrieval until a durable, revision-aware review is accepted.
 
-Stored knowledge should keep its source, timestamp, and history. APEX should distinguish between:
-
-* something the operator stated directly;
-* a record imported from a connected service;
-* an observation submitted by an outside tool;
-* an interpretation inferred by a model.
-
-New information should not silently overwrite older information. A claim may become current, disputed, rejected, or superseded while the earlier record and its source remain available.
-
-APEX should keep original evidence separate from the normalized context it derives from that evidence. This should allow it to answer both “What did I originally say?” and “What is my current plan?”
-
-Frequently useful defaults and preferences may be kept in a small operator profile, but they should remain explicit and sourced. APEX should not build an unsupported personality profile from model guesses.
-
-Clear updates can be handled through simple rules. Conflicts, sensitive changes, uncertain matches, and model interpretations should be placed in a review queue.
-
-The HUD and CLI should make it possible to inspect a source, correct a record, compare conflicting information, accept or reject a proposed change, and understand why APEX currently believes something.
-
-This should continue to use the existing SQLite knowledge and retrieval foundation. APEX does not need to become a general knowledge-graph database or a separate memory product.
+The Cortex Records and Review views and the CLI expose current claims, evidence, related records, history, corrections, retractions, and review decisions. Prompt assembly reloads canonical records and labels their trust and provenance, so stale retrieval entries and pending replacement text cannot silently become current context.
 
 ---
 
@@ -778,4 +759,4 @@ The local-first model remains the default. APEX should continue to work without 
 APEX is currently in **Phase V: APEX 2.0 Beta**.
 
 **Active milestone:**
-[v2.0.0-beta.3 - Trusted Context & Review](#v200-beta3---trusted-context--review)
+[v2.0.0-beta.4 - External Activity Inbox](#v200-beta4---external-activity-inbox)
