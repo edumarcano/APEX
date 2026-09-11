@@ -162,7 +162,7 @@ class ReminderService:
         return result
 
     def complete(self, public_id: str) -> dict[str, object]:
-        """Complete a remote reminder through the existing verified action path."""
+        """Complete a displayed remote reminder using an exact live task read."""
         kind, identifier = self._parse_public_id(public_id)
         if kind == "local":
             row = database.get_local_reminder(int(identifier))
@@ -186,14 +186,25 @@ class ReminderService:
             ),
             None,
         )
-        if not isinstance(task, dict) or not isinstance(task.get("last_modified_at"), str) or not task["last_modified_at"]:
+        if not isinstance(task, dict):
+            raise ReminderServiceError("reminder_target_unavailable")
+        try:
+            current = self._client.get_task(list_id, identifier)
+        except MicrosoftTodoNotFoundError as exc:
+            raise ReminderServiceError("reminder_not_found") from exc
+        except _EXPECTED_READ_ERRORS as exc:
+            raise ReminderServiceError("microsoft_todo_unavailable") from exc
+        if getattr(current, "id", None) != identifier:
+            raise ReminderServiceError("reminder_target_changed")
+        live_timestamp = getattr(current, "last_modified_at", "")
+        if not isinstance(live_timestamp, str) or not live_timestamp.strip():
             raise ReminderServiceError("reminder_target_unavailable")
         action = self._actions.propose(
             agent_key="operator",
             capability_name="complete_microsoft_todo_task",
             arguments={
                 "list_id": list_id, "task_id": identifier,
-                "last_modified_at": task["last_modified_at"],
+                "last_modified_at": live_timestamp,
             },
             target="Complete Microsoft To Do Task", risk="write",
             summary="Approve Complete Microsoft To Do Task", actor="operator",

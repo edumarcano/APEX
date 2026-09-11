@@ -234,7 +234,7 @@ class MicrosoftTodoTaskMutationTests(unittest.TestCase):
 
     def test_repeated_completion_of_completed_task_is_verified_without_another_patch(self) -> None:
         capability = "complete_microsoft_todo_task"
-        completed = _task(status="completed", is_completed=True)
+        completed = _task(status="completed", is_completed=True, last_modified_at="later")
         client = _Client(reads=[completed, completed])
         self._register(client, capability)
         action = self._action(capability)

@@ -300,7 +300,7 @@ Invalid or empty text returns `422`.
 
 ### POST `/api/v1/reminders/complete`
 
-Accepts one opaque `{ "id": "todo:…" | "local:…" }`. Remote completion is an immediate verified action using cached stale-target evidence. An unavailable remote source returns `503`; a changed target returns `409`. Pending local rows are dismissed, while uncertain local rows require explicit review.
+Accepts one opaque `{ "id": "todo:…" | "local:…" }`. Remote completion rereads the exact selected-list task before proposing the immediate verified action and uses its live `last_modified_at` rather than a cached timestamp. An unavailable remote source returns `503`; a missing task returns `404`; a changed target returns `409`. Pending local rows are dismissed, while uncertain local rows require explicit review.
 
 ### Microsoft To Do task management
 
