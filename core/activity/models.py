@@ -7,11 +7,12 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 
 
 ActivityPartition = Literal["production", "sandbox"]
 ActivityDisposition = Literal["new", "reviewed", "dismissed"]
+ActivityPermission = Literal["activity:submit"]
 _ShortText = Annotated[str, Field(min_length=1, max_length=512)]
 _LongText = Annotated[str, Field(min_length=1, max_length=20_000)]
 
@@ -105,8 +106,13 @@ class ActivityReportContent(BaseModel):
 
     @field_validator("markdown_body")
     @classmethod
-    def normalize_markdown_body(cls, value: str | None) -> str | None:
-        return _bounded_text(value, limit=200_000) if value is not None else None
+    def validate_markdown_body(cls, value: str | None) -> str | None:
+        """Bound imported Markdown without rewriting its report content."""
+        if value is None:
+            return None
+        if not value.strip() or len(value) > 200_000:
+            raise ValueError("must contain bounded non-whitespace text")
+        return value
 
     def resolve_finding_reference(self, reference: str) -> str:
         """Resolve the small, stable evidence-pointer contract for later review.
@@ -140,9 +146,9 @@ class ActivityClientRegistration(BaseModel):
 
     id: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")]
     display_name: Annotated[str, Field(min_length=1, max_length=120)]
-    enabled: bool = True
+    enabled: StrictBool
     allowed_principals: list[Annotated[str, Field(min_length=1, max_length=256)]] = Field(min_length=1, max_length=50)
-    can_submit: bool = True
+    permissions: frozenset[ActivityPermission] = Field(default_factory=frozenset, max_length=1)
     partition: ActivityPartition
 
     @field_validator("display_name")

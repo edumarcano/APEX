@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections import Counter
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Final, Literal, cast
@@ -319,18 +320,19 @@ def load_activity_client_registrations():
     if not isinstance(raw_clients, list):
         _LOGGER.warning('Config key "external_activity.clients" must be an array.')
         return ()
+    raw_ids = [raw.get("id") for raw in raw_clients if isinstance(raw, dict) and isinstance(raw.get("id"), str)]
+    duplicate_ids = {client_id for client_id, count in Counter(raw_ids).items() if count > 1}
     registrations = []
-    seen_ids: set[str] = set()
     for index, raw in enumerate(raw_clients):
+        raw_id = raw.get("id") if isinstance(raw, dict) else None
+        if raw_id in duplicate_ids:
+            _LOGGER.warning("Ignoring duplicate external activity client ID %r; the ID is unavailable.", raw_id)
+            continue
         try:
             registration = ActivityClientRegistration.model_validate(raw)
         except Exception as exc:
             _LOGGER.warning("Ignoring invalid external_activity.clients[%s]: %s", index, exc)
             continue
-        if registration.id in seen_ids:
-            _LOGGER.warning("Ignoring duplicate external activity client ID %r.", registration.id)
-            continue
-        seen_ids.add(registration.id)
         registrations.append(registration)
     return tuple(registrations)
 

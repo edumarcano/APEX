@@ -338,7 +338,7 @@ Archives one explicitly reviewed uncertain local row after the operator has insp
 
 Receives one report from a registered local source. The request contains a configured `client_id` and a version-one `report` object. A report requires `submission_key`, `title`, `task_status`, and `outcome`; it may contain findings, evidence links, artifact references, unresolved questions, suggested follow-up, subject or project labels, occurrence time, a native task URL, and a Markdown body.
 
-APEX records the server-derived production or sandbox partition, the local operator principal, the configured source ID, and a display-name snapshot. The client must be enabled, permit `operator`, allow submissions, and match that partition. Repeating identical content with the same client, partition, and submission key returns the original report with `duplicate: true`; changed content with the key returns `409`.
+APEX records the server-derived production or sandbox partition, the local operator principal, the configured source ID, and a display-name snapshot. The client must be explicitly enabled, permit `operator`, include `activity:submit`, and match that partition. Repeating identical content with the same client, partition, and submission key returns the original report with `duplicate: true`; changed content with the key returns `409`.
 
 Report content is limited to 256 KiB and remains immutable. Artifact references are stored without fetching URLs, reading directories, or accepting binary uploads. Stable future-review evidence locations are `/findings/<index>` when structured findings exist, or `/outcome` and `/markdown_body` when no structured finding exists. `DEMO_MODE` rejects submissions.
 

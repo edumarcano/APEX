@@ -39,7 +39,7 @@ APEX keeps unavailable saved IDs so they can be removed deliberately. It reads s
 
 ## External activity registrations
 
-`external_activity.clients` in `config.json` declares local report sources. Each registration has a stable `id`, display name, enabled flag, allowed principals, `can_submit` flag, and fixed partition. The local CLI uses principal `operator`; its client name is declared source attribution, not proof that a particular program submitted the report.
+`external_activity.clients` in `config.json` declares local report sources. Each registration has a stable `id`, display name, explicit enabled flag, allowed principals, a bounded `permissions` list, and fixed partition. The only current permission is `activity:submit`; an empty list denies submission. The local CLI uses principal `operator`; its client name is declared source attribution, not proof that a particular program submitted the report.
 
 ```json
 {
@@ -49,14 +49,14 @@ APEX keeps unavailable saved IDs so they can be removed deliberately. It reads s
       "display_name": "Codex",
       "enabled": true,
       "allowed_principals": ["operator"],
-      "can_submit": true,
+      "permissions": ["activity:submit"],
       "partition": "production"
     }]
   }
 }
 ```
 
-A registration is checked for every submission. Disabling or removing it preserves reports already received, while new submissions under that ID fail. Report content cannot choose a partition; configure distinct registrations when both production and sandbox submissions are needed. Invalid registration entries are ignored with a startup warning.
+A registration is checked for every submission. Disabling or removing it preserves reports already received, while new submissions under that ID fail. Report content cannot choose a partition; configure distinct registrations when both production and sandbox submissions are needed. Missing required registration fields and invalid permission values deny submission. Duplicate IDs are unavailable, regardless of their array order. Invalid registration entries are ignored with a startup warning.
 
 ## Models and credentials
 

@@ -45,7 +45,7 @@ class ActivityService:
             raise ActivityClientDisabledError("activity_client_disabled")
         if registration.partition != partition:
             raise ActivityPermissionError("activity_client_partition_mismatch")
-        if not registration.can_submit or principal not in registration.allowed_principals:
+        if "activity:submit" not in registration.permissions or principal not in registration.allowed_principals:
             raise ActivityPermissionError("activity_submission_not_permitted")
         return self.store.submit(
             partition=partition, client_id=registration.id,

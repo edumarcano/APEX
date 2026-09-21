@@ -24,16 +24,22 @@ from core.activity import (
 )
 from core.api.app import app
 from core.api.routers import activity as activity_router
+from core import config as core_config
 from core.settings.store import RuntimeSettingsStore
 from src.apex import cli
 
 _TEMP_ROOT = Path(__file__).resolve().parents[1] / ".tmp"
 
 
-def _registration(*, enabled: bool = True, partition: str = "production") -> ActivityClientRegistration:
+def _registration(
+    *,
+    enabled: bool = True,
+    permissions: tuple[str, ...] = ("activity:submit",),
+    partition: str = "production",
+) -> ActivityClientRegistration:
     return ActivityClientRegistration(
         id="codex", display_name="Codex", enabled=enabled,
-        allowed_principals=["operator"], can_submit=True, partition=partition,
+        allowed_principals=["operator"], permissions=permissions, partition=partition,
     )
 
 
@@ -117,7 +123,18 @@ class ActivityStoreTests(unittest.TestCase):
             disabled.submit(client_id="codex", principal="operator", partition="production", content=_report())
         with self.assertRaises(ActivityPermissionError):
             self.service.submit(client_id="codex", principal="operator", partition="sandbox", content=_report())
+        no_submit_permission = ActivityService(self.store, (_registration(permissions=()),))
+        with self.assertRaises(ActivityPermissionError):
+            no_submit_permission.submit(client_id="codex", principal="operator", partition="production", content=_report())
         self.assertEqual(self.service.list(partition="production"), [])
+
+    def test_retained_reports_remain_listable_when_registration_changes(self) -> None:
+        receipt = self.service.submit(
+            client_id="codex", principal="operator", partition="production", content=_report(),
+        )
+        for registrations in ((), (_registration(enabled=False),)):
+            recreated = ActivityService(self.store, registrations)
+            self.assertEqual([report.id for report in recreated.list(partition="production")], [receipt.report.id])
 
     def test_oversized_serialized_report_is_rejected_before_storage(self) -> None:
         large = ActivityReportContent(
@@ -137,10 +154,45 @@ class ActivityStoreTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "finding_reference_invalid"):
             self.service.resolve_finding_reference(receipt.report.id, partition="production", reference="/outcome")
 
-        fallback = ActivityReportContent(submission_key="fallback", title="Fallback", task_status="completed", outcome="No findings", markdown_body="# Notes")
-        fallback_receipt = self.service.submit(client_id="codex", principal="operator", partition="production", content=fallback)
-        self.assertEqual(self.service.resolve_finding_reference(fallback_receipt.report.id, partition="production", reference="/outcome"), "No findings")
-        self.assertEqual(self.service.resolve_finding_reference(fallback_receipt.report.id, partition="production", reference="/markdown_body"), "# Notes")
+        markdown_body = "\n# Notes\n\n"
+        fallback = ActivityReportContent(
+            submission_key="fallback", title="Fallback", task_status="completed",
+            outcome="No findings", markdown_body=markdown_body,
+        )
+        fallback_receipt = self.service.submit(
+            client_id="codex", principal="operator", partition="production", content=fallback,
+        )
+        self.assertEqual(
+            self.service.resolve_finding_reference(
+                fallback_receipt.report.id, partition="production", reference="/outcome",
+            ),
+            "No findings",
+        )
+        self.assertEqual(
+            self.service.resolve_finding_reference(
+                fallback_receipt.report.id, partition="production", reference="/markdown_body",
+            ),
+            markdown_body,
+        )
+
+    def test_static_client_registration_fails_closed_for_duplicates_and_invalid_permissions(self) -> None:
+        valid = {
+            "id": "codex", "display_name": "Codex", "enabled": True,
+            "allowed_principals": ["operator"], "permissions": ["activity:submit"],
+            "partition": "production",
+        }
+        disabled_duplicate = {**valid, "enabled": False}
+        malformed_permissions = {**valid, "id": "invalid", "permissions": ["activity:review"]}
+        missing_enabled = {**valid, "id": "missing-enabled"}
+        del missing_enabled["enabled"]
+        config_data = {
+            "external_activity": {
+                "clients": [valid, disabled_duplicate, malformed_permissions, missing_enabled],
+            },
+        }
+        with mock.patch.object(core_config, "_CONFIG_DATA", config_data), self.assertLogs("core.config", "WARNING"):
+            registrations = core_config.load_activity_client_registrations()
+        self.assertEqual(registrations, ())
 
     def test_static_registrations_do_not_become_runtime_setting_warnings(self) -> None:
         with tempfile.TemporaryDirectory(dir=_TEMP_ROOT) as directory:

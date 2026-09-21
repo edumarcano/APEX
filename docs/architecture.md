@@ -41,7 +41,7 @@ Knowledge history records later status changes, evidence links, corrections, con
 
 External activity reports use their own SQLite table, receipt identity, partition, source attribution, idempotency key, and reversible inbox disposition. Their structured JSON and Markdown body stay immutable after receipt. Stable future-review evidence locations point to `/findings/<index>`, or to `/outcome` and `/markdown_body` when no structured finding exists. Source registration is static local configuration rather than a client-management database.
 
-The activity store has no retrieval synchronization, knowledge write path, prompt assembly caller, briefing caller, or attention integration. A report remains untrusted until a later explicit operator action selects evidence and creates a normal context review. Disabling or removing a registration prevents future submissions but never removes retained history.
+The activity store has no retrieval synchronization, knowledge write path, prompt assembly caller, briefing caller, attention integration, or trust-promotion path in this branch. Reports remain untrusted inbox material. Disabling or removing a registration prevents future submissions but never removes retained history.
 
 ## Context review
 
