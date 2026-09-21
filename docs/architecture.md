@@ -6,6 +6,7 @@ APEX is a local-first personal intelligence HUD. FastAPI serves the backend, Rea
 
 - **Home** presents briefings, telemetry, reminders, and quick interaction.
 - **Cortex** is the control surface for conversations, model settings, tool selection, context, and approval-gated actions.
+- **External activity** is a separate local inbox for immutable, untrusted reports from configured sources.
 - **Apex Agent** is the single native personal operations assistant. It understands APEX briefings, trusted context, connected services, and APEX tools.
 - **Cortex Engine** executes bounded model turns and tool loops. It is model-routed, not Agent-routed.
 
@@ -35,6 +36,12 @@ Write-capable tools create approval-gated action proposals. New proposals use `a
 Personal context keeps immutable source evidence separate from the normalized claim derived from it. A source records its origin, occurrence time when known, and capture time. Each claim-to-source link records whether the claim was direct, model-interpreted, or unknown, so approval does not turn a model interpretation into a direct operator statement.
 
 Knowledge history records later status changes, evidence links, corrections, conflict decisions, and entity reconciliation against the affected claim. Records upgraded from earlier schemas receive a `migration_baseline` history entry with unknown provenance; it marks the start of durable history without inventing older events or attribution.
+
+## External activity boundary
+
+External activity reports use their own SQLite table, receipt identity, partition, source attribution, idempotency key, and reversible inbox disposition. Their structured JSON and Markdown body stay immutable after receipt. Stable future-review evidence locations point to `/findings/<index>`, or to `/outcome` and `/markdown_body` when no structured finding exists. Source registration is static local configuration rather than a client-management database.
+
+The activity store has no retrieval synchronization, knowledge write path, prompt assembly caller, briefing caller, attention integration, or trust-promotion path in this branch. Reports remain untrusted inbox material. Disabling or removing a registration prevents future submissions but never removes retained history.
 
 ## Context review
 

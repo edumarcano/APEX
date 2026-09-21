@@ -26,6 +26,11 @@ uv run apex context review list --decision pending --decision stale --limit 20
 uv run apex context review show <review-id>
 uv run apex context review accept <review-id>
 uv run apex context review reject <review-id>
+uv run apex activity submit --client codex --submission-key report-001 --title "Review branch" --task-status completed --outcome "Ready for review" --finding "Tests passed"
+uv run apex activity import .\report.json --client codex
+uv run apex activity import .\report.md --client codex --submission-key report-002 --title "Investigation" --task-status completed --outcome "No reproduction"
+uv run apex activity list --client codex --disposition new
+uv run apex activity show <report-id>
 uv run apex actions list
 uv run apex actions show <action-id>
 uv run apex actions approve <action-id>
@@ -72,6 +77,16 @@ command invocation; the CLI does not refresh or retry it. Rejecting a review
 successfully exits with code `0`.
 
 `briefing` uses the normal full refresh-and-generate route. Omitting `--mode` uses the saved Flash default; supported overrides are `flash`, `focused`, and `structured`. These are breaking identifiers: the former Agent-named values are rejected.
+
+## External activity
+
+`activity` submits and reads untrusted reports through the local backend. The configured client ID is source attribution declared by the local operator; it does not authenticate installed software. The registration must be enabled, permit `operator`, allow submissions, and match the backend's current production or sandbox partition.
+
+`activity submit` builds a version-one report from `--submission-key`, `--title`, `--task-status`, and `--outcome`. Add repeatable findings, evidence links, artifact references, unresolved questions, subjects, or projects when they help inspection. `--markdown-file` stores a Markdown body as report content. Artifact references remain references; APEX does not fetch them.
+
+`activity import` accepts a JSON report object with the same version-one fields, or a `.md`/`.markdown` body with required metadata options. Imports work offline once the local backend is running. `list` filters the current partition by client and inbox disposition, and `show` prints the immutable receipt and report content.
+
+Reports do not automatically enter personal context, retrieval, prompts, briefings, or attention. Reading a report does not approve or propose a context change.
 
 ## Actions
 
