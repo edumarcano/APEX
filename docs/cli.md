@@ -31,6 +31,7 @@ uv run apex activity import .\report.json --client codex
 uv run apex activity import .\report.md --client codex --submission-key report-002 --title "Investigation" --task-status completed --outcome "No reproduction"
 uv run apex activity list --client codex --disposition new
 uv run apex activity show <report-id>
+uv run apex activity propose-context <report-id> --finding-reference /findings/0 "Tests passed" --kind fact
 uv run apex actions list
 uv run apex actions show <action-id>
 uv run apex actions approve <action-id>
@@ -86,7 +87,9 @@ successfully exits with code `0`.
 
 `activity import` accepts a JSON report object with the same version-one fields, or a `.md`/`.markdown` body with required metadata options. Imports work offline once the local backend is running. `list` filters the current partition by client and inbox disposition, and `show` prints the immutable receipt and report content.
 
-Reports do not automatically enter personal context, retrieval, prompts, briefings, or attention. Reading a report does not approve or propose a context change.
+`activity propose-context` selects `/findings/<index>`, or `/outcome` or `/markdown_body` when the report has no structured findings, and creates a pending context review. Its text and structured fields describe the proposed claim; the stored finding remains the immutable source evidence. Pass `--correct-record <record-id>` to propose a correction through the same review lifecycle. Use `context review` commands to accept, reject, or refresh it.
+
+Reports do not automatically enter personal context, retrieval, prompts, briefings, or attention. Reading, reviewing, dismissing, or reopening a report does not approve a context change.
 
 ## Actions
 

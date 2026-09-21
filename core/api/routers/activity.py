@@ -17,9 +17,18 @@ from core.activity import (
     get_activity_service,
 )
 from core.activity.boundary import read_bounded_activity_body, require_local_submission_headers
-from core.api.models import ActivityReportResponse, ActivitySubmissionResponse
+from core.activity.review import ActivityContextReviewError, ActivityContextReviewService
+from core.api.models import (
+    ActivityContextProposalRequest,
+    ActivityReportResponse,
+    ActivitySubmissionResponse,
+    ContextReviewResponse,
+)
+from core.actions.runtime import get_action_service
 from core.config import DEMO_MODE
 from core.conversations import get_conversation_service
+from core.knowledge import get_knowledge_service
+from core.knowledge.store import KnowledgeConflictError, KnowledgeNotFoundError
 
 router = APIRouter(tags=["activity"])
 
@@ -55,6 +64,12 @@ def _error(error: Exception) -> HTTPException:
         if str(error) == "report_too_large":
             return HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Activity report exceeds the 256 KiB limit.")
         return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Activity report is invalid.")
+    if isinstance(error, ActivityContextReviewError):
+        return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Activity context proposal is invalid.")
+    if isinstance(error, KnowledgeNotFoundError):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Context record was not found.")
+    if isinstance(error, KnowledgeConflictError):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Context changed or cannot be reconciled.")
     return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Activity inbox is unavailable.")
 
 
@@ -110,5 +125,33 @@ def get_activity_report(report_id: UUID) -> ActivityReportResponse:
     """Read one immutable report in the current partition."""
     try:
         return _response(get_activity_service().get(report_id, partition=get_conversation_service().partition()))
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.post("/api/v1/activity/reports/{report_id}/context-proposals", response_model=ContextReviewResponse)
+def propose_activity_context(report_id: UUID, payload: ActivityContextProposalRequest) -> ContextReviewResponse:
+    """Create a pending context review from server-resolved immutable activity evidence."""
+    if DEMO_MODE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Activity context proposals are unavailable in demo mode.")
+    actions = get_action_service()
+    if actions is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Personal context review is unavailable.")
+    try:
+        capture = payload.model_dump(exclude={"finding_reference", "correction_record_id"})
+        review = ActivityContextReviewService(
+            get_activity_service(), get_knowledge_service(), actions,
+        ).propose(
+            report_id=report_id, partition=get_conversation_service().partition(),
+            finding_reference=payload.finding_reference, capture=capture,
+            correction_record_id=payload.correction_record_id,
+        )
+        return ContextReviewResponse(
+            id=str(review.id), partition=review.partition, operation=review.operation,
+            proposal=review.proposal, evidence=review.evidence,
+            expected_revisions=review.expected_revisions, reason_codes=list(review.reason_codes),
+            decision=review.decision, action_id=review.action_id, decision_at=review.decision_at,
+            created_at=review.created_at,
+        )
     except Exception as exc:
         raise _error(exc) from exc

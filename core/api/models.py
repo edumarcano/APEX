@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Annotated, Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -472,6 +473,13 @@ class ContextCaptureRequest(BaseModel):
         return self
 
 
+class ActivityContextProposalRequest(ContextCaptureRequest):
+    """A selected activity finding and an operator-edited context claim."""
+
+    finding_reference: Annotated[str, Field(min_length=1, max_length=128)]
+    correction_record_id: UUID | None = None
+
+
 class ContextSaveRequest(ContextCaptureRequest):
     """Direct operator input, with explicit sensitivity and retry identity."""
 
@@ -518,7 +526,7 @@ class ContextRecordResponse(BaseModel):
 
 class ContextSourceResponse(BaseModel):
     id: str
-    kind: Literal["conversation_message", "manual"]
+    kind: Literal["conversation_message", "manual", "external_activity"]
     origin: Literal["operator_input", "connected_service", "external_tool", "unknown"]
     locator: str
     original_text: str

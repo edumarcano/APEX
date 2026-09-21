@@ -80,10 +80,11 @@ class KnowledgeService:
             expected_updated_at=expected_updated_at,
         )
 
-    def create_action_review(self, *, partition: str, operation: str, proposal: dict[str, object], evidence: dict[str, object], expected_revisions: dict[str, str], reason_codes: tuple[str, ...], action_id: str):
+    def create_action_review(self, *, partition: str, operation: str, proposal: dict[str, object], evidence: dict[str, object], expected_revisions: dict[str, str], reason_codes: tuple[str, ...], action_id: str, review_id=None):
         return self.store.create_review(
             partition=partition, operation=operation, proposal=proposal, evidence=evidence,
             expected_revisions=expected_revisions, reason_codes=reason_codes, action_id=action_id,
+            review_id=review_id,
         )
 
     def get_review(self, review_id, *, partition: str):

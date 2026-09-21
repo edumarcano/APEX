@@ -7,7 +7,7 @@ from typing import Literal
 from uuid import UUID
 
 KnowledgePartition = Literal["production", "sandbox"]
-KnowledgeSourceKind = Literal["conversation_message", "manual"]
+KnowledgeSourceKind = Literal["conversation_message", "manual", "external_activity"]
 KnowledgeSourceOrigin = Literal["operator_input", "connected_service", "external_tool", "unknown"]
 KnowledgeDerivation = Literal["direct", "model_interpretation", "unknown"]
 KnowledgeKind = Literal[

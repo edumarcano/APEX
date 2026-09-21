@@ -75,3 +75,6 @@ class ActivityService:
     def resolve_finding_reference(self, report_id: UUID, *, partition: str, reference: str) -> str:
         """Resolve immutable report evidence for the future context-review branch."""
         return self.store.get(report_id, partition=partition).content.resolve_finding_reference(reference)
+
+    def resolve_finding_evidence(self, report_id: UUID, *, partition: str, reference: str):
+        return self.store.get(report_id, partition=partition).content.resolve_finding_evidence(reference)
