@@ -191,6 +191,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         run_store = mock.Mock()
         retrieval_store = mock.Mock()
         knowledge_store = mock.Mock()
+        activity_store = mock.Mock()
         registry = mock.Mock()
         tracing = mock.Mock()
         manager = mock.Mock()
@@ -229,6 +230,8 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             stack.enter_context(
                 mock.patch("core.api.app.KnowledgeService", return_value=mock.Mock())
             )
+            stack.enter_context(mock.patch("core.api.app.ActivityStore", return_value=activity_store))
+            stack.enter_context(mock.patch("core.api.app.ActivityService", return_value=mock.Mock()))
             stack.enter_context(mock.patch("core.api.app.get_settings_store"))
             stack.enter_context(mock.patch("core.api.app.speaker.initialize"))
             stack.enter_context(mock.patch("core.api.app.speaker.shutdown"))
@@ -252,6 +255,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
                 )
             for setter in (
                 "set_action_service",
+                "set_activity_service",
                 "set_connector_http_sessions",
                 "set_conversation_service",
                 "set_knowledge_service",
@@ -270,6 +274,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         run_store.close.assert_not_called()
         retrieval_store.close.assert_not_called()
         knowledge_store.close.assert_not_called()
+        activity_store.close.assert_not_called()
         registry.close.assert_not_called()
         manager.shutdown.assert_not_awaited()
         tracing.shutdown.assert_not_called()
@@ -310,6 +315,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         manager.start = mock.AsyncMock()
         manager.shutdown = mock.AsyncMock()
         action_service = mock.Mock()
+        activity_store = mock.Mock()
 
         with mock.patch("core.api.app.DEMO_MODE", False), mock.patch(
             "core.api.app.MicrosoftTodoAuthenticationService", return_value=auth
@@ -324,7 +330,9 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         ), mock.patch("core.api.app.ReminderService"
         ), mock.patch("core.api.app.configure_logging"), mock.patch(
             "core.api.app.database.initialize_db"
-        ), mock.patch("core.api.app.get_settings_store"), mock.patch("core.api.app.speaker.initialize"):
+        ), mock.patch("core.api.app.get_settings_store"), mock.patch("core.api.app.speaker.initialize"), mock.patch(
+            "core.api.app.ActivityStore", return_value=activity_store
+        ), mock.patch("core.api.app.ActivityService"), mock.patch("core.api.app.set_activity_service"):
             with TestClient(app):
                 pass
 
@@ -374,6 +382,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         manager = mock.Mock()
         manager.start = mock.AsyncMock()
         manager.shutdown = mock.AsyncMock()
+        activity_store = mock.Mock()
 
         with mock.patch("core.api.app.DEMO_MODE", True), mock.patch(
             "core.api.app.MicrosoftTodoAuthenticationService", return_value=auth
@@ -388,7 +397,9 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         ), mock.patch("core.api.app.ReminderService", side_effect=AssertionError("reminder service accessed")
         ), mock.patch("core.api.app.configure_logging"), mock.patch(
             "core.api.app.database.initialize_db"
-        ), mock.patch("core.api.app.get_settings_store"), mock.patch("core.api.app.speaker.initialize"):
+        ), mock.patch("core.api.app.get_settings_store"), mock.patch("core.api.app.speaker.initialize"), mock.patch(
+            "core.api.app.ActivityStore", return_value=activity_store
+        ), mock.patch("core.api.app.ActivityService"), mock.patch("core.api.app.set_activity_service"):
             with TestClient(app):
                 pass
 
@@ -428,6 +439,8 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             "core.api.app.database.initialize_db"
         ), mock.patch(
             "core.api.app.get_settings_store"
+        ), mock.patch("core.api.app.ActivityStore"), mock.patch("core.api.app.ActivityService"), mock.patch(
+            "core.api.app.set_activity_service"
         ):
             with TestClient(app):
                 factory.assert_called_once_with()
@@ -474,6 +487,8 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             "core.api.app.database.initialize_db"
         ), mock.patch(
             "core.api.app.get_settings_store"
+        ), mock.patch("core.api.app.ActivityStore"), mock.patch("core.api.app.ActivityService"), mock.patch(
+            "core.api.app.set_activity_service"
         ):
             with self.assertRaises(RuntimeError):
                 with TestClient(app):
@@ -495,6 +510,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         run_store = mock.Mock()
         retrieval_store = mock.Mock()
         knowledge_store = mock.Mock()
+        activity_store = mock.Mock()
         tracing = mock.Mock()
         supervisor = mock.Mock()
 
@@ -528,6 +544,9 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             stack.enter_context(
                 mock.patch("core.api.app.KnowledgeService", return_value=mock.Mock())
             )
+            stack.enter_context(mock.patch("core.api.app.ActivityStore", return_value=activity_store))
+            stack.enter_context(mock.patch("core.api.app.ActivityService", return_value=mock.Mock()))
+            stack.enter_context(mock.patch("core.api.app.set_activity_service"))
             stack.enter_context(mock.patch("core.api.app.get_settings_store"))
             stack.enter_context(mock.patch("core.api.app.speaker.initialize"))
             stack.enter_context(mock.patch("core.api.app.speaker.shutdown"))
@@ -552,6 +571,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         run_store.close.assert_called_once_with()
         retrieval_store.close.assert_called_once_with()
         knowledge_store.close.assert_called_once_with()
+        activity_store.close.assert_called_once_with()
         tracing.shutdown.assert_called_once_with()
 
 

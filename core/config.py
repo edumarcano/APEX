@@ -61,6 +61,7 @@ __all__ = [
     "VOICE_GENDER",
     "is_dev_mode",
     "load_feature_flags",
+    "load_activity_client_registrations",
     "load_module_flags",
 ]
 
@@ -299,6 +300,39 @@ def load_module_flags() -> dict[str, bool]:
         elif value is not None:
             _LOGGER.warning('Module %r must be a boolean; ignoring invalid value.', key)
     return result
+
+
+def load_activity_client_registrations():
+    """Load static external-activity source registrations from ``config.json``.
+
+    Invalid entries are ignored individually so an unrelated configuration typo
+    cannot prevent the local API from starting. A source must be configured
+    explicitly before it can submit a report.
+    """
+    from core.activity.models import ActivityClientRegistration
+
+    root = _CONFIG_DATA.get("external_activity", {})
+    if not isinstance(root, dict):
+        _LOGGER.warning('Config key "external_activity" must be a JSON object.')
+        return ()
+    raw_clients = root.get("clients", [])
+    if not isinstance(raw_clients, list):
+        _LOGGER.warning('Config key "external_activity.clients" must be an array.')
+        return ()
+    registrations = []
+    seen_ids: set[str] = set()
+    for index, raw in enumerate(raw_clients):
+        try:
+            registration = ActivityClientRegistration.model_validate(raw)
+        except Exception as exc:
+            _LOGGER.warning("Ignoring invalid external_activity.clients[%s]: %s", index, exc)
+            continue
+        if registration.id in seen_ids:
+            _LOGGER.warning("Ignoring duplicate external activity client ID %r.", registration.id)
+            continue
+        seen_ids.add(registration.id)
+        registrations.append(registration)
+    return tuple(registrations)
 
 
 _feature_map = load_feature_flags()

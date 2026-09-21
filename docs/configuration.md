@@ -37,6 +37,27 @@ Calendar IDs and this display preference are local runtime settings:
 
 APEX keeps unavailable saved IDs so they can be removed deliberately. It reads selected calendars independently: events from calendars that succeed remain available when another selected calendar fails, and Sync Health reports the partial failure. It does not create events, alter Google Calendar visibility, or use webhooks or a remote cache.
 
+## External activity registrations
+
+`external_activity.clients` in `config.json` declares local report sources. Each registration has a stable `id`, display name, enabled flag, allowed principals, `can_submit` flag, and fixed partition. The local CLI uses principal `operator`; its client name is declared source attribution, not proof that a particular program submitted the report.
+
+```json
+{
+  "external_activity": {
+    "clients": [{
+      "id": "codex",
+      "display_name": "Codex",
+      "enabled": true,
+      "allowed_principals": ["operator"],
+      "can_submit": true,
+      "partition": "production"
+    }]
+  }
+}
+```
+
+A registration is checked for every submission. Disabling or removing it preserves reports already received, while new submissions under that ID fail. Report content cannot choose a partition; configure distinct registrations when both production and sandbox submissions are needed. Invalid registration entries are ignored with a startup warning.
+
 ## Models and credentials
 
 The fresh interactive default is OpenRouter DeepSeek V4 Flash with Low reasoning. Cloud models require their documented provider credential: `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY`. Local models run through Ollama or llama.cpp and their availability is reported per model in Cortex.

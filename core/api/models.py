@@ -15,6 +15,7 @@ from core.agent.types import (
     TokenUsage,
     ToolProfileMetadata,
 )
+from core.activity.models import ActivityReportContent
 from core.connectors.models import ConnectorFreshness, ConnectorHealthEntry, ConnectorStatus
 
 
@@ -24,6 +25,30 @@ DigestStatus = Literal[
     "malformed",
     "zero_health",
 ]
+
+
+class ActivitySubmissionRequest(BaseModel):
+    """A local-operator activity submission with an attributed registration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    client_id: Annotated[str, Field(min_length=1, max_length=64)]
+    report: ActivityReportContent
+
+
+class ActivityReportResponse(BaseModel):
+    id: str
+    partition: Literal["production", "sandbox"]
+    client_id: str
+    client_display_name: str
+    principal: str
+    received_at: str
+    disposition: Literal["new", "reviewed", "dismissed"]
+    report: ActivityReportContent
+
+
+class ActivitySubmissionResponse(ActivityReportResponse):
+    duplicate: bool
 
 
 class RuntimeMetadata(BaseModel):

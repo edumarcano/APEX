@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from core.api.routers import cortex, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
+from core.api.routers import activity, cortex, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
 
 __all__ = [
     "cortex",
+    "activity",
     "briefings",
     "market",
     "mcp",

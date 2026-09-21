@@ -33,6 +33,9 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | POST | `/api/v1/reminders/reopen` | Reopen one completed Microsoft To Do task |
 | POST | `/api/v1/reminders/sync` | Reviewed local reminder synchronization |
 | POST | `/api/v1/reminders/dismiss` | Dismiss a reviewed uncertain local reminder |
+| POST | `/api/v1/activity/reports` | Receive one local external activity report |
+| GET | `/api/v1/activity/reports` | List reports in the current partition |
+| GET | `/api/v1/activity/reports/{report_id}` | Inspect one immutable report |
 | GET | `/api/v1/actions` | List durable action proposals |
 | GET | `/api/v1/actions/{action_id}` | Inspect one proposal and its audit events |
 | POST | `/api/v1/actions/{action_id}/approve` | Approve, execute, and verify one action |
@@ -328,6 +331,26 @@ Archives one explicitly reviewed uncertain local row after the operator has insp
 ```json
 { "id": "local:12" }
 ```
+
+## External activity inbox
+
+### POST `/api/v1/activity/reports`
+
+Receives one report from a registered local source. The request contains a configured `client_id` and a version-one `report` object. A report requires `submission_key`, `title`, `task_status`, and `outcome`; it may contain findings, evidence links, artifact references, unresolved questions, suggested follow-up, subject or project labels, occurrence time, a native task URL, and a Markdown body.
+
+APEX records the server-derived production or sandbox partition, the local operator principal, the configured source ID, and a display-name snapshot. The client must be enabled, permit `operator`, allow submissions, and match that partition. Repeating identical content with the same client, partition, and submission key returns the original report with `duplicate: true`; changed content with the key returns `409`.
+
+Report content is limited to 256 KiB and remains immutable. Artifact references are stored without fetching URLs, reading directories, or accepting binary uploads. Stable future-review evidence locations are `/findings/<index>` when structured findings exist, or `/outcome` and `/markdown_body` when no structured finding exists. `DEMO_MODE` rejects submissions.
+
+### GET `/api/v1/activity/reports`
+
+Lists up to 100 newest reports in the current partition. `client_id`, `disposition` (`new`, `reviewed`, or `dismissed`), and `limit` are optional filters. This branch exposes no disposition mutation route.
+
+### GET `/api/v1/activity/reports/{report_id}`
+
+Returns one report only when it belongs to the current partition, including immutable content and receipt metadata.
+
+External activity is untrusted inbox material. Receiving or reading a report never creates knowledge, changes retrieval, adds prompt context, affects attention or briefings, or starts a review.
 
 ## Apex Agent and local models
 

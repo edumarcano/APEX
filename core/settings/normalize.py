@@ -138,6 +138,7 @@ def normalize_layer(
                 "agent_system_prompt",
                 "local_agent_system_prompt",
                 "cortex_runs",
+                "external_activity",
                 "gemini",
                 "ollama",
                 "llama_cpp",

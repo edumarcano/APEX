@@ -7,6 +7,7 @@ import json
 import sys
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Sequence
 from urllib.parse import quote
 
@@ -139,6 +140,30 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ask.add_argument("--profile", help="Saved or built-in tool profile ID.")
     ask.set_defaults(handler=_ask)
+
+    activity = commands.add_parser("activity", help="Submit or inspect untrusted external activity reports.")
+    _add_json_option(activity)
+    activity_commands = activity.add_subparsers(dest="activity_command", required=True)
+    activity_submit = activity_commands.add_parser("submit", help="Submit one report as the local operator.")
+    _add_json_option(activity_submit)
+    _add_activity_metadata_arguments(activity_submit, include_markdown_file=True)
+    activity_submit.set_defaults(handler=_activity_submit)
+    activity_import = activity_commands.add_parser("import", help="Import a JSON or Markdown report file offline.")
+    _add_json_option(activity_import)
+    activity_import.add_argument("path", help="Path to a JSON report or Markdown body file.")
+    activity_import.add_argument("--client", required=True, help="Configured activity client ID.")
+    _add_activity_metadata_arguments(activity_import, include_client=False, include_markdown_file=False)
+    activity_import.set_defaults(handler=_activity_import)
+    activity_list = activity_commands.add_parser("list", help="List received reports in the current partition.")
+    _add_json_option(activity_list)
+    activity_list.add_argument("--client", help="Filter by configured client ID.")
+    activity_list.add_argument("--disposition", choices=("new", "reviewed", "dismissed"), help="Filter inbox disposition.")
+    activity_list.add_argument("--limit", type=int, default=50, help="Maximum reports to return (1-100, default 50).")
+    activity_list.set_defaults(handler=_activity_list)
+    activity_show = activity_commands.add_parser("show", help="Show one immutable activity report.")
+    _add_json_option(activity_show)
+    activity_show.add_argument("report_id", help="UUID of the activity report.")
+    activity_show.set_defaults(handler=_activity_show)
 
     context = commands.add_parser("context", help="Inspect, save, or resolve personal context.")
     _add_json_option(context)
@@ -315,6 +340,27 @@ def _add_context_capture_arguments(parser: argparse.ArgumentParser, *, require_k
     parser.add_argument("--idempotency-key", dest="idempotency_key", help="Stable key for retry-safe submission.")
 
 
+def _add_activity_metadata_arguments(parser: argparse.ArgumentParser, *, include_client: bool = True, include_markdown_file: bool = False) -> None:
+    """Add version-one fields used for direct submission and Markdown imports."""
+    if include_client:
+        parser.add_argument("--client", required=True, help="Configured activity client ID.")
+    parser.add_argument("--submission-key", help="Stable retry key; required for direct or Markdown input.")
+    parser.add_argument("--title", help="Short report title; required for direct or Markdown input.")
+    parser.add_argument("--task-status", help="Task status; required for direct or Markdown input.")
+    parser.add_argument("--outcome", help="Report outcome; required for direct or Markdown input.")
+    parser.add_argument("--finding", action="append", help="Structured finding text. Repeat for multiple findings.")
+    parser.add_argument("--evidence-link", action="append", help="Evidence URL or reference. Repeat as needed.")
+    parser.add_argument("--artifact-reference", action="append", help="Artifact reference only; APEX never fetches it.")
+    parser.add_argument("--unresolved-question", action="append", help="Unresolved question. Repeat as needed.")
+    parser.add_argument("--suggested-follow-up", help="Optional suggested next step.")
+    parser.add_argument("--subject", action="append", help="Untrusted subject label. Repeat as needed.")
+    parser.add_argument("--project", action="append", help="Untrusted project label. Repeat as needed.")
+    parser.add_argument("--occurred-at", help="Occurrence timestamp in ISO-8601 format.")
+    parser.add_argument("--native-task-url", help="Native task URL or reference.")
+    if include_markdown_file:
+        parser.add_argument("--markdown-file", help="Optional Markdown body file.")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -407,6 +453,95 @@ def _context_status(_args: argparse.Namespace, client: ApiClient, json_mode: boo
     )
     _emit(payload, json_mode, _render_context_status)
     return 0
+
+
+def _activity_submit(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    report = _activity_metadata_payload(args)
+    if args.markdown_file is not None:
+        report["markdown_body"] = _read_activity_file(args.markdown_file, "Markdown")
+    _submit_activity(client, args.client, report, json_mode)
+    return 0
+
+
+def _activity_import(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    path = Path(args.path)
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        raw = _read_activity_file(path, "JSON")
+        try:
+            report = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise CliError("invalid_input", "Activity JSON import must contain valid JSON.") from exc
+        if not isinstance(report, dict):
+            raise CliError("invalid_input", "Activity JSON import must contain one report object.")
+        if _activity_metadata_payload(args, required=False):
+            raise CliError("invalid_input", "JSON imports carry their own report metadata; remove metadata options.")
+    elif suffix in {".md", ".markdown"}:
+        report = _activity_metadata_payload(args)
+        report["markdown_body"] = _read_activity_file(path, "Markdown")
+    else:
+        raise CliError("invalid_input", "Activity imports require a .json, .md, or .markdown file.")
+    _submit_activity(client, args.client, report, json_mode)
+    return 0
+
+
+def _activity_list(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    query: list[tuple[str, object]] = [("limit", args.limit)]
+    if args.client is not None:
+        query.append(("client_id", args.client))
+    if args.disposition is not None:
+        query.append(("disposition", args.disposition))
+    payload = client.request("GET", _query_path("/api/v1/activity/reports", query))
+    _require_list(payload, "activity report list")
+    _emit(payload, json_mode, _render_activity_list)
+    return 0
+
+
+def _activity_show(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    payload = client.request("GET", _opaque_path(args.report_id, "Activity report ID", "/api/v1/activity/reports"))
+    _require_mapping(payload, "activity report detail")
+    _emit(payload, json_mode, _render_activity_detail)
+    return 0
+
+
+def _activity_metadata_payload(args: argparse.Namespace, *, required: bool = True) -> dict[str, object]:
+    values = {
+        "submission_key": getattr(args, "submission_key", None),
+        "title": getattr(args, "title", None),
+        "task_status": getattr(args, "task_status", None),
+        "outcome": getattr(args, "outcome", None),
+    }
+    missing = [name.replace("_", "-") for name, value in values.items() if not isinstance(value, str) or not value.strip()]
+    if required and missing:
+        raise CliError("invalid_input", "Activity submissions require " + ", ".join(f"--{name}" for name in missing) + ".")
+    report: dict[str, object] = {name: value.strip() for name, value in values.items() if isinstance(value, str) and value.strip()}
+    mapping = {
+        "finding": "findings", "evidence_link": "evidence_links", "artifact_reference": "artifact_references",
+        "unresolved_question": "unresolved_questions", "subject": "subjects", "project": "projects",
+    }
+    for argument, field in mapping.items():
+        entries = getattr(args, argument, None)
+        if entries:
+            report[field] = [{"text": entry} for entry in entries] if field == "findings" else entries
+    for argument, field in (("suggested_follow_up", "suggested_follow_up"), ("occurred_at", "occurred_at"), ("native_task_url", "native_task_url")):
+        value = getattr(args, argument, None)
+        if isinstance(value, str) and value.strip():
+            report[field] = value.strip()
+    return report
+
+
+def _read_activity_file(path_value: str | Path, label: str) -> str:
+    path = Path(path_value)
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise CliError("invalid_input", f"Could not read {label} activity file: {path}") from exc
+
+
+def _submit_activity(client: ApiClient, client_id: str, report: dict[str, object], json_mode: bool) -> None:
+    payload = client.request("POST", "/api/v1/activity/reports", payload={"client_id": client_id, "report": report})
+    _require_mapping(payload, "activity submission receipt")
+    _emit(payload, json_mode, _render_activity_receipt)
 
 
 def _context_prepare(_args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
@@ -762,6 +897,58 @@ def _render_ask(payload: object) -> None:
             print(f"\n{message}")
         if isinstance(action_id, str):
             print(f"Action ID: {action_id}")
+
+
+def _render_activity_receipt(payload: object) -> None:
+    if not isinstance(payload, dict):
+        print("APEX returned an unexpected activity receipt.")
+        return
+    receipt = "Duplicate receipt" if payload.get("duplicate") else "Received"
+    print(f"{receipt}: {payload.get('id', 'unknown')}")
+    print(f"Received At: {payload.get('received_at', 'unknown')}")
+
+
+def _render_activity_list(payload: object) -> None:
+    if not isinstance(payload, list):
+        print("APEX returned an unexpected activity report list.")
+        return
+    if not payload:
+        print("No activity reports found.")
+        return
+    for report in payload:
+        if not isinstance(report, dict):
+            continue
+        content = report.get("report") if isinstance(report.get("report"), dict) else {}
+        print(
+            f"{report.get('id', 'unknown')} | {report.get('client_display_name', 'unknown')} | "
+            f"{report.get('disposition', 'unknown')} | {content.get('title', 'Untitled')}"
+        )
+
+
+def _render_activity_detail(payload: object) -> None:
+    if not isinstance(payload, dict):
+        print("APEX returned an unexpected activity report response.")
+        return
+    content = payload.get("report") if isinstance(payload.get("report"), dict) else {}
+    print(f"Report ID: {payload.get('id', 'unknown')}")
+    print(f"Source: {payload.get('client_display_name', 'unknown')} ({payload.get('client_id', 'unknown')})")
+    print(f"Partition: {payload.get('partition', 'unknown')}")
+    print(f"Disposition: {payload.get('disposition', 'unknown')}")
+    print(f"Received At: {payload.get('received_at', 'unknown')}")
+    print(f"Title: {content.get('title', 'unknown')}")
+    print(f"Task Status: {content.get('task_status', 'unknown')}")
+    print(f"Outcome: {content.get('outcome', '')}")
+    for label, field in (("Findings", "findings"), ("Evidence", "evidence_links"), ("Artifacts", "artifact_references"), ("Unresolved questions", "unresolved_questions")):
+        entries = content.get(field)
+        if isinstance(entries, list) and entries:
+            print(f"{label}:")
+            for entry in entries:
+                text = entry.get("text", entry) if isinstance(entry, dict) else entry
+                print(f"- {text}")
+    for label, field in (("Suggested follow-up", "suggested_follow_up"), ("Occurred At", "occurred_at"), ("Native task", "native_task_url"), ("Markdown", "markdown_body")):
+        value = content.get(field)
+        if value:
+            print(f"{label}: {value}")
 
 
 def _render_context_list(payload: object) -> None:

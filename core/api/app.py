@@ -18,19 +18,21 @@ from clients.http_sessions import ConnectorHttpSessions, set_connector_http_sess
 
 from clients.microsoft_auth import MicrosoftTodoAuthenticationService, set_microsoft_auth_service
 from core.actions import ActionService, set_action_service
+from core.activity import ActivityService, ActivityStore, set_activity_service
 from core.actions.microsoft_todo import (
     CreateMicrosoftTodoTaskExecutor,
     CreateMicrosoftTodoTaskVerifier,
     MicrosoftTodoTaskMutationExecutor,
     MicrosoftTodoTaskMutationVerifier,
 )
-from core.api.routers import actions, cortex, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
+from core.api.routers import activity, actions, cortex, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
 from core.config import (
     CORTEX_RUNS_MAX_CONCURRENT_RUNS,
     CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS,
     DEMO_MODE,
     ENV_PATH,
     MAX_RECENT_CONVERSATION_MESSAGES,
+    load_activity_client_registrations,
 )
 from core.agent.local_runtime.coordinator import check_idle_local_models_loop
 from core.agent.local_runtime.registry import any_local_runtime_enabled
@@ -104,6 +106,7 @@ async def _app_lifespan(_app: FastAPI):
     run_coordinator: CortexRunCoordinator | None = None
     retrieval_store: RetrievalStore | None = None
     knowledge_store: KnowledgeStore | None = None
+    activity_store: ActivityStore | None = None
     llama_supervisor = get_llama_cpp_server_supervisor()
     lifecycle_error: BaseException | None = None
 
@@ -182,6 +185,19 @@ async def _app_lifespan(_app: FastAPI):
         )
         knowledge_store.initialize()
         set_knowledge_service(KnowledgeService(knowledge_store))
+        activity_store = ActivityStore(
+            None if DEMO_MODE else database.DB_NAME,
+            connection=demo_db,
+            lock=demo_db_lock,
+        )
+        activity_store.initialize()
+        set_activity_service(
+            ActivityService(
+                activity_store,
+                load_activity_client_registrations(),
+                demo_mode=DEMO_MODE,
+            )
+        )
         if not DEMO_MODE:
             assert microsoft_todo_client is not None
             action_service = ActionService()
@@ -330,6 +346,7 @@ async def _app_lifespan(_app: FastAPI):
         set_run_coordinator(None)
         set_retrieval_service(None)
         set_knowledge_service(None)
+        set_activity_service(None)
         if conversation_store is not None:
             await _cleanup("closing conversation store", conversation_store.close)
         if run_store is not None:
@@ -338,6 +355,8 @@ async def _app_lifespan(_app: FastAPI):
             await _cleanup("closing retrieval store", retrieval_store.close)
         if knowledge_store is not None:
             await _cleanup("closing knowledge store", knowledge_store.close)
+        if activity_store is not None:
+            await _cleanup("closing activity store", activity_store.close)
         if demo_db is not None:
             await _cleanup("closing demo database", demo_db.close)
         await _cleanup("stopping tracing", get_tracing_service().shutdown)
@@ -380,6 +399,7 @@ app.add_middleware(
 )
 
 app.include_router(system.router)
+app.include_router(activity.router)
 app.include_router(briefings.router)
 app.include_router(reminders.router)
 app.include_router(actions.router)
