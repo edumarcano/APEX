@@ -28,9 +28,6 @@ from core import config as core_config
 from core.settings.store import RuntimeSettingsStore
 from src.apex import cli
 
-_TEMP_ROOT = Path(__file__).resolve().parents[1] / ".tmp"
-
-
 def _registration(
     *,
     enabled: bool = True,
@@ -81,7 +78,7 @@ class ActivityStoreTests(unittest.TestCase):
         self.assertEqual(len(self.service.list(partition="production")), 1)
 
     def test_separate_store_connections_share_the_duplicate_receipt(self) -> None:
-        with tempfile.TemporaryDirectory(dir=_TEMP_ROOT) as directory:
+        with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "activity.db"
             first = ActivityStore(path)
             second = ActivityStore(path)
@@ -101,7 +98,7 @@ class ActivityStoreTests(unittest.TestCase):
             second.close()
 
     def test_restart_retains_immutable_report_and_receipt_metadata(self) -> None:
-        with tempfile.TemporaryDirectory(dir=_TEMP_ROOT) as directory:
+        with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "activity.db"
             first_store = ActivityStore(path)
             first_store.initialize()
@@ -195,7 +192,7 @@ class ActivityStoreTests(unittest.TestCase):
         self.assertEqual(registrations, ())
 
     def test_static_registrations_do_not_become_runtime_setting_warnings(self) -> None:
-        with tempfile.TemporaryDirectory(dir=_TEMP_ROOT) as directory:
+        with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "config.json").write_text(json.dumps({"external_activity": {"clients": []}}), encoding="utf-8")
             settings = RuntimeSettingsStore(config_path=root / "config.json", local_config_path=root / "config.local.json")
@@ -256,7 +253,7 @@ class ActivityCliTests(unittest.TestCase):
         self.assertEqual(client.calls[0][1], "/api/v1/activity/reports")
         self.assertEqual(client.calls[0][2]["report"]["findings"], [{"text": "Check passed"}])
 
-        with tempfile.TemporaryDirectory(dir=_TEMP_ROOT) as directory:
+        with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "report.json"
             path.write_text(json.dumps(_report(key="key-2").model_dump(mode="json")), encoding="utf-8")
             imported = parser.parse_args(["activity", "import", str(path), "--client", "codex"])
