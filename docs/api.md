@@ -340,7 +340,7 @@ Receives one report from a registered local source. The request contains a confi
 
 APEX records the server-derived production or sandbox partition, the local operator principal, the configured source ID, and a display-name snapshot. The client must be explicitly enabled, permit `operator`, include `activity:submit`, and match that partition. Repeating identical content with the same client, partition, and submission key returns the original report with `duplicate: true`; changed content with the key returns `409`.
 
-Report content is limited to 256 KiB and remains immutable. Artifact references are stored without fetching URLs, reading directories, or accepting binary uploads. Stable future-review evidence locations are `/findings/<index>` when structured findings exist, or `/outcome` and `/markdown_body` when no structured finding exists. `DEMO_MODE` rejects submissions.
+Report content is limited to 256 KiB and remains immutable. Artifact references are stored without fetching URLs, reading directories, or accepting binary uploads. Stable future-review evidence locations are `/findings/<index>` when structured findings exist, or `/outcome` and `/markdown_body` when no structured finding exists. `DEMO_MODE` rejects submissions. The local route requires a loopback Host header, permits only the documented local browser origins, and requires `application/json`.
 
 ### GET `/api/v1/activity/reports`
 
@@ -351,6 +351,8 @@ Lists up to 100 newest reports in the current partition. `client_id`, `dispositi
 Returns one report only when it belongs to the current partition, including immutable content and receipt metadata.
 
 External activity is untrusted inbox material. Receiving or reading a report never creates knowledge, changes retrieval, adds prompt context, affects attention or briefings, or starts a review.
+
+The separately started activity gateway is not part of this API schema. It exposes a liveness probe, JSON submission, and a Streamable HTTP MCP endpoint; see [External activity gateway](configuration.md#external-activity-gateway) for its startup and boundary contract.
 
 ## Apex Agent and local models
 

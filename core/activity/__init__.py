@@ -5,6 +5,7 @@ from core.activity.models import (
     ActivityDisposition,
     ActivityReport,
     ActivityReportContent,
+    ActivitySubmissionRequest,
     ActivitySubmissionReceipt,
 )
 from core.activity.service import (
@@ -29,6 +30,7 @@ __all__ = [
     "ActivityService",
     "ActivityStore",
     "ActivityStoreError",
+    "ActivitySubmissionRequest",
     "ActivitySubmissionReceipt",
     "get_activity_service",
     "set_activity_service",

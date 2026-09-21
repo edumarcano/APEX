@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from uuid import UUID
 
 from core.activity.models import ActivityClientRegistration, ActivityReportContent
@@ -32,15 +33,28 @@ def get_activity_service() -> "ActivityService":
 class ActivityService:
     """Accept untrusted reports without coupling them to trusted knowledge."""
 
-    def __init__(self, store: ActivityStore, registrations: tuple[ActivityClientRegistration, ...], *, demo_mode: bool = False) -> None:
+    def __init__(
+        self,
+        store: ActivityStore,
+        registrations: tuple[ActivityClientRegistration, ...],
+        *,
+        registration_loader: Callable[[], tuple[ActivityClientRegistration, ...]] | None = None,
+        demo_mode: bool = False,
+    ) -> None:
         self.store = store
         self._registrations = {registration.id: registration for registration in registrations}
+        self._registration_loader = registration_loader
         self._demo_mode = demo_mode
 
     def submit(self, *, client_id: str, principal: str, partition: str, content: ActivityReportContent):
         if self._demo_mode:
             raise ActivityPermissionError("activity_unavailable_in_demo")
-        registration = self._registrations.get(client_id)
+        registrations = (
+            {registration.id: registration for registration in self._registration_loader()}
+            if self._registration_loader is not None
+            else self._registrations
+        )
+        registration = registrations.get(client_id)
         if registration is None or not registration.enabled:
             raise ActivityClientDisabledError("activity_client_disabled")
         if registration.partition != partition:
