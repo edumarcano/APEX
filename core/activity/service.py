@@ -46,7 +46,7 @@ class ActivityService:
         self._registration_loader = registration_loader
         self._demo_mode = demo_mode
 
-    def submit(self, *, client_id: str, principal: str, partition: str, content: ActivityReportContent):
+    def submit(self, *, client_id: str, principal: str, partition: str | None, content: ActivityReportContent):
         if self._demo_mode:
             raise ActivityPermissionError("activity_unavailable_in_demo")
         registrations = (
@@ -57,6 +57,8 @@ class ActivityService:
         registration = registrations.get(client_id)
         if registration is None or not registration.enabled:
             raise ActivityClientDisabledError("activity_client_disabled")
+        if partition is None:
+            partition = registration.partition
         if registration.partition != partition:
             raise ActivityPermissionError("activity_client_partition_mismatch")
         if "activity:submit" not in registration.permissions or principal not in registration.allowed_principals:

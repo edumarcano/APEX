@@ -39,7 +39,7 @@ APEX keeps unavailable saved IDs so they can be removed deliberately. It reads s
 
 ## External activity registrations
 
-`external_activity.clients` in `config.json` declares local report sources. Each registration has a stable `id`, display name, explicit enabled flag, allowed principals, a bounded `permissions` list, and fixed partition. The only current permission is `activity:submit`; an empty list denies submission. The local CLI uses principal `operator`; its client name is declared source attribution, not proof that a particular program submitted the report.
+`external_activity.clients` in `config.json` declares report sources. Each registration has a stable `id`, display name, explicit enabled flag, allowed principals, a bounded `permissions` list, and fixed partition. The only current permission is `activity:submit`; an empty list denies submission. The local CLI uses principal `operator`; its client name is declared source attribution, not proof that a particular program submitted the report.
 
 ```json
 {
@@ -70,7 +70,33 @@ Local mode binds to `127.0.0.1:8001` unless `--host` and `--port` select another
 
 The gateway reloads external activity registrations before every submission, so disabling or removing a client takes effect for existing MCP sessions. It rejects non-loopback local bindings, unexpected Host headers, cross-origin browser requests, request bodies above 256 KiB, and more than 30 attempts from one client in a minute. It does not start Cortex, connectors, the main API, or a second database. `DEMO_MODE` keeps its storage in memory and rejects submissions.
 
-`--mode cloudflare` intentionally refuses to start until the later Cloudflare verification branch supplies assertion validation. Do not tunnel local mode: a tunnel reaches the same loopback listener and does not make its callers local.
+`--mode cloudflare` keeps the same loopback listener but replaces local header checks with Cloudflare Access assertion verification. Configure `external_activity.cloudflare` alongside the clients before starting it. The issuer, JWKS URL, Access application audiences, and allowed Access subjects are non-secret configuration. The gateway validates an `RS256` `Cf-Access-Jwt-Assertion` against the configured issuer, expiry, and cached signing keys; it fails closed if keys cannot refresh. A binding derives both the APEX client ID and generic principal, so a submitted `client_id` must match the verified Access application.
+
+```json
+{
+  "external_activity": {
+    "clients": [{
+      "id": "spark",
+      "display_name": "Spark",
+      "enabled": true,
+      "allowed_principals": ["cloudflare:spark"],
+      "permissions": ["activity:submit"],
+      "partition": "production"
+    }],
+    "cloudflare": {
+      "issuer": "https://your-team.cloudflareaccess.com",
+      "jwks_url": "https://your-team.cloudflareaccess.com/cdn-cgi/access/certs",
+      "bindings": [{
+        "client_id": "spark",
+        "audience": "the-distinct-access-application-audience",
+        "allowed_subjects": ["the-operator-access-subject"]
+      }]
+    }
+  }
+}
+```
+
+The Access subject is the signed `sub` claim, not a display name or source label. Each remote client needs its own Access application, audience, hostname, binding, and registration. APEX does not store Cloudflare headers or claims with a report. Recheck the complete [Cloudflare Access deployment guide](cloudflare-access.md) before exposing the gateway. Do not tunnel local mode: a tunnel reaches the same loopback listener and does not make its callers local.
 
 ## Models and credentials
 

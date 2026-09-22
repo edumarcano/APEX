@@ -348,6 +348,36 @@ def load_activity_client_registrations(*, refresh: bool = False):
     return tuple(registrations)
 
 
+def load_cloudflare_access_configuration(*, refresh: bool = False):
+    """Load the optional Cloudflare Access boundary configuration.
+
+    The configuration remains separate from report registrations so Cloudflare
+    claims never enter the activity store or review domain.
+    """
+    from core.activity.cloudflare import CloudflareAccessConfiguration
+
+    config_data = _CONFIG_DATA
+    if refresh:
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as config_file:
+                loaded = json.load(config_file)
+            if not isinstance(loaded, dict):
+                raise ValueError("Config root must be a JSON object.")
+            config_data = loaded
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            _LOGGER.warning("Unable to refresh Cloudflare Access configuration: %s", exc)
+            return None
+    root = config_data.get("external_activity", {})
+    raw_cloudflare = root.get("cloudflare") if isinstance(root, dict) else None
+    if raw_cloudflare is None:
+        return None
+    try:
+        return CloudflareAccessConfiguration.model_validate(raw_cloudflare)
+    except Exception as exc:
+        _LOGGER.warning("Ignoring invalid external_activity.cloudflare configuration: %s", exc)
+        return None
+
+
 _feature_map = load_feature_flags()
 
 FEATURE_WEATHER: Final[bool] = bool(_feature_map.get("weather", False))

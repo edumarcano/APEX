@@ -371,8 +371,6 @@ External activity is untrusted inbox material. Receiving, reading, reviewing, di
 
 The separately started activity gateway is not part of this API schema. It exposes a liveness probe, JSON submission, and a Streamable HTTP MCP endpoint; see [External activity gateway](configuration.md#external-activity-gateway) for its startup and boundary contract.
 
-The separately started activity gateway is not part of this API schema. It exposes a liveness probe, JSON submission, and a Streamable HTTP MCP endpoint; see [External activity gateway](configuration.md#external-activity-gateway) for its startup and boundary contract.
-
 ## Apex Agent and local models
 
 ### GET `/api/v1/cortex/tool-catalog`

@@ -10,16 +10,22 @@ from unittest import mock
 from fastapi.testclient import TestClient
 
 from core.activity import ActivityClientRegistration
+from core.activity.cloudflare import CloudflareAccessConfiguration
 from core.activity.gateway import GatewayConfigurationError, GatewayOptions, create_gateway_app
 import core.activity.gateway as gateway
 
 
-def _registration(*, enabled: bool = True) -> ActivityClientRegistration:
+def _registration(
+    *,
+    client_id: str = "codex",
+    enabled: bool = True,
+    principal: str = "operator",
+) -> ActivityClientRegistration:
     return ActivityClientRegistration(
-        id="codex",
-        display_name="Codex",
+        id=client_id,
+        display_name=client_id.title(),
         enabled=enabled,
-        allowed_principals=["operator"],
+        allowed_principals=[principal],
         permissions=["activity:submit"],
         partition="production",
     )
@@ -35,11 +41,11 @@ def _report(key: str) -> dict[str, object]:
 
 
 class GatewayOptionsTests(unittest.TestCase):
-    def test_local_mode_rejects_non_loopback_and_cloudflare_fails_closed(self) -> None:
+    def test_gateway_rejects_non_loopback_and_cloudflare_requires_configuration(self) -> None:
         with self.assertRaisesRegex(GatewayConfigurationError, "loopback"):
             GatewayOptions(host="0.0.0.0").validate()
-        with self.assertRaisesRegex(GatewayConfigurationError, "Branch 5"):
-            GatewayOptions(mode="cloudflare").validate()
+        with self.assertRaisesRegex(GatewayConfigurationError, "external_activity.cloudflare"):
+            create_gateway_app(GatewayOptions(mode="cloudflare"))
 
 
 class GatewayHttpTests(unittest.TestCase):

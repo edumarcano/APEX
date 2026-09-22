@@ -18,6 +18,8 @@ When personal context is enabled for a model runtime, APEX can send selected cur
 
 External activity reports, including their structured findings and imported Markdown, are retained in local SQLite and may contain private content. APEX does not send reports to models automatically and does not add them to retrieval, prompts, attention, or briefings.
 
+When the optional Cloudflare Access gateway is configured, a remote report passes through the operator's Cloudflare Tunnel and Access deployment before APEX stores it locally. Cloudflare provides the public endpoint, TLS, and authentication for that submission path; its service terms and configured retention apply there. The normal APEX API, Inbox reads, context review, and local CLI do not become remotely reachable.
+
 ## Briefings
 
 Focused briefings use the fixed OpenRouter DeepSeek V4 Flash route with its privacy requirements. Flash briefings use the fixed local Gemma route. Interactive model selection does not affect either briefing route. Structured briefings call no model.

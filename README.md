@@ -149,6 +149,7 @@ Use Flash or Structured to avoid sending briefing data to a cloud model provider
 |---|---|
 | [Getting Started](docs/getting-started.md) | Install APEX, run a safe demo, launch the full system, and resolve common startup problems |
 | [Configuration](docs/configuration.md) | Configure modes, settings, credentials, connectors, models, speech, and MCP providers |
+| [Cloudflare Access Deployment](docs/cloudflare-access.md) | Expose the submission-only activity gateway through one Access-protected tunnel hostname |
 | [Architecture](docs/architecture.md) | Understand processes, runtime paths, state ownership, data boundaries, concurrency, and failure behavior |
 | [API](docs/api.md) | Use the public HTTP workflows and understand their behavioral contracts |
 | [CLI](docs/cli.md) | Use the running local backend from a terminal without duplicating backend logic |
