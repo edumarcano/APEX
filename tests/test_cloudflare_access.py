@@ -46,7 +46,7 @@ def _registration(client_id: str, *, enabled: bool = True) -> ActivityClientRegi
         id=client_id,
         display_name=client_id.title(),
         enabled=enabled,
-        allowed_principals=[f"cloudflare:{client_id}"],
+        allowed_principals=[f"client:{client_id}"],
         permissions=["activity:submit"],
         partition="production",
     )
@@ -160,6 +160,67 @@ class CloudflareVerifierTests(unittest.TestCase):
         with self.assertRaises(CloudflareAccessVerificationError):
             verifier.verify(self._assertion())
 
+    def test_unknown_signing_key_refreshes_only_once_per_cache_interval(self) -> None:
+        calls = 0
+
+        class Response:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"keys": [self_jwk]}
+
+        self_jwk = self.jwk
+
+        def get(*_args, **_kwargs):
+            nonlocal calls
+            calls += 1
+            return Response()
+
+        verifier = CloudflareAccessVerifier(self.configuration, get=get)
+        verifier.verify(self._assertion())
+        unknown_key_assertion = jwt.encode(
+            {"iss": ISSUER, "aud": "spark-audience", "sub": "operator-subject", "exp": self.now + 300},
+            self.private_key,
+            algorithm="RS256",
+            headers={"kid": "unknown-key"},
+        )
+        for _ in range(3):
+            with self.assertRaises(CloudflareAccessVerificationError):
+                verifier.verify(unknown_key_assertion)
+        self.assertEqual(calls, 2)
+
+    def test_unknown_signing_key_does_not_retry_a_failed_forced_refresh(self) -> None:
+        class Response:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"keys": [self_jwk]}
+
+        self_jwk = self.jwk
+        calls = 0
+
+        def get(*_args, **_kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return Response()
+            raise requests.ConnectionError("offline")
+
+        verifier = CloudflareAccessVerifier(self.configuration, get=get)
+        verifier.verify(self._assertion())
+        unknown_key_assertion = jwt.encode(
+            {"iss": ISSUER, "aud": "spark-audience", "sub": "operator-subject", "exp": self.now + 300},
+            self.private_key,
+            algorithm="RS256",
+            headers={"kid": "unknown-key"},
+        )
+        for _ in range(3):
+            with self.assertRaises(CloudflareAccessVerificationError):
+                verifier.verify(unknown_key_assertion)
+        self.assertEqual(calls, 2)
+
 
 class CloudflareConfigurationTests(unittest.TestCase):
     def test_loads_only_a_valid_optional_gateway_configuration(self) -> None:
@@ -170,7 +231,7 @@ class CloudflareConfigurationTests(unittest.TestCase):
         }):
             loaded = config.load_cloudflare_access_configuration()
         self.assertIsNotNone(loaded)
-        self.assertEqual(loaded.bindings[0].principal, "cloudflare:spark")
+        self.assertEqual(loaded.bindings[0].principal, "client:spark")
 
         with mock.patch.object(config, "_CONFIG_DATA", {"external_activity": {"cloudflare": {}}}):
             self.assertIsNone(config.load_cloudflare_access_configuration())
@@ -217,8 +278,9 @@ class CloudflareGatewayTests(unittest.TestCase):
             )
         self.assertEqual(accepted.status_code, 201)
         report = self.app.state.activity_service.list(partition="production")[0]
-        self.assertEqual((report.client_id, report.principal), ("spark", "cloudflare:spark"))
+        self.assertEqual((report.client_id, report.principal), ("spark", "client:spark"))
         self.assertNotIn("operator-subject", str(report))
+        self.assertNotIn("cloudflare", report.principal)
 
         mismatched = self.client.post(
             "/v1/activity/reports",

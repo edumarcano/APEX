@@ -59,8 +59,8 @@ class CloudflareAccessBinding(BaseModel):
 
     @property
     def principal(self) -> str:
-        """Keep Cloudflare claim values out of the activity domain."""
-        return f"cloudflare:{self.client_id}"
+        """Keep Cloudflare identity outside the activity domain."""
+        return f"client:{self.client_id}"
 
 
 class CloudflareAccessConfiguration(BaseModel):
@@ -129,6 +129,7 @@ class CloudflareAccessVerifier:
         self._get = get
         self._keys: dict[str, jwt.PyJWK] = {}
         self._loaded_at: float | None = None
+        self._unknown_key_refreshed_at: float | None = None
         self._lock = threading.Lock()
 
     def verify(self, assertion: str) -> Mapping[str, object]:
@@ -159,11 +160,22 @@ class CloudflareAccessVerifier:
 
     def _key_for(self, key_id: str) -> jwt.PyJWK:
         with self._lock:
-            if self._loaded_at is None or self._now() - self._loaded_at >= self.configuration.key_cache_seconds:
+            refreshed_for_expiry = (
+                self._loaded_at is None
+                or self._now() - self._loaded_at >= self.configuration.key_cache_seconds
+            )
+            if refreshed_for_expiry:
                 self._refresh_keys()
             key = self._keys.get(key_id)
-            if key is None:
+            if key is None and refreshed_for_expiry:
+                # The normal cache refresh already checked the current JWKS.
+                self._unknown_key_refreshed_at = self._loaded_at
+            elif key is None and self._unknown_key_refreshed_at != self._loaded_at:
+                # Consume this interval's forced-refresh allowance even when
+                # the JWKS endpoint is unavailable, then fail closed.
+                self._unknown_key_refreshed_at = self._loaded_at
                 self._refresh_keys()
+                self._unknown_key_refreshed_at = self._loaded_at
                 key = self._keys.get(key_id)
             if key is None:
                 raise CloudflareAccessVerificationError("Cloudflare Access signing key is unavailable.")

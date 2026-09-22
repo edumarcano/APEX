@@ -8,7 +8,7 @@ The first reference client is Spark. A real Spark Managed OAuth handshake and MC
 
 Keep APEX's main API and HUD on loopback as usual. The gateway also binds to loopback, including in Cloudflare mode. Do not start it with `--mode local` behind a tunnel: local mode grants the generic `operator` principal and a tunnel cannot prove that a caller is local.
 
-Create a distinct activity registration for Spark and bind it only to the generic principal `cloudflare:spark`. Then add one `external_activity.cloudflare.bindings` item using the matching client ID, the Access application's audience, and the operator's signed Access `sub` claim. Copy the exact issuer and JWKS URL for the Cloudflare team into the same configuration. The example and field meanings are in [Configuration](configuration.md#external-activity-gateway).
+Create a distinct activity registration for Spark and bind it only to the generic principal `client:spark`. Then add one `external_activity.cloudflare.bindings` item using the matching client ID, the Access application's audience, and the operator's signed Access `sub` claim. Copy the exact issuer and JWKS URL for the Cloudflare team into the same configuration. The example and field meanings are in [Configuration](configuration.md#external-activity-gateway).
 
 The configuration contains no client secret, OAuth token, or private key. Keep any Cloudflare administrator credentials and tunnel credentials outside this repository. An incorrect or unavailable configuration prevents Cloudflare mode from starting; it does not affect normal APEX startup or local imports.
 
@@ -44,6 +44,6 @@ The Spark step is deliberately not replaced by a generic HTTP request. If it can
 
 An assertion verification failure returns `401`. Check that Cloudflare forwards `Cf-Access-Jwt-Assertion`, the issuer and application audience match the configured values, the signed `sub` is allowed, and the APEX host can refresh the configured JWKS endpoint. APEX caches usable signing keys for five minutes by default (`key_cache_seconds` can set a 60-second to one-hour interval), then fails closed if refresh fails.
 
-A `403` means the verified Access application does not match the requested client ID, or its registration is disabled, removed, assigned to another partition, or does not allow its generic `cloudflare:<client-id>` principal. Disable a single registration to revoke submissions from that integration without deleting retained reports or blocking another binding.
+A `403` means the verified Access application does not match the requested client ID, or its registration is disabled, removed, assigned to another partition, or does not allow its generic `client:<client-id>` principal. Disable a single registration to revoke submissions from that integration without deleting retained reports or blocking another binding.
 
 The gateway logs client and report identifiers plus failure categories. It does not log assertion values, report bodies, or Cloudflare claims.

@@ -79,7 +79,7 @@ The gateway reloads external activity registrations before every submission, so 
       "id": "spark",
       "display_name": "Spark",
       "enabled": true,
-      "allowed_principals": ["cloudflare:spark"],
+      "allowed_principals": ["client:spark"],
       "permissions": ["activity:submit"],
       "partition": "production"
     }],
