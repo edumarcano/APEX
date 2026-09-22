@@ -1414,9 +1414,9 @@ export default function App(): ReactElement {
             onOpenSettings={() => setIsSettingsOpen(true)}
             settingsButtonRef={settingsButtonRef}
             workspaceNavigation={<nav className="flex items-center justify-center gap-1" aria-label="Workspace">
+            <button type="button" onClick={() => navigateWorkspace('inbox')} aria-pressed={workspace === 'inbox'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'inbox' ? 'bg-[#FBBF24]/15 text-[#FFF3B0]' : 'text-zinc-500 hover:text-[#FBBF24]'}`}>Inbox</button>
             <button type="button" onClick={() => navigateWorkspace('home')} aria-pressed={workspace === 'home'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'home' ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>Home</button>
             <button type="button" onClick={() => navigateWorkspace('cortex')} aria-pressed={workspace === 'cortex'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'cortex' ? 'bg-[#7E22CE]/25 text-[#D8B4FE]' : 'text-zinc-500 hover:text-zinc-200'}`}>Cortex</button>
-            <button type="button" onClick={() => navigateWorkspace('inbox')} aria-pressed={workspace === 'inbox'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'inbox' ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>Inbox</button>
           </nav>}
           />
         </header>

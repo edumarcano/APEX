@@ -540,6 +540,20 @@ describe('App catalog-affecting settings', () => {
     }))
   })
 
+  it('orders Inbox before Home and Cortex with the gold active treatment', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    const workspaceNavigation = screen.getByRole('navigation', { name: 'Workspace' })
+    expect(Array.from(workspaceNavigation.querySelectorAll('button')).map((button) => button.textContent)).toEqual([
+      'Inbox', 'Home', 'Cortex',
+    ])
+
+    const inboxButton = screen.getByRole('button', { name: 'Inbox' })
+    await user.click(inboxButton)
+    expect(inboxButton).toHaveClass('bg-[#FBBF24]/15', 'text-[#FFF3B0]')
+  })
+
   it('refreshes the current catalog after toggling sandbox mode', async () => {
     appMocks.devModeActive = true
     const user = userEvent.setup()

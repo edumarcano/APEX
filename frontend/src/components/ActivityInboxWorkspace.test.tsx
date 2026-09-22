@@ -23,8 +23,12 @@ describe('ActivityInboxWorkspace', () => {
     const inbox = inboxFixture()
     render(<ActivityInboxWorkspace inbox={inbox} demoModeActive={false} sandboxMode={false} onOpenReview={vi.fn().mockResolvedValue(null)} />)
 
-    expect(screen.getByRole('region', { name: 'External activity inbox' })).toHaveClass('min-h-0')
+    const workspace = screen.getByRole('region', { name: 'External activity inbox' })
+    expect(workspace).toHaveClass('min-h-0')
+    expect(workspace.querySelector('svg')?.parentElement).toHaveClass('text-[#FFD166]')
+    expect(screen.getByRole('complementary', { name: 'Activity reports' })).toHaveClass('scrollbar-inbox')
     expect(screen.getByRole('article')).toHaveClass('lg:overflow-y-auto')
+    expect(screen.getByRole('article')).toHaveClass('scrollbar-inbox')
     expect(document.querySelector('script')).toBeNull()
     expect(document.querySelector('img')).toBeNull()
     expect(screen.queryByRole('link', { name: 'unsafe' })).not.toBeInTheDocument()
