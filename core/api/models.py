@@ -27,15 +27,6 @@ DigestStatus = Literal[
 ]
 
 
-class ActivitySubmissionRequest(BaseModel):
-    """A local-operator activity submission with an attributed registration."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    client_id: Annotated[str, Field(min_length=1, max_length=64)]
-    report: ActivityReportContent
-
-
 class ActivityReportResponse(BaseModel):
     id: str
     partition: Literal["production", "sandbox"]

@@ -303,7 +303,7 @@ def load_module_flags() -> dict[str, bool]:
     return result
 
 
-def load_activity_client_registrations():
+def load_activity_client_registrations(*, refresh: bool = False):
     """Load static external-activity source registrations from ``config.json``.
 
     Invalid entries are ignored individually so an unrelated configuration typo
@@ -312,7 +312,18 @@ def load_activity_client_registrations():
     """
     from core.activity.models import ActivityClientRegistration
 
-    root = _CONFIG_DATA.get("external_activity", {})
+    config_data = _CONFIG_DATA
+    if refresh:
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as config_file:
+                loaded = json.load(config_file)
+            if not isinstance(loaded, dict):
+                raise ValueError("Config root must be a JSON object.")
+            config_data = loaded
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            _LOGGER.warning("Unable to refresh external activity registrations: %s", exc)
+            return ()
+    root = config_data.get("external_activity", {})
     if not isinstance(root, dict):
         _LOGGER.warning('Config key "external_activity" must be a JSON object.')
         return ()

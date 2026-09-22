@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
+from pydantic import ValidationError
 
 from core.activity import (
     ActivityClientDisabledError,
@@ -12,13 +13,25 @@ from core.activity import (
     ActivityNotFoundError,
     ActivityPermissionError,
     ActivityStoreError,
+    ActivitySubmissionRequest,
     get_activity_service,
 )
-from core.api.models import ActivityReportResponse, ActivitySubmissionRequest, ActivitySubmissionResponse
+from core.activity.boundary import read_bounded_activity_body, require_local_submission_headers
+from core.api.models import ActivityReportResponse, ActivitySubmissionResponse
 from core.config import DEMO_MODE
 from core.conversations import get_conversation_service
 
 router = APIRouter(tags=["activity"])
+
+_LOCAL_ACTIVITY_ORIGINS = (
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+    "http://127.0.0.1:5500",
+    "http://localhost:5500",
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+)
+_LOCAL_ACTIVITY_HOSTS = ("127.0.0.1", "localhost", "[::1]")
 
 
 def _response(report) -> ActivityReportResponse:
@@ -40,23 +53,37 @@ def _error(error: Exception) -> HTTPException:
         return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Activity submission is not permitted for this client and partition.")
     if isinstance(error, ActivityStoreError):
         if str(error) == "report_too_large":
-            return HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Activity report exceeds the 256 KiB limit.")
+            return HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Activity report exceeds the 256 KiB limit.")
         return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Activity report is invalid.")
     return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Activity inbox is unavailable.")
 
 
 @router.post("/api/v1/activity/reports", response_model=ActivitySubmissionResponse, status_code=status.HTTP_201_CREATED)
-def submit_activity_report(payload: ActivitySubmissionRequest) -> ActivitySubmissionResponse:
+async def submit_activity_report(request: Request) -> ActivitySubmissionResponse:
     """Receive one local, operator-attributed report without changing knowledge."""
     if DEMO_MODE:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Activity submissions are unavailable in demo mode.")
     try:
+        require_local_submission_headers(
+            request,
+            allowed_hosts=_LOCAL_ACTIVITY_HOSTS,
+            allowed_origins=_LOCAL_ACTIVITY_ORIGINS,
+            port=8000,
+        )
+        content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        if content_type != "application/json":
+            raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Activity submissions require application/json.")
+        payload = ActivitySubmissionRequest.model_validate_json(await read_bounded_activity_body(request))
         receipt = get_activity_service().submit(
             client_id=payload.client_id, principal="operator",
             partition=get_conversation_service().partition(), content=payload.report,
         )
         report = _response(receipt.report)
         return ActivitySubmissionResponse(**report.model_dump(), duplicate=receipt.duplicate)
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Activity report is invalid.") from exc
+    except HTTPException:
+        raise
     except Exception as exc:
         raise _error(exc) from exc
 

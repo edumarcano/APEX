@@ -198,6 +198,25 @@ class ActivityStoreTests(unittest.TestCase):
             settings = RuntimeSettingsStore(config_path=root / "config.json", local_config_path=root / "config.local.json")
             self.assertIsNone(settings.load_warning)
 
+    def test_registration_refresh_reads_current_config_file(self) -> None:
+        registration = {
+            "id": "codex", "display_name": "Codex", "enabled": True,
+            "allowed_principals": ["operator"], "permissions": ["activity:submit"],
+            "partition": "production",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            path.write_text(json.dumps({"external_activity": {"clients": [registration]}}), encoding="utf-8")
+            with mock.patch.object(core_config, "CONFIG_PATH", path):
+                enabled = core_config.load_activity_client_registrations(refresh=True)
+                path.write_text(
+                    json.dumps({"external_activity": {"clients": [{**registration, "enabled": False}]}}),
+                    encoding="utf-8",
+                )
+                disabled = core_config.load_activity_client_registrations(refresh=True)
+        self.assertTrue(enabled[0].enabled)
+        self.assertFalse(disabled[0].enabled)
+
 
 class ActivityApiTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -213,7 +232,11 @@ class ActivityApiTests(unittest.TestCase):
         conversation = SimpleNamespace(partition=lambda: "production")
         payload = {"client_id": "codex", "report": _report().model_dump(mode="json")}
         with mock.patch.object(activity_router, "DEMO_MODE", False), mock.patch.object(activity_router, "get_activity_service", return_value=self.service), mock.patch.object(activity_router, "get_conversation_service", return_value=conversation):
-            created = self.client.post("/api/v1/activity/reports", json=payload)
+            created = self.client.post(
+                "/api/v1/activity/reports",
+                headers={"Host": "127.0.0.1:8000"},
+                json=payload,
+            )
             listed = self.client.get("/api/v1/activity/reports?disposition=new")
             detail = self.client.get(f"/api/v1/activity/reports/{created.json()['id']}")
 
@@ -225,9 +248,29 @@ class ActivityApiTests(unittest.TestCase):
 
     def test_demo_submission_is_rejected_without_reaching_store(self) -> None:
         with mock.patch.object(activity_router, "DEMO_MODE", True):
-            response = self.client.post("/api/v1/activity/reports", json={"client_id": "codex", "report": _report().model_dump(mode="json")})
+            response = self.client.post(
+                "/api/v1/activity/reports",
+                headers={"Host": "127.0.0.1:8000"},
+                json={"client_id": "codex", "report": _report().model_dump(mode="json")},
+            )
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.service.list(partition="production"), [])
+
+    def test_local_submission_rejects_untrusted_origin_and_oversized_body(self) -> None:
+        payload = {"client_id": "codex", "report": _report().model_dump(mode="json")}
+        with mock.patch.object(activity_router, "DEMO_MODE", False):
+            origin = self.client.post(
+                "/api/v1/activity/reports",
+                headers={"Host": "127.0.0.1:8000", "Origin": "http://outside.example"},
+                json=payload,
+            )
+            oversized = self.client.post(
+                "/api/v1/activity/reports",
+                headers={"Host": "127.0.0.1:8000", "Content-Type": "application/json"},
+                content=b"x" * (256 * 1024 + 1),
+            )
+        self.assertEqual(origin.status_code, 403)
+        self.assertEqual(oversized.status_code, 413)
 
 
 class _CliClient:

@@ -58,6 +58,20 @@ APEX keeps unavailable saved IDs so they can be removed deliberately. It reads s
 
 A registration is checked for every submission. Disabling or removing it preserves reports already received, while new submissions under that ID fail. Report content cannot choose a partition; configure distinct registrations when both production and sandbox submissions are needed. Missing required registration fields and invalid permission values deny submission. Duplicate IDs are unavailable, regardless of their array order. Invalid registration entries are ignored with a startup warning.
 
+## External activity gateway
+
+The submission gateway is separate from the normal APEX launcher. Start it only when another local program needs HTTP or MCP submission:
+
+```powershell
+uv run python -m core.activity.gateway --mode local
+```
+
+Local mode binds to `127.0.0.1:8001` unless `--host` and `--port` select another loopback address and port. Requests must use that selected host and port; the default also accepts the standard loopback aliases. It exposes `GET /healthz`, `POST /v1/activity/reports`, and Streamable HTTP MCP at `/mcp/`. The JSON route accepts `application/json`; MCP exposes only `submit_activity`. Both adapters use the configured registration, local `operator` principal, current production or development sandbox partition, and the same `apex_memory.db` activity table used by the local API and CLI.
+
+The gateway reloads external activity registrations before every submission, so disabling or removing a client takes effect for existing MCP sessions. It rejects non-loopback local bindings, unexpected Host headers, cross-origin browser requests, request bodies above 256 KiB, and more than 30 attempts from one client in a minute. It does not start Cortex, connectors, the main API, or a second database. `DEMO_MODE` keeps its storage in memory and rejects submissions.
+
+`--mode cloudflare` intentionally refuses to start until the later Cloudflare verification branch supplies assertion validation. Do not tunnel local mode: a tunnel reaches the same loopback listener and does not make its callers local.
+
 ## Models and credentials
 
 The fresh interactive default is OpenRouter DeepSeek V4 Flash with Low reasoning. Cloud models require their documented provider credential: `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY`. Local models run through Ollama or llama.cpp and their availability is reported per model in Cortex.

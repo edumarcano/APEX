@@ -139,6 +139,15 @@ class ActivityReportContent(BaseModel):
         raise ValueError("finding_reference_invalid")
 
 
+class ActivitySubmissionRequest(BaseModel):
+    """One client-attributed report accepted by local and gateway adapters."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    client_id: Annotated[str, Field(min_length=1, max_length=64)]
+    report: ActivityReportContent
+
+
 class ActivityClientRegistration(BaseModel):
     """A static config.json registration for one report source."""
 
