@@ -208,6 +208,24 @@ describe("CortexContext", () => {
     expect(screen.getByRole("tabpanel", { name: /Review/ })).toBeInTheDocument();
   });
 
+  it("opens an Inbox-linked review by its exact id", () => {
+    const inspector = inspectorFixture({ selectedReviewId: null, reviewDetail: null });
+    render(
+      <CortexContext
+        inspector={inspector}
+        demoModeActive={false}
+        onOpenActions={vi.fn()}
+        openReviewId="review-from-inbox"
+      />,
+    );
+
+    expect(inspector.selectReview).toHaveBeenCalledWith("review-from-inbox");
+    expect(screen.getByRole("tab", { name: /Review/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
   it("keeps one review decision selected and displays review context", () => {
     const setReviewFilters = vi.fn();
     render(

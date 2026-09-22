@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -24,7 +24,7 @@ function renderWorkspace(overrides: Partial<ComponentProps<typeof CortexWorkspac
 
 describe('CortexWorkspace', () => {
   beforeEach(() => vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify([]), { status: 200 })))
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
   it('identifies the singular Apex Agent and groups its selectable models', async () => {
     const user = userEvent.setup()
@@ -112,5 +112,18 @@ describe('CortexWorkspace', () => {
 
     expect(setSelectedActionId).toHaveBeenCalledWith('linked-action')
     expect(screen.getByRole('tab', { name: 'actions' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('opens the compact context inspector for a linked review', async () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }))
+    renderWorkspace({ linkedReviewId: 'review-1' })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Inspector' })).toHaveAttribute('aria-expanded', 'true'))
+    expect(screen.getByLabelText('Cortex inspector')).not.toHaveClass('hidden')
+    expect(screen.getByRole('tab', { name: 'context' })).toHaveAttribute('aria-selected', 'true')
   })
 })

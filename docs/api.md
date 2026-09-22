@@ -36,6 +36,8 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | POST | `/api/v1/activity/reports` | Receive one local external activity report |
 | GET | `/api/v1/activity/reports` | List reports in the current partition |
 | GET | `/api/v1/activity/reports/{report_id}` | Inspect one immutable report |
+| PATCH | `/api/v1/activity/reports/{report_id}` | Set its reversible Inbox disposition |
+| GET | `/api/v1/activity/reports/{report_id}/context-reviews` | List durable reviews linked from this report |
 | GET | `/api/v1/actions` | List durable action proposals |
 | GET | `/api/v1/actions/{action_id}` | Inspect one proposal and its audit events |
 | POST | `/api/v1/actions/{action_id}/approve` | Approve, execute, and verify one action |
@@ -350,6 +352,14 @@ Lists up to 100 newest reports in the current partition. `client_id`, `dispositi
 ### GET `/api/v1/activity/reports/{report_id}`
 
 Returns one report only when it belongs to the current partition, including immutable content and receipt metadata.
+
+### PATCH `/api/v1/activity/reports/{report_id}`
+
+Sets the operator's Inbox disposition to `new`, `reviewed`, or `dismissed`. This changes no report content, evidence, retrieval state, or context review decision. Setting `new` reopens a report.
+
+### GET `/api/v1/activity/reports/{report_id}/context-reviews`
+
+Returns the report's linked context reviews and their current decisions in the current partition. Links are returned only for the selected report; this route does not expose unrelated reviews.
 
 ### POST `/api/v1/activity/reports/{report_id}/context-proposals`
 

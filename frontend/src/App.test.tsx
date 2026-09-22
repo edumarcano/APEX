@@ -34,6 +34,7 @@ const appMocks = vi.hoisted(() => ({
   telemetryRefreshingAll: false,
   telemetryRefreshingConnectors: new Set<string>(),
   requestOperation: vi.fn().mockResolvedValue('proceed'),
+  toolPreflight: vi.fn(),
   refreshAll: vi.fn().mockResolvedValue(null),
   refreshConnector: vi.fn().mockResolvedValue(undefined),
   loadLatest: vi.fn().mockResolvedValue(undefined),
@@ -327,11 +328,14 @@ vi.mock('./hooks/useTelemetrySnapshot', () => ({
   }),
 }))
 vi.mock('./hooks/useToolPreflight', () => ({
-  useToolPreflight: () => ({
-    estimate: null,
-    isLoading: false,
-    error: null,
-  }),
+  useToolPreflight: (options: unknown) => {
+    appMocks.toolPreflight(options)
+    return {
+      estimate: null,
+      isLoading: false,
+      error: null,
+    }
+  },
 }))
 vi.mock('./hooks/useVoiceDelivery', () => ({
   useVoiceDelivery: () => ({
@@ -472,6 +476,7 @@ describe('App catalog-affecting settings', () => {
     appMocks.weatherSnapshot = null
     appMocks.refreshConnector.mockClear()
     appMocks.applyBootSettings.mockClear()
+    appMocks.toolPreflight.mockClear()
     vi.restoreAllMocks()
   })
 
@@ -517,6 +522,38 @@ describe('App catalog-affecting settings', () => {
       expect(catalogRequests.filter((modelId) => modelId === 'deepseek/deepseek-v4-flash-0731')).toHaveLength(2)
       expect(screen.getByTestId('provider-hosted-tools')).toHaveTextContent('google_search')
     })
+  })
+
+  it('preserves the Home assistant contract and disables preflight in Inbox', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))))
+    appMocks.toolPreflight.mockClear()
+
+    render(<App />)
+    const homeContract = appMocks.toolPreflight.mock.lastCall?.[0] as { effort: string | null }
+    expect(homeContract.effort).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Inbox' }))
+    await waitFor(() => expect(appMocks.toolPreflight.mock.lastCall?.[0]).toMatchObject({
+      effort: homeContract.effort,
+      enabled: false,
+    }))
+  })
+
+  it('orders Inbox before Home and Cortex with the gold active treatment', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    const workspaceNavigation = screen.getByRole('navigation', { name: 'Workspace' })
+    expect(Array.from(workspaceNavigation.querySelectorAll('button')).map((button) => button.textContent)).toEqual([
+      'Inbox', 'Home', 'Cortex',
+    ])
+
+    const inboxButton = screen.getByRole('button', { name: 'Inbox' })
+    expect(inboxButton).toHaveClass('text-zinc-500', 'hover:text-zinc-200')
+    expect(inboxButton).not.toHaveClass('hover:text-[#FBBF24]')
+    await user.click(inboxButton)
+    expect(inboxButton).toHaveClass('bg-[#FBBF24]/15', 'text-[#FFF3B0]')
   })
 
   it('refreshes the current catalog after toggling sandbox mode', async () => {

@@ -20,6 +20,8 @@ from core.activity.boundary import read_bounded_activity_body, require_local_sub
 from core.activity.review import ActivityContextReviewError, ActivityContextReviewService
 from core.api.models import (
     ActivityContextProposalRequest,
+    ActivityContextReviewLinkResponse,
+    ActivityDispositionRequest,
     ActivityReportResponse,
     ActivitySubmissionResponse,
     ContextReviewResponse,
@@ -129,6 +131,59 @@ def get_activity_report(report_id: UUID) -> ActivityReportResponse:
         raise _error(exc) from exc
 
 
+@router.patch("/api/v1/activity/reports/{report_id}", response_model=ActivityReportResponse)
+def set_activity_report_disposition(
+    report_id: UUID, payload: ActivityDispositionRequest,
+) -> ActivityReportResponse:
+    """Set a reversible operator disposition without touching report content or knowledge."""
+    try:
+        report = get_activity_service().set_disposition(
+            report_id,
+            partition=get_conversation_service().partition(),
+            disposition=payload.disposition,
+        )
+        return _response(report)
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+def _review_response(review) -> ContextReviewResponse:
+    return ContextReviewResponse(
+        id=str(review.id), partition=review.partition, operation=review.operation,
+        proposal=review.proposal, evidence=review.evidence,
+        expected_revisions=review.expected_revisions, reason_codes=list(review.reason_codes),
+        decision=review.decision, action_id=review.action_id, decision_at=review.decision_at,
+        created_at=review.created_at,
+    )
+
+
+@router.get(
+    "/api/v1/activity/reports/{report_id}/context-reviews",
+    response_model=list[ActivityContextReviewLinkResponse],
+)
+def list_activity_context_reviews(report_id: UUID) -> list[ActivityContextReviewLinkResponse]:
+    """Show durable linked review outcomes without exposing any other report partition."""
+    partition = get_conversation_service().partition()
+    try:
+        links = get_activity_service().context_review_links(report_id, partition=partition)
+        knowledge = get_knowledge_service()
+        responses: list[ActivityContextReviewLinkResponse] = []
+        for link in links:
+            try:
+                review = knowledge.get_review(link.review_id, partition=partition)
+            except KnowledgeNotFoundError:
+                # A retry may observe a reserved link before its interrupted review
+                # creation completes. It is not a usable decision yet.
+                continue
+            responses.append(ActivityContextReviewLinkResponse(
+                finding_reference=link.finding_reference,
+                review=_review_response(review),
+            ))
+        return responses
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
 @router.post("/api/v1/activity/reports/{report_id}/context-proposals", response_model=ContextReviewResponse)
 def propose_activity_context(report_id: UUID, payload: ActivityContextProposalRequest) -> ContextReviewResponse:
     """Create a pending context review from server-resolved immutable activity evidence."""
@@ -146,12 +201,6 @@ def propose_activity_context(report_id: UUID, payload: ActivityContextProposalRe
             finding_reference=payload.finding_reference, capture=capture,
             correction_record_id=payload.correction_record_id,
         )
-        return ContextReviewResponse(
-            id=str(review.id), partition=review.partition, operation=review.operation,
-            proposal=review.proposal, evidence=review.evidence,
-            expected_revisions=review.expected_revisions, reason_codes=list(review.reason_codes),
-            decision=review.decision, action_id=review.action_id, decision_at=review.decision_at,
-            created_at=review.created_at,
-        )
+        return _review_response(review)
     except Exception as exc:
         raise _error(exc) from exc

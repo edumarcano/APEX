@@ -9,14 +9,17 @@ APEX
 ├── Home
 │   ├── Briefing modes: Focused, Flash, Structured
 │   └── Apex Agent (compact prompt)
+├── Inbox
+│   └── External activity reports
 └── Cortex
     ├── Cortex workspace
     ├── Apex Agent (full workspace)
     └── Cortex Engine
 ```
 
-- **APEX** is the complete local-first product: Home, Cortex, telemetry, briefings, voice, connectors, settings, and persistence.
+- **APEX** is the complete local-first product: Home, Inbox, Cortex, telemetry, briefings, voice, connectors, settings, and persistence.
 - **Home** is the day-to-day workspace for telemetry, briefings, reminders, connector health, and a compact Apex Agent prompt.
+- **Inbox** is the workspace for untrusted external activity reports, their reversible dispositions, and links to existing context reviews.
 - **Cortex** is the detailed workspace for conversations, model settings, tools, context, action review, and local-model lifecycle.
 - **Cortex Engine** is the backend execution boundary for bounded Agent turns, context assembly, tools, providers, and local runtime coordination.
 - **Apex Agent** is APEX's single built-in personal operations assistant, with a compact Home prompt and a full Cortex workspace.
