@@ -63,14 +63,14 @@ A registration is checked for every submission. Disabling or removing it preserv
 The submission gateway is separate from the normal APEX launcher. Start it only when another local program needs HTTP or MCP submission:
 
 ```powershell
-uv run python -m core.activity.gateway --mode local
+uv run python -m core.activity.gateway
 ```
 
-Local mode binds to `127.0.0.1:8001` unless `--host` and `--port` select another loopback address and port. Requests must use that selected host and port; the default also accepts the standard loopback aliases. It exposes `GET /healthz`, `POST /v1/activity/reports`, and Streamable HTTP MCP at `/mcp/`. The JSON route accepts `application/json`; MCP exposes only `submit_activity`. Both adapters use the configured registration, local `operator` principal, current production or development sandbox partition, and the same `apex_memory.db` activity table used by the local API and CLI.
+The gateway binds to `127.0.0.1:8001` unless `--host` and `--port` select another loopback address and port. Requests must use that selected host and port; the default also accepts the standard loopback aliases. It exposes `GET /healthz`, `POST /v1/activity/reports`, and Streamable HTTP MCP at `/mcp/`. The JSON route accepts `application/json`; MCP exposes only `submit_activity`. Both adapters use the configured registration, local `operator` principal, current production or development sandbox partition, and the same `apex_memory.db` activity table used by the local API and CLI.
 
-The gateway reloads external activity registrations before every submission, so disabling or removing a client takes effect for existing MCP sessions. It rejects non-loopback local bindings, unexpected Host headers, cross-origin browser requests, request bodies above 256 KiB, and more than 30 attempts from one client in a minute. It does not start Cortex, connectors, the main API, or a second database. `DEMO_MODE` keeps its storage in memory and rejects submissions.
+The gateway reloads external activity registrations before every submission, so disabling or removing a client takes effect for existing MCP sessions. It rejects non-loopback bindings, unexpected Host headers, cross-origin browser requests, request bodies above 256 KiB, and more than 30 attempts from one client in a minute. It does not start Cortex, connectors, the main API, or a second database. `DEMO_MODE` keeps its storage in memory and rejects submissions.
 
-`--mode cloudflare` intentionally refuses to start until the later Cloudflare verification branch supplies assertion validation. Do not tunnel local mode: a tunnel reaches the same loopback listener and does not make its callers local.
+Keep this listener on loopback. Do not place it behind a tunnel, reverse proxy, or public endpoint; the gateway does not authenticate remote callers.
 
 ## Models and credentials
 

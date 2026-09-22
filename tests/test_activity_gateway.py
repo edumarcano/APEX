@@ -35,11 +35,9 @@ def _report(key: str) -> dict[str, object]:
 
 
 class GatewayOptionsTests(unittest.TestCase):
-    def test_local_mode_rejects_non_loopback_and_cloudflare_fails_closed(self) -> None:
+    def test_gateway_rejects_non_loopback(self) -> None:
         with self.assertRaisesRegex(GatewayConfigurationError, "loopback"):
             GatewayOptions(host="0.0.0.0").validate()
-        with self.assertRaisesRegex(GatewayConfigurationError, "Branch 5"):
-            GatewayOptions(mode="cloudflare").validate()
 
 
 class GatewayHttpTests(unittest.TestCase):
