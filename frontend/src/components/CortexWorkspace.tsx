@@ -455,7 +455,11 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
   }, [props.actions])
   const contextInspector = useContextInspector(true, onContextActionProposed)
   useEffect(() => {
-    if (props.linkedReviewId) setInspectorTab('context')
+    if (props.linkedReviewId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- A linked navigation target selects the context inspector.
+      setInspectorTab('context')
+      setCompactPanel('inspector')
+    }
   }, [props.linkedReviewId])
   const selectContextRecord = contextInspector.selectRecord
   const rememberVerifiedRecord = contextInspector.rememberVerifiedRecord

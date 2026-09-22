@@ -614,6 +614,7 @@ export function CortexContext({
     void inspector.selectReview(reviewId);
   };
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- A linked navigation target selects its existing review.
     if (openReviewId) openReview(openReviewId);
   // selectReview is the stable hook action; this effect deliberately responds only to navigation targets.
   // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -45,7 +45,7 @@ describe('useActivityInbox', () => {
       throw new Error(`Unexpected activity request ${target}`)
     })
 
-    const { result } = renderHook(() => useActivityInbox(true))
+    const { result } = renderHook(() => useActivityInbox(true, 'production'))
     await waitFor(() => expect(result.current.detail?.id).toBe('report-1'))
 
     await act(async () => { await result.current.setDisposition('dismissed') })
@@ -59,5 +59,46 @@ describe('useActivityInbox', () => {
       await result.current.proposeContext({ finding_reference: '/findings/0', kind: 'note', text: 'Keep this.' })
     })
     expect(result.current.linkedReviews).toEqual([{ finding_reference: '/findings/0', review: REVIEW }])
+  })
+
+  it('clears production records and ignores stale requests when the partition changes', async () => {
+    let listRequestCount = 0
+    let resolveStaleList: ((value: Response) => void) | undefined
+    vi.mocked(fetch).mockImplementation((input) => {
+      const target = String(input)
+      if (target.endsWith('/context-reviews')) return Promise.resolve(response([]))
+      if (target.endsWith('/report-1')) return Promise.resolve(response(REPORT))
+      if (!target.includes('/activity/reports?')) throw new Error(`Unexpected activity request ${target}`)
+      listRequestCount += 1
+      if (listRequestCount === 1) return Promise.resolve(response([REPORT]))
+      if (listRequestCount === 2) {
+        return new Promise((resolve) => { resolveStaleList = resolve })
+      }
+      return Promise.reject(new Error('Sandbox activity is unavailable.'))
+    })
+
+    const initialProps: { partition: 'production' | 'sandbox' } = { partition: 'production' }
+    const { result, rerender } = renderHook(
+      ({ partition }: { partition: 'production' | 'sandbox' }) => useActivityInbox(true, partition),
+      { initialProps },
+    )
+    await waitFor(() => expect(result.current.detail?.id).toBe(REPORT.id))
+
+    act(() => { void result.current.refresh() })
+    await waitFor(() => expect(resolveStaleList).toBeDefined())
+    rerender({ partition: 'sandbox' })
+
+    await waitFor(() => expect(listRequestCount).toBe(3))
+    await waitFor(() => expect(result.current.error).toBe('Sandbox activity is unavailable.'))
+    await act(async () => {
+      resolveStaleList?.(response([REPORT]))
+      await Promise.resolve()
+    })
+
+    expect(result.current.reports).toEqual([])
+    expect(result.current.detail).toBeNull()
+    expect(result.current.linkedReviews).toEqual([])
+    expect(result.current.selectedReportId).toBeNull()
+    expect(result.current.isLoading).toBe(false)
   })
 })

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { API_ENDPOINTS } from '../lib/api'
 import type { ContextReview } from '../types/context'
@@ -108,7 +108,10 @@ export interface UseActivityInboxResult {
   proposeContext: (input: ActivityContextProposalInput) => Promise<ContextReview | null>
 }
 
-export function useActivityInbox(enabled: boolean): UseActivityInboxResult {
+export function useActivityInbox(
+  enabled: boolean,
+  partition: ActivityReport['partition'],
+): UseActivityInboxResult {
   const [reports, setReports] = useState<ActivityReport[]>([])
   const [detail, setDetail] = useState<ActivityReport | null>(null)
   const [linkedReviews, setLinkedReviews] = useState<ActivityContextReviewLink[]>([])
@@ -121,9 +124,31 @@ export function useActivityInbox(enabled: boolean): UseActivityInboxResult {
   const [error, setError] = useState<string | null>(null)
   const listRequest = useRef(0)
   const detailRequest = useRef(0)
+  const selectedReportIdRef = useRef<string | null>(null)
+  const partitionRef = useRef(partition)
+  const generation = useRef(0)
+
+  useLayoutEffect(() => {
+    if (partitionRef.current === partition) return
+    partitionRef.current = partition
+    generation.current += 1
+    listRequest.current += 1
+    detailRequest.current += 1
+    setReports([])
+    setDetail(null)
+    setLinkedReviews([])
+    selectedReportIdRef.current = null
+    setSelectedReportId(null)
+    setIsLoading(false)
+    setIsDetailLoading(false)
+    setMutation(null)
+    setError(null)
+  }, [partition])
 
   const loadList = useCallback(async (): Promise<void> => {
     if (!enabled) return
+    if (partitionRef.current !== partition) return
+    const requestGeneration = generation.current
     const request = ++listRequest.current
     setIsLoading(true)
     try {
@@ -135,20 +160,28 @@ export function useActivityInbox(enabled: boolean): UseActivityInboxResult {
       if (!Array.isArray(body)) throw new Error('The activity list response was invalid.')
       const next = body.map(asReport)
       if (next.some((item) => item === null)) throw new Error('The activity list response was invalid.')
-      if (request !== listRequest.current) return
+      if (requestGeneration !== generation.current || request !== listRequest.current) return
       const parsed = next as ActivityReport[]
       setReports(parsed)
-      setSelectedReportId((current) => parsed.some((report) => report.id === current) ? current : parsed[0]?.id ?? null)
+      setSelectedReportId((current) => {
+        const selected = parsed.some((report) => report.id === current) ? current : parsed[0]?.id ?? null
+        selectedReportIdRef.current = selected
+        return selected
+      })
       setError(null)
     } catch (caught) {
-      if (request === listRequest.current) setError(caught instanceof Error ? caught.message : 'Activity inbox is unavailable.')
+      if (requestGeneration === generation.current && request === listRequest.current) {
+        setError(caught instanceof Error ? caught.message : 'Activity inbox is unavailable.')
+      }
     } finally {
-      if (request === listRequest.current) setIsLoading(false)
+      if (requestGeneration === generation.current && request === listRequest.current) setIsLoading(false)
     }
-  }, [dispositionFilter, enabled, sourceFilter])
+  }, [dispositionFilter, enabled, partition, sourceFilter])
 
   const loadDetail = useCallback(async (reportId: string): Promise<void> => {
     if (!enabled) return
+    if (partitionRef.current !== partition) return
+    const requestGeneration = generation.current
     const request = ++detailRequest.current
     setIsDetailLoading(true)
     try {
@@ -159,24 +192,42 @@ export function useActivityInbox(enabled: boolean): UseActivityInboxResult {
       const report = asReport(reportBody)
       const reviews = asLinks(reviewsBody)
       if (!report || !reviews) throw new Error('The selected activity report was invalid.')
-      if (request !== detailRequest.current) return
+      if (
+        requestGeneration !== generation.current ||
+        request !== detailRequest.current ||
+        selectedReportIdRef.current !== reportId
+      ) return
       setDetail(report)
       setLinkedReviews(reviews)
       setError(null)
     } catch (caught) {
-      if (request === detailRequest.current) {
+      if (
+        requestGeneration === generation.current &&
+        request === detailRequest.current &&
+        selectedReportIdRef.current === reportId
+      ) {
         setDetail(null)
         setLinkedReviews([])
         setError(caught instanceof Error ? caught.message : 'The selected activity report is unavailable.')
       }
     } finally {
-      if (request === detailRequest.current) setIsDetailLoading(false)
+      if (
+        requestGeneration === generation.current &&
+        request === detailRequest.current &&
+        selectedReportIdRef.current === reportId
+      ) setIsDetailLoading(false)
     }
-  }, [enabled])
+  }, [enabled, partition])
 
-  useEffect(() => { void loadList() }, [loadList])
   useEffect(() => {
-    if (selectedReportId) void loadDetail(selectedReportId)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- The current enabled partition loads its bounded list after render.
+    void loadList()
+  }, [loadList])
+  useEffect(() => {
+    if (selectedReportId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- The selected report owns this detail request.
+      void loadDetail(selectedReportId)
+    }
     else {
       setDetail(null)
       setLinkedReviews([])
@@ -189,6 +240,7 @@ export function useActivityInbox(enabled: boolean): UseActivityInboxResult {
 
   const setDisposition = useCallback(async (disposition: ActivityDisposition): Promise<boolean> => {
     if (!detail) return false
+    const requestGeneration = generation.current
     setMutation('disposition')
     try {
       const body = await fetch(API_ENDPOINTS.activityReport(detail.id), {
@@ -196,21 +248,25 @@ export function useActivityInbox(enabled: boolean): UseActivityInboxResult {
       }).then(responseBody)
       const updated = asReport(body)
       if (!updated) throw new Error('The activity disposition response was invalid.')
+      if (requestGeneration !== generation.current) return false
       setDetail(updated)
       setReports((current) => current.map((report) => report.id === updated.id ? updated : report))
       setError(null)
       if (dispositionFilter !== 'all' && dispositionFilter !== disposition) await loadList()
       return true
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'The report disposition could not be updated.')
+      if (requestGeneration === generation.current) {
+        setError(caught instanceof Error ? caught.message : 'The report disposition could not be updated.')
+      }
       return false
     } finally {
-      setMutation(null)
+      if (requestGeneration === generation.current) setMutation(null)
     }
   }, [detail, dispositionFilter, loadList])
 
   const proposeContext = useCallback(async (input: ActivityContextProposalInput): Promise<ContextReview | null> => {
     if (!detail) return null
+    const requestGeneration = generation.current
     setMutation('proposal')
     try {
       const body = await fetch(API_ENDPOINTS.activityReportContextProposals(detail.id), {
@@ -219,13 +275,16 @@ export function useActivityInbox(enabled: boolean): UseActivityInboxResult {
       const review = asReview(body)
       if (!review) throw new Error('The context proposal response was invalid.')
       await loadDetail(detail.id)
+      if (requestGeneration !== generation.current) return null
       setError(null)
       return review
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'The context proposal could not be created.')
+      if (requestGeneration === generation.current) {
+        setError(caught instanceof Error ? caught.message : 'The context proposal could not be created.')
+      }
       return null
     } finally {
-      setMutation(null)
+      if (requestGeneration === generation.current) setMutation(null)
     }
   }, [detail, loadDetail])
 
@@ -237,10 +296,15 @@ export function useActivityInbox(enabled: boolean): UseActivityInboxResult {
       .sort((left, right) => left.label.localeCompare(right.label))
   }, [reports])
 
+  const selectReport = useCallback((reportId: string | null): void => {
+    selectedReportIdRef.current = reportId
+    setSelectedReportId(reportId)
+  }, [])
+
   return {
     reports, detail, linkedReviews, selectedReportId, sourceFilter,
     dispositionFilter, sources, isLoading, isDetailLoading, mutation, error,
-    setSourceFilter, setDispositionFilter, selectReport: setSelectedReportId, refresh,
+    setSourceFilter, setDispositionFilter, selectReport, refresh,
     setDisposition, proposeContext,
   }
 }

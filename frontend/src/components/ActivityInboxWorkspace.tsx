@@ -97,13 +97,15 @@ function ContextProposalForm({
 
   useEffect(() => {
     const selected = options.find((option) => option.reference === reference) ?? options[0]
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- A selected report initializes its proposal fields.
     setReference(selected?.reference ?? '/outcome')
     setText(selected?.text ?? '')
     setSubject('')
     setPredicate('')
     setObjectValue('')
     setEffectiveAt('')
-  }, [options, report.id]) // Change drafts only when the immutable report changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Change drafts only when the immutable report changes.
+  }, [options, report.id])
 
   const submit = async (): Promise<void> => {
     const input: ActivityContextProposalInput = {
@@ -212,7 +214,7 @@ export function ActivityInboxWorkspace({
             {(detail.report.subjects.length || detail.report.projects.length) ? <p className="text-xs leading-relaxed text-zinc-500">Untrusted reported labels: {[...detail.report.subjects, ...detail.report.projects].join(' · ')}</p> : null}
             {detail.report.unresolved_questions.length ? <section><h3 className="font-mono text-[10px] uppercase tracking-wide text-zinc-500">Unresolved questions</h3><ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-zinc-300">{detail.report.unresolved_questions.map((question) => <li key={question}>{question}</li>)}</ul></section> : null}
             {detail.report.suggested_follow_up ? <p className="text-sm text-zinc-300"><span className="font-mono text-[10px] uppercase tracking-wide text-zinc-500">Suggested follow-up</span><br />{detail.report.suggested_follow_up}</p> : null}
-            {detail.report.markdown_body ? <section className="rounded-lg border border-white/10 bg-zinc-950/30 p-3"><h3 className="font-mono text-[10px] uppercase tracking-wide text-zinc-500">Imported notes</h3><div className="prose prose-invert prose-sm mt-2 max-w-none break-words text-zinc-300"><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={{ a: ({ href, children }) => { const url = safeExternalUrl(href ?? null); return url ? <a href={url} target="_blank" rel="noreferrer">{children}</a> : <span>{children}</span> } }}>{detail.report.markdown_body}</ReactMarkdown></div></section> : null}
+            {detail.report.markdown_body ? <section className="rounded-lg border border-white/10 bg-zinc-950/30 p-3"><h3 className="font-mono text-[10px] uppercase tracking-wide text-zinc-500">Imported notes</h3><div className="prose prose-invert prose-sm mt-2 max-w-none break-words text-zinc-300"><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={{ a: ({ href, children }) => { const url = safeExternalUrl(href ?? null); return url ? <a href={url} target="_blank" rel="noreferrer">{children}</a> : <span>{children}</span> }, img: ({ alt }) => <span>{alt ? `Image omitted: ${alt}` : 'Image omitted.'}</span> }}>{detail.report.markdown_body}</ReactMarkdown></div></section> : null}
             <ContextProposalForm report={detail} disabled={demoModeActive} pending={inbox.mutation === 'proposal'} onPropose={async (input) => { const review = await inbox.proposeContext(input); if (review) await openReview(review) }} />
             <section className="rounded-lg border border-white/10 bg-white/[0.02] p-3"><h3 className="font-orbitron text-[11px] uppercase tracking-[0.16em] text-zinc-300">Linked reviews</h3>{!inbox.linkedReviews.length ? <p className="mt-2 text-sm text-zinc-500">No context reviews have been created from this report.</p> : <ul className="mt-2 space-y-2">{inbox.linkedReviews.map((link) => <li key={link.review.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/10 px-2.5 py-2"><span className="text-sm text-zinc-300">{link.finding_reference} · {link.review.operation} · <span className="text-zinc-500">{link.review.decision}</span></span><button type="button" disabled={demoModeActive} onClick={() => void openReview(link.review)} className="text-xs text-[#A5C7FF] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] disabled:opacity-45">Open in Cortex Review</button></li>)}</ul>}</section>
           </div> : null}

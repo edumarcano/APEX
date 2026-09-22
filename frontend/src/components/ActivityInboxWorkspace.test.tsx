@@ -7,7 +7,7 @@ import type { UseActivityInboxResult } from '../hooks/useActivityInbox'
 
 const report = {
   id: 'report-1', partition: 'production' as const, client_id: 'codex', client_display_name: 'Codex', principal: 'operator', received_at: '2026-09-21T12:00:00Z', disposition: 'new' as const,
-  report: { version: '1' as const, submission_key: 'key-1', title: 'External report', task_status: 'completed', outcome: 'Outside work completed.', findings: [{ title: 'Finding', text: 'Use the result.', derivation: 'unknown' as const }], evidence_links: ['javascript:alert(1)'], artifact_references: ['https://example.test/artifact'], unresolved_questions: [], suggested_follow_up: null, subjects: ['Project'], projects: [], occurred_at: null, native_task_url: 'javascript:alert(2)', markdown_body: '[unsafe](javascript:alert(3)) <script>bad()</script>' },
+  report: { version: '1' as const, submission_key: 'key-1', title: 'External report', task_status: 'completed', outcome: 'Outside work completed.', findings: [{ title: 'Finding', text: 'Use the result.', derivation: 'unknown' as const }], evidence_links: ['javascript:alert(1)'], artifact_references: ['https://example.test/artifact'], unresolved_questions: [], suggested_follow_up: null, subjects: ['Project'], projects: [], occurred_at: null, native_task_url: 'javascript:alert(2)', markdown_body: '[unsafe](javascript:alert(3)) ![remote diagram](https://example.test/diagram.png) <script>bad()</script>' },
 }
 
 function inboxFixture(): UseActivityInboxResult {
@@ -24,7 +24,9 @@ describe('ActivityInboxWorkspace', () => {
     render(<ActivityInboxWorkspace inbox={inbox} demoModeActive={false} sandboxMode={false} onOpenReview={vi.fn().mockResolvedValue(null)} />)
 
     expect(document.querySelector('script')).toBeNull()
+    expect(document.querySelector('img')).toBeNull()
     expect(screen.queryByRole('link', { name: 'unsafe' })).not.toBeInTheDocument()
+    expect(screen.getByText('Image omitted: remote diagram')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /https:\/\/example.test\/artifact/i })).toHaveAttribute('href', 'https://example.test/artifact')
 
     screen.getByRole('button', { name: 'reviewed' }).focus()

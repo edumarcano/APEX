@@ -186,6 +186,11 @@ export default function App(): ReactElement {
   const briefingModeSelectionTouchedRef = useRef(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
   const [workspace, setWorkspace] = useState<'home' | 'cortex' | 'inbox'>('home')
+  const [lastAssistantWorkspace, setLastAssistantWorkspace] = useState<'home' | 'cortex'>('home')
+  const navigateWorkspace = useCallback((nextWorkspace: 'home' | 'cortex' | 'inbox'): void => {
+    if (nextWorkspace !== 'inbox') setLastAssistantWorkspace(nextWorkspace)
+    setWorkspace(nextWorkspace)
+  }, [])
   const [linkedReviewId, setLinkedReviewId] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState('deepseek/deepseek-v4-flash-0731')
   const [sandboxMode, setSandboxMode] = useState(false)
@@ -254,7 +259,11 @@ export default function App(): ReactElement {
     dismissUnknownReminder,
     applyBootSettings,
   } = apexData
-  const activityInbox = useActivityInbox(workspace === 'inbox' && !demoModeActive)
+  const activityPartition = sandboxMode ? 'sandbox' : 'production'
+  const activityInbox = useActivityInbox(
+    workspace === 'inbox' && !demoModeActive,
+    activityPartition,
+  )
   const actions = useActions(
     workspace === 'cortex' && !demoModeActive,
   )
@@ -320,9 +329,11 @@ export default function App(): ReactElement {
     [homeSelectedEntry],
   )
 
-  const effectiveWorkspaceAgent = workspace === 'home' ? homeOverrides.agent : activeAgent
-  const effectiveWorkspaceModel = workspace === 'home' ? homeOverrides.modelId : selectedModel
-  const effectiveWorkspaceRuntime = (workspace === 'home' ? homeSelectedEntry : fullModelCatalog.find(
+  const assistantWorkspace = workspace === 'inbox' ? lastAssistantWorkspace : workspace
+  const usesHomeAssistantContract = assistantWorkspace === 'home'
+  const effectiveWorkspaceAgent = usesHomeAssistantContract ? homeOverrides.agent : activeAgent
+  const effectiveWorkspaceModel = usesHomeAssistantContract ? homeOverrides.modelId : selectedModel
+  const effectiveWorkspaceRuntime = (usesHomeAssistantContract ? homeSelectedEntry : fullModelCatalog.find(
     (entry) => entry.model_id === selectedModel,
   ))?.runtime ?? 'cloud'
   const toolCatalogState = useToolCatalog(
@@ -333,16 +344,17 @@ export default function App(): ReactElement {
   )
   const toolPreflightState = useToolPreflight({
     agent: effectiveWorkspaceAgent,
-    modelId: workspace === 'home' ? homeOverrides.modelId : selectedModel,
-    effort: workspace === 'home' ? homeOverrides.effort : (homeSelectedEntry?.runtime === 'cloud' ? cloudEffort : null),
-    contextWindow: workspace === 'home' ? homeOverrides.contextWindow : null,
-    localReasoningMode: workspace === 'home' ? homeOverrides.localReasoningMode : null,
+    modelId: usesHomeAssistantContract ? homeOverrides.modelId : selectedModel,
+    effort: usesHomeAssistantContract ? homeOverrides.effort : (homeSelectedEntry?.runtime === 'cloud' ? cloudEffort : null),
+    contextWindow: usesHomeAssistantContract ? homeOverrides.contextWindow : null,
+    localReasoningMode: usesHomeAssistantContract ? homeOverrides.localReasoningMode : null,
     selectedToolNames: toolCatalogState.selectedToolNames,
     toolProfileId: toolCatalogState.activeToolProfileId,
     prompt: draftPrompt,
     conversationId: assistantConversationId,
     snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
     enabled: Boolean(
+      workspace !== 'inbox' &&
       agentQueriesEnabled &&
       !toolCatalogState.isLoading &&
       toolCatalogState.selectionReady &&
@@ -1285,9 +1297,9 @@ export default function App(): ReactElement {
       return 'This linked review could not be reached. Refresh the Inbox and try again.'
     }
     setLinkedReviewId(review.id)
-    setWorkspace('cortex')
+    navigateWorkspace('cortex')
     return null
-  }, [sandboxMode])
+  }, [navigateWorkspace, sandboxMode])
 
   const handleLocalContextWindowChange = useCallback((
     contextWindow: number,
@@ -1329,10 +1341,10 @@ export default function App(): ReactElement {
       toolProfileId,
     }, { startNewThread: true }) ?? false
     if (accepted) {
-      setWorkspace('cortex')
+      navigateWorkspace('cortex')
     }
     return accepted
-  }, [fullModelCatalog, selectedModel])
+  }, [fullModelCatalog, navigateWorkspace, selectedModel])
 
   const handleAssistantConversationChange = useCallback((summary: {
     id: string
@@ -1402,9 +1414,9 @@ export default function App(): ReactElement {
             onOpenSettings={() => setIsSettingsOpen(true)}
             settingsButtonRef={settingsButtonRef}
             workspaceNavigation={<nav className="flex items-center justify-center gap-1" aria-label="Workspace">
-            <button type="button" onClick={() => setWorkspace('home')} aria-pressed={workspace === 'home'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'home' ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>Home</button>
-            <button type="button" onClick={() => setWorkspace('cortex')} aria-pressed={workspace === 'cortex'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'cortex' ? 'bg-[#7E22CE]/25 text-[#D8B4FE]' : 'text-zinc-500 hover:text-zinc-200'}`}>Cortex</button>
-            <button type="button" onClick={() => setWorkspace('inbox')} aria-pressed={workspace === 'inbox'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'inbox' ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>Inbox</button>
+            <button type="button" onClick={() => navigateWorkspace('home')} aria-pressed={workspace === 'home'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'home' ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>Home</button>
+            <button type="button" onClick={() => navigateWorkspace('cortex')} aria-pressed={workspace === 'cortex'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'cortex' ? 'bg-[#7E22CE]/25 text-[#D8B4FE]' : 'text-zinc-500 hover:text-zinc-200'}`}>Cortex</button>
+            <button type="button" onClick={() => navigateWorkspace('inbox')} aria-pressed={workspace === 'inbox'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'inbox' ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>Inbox</button>
           </nav>}
           />
         </header>
