@@ -45,6 +45,8 @@ The activity store has no retrieval synchronization, prompt assembly caller, bri
 
 An opt-in process on loopback can expose only activity submission through JSON HTTP and Streamable HTTP MCP. It opens the same activity store as local CLI and file import, resolves the generic local `operator` principal, and checks the registration for every request. The process has no main API routes, Cortex initialization, connectors, report reads, resources, prompts, actions, or proxy behavior. Its in-process rate limit is intentionally local to this one optional gateway. Cloudflare access verification is a later authentication-boundary addition; local gateway mode must not be tunneled.
 
+An opt-in process on loopback can expose only activity submission through JSON HTTP and Streamable HTTP MCP. It opens the same activity store as local CLI and file import, resolves the generic local `operator` principal, and checks the registration for every request. The process has no main API routes, Cortex initialization, connectors, report reads, resources, prompts, actions, or proxy behavior. Its in-process rate limit is intentionally local to this one optional gateway. Cloudflare access verification is a later authentication-boundary addition; local gateway mode must not be tunneled.
+
 ## Context review
 
 The knowledge store owns durable review proposals. A review freezes source
