@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import Iterator
 from uuid import UUID, uuid4
 
-from core.activity.models import ActivityReport, ActivityReportContent, ActivitySubmissionReceipt
+from core.activity.models import ActivityContextReviewLink, ActivityReport, ActivityReportContent, ActivitySubmissionReceipt
 from core.connectors.models import utc_now_iso
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 _PARTITIONS = {"production", "sandbox"}
 _DISPOSITIONS = {"new", "reviewed", "dismissed"}
 _MAX_REPORT_BYTES = 256 * 1024
@@ -100,6 +100,17 @@ class ActivityStore:
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_activity_reports_partition_received ON activity_reports(partition, received_at DESC)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_activity_reports_client_partition ON activity_reports(client_id, partition, received_at DESC)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_activity_reports_disposition ON activity_reports(partition, disposition, received_at DESC)")
+                if existing is None or int(existing[0]) < 2:
+                    conn.execute("""CREATE TABLE IF NOT EXISTS activity_context_review_links (
+                        report_id TEXT NOT NULL REFERENCES activity_reports(id),
+                        partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')),
+                        finding_reference TEXT NOT NULL,
+                        proposal_hash TEXT NOT NULL,
+                        review_id TEXT NOT NULL UNIQUE,
+                        action_id TEXT NOT NULL UNIQUE,
+                        created_at TEXT NOT NULL,
+                        PRIMARY KEY(report_id, finding_reference, proposal_hash)
+                    )""")
                 conn.execute("INSERT INTO schema_versions(domain, version) VALUES ('activity', ?) ON CONFLICT(domain) DO UPDATE SET version=excluded.version", (_SCHEMA_VERSION,))
                 conn.commit()
             except Exception:
@@ -180,3 +191,59 @@ class ActivityStore:
         if row is None:
             raise ActivityNotFoundError("activity_not_found")
         return self._report(row)
+
+    def reserve_context_review_link(
+        self, *, report_id: UUID, partition: str, finding_reference: str,
+        proposal_hash: str, review_id: UUID, action_id: str,
+    ) -> tuple[ActivityContextReviewLink, bool]:
+        """Reserve a stable review/action identity before a retried proposal is built."""
+        if partition not in _PARTITIONS or not finding_reference or not proposal_hash:
+            raise ActivityStoreError("context_review_link_invalid")
+        with self._connection() as conn, conn:
+            existing = conn.execute(
+                "SELECT report_id,partition,finding_reference,proposal_hash,review_id,action_id "
+                "FROM activity_context_review_links WHERE report_id=? AND finding_reference=? AND proposal_hash=?",
+                (str(report_id), finding_reference, proposal_hash),
+            ).fetchone()
+            if existing is None:
+                try:
+                    conn.execute(
+                        "INSERT INTO activity_context_review_links(report_id,partition,finding_reference,proposal_hash,review_id,action_id,created_at) VALUES (?,?,?,?,?,?,?)",
+                        (str(report_id), partition, finding_reference, proposal_hash, str(review_id), action_id, utc_now_iso()),
+                    )
+                except sqlite3.IntegrityError:
+                    existing = conn.execute(
+                        "SELECT report_id,partition,finding_reference,proposal_hash,review_id,action_id "
+                        "FROM activity_context_review_links WHERE report_id=? AND finding_reference=? AND proposal_hash=?",
+                        (str(report_id), finding_reference, proposal_hash),
+                    ).fetchone()
+                    if existing is None:
+                        raise
+                else:
+                    return ActivityContextReviewLink(
+                        report_id, partition, finding_reference, proposal_hash, review_id, action_id,
+                    ), True
+            assert existing is not None
+            link = ActivityContextReviewLink(
+                UUID(str(existing[0])), str(existing[1]), str(existing[2]), str(existing[3]),
+                UUID(str(existing[4])), str(existing[5]),
+            )
+            if link.partition != partition:
+                raise ActivityNotFoundError("activity_not_found")
+            return link, False
+
+    def context_review_link(
+        self, *, report_id: UUID, partition: str, finding_reference: str, proposal_hash: str,
+    ) -> ActivityContextReviewLink | None:
+        """Read a prior proposal link without taking a new review snapshot."""
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT report_id,partition,finding_reference,proposal_hash,review_id,action_id "
+                "FROM activity_context_review_links WHERE report_id=? AND finding_reference=? AND proposal_hash=? AND partition=?",
+                (str(report_id), finding_reference, proposal_hash, partition),
+            ).fetchone()
+        if row is None:
+            return None
+        return ActivityContextReviewLink(
+            UUID(str(row[0])), str(row[1]), str(row[2]), str(row[3]), UUID(str(row[4])), str(row[5]),
+        )

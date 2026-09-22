@@ -31,6 +31,7 @@ class ActivityFinding(BaseModel):
 
     title: _ShortText | None = None
     text: _LongText
+    derivation: Literal["model_interpretation", "unknown"] = "unknown"
 
     @field_validator("title")
     @classmethod
@@ -121,6 +122,10 @@ class ActivityReportContent(BaseModel):
         Reports without structured findings may instead point at their outcome
         or Markdown body. Callers never supply the evidence text separately.
         """
+        return self.resolve_finding_evidence(reference)[0]
+
+    def resolve_finding_evidence(self, reference: str) -> tuple[str, Literal["model_interpretation", "unknown"]]:
+        """Resolve original text and only the derivation declared by the report."""
         if self.findings:
             prefix = "/findings/"
             if not reference.startswith(prefix):
@@ -131,11 +136,12 @@ class ActivityReportContent(BaseModel):
             index = int(raw_index)
             if index >= len(self.findings):
                 raise ValueError("finding_reference_invalid")
-            return self.findings[index].text
+            finding = self.findings[index]
+            return finding.text, finding.derivation
         if reference == "/outcome":
-            return self.outcome
+            return self.outcome, "unknown"
         if reference == "/markdown_body" and self.markdown_body is not None:
-            return self.markdown_body
+            return self.markdown_body, "unknown"
         raise ValueError("finding_reference_invalid")
 
 
@@ -187,3 +193,15 @@ class ActivityReport:
 class ActivitySubmissionReceipt:
     report: ActivityReport
     duplicate: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ActivityContextReviewLink:
+    """A retry-safe connection from immutable activity evidence to one review."""
+
+    report_id: UUID
+    partition: ActivityPartition
+    finding_reference: str
+    proposal_hash: str
+    review_id: UUID
+    action_id: str

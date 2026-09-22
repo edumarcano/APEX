@@ -164,6 +164,15 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json_option(activity_show)
     activity_show.add_argument("report_id", help="UUID of the activity report.")
     activity_show.set_defaults(handler=_activity_show)
+    activity_propose = activity_commands.add_parser(
+        "propose-context", help="Create or retrieve a context review from one activity finding.",
+    )
+    _add_json_option(activity_propose)
+    activity_propose.add_argument("report_id", help="UUID of the activity report.")
+    activity_propose.add_argument("--finding-reference", required=True, help="Immutable finding location such as /findings/0.")
+    activity_propose.add_argument("--correct-record", help="Correct this existing context record instead of proposing a new claim.")
+    _add_context_capture_arguments(activity_propose, require_kind=True, include_review_options=False)
+    activity_propose.set_defaults(handler=_activity_propose_context)
 
     context = commands.add_parser("context", help="Inspect, save, or resolve personal context.")
     _add_json_option(context)
@@ -319,7 +328,9 @@ def _add_json_option(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _add_context_capture_arguments(parser: argparse.ArgumentParser, *, require_kind: bool) -> None:
+def _add_context_capture_arguments(
+    parser: argparse.ArgumentParser, *, require_kind: bool, include_review_options: bool = True,
+) -> None:
     parser.add_argument("text", help="Context text.")
     parser.add_argument(
         "--kind",
@@ -332,12 +343,13 @@ def _add_context_capture_arguments(parser: argparse.ArgumentParser, *, require_k
     parser.add_argument("--object-entity", dest="object_entity", help="Structured object entity name.")
     parser.add_argument("--object-value", dest="object_value", help="Structured scalar object value.")
     parser.add_argument("--effective-at", dest="effective_at", help="Effective date or timestamp in ISO-8601 format.")
-    parser.add_argument(
-        "--sensitive",
-        action="store_true",
-        help="Mark the context as sensitive and require review.",
-    )
-    parser.add_argument("--idempotency-key", dest="idempotency_key", help="Stable key for retry-safe submission.")
+    if include_review_options:
+        parser.add_argument(
+            "--sensitive",
+            action="store_true",
+            help="Mark the context as sensitive and require review.",
+        )
+        parser.add_argument("--idempotency-key", dest="idempotency_key", help="Stable key for retry-safe submission.")
 
 
 def _add_activity_metadata_arguments(parser: argparse.ArgumentParser, *, include_client: bool = True, include_markdown_file: bool = False) -> None:
@@ -501,6 +513,26 @@ def _activity_show(args: argparse.Namespace, client: ApiClient, json_mode: bool)
     payload = client.request("GET", _opaque_path(args.report_id, "Activity report ID", "/api/v1/activity/reports"))
     _require_mapping(payload, "activity report detail")
     _emit(payload, json_mode, _render_activity_detail)
+    return 0
+
+
+def _activity_propose_context(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    capture = _context_capture_payload(args)
+    capture.pop("sensitive", None)
+    capture.pop("idempotency_key", None)
+    capture["finding_reference"] = args.finding_reference
+    if args.correct_record is not None:
+        capture["correction_record_id"] = args.correct_record
+    payload = _require_mapping(
+        client.request(
+            "POST", _opaque_path(args.report_id, "Activity report ID", "/api/v1/activity/reports") + "/context-proposals",
+            payload=capture,
+        ),
+        "activity context proposal",
+    )
+    if payload.get("decision") not in _CONTEXT_REVIEW_DECISIONS or not isinstance(payload.get("id"), str):
+        raise CliError("invalid_response", "APEX did not return a valid context review.")
+    _emit(payload, json_mode, _render_context_review_detail)
     return 0
 
 
@@ -688,7 +720,7 @@ def _context_capture_payload(args: argparse.Namespace) -> dict[str, object]:
     payload: dict[str, object] = {
         "text": text,
         "kind": args.kind,
-        "sensitive": bool(args.sensitive),
+        "sensitive": bool(getattr(args, "sensitive", False)),
     }
     for name in ("subject", "predicate", "object_entity", "object_value", "effective_at", "idempotency_key"):
         value = getattr(args, name, None)

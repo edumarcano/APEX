@@ -45,8 +45,8 @@ class KnowledgeStoreTests(unittest.TestCase):
         try:
             with conn:
                 version = conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()
-                self.assertEqual(version[0], 9)
-                conn.execute("UPDATE schema_versions SET version = 10 WHERE domain = 'knowledge'")
+                self.assertEqual(version[0], 10)
+                conn.execute("UPDATE schema_versions SET version = 11 WHERE domain = 'knowledge'")
         finally:
             conn.close()
         with self.assertRaises(KnowledgeStoreError):
@@ -105,9 +105,52 @@ class KnowledgeStoreTests(unittest.TestCase):
         self.store.initialize()
         conn = sqlite3.connect(self.path)
         try:
-            self.assertEqual(conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()[0], 9)
+            self.assertEqual(conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()[0], 10)
         finally:
             conn.close()
+
+    def test_v9_source_migration_accepts_external_activity_evidence(self) -> None:
+        legacy_source = self._source("Preserve this linked source")
+        legacy_record = self.store.create_record(
+            partition="production", kind="note", text="Preserve this linked source.",
+            source_ids=[legacy_source.id],
+        )
+        self.store.close()
+        conn = sqlite3.connect(self.path)
+        try:
+            conn.execute("PRAGMA foreign_keys=OFF")
+            with conn:
+                conn.execute("PRAGMA legacy_alter_table=ON")
+                conn.execute("ALTER TABLE knowledge_sources RENAME TO knowledge_sources_current")
+                conn.execute(
+                    "CREATE TABLE knowledge_sources ("
+                    "id TEXT PRIMARY KEY NOT NULL, "
+                    "kind TEXT NOT NULL CHECK(kind IN ('conversation_message', 'manual')), "
+                    "partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')), "
+                    "locator TEXT NOT NULL, original_text TEXT NOT NULL, content_hash TEXT NOT NULL, "
+                    "created_at TEXT NOT NULL, origin TEXT NOT NULL DEFAULT 'unknown', occurred_at TEXT, "
+                    "UNIQUE(kind, partition, locator, content_hash))"
+                )
+                conn.execute(
+                    "INSERT INTO knowledge_sources SELECT * FROM knowledge_sources_current"
+                )
+                conn.execute("DROP TABLE knowledge_sources_current")
+                conn.execute("PRAGMA legacy_alter_table=OFF")
+                conn.execute("UPDATE schema_versions SET version=9 WHERE domain='knowledge'")
+            conn.execute("PRAGMA foreign_keys=ON")
+        finally:
+            conn.close()
+        self.store = KnowledgeStore(self.path)
+        self.store.initialize()
+        source = self.store.create_source(
+            kind="external_activity", partition="production", locator="activity/report/findings/0",
+            original_text="External result", origin="external_tool",
+        )
+        self.assertEqual((source.kind, source.origin), ("external_activity", "external_tool"))
+        self.assertEqual(
+            self.store.get_record(legacy_record.id, partition="production").sources[0].id,
+            legacy_source.id,
+        )
 
     def test_review_acceptance_is_durable_and_stale_snapshot_writes_nothing(self) -> None:
         review = self.store.create_review(
@@ -135,7 +178,7 @@ class KnowledgeStoreTests(unittest.TestCase):
         self.store.initialize()
         conn = sqlite3.connect(self.path)
         try:
-            self.assertEqual(conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()[0], 9)
+            self.assertEqual(conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()[0], 10)
         finally:
             conn.close()
 

@@ -28,11 +28,11 @@ from core.retrieval.store import sync_namespace_in_transaction
 
 _KINDS = {"idea", "preference", "decision", "goal", "fact", "constraint", "note", "observation"}
 _STATUSES = {"active", "conflicting", "superseded", "retracted"}
-_SOURCE_KINDS = {"conversation_message", "manual"}
+_SOURCE_KINDS = {"conversation_message", "manual", "external_activity"}
 _SOURCE_ORIGINS = {"operator_input", "connected_service", "external_tool", "unknown"}
 _DERIVATIONS = {"direct", "model_interpretation", "unknown"}
 _PARTITIONS = {"production", "sandbox"}
-_KNOWLEDGE_SCHEMA_VERSION = 9
+_KNOWLEDGE_SCHEMA_VERSION = 10
 _SOURCE_SELECT = "id,kind,partition,locator,original_text,content_hash,created_at,origin,occurred_at"
 _RECORD_SELECT = (
     "id,partition,kind,text,status,subject_entity_id,predicate,object_entity_id,object_value,"
@@ -74,6 +74,8 @@ def _required_text(value: str, field: str, *, limit: int = 10_000) -> str:
 def _source_origin_for_kind(kind: str) -> str:
     if kind in {"conversation_message", "manual"}:
         return "operator_input"
+    if kind == "external_activity":
+        return "external_tool"
     raise KnowledgeStoreError("source_invalid")
 
 
@@ -138,6 +140,7 @@ class KnowledgeStore:
 
     def initialize(self) -> None:
         with self._connection() as conn:
+            conn.execute("PRAGMA foreign_keys=OFF")
             try:
                 conn.execute("BEGIN")
                 conn.execute(
@@ -157,6 +160,8 @@ class KnowledgeStore:
                     self._migrate_to_v6(conn)
                 self._migrate_to_v8(conn)
                 self._migrate_to_v9(conn)
+                if version < 10:
+                    self._migrate_to_v10(conn)
                 if version <= _KNOWLEDGE_SCHEMA_VERSION:
                     conn.execute(
                         "INSERT INTO schema_versions(domain, version) VALUES ('knowledge', ?) "
@@ -167,13 +172,15 @@ class KnowledgeStore:
             except Exception:
                 conn.rollback()
                 raise
+            finally:
+                conn.execute("PRAGMA foreign_keys=ON")
 
     @staticmethod
     def _create_schema(conn: sqlite3.Connection) -> None:
         statements = (
             """CREATE TABLE IF NOT EXISTS knowledge_sources (
                 id TEXT PRIMARY KEY NOT NULL,
-                kind TEXT NOT NULL CHECK(kind IN ('conversation_message', 'manual')),
+                kind TEXT NOT NULL CHECK(kind IN ('conversation_message', 'manual', 'external_activity')),
                 partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')),
                 locator TEXT NOT NULL,
                 original_text TEXT NOT NULL CHECK(length(trim(original_text)) > 0),
@@ -369,6 +376,32 @@ class KnowledgeStore:
             "CREATE INDEX IF NOT EXISTS idx_knowledge_reviews_partition_pending "
             "ON knowledge_reviews(partition, decision, created_at DESC)"
         )
+
+    @staticmethod
+    def _migrate_to_v10(conn: sqlite3.Connection) -> None:
+        """Extend immutable source evidence without weakening the prior CHECK constraint."""
+        conn.execute("PRAGMA legacy_alter_table=ON")
+        try:
+            conn.execute("ALTER TABLE knowledge_sources RENAME TO knowledge_sources_v9")
+            conn.execute("""CREATE TABLE knowledge_sources (
+                id TEXT PRIMARY KEY NOT NULL,
+                kind TEXT NOT NULL CHECK(kind IN ('conversation_message', 'manual', 'external_activity')),
+                partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')),
+                locator TEXT NOT NULL,
+                original_text TEXT NOT NULL CHECK(length(trim(original_text)) > 0),
+                content_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                origin TEXT NOT NULL DEFAULT 'unknown' CHECK(origin IN ('operator_input', 'connected_service', 'external_tool', 'unknown')),
+                occurred_at TEXT,
+                UNIQUE(kind, partition, locator, content_hash)
+            )""")
+            conn.execute(
+                "INSERT INTO knowledge_sources(id,kind,partition,locator,original_text,content_hash,created_at,origin,occurred_at) "
+                "SELECT id,kind,partition,locator,original_text,content_hash,created_at,origin,occurred_at FROM knowledge_sources_v9"
+            )
+            conn.execute("DROP TABLE knowledge_sources_v9")
+        finally:
+            conn.execute("PRAGMA legacy_alter_table=OFF")
 
     @staticmethod
     def _migrate_to_v4(conn: sqlite3.Connection) -> None:
@@ -1088,12 +1121,13 @@ class KnowledgeStore:
         self, *, partition: str, operation: str, proposal: Mapping[str, object],
         evidence: Mapping[str, object], expected_revisions: Mapping[str, str],
         reason_codes: Sequence[str], action_id: str | None = None, idempotency_key: str | None = None,
+        review_id: UUID | None = None,
     ) -> KnowledgeReview:
         """Persist a proposal and its source snapshot before it can be approved."""
         if partition not in _PARTITIONS or not operation or not reason_codes:
             raise KnowledgeStoreError("review_invalid")
         self._validate_review_content(operation, proposal, evidence)
-        identifier, now = uuid4(), utc_now_iso()
+        identifier, now = review_id or uuid4(), utc_now_iso()
         payloads = (
             json.dumps(dict(proposal), sort_keys=True, separators=(",", ":")),
             json.dumps(dict(evidence), sort_keys=True, separators=(",", ":")),

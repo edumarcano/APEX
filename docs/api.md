@@ -70,6 +70,7 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | POST | `/api/v1/cortex/context/reviews/{review_id}/accept` | Execute and verify a review |
 | POST | `/api/v1/cortex/context/reviews/{review_id}/refresh` | Revalidate a stale review before another decision |
 | POST | `/api/v1/cortex/context/reviews/{review_id}/reject` | Reject a review |
+| POST | `/api/v1/activity/reports/{report_id}/context-proposals` | Create a pending review from immutable activity evidence |
 | GET | `/api/v1/cortex/context` | List local personal-context records in the current partition |
 | GET | `/api/v1/cortex/context/{record_id}` | Inspect one record, its sources, history, and related records |
 | GET | `/api/v1/cortex/context/entities` | Search unmerged local entities and exact aliases |
@@ -336,7 +337,7 @@ Archives one explicitly reviewed uncertain local row after the operator has insp
 
 ### POST `/api/v1/activity/reports`
 
-Receives one report from a registered local source. The request contains a configured `client_id` and a version-one `report` object. A report requires `submission_key`, `title`, `task_status`, and `outcome`; it may contain findings, evidence links, artifact references, unresolved questions, suggested follow-up, subject or project labels, occurrence time, a native task URL, and a Markdown body.
+Receives one report from a registered local source. The request contains a configured `client_id` and a version-one `report` object. A report requires `submission_key`, `title`, `task_status`, and `outcome`; it may contain findings, evidence links, artifact references, unresolved questions, suggested follow-up, subject or project labels, occurrence time, a native task URL, and a Markdown body. A structured finding may declare `derivation: "model_interpretation"`; omitted derivation remains `unknown`.
 
 APEX records the server-derived production or sandbox partition, the local operator principal, the configured source ID, and a display-name snapshot. The client must be explicitly enabled, permit `operator`, include `activity:submit`, and match that partition. Repeating identical content with the same client, partition, and submission key returns the original report with `duplicate: true`; changed content with the key returns `409`.
 
@@ -350,7 +351,15 @@ Lists up to 100 newest reports in the current partition. `client_id`, `dispositi
 
 Returns one report only when it belongs to the current partition, including immutable content and receipt metadata.
 
-External activity is untrusted inbox material. Receiving or reading a report never creates knowledge, changes retrieval, adds prompt context, affects attention or briefings, or starts a review.
+### POST `/api/v1/activity/reports/{report_id}/context-proposals`
+
+The local operator can select a stable finding reference and submit the normal context capture fields, with an optional `correction_record_id`. The server reads the finding from the immutable stored report; callers cannot replace its evidence text. New claims and corrections always return a pending existing context review, so acceptance, rejection, refresh, and verification use the normal context-review routes.
+
+Accepted claims retain an `external_activity` source with the report-and-finding locator, original selected text, `external_tool` origin, occurrence time when the report supplied one, and the report's declared derivation. Retried identical proposals return the linked review. A report is never indexed directly.
+
+External activity is untrusted inbox material. Receiving, reading, reviewing, dismissing, or reopening a report never creates knowledge, changes retrieval, adds prompt context, affects attention or briefings, or approves a review. Retraction remains an explicit context operation.
+
+The separately started activity gateway is not part of this API schema. It exposes a liveness probe, JSON submission, and a Streamable HTTP MCP endpoint; see [External activity gateway](configuration.md#external-activity-gateway) for its startup and boundary contract.
 
 The separately started activity gateway is not part of this API schema. It exposes a liveness probe, JSON submission, and a Streamable HTTP MCP endpoint; see [External activity gateway](configuration.md#external-activity-gateway) for its startup and boundary contract.
 
