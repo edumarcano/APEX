@@ -73,7 +73,7 @@ class GatewayOptions:
         if not 1 <= self.port <= 65535:
             raise GatewayConfigurationError("Gateway port must be between 1 and 65535.")
         if not _loopback_bind_host(self.host):
-            raise GatewayConfigurationError("Local gateway mode must bind to a loopback address.")
+            raise GatewayConfigurationError("Activity gateway must bind to a loopback address.")
 
     @property
     def local_hosts(self) -> tuple[str, ...]:

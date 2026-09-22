@@ -494,7 +494,7 @@ Outside tools should continue to use their own interfaces for task creation, pro
 
 Give each source a separate registration that can be disabled. For the local CLI, its client ID is source attribution, not software authentication. Bound and attribute submissions, then treat them as untrusted until reviewed or reconciled.
 
-The main APEX backend and database remain local. A private synced-folder mailbox may be considered later as another way to carry report files to the local importer; it is not part of version one.
+The main APEX backend and database remain local. A private synced-folder mailbox is an optional beta.4 follow-up only after a genuine Grok Bot report file reaches the existing private sync folder. If that transfer proof fails, defer the mailbox follow-up; do not add another importer path before the local file flow is proven.
 
 Removing an external tool should not require a code change. Its access can be revoked while its earlier submissions remain available as historical sources.
 
