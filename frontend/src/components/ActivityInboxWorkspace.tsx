@@ -184,7 +184,7 @@ export function ActivityInboxWorkspace({
   }
 
   return (
-    <section className="mx-auto flex w-full max-w-[1520px] flex-1 flex-col gap-4 px-4 pb-6 pt-2 sm:px-6" aria-label="External activity inbox">
+    <section className="mx-auto flex min-h-0 w-full max-w-[1520px] flex-1 flex-col gap-4 px-4 pb-6 pt-2 sm:px-6" aria-label="External activity inbox">
       <header className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-white/10 bg-black/30 px-4 py-3">
         <div className="flex items-start gap-3"><span className="inline-flex size-9 items-center justify-center rounded-lg border border-[#0F4DB8]/40 bg-[#082F7A]/20 text-[#A5C7FF]"><Inbox className="size-4" aria-hidden /></span><div><h1 className="font-orbitron text-sm uppercase tracking-[0.18em] text-zinc-100">Inbox</h1><p className="mt-1 max-w-2xl text-xs leading-relaxed text-zinc-400">Untrusted reports from configured external sources. Reading and organizing them never changes personal context.</p></div></div>
         <button type="button" onClick={() => void inbox.refresh()} disabled={demoModeActive || inbox.isLoading || inbox.isDetailLoading} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-white/10 px-3 text-xs text-zinc-300 hover:border-white/25 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] disabled:cursor-not-allowed disabled:opacity-45"><RefreshCw className={`size-3.5 ${inbox.isLoading || inbox.isDetailLoading ? 'animate-spin' : ''}`} aria-hidden />Refresh</button>
