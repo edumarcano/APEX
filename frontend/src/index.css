@@ -1039,36 +1039,6 @@
     background-color: rgba(255, 255, 255, 0.2);
   }
 
-  .scrollbar-inbox {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(251, 191, 36, 0.45) rgba(24, 24, 27, 0.35);
-    scrollbar-gutter: stable;
-  }
-
-  .scrollbar-inbox:hover {
-    scrollbar-color: rgba(251, 191, 36, 0.72) rgba(24, 24, 27, 0.45);
-  }
-
-  .scrollbar-inbox::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-
-  .scrollbar-inbox::-webkit-scrollbar-track {
-    background: rgba(24, 24, 27, 0.35);
-    border-radius: 9999px;
-  }
-
-  .scrollbar-inbox::-webkit-scrollbar-thumb {
-    background-color: rgba(251, 191, 36, 0.45);
-    border: 1px solid rgba(255, 243, 176, 0.2);
-    border-radius: 9999px;
-  }
-
-  .scrollbar-inbox:hover::-webkit-scrollbar-thumb {
-    background-color: rgba(251, 191, 36, 0.72);
-  }
-
   .scrollbar-none {
     scrollbar-width: none;
   }

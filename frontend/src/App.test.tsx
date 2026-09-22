@@ -550,6 +550,8 @@ describe('App catalog-affecting settings', () => {
     ])
 
     const inboxButton = screen.getByRole('button', { name: 'Inbox' })
+    expect(inboxButton).toHaveClass('text-zinc-500', 'hover:text-zinc-200')
+    expect(inboxButton).not.toHaveClass('hover:text-[#FBBF24]')
     await user.click(inboxButton)
     expect(inboxButton).toHaveClass('bg-[#FBBF24]/15', 'text-[#FFF3B0]')
   })
