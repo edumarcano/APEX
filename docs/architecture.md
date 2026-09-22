@@ -1,12 +1,12 @@
 # Architecture
 
-APEX is a local-first personal intelligence HUD. FastAPI serves the backend, React provides Home and Cortex, SQLite owns durable application state, and optional providers and connectors stay behind explicit capability and privacy boundaries.
+APEX is a local-first personal intelligence HUD. FastAPI serves the backend, React provides Home, Cortex, and Inbox, SQLite owns durable application state, and optional providers and connectors stay behind explicit capability and privacy boundaries.
 
 ## Core model
 
 - **Home** presents briefings, telemetry, reminders, and quick interaction.
 - **Cortex** is the control surface for conversations, model settings, tool selection, context, and approval-gated actions.
-- **External activity** is a separate local inbox for immutable, untrusted reports from configured sources.
+- **Inbox** is the dedicated list-and-detail workspace for immutable, untrusted reports from configured sources.
 - **Apex Agent** is the single native personal operations assistant. It understands APEX briefings, trusted context, connected services, and APEX tools.
 - **Cortex Engine** executes bounded model turns and tool loops. It is model-routed, not Agent-routed.
 
@@ -42,6 +42,8 @@ Knowledge history records later status changes, evidence links, corrections, con
 External activity reports use their own SQLite table, receipt identity, partition, source attribution, idempotency key, and reversible inbox disposition. Their structured JSON and Markdown body stay immutable after receipt. Stable future-review evidence locations point to `/findings/<index>`, or to `/outcome` and `/markdown_body` when no structured finding exists. Source registration is static local configuration rather than a client-management database.
 
 The activity store has no retrieval synchronization, prompt assembly caller, briefing caller, attention integration, or automatic trust-promotion path. An operator may select one immutable finding and create a linked pending context review. The server freezes the selected report text, locator, external source origin, and occurrence time as `external_activity` evidence; a finding can declare `model_interpretation`, otherwise its derivation is `unknown`. Only accepted context reviews write a normal knowledge record and retrieval entry. Disabling or removing a registration prevents future submissions but never removes retained history.
+
+Inbox reads a bounded report list and exact report detail, lets the operator set the separate `new`, `reviewed`, or `dismissed` disposition, and opens linked decisions in Cortex Review. It never changes partitions automatically. Report text, Markdown, and external references remain untrusted display data; the HUD renders text without raw HTML and enables only HTTP(S) links.
 
 An opt-in process on loopback can expose only activity submission through JSON HTTP and Streamable HTTP MCP. It opens the same activity store as local CLI and file import, resolves the generic local `operator` principal, and checks the registration for every request. The process has no main API routes, Cortex initialization, connectors, report reads, resources, prompts, actions, or proxy behavior. Its in-process rate limit is intentionally local to this one optional gateway. Cloudflare access verification is a later authentication-boundary addition; local gateway mode must not be tunneled.
 

@@ -36,6 +36,17 @@ export const API_ENDPOINTS = {
   cortexContextReviews: `${API_BASE}/api/v1/cortex/context/reviews`,
   cortexContextReview: (reviewId: string) => `${API_BASE}/api/v1/cortex/context/reviews/${encodeURIComponent(reviewId)}`,
   cortexContextReviewDecision: (reviewId: string, decision: 'accept' | 'reject' | 'refresh') => `${API_BASE}/api/v1/cortex/context/reviews/${encodeURIComponent(reviewId)}/${decision}`,
+  activityReports: (params?: { clientId?: string; disposition?: string; limit?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.clientId) query.set('client_id', params.clientId)
+    if (params?.disposition) query.set('disposition', params.disposition)
+    if (params?.limit) query.set('limit', String(params.limit))
+    const qs = query.toString()
+    return qs ? `${API_BASE}/api/v1/activity/reports?${qs}` : `${API_BASE}/api/v1/activity/reports`
+  },
+  activityReport: (reportId: string) => `${API_BASE}/api/v1/activity/reports/${encodeURIComponent(reportId)}`,
+  activityReportContextReviews: (reportId: string) => `${API_BASE}/api/v1/activity/reports/${encodeURIComponent(reportId)}/context-reviews`,
+  activityReportContextProposals: (reportId: string) => `${API_BASE}/api/v1/activity/reports/${encodeURIComponent(reportId)}/context-proposals`,
   cortexContextActions: `${API_BASE}/api/v1/cortex/context/actions`,
   cortexRetrievalStatus: `${API_BASE}/api/v1/cortex/retrieval/status`,
   cortexRetrievalPrepare: `${API_BASE}/api/v1/cortex/retrieval/prepare`,

@@ -19,6 +19,7 @@ import {
 import { ApexLogo, type ApexLogoProps } from './components/ApexLogo'
 import { CelestialBackground } from './components/CelestialBackground'
 import { CortexWorkspace } from './components/CortexWorkspace'
+import { ActivityInboxWorkspace } from './components/ActivityInboxWorkspace'
 import { ApexAssistantRuntime, type ApexAssistantRunConfig, type ApexAssistantRuntimeHandle } from './components/ApexAssistantRuntime'
 import { BriefingDigest } from './components/BriefingDigest'
 import { CalendarEventList } from './components/CalendarEventList'
@@ -39,6 +40,7 @@ import { VoiceSignalGlyph } from './components/VoiceSignalGlyph'
 import { useApexData } from './hooks/useApexData'
 import { useCortex } from './hooks/useCortex'
 import { useActions } from './hooks/useActions'
+import { useActivityInbox } from './hooks/useActivityInbox'
 import { useAppActivation } from './hooks/useAppActivation'
 import { useBriefingPipeline } from './hooks/useBriefingPipeline'
 import { useMarketData } from './hooks/useMarketData'
@@ -71,6 +73,7 @@ import type {
   HostedTool,
   LocalReasoningMode,
 } from './types/telemetry'
+import type { ContextReview } from './types/context'
 import type {
   BriefingMode,
   CloudHostedToolsSettings,
@@ -182,7 +185,8 @@ export default function App(): ReactElement {
   const [briefingMode, setBriefingMode] = useState<BriefingMode>('flash')
   const briefingModeSelectionTouchedRef = useRef(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
-  const [workspace, setWorkspace] = useState<'home' | 'cortex'>('home')
+  const [workspace, setWorkspace] = useState<'home' | 'cortex' | 'inbox'>('home')
+  const [linkedReviewId, setLinkedReviewId] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState('deepseek/deepseek-v4-flash-0731')
   const [sandboxMode, setSandboxMode] = useState(false)
   const [hostedTools, setHostedTools] = useState<CloudHostedToolsSettings>({
@@ -250,6 +254,7 @@ export default function App(): ReactElement {
     dismissUnknownReminder,
     applyBootSettings,
   } = apexData
+  const activityInbox = useActivityInbox(workspace === 'inbox' && !demoModeActive)
   const actions = useActions(
     workspace === 'cortex' && !demoModeActive,
   )
@@ -1268,6 +1273,22 @@ export default function App(): ReactElement {
     void persistAgentSettings({ sandbox_mode: enabled }, { refreshToolCatalog: true })
   }, [persistAgentSettings])
 
+  const handleOpenActivityReview = useCallback(async (review: ContextReview): Promise<string | null> => {
+    const currentPartition = sandboxMode ? 'sandbox' : 'production'
+    if (review.partition !== currentPartition) {
+      return `This linked review belongs to ${review.partition}. Switch partitions yourself before opening it.`
+    }
+    try {
+      const response = await fetch(API_ENDPOINTS.cortexContextReview(review.id))
+      if (!response.ok) return 'This linked review is no longer available in the current partition.'
+    } catch {
+      return 'This linked review could not be reached. Refresh the Inbox and try again.'
+    }
+    setLinkedReviewId(review.id)
+    setWorkspace('cortex')
+    return null
+  }, [sandboxMode])
+
   const handleLocalContextWindowChange = useCallback((
     contextWindow: number,
   ): Promise<boolean> => {
@@ -1383,6 +1404,7 @@ export default function App(): ReactElement {
             workspaceNavigation={<nav className="flex items-center justify-center gap-1" aria-label="Workspace">
             <button type="button" onClick={() => setWorkspace('home')} aria-pressed={workspace === 'home'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'home' ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>Home</button>
             <button type="button" onClick={() => setWorkspace('cortex')} aria-pressed={workspace === 'cortex'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'cortex' ? 'bg-[#7E22CE]/25 text-[#D8B4FE]' : 'text-zinc-500 hover:text-zinc-200'}`}>Cortex</button>
+            <button type="button" onClick={() => setWorkspace('inbox')} aria-pressed={workspace === 'inbox'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'inbox' ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>Inbox</button>
           </nav>}
           />
         </header>
@@ -1841,7 +1863,7 @@ export default function App(): ReactElement {
         </div>
 
           </>
-        ) : (
+        ) : workspace === 'cortex' ? (
           <CortexWorkspace
             activeAgent={activeAgent}
             cloudEffort={cloudEffort}
@@ -1908,6 +1930,14 @@ export default function App(): ReactElement {
               snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
             }}
             onAssistantPreflight={runAssistantPreflight}
+            linkedReviewId={linkedReviewId}
+          />
+        ) : (
+          <ActivityInboxWorkspace
+            inbox={activityInbox}
+            demoModeActive={demoModeActive}
+            sandboxMode={sandboxMode}
+            onOpenReview={handleOpenActivityReview}
           />
       )}
         </ApexAssistantRuntime>

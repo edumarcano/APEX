@@ -192,6 +192,53 @@ class ActivityStore:
             raise ActivityNotFoundError("activity_not_found")
         return self._report(row)
 
+    def set_disposition(
+        self, report_id: UUID, *, partition: str, disposition: str,
+    ) -> ActivityReport:
+        """Change only the operator's reversible inbox state for one receipt."""
+        if partition not in _PARTITIONS:
+            raise ActivityStoreError("partition_invalid")
+        if disposition not in _DISPOSITIONS:
+            raise ActivityStoreError("disposition_invalid")
+        with self._connection() as conn, conn:
+            result = conn.execute(
+                "UPDATE activity_reports SET disposition=? WHERE id=? AND partition=?",
+                (disposition, str(report_id), partition),
+            )
+            if result.rowcount != 1:
+                raise ActivityNotFoundError("activity_not_found")
+            row = conn.execute(
+                "SELECT id,partition,client_id,client_display_name,principal,submission_key,received_at,disposition,content_json,content_hash FROM activity_reports WHERE id=? AND partition=?",
+                (str(report_id), partition),
+            ).fetchone()
+        assert row is not None
+        return self._report(row)
+
+    def context_review_links(
+        self, report_id: UUID, *, partition: str,
+    ) -> list[ActivityContextReviewLink]:
+        """Return durable review associations for one report in its partition."""
+        with self._connection() as conn:
+            report = conn.execute(
+                "SELECT 1 FROM activity_reports WHERE id=? AND partition=?",
+                (str(report_id), partition),
+            ).fetchone()
+            if report is None:
+                raise ActivityNotFoundError("activity_not_found")
+            rows = conn.execute(
+                "SELECT report_id,partition,finding_reference,proposal_hash,review_id,action_id "
+                "FROM activity_context_review_links WHERE report_id=? AND partition=? "
+                "ORDER BY created_at DESC",
+                (str(report_id), partition),
+            ).fetchall()
+        return [
+            ActivityContextReviewLink(
+                UUID(str(row[0])), str(row[1]), str(row[2]), str(row[3]),
+                UUID(str(row[4])), str(row[5]),
+            )
+            for row in rows
+        ]
+
     def reserve_context_review_link(
         self, *, report_id: UUID, partition: str, finding_reference: str,
         proposal_hash: str, review_id: UUID, action_id: str,

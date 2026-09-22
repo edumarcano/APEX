@@ -591,10 +591,12 @@ export function CortexContext({
   inspector,
   demoModeActive,
   onOpenActions,
+  openReviewId = null,
 }: {
   inspector: Inspector;
   demoModeActive: boolean;
   onOpenActions: (actionId: string) => void;
+  openReviewId?: string | null;
 }): ReactElement {
   const [view, setView] = useState<View>("records");
   const [showCapture, setShowCapture] = useState(false);
@@ -611,6 +613,11 @@ export function CortexContext({
     setView("review");
     void inspector.selectReview(reviewId);
   };
+  useEffect(() => {
+    if (openReviewId) openReview(openReviewId);
+  // selectReview is the stable hook action; this effect deliberately responds only to navigation targets.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openReviewId, inspector.selectReview]);
   const onTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>): void => {
     const index = view === "records" ? 0 : 1;
     const next =

@@ -146,6 +146,19 @@ class ActivityStoreTests(unittest.TestCase):
             recreated = ActivityService(self.store, registrations)
             self.assertEqual([report.id for report in recreated.list(partition="production")], [receipt.report.id])
 
+    def test_disposition_is_reversible_without_mutating_the_report(self) -> None:
+        report = self.service.submit(
+            client_id="codex", principal="operator", partition="production", content=_report(),
+        ).report
+        dismissed = self.service.set_disposition(
+            report.id, partition="production", disposition="dismissed",
+        )
+        reopened = self.service.set_disposition(
+            report.id, partition="production", disposition="new",
+        )
+        self.assertEqual((dismissed.disposition, reopened.disposition), ("dismissed", "new"))
+        self.assertEqual(reopened.content.model_dump(), report.content.model_dump())
+
     def test_oversized_serialized_report_is_rejected_before_storage(self) -> None:
         large = ActivityReportContent(
             submission_key="large", title="Large", task_status="completed", outcome="Done",
@@ -526,11 +539,35 @@ class ActivityApiTests(unittest.TestCase):
                     f"/api/v1/activity/reports/{report.id}/context-proposals",
                     json={"finding_reference": "/findings/0", "kind": "note", "text": "Keep this result."},
                 )
+                links = self.client.get(
+                    f"/api/v1/activity/reports/{report.id}/context-reviews",
+                )
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["decision"], "pending")
             self.assertEqual(response.json()["evidence"]["original_text"], "All focused checks passed.")
+            self.assertEqual(links.status_code, 200)
+            self.assertEqual(links.json()[0]["finding_reference"], "/findings/0")
+            self.assertEqual(links.json()[0]["review"]["id"], response.json()["id"])
             activity_store.close()
             knowledge_store.close()
+
+    def test_operator_can_change_a_report_disposition_without_changing_knowledge(self) -> None:
+        report = self.service.submit(
+            client_id="codex", principal="operator", partition="production", content=_report(),
+        ).report
+        conversation = SimpleNamespace(partition=lambda: "production")
+        with mock.patch.object(activity_router, "get_activity_service", return_value=self.service), mock.patch.object(
+            activity_router, "get_conversation_service", return_value=conversation,
+        ):
+            response = self.client.patch(
+                f"/api/v1/activity/reports/{report.id}", json={"disposition": "dismissed"},
+            )
+            reopened = self.client.patch(
+                f"/api/v1/activity/reports/{report.id}", json={"disposition": "new"},
+            )
+        self.assertEqual((response.status_code, reopened.status_code), (200, 200))
+        self.assertEqual((response.json()["disposition"], reopened.json()["disposition"]), ("dismissed", "new"))
+        self.assertEqual(reopened.json()["report"], report.content.model_dump(mode="json"))
 
     def test_secret_activity_evidence_returns_invalid_proposal_without_linking(self) -> None:
         report = self.service.submit(

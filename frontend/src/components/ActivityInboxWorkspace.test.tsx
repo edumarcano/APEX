@@ -1,0 +1,34 @@
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
+
+import { ActivityInboxWorkspace } from './ActivityInboxWorkspace'
+import type { UseActivityInboxResult } from '../hooks/useActivityInbox'
+
+const report = {
+  id: 'report-1', partition: 'production' as const, client_id: 'codex', client_display_name: 'Codex', principal: 'operator', received_at: '2026-09-21T12:00:00Z', disposition: 'new' as const,
+  report: { version: '1' as const, submission_key: 'key-1', title: 'External report', task_status: 'completed', outcome: 'Outside work completed.', findings: [{ title: 'Finding', text: 'Use the result.', derivation: 'unknown' as const }], evidence_links: ['javascript:alert(1)'], artifact_references: ['https://example.test/artifact'], unresolved_questions: [], suggested_follow_up: null, subjects: ['Project'], projects: [], occurred_at: null, native_task_url: 'javascript:alert(2)', markdown_body: '[unsafe](javascript:alert(3)) <script>bad()</script>' },
+}
+
+function inboxFixture(): UseActivityInboxResult {
+  return {
+    reports: [report], detail: report, linkedReviews: [], selectedReportId: report.id, sourceFilter: 'all', dispositionFilter: 'all', sources: [{ id: 'codex', label: 'Codex' }], isLoading: false, isDetailLoading: false, mutation: null, error: null,
+    setSourceFilter: vi.fn(), setDispositionFilter: vi.fn(), selectReport: vi.fn(), refresh: vi.fn().mockResolvedValue(undefined), setDisposition: vi.fn().mockResolvedValue(true), proposeContext: vi.fn().mockResolvedValue(null),
+  }
+}
+
+describe('ActivityInboxWorkspace', () => {
+  it('keeps unsafe external locations inert and supports keyboard disposition controls', async () => {
+    const user = userEvent.setup()
+    const inbox = inboxFixture()
+    render(<ActivityInboxWorkspace inbox={inbox} demoModeActive={false} sandboxMode={false} onOpenReview={vi.fn().mockResolvedValue(null)} />)
+
+    expect(document.querySelector('script')).toBeNull()
+    expect(screen.queryByRole('link', { name: 'unsafe' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /https:\/\/example.test\/artifact/i })).toHaveAttribute('href', 'https://example.test/artifact')
+
+    screen.getByRole('button', { name: 'reviewed' }).focus()
+    await user.keyboard('{Enter}')
+    expect(inbox.setDisposition).toHaveBeenCalledWith('reviewed')
+  })
+})

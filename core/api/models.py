@@ -43,6 +43,17 @@ class ActivitySubmissionResponse(ActivityReportResponse):
     duplicate: bool
 
 
+class ActivityDispositionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    disposition: Literal["new", "reviewed", "dismissed"]
+
+
+class ActivityContextReviewLinkResponse(BaseModel):
+    finding_reference: str
+    review: "ContextReviewResponse"
+
+
 class RuntimeMetadata(BaseModel):
     run_id: str | None = Field(
         default=None,
