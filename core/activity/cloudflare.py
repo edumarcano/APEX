@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 _JWKS_TIMEOUT_SECONDS = 5
+_JWKS_FAILURE_COOLDOWN_SECONDS = 30.0
 
 
 class CloudflareAccessVerificationError(RuntimeError):
@@ -130,6 +131,7 @@ class CloudflareAccessVerifier:
         self._keys: dict[str, jwt.PyJWK] = {}
         self._loaded_at: float | None = None
         self._unknown_key_refreshed_at: float | None = None
+        self._refresh_failed_at: float | None = None
         self._lock = threading.Lock()
 
     def verify(self, assertion: str) -> Mapping[str, object]:
@@ -165,21 +167,36 @@ class CloudflareAccessVerifier:
                 or self._now() - self._loaded_at >= self.configuration.key_cache_seconds
             )
             if refreshed_for_expiry:
+                self._require_refresh_after_cooldown()
                 self._refresh_keys()
             key = self._keys.get(key_id)
             if key is None and refreshed_for_expiry:
                 # The normal cache refresh already checked the current JWKS.
                 self._unknown_key_refreshed_at = self._loaded_at
-            elif key is None and self._unknown_key_refreshed_at != self._loaded_at:
+            elif key is None and (
+                self._unknown_key_refreshed_at != self._loaded_at
+                or (
+                    self._refresh_failed_at is not None
+                    and self._now() - self._refresh_failed_at >= _JWKS_FAILURE_COOLDOWN_SECONDS
+                )
+            ):
                 # Consume this interval's forced-refresh allowance even when
                 # the JWKS endpoint is unavailable, then fail closed.
                 self._unknown_key_refreshed_at = self._loaded_at
+                self._require_refresh_after_cooldown()
                 self._refresh_keys()
                 self._unknown_key_refreshed_at = self._loaded_at
                 key = self._keys.get(key_id)
             if key is None:
                 raise CloudflareAccessVerificationError("Cloudflare Access signing key is unavailable.")
             return key
+
+    def _require_refresh_after_cooldown(self) -> None:
+        if (
+            self._refresh_failed_at is not None
+            and self._now() - self._refresh_failed_at < _JWKS_FAILURE_COOLDOWN_SECONDS
+        ):
+            raise CloudflareAccessVerificationError("Cloudflare Access signing keys are temporarily unavailable.")
 
     def _refresh_keys(self) -> None:
         try:
@@ -200,6 +217,8 @@ class CloudflareAccessVerifier:
             if not keys:
                 raise ValueError("JWKS does not contain usable RSA keys")
         except (requests.RequestException, ValueError, TypeError, jwt.PyJWTError) as exc:
+            self._refresh_failed_at = self._now()
             raise CloudflareAccessVerificationError("Cloudflare Access signing keys are unavailable.") from exc
         self._keys = keys
         self._loaded_at = self._now()
+        self._refresh_failed_at = None

@@ -146,19 +146,27 @@ class CloudflareVerifierTests(unittest.TestCase):
                 return {"keys": [self_jwk]}
 
         self_jwk = self.jwk
-        responses = [Response(), requests.ConnectionError("offline")]
+        calls = 0
 
         def get(*_args, **_kwargs):
-            response = responses.pop(0)
-            if isinstance(response, Exception):
-                raise response
-            return response
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return Response()
+            raise requests.ConnectionError("offline")
 
         verifier = CloudflareAccessVerifier(self.configuration, now=lambda: clock[0], get=get)
         verifier.verify(self._assertion())
         clock[0] = 61.0
         with self.assertRaises(CloudflareAccessVerificationError):
             verifier.verify(self._assertion())
+        with self.assertRaises(CloudflareAccessVerificationError):
+            verifier.verify(self._assertion())
+        self.assertEqual(calls, 2)
+        clock[0] = 92.0
+        with self.assertRaises(CloudflareAccessVerificationError):
+            verifier.verify(self._assertion())
+        self.assertEqual(calls, 3)
 
     def test_unknown_signing_key_refreshes_only_once_per_cache_interval(self) -> None:
         calls = 0

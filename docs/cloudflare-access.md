@@ -42,7 +42,7 @@ The Spark step is deliberately not replaced by a generic HTTP request. If it can
 
 ## Troubleshooting and revocation
 
-An assertion verification failure returns `401`. Check that Cloudflare forwards `Cf-Access-Jwt-Assertion`, the issuer and application audience match the configured values, the signed `sub` is allowed, and the APEX host can refresh the configured JWKS endpoint. APEX caches usable signing keys for five minutes by default (`key_cache_seconds` can set a 60-second to one-hour interval), then fails closed if refresh fails.
+An assertion verification failure returns `401`. Check that Cloudflare forwards `Cf-Access-Jwt-Assertion`, the issuer and application audience match the configured values, the signed `sub` is allowed, and the APEX host can refresh the configured JWKS endpoint. APEX caches usable signing keys for five minutes by default (`key_cache_seconds` can set a 60-second to one-hour interval), then fails closed if refresh fails. A failed refresh starts a 30-second local cooldown, so repeated requests fail immediately until the next retry window.
 
 A `403` means the verified Access application does not match the requested client ID, or its registration is disabled, removed, assigned to another partition, or does not allow its generic `client:<client-id>` principal. Disable a single registration to revoke submissions from that integration without deleting retained reports or blocking another binding.
 
