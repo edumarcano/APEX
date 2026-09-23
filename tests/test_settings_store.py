@@ -83,7 +83,6 @@ class SettingsStoreTests(unittest.TestCase):
             "activity_mailbox": {
                 "enabled": True,
                 "folder_path": str(folder),
-                "client_id": "codex",
             },
         }))
 
@@ -94,7 +93,6 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertEqual(local["activity_mailbox"], {
             "enabled": True,
             "folder_path": str(folder),
-            "client_id": "codex",
         })
         self.assertNotIn("activity_mailbox", tracked)
 
@@ -108,6 +106,30 @@ class SettingsStoreTests(unittest.TestCase):
         settings = self._store().get_snapshot().activity_mailbox
         self.assertFalse(settings.enabled)
         self.assertEqual(settings.folder_path, "")
+
+    def test_legacy_mailbox_client_id_is_ignored_until_a_settings_save(self) -> None:
+        folder = self._temp_root() / "legacy mailbox"
+        original = {
+            "activity_mailbox": {
+                "enabled": True,
+                "folder_path": str(folder),
+                "client_id": "grok-bot",
+            },
+            "microsoft_todo": {"reminder_list_id": "personal"},
+        }
+        _write_json(self.local_path, original)
+
+        store = self._store()
+        snapshot = store.get_snapshot()
+        self.assertTrue(snapshot.activity_mailbox.enabled)
+        self.assertEqual(snapshot.activity_mailbox.folder_path, str(folder))
+        self.assertIsNone(store.load_warning)
+        self.assertEqual(json.loads(self.local_path.read_text(encoding="utf-8")), original)
+
+        store.apply_patch(SettingsPatch(user_designation="Operator"))
+        saved = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["activity_mailbox"], {"enabled": True, "folder_path": str(folder)})
+        self.assertEqual(saved["microsoft_todo"], {"reminder_list_id": "personal"})
 
     def _temp_root(self) -> Path:
         return self.config_path.parent

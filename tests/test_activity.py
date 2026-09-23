@@ -14,13 +14,12 @@ from unittest import mock
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from core.activity import (
-    ActivityClientDisabledError,
-    ActivityClientRegistration,
     ActivityConflictError,
-    ActivityPermissionError,
     ActivityReportContent,
+    ActivitySubmissionRequest,
     ActivityService,
     ActivityStore,
     ActivityStoreError,
@@ -38,21 +37,7 @@ from core.knowledge.reconciliation import (
 from core.retrieval.store import RetrievalStore
 from core.api.app import app
 from core.api.routers import activity as activity_router
-from core import config as core_config
-from core.settings.store import RuntimeSettingsStore
 from src.apex import cli
-
-def _registration(
-    *,
-    enabled: bool = True,
-    permissions: tuple[str, ...] = ("activity:submit",),
-    partition: str = "production",
-) -> ActivityClientRegistration:
-    return ActivityClientRegistration(
-        id="codex", display_name="Codex", enabled=enabled,
-        allowed_principals=["operator"], permissions=permissions, partition=partition,
-    )
-
 
 def _report(*, key: str = "report-1", outcome: str = "Done") -> ActivityReportContent:
     return ActivityReportContent(
@@ -65,7 +50,7 @@ class ActivityStoreTests(unittest.TestCase):
     def setUp(self) -> None:
         self.store = ActivityStore(None)
         self.store.initialize()
-        self.service = ActivityService(self.store, (_registration(),))
+        self.service = ActivityService(self.store)
 
     def tearDown(self) -> None:
         self.store.close()
@@ -98,8 +83,8 @@ class ActivityStoreTests(unittest.TestCase):
             second = ActivityStore(path)
             first.initialize()
             second.initialize()
-            first_service = ActivityService(first, (_registration(),))
-            second_service = ActivityService(second, (_registration(),))
+            first_service = ActivityService(first)
+            second_service = ActivityService(second)
 
             with ThreadPoolExecutor(max_workers=2) as executor:
                 receipts = list(executor.map(
@@ -116,7 +101,7 @@ class ActivityStoreTests(unittest.TestCase):
             path = Path(directory) / "activity.db"
             first_store = ActivityStore(path)
             first_store.initialize()
-            first_service = ActivityService(first_store, (_registration(),))
+            first_service = ActivityService(first_store)
             receipt = first_service.submit(client_id="codex", principal="operator", partition="production", content=_report())
             first_store.close()
 
@@ -124,28 +109,41 @@ class ActivityStoreTests(unittest.TestCase):
             reopened_store.initialize()
             report = reopened_store.get(receipt.report.id, partition="production")
             self.assertEqual(report.content.outcome, "Done")
-            self.assertEqual(report.client_display_name, "Codex")
+            self.assertEqual(report.client_display_name, "codex")
             self.assertEqual(report.disposition, "new")
             reopened_store.close()
 
-    def test_registration_and_partition_checks_write_nothing(self) -> None:
-        disabled = ActivityService(self.store, (_registration(enabled=False),))
-        with self.assertRaises(ActivityClientDisabledError):
-            disabled.submit(client_id="codex", principal="operator", partition="production", content=_report())
-        with self.assertRaises(ActivityPermissionError):
-            self.service.submit(client_id="codex", principal="operator", partition="sandbox", content=_report())
-        no_submit_permission = ActivityService(self.store, (_registration(permissions=()),))
-        with self.assertRaises(ActivityPermissionError):
-            no_submit_permission.submit(client_id="codex", principal="operator", partition="production", content=_report())
-        self.assertEqual(self.service.list(partition="production"), [])
-
-    def test_retained_reports_remain_listable_when_registration_changes(self) -> None:
+    def test_source_id_uses_the_shared_lowercase_identifier_contract(self) -> None:
         receipt = self.service.submit(
-            client_id="codex", principal="operator", partition="production", content=_report(),
+            client_id="grok-bot_2", principal="operator", partition="production", content=_report(),
         )
-        for registrations in ((), (_registration(enabled=False),)):
-            recreated = ActivityService(self.store, registrations)
-            self.assertEqual([report.id for report in recreated.list(partition="production")], [receipt.report.id])
+        self.assertEqual(receipt.report.client_display_name, "grok-bot_2")
+        with self.assertRaises(ActivityStoreError):
+            self.service.submit(
+                client_id="Grok Bot", principal="operator", partition="production", content=_report(key="bad-id"),
+            )
+        with self.assertRaises(ValidationError):
+            ActivitySubmissionRequest.model_validate({
+                "client_id": "Grok Bot", "report": _report(key="bad-envelope").model_dump(mode="json"),
+            })
+
+    def test_source_id_is_part_of_the_idempotency_scope(self) -> None:
+        codex = self.service.submit(
+            client_id="codex", principal="operator", partition="production", content=_report(key="same-key"),
+        )
+        grok = self.service.submit(
+            client_id="grok-bot", principal="operator", partition="production", content=_report(key="same-key"),
+        )
+        self.assertNotEqual(codex.report.id, grok.report.id)
+        self.assertEqual({item.client_id for item in self.service.list(partition="production")}, {"codex", "grok-bot"})
+
+    def test_existing_display_name_snapshots_are_preserved(self) -> None:
+        self.store.submit(
+            partition="production", client_id="codex", client_display_name="Codex",
+            principal="operator", content=_report(key="legacy"),
+        )
+        listed = self.service.list(partition="production")
+        self.assertEqual(listed[0].client_display_name, "Codex")
 
     def test_disposition_is_reversible_without_mutating_the_report(self) -> None:
         report = self.service.submit(
@@ -199,52 +197,6 @@ class ActivityStoreTests(unittest.TestCase):
             markdown_body,
         )
 
-    def test_static_client_registration_fails_closed_for_duplicates_and_invalid_permissions(self) -> None:
-        valid = {
-            "id": "codex", "display_name": "Codex", "enabled": True,
-            "allowed_principals": ["operator"], "permissions": ["activity:submit"],
-            "partition": "production",
-        }
-        disabled_duplicate = {**valid, "enabled": False}
-        malformed_permissions = {**valid, "id": "invalid", "permissions": ["activity:review"]}
-        missing_enabled = {**valid, "id": "missing-enabled"}
-        del missing_enabled["enabled"]
-        config_data = {
-            "external_activity": {
-                "clients": [valid, disabled_duplicate, malformed_permissions, missing_enabled],
-            },
-        }
-        with mock.patch.object(core_config, "_CONFIG_DATA", config_data), self.assertLogs("core.config", "WARNING"):
-            registrations = core_config.load_activity_client_registrations()
-        self.assertEqual(registrations, ())
-
-    def test_static_registrations_do_not_become_runtime_setting_warnings(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            (root / "config.json").write_text(json.dumps({"external_activity": {"clients": []}}), encoding="utf-8")
-            settings = RuntimeSettingsStore(config_path=root / "config.json", local_config_path=root / "config.local.json")
-            self.assertIsNone(settings.load_warning)
-
-    def test_registration_refresh_reads_current_config_file(self) -> None:
-        registration = {
-            "id": "codex", "display_name": "Codex", "enabled": True,
-            "allowed_principals": ["operator"], "permissions": ["activity:submit"],
-            "partition": "production",
-        }
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "config.json"
-            path.write_text(json.dumps({"external_activity": {"clients": [registration]}}), encoding="utf-8")
-            with mock.patch.object(core_config, "CONFIG_PATH", path):
-                enabled = core_config.load_activity_client_registrations(refresh=True)
-                path.write_text(
-                    json.dumps({"external_activity": {"clients": [{**registration, "enabled": False}]}}),
-                    encoding="utf-8",
-                )
-                disabled = core_config.load_activity_client_registrations(refresh=True)
-        self.assertTrue(enabled[0].enabled)
-        self.assertFalse(disabled[0].enabled)
-
-
 class ActivityContextReviewTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
@@ -254,7 +206,7 @@ class ActivityContextReviewTests(unittest.TestCase):
         self.knowledge_store.initialize()
         self.activity_store = ActivityStore(self.path)
         self.activity_store.initialize()
-        self.activity = ActivityService(self.activity_store, (_registration(),))
+        self.activity = ActivityService(self.activity_store)
         self.actions = ActionService(ActionStore(self.path))
         conversations = SimpleNamespace()
         self.actions.register_handler(
@@ -459,7 +411,7 @@ class ActivityApiTests(unittest.TestCase):
         self.client = TestClient(app, raise_server_exceptions=True)
         self.store = ActivityStore(None)
         self.store.initialize()
-        self.service = ActivityService(self.store, (_registration(),))
+        self.service = ActivityService(self.store)
 
     def tearDown(self) -> None:
         self.store.close()
@@ -467,8 +419,7 @@ class ActivityApiTests(unittest.TestCase):
     def test_mailbox_status_and_scan_use_only_the_configured_folder(self) -> None:
         status = MailboxStatus(
             enabled=True, state="ready", folder_available=True,
-            client_registered=True, client_enabled=True, client_can_submit=True,
-            client_partition_matches=True, last_scan_at="2026-09-21T00:00:00+00:00",
+            last_scan_at="2026-09-21T00:00:00+00:00",
             last_imported_count=1, last_error=None,
         )
         mailbox = SimpleNamespace(
@@ -516,6 +467,16 @@ class ActivityApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.service.list(partition="production"), [])
 
+    def test_submission_rejects_invalid_claimed_source_id_at_the_http_boundary(self) -> None:
+        with mock.patch.object(activity_router, "DEMO_MODE", False):
+            response = self.client.post(
+                "/api/v1/activity/reports",
+                headers={"Host": "127.0.0.1:8000"},
+                json={"client_id": "Grok Bot", "report": _report().model_dump(mode="json")},
+            )
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(self.service.list(partition="production"), [])
+
     def test_local_submission_rejects_untrusted_origin_and_oversized_body(self) -> None:
         payload = {"client_id": "codex", "report": _report().model_dump(mode="json")}
         with mock.patch.object(activity_router, "DEMO_MODE", False):
@@ -540,7 +501,7 @@ class ActivityApiTests(unittest.TestCase):
             knowledge_store.initialize()
             activity_store = ActivityStore(path)
             activity_store.initialize()
-            activity_service = ActivityService(activity_store, (_registration(),))
+            activity_service = ActivityService(activity_store)
             report = activity_service.submit(
                 client_id="codex", principal="operator", partition="production", content=_report(),
             ).report

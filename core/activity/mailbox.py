@@ -15,12 +15,8 @@ from typing import Callable, Literal
 
 from pydantic import ValidationError
 
-from core.activity.models import ActivityClientRegistration, ActivityReportContent
-from core.activity.service import (
-    ActivityClientDisabledError,
-    ActivityPermissionError,
-    ActivityService,
-)
+from core.activity.models import ActivitySubmissionRequest
+from core.activity.service import ActivityService
 from core.activity.store import ActivityConflictError, ActivityStoreError, _MAX_REPORT_BYTES
 from core.settings.models import ActivityMailboxSettings
 
@@ -32,10 +28,6 @@ MailboxState = Literal[
     "disabled",
     "demo_mode",
     "not_configured",
-    "client_unavailable",
-    "client_disabled",
-    "client_not_permitted",
-    "client_partition_mismatch",
     "folder_unavailable",
     "ready",
     "scan_error",
@@ -47,10 +39,6 @@ class MailboxStatus:
     enabled: bool
     state: MailboxState
     folder_available: bool | None
-    client_registered: bool
-    client_enabled: bool
-    client_can_submit: bool
-    client_partition_matches: bool
     last_scan_at: str | None
     last_imported_count: int
     last_error: str | None
@@ -101,8 +89,6 @@ def _failure_reason(error: Exception) -> str:
             "mailbox_report_too_large": "oversized",
             "mailbox_file_changed": "changing file",
         }.get(str(error), "invalid report fields")
-    if isinstance(error, (ActivityClientDisabledError, ActivityPermissionError)):
-        return "submission not permitted"
     if isinstance(error, ActivityStoreError):
         return "submission failed"
     return "scan failed"
@@ -132,20 +118,18 @@ class ActivityMailbox:
         activity_service: ActivityService,
         *,
         settings_getter: Callable[[], ActivityMailboxSettings],
-        registration_loader: Callable[[], tuple[ActivityClientRegistration, ...]],
         partition_getter: Callable[[], str],
         demo_mode: bool = False,
     ) -> None:
         self._activity_service = activity_service
         self._settings_getter = settings_getter
-        self._registration_loader = registration_loader
         self._partition_getter = partition_getter
         self._demo_mode = demo_mode
         self._scan_task: asyncio.Task[MailboxStatus] | None = None
-        self._scan_task_key: tuple[bool, str, str, str, bool] | None = None
+        self._scan_task_key: tuple[bool, str, str, bool] | None = None
         self._status_lock = threading.Lock()
         self._last_scan_at: str | None = None
-        self._last_settings_key: tuple[bool, str, str, str, bool] | None = None
+        self._last_settings_key: tuple[bool, str, str, bool] | None = None
         self._last_imported_count = 0
         self._last_error: str | None = None
         self._last_state: MailboxState | None = None
@@ -212,10 +196,6 @@ class ActivityMailbox:
             enabled=base.enabled,
             state=state,
             folder_available=base.folder_available,
-            client_registered=base.client_registered,
-            client_enabled=base.client_enabled,
-            client_can_submit=base.client_can_submit,
-            client_partition_matches=base.client_partition_matches,
             last_scan_at=last_scan_at,
             last_imported_count=imported_count,
             last_error=last_error,
@@ -242,7 +222,7 @@ class ActivityMailbox:
     ) -> MailboxStatus:
         settings = settings or self._settings_getter()
         partition = self._partition_getter() if partition is None else partition
-        readiness = self._base_status(settings, partition)
+        readiness = self._base_status(settings)
         if readiness.state != "ready":
             return self._recorded_result(
                 settings, partition, readiness.state, readiness, None, 0
@@ -262,10 +242,6 @@ class ActivityMailbox:
                 enabled=readiness.enabled,
                 state="folder_unavailable",
                 folder_available=False,
-                client_registered=readiness.client_registered,
-                client_enabled=readiness.client_enabled,
-                client_can_submit=readiness.client_can_submit,
-                client_partition_matches=readiness.client_partition_matches,
                 last_scan_at=None,
                 last_imported_count=0,
                 last_error=None,
@@ -279,14 +255,14 @@ class ActivityMailbox:
             if self._settings_getter() != settings or self._partition_getter() != partition:
                 break
             try:
-                content = self._read_completed_report(entry)
+                submission = self._read_completed_report(entry)
                 if self._settings_getter() != settings or self._partition_getter() != partition:
                     break
                 receipt = self._activity_service.submit(
-                    client_id=settings.client_id,
+                    client_id=submission.client_id,
                     principal="operator",
                     partition=partition,
-                    content=content,
+                    content=submission.report,
                 )
             except (
                 OSError,
@@ -294,8 +270,6 @@ class ActivityMailbox:
                 json.JSONDecodeError,
                 ValidationError,
                 ActivityConflictError,
-                ActivityClientDisabledError,
-                ActivityPermissionError,
                 ActivityStoreError,
                 ValueError,
             ) as error:
@@ -311,10 +285,6 @@ class ActivityMailbox:
             enabled=True,
             state="scan_error" if failures else "ready",
             folder_available=True,
-            client_registered=readiness.client_registered,
-            client_enabled=readiness.client_enabled,
-            client_can_submit=readiness.client_can_submit,
-            client_partition_matches=readiness.client_partition_matches,
             last_scan_at=_utc_now(),
             last_imported_count=imported,
             last_error=last_error,
@@ -324,7 +294,7 @@ class ActivityMailbox:
             result.last_error, result.last_imported_count,
         )
 
-    def _read_completed_report(self, entry: os.DirEntry[str]) -> ActivityReportContent:
+    def _read_completed_report(self, entry: os.DirEntry[str]) -> ActivitySubmissionRequest:
         path = Path(entry.path)
         before_path = entry.stat(follow_symlinks=False)
         if not stat.S_ISREG(before_path.st_mode):
@@ -353,22 +323,9 @@ class ActivityMailbox:
             or not _same_file_version(opened_after, after_path)
         ):
             raise ValueError("mailbox_file_changed")
-        return ActivityReportContent.model_validate_json(raw)
+        return ActivitySubmissionRequest.model_validate_json(raw)
 
-    def _base_status(
-        self, settings: ActivityMailboxSettings, partition: str | None = None
-    ) -> MailboxStatus:
-        partition = self._partition_getter() if partition is None else partition
-        registrations = {entry.id: entry for entry in self._registration_loader()}
-        registration = registrations.get(settings.client_id) if settings.client_id else None
-        registered = registration is not None
-        client_enabled = bool(registration and registration.enabled)
-        client_can_submit = bool(
-            registration
-            and "activity:submit" in registration.permissions
-            and "operator" in registration.allowed_principals
-        )
-        partition_matches = bool(registration and registration.partition == partition)
+    def _base_status(self, settings: ActivityMailboxSettings) -> MailboxStatus:
         folder_available: bool | None = None
 
         if not settings.enabled:
@@ -377,14 +334,6 @@ class ActivityMailbox:
             state = "demo_mode"
         elif not settings.folder_path:
             state = "not_configured"
-        elif not registered:
-            state = "client_unavailable"
-        elif not client_enabled:
-            state = "client_disabled"
-        elif not client_can_submit:
-            state = "client_not_permitted"
-        elif not partition_matches:
-            state = "client_partition_mismatch"
         else:
             try:
                 folder_available = Path(settings.folder_path).is_dir()
@@ -396,10 +345,6 @@ class ActivityMailbox:
             enabled=settings.enabled,
             state=state,
             folder_available=folder_available,
-            client_registered=registered,
-            client_enabled=client_enabled,
-            client_can_submit=client_can_submit,
-            client_partition_matches=partition_matches,
             last_scan_at=None,
             last_imported_count=0,
             last_error=None,
@@ -408,7 +353,7 @@ class ActivityMailbox:
     def _failure_status(
         self, settings: ActivityMailboxSettings, partition: str, error: str
     ) -> MailboxStatus:
-        base = self._base_status(settings, partition)
+        base = self._base_status(settings)
         return self._recorded_result(settings, partition, "scan_error", base, error, 0)
 
     def _recorded_result(
@@ -424,10 +369,6 @@ class ActivityMailbox:
             enabled=base.enabled,
             state=state,
             folder_available=base.folder_available,
-            client_registered=base.client_registered,
-            client_enabled=base.client_enabled,
-            client_can_submit=base.client_can_submit,
-            client_partition_matches=base.client_partition_matches,
             last_scan_at=_utc_now(),
             last_imported_count=imported,
             last_error=error,
@@ -442,11 +383,10 @@ class ActivityMailbox:
 
     def _settings_key(
         self, settings: ActivityMailboxSettings, partition: str | None = None
-    ) -> tuple[bool, str, str, str, bool]:
+    ) -> tuple[bool, str, str, bool]:
         return (
             settings.enabled,
             settings.folder_path,
-            settings.client_id,
             self._partition_getter() if partition is None else partition,
             self._demo_mode,
         )

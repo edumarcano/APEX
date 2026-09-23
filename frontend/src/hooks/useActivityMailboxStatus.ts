@@ -11,10 +11,6 @@ const STATES: readonly ActivityMailboxState[] = [
   'disabled',
   'demo_mode',
   'not_configured',
-  'client_unavailable',
-  'client_disabled',
-  'client_not_permitted',
-  'client_partition_mismatch',
   'folder_unavailable',
   'ready',
   'scan_error',
@@ -26,10 +22,6 @@ function parseStatus(value: unknown): ActivityMailboxStatusResponse | null {
   if (typeof status.enabled !== 'boolean' ||
     typeof status.state !== 'string' || !STATES.includes(status.state as ActivityMailboxState) ||
     (status.folder_available !== null && typeof status.folder_available !== 'boolean') ||
-    typeof status.client_registered !== 'boolean' ||
-    typeof status.client_enabled !== 'boolean' ||
-    typeof status.client_can_submit !== 'boolean' ||
-    typeof status.client_partition_matches !== 'boolean' ||
     (status.last_scan_at !== null && typeof status.last_scan_at !== 'string') ||
     typeof status.last_imported_count !== 'number' ||
     (status.last_error !== null && typeof status.last_error !== 'string')) return null

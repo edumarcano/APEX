@@ -74,7 +74,6 @@ export const BASE_SETTINGS: RuntimeSettings = {
   activity_mailbox: {
     enabled: false,
     folder_path: '',
-    client_id: '',
   },
 }
 

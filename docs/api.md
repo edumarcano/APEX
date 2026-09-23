@@ -153,7 +153,7 @@ Returns the resolved settings envelope. The current contract version is `21`.
     "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } },
     "llama_cpp": { "enabled": false, "managed": false, "host": "http://127.0.0.1:8080", "executable_path": "", "preset_path": "" },
     "microsoft_todo": { "reminder_list_id": "" },
-    "activity_mailbox": { "enabled": false, "folder_path": "", "client_id": "" }
+    "activity_mailbox": { "enabled": false, "folder_path": "" }
   },
   "local_file_present": false,
   "local_override_active": false,
@@ -342,9 +342,9 @@ Archives one explicitly reviewed uncertain local row after the operator has insp
 
 ### POST `/api/v1/activity/reports`
 
-Receives one report from a registered local source. The request contains a configured `client_id` and a version-one `report` object. A report requires `submission_key`, `title`, `task_status`, and `outcome`; it may contain findings, evidence links, artifact references, unresolved questions, suggested follow-up, subject or project labels, occurrence time, a native task URL, and a Markdown body. A structured finding may declare `derivation: "model_interpretation"`; omitted derivation remains `unknown`.
+Receives one report from a local caller. The request contains a caller-declared `client_id` matching `^[a-z][a-z0-9_-]{0,63}$` and a version-one `report` object. A report requires `submission_key`, `title`, `task_status`, and `outcome`; it may contain findings, evidence links, artifact references, unresolved questions, suggested follow-up, subject or project labels, occurrence time, a native task URL, and a Markdown body. A structured finding may declare `derivation: "model_interpretation"`; omitted derivation remains `unknown`.
 
-APEX records the server-derived production or sandbox partition, the local operator principal, the configured source ID, and a display-name snapshot. The client must be explicitly enabled, permit `operator`, include `activity:submit`, and match that partition. Repeating identical content with the same client, partition, and submission key returns the original report with `duplicate: true`; changed content with the key returns `409`.
+APEX records the server-derived production or sandbox partition, the local operator principal, and the claimed source ID as both `client_id` and the new receipt's `client_display_name`. The ID is attribution only and does not authenticate the submitting program. Repeating identical content with the same source ID, partition, and submission key returns the original report with `duplicate: true`; changed content with the key returns `409`.
 
 Report content is limited to 256 KiB and remains immutable. Artifact references are stored without fetching URLs, reading directories, or accepting binary uploads. Stable future-review evidence locations are `/findings/<index>` when structured findings exist, or `/outcome` and `/markdown_body` when no structured finding exists. `DEMO_MODE` rejects submissions. The local route requires a loopback Host header, permits only the documented local browser origins, and requires `application/json`.
 
@@ -354,11 +354,11 @@ Lists up to 100 newest reports in the current partition. `client_id`, `dispositi
 
 ### GET `/api/v1/activity/mailbox/status`
 
-Returns the main backend's local mailbox settings state, configured-folder availability, selected-client registration and permission checks, and the latest scan time, import count, and retryable error. Status reloads the current client registrations, so a disabled or removed client is reported promptly. The mailbox remains disabled unless Runtime Settings enable it.
+Returns the main backend's local mailbox settings state, configured-folder availability, and the latest scan time, import count, and retryable error. The mailbox remains disabled unless Runtime Settings enable it.
 
 ### POST `/api/v1/activity/mailbox/scan`
 
-Scans the folder from Runtime Settings and waits for the result. The request takes no body or path; callers cannot choose a directory. Concurrent manual and scheduled scans share one in-progress scan. The route is available only on the main loopback service, not the narrow activity gateway. A failed or partial scan returns status and an error while leaving existing Inbox reports available for the caller to reload. See [Optional local-folder mailbox](configuration.md#optional-local-folder-mailbox) for file format, size, attribution, and retry behavior.
+Scans the folder from Runtime Settings and waits for the result. Each top-level JSON file must be an `ActivitySubmissionRequest` envelope with `client_id` and `report`; bare report objects are rejected. The request takes no body or path; callers cannot choose a directory. Concurrent manual and scheduled scans share one in-progress scan. The route is available only on the main loopback service, not the narrow activity gateway. A failed or partial scan returns status and an error while leaving existing Inbox reports available for the caller to reload. See [Optional local-folder mailbox](configuration.md#optional-local-folder-mailbox) for file format, size, attribution, and retry behavior.
 
 ### GET `/api/v1/activity/reports/{report_id}`
 

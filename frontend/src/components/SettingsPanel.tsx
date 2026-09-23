@@ -214,19 +214,6 @@ export default function SettingsPanel({
   const llamaCppTiming = resolveEffectiveTiming('llama_cpp', timingRuntime)
 
   const mailboxStatus = activityMailboxRuntime.status
-  const mailboxClientStatus = activityMailboxRuntime.unavailable
-    ? 'Status unavailable'
-    : !mailboxStatus
-      ? 'Checking…'
-      : !mailboxStatus.client_registered
-        ? 'Not registered in config.json'
-        : !mailboxStatus.client_enabled
-          ? 'Registered but disabled'
-          : !mailboxStatus.client_can_submit
-            ? 'Registered without operator submission permission'
-            : !mailboxStatus.client_partition_matches
-              ? 'Registered for a different partition'
-              : 'Registered and enabled for inbound submission'
   const mailboxAvailability = activityMailboxRuntime.unavailable
     ? 'Mailbox status is unavailable.'
     : !mailboxStatus
@@ -234,22 +221,14 @@ export default function SettingsPanel({
       : mailboxStatus.last_error ?? (mailboxStatus.state === 'disabled'
         ? 'Disabled. APEX will not read this folder.'
         : mailboxStatus.state === 'demo_mode'
-          ? 'Unavailable in demo mode.'
+            ? 'Unavailable in demo mode.'
           : mailboxStatus.state === 'not_configured'
             ? 'Choose an absolute folder path.'
             : mailboxStatus.state === 'folder_unavailable'
               ? 'Folder unavailable. APEX will retry when it scans again.'
-              : mailboxStatus.state === 'client_unavailable'
-                ? 'Selected client is not registered in config.json.'
-                : mailboxStatus.state === 'client_disabled'
-                  ? 'Selected client is disabled in config.json.'
-                  : mailboxStatus.state === 'client_not_permitted'
-                    ? 'Selected client does not allow operator submissions.'
-                    : mailboxStatus.state === 'client_partition_mismatch'
-                      ? 'Selected client is registered for a different partition.'
-                      : mailboxStatus.state === 'scan_error'
-                        ? 'Some files could not be imported; APEX will retry.'
-                        : `Ready. Latest scan imported ${mailboxStatus.last_imported_count} report${mailboxStatus.last_imported_count === 1 ? '' : 's'}.`)
+              : mailboxStatus.state === 'scan_error'
+                ? 'Some files could not be imported; APEX will retry.'
+                : `Ready. Latest scan imported ${mailboxStatus.last_imported_count} report${mailboxStatus.last_imported_count === 1 ? '' : 's'}.`)
 
   const requestClose = useCallback(() => {
     if (isDirty || saving) {
@@ -694,30 +673,11 @@ export default function SettingsPanel({
                       className="hud-command-surface mt-1.5 w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-1.5 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
                     />
                   </div>
-                  <div>
-                    <label htmlFor="settings-activity-mailbox-client" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">
-                      Registered client ID
-                    </label>
-                    <input
-                      id="settings-activity-mailbox-client"
-                      type="text"
-                      autoComplete="off"
-                      spellCheck={false}
-                      value={draft.activity_mailbox.client_id}
-                      placeholder="grok"
-                      onChange={(event) => setDraft((prev) => ({
-                        ...prev,
-                        activity_mailbox: { ...prev.activity_mailbox, client_id: event.target.value },
-                      }))}
-                      className="hud-command-surface mt-1.5 w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-1.5 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
-                    />
-                  </div>
                   <div className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-1">
-                    <StatusRow label="Client" value={mailboxClientStatus} tone={mailboxStatus?.client_registered && mailboxStatus.client_enabled && mailboxStatus.client_can_submit && mailboxStatus.client_partition_matches ? 'ok' : 'warn'} />
                     <StatusRow label="Mailbox" value={mailboxAvailability} tone={mailboxStatus?.state === 'ready' ? 'ok' : mailboxStatus?.state === 'disabled' ? 'neutral' : 'warn'} />
                   </div>
                   <p className="text-[11px] leading-relaxed text-zinc-500">
-                    APEX polls this folder every minute and leaves files untouched. Place each completed version-one report in a top-level file named &lt;submission_key&gt;.json. The selected client must be enabled in config.json for the current partition.
+                    APEX polls this folder every minute and leaves files untouched. Place each completed version-one {`{"client_id":"source-id","report":{...}}`} envelope in a top-level .json file. The source ID is claimed attribution, not authentication.
                   </p>
                 </div>
               </section>

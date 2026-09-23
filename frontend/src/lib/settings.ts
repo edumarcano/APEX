@@ -311,19 +311,17 @@ function parseActivityMailboxSettings(
   value: unknown,
 ): RuntimeSettings['activity_mailbox'] | null {
   if (value === undefined) {
-    return { enabled: false, folder_path: '', client_id: '' }
+    return { enabled: false, folder_path: '' }
   }
   if (!isRecord(value) || typeof value.enabled !== 'boolean' ||
-    typeof value.folder_path !== 'string' || typeof value.client_id !== 'string' ||
-    value.folder_path.length > 4096 || value.client_id.length > 64 ||
-    value.folder_path.includes('\0') || value.client_id.includes('\0') ||
-    value.folder_path !== value.folder_path.trim() || value.client_id !== value.client_id.trim()) {
+    typeof value.folder_path !== 'string' ||
+    value.folder_path.length > 4096 || value.folder_path.includes('\0') ||
+    value.folder_path !== value.folder_path.trim()) {
     return null
   }
   return {
     enabled: value.enabled,
     folder_path: value.folder_path,
-    client_id: value.client_id,
   }
 }
 

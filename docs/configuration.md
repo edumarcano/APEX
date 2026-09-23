@@ -37,46 +37,43 @@ Calendar IDs and this display preference are local runtime settings:
 
 APEX keeps unavailable saved IDs so they can be removed deliberately. It reads selected calendars independently: events from calendars that succeed remain available when another selected calendar fails, and Sync Health reports the partial failure. It does not create events, alter Google Calendar visibility, or use webhooks or a remote cache.
 
-## External activity registrations
+## External activity intake
 
-`external_activity.clients` in `config.json` declares local report sources. Each registration has a stable `id`, display name, explicit enabled flag, allowed principals, a bounded `permissions` list, and fixed partition. The only current permission is `activity:submit`; an empty list denies submission. The local CLI uses principal `operator`; its client name is declared source attribution, not proof that a particular program submitted the report.
-
-```json
-{
-  "external_activity": {
-    "clients": [{
-      "id": "codex",
-      "display_name": "Codex",
-      "enabled": true,
-      "allowed_principals": ["operator"],
-      "permissions": ["activity:submit"],
-      "partition": "production"
-    }]
-  }
-}
-```
-
-A registration is checked for every submission. Disabling or removing it preserves reports already received, while new submissions under that ID fail. Report content cannot choose a partition; configure distinct registrations when both production and sandbox submissions are needed. Missing required registration fields and invalid permission values deny submission. Duplicate IDs are unavailable, regardless of their array order. Invalid registration entries are ignored with a startup warning.
+Local activity intake accepts caller-declared source IDs. Use a nonempty lowercase ID matching `^[a-z][a-z0-9_-]{0,63}$`, such as `codex` or `grok-bot`. The ID is stored as source attribution; it does not identify or authenticate the software that submitted the report. The server assigns the local `operator` principal and the current production or development sandbox partition.
 
 ### Optional local-folder mailbox
 
-The main APEX backend can poll one operator-selected folder for completed report files. The mailbox is disabled by default. Its enabled flag, absolute folder path, and client ID are machine-local Runtime Settings stored in the gitignored `config.local.json`; keep credentials in `.env` and the client registration above in `config.json`.
+The main APEX backend can poll one operator-selected folder for completed report files. The mailbox is disabled by default. Its enabled flag and absolute folder path are machine-local Runtime Settings stored in the gitignored `config.local.json`; keep credentials in `.env`. A legacy `activity_mailbox.client_id` value is ignored at startup and removed on the next settings save.
 
 ```json
 {
   "activity_mailbox": {
     "enabled": true,
-    "folder_path": "/absolute/path/to/activity-mailbox",
-    "client_id": "grok-bot"
+    "folder_path": "/absolute/path/to/activity-mailbox"
   }
 }
 ```
 
 On Windows, use an absolute path such as `C:\\Users\\<you>\\AppData\\Local\\APEX\\activity-mailbox`. Create the folder in a private local or synced location and grant access only to the operator and the sync tool. APEX scans it at startup and about every 60 seconds; Inbox **Refresh** requests an immediate scan. A missing folder remains configured and is retried. Runtime setting changes take effect without restarting APEX.
 
-Place only completed, top-level `.json` report files in the folder; the extension is case-insensitive, and the filename does not need to match the report's `submission_key`. Each file must contain the version-one report object described in [the CLI guide](cli.md#external-activity) and be at most 256 KiB. Write to a temporary filename and rename it to a `.json` filename only after the file is complete. APEX leaves source files in place; identical reports reuse the original receipt, while changed content with the same client and key follows the normal conflict behavior.
+Place only completed, top-level `.json` files in the folder; the extension is case-insensitive, and the filename does not need to match the report's `submission_key`. Each file must contain a version-one submission envelope and be at most 256 KiB. For example:
 
-The selected client must be registered, enabled, permit the local `operator`, allow `activity:submit`, and match the current partition. APEX assigns that client and partition outside the file, so report content cannot select them. The folder's client ID is source attribution chosen by the operator; it does not prove which program created a file. Mailbox reports enter the same untrusted Inbox as CLI, JSON/MCP gateway, and API submissions. The mailbox uses no provider API and adds no remote endpoint.
+```json
+{
+  "client_id": "grok-bot",
+  "report": {
+    "version": "1",
+    "submission_key": "run-2026-09-23",
+    "title": "Completed review",
+    "task_status": "completed",
+    "outcome": "The requested checks passed."
+  }
+}
+```
+
+The `report` object uses the same version-one fields described in [the API activity contract](api.md#external-activity-inbox); a bare report object is invalid here. Write to a temporary filename and rename it to a `.json` filename only after the file is complete. APEX leaves source files in place; identical reports reuse the original receipt, while changed content with the same source ID and key follows the normal conflict behavior.
+
+The envelope's `client_id` is the source label claimed by the file producer; the `report` cannot choose a partition or principal. Mailbox reports enter the same untrusted Inbox as CLI, JSON/MCP gateway, and API submissions. The mailbox uses no provider API and adds no remote endpoint.
 
 ## External activity gateway
 
@@ -86,9 +83,9 @@ The submission gateway is separate from the normal APEX launcher. Start it only 
 uv run python -m core.activity.gateway
 ```
 
-The gateway binds to `127.0.0.1:8001` unless `--host` and `--port` select another loopback address and port. Requests must use that selected host and port; the default also accepts the standard loopback aliases. It exposes `GET /healthz`, `POST /v1/activity/reports`, and Streamable HTTP MCP at `/mcp/`. The JSON route accepts `application/json`; MCP exposes only `submit_activity`. Both adapters use the configured registration, local `operator` principal, current production or development sandbox partition, and the same `apex_memory.db` activity table used by the local API and CLI.
+The gateway binds to `127.0.0.1:8001` unless `--host` and `--port` select another loopback address and port. Requests must use that selected host and port; the default also accepts the standard loopback aliases. It exposes `GET /healthz`, `POST /v1/activity/reports`, and Streamable HTTP MCP at `/mcp/`. The JSON route accepts `application/json`; MCP exposes only `submit_activity`. Both adapters accept caller-declared source IDs, use the local `operator` principal and current production or development sandbox partition, and share the `apex_memory.db` activity table used by the local API and CLI.
 
-The gateway reloads external activity registrations before every submission, so disabling or removing a client takes effect for existing MCP sessions. It rejects non-loopback bindings, unexpected Host headers, cross-origin browser requests, request bodies above 256 KiB, and more than 30 attempts from one client in a minute. It does not start Cortex, connectors, the main API, or a second database. `DEMO_MODE` keeps its storage in memory and rejects submissions.
+The gateway rejects non-loopback bindings, unexpected Host headers, cross-origin browser requests, request bodies above 256 KiB, and more than 30 combined JSON and MCP submission attempts per minute across the process. It does not start Cortex, connectors, the main API, or a second database. `DEMO_MODE` keeps its storage in memory and rejects submissions.
 
 Keep this listener on loopback. Do not place it behind a tunnel, reverse proxy, or public endpoint; the gateway does not authenticate remote callers.
 

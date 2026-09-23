@@ -141,7 +141,6 @@ def normalize_layer(
                 "agent_system_prompt",
                 "local_agent_system_prompt",
                 "cortex_runs",
-                "external_activity",
                 "gemini",
                 "ollama",
                 "llama_cpp",
@@ -263,9 +262,9 @@ def _normalize_activity_mailbox(
         _LOGGER.warning("activity_mailbox in %s must be an object; ignoring.", layer_name)
         return None
 
-    allowed = {"enabled", "folder_path", "client_id"}
+    allowed = {"enabled", "folder_path"}
     for key in value:
-        if key not in allowed:
+        if key != "client_id" and key not in allowed:
             _record_warning(issues, "activity_mailbox contains unknown fields")
             _LOGGER.warning("Ignoring unknown activity_mailbox field %r in %s.", key, layer_name)
 
@@ -292,18 +291,6 @@ def _normalize_activity_mailbox(
             else:
                 normalized["folder_path"] = folder_path
 
-    if "client_id" in value:
-        client_id = value["client_id"]
-        if not isinstance(client_id, str):
-            _record_error(issues, "activity_mailbox.client_id must be a string")
-        else:
-            client_id = client_id.strip()
-            if "\x00" in client_id:
-                _record_error(issues, "activity_mailbox.client_id must not contain null bytes")
-            elif len(client_id) > 64:
-                _record_error(issues, "activity_mailbox.client_id exceeds the maximum length")
-            else:
-                normalized["client_id"] = client_id
     return normalized
 
 
@@ -1262,11 +1249,6 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         folder_path=(
             activity_mailbox_raw.get("folder_path", "")
             if isinstance(activity_mailbox_raw.get("folder_path", ""), str)
-            else ""
-        ),
-        client_id=(
-            activity_mailbox_raw.get("client_id", "")
-            if isinstance(activity_mailbox_raw.get("client_id", ""), str)
             else ""
         ),
     )

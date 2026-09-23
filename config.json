@@ -17,22 +17,6 @@
   "market": {
     "symbols": []
   },
-  "external_activity": {
-    "clients": [
-      {
-        "id": "codex",
-        "display_name": "Codex",
-        "enabled": true,
-        "allowed_principals": [
-          "operator"
-        ],
-        "permissions": [
-          "activity:submit"
-        ],
-        "partition": "production"
-      }
-    ]
-  },
   "calendar": {
     "selected_calendar_ids": [
       "primary"

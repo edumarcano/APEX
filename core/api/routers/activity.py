@@ -8,14 +8,14 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import ValidationError
 
 from core.activity import (
-    ActivityClientDisabledError,
     ActivityConflictError,
     ActivityNotFoundError,
-    ActivityPermissionError,
     ActivityStoreError,
     ActivitySubmissionRequest,
+    ActivityUnavailableError,
     get_activity_service,
 )
+from core.activity.models import ACTIVITY_CLIENT_ID_PATTERN
 from core.activity.boundary import read_bounded_activity_body, require_local_submission_headers
 from core.activity.review import ActivityContextReviewError, ActivityContextReviewService
 from core.activity.mailbox import MailboxStatus, get_activity_mailbox
@@ -60,10 +60,6 @@ def _mailbox_response(result: MailboxStatus) -> ActivityMailboxStatusResponse:
         enabled=result.enabled,
         state=result.state,
         folder_available=result.folder_available,
-        client_registered=result.client_registered,
-        client_enabled=result.client_enabled,
-        client_can_submit=result.client_can_submit,
-        client_partition_matches=result.client_partition_matches,
         last_scan_at=result.last_scan_at,
         last_imported_count=result.last_imported_count,
         last_error=result.last_error,
@@ -75,10 +71,8 @@ def _error(error: Exception) -> HTTPException:
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Activity report was not found.")
     if isinstance(error, ActivityConflictError):
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The submission key was already used for different report content.")
-    if isinstance(error, ActivityClientDisabledError):
-        return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Activity client is disabled or unavailable.")
-    if isinstance(error, ActivityPermissionError):
-        return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Activity submission is not permitted for this client and partition.")
+    if isinstance(error, ActivityUnavailableError):
+        return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Activity submissions are unavailable in demo mode.")
     if isinstance(error, ActivityStoreError):
         if str(error) == "report_too_large":
             return HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Activity report exceeds the 256 KiB limit.")
@@ -97,7 +91,7 @@ def _error(error: Exception) -> HTTPException:
     response_model=ActivityMailboxStatusResponse,
 )
 def get_activity_mailbox_status() -> ActivityMailboxStatusResponse:
-    """Return local folder and client readiness without exposing a scan path."""
+    """Return local folder readiness without exposing a scan path."""
     try:
         return _mailbox_response(get_activity_mailbox().status())
     except Exception as exc:
@@ -148,7 +142,7 @@ async def submit_activity_report(request: Request) -> ActivitySubmissionResponse
 
 @router.get("/api/v1/activity/reports", response_model=list[ActivityReportResponse])
 def list_activity_reports(
-    client_id: str | None = Query(default=None, min_length=1, max_length=64),
+    client_id: str | None = Query(default=None, min_length=1, max_length=64, pattern=ACTIVITY_CLIENT_ID_PATTERN),
     disposition: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
 ) -> list[ActivityReportResponse]:

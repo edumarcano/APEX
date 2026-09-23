@@ -81,7 +81,7 @@ successfully exits with code `0`.
 
 ## External activity
 
-`activity` submits and reads untrusted reports through the local backend. The configured client ID is source attribution declared by the local operator; it does not authenticate installed software. The registration must be enabled, permit `operator`, allow submissions, and match the backend's current production or sandbox partition.
+`activity` submits and reads untrusted reports through the local backend. Supply `--client` on each submit or import command, or use it to filter `list`. It is a caller-declared source label, not software authentication, and must match `^[a-z][a-z0-9_-]{0,63}$`. The server assigns the local `operator` principal and its current production or sandbox partition.
 
 `activity submit` builds a version-one report from `--submission-key`, `--title`, `--task-status`, and `--outcome`. Add repeatable findings, evidence links, artifact references, unresolved questions, subjects, or projects when they help inspection. `--markdown-file` stores a Markdown body as report content. Artifact references remain references; APEX does not fetch them.
 
@@ -91,7 +91,7 @@ successfully exits with code `0`.
 
 Reports do not automatically enter personal context, retrieval, prompts, briefings, or attention. Reading, reviewing, dismissing, or reopening a report does not approve a context change.
 
-See [configuration](configuration.md#external-activity-registrations) for client registration and [the optional local-folder mailbox](configuration.md#optional-local-folder-mailbox) for automatic intake setup.
+See [configuration](configuration.md#external-activity-intake) for source IDs and [the optional local-folder mailbox](configuration.md#optional-local-folder-mailbox) for automatic intake setup.
 
 ## Actions
 

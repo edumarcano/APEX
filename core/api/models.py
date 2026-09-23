@@ -47,19 +47,11 @@ class ActivityMailboxStatusResponse(BaseModel):
         "disabled",
         "demo_mode",
         "not_configured",
-        "client_unavailable",
-        "client_disabled",
-        "client_not_permitted",
-        "client_partition_mismatch",
         "folder_unavailable",
         "ready",
         "scan_error",
     ]
     folder_available: bool | None
-    client_registered: bool
-    client_enabled: bool
-    client_can_submit: bool
-    client_partition_matches: bool
     last_scan_at: str | None
     last_imported_count: int
     last_error: str | None

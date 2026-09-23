@@ -12,7 +12,7 @@ const report = {
 
 function inboxFixture(): UseActivityInboxResult {
   return {
-    reports: [report], detail: report, linkedReviews: [], selectedReportId: report.id, sourceFilter: 'all', dispositionFilter: 'all', sources: [{ id: 'codex', label: 'Codex' }], isLoading: false, isDetailLoading: false, mutation: null, error: null,
+    reports: [report], detail: report, linkedReviews: [], selectedReportId: report.id, sourceFilter: 'all', dispositionFilter: 'all', sources: [{ id: 'codex', label: 'codex' }], isLoading: false, isDetailLoading: false, mutation: null, error: null,
     setSourceFilter: vi.fn(), setDispositionFilter: vi.fn(), selectReport: vi.fn(), refresh: vi.fn().mockResolvedValue(undefined), setDisposition: vi.fn().mockResolvedValue(true), proposeContext: vi.fn().mockResolvedValue(null),
   }
 }
@@ -31,6 +31,8 @@ describe('ActivityInboxWorkspace', () => {
     expect(screen.getByRole('complementary', { name: 'Activity reports' })).toHaveClass('scrollbar-thin')
     expect(screen.getByRole('article')).toHaveClass('lg:overflow-y-auto')
     expect(screen.getByRole('article')).toHaveClass('scrollbar-thin')
+    expect(screen.getAllByText('Codex · completed')).toHaveLength(2)
+    expect(screen.getByRole('option', { name: 'codex' })).toBeInTheDocument()
     expect(document.querySelector('script')).toBeNull()
     expect(document.querySelector('img')).toBeNull()
     expect(screen.queryByRole('link', { name: 'unsafe' })).not.toBeInTheDocument()

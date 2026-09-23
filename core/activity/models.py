@@ -2,19 +2,26 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 ActivityPartition = Literal["production", "sandbox"]
 ActivityDisposition = Literal["new", "reviewed", "dismissed"]
-ActivityPermission = Literal["activity:submit"]
+ACTIVITY_CLIENT_ID_PATTERN = r"^[a-z][a-z0-9_-]{0,63}$"
+ActivityClientId = Annotated[str, Field(pattern=ACTIVITY_CLIENT_ID_PATTERN)]
 _ShortText = Annotated[str, Field(min_length=1, max_length=512)]
 _LongText = Annotated[str, Field(min_length=1, max_length=20_000)]
+
+
+def is_valid_activity_client_id(value: object) -> bool:
+    """Return whether a caller-declared source ID follows the shared contract."""
+    return isinstance(value, str) and re.fullmatch(ACTIVITY_CLIENT_ID_PATTERN, value) is not None
 
 
 def _bounded_text(value: str, *, limit: int) -> str:
@@ -150,31 +157,8 @@ class ActivitySubmissionRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    client_id: Annotated[str, Field(min_length=1, max_length=64)]
+    client_id: ActivityClientId
     report: ActivityReportContent
-
-
-class ActivityClientRegistration(BaseModel):
-    """A static config.json registration for one report source."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    id: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")]
-    display_name: Annotated[str, Field(min_length=1, max_length=120)]
-    enabled: StrictBool
-    allowed_principals: list[Annotated[str, Field(min_length=1, max_length=256)]] = Field(min_length=1, max_length=50)
-    permissions: frozenset[ActivityPermission] = Field(default_factory=frozenset, max_length=1)
-    partition: ActivityPartition
-
-    @field_validator("display_name")
-    @classmethod
-    def normalize_display_name(cls, value: str) -> str:
-        return _bounded_text(value, limit=120)
-
-    @field_validator("allowed_principals")
-    @classmethod
-    def normalize_principals(cls, values: list[str]) -> list[str]:
-        return list(dict.fromkeys(_bounded_text(value, limit=256) for value in values))
 
 
 @dataclass(frozen=True, slots=True)

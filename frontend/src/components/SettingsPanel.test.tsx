@@ -87,10 +87,6 @@ function mockSettingsPanelFetches(
         enabled: false,
         state: 'disabled',
         folder_available: null,
-        client_registered: false,
-        client_enabled: false,
-        client_can_submit: false,
-        client_partition_matches: false,
         last_scan_at: null,
         last_imported_count: 0,
         last_error: null,
@@ -126,14 +122,14 @@ describe('SettingsPanel', () => {
     expect(dialog).toContainElement(document.activeElement as HTMLElement)
   })
 
-  it('shows the optional local mailbox settings and registration status', async () => {
+  it('shows the optional local mailbox settings without a client registration control', async () => {
     mockSettingsPanelFetches()
     renderPanel()
 
     expect(await screen.findByRole('switch', { name: 'Enable mailbox' })).toHaveAttribute('aria-checked', 'false')
     expect(screen.getByLabelText('Absolute folder path')).toBeInTheDocument()
-    expect(screen.getByLabelText('Registered client ID')).toBeInTheDocument()
-    expect(await screen.findByText('Not registered in config.json')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/client id/i)).not.toBeInTheDocument()
+    expect(await screen.findByText(/Disabled. APEX will not read this folder./)).toBeInTheDocument()
   })
 
   it('keeps focus trapped after settings become ready', async () => {

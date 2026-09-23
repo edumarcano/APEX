@@ -368,21 +368,11 @@ class ActivityMailboxSettings(BaseModel):
 
     enabled: bool = False
     folder_path: StrictStr = Field(default="", max_length=4096)
-    client_id: StrictStr = Field(default="", max_length=64)
 
     @field_validator("folder_path")
     @classmethod
     def validate_folder_path(cls, value: str) -> str:
         return _normalize_mailbox_folder_path(value)
-
-    @field_validator("client_id")
-    @classmethod
-    def validate_client_id(cls, value: str) -> str:
-        normalized = value.strip()
-        if "\x00" in normalized:
-            raise ValueError("client_id must not contain null bytes")
-        return normalized
-
 
 class RuntimeSettingsSnapshot(BaseModel):
     """Immutable published view of resolved editable settings."""
@@ -629,23 +619,11 @@ class ActivityMailboxPatch(BaseModel):
 
     enabled: bool | None = None
     folder_path: StrictStr | None = Field(default=None, max_length=4096)
-    client_id: StrictStr | None = Field(default=None, max_length=64)
 
     @field_validator("folder_path")
     @classmethod
     def validate_folder_path(cls, value: str | None) -> str | None:
         return _normalize_mailbox_folder_path(value) if value is not None else None
-
-    @field_validator("client_id")
-    @classmethod
-    def validate_client_id(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        normalized = value.strip()
-        if "\x00" in normalized:
-            raise ValueError("client_id must not contain null bytes")
-        return normalized
-
 
 class LlamaCppServerStatusResponse(BaseModel):
     """Sanitized llama.cpp server ownership status for the Settings UI."""

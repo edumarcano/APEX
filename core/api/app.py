@@ -37,7 +37,6 @@ from core.config import (
     DEMO_MODE,
     ENV_PATH,
     MAX_RECENT_CONVERSATION_MESSAGES,
-    load_activity_client_registrations,
 )
 from core.agent.local_runtime.coordinator import check_idle_local_models_loop
 from core.agent.local_runtime.registry import any_local_runtime_enabled
@@ -201,15 +200,12 @@ async def _app_lifespan(_app: FastAPI):
         activity_store.initialize()
         activity_service = ActivityService(
             activity_store,
-            load_activity_client_registrations(refresh=True),
-            registration_loader=lambda: load_activity_client_registrations(refresh=True),
             demo_mode=DEMO_MODE,
         )
         set_activity_service(activity_service)
         activity_mailbox = ActivityMailbox(
             activity_service,
             settings_getter=lambda: get_settings_store().get_snapshot().activity_mailbox,
-            registration_loader=lambda: load_activity_client_registrations(refresh=True),
             partition_getter=conversation_service.partition,
             demo_mode=DEMO_MODE,
         )

@@ -28,17 +28,12 @@ export interface MicrosoftTodoSettings {
 export interface ActivityMailboxSettings {
   enabled: boolean
   folder_path: string
-  client_id: string
 }
 
 export type ActivityMailboxState =
   | 'disabled'
   | 'demo_mode'
   | 'not_configured'
-  | 'client_unavailable'
-  | 'client_disabled'
-  | 'client_not_permitted'
-  | 'client_partition_mismatch'
   | 'folder_unavailable'
   | 'ready'
   | 'scan_error'
@@ -47,10 +42,6 @@ export interface ActivityMailboxStatusResponse {
   enabled: boolean
   state: ActivityMailboxState
   folder_available: boolean | null
-  client_registered: boolean
-  client_enabled: boolean
-  client_can_submit: boolean
-  client_partition_matches: boolean
   last_scan_at: string | null
   last_imported_count: number
   last_error: string | null
@@ -268,7 +259,6 @@ export interface MicrosoftTodoPatch {
 export interface ActivityMailboxPatch {
   enabled?: boolean
   folder_path?: string
-  client_id?: string
 }
 
 export type LlamaCppServerState =

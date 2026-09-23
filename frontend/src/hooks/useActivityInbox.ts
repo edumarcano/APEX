@@ -92,13 +92,10 @@ async function responseBody(response: Response): Promise<unknown> {
 function asMailboxStatus(value: unknown): ActivityMailboxStatusResponse | null {
   if (!isRecord(value) || typeof value.enabled !== 'boolean' ||
     typeof value.state !== 'string' ||
-    !['disabled', 'demo_mode', 'not_configured', 'client_unavailable', 'client_disabled',
-      'client_not_permitted', 'client_partition_mismatch', 'folder_unavailable', 'ready', 'scan_error']
+    !['disabled', 'demo_mode', 'not_configured', 'folder_unavailable', 'ready', 'scan_error']
       .includes(value.state) ||
     (value.folder_available !== null && typeof value.folder_available !== 'boolean') ||
-    typeof value.client_registered !== 'boolean' ||
-    typeof value.client_enabled !== 'boolean' || typeof value.client_can_submit !== 'boolean' ||
-    typeof value.client_partition_matches !== 'boolean' || typeof value.last_imported_count !== 'number' ||
+    typeof value.last_imported_count !== 'number' ||
     (value.last_scan_at !== null && typeof value.last_scan_at !== 'string') ||
     (value.last_error !== null && typeof value.last_error !== 'string')) return null
   return value as unknown as ActivityMailboxStatusResponse
@@ -110,10 +107,6 @@ function mailboxScanError(status: ActivityMailboxStatusResponse): string | null 
   switch (status.state) {
     case 'demo_mode': return 'Mailbox scanning is unavailable in demo mode.'
     case 'not_configured': return 'Set an absolute mailbox folder path in Runtime Settings.'
-    case 'client_unavailable': return 'The selected mailbox client is not registered.'
-    case 'client_disabled': return 'The selected mailbox client is disabled.'
-    case 'client_not_permitted': return 'The selected mailbox client does not allow operator submissions.'
-    case 'client_partition_mismatch': return 'The selected mailbox client is registered for a different partition.'
     case 'folder_unavailable': return 'The mailbox folder is unavailable; APEX will retry on a later scan.'
     case 'scan_error': return 'Some mailbox files could not be imported; APEX will retry.'
     default: return 'The mailbox scan could not be completed.'
@@ -335,7 +328,7 @@ export function useActivityInbox(
 
   const sources = useMemo(() => {
     const labels = new Map<string, string>()
-    reports.forEach((report) => labels.set(report.client_id, report.client_display_name))
+    reports.forEach((report) => labels.set(report.client_id, report.client_id))
     return [...labels.entries()]
       .map(([id, label]) => ({ id, label }))
       .sort((left, right) => left.label.localeCompare(right.label))
