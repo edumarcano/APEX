@@ -70,7 +70,7 @@ def _same_file_version(left: os.stat_result, right: os.stat_result) -> bool:
 def _safe_filename(name: str) -> str:
     """Keep scan diagnostics short and safe to render in the Inbox."""
     rendered = "".join(
-        char if char.isascii() and char.isprintable() and char not in '\\/:*?"<>|' else "_"
+        char if char.isprintable() and char not in '\\/:*?"<>|' else "_"
         for char in name
     )
     if len(rendered) > _MAX_DIAGNOSTIC_FILENAME:
@@ -118,6 +118,9 @@ def _format_scan_failures(
         f"{_safe_filename(filename)} ({reason})"
         for filename, reason in examples[:_MAX_DIAGNOSTIC_FILES]
     )
+    additional = count - min(len(examples), _MAX_DIAGNOSTIC_FILES)
+    if additional > 0:
+        details += f"; and {additional} more"
     return f"{summary} First issues: {details}."
 
 
@@ -285,7 +288,17 @@ class ActivityMailbox:
                     partition=partition,
                     content=content,
                 )
-            except Exception as error:
+            except (
+                OSError,
+                UnicodeError,
+                json.JSONDecodeError,
+                ValidationError,
+                ActivityConflictError,
+                ActivityClientDisabledError,
+                ActivityPermissionError,
+                ActivityStoreError,
+                ValueError,
+            ) as error:
                 failures += 1
                 if len(failure_examples) < _MAX_DIAGNOSTIC_FILES:
                     failure_examples.append((entry.name, _failure_reason(error)))

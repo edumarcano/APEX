@@ -397,8 +397,33 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("6 mailbox file(s) failed", result.last_error or "")
         self.assertEqual((result.last_error or "").count("(invalid JSON)"), 3)
         self.assertIn("...", result.last_error or "")
+        self.assertIn("and 3 more", result.last_error or "")
         self.assertLessEqual(len(result.last_error or ""), 500)
         self.assertTrue(all(filename not in (result.last_error or "") for filename in filenames))
+
+    async def test_printable_unicode_filename_is_preserved_in_diagnostics(self) -> None:
+        self._configure()
+        filename = "résumé — 東京.json"
+        (self.folder / filename).write_text("{", encoding="utf-8")
+
+        result = await self._mailbox().scan_now()
+
+        self.assertEqual(result.state, "scan_error")
+        self.assertIn(filename, result.last_error or "")
+
+    async def test_unexpected_submit_failure_uses_scan_level_error_and_stops_scanning(self) -> None:
+        self._configure()
+        first = self.folder / "first.json"
+        first.write_text(report(key="first").model_dump_json(), encoding="utf-8")
+        (self.folder / "second.json").write_text(report(key="second").model_dump_json(), encoding="utf-8")
+        with mock.patch.object(self.service, "submit", side_effect=RuntimeError("private internal detail")) as submit:
+            result = await self._mailbox().scan_now()
+
+        self.assertEqual(result.state, "scan_error")
+        self.assertEqual(result.last_error, "The mailbox scan failed; APEX will retry.")
+        self.assertNotIn(first.name, result.last_error or "")
+        self.assertNotIn("private internal detail", result.last_error or "")
+        submit.assert_called_once()
 
     async def test_unreadable_changing_and_nonregular_files_have_safe_reasons(self) -> None:
         self._configure()
