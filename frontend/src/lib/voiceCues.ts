@@ -3,8 +3,10 @@ import type { BriefingMode } from '../types/settings'
 
 export type VoiceCueName =
   | 'activation_ready'
+  | 'activation_ready_update'
   | 'activation_loading'
   | 'activation_refresh_failed'
+  | 'activation_no_fresh_telemetry'
   | 'start_with_briefing'
   | 'briefing_refresh'
   | 'briefing_existing_snapshot'

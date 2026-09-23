@@ -88,14 +88,31 @@ function sameToolNames(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((name) => right.includes(name))
 }
 
+const TELEMETRY_FRESHNESS_WINDOW_MS = 5 * 60 * 1000
+
 function hasFreshUsableTelemetry(snapshot: TelemetrySnapshot): boolean {
-  return Object.values(snapshot.modules).some(
-    (module) =>
-      module.status !== 'disabled' &&
-      module.status !== 'unavailable' &&
-      module.freshness !== 'stale' &&
-      module.freshness !== 'none',
-  )
+  const collectedAt = Date.parse(snapshot.collected_at)
+  const now = Date.now()
+  const ageMs = now - collectedAt
+  // Keep this aligned with core.telemetry.models.FRESHNESS_WINDOW_SECONDS.
+  if (!Number.isFinite(collectedAt) || ageMs < 0 || ageMs >= TELEMETRY_FRESHNESS_WINDOW_MS) {
+    return false
+  }
+
+  return Object.values(snapshot.modules).some((module) => {
+    if (
+      module.status === 'disabled' ||
+      module.status === 'unavailable' ||
+      module.freshness === 'stale' ||
+      module.freshness === 'none' ||
+      module.observed_at === null
+    ) {
+      return false
+    }
+    const observedAt = Date.parse(module.observed_at)
+    const observedAgeMs = now - observedAt
+    return Number.isFinite(observedAt) && observedAgeMs >= 0 && observedAgeMs < TELEMETRY_FRESHNESS_WINDOW_MS
+  })
 }
 
 function marketSettingsChanged(previous: RuntimeSettings, next: RuntimeSettings): boolean {
@@ -740,9 +757,10 @@ export default function App(): ReactElement {
     }
 
     activate()
+    const telemetryWasReady = telemetry.snapshot !== null && hasFreshUsableTelemetry(telemetry.snapshot)
     const refreshPromise = telemetry.refreshAllWithOutcome({ force: false })
     const initialCuePromise = voiceMode === 'automatic'
-      ? requestVoiceCue('activation_loading')
+      ? requestVoiceCue(telemetryWasReady ? 'activation_ready' : 'activation_loading')
       : Promise.resolve()
     const [outcome] = await Promise.all([refreshPromise, initialCuePromise])
     if (
@@ -750,10 +768,14 @@ export default function App(): ReactElement {
       outcome.kind !== 'conflict' &&
       outcome.kind !== 'cancelled'
     ) {
-      const cue = outcome.kind === 'success' && hasFreshUsableTelemetry(outcome.snapshot)
-        ? 'activation_ready'
-        : 'activation_refresh_failed'
-      await requestVoiceCue(cue)
+      if (outcome.kind === 'failure') {
+        await requestVoiceCue('activation_refresh_failed')
+      } else if (!telemetryWasReady) {
+        const cue = hasFreshUsableTelemetry(outcome.snapshot)
+          ? 'activation_ready_update'
+          : 'activation_no_fresh_telemetry'
+        await requestVoiceCue(cue)
+      }
     }
   }, [preflight, activate, telemetry, voiceMode])
 
@@ -984,7 +1006,7 @@ export default function App(): ReactElement {
       return
     }
     const refreshPromise = telemetry.refreshAllWithOutcome({ force: true })
-    if (voiceMode === 'automatic') {
+    if (voiceMode === 'automatic' && !demoModeActive) {
       await requestVoiceCue('briefing_refresh', briefingMode)
     }
     const outcome = await refreshPromise
@@ -992,13 +1014,13 @@ export default function App(): ReactElement {
       return
     }
     if (outcome.kind === 'failure') {
-      if (voiceMode === 'automatic') {
+      if (voiceMode === 'automatic' && !demoModeActive) {
         await requestVoiceCue('briefing_no_snapshot')
       }
       return
     }
     await briefing.generateFromSnapshot(outcome.snapshot.snapshot_id, briefingMode, 'after_refresh')
-  }, [preflight, briefingMode, briefing, telemetry, voiceMode])
+  }, [preflight, briefingMode, briefing, telemetry, voiceMode, demoModeActive])
 
   const handleSpeakBriefing = useCallback((): void => {
     const text = briefing.briefing.trim()

@@ -4,13 +4,14 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
-import type { AgentKey, ToolCatalog } from './types/telemetry'
+import type { AgentKey, TelemetrySnapshot, ToolCatalog } from './types/telemetry'
 import type { RuntimeSettings, SettingsResponse } from './types/settings'
 import { BASE_SETTINGS, buildSettingsResponse } from './test/settingsFixtures'
 
 const appMocks = vi.hoisted(() => ({
   initialAgent: 'apex' as AgentKey,
   devModeActive: false,
+  demoModeActive: false,
   refreshAgentsStatus: vi.fn().mockResolvedValue(undefined),
   queryAgent: vi.fn().mockResolvedValue(undefined),
   clearCortexSession: vi.fn(),
@@ -31,6 +32,7 @@ const appMocks = vi.hoisted(() => ({
   settingsPanelApplied: null as unknown,
   marketSymbols: null as string[] | null,
   marketEnabled: false,
+  telemetrySnapshot: null as TelemetrySnapshot | null,
   telemetryRefreshingAll: false,
   telemetryRefreshingConnectors: new Set<string>(),
   requestOperation: vi.fn().mockResolvedValue('proceed'),
@@ -231,7 +233,7 @@ vi.mock('./hooks/useApexData', () => ({
   useApexData: () => ({
     activeReminders: [],
     createReminder: appMocks.createReminder,
-    demoModeActive: false,
+    demoModeActive: appMocks.demoModeActive,
     devModeActive: appMocks.devModeActive,
     agentQueriesEnabled: true,
     marketEnabled: appMocks.marketEnabled,
@@ -340,7 +342,7 @@ vi.mock('./hooks/useSystemDiagnostics', () => ({
 }))
 vi.mock('./hooks/useTelemetrySnapshot', () => ({
   useTelemetrySnapshot: () => ({
-    snapshot: appMocks.weatherSnapshot,
+    snapshot: appMocks.telemetrySnapshot ?? appMocks.weatherSnapshot,
     isRefreshingAll: appMocks.telemetryRefreshingAll,
     refreshingConnectors: appMocks.telemetryRefreshingConnectors,
     refreshAll: appMocks.refreshAll,
@@ -805,7 +807,9 @@ describe('App reminder feedback', () => {
 describe('App contextual voice cues', () => {
   afterEach(() => {
     appMocks.activated = true
+    appMocks.demoModeActive = false
     appMocks.weatherSnapshot = null
+    appMocks.telemetrySnapshot = null
     appMocks.refreshAllWithOutcome.mockReset().mockResolvedValue({
       kind: 'failure',
       snapshot: null,
@@ -845,41 +849,94 @@ describe('App contextual voice cues', () => {
     }))
   }
 
-  it('orders activation loading before a fresh telemetry confirmation', async () => {
+  function createTelemetrySnapshot(
+    collectedAt: string = new Date().toISOString(),
+    modules: TelemetrySnapshot['modules'] = {
+      weather: {
+        name: 'weather',
+        status: 'healthy',
+        freshness: 'live',
+        reason_code: 'ok',
+        observed_at: collectedAt,
+        display_text: 'Clear',
+        data: {},
+      },
+    },
+  ): TelemetrySnapshot {
+    return {
+      snapshot_id: 'snap-current',
+      collected_at: collectedAt,
+      modules,
+      sync_health_score: 100,
+      connector_health: [],
+      failed_connectors: [],
+    }
+  }
+
+  it('uses a loading greeting and salutation-free readiness update when refresh fills missing telemetry', async () => {
     const user = userEvent.setup()
     const events: string[] = []
     appMocks.activated = false
     stubAppFetch(events)
     appMocks.refreshAllWithOutcome.mockImplementation(async () => {
       events.push('refresh')
-      return {
-        kind: 'success',
-        snapshot: {
-          snapshot_id: 'snap-current',
-          collected_at: '2026-09-23T12:00:00Z',
-          modules: {
-            weather: {
-              name: 'weather',
-              status: 'healthy',
-              freshness: 'live',
-              reason_code: 'ok',
-              observed_at: '2026-09-23T12:00:00Z',
-              display_text: 'Clear',
-              data: {},
-            },
-          },
-          sync_health_score: 100,
-          connector_health: [],
-          failed_connectors: [],
-        },
-      }
+      return { kind: 'success', snapshot: createTelemetrySnapshot() }
     })
 
     render(<App />)
     await user.click(screen.getByRole('button', { name: 'Start APEX' }))
 
     await waitFor(() => {
-      expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_ready'])
+      expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_ready_update'])
+    })
+  })
+
+  it('speaks one ready welcome when the current snapshot is still fresh', async () => {
+    const user = userEvent.setup()
+    const events: string[] = []
+    appMocks.activated = false
+    appMocks.telemetrySnapshot = createTelemetrySnapshot()
+    stubAppFetch(events)
+    appMocks.refreshAllWithOutcome.mockImplementation(async () => {
+      events.push('refresh')
+      return { kind: 'success', snapshot: createTelemetrySnapshot() }
+    })
+
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Start APEX' }))
+
+    await waitFor(() => expect(events).toEqual(['refresh', 'cue:activation_ready']))
+  })
+
+  it('treats a snapshot older than the freshness window as loading telemetry', async () => {
+    const user = userEvent.setup()
+    const events: string[] = []
+    appMocks.activated = false
+    appMocks.telemetrySnapshot = createTelemetrySnapshot(
+      new Date(Date.now() - 5 * 60 * 1000 - 1000).toISOString(),
+      {
+        weather: {
+          name: 'weather',
+          status: 'healthy',
+          freshness: 'live',
+          reason_code: 'ok',
+          observed_at: new Date().toISOString(),
+          display_text: 'Clear',
+          data: {},
+        },
+      },
+    )
+    stubAppFetch(events)
+    appMocks.refreshAllWithOutcome.mockImplementation(async () => {
+      events.push('refresh')
+      return { kind: 'success', snapshot: createTelemetrySnapshot() }
+    })
+
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Start APEX' }))
+
+    await waitFor(() => {
+      expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_ready_update'])
     })
   })
 
@@ -911,6 +968,24 @@ describe('App contextual voice cues', () => {
     render(<App />)
     await secondUser.click(screen.getByRole('button', { name: 'Start APEX' }))
     await waitFor(() => expect(events).toEqual(['cue:activation_loading']))
+  })
+
+  it('uses standby wording rather than refresh-failed wording when no fresh module is available', async () => {
+    const user = userEvent.setup()
+    const events: string[] = []
+    appMocks.activated = false
+    stubAppFetch(events)
+    appMocks.refreshAllWithOutcome.mockImplementation(async () => {
+      events.push('refresh')
+      return { kind: 'success', snapshot: createTelemetrySnapshot(new Date().toISOString(), {}) }
+    })
+
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Start APEX' }))
+
+    await waitFor(() => {
+      expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_no_fresh_telemetry'])
+    })
   })
 
   it('uses the backend trigger cue once for Start with Briefing', async () => {
@@ -1000,5 +1075,47 @@ describe('App contextual voice cues', () => {
     await user.click(screen.getByRole('button', { name: 'Refresh All & Generate Briefing' }))
     await waitFor(() => expect(events).toEqual(['cue:briefing_refresh']))
     cancelledRender.unmount()
+  })
+
+  it('skips frontend briefing cues in demo mode while preserving the refresh and generation flow', async () => {
+    const user = userEvent.setup()
+    const events: string[] = []
+    appMocks.activated = true
+    appMocks.demoModeActive = true
+    stubAppFetch(events)
+    appMocks.refreshAllWithOutcome.mockResolvedValue({
+      kind: 'success',
+      snapshot: createTelemetrySnapshot(),
+    })
+    appMocks.generateFromSnapshot.mockImplementation(async (snapshotId, mode, cueContext) => {
+      events.push(`generate:${snapshotId}:${mode}:${cueContext}`)
+    })
+
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Refresh All & Generate Briefing' }))
+
+    await waitFor(() => {
+      expect(events).toEqual(['generate:snap-current:flash:after_refresh'])
+    })
+  })
+
+  it('skips the no-snapshot frontend cue in demo mode when refresh fails', async () => {
+    const user = userEvent.setup()
+    const events: string[] = []
+    appMocks.activated = true
+    appMocks.demoModeActive = true
+    stubAppFetch(events)
+    appMocks.refreshAllWithOutcome.mockResolvedValue({
+      kind: 'failure',
+      snapshot: null,
+      error: 'refresh failed',
+    })
+
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Refresh All & Generate Briefing' }))
+
+    await waitFor(() => expect(appMocks.refreshAllWithOutcome).toHaveBeenCalledOnce())
+    expect(events).toEqual([])
+    expect(appMocks.generateFromSnapshot).not.toHaveBeenCalled()
   })
 })
