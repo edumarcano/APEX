@@ -120,14 +120,14 @@ def _speak_voice_cue_best_effort(
 
 
 def _collection_voice_cue(snapshot: TelemetrySnapshot) -> VoiceCueName:
-    """Select collection copy while distinguishing disabled and stale-retained modules."""
+    """Select collection copy while distinguishing disabled and incomplete modules."""
     enabled = [
         entry for entry in snapshot.modules.values() if entry.status != "disabled"
     ]
     if enabled and all(entry.status == "unavailable" for entry in enabled):
         return "briefing_sources_unavailable"
     if any(
-        entry.status == "unavailable" or entry.freshness == "stale"
+        entry.status in {"degraded", "unavailable"} or entry.freshness == "stale"
         for entry in enabled
     ):
         return "briefing_partial_sources"

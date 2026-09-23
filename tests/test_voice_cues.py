@@ -95,6 +95,24 @@ class VoiceCueFormattingTests(unittest.TestCase):
         stale_retained = TelemetryModuleEntry(
             name="email", status="healthy", freshness="stale", reason_code="timeout"
         )
+        partial_news = TelemetryModuleEntry(
+            name="news",
+            status="degraded",
+            freshness="live",
+            reason_code="partial_failure",
+        )
+        partial_market = TelemetryModuleEntry(
+            name="market",
+            status="degraded",
+            freshness="live",
+            reason_code="invalid_series",
+        )
+        healthy_cached = TelemetryModuleEntry(
+            name="weather",
+            status="healthy",
+            freshness="fresh_cache",
+            reason_code="ok",
+        )
 
         self.assertEqual(
             _collection_voice_cue(TelemetrySnapshot(modules={"weather": healthy, "calendar": disabled})),
@@ -111,6 +129,18 @@ class VoiceCueFormattingTests(unittest.TestCase):
         self.assertEqual(
             _collection_voice_cue(TelemetrySnapshot(modules={"email": stale_retained, "calendar": disabled})),
             "briefing_partial_sources",
+        )
+        self.assertEqual(
+            _collection_voice_cue(TelemetrySnapshot(modules={"news": partial_news, "calendar": disabled})),
+            "briefing_partial_sources",
+        )
+        self.assertEqual(
+            _collection_voice_cue(TelemetrySnapshot(modules={"market": partial_market, "calendar": disabled})),
+            "briefing_partial_sources",
+        )
+        self.assertEqual(
+            _collection_voice_cue(TelemetrySnapshot(modules={"weather": healthy_cached, "calendar": disabled})),
+            "briefing_collection_complete",
         )
 
 
