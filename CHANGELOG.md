@@ -2,6 +2,42 @@
 
 ---
 
+## v2.0.0-beta.4 - External Activity Inbox
+
+**Released:** September 23, 2026
+
+This release gives local tools a shared place to submit completed work and findings. Reports stay outside trusted personal context; selected evidence can become a claim through the existing context-review flow.
+
+### What's New
+
+- Added an Activity Inbox for filtering and inspecting external reports, setting reversible new, reviewed, or dismissed dispositions, and opening reviews linked to the exact source report.
+- Added `apex activity` commands to submit reports, import JSON or Markdown, list and inspect reports, and propose claims or corrections through context review.
+- Added local report intake through the APEX API, an optional loopback-only JSON and Streamable HTTP MCP gateway, and an optional local-folder mailbox for completed JSON files.
+- Added an optional machine-local Apex Agent display name in Runtime Settings and used it in Cortex, the CLI, and API responses.
+- Added a local-time welcome and briefing voice cues that reflect whether telemetry is ready, loading, or unavailable.
+
+### Architecture Changes
+
+- Stored external reports as immutable evidence in the active production or development partition. The server assigns the local operator principal; caller-declared source IDs provide attribution but do not authenticate software.
+- Kept report intake, Inbox dispositions, and personal-context reviews separate. A report does not enter knowledge, retrieval, prompts, attention, or briefings; selected evidence becomes a claim only after its linked durable review is accepted.
+- Added a separate loopback activity gateway with bounded request bodies and shared rate limits. The optional folder mailbox reads completed report envelopes from an operator-selected local or synced folder and leaves source files in place.
+
+### API Changes
+
+- Added activity routes for report submission, listing, inspection, reversible dispositions, mailbox status and scans, and linked context reviews and proposals.
+- Added the `submit_activity` Streamable HTTP MCP tool and Runtime Settings fields for local activity intake and the Apex Agent display name.
+
+### Frontend Changes
+
+- Added the Activity Inbox workspace for report filters, evidence inspection, dispositions, and context-review links.
+- Added the local display-name setting and updated Home greeting and briefing speech for local time and telemetry readiness.
+
+### Documentation Updates
+
+- Updated the API, architecture, CLI, configuration, privacy, identity, design-system, README, and roadmap documentation for external activity intake, its trust boundary, and the new personalization and voice behavior.
+
+---
+
 ## v2.0.0-beta.3 - Trusted Context & Review
 
 **Released:** September 11, 2026
