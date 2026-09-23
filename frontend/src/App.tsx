@@ -52,6 +52,7 @@ import { useToolCatalog } from './hooks/useToolCatalog'
 import { useToolPreflight } from './hooks/useToolPreflight'
 import { useVoiceDelivery } from './hooks/useVoiceDelivery'
 import { API_ENDPOINTS } from './lib/api'
+import { requestVoiceCue } from './lib/voiceCues'
 import { resolveAttentionStaggerMs, resolveTelemetryAttentionTier } from './lib/attentionTier'
 import { resolveCalendarTelemetry } from './lib/calendarTelemetry'
 import { resolveFootballTelemetry } from './lib/footballTelemetry'
@@ -72,6 +73,7 @@ import type {
   CloudEffort,
   HostedTool,
   LocalReasoningMode,
+  TelemetrySnapshot,
 } from './types/telemetry'
 import type { ContextReview } from './types/context'
 import type {
@@ -84,6 +86,16 @@ import type {
 
 function sameToolNames(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((name) => right.includes(name))
+}
+
+function hasFreshUsableTelemetry(snapshot: TelemetrySnapshot): boolean {
+  return Object.values(snapshot.modules).some(
+    (module) =>
+      module.status !== 'disabled' &&
+      module.status !== 'unavailable' &&
+      module.freshness !== 'stale' &&
+      module.freshness !== 'none',
+  )
 }
 
 function marketSettingsChanged(previous: RuntimeSettings, next: RuntimeSettings): boolean {
@@ -728,15 +740,20 @@ export default function App(): ReactElement {
     }
 
     activate()
-    void telemetry.refreshAll({ force: false })
-    if (voiceMode === 'automatic') {
-      void fetch(API_ENDPOINTS.voiceSpeak, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: 'APEX online. Ready for operations.' }),
-      }).catch(() => {
-        // Activation voice cue is best-effort; ignore delivery failures.
-      })
+    const refreshPromise = telemetry.refreshAllWithOutcome({ force: false })
+    const initialCuePromise = voiceMode === 'automatic'
+      ? requestVoiceCue('activation_loading')
+      : Promise.resolve()
+    const [outcome] = await Promise.all([refreshPromise, initialCuePromise])
+    if (
+      voiceMode === 'automatic' &&
+      outcome.kind !== 'conflict' &&
+      outcome.kind !== 'cancelled'
+    ) {
+      const cue = outcome.kind === 'success' && hasFreshUsableTelemetry(outcome.snapshot)
+        ? 'activation_ready'
+        : 'activation_refresh_failed'
+      await requestVoiceCue(cue)
     }
   }, [preflight, activate, telemetry, voiceMode])
 
@@ -966,12 +983,22 @@ export default function App(): ReactElement {
     if (resolution !== 'proceed') {
       return
     }
-    const snapshot = await telemetry.refreshAll({ force: true })
-    if (!snapshot) {
+    const refreshPromise = telemetry.refreshAllWithOutcome({ force: true })
+    if (voiceMode === 'automatic') {
+      await requestVoiceCue('briefing_refresh', briefingMode)
+    }
+    const outcome = await refreshPromise
+    if (outcome.kind === 'conflict' || outcome.kind === 'cancelled') {
       return
     }
-    await briefing.generateFromSnapshot(snapshot.snapshot_id, briefingMode)
-  }, [preflight, briefingMode, briefing, telemetry])
+    if (outcome.kind === 'failure') {
+      if (voiceMode === 'automatic') {
+        await requestVoiceCue('briefing_no_snapshot')
+      }
+      return
+    }
+    await briefing.generateFromSnapshot(outcome.snapshot.snapshot_id, briefingMode, 'after_refresh')
+  }, [preflight, briefingMode, briefing, telemetry, voiceMode])
 
   const handleSpeakBriefing = useCallback((): void => {
     const text = briefing.briefing.trim()

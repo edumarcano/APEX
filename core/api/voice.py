@@ -5,8 +5,42 @@ from __future__ import annotations
 from fastapi import HTTPException, status
 
 from core import speaker
-from core.api.models import VoiceSpeakRequest, VoiceSpeakResponse
+from core.api.models import VoiceCueRequest, VoiceCueResponse, VoiceSpeakRequest, VoiceSpeakResponse
 from core.settings import get_settings_store
+from core.voice_cues import format_voice_cue
+
+
+def speak_cue(payload: VoiceCueRequest) -> VoiceCueResponse:
+    """Speak a formatted cue only when automatic voice delivery is enabled."""
+    settings = get_settings_store().get_snapshot()
+    if settings.voice.mode != "automatic":
+        return VoiceCueResponse(status="skipped")
+
+    text = format_voice_cue(
+        payload.cue,
+        mode=payload.mode,
+        user_designation=settings.user_designation,
+    )
+    try:
+        resolved_engine = speaker.try_speak(text)
+        if resolved_engine is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Speech delivery is already in progress.",
+            )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Speech text is empty after sanitization.",
+        ) from None
+    except HTTPException:
+        raise
+    except RuntimeError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Speech delivery failed.",
+        ) from None
+    return VoiceCueResponse(status="spoken", resolved_engine=resolved_engine)
 
 
 def speak_text(payload: VoiceSpeakRequest) -> VoiceSpeakResponse:

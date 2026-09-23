@@ -36,6 +36,11 @@ const appMocks = vi.hoisted(() => ({
   requestOperation: vi.fn().mockResolvedValue('proceed'),
   toolPreflight: vi.fn(),
   refreshAll: vi.fn().mockResolvedValue(null),
+  refreshAllWithOutcome: vi.fn().mockResolvedValue({
+    kind: 'failure',
+    snapshot: null,
+    error: 'refresh failed',
+  }),
   refreshConnector: vi.fn().mockResolvedValue(undefined),
   loadLatest: vi.fn().mockResolvedValue(undefined),
   triggerSynthesis: vi.fn().mockResolvedValue(undefined),
@@ -110,7 +115,23 @@ vi.mock('./components/SettingsPanel', () => ({
     return null
   },
 }))
-vi.mock('./components/HomeCommandRail', () => ({ HomeCommandRail: () => null }))
+vi.mock('./components/HomeCommandRail', () => ({
+  HomeCommandRail: ({
+    onStartApex,
+    onStartWithBriefing,
+    onRefreshAllAndGenerate,
+  }: {
+    onStartApex: () => void
+    onStartWithBriefing: () => void
+    onRefreshAllAndGenerate: () => void
+  }) => (
+    <div>
+      <button type="button" onClick={onStartApex}>Start APEX</button>
+      <button type="button" onClick={onStartWithBriefing}>Start APEX with briefing</button>
+      <button type="button" onClick={onRefreshAllAndGenerate}>Refresh All &amp; Generate Briefing</button>
+    </div>
+  ),
+}))
 vi.mock('./components/SystemDiagnostics', () => ({
   SystemDiagnostics: ({ workspaceNavigation }: { workspaceNavigation?: ReactNode }) => (
     <>{workspaceNavigation}</>
@@ -323,6 +344,7 @@ vi.mock('./hooks/useTelemetrySnapshot', () => ({
     isRefreshingAll: appMocks.telemetryRefreshingAll,
     refreshingConnectors: appMocks.telemetryRefreshingConnectors,
     refreshAll: appMocks.refreshAll,
+    refreshAllWithOutcome: appMocks.refreshAllWithOutcome,
     refreshConnector: appMocks.refreshConnector,
     loadLatest: appMocks.loadLatest,
   }),
@@ -777,5 +799,206 @@ describe('App reminder feedback', () => {
 
     expect(await screen.findByRole('heading', { name: 'Completed reminders' })).toBeInTheDocument()
     expect(appMocks.listCompletedReminders).toHaveBeenCalledOnce()
+  })
+})
+
+describe('App contextual voice cues', () => {
+  afterEach(() => {
+    appMocks.activated = true
+    appMocks.weatherSnapshot = null
+    appMocks.refreshAllWithOutcome.mockReset().mockResolvedValue({
+      kind: 'failure',
+      snapshot: null,
+      error: 'refresh failed',
+    })
+    appMocks.generateFromSnapshot.mockReset().mockResolvedValue(undefined)
+    appMocks.triggerSynthesis.mockReset().mockResolvedValue(undefined)
+    appMocks.requestOperation.mockReset().mockResolvedValue('proceed')
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  function stubAppFetch(events: string[]): void {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input))
+      if (url.pathname.endsWith('/voice/cue')) {
+        const body = JSON.parse(String(init?.body)) as { cue: string }
+        events.push(`cue:${body.cue}`)
+      }
+      if (url.pathname.endsWith('/briefings/targets')) {
+        return Promise.resolve(new Response(JSON.stringify([
+          {
+            mode: 'flash',
+            label: 'Flash',
+            description: 'Flash briefing',
+            model_id: 'gemma-4-E2B-Q4_K_M.gguf',
+            model_display_name: 'Gemma 4 E2B',
+            provider: 'llama.cpp',
+            runtime: 'local',
+            status: 'available',
+            reason: null,
+            pricing: null,
+          },
+        ]), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      }
+      return Promise.resolve(new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    }))
+  }
+
+  it('orders activation loading before a fresh telemetry confirmation', async () => {
+    const user = userEvent.setup()
+    const events: string[] = []
+    appMocks.activated = false
+    stubAppFetch(events)
+    appMocks.refreshAllWithOutcome.mockImplementation(async () => {
+      events.push('refresh')
+      return {
+        kind: 'success',
+        snapshot: {
+          snapshot_id: 'snap-current',
+          collected_at: '2026-09-23T12:00:00Z',
+          modules: {
+            weather: {
+              name: 'weather',
+              status: 'healthy',
+              freshness: 'live',
+              reason_code: 'ok',
+              observed_at: '2026-09-23T12:00:00Z',
+              display_text: 'Clear',
+              data: {},
+            },
+          },
+          sync_health_score: 100,
+          connector_health: [],
+          failed_connectors: [],
+        },
+      }
+    })
+
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Start APEX' }))
+
+    await waitFor(() => {
+      expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_ready'])
+    })
+  })
+
+  it('orders the activation refresh failure follow-up and skips it on conflict', async () => {
+    const user = userEvent.setup()
+    const events: string[] = []
+    appMocks.activated = false
+    stubAppFetch(events)
+    appMocks.refreshAllWithOutcome.mockImplementation(async () => {
+      events.push('refresh')
+      return { kind: 'failure', snapshot: null, error: 'network down' }
+    })
+
+    const firstRender = render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Start APEX' }))
+    await waitFor(() => {
+      expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_refresh_failed'])
+    })
+
+    firstRender.unmount()
+    events.length = 0
+    appMocks.activated = false
+    appMocks.refreshAllWithOutcome.mockResolvedValue({
+      kind: 'conflict',
+      snapshot: null,
+      error: 'A telemetry refresh is already in progress',
+    })
+    const secondUser = userEvent.setup()
+    render(<App />)
+    await secondUser.click(screen.getByRole('button', { name: 'Start APEX' }))
+    await waitFor(() => expect(events).toEqual(['cue:activation_loading']))
+  })
+
+  it('uses the backend trigger cue once for Start with Briefing', async () => {
+    const user = userEvent.setup()
+    const events: string[] = []
+    appMocks.activated = false
+    stubAppFetch(events)
+
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Start APEX with briefing' }))
+
+    await waitFor(() => expect(appMocks.triggerSynthesis).toHaveBeenCalledWith('flash'))
+    expect(events).toEqual([])
+  })
+
+  it('announces refresh before generating from the refreshed snapshot', async () => {
+    const user = userEvent.setup()
+    const events: string[] = []
+    appMocks.activated = true
+    stubAppFetch(events)
+    appMocks.refreshAllWithOutcome.mockImplementation(async () => {
+      events.push('refresh')
+      return {
+        kind: 'success',
+        snapshot: {
+          snapshot_id: 'snap-refreshed',
+          collected_at: '2026-09-23T12:00:00Z',
+          modules: {},
+          sync_health_score: 100,
+          connector_health: [],
+          failed_connectors: [],
+        },
+      }
+    })
+    appMocks.generateFromSnapshot.mockImplementation(async (snapshotId, mode, cueContext) => {
+      events.push(`generate:${snapshotId}:${mode}:${cueContext}`)
+    })
+
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Refresh All & Generate Briefing' }))
+
+    await waitFor(() => {
+      expect(events).toEqual([
+        'refresh',
+        'cue:briefing_refresh',
+        'generate:snap-refreshed:flash:after_refresh',
+      ])
+    })
+  })
+
+  it('uses no-snapshot copy only when refresh fails and skips conflict or cancellation', async () => {
+    const user = userEvent.setup()
+    const events: string[] = []
+    appMocks.activated = true
+    stubAppFetch(events)
+    appMocks.refreshAllWithOutcome.mockImplementation(async () => {
+      events.push('refresh')
+      return { kind: 'failure', snapshot: null, error: 'network down' }
+    })
+
+    const failedRender = render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Refresh All & Generate Briefing' }))
+    await waitFor(() => {
+      expect(events).toEqual(['refresh', 'cue:briefing_refresh', 'cue:briefing_no_snapshot'])
+    })
+    expect(appMocks.generateFromSnapshot).not.toHaveBeenCalled()
+
+    failedRender.unmount()
+    events.length = 0
+    appMocks.refreshAllWithOutcome.mockResolvedValue({
+      kind: 'conflict',
+      snapshot: null,
+      error: 'A telemetry refresh is already in progress',
+    })
+    const conflictRender = render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Refresh All & Generate Briefing' }))
+    await waitFor(() => expect(events).toEqual(['cue:briefing_refresh']))
+    conflictRender.unmount()
+
+    events.length = 0
+    appMocks.refreshAllWithOutcome.mockResolvedValue({
+      kind: 'cancelled',
+      snapshot: null,
+      error: 'The operation was aborted',
+    })
+    const cancelledRender = render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Refresh All & Generate Briefing' }))
+    await waitFor(() => expect(events).toEqual(['cue:briefing_refresh']))
+    cancelledRender.unmount()
   })
 })

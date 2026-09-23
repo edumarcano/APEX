@@ -271,10 +271,33 @@ describe('useTelemetrySnapshot', () => {
   it('maps 409 to refresh-in-progress error', async () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse({ detail: 'busy' }, false, 409))
     const { result } = renderHook(() => useTelemetrySnapshot())
+    let outcome: Awaited<ReturnType<typeof result.current.refreshAllWithOutcome>> | undefined
     await act(async () => {
       await result.current.refreshAll()
+      outcome = await result.current.refreshAllWithOutcome()
     })
     expect(result.current.error).toMatch(/already in progress/i)
+    expect(outcome).toMatchObject({ kind: 'conflict', snapshot: null })
+  })
+
+  it('returns refresh failures directly instead of relying on queued React state', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ detail: 'network down' }, false, 503))
+    const { result } = renderHook(() => useTelemetrySnapshot())
+    let outcome: Awaited<ReturnType<typeof result.current.refreshAllWithOutcome>> | undefined
+    await act(async () => {
+      outcome = await result.current.refreshAllWithOutcome()
+    })
+    expect(outcome).toEqual({ kind: 'failure', snapshot: null, error: 'network down' })
+  })
+
+  it('reports an aborted refresh as cancellation', async () => {
+    vi.mocked(fetch).mockRejectedValue(new DOMException('The operation was aborted', 'AbortError'))
+    const { result } = renderHook(() => useTelemetrySnapshot())
+    let outcome: Awaited<ReturnType<typeof result.current.refreshAllWithOutcome>> | undefined
+    await act(async () => {
+      outcome = await result.current.refreshAllWithOutcome()
+    })
+    expect(outcome).toMatchObject({ kind: 'cancelled', snapshot: null })
   })
 
   it('refreshConnector targets one connector', async () => {

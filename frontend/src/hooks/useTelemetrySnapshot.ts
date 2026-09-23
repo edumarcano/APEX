@@ -8,12 +8,19 @@ const TELEMETRY_LATEST_ENDPOINT = API_ENDPOINTS.telemetryLatest
 
 export type ModuleRefreshState = Record<string, boolean>
 
+export type RefreshAllOutcome =
+  | { kind: 'success'; snapshot: TelemetrySnapshot }
+  | { kind: 'conflict'; snapshot: null; error: string }
+  | { kind: 'cancelled'; snapshot: null; error: string }
+  | { kind: 'failure'; snapshot: null; error: string }
+
 export type UseTelemetrySnapshotReturn = {
   snapshot: TelemetrySnapshot | null
   isRefreshingAll: boolean
   refreshingConnectors: Set<string>
   error: string | null
   refreshAll: (opts?: { force?: boolean }) => Promise<TelemetrySnapshot | null>
+  refreshAllWithOutcome: (opts?: { force?: boolean }) => Promise<RefreshAllOutcome>
   refreshConnector: (name: string, opts?: { force?: boolean }) => Promise<TelemetrySnapshot | null>
   loadLatest: () => Promise<TelemetrySnapshot | null>
   clear: () => void
@@ -113,10 +120,11 @@ export function useTelemetrySnapshot(): UseTelemetrySnapshotReturn {
   const inFlightRef = useRef(false)
 
   const runRefresh = useCallback(
-    async (connectors: string[] | null, opts?: { force?: boolean }): Promise<TelemetrySnapshot | null> => {
+    async (connectors: string[] | null, opts?: { force?: boolean }): Promise<RefreshAllOutcome> => {
       if (inFlightRef.current) {
-        setError('A telemetry refresh is already in progress')
-        return null
+        const message = 'A telemetry refresh is already in progress'
+        setError(message)
+        return { kind: 'conflict', snapshot: null, error: message }
       }
 
       inFlightRef.current = true
@@ -143,8 +151,9 @@ export function useTelemetrySnapshot(): UseTelemetrySnapshotReturn {
         })
 
         if (response.status === 409) {
-          setError('A telemetry refresh is already in progress')
-          return null
+          const message = 'A telemetry refresh is already in progress'
+          setError(message)
+          return { kind: 'conflict', snapshot: null, error: message }
         }
 
         let body: unknown = null
@@ -160,20 +169,24 @@ export function useTelemetrySnapshot(): UseTelemetrySnapshotReturn {
               ? (body as { detail: string }).detail
               : `Telemetry refresh failed with status ${response.status}`
           setError(message)
-          return null
+          return { kind: 'failure', snapshot: null, error: message }
         }
 
         const parsed = parseTelemetrySnapshot(body)
         if (!parsed) {
           setError('Invalid telemetry snapshot response')
-          return null
+          return { kind: 'failure', snapshot: null, error: 'Invalid telemetry snapshot response' }
         }
 
         setSnapshot(parsed)
-        return parsed
+        return { kind: 'success', snapshot: parsed }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unknown telemetry refresh error')
-        return null
+        const message = err instanceof Error ? err.message : 'Unknown telemetry refresh error'
+        if (typeof DOMException !== 'undefined' && err instanceof DOMException && err.name === 'AbortError') {
+          return { kind: 'cancelled', snapshot: null, error: message }
+        }
+        setError(message)
+        return { kind: 'failure', snapshot: null, error: message }
       } finally {
         inFlightRef.current = false
         if (connectors === null) {
@@ -191,12 +204,23 @@ export function useTelemetrySnapshot(): UseTelemetrySnapshotReturn {
   )
 
   const refreshAll = useCallback(
-    (opts?: { force?: boolean }): Promise<TelemetrySnapshot | null> => runRefresh(null, opts),
+    async (opts?: { force?: boolean }): Promise<TelemetrySnapshot | null> => {
+      const outcome = await runRefresh(null, opts)
+      return outcome.snapshot
+    },
+    [runRefresh],
+  )
+
+  const refreshAllWithOutcome = useCallback(
+    (opts?: { force?: boolean }): Promise<RefreshAllOutcome> => runRefresh(null, opts),
     [runRefresh],
   )
 
   const refreshConnector = useCallback(
-    (name: string, opts?: { force?: boolean }): Promise<TelemetrySnapshot | null> => runRefresh([name], opts),
+    async (name: string, opts?: { force?: boolean }): Promise<TelemetrySnapshot | null> => {
+      const outcome = await runRefresh([name], opts)
+      return outcome.snapshot
+    },
     [runRefresh],
   )
 
@@ -231,6 +255,7 @@ export function useTelemetrySnapshot(): UseTelemetrySnapshotReturn {
     refreshingConnectors,
     error,
     refreshAll,
+    refreshAllWithOutcome,
     refreshConnector,
     loadLatest,
     clear,
