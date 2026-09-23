@@ -56,6 +56,17 @@ describe('CortexWorkspace', () => {
     expect(screen.getByLabelText('Context window')).toHaveValue('4096')
   })
 
+  it('renders a custom agent display name in the header, inspector, and model selector', async () => {
+    const user = userEvent.setup()
+    const named: CortexAgent = { ...apex, display_name: 'Nova' }
+    renderWorkspace({ cortexAgent: named })
+    expect(screen.getByText('Operate and configure Nova')).toBeVisible()
+    expect(screen.getAllByText('Nova').length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: 'Model' }))
+    expect(screen.getByRole('listbox', { name: 'Select Nova model' })).toBeVisible()
+    expect(screen.getByText('Choose the model for Nova.')).toBeVisible()
+  })
+
   it('discloses model/provider response evidence', async () => {
     const metadata: AgentQueryMetadata = { agent: { key: 'apex', version: null, provider: 'openrouter', configuredModel: cloudModel.model_id, resolvedModel: cloudModel.model_id, requestedEffort: 'low', resolvedEffort: 'low' }, usage: { inputTokens: 1, cachedInputTokens: null, reasoningTokens: null, outputTokens: 1, totalTokens: 2 }, timing: { totalMs: 10, providerMs: 8, apexToolMs: 0 }, cost: { tokenCost: 0, hostedToolCost: 0, totalCost: 0, currency: 'USD', pricingVersion: 'test', completeness: 'complete' }, citations: [], grounding: null, toolSelection: null }
     const user = userEvent.setup()

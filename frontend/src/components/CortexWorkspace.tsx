@@ -103,11 +103,13 @@ function LocalContextControl({
   contextWindow,
   disabled,
   onChange,
+  agentDisplayName,
 }: {
   model: ModelCatalogEntry
   contextWindow: number
   disabled: boolean
   onChange: (contextWindow: number) => Promise<boolean>
+  agentDisplayName: string
 }): ReactElement {
   const options = model.context_options ?? []
   const authoritativeContextWindow =
@@ -148,7 +150,7 @@ function LocalContextControl({
     }
   }
   return (
-    <section className="space-y-2" aria-label="Apex Agent context window">
+    <section className="space-y-2" aria-label={`${agentDisplayName} context window`}>
       <label htmlFor="cortex-apex-context" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">
         Context window
       </label>
@@ -171,8 +173,7 @@ function LocalContextControl({
         ))}
       </select>
       <p className="text-[11px] leading-relaxed text-zinc-500">
-        Applies the next time Apex Agent loads. Unload Apex Agent first to
-        switch context on a resident model.
+        {`Applies the next time ${agentDisplayName} loads. Unload ${agentDisplayName} first to switch context on a resident model.`}
       </p>
     </section>
   )
@@ -183,11 +184,13 @@ function LocalReasoningControl({
   reasoningMode,
   disabled,
   onChange,
+  agentDisplayName,
 }: {
   model: ModelCatalogEntry
   reasoningMode: LocalReasoningMode
   disabled: boolean
   onChange: (reasoningMode: LocalReasoningMode) => Promise<boolean>
+  agentDisplayName: string
 }): ReactElement {
   const options = model.reasoning_modes ?? []
   const authoritativeReasoningMode =
@@ -230,7 +233,7 @@ function LocalReasoningControl({
     }
   }
   return (
-    <section className="space-y-2" aria-label="Apex Agent reasoning">
+    <section className="space-y-2" aria-label={`${agentDisplayName} reasoning`}>
       <label htmlFor="cortex-apex-reasoning" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">
         Reasoning
       </label>
@@ -313,15 +316,17 @@ export function AssistantResponseDisplay({
   text,
   rawMetadata,
   onOpenRecord,
+  agentDisplayName = 'Apex Agent',
 }: {
   text: string
   rawMetadata: Record<string, unknown>
   onOpenRecord: (recordId: string) => void
+  agentDisplayName?: string
 }): ReactElement {
   const response = parseAgentQueryResponse({ ...rawMetadata, answer: text })
   const metadata = response.metadata
   return <>
-    {metadata?.agent ? <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#C084FC]">{metadata.agent.key}</p> : null}
+    {metadata?.agent ? <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#C084FC]">{agentDisplayName}</p> : null}
     <div className="text-sm leading-relaxed text-zinc-200"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{
       a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer" translate={typeof children === 'string' && children.startsWith('Google Maps:') ? 'no' : undefined} className="text-[#7EB3FF] hover:underline">{children}</a>,
       code: ({ className, children, ...props }) => className ? <code className={`${className} block font-mono text-xs text-zinc-200`} {...props}>{children}</code> : <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-xs text-purple-200" {...props}>{children}</code>,
@@ -493,9 +498,11 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
   const gridClassName = compactLayout
     ? 'grid min-h-0 flex-1 grid-cols-1'
     : 'grid min-h-0 flex-1 grid-cols-[14rem_minmax(0,1fr)_22rem]'
+  const agentDisplayName =
+    activeAgent?.display_name?.trim() || 'Apex Agent'
   const assistantComposer: ApexAssistantComposerProps = {
     activeAgent: props.activeAgent,
-    activeAgentName: activeAgent?.display_name ?? props.activeAgent,
+    activeAgentName: agentDisplayName,
     error: props.error,
     tools: {
       catalog: props.toolCatalog ?? null,
@@ -519,13 +526,13 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
     },
   }
   return <section className={`relative z-[var(--z-bento-hud)] mx-auto flex min-h-0 w-full flex-1 flex-col ${compactLayout ? 'overflow-visible' : 'overflow-hidden'} rounded-2xl border border-white/10 bg-zinc-950/45 shadow-2xl backdrop-blur-xl`} aria-label="Cortex workspace">
-    <header className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-black/20 px-4 py-3 sm:px-5"><div className="mr-auto flex items-center gap-2"><span className="hud-icon-badge size-8 text-[#C084FC]"><BrainCircuit className="size-4" aria-hidden /></span><div><h1 className="font-orbitron text-sm font-semibold uppercase tracking-[0.16em] text-white">Cortex</h1><p className="font-mono text-[10px] text-zinc-500">Operate and configure the Apex Agent</p></div></div></header>
+    <header className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-black/20 px-4 py-3 sm:px-5"><div className="mr-auto flex items-center gap-2"><span className="hud-icon-badge size-8 text-[#C084FC]"><BrainCircuit className="size-4" aria-hidden /></span><div><h1 className="font-orbitron text-sm font-semibold uppercase tracking-[0.16em] text-white">Cortex</h1><p className="font-mono text-[10px] text-zinc-500">{`Operate and configure ${agentDisplayName}`}</p></div></div></header>
     <div className={`${compactLayout ? 'flex' : 'hidden'} shrink-0 gap-2 border-b border-white/10 bg-black/20 p-2`}><button type="button" disabled={interactionDisabled} aria-expanded={compactPanel === 'conversations'} aria-controls="cortex-conversations-compact" onClick={() => setCompactPanel((panel) => panel === 'conversations' ? null : 'conversations')} className="rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 disabled:opacity-40">Conversations</button><button type="button" disabled={interactionDisabled} aria-expanded={compactPanel === 'inspector'} aria-controls="cortex-inspector-compact" onClick={() => setCompactPanel((panel) => panel === 'inspector' ? null : 'inspector')} className="rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 disabled:opacity-40">Inspector</button></div>
     {compactPanel === 'conversations' ? <div id="cortex-conversations-compact" className={compactLayout ? '' : 'xl:hidden'}><ApexConversationRail disabled={interactionDisabled} className="block w-full border-b border-r-0" /></div> : null}
     <div className={gridClassName}><ApexConversationRail disabled={interactionDisabled} className={compactLayout ? 'hidden' : 'hidden xl:block'} /><div className="order-1 flex min-h-0 flex-col">
         {props.agentQueriesEnabled ? (
           <ApexAssistantThread
-            renderAgent={(text, metadata) => <AssistantResponseDisplay text={text} rawMetadata={metadata} onOpenRecord={openContextRecord} />}
+            renderAgent={(text, metadata) => <AssistantResponseDisplay text={text} rawMetadata={metadata} onOpenRecord={openContextRecord} agentDisplayName={agentDisplayName} />}
             composer={assistantComposer}
             disabled={interactionDisabled || !props.selectionReady}
             logoProps={props.logoProps}
@@ -545,7 +552,7 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
         ) : (
           <footer className="border-t border-white/10 p-4 text-sm text-zinc-500">Agent queries are disabled in Settings.</footer>
         )}</div>
-      <aside id="cortex-inspector-compact" className={`order-2 space-y-4 border-t border-white/10 bg-black/15 p-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 scrollbar-thin ${compactPanel !== 'inspector' ? (compactLayout ? 'hidden' : 'hidden xl:block') : ''}`} aria-label="Cortex inspector"><div role="tablist" aria-label="Cortex inspector sections" className="flex border-b border-white/10">{INSPECTOR_TABS.map((tab) => <button key={tab} id={`cortex-inspector-tab-${tab}`} type="button" role="tab" tabIndex={inspectorTab === tab ? 0 : -1} aria-selected={inspectorTab === tab} aria-controls={`cortex-inspector-${tab}`} onKeyDown={onInspectorTabKeyDown} onClick={() => selectInspectorTab(tab)} className={`px-2 py-2 font-mono text-[10px] uppercase tracking-wide outline-none focus-visible:ring-1 focus-visible:ring-[#7EB3FF] ${inspectorTab === tab ? 'text-[#7EB3FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>{tab}</button>)}</div>{inspectorTab === 'controls' ? <div id="cortex-inspector-controls" role="tabpanel" aria-labelledby="cortex-inspector-tab-controls" className="space-y-4"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Apex Agent</p><p className="text-[11px] text-zinc-500">Select a model to choose cloud or local execution.</p></section><RuntimeControls {...props} agent={activeAgent} localContextLocked={localContextLocked} /><ContextControl {...props} /></div> : null}{inspectorTab === 'context' ? <div id="cortex-inspector-context" role="tabpanel" aria-labelledby="cortex-inspector-tab-context"><CortexContext inspector={contextInspector} demoModeActive={props.demoModeActive} openReviewId={props.linkedReviewId} onOpenActions={(actionId) => { props.actions.setSelectedActionId(actionId); setInspectorTab('actions') }} /></div> : null}{inspectorTab === 'actions' ? <div id="cortex-inspector-actions" role="tabpanel" aria-labelledby="cortex-inspector-tab-actions"><CortexActions actions={props.actions} demoModeActive={props.demoModeActive} /></div> : null}{inspectorTab === 'activity' ? <div id="cortex-inspector-activity" role="tabpanel" aria-labelledby="cortex-inspector-tab-activity"><CortexActivity runsState={runsState} modelCatalog={modelCatalog} /></div> : null}
+      <aside id="cortex-inspector-compact" className={`order-2 space-y-4 border-t border-white/10 bg-black/15 p-4 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:border-t-0 scrollbar-thin ${compactPanel !== 'inspector' ? (compactLayout ? 'hidden' : 'hidden xl:block') : ''}`} aria-label="Cortex inspector"><div role="tablist" aria-label="Cortex inspector sections" className="flex border-b border-white/10">{INSPECTOR_TABS.map((tab) => <button key={tab} id={`cortex-inspector-tab-${tab}`} type="button" role="tab" tabIndex={inspectorTab === tab ? 0 : -1} aria-selected={inspectorTab === tab} aria-controls={`cortex-inspector-${tab}`} onKeyDown={onInspectorTabKeyDown} onClick={() => selectInspectorTab(tab)} className={`px-2 py-2 font-mono text-[10px] uppercase tracking-wide outline-none focus-visible:ring-1 focus-visible:ring-[#7EB3FF] ${inspectorTab === tab ? 'text-[#7EB3FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>{tab}</button>)}</div>{inspectorTab === 'controls' ? <div id="cortex-inspector-controls" role="tabpanel" aria-labelledby="cortex-inspector-tab-controls" className="space-y-4"><section className="space-y-2"><p className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">{agentDisplayName}</p><p className="text-[11px] text-zinc-500">Select a model to choose cloud or local execution.</p></section><RuntimeControls {...props} agent={activeAgent} localContextLocked={localContextLocked} agentDisplayName={agentDisplayName} /><ContextControl {...props} /></div> : null}{inspectorTab === 'context' ? <div id="cortex-inspector-context" role="tabpanel" aria-labelledby="cortex-inspector-tab-context"><CortexContext inspector={contextInspector} demoModeActive={props.demoModeActive} openReviewId={props.linkedReviewId} onOpenActions={(actionId) => { props.actions.setSelectedActionId(actionId); setInspectorTab('actions') }} /></div> : null}{inspectorTab === 'actions' ? <div id="cortex-inspector-actions" role="tabpanel" aria-labelledby="cortex-inspector-tab-actions"><CortexActions actions={props.actions} demoModeActive={props.demoModeActive} /></div> : null}{inspectorTab === 'activity' ? <div id="cortex-inspector-activity" role="tabpanel" aria-labelledby="cortex-inspector-tab-activity"><CortexActivity runsState={runsState} modelCatalog={modelCatalog} /></div> : null}
       </aside>
     </div>
   </section>
@@ -554,10 +561,12 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
 function RuntimeControls({
   agent,
   localContextLocked,
+  agentDisplayName,
   ...props
 }: CortexWorkspaceProps & {
   agent: CortexAgent | null
   localContextLocked: boolean
+  agentDisplayName: string
 }): ReactElement {
   const controlsDisabled = props.isQuerying || Boolean(props.submissionPending) || Boolean(props.conversationHydrating)
   const selectedModel = props.selectedModel ?? agent?.selected_model ?? ''
@@ -578,9 +587,10 @@ function RuntimeControls({
         isQuerying={props.isQuerying}
         verifyingModelId={props.verifyingCloudModel}
         onVerify={props.onVerifyCloudAgent}
+        agentDisplayName={agentDisplayName}
       />
       {!isLocal && reasoningOptions.length > 0 ? <section className="space-y-2"><label htmlFor="cortex-effort" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Reasoning effort</label><select id="cortex-effort" value={props.cloudEffort} disabled={controlsDisabled} onChange={(event) => props.onEffortChange(event.target.value as CloudEffort)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">{reasoningOptions.map((effort) => <option key={effort} value={effort}>{formatReasoningLabel(effort)}</option>)}</select></section> : null}
-      {isLocal && selectedModelEntry ? <><LocalReasoningControl model={selectedModelEntry} reasoningMode={props.localReasoningMode} disabled={controlsDisabled} onChange={props.onLocalReasoningModeChange} /><LocalContextControl model={selectedModelEntry} contextWindow={props.localContextWindow} disabled={localContextLocked} onChange={props.onLocalContextWindowChange} /><LocalModelLifecycle model={selectedModelEntry} busy={props.lifecycleBusy || controlsDisabled} actionPending={props.lifecycleActionPending} onLoad={() => props.onLoadLocalModel(selectedModel)} onUnload={props.onUnloadLocalModel} /></> : null}
+      {isLocal && selectedModelEntry ? <><LocalReasoningControl model={selectedModelEntry} reasoningMode={props.localReasoningMode} disabled={controlsDisabled} onChange={props.onLocalReasoningModeChange} agentDisplayName={agentDisplayName} /><LocalContextControl model={selectedModelEntry} contextWindow={props.localContextWindow} disabled={localContextLocked} onChange={props.onLocalContextWindowChange} agentDisplayName={agentDisplayName} /><LocalModelLifecycle model={selectedModelEntry} busy={props.lifecycleBusy || controlsDisabled} actionPending={props.lifecycleActionPending} onLoad={() => props.onLoadLocalModel(selectedModel)} onUnload={props.onUnloadLocalModel} /></> : null}
 
       {hostedCapabilities.length > 0 ? (
         <GroundingControls note="Apex Brave Search remains the standard search capability when connected.">

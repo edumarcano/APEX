@@ -43,7 +43,7 @@ uv run apex runs show <run-id>
 uv run apex runs cancel <run-id>
 ```
 
-`status` checks backend readiness, including configuration and database access, and shows Apex Agent, its selected model, runtime, and saved cloud reasoning preference. `models` lists the unified model catalog and model-specific availability. Each `ask` invocation creates one persisted CLI conversation and submits one turn; it does not attach the current HUD snapshot. `--model` is optional; omitting it uses the persisted selected model. When `--profile` is omitted, the backend chooses the saved default profile for the selected model runtime.
+`status` checks backend readiness, including configuration and database access, and shows the Apex Agent display name (or Apex Agent when unset), its selected model, runtime, and saved cloud reasoning preference. `models` lists the unified model catalog under that same display name and model-specific availability. Each `ask` invocation creates one persisted CLI conversation and submits one turn; it does not attach the current HUD snapshot. `--model` is optional; omitting it uses the persisted selected model. When `--profile` is omitted, the backend chooses the saved default profile for the selected model runtime.
 
 `context status` shows local retrieval mode, indexing counts, and pending indexed items,
 and any safe degraded category. `context prepare` explicitly prepares the local

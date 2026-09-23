@@ -25,6 +25,7 @@ interface ModelSelectorProps {
   isQuerying?: boolean
   verifyingModelId?: string | null
   onVerify?: (modelId: string) => Promise<boolean>
+  agentDisplayName?: string
 }
 
 const STATUS_LABELS: Record<AgentAvailabilityStatus, string> = {
@@ -101,6 +102,7 @@ export function ModelSelector({
   isQuerying = false,
   verifyingModelId,
   onVerify,
+  agentDisplayName = 'Apex Agent',
 }: ModelSelectorProps): ReactElement {
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -290,7 +292,7 @@ export function ModelSelector({
       {isOpen ? (
         <div
           role="listbox"
-          aria-label="Select Apex Agent model"
+          aria-label={`Select ${agentDisplayName} model`}
           className="absolute left-0 right-0 top-full z-50 mt-2 max-h-[min(62vh,34rem)] overflow-y-auto rounded-xl border border-white/15 bg-zinc-950/95 p-2.5 shadow-2xl backdrop-blur-xl scrollbar-thin"
         >
           <div className="border-b border-white/10 px-2 pb-2 pt-1">
@@ -298,7 +300,7 @@ export function ModelSelector({
               Select Model
             </p>
             <p className="mt-0.5 text-[10px] text-zinc-500">
-              Choose the model for the Apex Agent.
+              {`Choose the model for ${agentDisplayName}.`}
             </p>
           </div>
 

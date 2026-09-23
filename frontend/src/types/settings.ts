@@ -144,6 +144,7 @@ export interface McpSettings {
 
 export interface RuntimeSettings {
   user_designation: string
+  agent_display_name: string
   features: FeaturesSettings
   modules: ModulesSettings
   football: FootballSettings
@@ -282,6 +283,7 @@ export interface LlamaCppServerStatusResponse {
 
 export interface SettingsPatch {
   user_designation?: string
+  agent_display_name?: string
   features?: FeaturesPatch
   modules?: ModulesPatch
   football?: FootballPatch

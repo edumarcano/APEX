@@ -393,6 +393,7 @@ function settingsResponse(
     schema_version: 19,
     settings: {
       user_designation: '',
+      agent_display_name: '',
       features: {
         weather: false,
         sports: false,

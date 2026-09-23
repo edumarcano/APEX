@@ -177,6 +177,28 @@ describe('settings cloning and mutations', () => {
     })
   })
 
+  it('preserves agent_display_name in parse, clone, and diff', () => {
+    const withName = {
+      ...BASE_SETTINGS,
+      agent_display_name: 'Nova',
+    }
+    const parsed = parseSettingsResponse(
+      buildSettingsResponse(withName, { local_override_active: true }),
+    )
+    expect(parsed?.settings.agent_display_name).toBe('Nova')
+    expect(cloneRuntimeSettings(withName).agent_display_name).toBe('Nova')
+
+    const draft = cloneRuntimeSettings(BASE_SETTINGS)
+    draft.features.weather = false
+    expect(diffSettingsPatch(BASE_SETTINGS, draft).agent_display_name).toBeUndefined()
+
+    draft.agent_display_name = 'Nova'
+    expect(diffSettingsPatch(BASE_SETTINGS, draft)).toMatchObject({
+      agent_display_name: 'Nova',
+      features: { weather: false },
+    })
+  })
+
   it('generates a patch containing only dirty fields', () => {
     const draft = cloneRuntimeSettings(BASE_SETTINGS)
     draft.user_designation = 'Chief'

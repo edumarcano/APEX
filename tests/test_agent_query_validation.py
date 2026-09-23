@@ -49,6 +49,8 @@ class LocalEffortRejectionTests(unittest.TestCase):
         assert saved_cloud_model is not None
         settings = mock.Mock()
         settings.ask_apex.enabled = True
+        settings.user_designation = ""
+        settings.agent_display_name = ""
         with (
             mock.patch("core.api.cortex.DEMO_MODE", True),
             mock.patch("core.api.cortex.get_settings_store") as store_mock,
@@ -135,7 +137,10 @@ class SandboxPolicyTests(unittest.TestCase):
             ),
             mock.patch("core.api.cortex.agent_has_credentials", return_value=True),
         ):
-            store_mock.return_value.get_snapshot.return_value.ask_apex = ask_apex
+            snapshot = store_mock.return_value.get_snapshot.return_value
+            snapshot.ask_apex = ask_apex
+            snapshot.user_designation = ""
+            snapshot.agent_display_name = ""
             query_agent(
                 AgentQueryRequest(
                     prompt="hello",
@@ -190,7 +195,10 @@ class SandboxPolicyTests(unittest.TestCase):
             mock.patch("core.api.cortex.try_begin_local_execution", return_value=True),
             mock.patch("core.api.cortex.end_local_execution"),
         ):
-            store_mock.return_value.get_snapshot.return_value.ask_apex = ask_apex
+            snapshot = store_mock.return_value.get_snapshot.return_value
+            snapshot.ask_apex = ask_apex
+            snapshot.user_designation = ""
+            snapshot.agent_display_name = ""
             query_agent(
                 AgentQueryRequest(
                     prompt="hello",

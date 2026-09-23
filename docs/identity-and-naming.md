@@ -31,7 +31,7 @@ Apex Agent works with briefings, trusted personal context, connected services, a
 
 The Agent identity, safety policy, and APEX-specific instructions stay consistent. Selecting a model changes execution characteristics such as provider or runtime, reasoning choices, local context limits, hosted capabilities, availability, and price. It does not select a different Agent.
 
-The Home and Cortex surfaces use the same singular **Apex Agent** identity. Selecting a model never selects a different Agent.
+The Home and Cortex surfaces use the same singular **Apex Agent** identity. Selecting a model never selects a different Agent. A local display name may replace the visible name and the assistant’s self-name in prompts; it is not a second Agent.
 
 ## Briefing modes
 

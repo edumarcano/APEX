@@ -78,12 +78,16 @@ class ApexAgentCatalogTests(unittest.TestCase):
         from core.api.app import app
 
         with mock.patch("core.api.routers.cortex.get_settings_store") as store:
-            store.return_value.get_snapshot.return_value.ask_apex = AgentSettings()
+            snapshot = mock.Mock()
+            snapshot.ask_apex = AgentSettings()
+            snapshot.agent_display_name = ""
+            store.return_value.get_snapshot.return_value = snapshot
             response = TestClient(app).get("/api/v1/cortex/agent")
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["key"], "apex")
+        self.assertEqual(payload["display_name"], "Apex Agent")
         self.assertEqual(payload["selected_model"], "deepseek/deepseek-v4-flash-0731")
         self.assertTrue(payload["model_catalog"])
         local_model = next(
@@ -93,3 +97,9 @@ class ApexAgentCatalogTests(unittest.TestCase):
         self.assertIn("active", local_model)
         self.assertIn("loading", local_model)
         self.assertIn("loaded_model", local_model)
+
+    def test_resolve_agent_display_name_prefers_saved_value(self) -> None:
+        from core.agent.catalog import resolve_agent_display_name
+
+        self.assertEqual(resolve_agent_display_name(""), "Apex Agent")
+        self.assertEqual(resolve_agent_display_name("Nova"), "Nova")

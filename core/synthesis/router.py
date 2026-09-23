@@ -284,6 +284,7 @@ class SynthesisRouter:
             "apex",
             native_effort="high",
             model_id=_FOCUSED_BRIEFING_MODEL,
+            agent_display_name=get_settings_store().get_snapshot().agent_display_name,
         )
         self._state("generating", "openrouter", _FOCUSED_BRIEFING_MODEL, None)
         turn = OpenRouterProvider(api_key).generate_turn(
@@ -294,6 +295,7 @@ class SynthesisRouter:
                 "apex",
                 FOCUSED_SYNTHESIS_PROMPT,
                 user_designation=get_settings_store().get_snapshot().user_designation,
+                agent_display_name=get_settings_store().get_snapshot().agent_display_name,
             ),
         )
         briefing, insights = parse_model_output(
@@ -331,10 +333,12 @@ class SynthesisRouter:
                 or context_window
             )
         user_designation = get_settings_store().get_snapshot().user_designation
+        agent_display_name = get_settings_store().get_snapshot().agent_display_name
         system_instruction = compose_agent_system_instruction(
             "apex",
             FLASH_SYNTHESIS_PROMPT,
             user_designation=user_designation,
+            agent_display_name=agent_display_name,
         )
         return build_concrete_agent(
             "apex",
@@ -342,6 +346,7 @@ class SynthesisRouter:
             local_context_window=context_window,
             local_reasoning_mode="none",
             model_id=model_id,
+            agent_display_name=agent_display_name,
         ).model_copy(
             update={
                 "final_answer_max_tokens": _LOCAL_SYNTHESIS_FINAL_ANSWER_MAX_TOKENS,

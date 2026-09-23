@@ -47,7 +47,7 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 21
+SETTINGS_SCHEMA_VERSION: int = 22
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 LlamaCppServerState = Literal[
@@ -384,6 +384,11 @@ class RuntimeSettingsSnapshot(BaseModel):
         max_length=80,
         description="Optional local designation used when addressing the user.",
     )
+    agent_display_name: str = Field(
+        default="",
+        max_length=80,
+        description="Optional local display name for the Apex Agent.",
+    )
     features: FeaturesSettings = Field(default_factory=FeaturesSettings)
     modules: ModulesSettings = Field(default_factory=ModulesSettings)
     football: FootballSettings = Field(default_factory=FootballSettings)
@@ -643,6 +648,7 @@ class SettingsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     user_designation: str | None = Field(default=None, max_length=80)
+    agent_display_name: str | None = Field(default=None, max_length=80)
     features: FeaturesPatch | None = None
     modules: ModulesPatch | None = None
     football: FootballPatch | None = None
