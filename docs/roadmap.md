@@ -463,7 +463,7 @@ The Cortex Records and Review views and the CLI expose current claims, evidence,
 **Objective:**
 Give outside tools one simple way to report completed work, findings, evidence, and follow-up items into APEX.
 
-The first version is inbound-only. The local Inbox, report review path, CLI, JSON and Markdown import, optional loopback-only submission gateway, and optional local-folder mailbox are in place on this branch. The Grok Bot report and private-folder sync handoff were verified; automatic APEX mailbox ingestion still needs an end-to-end trial before this milestone is complete.
+The first version is inbound-only. The local Inbox, report review path, CLI, JSON and Markdown import, optional loopback-only submission gateway, and optional local-folder mailbox are in place on this branch.
 
 Reports are untrusted input. Receiving or inspecting one does not add personal context, call Cortex tools, approve actions, or change trusted knowledge.
 
@@ -484,9 +484,7 @@ APEX should not import an outside tool's full conversation or internal task hist
 
 Different local submission methods feed the same internal service. Version one uses the generic APEX CLI and JSON or Markdown file import. A local program that needs HTTP or MCP may use the optional loopback-only gateway; it is not a remote client endpoint.
 
-The Grok Bot trial produced a version-one report that imported through the generic CLI, and a separate private-folder sync trial confirmed the file reached the local PC after wake. These trials did not exercise automatic APEX mailbox ingestion; that remains to be verified with startup polling, periodic intake, and Inbox Refresh. No Grok-specific APEX adapter is required.
-
-The trial procedure and its expected receipt and Inbox checks are in [the CLI guide](cli.md#first-client-trial-grok-bot-local-terminal).
+Automatic ingestion of a completed report from a real client's configured folder remains unverified for beta.4. The mailbox scans at startup and periodically, and Inbox Refresh requests an immediate scan; see [configuration](configuration.md#optional-local-folder-mailbox) for setup.
 
 The optional submission gateway must remain on loopback. Beta.4 does not depend on public reachability or an APEX-built tunnel or account system.
 

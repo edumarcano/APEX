@@ -91,62 +91,7 @@ successfully exits with code `0`.
 
 Reports do not automatically enter personal context, retrieval, prompts, briefings, or attention. Reading, reviewing, dismissing, or reopening a report does not approve a context change.
 
-### First client trial: Grok Bot local terminal
-
-Grok Bot has produced a version-one report that imported through the generic CLI. A separate trial confirmed a report written to a private Google Drive folder synced to a local folder after the PC woke. These trials did not exercise APEX's automatic mailbox polling. The steps below document how to repeat the CLI import with a genuine report; see [Optional local-folder mailbox](configuration.md#optional-local-folder-mailbox) for the still-unverified automatic intake path.
-
-Merge this registration into `config.json`. If the file already has `external_activity.clients`, add the entry to that array and keep the other clients. The ID is source attribution, not a credential. Select the partition that APEX currently uses: it is `sandbox` only when both `DEV_MODE=true` and the saved Ask Apex **Sandbox mode** setting are enabled; otherwise it is `production`. `DEMO_MODE` rejects submissions.
-
-```json
-{
-  "external_activity": {
-    "clients": [
-      {
-        "id": "grok-bot",
-        "display_name": "Grok Bot",
-        "enabled": true,
-        "allowed_principals": ["operator"],
-        "permissions": ["activity:submit"],
-        "partition": "production"
-      }
-    ]
-  }
-}
-```
-
-Start the APEX backend with `uv run python launcher.py` from the repository root, or confirm that it is already running at `http://127.0.0.1:8000`. A successful trial must use a genuine completed task from Grok Bot's native environment. Require at least one inspectable native task or result link in `native_task_url` or `evidence_links`; distinguish source observations from inference in the report, mark inferred findings with `derivation: "model_interpretation"`, and name any unavailable sources instead of filling in unsupported details.
-
-Have the approved local terminal action save one version-one report object as `$env:TEMP\grok-bot-trial.json`, outside the repository. The JSON below illustrates the schema only: its synthetic content and placeholder URL do not count as trial evidence. Replace them with the genuine task report, its native link, and a fresh `submission_key`.
-
-```json
-{
-  "version": "1",
-  "submission_key": "grok-bot-trial-unique-01",
-  "title": "Local activity import trial",
-  "task_status": "completed",
-  "outcome": "The report was written for the APEX Inbox trial.",
-  "native_task_url": "https://example.invalid/replace-with-real-task-url",
-  "findings": [
-    {
-      "title": "Trial finding",
-      "text": "The JSON report contains a concise finding.",
-      "derivation": "model_interpretation"
-    }
-  ]
-}
-```
-
-Use a fresh `submission_key` for each new report. Retrying an unchanged file with the same key returns the original receipt; changing the report while reusing that key is rejected. Inspect the saved JSON, then approve and run this exact command in the Bot's PowerShell terminal from the repository root:
-
-```powershell
-uv run apex activity import "$env:TEMP\grok-bot-trial.json" --client grok-bot
-```
-
-A successful first import prints `Received: <report-id>` and a receipt time. Confirm the report is in the local Inbox by running `uv run apex activity list --client grok-bot --disposition new`, then `uv run apex activity show <report-id>` with the receipt ID. In the HUD, open **Inbox**, select the report, and inspect its source, new disposition, outcome, finding, and any references before changing its disposition.
-
-If the import fails, check that the backend is running with `uv run apex status`, the JSON has one report object with all required fields, `grok-bot` is enabled with `activity:submit`, and its registration partition matches APEX's active partition. `DEV_MODE=true` alone does not select `sandbox`; both it and the saved Ask Apex **Sandbox mode** setting must be enabled. An unavailable or disabled registration is denied; a repeated identical report should print `Duplicate receipt`. Do not retry changed content under an existing key.
-
-Local command execution can read and change files or start programs with the permissions of the OS account running the Bot. Approve that access only if the granted scope is clear and acceptable; if it is too broad, use the JSON handoff and run the import yourself, which checks APEX's importer but does not verify Bot integration. This procedure uses the local CLI and does not require exposing the backend or gateway to a network.
+See [configuration](configuration.md#external-activity-registrations) for client registration and [the optional local-folder mailbox](configuration.md#optional-local-folder-mailbox) for automatic intake setup.
 
 ## Actions
 
