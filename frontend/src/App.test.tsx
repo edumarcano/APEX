@@ -44,7 +44,7 @@ const appMocks = vi.hoisted(() => ({
     error: 'refresh failed',
   }),
   refreshConnector: vi.fn().mockResolvedValue(undefined),
-  loadLatest: vi.fn().mockResolvedValue(undefined),
+  loadLatest: vi.fn().mockResolvedValue(null),
   triggerSynthesis: vi.fn().mockResolvedValue(undefined),
   generateFromSnapshot: vi.fn().mockResolvedValue(undefined),
   speak: vi.fn(),
@@ -817,6 +817,7 @@ describe('App contextual voice cues', () => {
     })
     appMocks.generateFromSnapshot.mockReset().mockResolvedValue(undefined)
     appMocks.triggerSynthesis.mockReset().mockResolvedValue(undefined)
+    appMocks.loadLatest.mockReset().mockResolvedValue(null)
     appMocks.requestOperation.mockReset().mockResolvedValue('proceed')
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
@@ -873,7 +874,7 @@ describe('App contextual voice cues', () => {
     }
   }
 
-  it('uses a loading greeting and salutation-free readiness update when refresh fills missing telemetry', async () => {
+  it('uses only the loading greeting when refresh fills missing telemetry', async () => {
     const user = userEvent.setup()
     const events: string[] = []
     appMocks.activated = false
@@ -887,15 +888,15 @@ describe('App contextual voice cues', () => {
     await user.click(screen.getByRole('button', { name: 'Start APEX' }))
 
     await waitFor(() => {
-      expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_ready_update'])
+      expect(events).toEqual(['refresh', 'cue:activation_loading'])
     })
   })
 
-  it('speaks one ready welcome when the current snapshot is still fresh', async () => {
+  it('loads a fresh current snapshot before choosing the single ready welcome', async () => {
     const user = userEvent.setup()
     const events: string[] = []
     appMocks.activated = false
-    appMocks.telemetrySnapshot = createTelemetrySnapshot()
+    appMocks.loadLatest.mockResolvedValue(createTelemetrySnapshot())
     stubAppFetch(events)
     appMocks.refreshAllWithOutcome.mockImplementation(async () => {
       events.push('refresh')
@@ -906,9 +907,10 @@ describe('App contextual voice cues', () => {
     await user.click(screen.getByRole('button', { name: 'Start APEX' }))
 
     await waitFor(() => expect(events).toEqual(['refresh', 'cue:activation_ready']))
+    expect(appMocks.loadLatest).toHaveBeenCalledOnce()
   })
 
-  it('treats a snapshot older than the freshness window as loading telemetry', async () => {
+  it('uses the latest fresh snapshot when the local snapshot has expired', async () => {
     const user = userEvent.setup()
     const events: string[] = []
     appMocks.activated = false
@@ -926,6 +928,7 @@ describe('App contextual voice cues', () => {
         },
       },
     )
+    appMocks.loadLatest.mockResolvedValue(createTelemetrySnapshot())
     stubAppFetch(events)
     appMocks.refreshAllWithOutcome.mockImplementation(async () => {
       events.push('refresh')
@@ -935,9 +938,8 @@ describe('App contextual voice cues', () => {
     render(<App />)
     await user.click(screen.getByRole('button', { name: 'Start APEX' }))
 
-    await waitFor(() => {
-      expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_ready_update'])
-    })
+    await waitFor(() => expect(events).toEqual(['refresh', 'cue:activation_ready']))
+    expect(appMocks.loadLatest).toHaveBeenCalledOnce()
   })
 
   it('orders the activation refresh failure follow-up and skips it on conflict', async () => {

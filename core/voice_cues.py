@@ -8,7 +8,6 @@ from typing import Literal
 BriefingMode = Literal["flash", "focused", "structured"]
 VoiceCueName = Literal[
     "activation_ready",
-    "activation_ready_update",
     "activation_loading",
     "activation_refresh_failed",
     "activation_no_fresh_telemetry",
@@ -69,8 +68,6 @@ def format_voice_cue(
 
     if cue == "activation_ready":
         return f"{salutation}{vocative}. I have your telemetry at hand. I’m standing by to brief you."
-    if cue == "activation_ready_update":
-        return "I have your telemetry at hand. I’m standing by to brief you."
     if cue == "activation_loading":
         return f"{salutation}{vocative}. I’m gathering your telemetry and standing by for a briefing."
     if cue == "activation_refresh_failed":

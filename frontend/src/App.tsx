@@ -757,7 +757,11 @@ export default function App(): ReactElement {
     }
 
     activate()
-    const telemetryWasReady = telemetry.snapshot !== null && hasFreshUsableTelemetry(telemetry.snapshot)
+    const localSnapshotIsReady = telemetry.snapshot !== null && hasFreshUsableTelemetry(telemetry.snapshot)
+    const initialSnapshot = voiceMode === 'automatic' && !localSnapshotIsReady
+      ? await telemetry.loadLatest()
+      : telemetry.snapshot
+    const telemetryWasReady = initialSnapshot !== null && hasFreshUsableTelemetry(initialSnapshot)
     const refreshPromise = telemetry.refreshAllWithOutcome({ force: false })
     const initialCuePromise = voiceMode === 'automatic'
       ? requestVoiceCue(telemetryWasReady ? 'activation_ready' : 'activation_loading')
@@ -771,10 +775,9 @@ export default function App(): ReactElement {
       if (outcome.kind === 'failure') {
         await requestVoiceCue('activation_refresh_failed')
       } else if (!telemetryWasReady) {
-        const cue = hasFreshUsableTelemetry(outcome.snapshot)
-          ? 'activation_ready_update'
-          : 'activation_no_fresh_telemetry'
-        await requestVoiceCue(cue)
+        if (!hasFreshUsableTelemetry(outcome.snapshot)) {
+          await requestVoiceCue('activation_no_fresh_telemetry')
+        }
       }
     }
   }, [preflight, activate, telemetry, voiceMode])

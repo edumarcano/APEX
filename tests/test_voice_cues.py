@@ -34,10 +34,6 @@ class VoiceCueFormattingTests(unittest.TestCase):
             "Good evening. I’m gathering your telemetry and standing by for a briefing.",
         )
         self.assertEqual(
-            format_voice_cue("activation_ready_update"),
-            "I have your telemetry at hand. I’m standing by to brief you.",
-        )
-        self.assertEqual(
             format_voice_cue("activation_no_fresh_telemetry"),
             "I’m standing by without fresh telemetry.",
         )
