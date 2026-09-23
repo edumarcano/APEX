@@ -22,7 +22,7 @@ description: Validate and execute an approved APEX implementation plan or one un
 
 ## Review and correct
 
-1. After implementation, the parent independently review the completed diff using the `review-change` skill against the reconciled plan and acceptance criteria. Do not treat the worker's self-review as sufficient.
+1. After implementation, the parent independently reviews the completed diff using the `review-change` skill against the reconciled plan and acceptance criteria. Do not treat the worker's self-review as sufficient.
 2. Keep each review pass read-only. When actionable findings exist, return to this workflow and delegate the fixes to the implementation worker.
 3. Re-run affected validation, then perform another `review-change` pass.
 4. Repeat the fix → review cycle until no known actionable finding remains or a missing product or architectural decision blocks completion.
