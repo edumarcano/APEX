@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plan Change"
+  short_description: "Research and plan APEX changes"
+  default_prompt: "Use $plan-change to research this APEX change and produce an implementation-ready plan."
