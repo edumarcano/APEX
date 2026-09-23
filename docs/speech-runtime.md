@@ -31,6 +31,12 @@ If an optional engine is missing its package, credentials, or local model files,
 
 Kokoro stays local. If Kokoro is unavailable or fails during preparation, synthesis, or playback, APEX falls back to pyttsx3 and never sends the text to Google Cloud TTS.
 
+## Contextual cues
+
+In automatic voice mode, APEX may speak short cues during **Start APEX**, **Start with Briefing**, **Generate Briefing**, and **Refresh All & Generate Briefing**. They can acknowledge activation, name the requested briefing mode, report whether the latest collection was complete, partial, or unavailable, and announce a Structured fallback. The wording uses the local time of day and optional saved user designation. Manual and off modes skip these cues.
+
+Cue requests share the speech lock and configured engine fallback with other speech. They are best effort: a busy or failed cue does not fail activation, telemetry refresh, or briefing generation. See the [voice cue API](api.md#post-apiv1voicecue) for the request and response contract.
+
 ## Long-text delivery
 
 Google and Kokoro input is normalized to Unicode plain text and split at sentence boundaries. Very long sentences are split again at a fixed size limit. Valid accented and non-Latin characters are preserved.

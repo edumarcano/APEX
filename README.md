@@ -10,9 +10,9 @@
 
 APEX started as a small, fun experiment: could I build something that gave me a spoken daily briefing with a little of the Jarvis feeling from *Iron Man*? As it grew, it became a playground for a new interest in AI tools and software development, a place to experiment, learn, and find out what I could actually build.
 
-Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, sourced personal context, and Apex Agent work into one deliberate workspace. It turns those signals into Home telemetry, concise briefings, and Agent queries while keeping the local machine, not a hosted account, at the center of the system.
+Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, sourced personal context, outside activity reports, and Apex Agent work into one place. It turns those signals into Home telemetry, concise briefings, and Agent queries while keeping the local machine, not a hosted account, at the center of the system.
 
-APEX has two main workspaces: Home, which shows telemetry and briefings, and Cortex, which is the workspace for interacting directly with Apex Agent. Telemetry means structured status collected from connected services; a briefing summarizes that status; and an Agent query is a request sent to the selected model through Apex Agent.
+APEX has three workspaces: Home shows telemetry and briefings, Inbox holds reports from outside tools, and Cortex is where you interact directly with Apex Agent and review personal context. Telemetry means structured status collected from connected services; a briefing summarizes that status; and an Agent query is a request sent to the selected model through Apex Agent.
 
 <p align="center">
   <img
@@ -56,6 +56,10 @@ After a Microsoft To Do list is selected, its incomplete tasks become the Home r
   <em>The Cortex workspace using the Apex Agent to review persisted briefing history, with conversation, model, tool, and personal context controls available alongside the chat.</em>
 </p>
 
+### Reviews outside work in Inbox
+
+Local tools can submit completed-work reports through the APEX CLI, JSON or Markdown import, an optional loopback-only HTTP and MCP gateway, or a configured local-folder mailbox. Inbox shows the immutable reports and lets the operator mark them new, reviewed, or dismissed. A selected finding can be proposed as personal context, but it stays outside trusted retrieval until its linked review is accepted. See [Configuration](docs/configuration.md#external-activity-intake) for intake options and [Privacy](docs/privacy.md#external-activity-reports) for the trust boundary.
+
 ### Keeps runtime control visible
 
 The HUD exposes connector health, CPU and memory use, active model state, briefing mode, voice delivery, preflight warnings, and machine-local settings. Activation, telemetry refresh, briefing generation, Agent requests, and speech are separate operations rather than one mandatory pipeline.
@@ -67,7 +71,7 @@ The HUD exposes connector health, CPU and memory use, active model state, briefi
 - **Safer model input:** Connectors produce structured results, and briefing models receive only selected facts marked as untrusted data.
 - **Three briefing modes:** Flash is the default local Gemma orientation, Focused is OpenRouter DeepSeek V4 Flash planning, and Structured is a model-free deterministic view.
 - **One local model at a time:** APEX avoids hidden local-inference queues and keeps model loading visible.
-- **Local storage:** SQLite keeps briefing history, the reminder cache and offline queue, Cortex conversations and run records, personal-context sources and history, retrieval indexes, context reviews, and the durable action ledger. Reloading APEX restores the active conversation branch and its per-conversation Agent/tool preferences.
+- **Local storage:** SQLite keeps briefing history, the reminder cache and offline queue, Cortex conversations and run records, external activity reports, personal-context sources and history, retrieval indexes, context reviews, and the durable action ledger. Reloading APEX restores the active conversation branch and its per-conversation Agent/tool preferences.
 - **Visible failures:** Readiness checks, connector health, stable errors, run IDs, and preflight warnings make degraded states easier to understand.
 - **Credential isolation:** The backend receives credentials; the static server and browser receive a restricted child environment.
 
@@ -122,13 +126,14 @@ Demo mode bypasses live connectors and model calls, does not write briefing hist
 
 ## Use APEX without the HUD
 
-When the backend is already running, the included CLI can inspect APEX, run one Agent turn, generate a briefing, inspect and review personal context, inspect recent Cortex runs, and resolve durable actions:
+When the backend is already running, the included CLI can inspect APEX, run one Agent turn, generate a briefing, submit and inspect outside activity, review personal context, inspect recent Cortex runs, and resolve durable actions:
 
 ```powershell
 uv run apex status
 uv run apex models
 uv run apex ask "What needs my attention?" --profile personal_ops
 uv run apex briefing --mode structured
+uv run apex activity list
 uv run apex context list
 uv run apex context review list
 uv run apex runs list

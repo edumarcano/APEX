@@ -9,7 +9,7 @@
 ## Current Focus
 
 **Current Phase:** [Phase V: APEX 2.0 Beta](#phase-v-apex-20-beta)
-**Active Milestone:** [v2.0.0-beta.4 - External Activity Inbox](#v200-beta4---external-activity-inbox)
+**Next Milestone:** [v2.0.0-beta.5 - Cortex: Personal Attention & Briefings](#v200-beta5---cortex-personal-attention--briefings)
 **Current Direction:** [APEX 2.0 Direction](#apex-20-direction)
 
 ### Navigation
@@ -458,43 +458,12 @@ The Cortex Records and Review views and the CLI expose current claims, evidence,
 
 ## v2.0.0-beta.4 - External Activity Inbox
 
-**Status:** In Progress
+**Status:** Complete
 
 **Objective:**
-Give outside tools one simple way to report completed work, findings, evidence, and follow-up items into APEX.
+Give outside tools a local, inbound-only way to report completed work, findings, evidence, and follow-up items. APEX now accepts versioned reports through the CLI, JSON and Markdown import, an optional loopback-only HTTP and MCP gateway, and an optional local-folder mailbox. Inbox keeps immutable reports with caller-claimed source labels, partition isolation, and reversible dispositions.
 
-The first version is inbound-only. The local Inbox, report review path, CLI, JSON and Markdown import, optional loopback-only submission gateway, and optional local-folder mailbox are in place on this branch.
-
-Reports are untrusted input. Receiving or inspecting one does not add personal context, call Cortex tools, approve actions, or change trusted knowledge.
-
-APEX should define one internal external-activity format. A useful report may include:
-
-* the source client;
-* the task title and status;
-* a concise outcome;
-* important findings;
-* evidence and links;
-* artifacts;
-* unresolved questions;
-* suggested follow-up;
-* affected projects or subjects;
-* a link back to the task in its native application.
-
-APEX should not import an outside tool's full conversation or internal task history by default.
-
-Different local submission methods feed the same internal service. Version one uses the generic APEX CLI and JSON or Markdown file import. A local program that needs HTTP or MCP may use the optional loopback-only gateway; it is not a remote client endpoint.
-
-Automatic ingestion of a completed report from a real client's configured folder remains unverified for beta.4. The mailbox scans at startup and periodically, and Inbox Refresh requests an immediate scan; see [configuration](configuration.md#optional-local-folder-mailbox) for setup.
-
-The optional submission gateway must remain on loopback. Beta.4 does not depend on public reachability or an APEX-built tunnel or account system.
-
-Outside tools should continue to use their own interfaces for task creation, progress, configuration, and detailed results. APEX should show a concise activity record and a link back to the original work instead of recreating those interfaces.
-
-Each submission carries a caller-declared source ID for attribution. It does not authenticate the submitting program, and beta.4 has no per-source registration, disable, or revocation control. Reports remain associated with the claimed source ID and stay available as historical records.
-
-The main APEX backend and database remain local. The optional provider-neutral mailbox reads completed reports from one operator-selected local folder and uses the same activity service as other submission paths. It does not depend on a Google Drive API or prove which program created a file.
-
-Removing an external tool does not require a code change, but beta.4 cannot revoke that source independently. The optional local gateway can be stopped as a whole; it does not authenticate callers.
+An operator can turn selected report evidence into a pending personal-context review; only an accepted review changes trusted context. Source IDs provide attribution, not authentication or individual revocation, and the gateway must stay on loopback. Automatic ingestion from a real external client's folder remains unverified; see [Configuration](configuration.md#optional-local-folder-mailbox) for the mailbox contract.
 
 ---
 
@@ -755,5 +724,5 @@ The local-first model remains the default. APEX should continue to work without 
 
 APEX is currently in **Phase V: APEX 2.0 Beta**.
 
-**Active milestone:**
-[v2.0.0-beta.4 - External Activity Inbox](#v200-beta4---external-activity-inbox)
+**Next milestone:**
+[v2.0.0-beta.5 - Cortex: Personal Attention & Briefings](#v200-beta5---cortex-personal-attention--briefings)

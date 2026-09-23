@@ -73,9 +73,10 @@ confirmation.
 `accepted`, `rejected`, or `stale`) and a `--limit`. `context review show`
 displays the frozen proposal, evidence, reasons, and expected record revisions.
 Before `accept` or `reject`, the CLI reads the review detail and submits those
-expected revisions. A stale `409` is reported as an error and requires a new
-command invocation; the CLI does not refresh or retry it. Rejecting a review
-successfully exits with code `0`.
+expected revisions. A stale `409` is reported as an error; repeating the same
+CLI decision does not refresh the review. Refresh it in Cortex Review or through
+the API, then decide the newly returned review. Rejecting a review successfully
+exits with code `0`.
 
 `briefing` uses the normal full refresh-and-generate route. Omitting `--mode` uses the saved Flash default; supported overrides are `flash`, `focused`, and `structured`. These are breaking identifiers: the former Agent-named values are rejected.
 
@@ -85,9 +86,9 @@ successfully exits with code `0`.
 
 `activity submit` builds a version-one report from `--submission-key`, `--title`, `--task-status`, and `--outcome`. Add repeatable findings, evidence links, artifact references, unresolved questions, subjects, or projects when they help inspection. `--markdown-file` stores a Markdown body as report content. Artifact references remain references; APEX does not fetch them.
 
-`activity import` accepts a JSON report object with the same version-one fields, or a `.md`/`.markdown` body with required metadata options. Imports work offline once the local backend is running. `list` filters the current partition by client and inbox disposition, and `show` prints the immutable receipt and report content.
+`activity import` accepts a JSON report object with the same version-one fields, or a `.md`/`.markdown` body with required metadata options. Import requires the running local backend but no external service. `list` filters the current partition by client and inbox disposition, and `show` prints the immutable receipt and report content.
 
-`activity propose-context` selects `/findings/<index>`, or `/outcome` or `/markdown_body` when the report has no structured findings, and creates a pending context review. Its text and structured fields describe the proposed claim; the stored finding remains the immutable source evidence. Pass `--correct-record <record-id>` to propose a correction through the same review lifecycle. Use `context review` commands to accept, reject, or refresh it.
+`activity propose-context` selects `/findings/<index>`, or `/outcome` or `/markdown_body` when the report has no structured findings. A new proposal creates a pending context review; repeating the same proposal returns its linked review with its current decision. Its text and structured fields describe the proposed claim; the stored finding remains the immutable source evidence. Pass `--correct-record <record-id>` to propose a correction through the same review lifecycle. Use `context review` commands to inspect, accept, or reject it. Refresh a stale review in Cortex Review or through the API before another decision.
 
 Reports do not automatically enter personal context, retrieval, prompts, briefings, or attention. Reading, reviewing, dismissing, or reopening a report does not approve a context change.
 
