@@ -62,7 +62,11 @@ def generate_briefing_endpoint(body: BriefingGenerateRequest) -> BriefingRespons
     Performs no connector calls. Returns ``409`` when the snapshot is missing
     or no longer current.
     """
-    return generate_briefing(snapshot_id=body.snapshot_id, mode=body.mode)
+    return generate_briefing(
+        snapshot_id=body.snapshot_id,
+        mode=body.mode,
+        cue_context=body.cue_context,
+    )
 
 
 def _history_record_from_row(row: dict[str, Any]) -> dict[str, Any]:

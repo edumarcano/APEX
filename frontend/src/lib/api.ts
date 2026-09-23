@@ -86,4 +86,5 @@ export const API_ENDPOINTS = {
   telemetryRefresh: `${API_BASE}/api/v1/telemetry/refresh`,
   trigger: `${API_BASE}/api/v1/trigger`,
   voiceSpeak: `${API_BASE}/api/v1/voice/speak`,
+  voiceCue: `${API_BASE}/api/v1/voice/cue`,
 } as const

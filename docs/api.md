@@ -92,6 +92,7 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | POST | `/api/v1/telemetry/refresh` | Refresh all or selected connectors |
 | POST | `/api/v1/preflight` | Evaluate an intended operation |
 | POST | `/api/v1/voice/speak` | Speak an existing transcript |
+| POST | `/api/v1/voice/cue` | Speak a supported contextual cue |
 
 ## Service and configuration
 
@@ -275,8 +276,10 @@ Runtime metadata includes `run_id`, requested mode, resolved synthesis provider/
 Generates from the current telemetry snapshot without calling connectors.
 
 ```json
-{ "snapshot_id": "current-snapshot-uuid", "mode": "structured" }
+{ "snapshot_id": "current-snapshot-uuid", "mode": "structured", "cue_context": "existing_snapshot" }
 ```
+
+`cue_context` is optional and defaults to `existing_snapshot`. Use `after_refresh` when the HUD collected telemetry immediately before generation so the server can announce collection health.
 
 - `200` — the same `BriefingResponse` envelope used by the full trigger.
 - `409` — the snapshot is missing, stale, or no longer process-current.
@@ -791,6 +794,16 @@ Successful response after playback completes:
 - `503` — no configured fallback completed delivery.
 
 The endpoint does not generate or persist a briefing. Voice mode determines whether the HUD offers manual delivery or starts it automatically after generation.
+
+### POST `/api/v1/voice/cue`
+
+Formats and speaks one fixed contextual cue using the local daypart, optional saved user designation, and briefing mode. The request contains a `cue` key and requires `mode` for briefing cues.
+
+```json
+{ "cue": "briefing_refresh", "mode": "focused" }
+```
+
+Automatic voice mode speaks the cue and returns its resolved engine. Manual and off modes return `{ "status": "skipped", "resolved_engine": null }`. The endpoint shares the speech lock with `/api/v1/voice/speak`; a busy speaker returns `409`, and failed delivery returns `503`.
 
 ## Error and compatibility conventions
 

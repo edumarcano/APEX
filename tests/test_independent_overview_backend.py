@@ -16,7 +16,7 @@ from core.api.cortex import _build_hud_context
 from core.api.routers.cortex import cortex_agent
 from core.agent.providers.cloud_verification import clear_cloud_status_cache
 from core.connectors.models import ConnectorResult, utc_now_iso
-from core.settings.models import SettingsPatch
+from core.settings.models import SettingsPatch, VoicePatch
 from core.settings.store import RuntimeSettingsStore, reset_settings_store_for_tests
 from core.telemetry.service import get_telemetry_service, reset_telemetry_service_for_tests
 from core.telemetry.store import build_snapshot_from_results
@@ -282,6 +282,63 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
             json={"text": "```only code```"},
         )
         self.assertEqual(response.status_code, 400)
+
+    def test_contextual_cue_uses_saved_designation_and_is_automatic_only(self) -> None:
+        self.store.apply_patch(SettingsPatch(user_designation="Chief"))
+        with mock.patch(
+            "core.api.voice.get_settings_store", return_value=self.store
+        ), mock.patch(
+            "core.api.voice.speaker.try_speak", return_value="pyttsx3"
+        ) as speak:
+            response = self.client.post(
+                "/api/v1/voice/cue",
+                json={"cue": "activation_ready"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "spoken", "resolved_engine": "pyttsx3"})
+        text = speak.call_args_list[0].args[0]
+        self.assertRegex(text, r"^Good (morning|afternoon|evening), Chief\.")
+        self.assertIn("I have your telemetry at hand.", text)
+        self.store.apply_patch(SettingsPatch(voice=VoicePatch(mode="manual")))
+        with mock.patch(
+            "core.api.voice.get_settings_store", return_value=self.store
+        ), mock.patch("core.api.voice.speaker.try_speak") as manual_speak:
+            skipped = self.client.post(
+                "/api/v1/voice/cue",
+                json={"cue": "activation_loading"},
+            )
+        self.assertEqual(skipped.status_code, 200)
+        self.assertEqual(skipped.json(), {"status": "skipped", "resolved_engine": None})
+        manual_speak.assert_not_called()
+
+    def test_contextual_cue_reports_speech_lock_conflict_and_requires_mode(self) -> None:
+        with mock.patch(
+            "core.api.voice.get_settings_store", return_value=self.store
+        ), mock.patch("core.api.voice.speaker.try_speak", return_value=None):
+            conflict = self.client.post(
+                "/api/v1/voice/cue",
+                json={"cue": "briefing_refresh", "mode": "focused"},
+            )
+        self.assertEqual(conflict.status_code, 409)
+
+        with mock.patch(
+            "core.api.voice.get_settings_store", return_value=self.store
+        ), mock.patch(
+            "core.api.voice.speaker.try_speak", return_value="pyttsx3"
+        ):
+            refresh_failure = self.client.post(
+                "/api/v1/voice/cue",
+                json={"cue": "telemetry_refresh_failed"},
+            )
+        self.assertEqual(refresh_failure.status_code, 200)
+        self.assertEqual(refresh_failure.json()["status"], "spoken")
+
+        missing_mode = self.client.post(
+            "/api/v1/voice/cue",
+            json={"cue": "briefing_refresh"},
+        )
+        self.assertEqual(missing_mode.status_code, 422)
 
 
 class TrySpeakLockTests(unittest.TestCase):

@@ -18,6 +18,7 @@ from core.agent.types import (
 )
 from core.activity.models import ActivityReportContent
 from core.connectors.models import ConnectorFreshness, ConnectorHealthEntry, ConnectorStatus
+from core.voice_cues import BRIEFING_CUES, VoiceCueName
 
 
 DigestStatus = Literal[
@@ -1159,6 +1160,24 @@ class VoiceSpeakResponse(BaseModel):
     )
 
 
+class VoiceCueRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cue: VoiceCueName
+    mode: Literal["flash", "focused", "structured"] | None = None
+
+    @model_validator(mode="after")
+    def _requires_mode_for_briefing_cues(self) -> "VoiceCueRequest":
+        if self.cue in BRIEFING_CUES and self.mode is None:
+            raise ValueError("A briefing mode is required for this voice cue.")
+        return self
+
+
+class VoiceCueResponse(BaseModel):
+    status: Literal["spoken", "skipped"]
+    resolved_engine: Literal["google", "kokoro", "pyttsx3"] | None = None
+
+
 class BriefingTriggerRequest(BaseModel):
     mode: Literal["flash", "focused", "structured"] | None = Field(
         default=None,
@@ -1175,4 +1194,8 @@ class BriefingGenerateRequest(BaseModel):
     mode: Literal["flash", "focused", "structured"] = Field(
         ...,
         description="Explicit briefing synthesis mode.",
+    )
+    cue_context: Literal["existing_snapshot", "after_refresh"] = Field(
+        default="existing_snapshot",
+        description="Controls whether generation follows an existing snapshot or a fresh telemetry collection.",
     )

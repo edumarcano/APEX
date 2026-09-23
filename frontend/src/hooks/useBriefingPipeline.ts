@@ -44,9 +44,15 @@ export type BriefingPipelineState = {
 
 export type UseBriefingPipelineReturn = BriefingPipelineState & {
   triggerSynthesis: (mode?: BriefingMode) => Promise<void>
-  generateFromSnapshot: (snapshotId: string, mode: BriefingMode) => Promise<void>
+  generateFromSnapshot: (
+    snapshotId: string,
+    mode: BriefingMode,
+    cueContext?: BriefingCueContext,
+  ) => Promise<void>
   resetBriefing: () => void
 }
+
+export type BriefingCueContext = 'existing_snapshot' | 'after_refresh'
 
 const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'pyttsx3']
 const VALID_SYNTHESIS_PROVIDERS: readonly SynthesisProvider[] = [
@@ -359,11 +365,15 @@ export function useBriefingPipeline(): UseBriefingPipelineReturn {
   }, [runBriefingRequest])
 
   const generateFromSnapshot = useCallback(
-    async (snapshotId: string, mode: BriefingMode): Promise<void> => {
+    async (
+      snapshotId: string,
+      mode: BriefingMode,
+      cueContext: BriefingCueContext = 'existing_snapshot',
+    ): Promise<void> => {
       await runBriefingRequest(API_ENDPOINTS.briefingsGenerate, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ snapshot_id: snapshotId, mode }),
+        body: JSON.stringify({ snapshot_id: snapshotId, mode, cue_context: cueContext }),
       })
     },
     [runBriefingRequest],

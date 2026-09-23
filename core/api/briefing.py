@@ -53,6 +53,7 @@ from core.synthesis import (
 )
 from core.telemetry.models import TelemetrySnapshot
 from core.telemetry.service import RefreshInProgressError, get_telemetry_service
+from core.voice_cues import VoiceCueName, format_voice_cue
 
 _DEMO_STAGE_DELAY_SECONDS = 1.5
 _LOGGER = logging.getLogger(__name__)
@@ -97,11 +98,40 @@ def _voice_is_automatic() -> bool:
     return get_settings_store().get_snapshot().voice.mode == "automatic"
 
 
-def _maybe_speak(text: str, *, tts_override: str | None = None, voice_gender: str | None = None) -> None:
-    """Speak only when voice mode is automatic (blocking filler path)."""
-    if not _voice_is_automatic():
-        return
-    speaker.speak(text, tts_override=tts_override, voice_gender=voice_gender)
+def _speak_voice_cue_best_effort(
+    cue: VoiceCueName,
+    *,
+    mode: BriefingMode | None = None,
+) -> None:
+    """Speak a contextual cue without changing the briefing outcome on TTS failure."""
+    try:
+        settings = get_settings_store().get_snapshot()
+        if settings.voice.mode != "automatic":
+            return
+        speaker.speak(
+            format_voice_cue(
+                cue,
+                mode=mode,
+                user_designation=settings.user_designation,
+            )
+        )
+    except Exception:
+        _LOGGER.warning("Contextual voice cue delivery failed.", exc_info=True)
+
+
+def _collection_voice_cue(snapshot: TelemetrySnapshot) -> VoiceCueName:
+    """Select collection copy while distinguishing disabled and incomplete modules."""
+    enabled = [
+        entry for entry in snapshot.modules.values() if entry.status != "disabled"
+    ]
+    if enabled and all(entry.status == "unavailable" for entry in enabled):
+        return "briefing_sources_unavailable"
+    if any(
+        entry.status in {"degraded", "unavailable"} or entry.freshness == "stale"
+        for entry in enabled
+    ):
+        return "briefing_partial_sources"
+    return "briefing_collection_complete"
 
 
 def _build_synthesis_input(
@@ -652,6 +682,7 @@ def _synthesize_from_snapshot(
     mode: BriefingMode,
     run_id: str,
     speak_fillers: bool,
+    cue_context: str | None = None,
 ) -> BriefingResponse:
     """
     Synthesize, persist, and optionally speak from an existing snapshot.
@@ -659,6 +690,7 @@ def _synthesize_from_snapshot(
     Caller must hold ``_TRIGGER_LOCK`` and have begun the pipeline run.
     """
     voice_thread_started = False
+    filler_thread: threading.Thread | None = None
     try:
         get_settings_store().get_snapshot()
         dev_mode = is_dev_mode()
@@ -678,14 +710,19 @@ def _synthesize_from_snapshot(
         global_pipeline_state.update(3, "SYNTHESIS")
         _LOGGER.info("Synthesizing briefing mode=%s", mode)
 
-        filler_thread: threading.Thread | None = None
         if speak_fillers and _voice_is_automatic():
-            filler_thread = threading.Thread(
-                target=bind_run_id_context(speaker.speak),
-                args=("Generating briefing... Please wait...",),
-                daemon=True,
-            )
-            filler_thread.start()
+            cue: VoiceCueName | None = None
+            if cue_context == "existing_snapshot":
+                cue = "briefing_existing_snapshot"
+            elif cue_context == "after_refresh":
+                cue = _collection_voice_cue(snapshot)
+            if cue is not None:
+                filler_thread = threading.Thread(
+                    target=bind_run_id_context(_speak_voice_cue_best_effort),
+                    kwargs={"cue": cue, "mode": mode},
+                    daemon=True,
+                )
+                filler_thread.start()
 
         synthesis_result = synthesis_router.synthesize_mode(
             source=synthesis_input,
@@ -764,6 +801,16 @@ def _synthesize_from_snapshot(
                     "Briefing ledger persistence failed: persistence_error"
                 )
 
+        if (
+            speak_fillers
+            and mode != "structured"
+            and synthesis_result.provider == "raw"
+        ):
+            _speak_voice_cue_best_effort(
+                "briefing_structured_fallback_ready",
+                mode=mode,
+            )
+
         if spoken:
             voice_thread = threading.Thread(
                 target=bind_run_id_context(_speak_and_cleanup),
@@ -789,14 +836,25 @@ def _synthesize_from_snapshot(
             digest=digest_payload,
             metadata=runtime_metadata,
         )
+    except Exception:
+        if filler_thread is not None and filler_thread.ident is not None:
+            filler_thread.join()
+        raise
     finally:
         if not voice_thread_started:
+            if filler_thread is not None and filler_thread.is_alive():
+                filler_thread.join()
             global_pipeline_state.reset()
             if _TRIGGER_LOCK.locked():
                 _TRIGGER_LOCK.release()
 
 
-def generate_briefing(*, snapshot_id: str, mode: BriefingMode) -> BriefingResponse:
+def generate_briefing(
+    *,
+    snapshot_id: str,
+    mode: BriefingMode,
+    cue_context: str = "existing_snapshot",
+) -> BriefingResponse:
     """
     Generate a briefing from an existing in-memory telemetry snapshot.
 
@@ -819,7 +877,8 @@ def generate_briefing(*, snapshot_id: str, mode: BriefingMode) -> BriefingRespon
                 snapshot=snapshot,
                 mode=mode,
                 run_id=run_id,
-                speak_fillers=False,
+                speak_fillers=True,
+                cue_context=cue_context,
             )
         except Exception:
             if _TRIGGER_LOCK.locked():
@@ -857,7 +916,10 @@ def trigger_briefing(*, mode: BriefingMode | None = None) -> BriefingResponse:
             if not dev_mode:
                 database.log_run()
 
-            _maybe_speak("APEX online. Preparing situational overview.")
+            _speak_voice_cue_best_effort(
+                "start_with_briefing",
+                mode=resolved_mode,
+            )
 
             global_pipeline_state.update(2, "COLLECTION")
             _LOGGER.info("Fetching connector data")
@@ -868,12 +930,16 @@ def trigger_briefing(*, mode: BriefingMode | None = None) -> BriefingResponse:
                     status_code=status.HTTP_409_CONFLICT,
                     detail=str(exc),
                 ) from None
+            except Exception:
+                _speak_voice_cue_best_effort("telemetry_refresh_failed")
+                raise
 
             return _synthesize_from_snapshot(
                 snapshot=snapshot,
                 mode=resolved_mode,
                 run_id=run_id,
                 speak_fillers=True,
+                cue_context="after_refresh",
             )
         except Exception:
             if _TRIGGER_LOCK.locked():
