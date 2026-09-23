@@ -96,6 +96,7 @@ class ActivityMailbox:
         self._partition_getter = partition_getter
         self._demo_mode = demo_mode
         self._scan_task: asyncio.Task[MailboxStatus] | None = None
+        self._scan_task_key: tuple[bool, str, str, str, bool] | None = None
         self._status_lock = threading.Lock()
         self._last_scan_at: str | None = None
         self._last_settings_key: tuple[bool, str, str, str, bool] | None = None
@@ -104,16 +105,35 @@ class ActivityMailbox:
         self._last_state: MailboxState | None = None
 
     async def scan_now(self) -> MailboxStatus:
-        """Run one scan, sharing an in-progress scan with concurrent callers."""
+        """Scan the current settings, sharing equivalent work and following changes."""
+        settings = self._settings_getter()
+        partition = self._partition_getter()
+        requested_key = self._settings_key(settings, partition)
         task = self._scan_task
+        if task is not None and not task.done() and self._scan_task_key != requested_key:
+            try:
+                await asyncio.shield(task)
+            except Exception:
+                # A changed-settings caller still needs a scan of its current snapshot.
+                pass
+            return await self.scan_now()
+
         if task is None or task.done():
-            task = asyncio.create_task(self._run_scan(), name="activity-mailbox-scan")
+            task = asyncio.create_task(
+                self._run_scan(settings, partition), name="activity-mailbox-scan"
+            )
             self._scan_task = task
+            self._scan_task_key = requested_key
         try:
-            return await asyncio.shield(task)
+            result = await asyncio.shield(task)
         finally:
             if task.done() and self._scan_task is task:
                 self._scan_task = None
+                self._scan_task_key = None
+        current_key = self._settings_key(self._settings_getter(), self._partition_getter())
+        if current_key != requested_key:
+            return await self.scan_now()
+        return result
 
     async def wait_for_idle(self, timeout_seconds: float) -> bool:
         """Drain an HTTP-triggered scan before its activity store is closed."""
@@ -155,20 +175,32 @@ class ActivityMailbox:
             last_error=last_error,
         )
 
-    async def _run_scan(self) -> MailboxStatus:
+    async def _run_scan(
+        self, settings: ActivityMailboxSettings, partition: str
+    ) -> MailboxStatus:
         try:
-            return await asyncio.to_thread(self._scan_sync)
+            return await asyncio.to_thread(self._scan_sync, settings, partition)
         except Exception:
             _LOGGER.warning("Activity mailbox scan failed; it will retry later")
-            return self._failure_status(
-                self._settings_getter(), "The mailbox scan failed; APEX will retry."
+            return await asyncio.to_thread(
+                self._failure_status,
+                settings,
+                partition,
+                "The mailbox scan failed; APEX will retry.",
             )
 
-    def _scan_sync(self) -> MailboxStatus:
-        settings = self._settings_getter()
-        readiness = self._base_status(settings)
+    def _scan_sync(
+        self,
+        settings: ActivityMailboxSettings | None = None,
+        partition: str | None = None,
+    ) -> MailboxStatus:
+        settings = settings or self._settings_getter()
+        partition = self._partition_getter() if partition is None else partition
+        readiness = self._base_status(settings, partition)
         if readiness.state != "ready":
-            return self._recorded_result(settings, readiness.state, readiness, None, 0)
+            return self._recorded_result(
+                settings, partition, readiness.state, readiness, None, 0
+            )
 
         imported = 0
         failures = 0
@@ -192,13 +224,12 @@ class ActivityMailbox:
                 last_error=None,
             )
             return self._recorded_result(
-                settings, "folder_unavailable", unavailable,
+                settings, partition, "folder_unavailable", unavailable,
                 "The mailbox folder is unavailable; APEX will retry.", 0,
             )
 
-        partition = self._partition_getter()
         for entry in entries:
-            if self._settings_getter() != settings:
+            if self._settings_getter() != settings or self._partition_getter() != partition:
                 failures += 1
                 break
             stem = entry.name[:-5]
@@ -207,7 +238,7 @@ class ActivityMailbox:
                 continue
             try:
                 content = self._read_completed_report(entry, stem)
-                if self._settings_getter() != settings:
+                if self._settings_getter() != settings or self._partition_getter() != partition:
                     failures += 1
                     break
                 receipt = self._activity_service.submit(
@@ -242,7 +273,8 @@ class ActivityMailbox:
             last_error=last_error,
         )
         return self._recorded_result(
-            settings, result.state, result, result.last_error, result.last_imported_count
+            settings, partition, result.state, result,
+            result.last_error, result.last_imported_count,
         )
 
     def _read_completed_report(self, entry: os.DirEntry[str], expected_key: str) -> ActivityReportContent:
@@ -279,8 +311,10 @@ class ActivityMailbox:
             raise ValueError("mailbox_filename_key_mismatch")
         return content
 
-    def _base_status(self, settings: ActivityMailboxSettings) -> MailboxStatus:
-        partition = self._partition_getter()
+    def _base_status(
+        self, settings: ActivityMailboxSettings, partition: str | None = None
+    ) -> MailboxStatus:
+        partition = self._partition_getter() if partition is None else partition
         registrations = {entry.id: entry for entry in self._registration_loader()}
         registration = registrations.get(settings.client_id) if settings.client_id else None
         registered = registration is not None
@@ -327,13 +361,16 @@ class ActivityMailbox:
             last_error=None,
         )
 
-    def _failure_status(self, settings: ActivityMailboxSettings, error: str) -> MailboxStatus:
-        base = self._base_status(settings)
-        return self._recorded_result(settings, "scan_error", base, error, 0)
+    def _failure_status(
+        self, settings: ActivityMailboxSettings, partition: str, error: str
+    ) -> MailboxStatus:
+        base = self._base_status(settings, partition)
+        return self._recorded_result(settings, partition, "scan_error", base, error, 0)
 
     def _recorded_result(
         self,
         settings: ActivityMailboxSettings,
+        partition: str,
         state: MailboxState,
         base: MailboxStatus,
         error: str | None,
@@ -353,18 +390,20 @@ class ActivityMailbox:
         )
         with self._status_lock:
             self._last_scan_at = result.last_scan_at
-            self._last_settings_key = self._settings_key(settings)
+            self._last_settings_key = self._settings_key(settings, partition)
             self._last_imported_count = imported
             self._last_error = error
             self._last_state = state
         return result
 
-    def _settings_key(self, settings: ActivityMailboxSettings) -> tuple[bool, str, str, str, bool]:
+    def _settings_key(
+        self, settings: ActivityMailboxSettings, partition: str | None = None
+    ) -> tuple[bool, str, str, str, bool]:
         return (
             settings.enabled,
             settings.folder_path,
             settings.client_id,
-            self._partition_getter(),
+            self._partition_getter() if partition is None else partition,
             self._demo_mode,
         )
 

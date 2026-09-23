@@ -120,7 +120,7 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(mailbox, "_read_completed_report", side_effect=change_folder_before_return):
             result = await mailbox.scan_now()
 
-        self.assertEqual(result.state, "scan_error")
+        self.assertEqual(result.state, "folder_unavailable")
         self.assertEqual(self.service.list(partition="production"), [])
         current = mailbox.status()
         self.assertEqual(current.state, "folder_unavailable")
@@ -133,8 +133,8 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
         completed = threading.Event()
         original_scan = mailbox._scan_sync
 
-        def scan_and_signal():
-            result = original_scan()
+        def scan_and_signal(settings=None, partition=None):
+            result = original_scan(settings, partition)
             completed.set()
             return result
 
@@ -157,14 +157,14 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
         calls = 0
         original_scan = mailbox._scan_sync
 
-        def blocked_scan():
+        def blocked_scan(settings=None, partition=None):
             nonlocal calls
             calls += 1
             entered.set()
             if not release.wait(3):
                 raise TimeoutError("test scan was not released")
             try:
-                return original_scan()
+                return original_scan(settings, partition)
             finally:
                 finished.set()
 
@@ -180,6 +180,102 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(manual_result.last_imported_count, 1)
             stop.set()
             await asyncio.wait_for(poller, timeout=2)
+
+    async def test_manual_scan_follows_settings_change_during_an_active_scan(self) -> None:
+        second_folder = self.root / "second-mailbox"
+        second_folder.mkdir()
+        self._configure(folder=self.folder)
+        (self.folder / "first.json").write_text(report(key="first").model_dump_json(), encoding="utf-8")
+        (second_folder / "second.json").write_text(report(key="second").model_dump_json(), encoding="utf-8")
+        mailbox = self._mailbox()
+        original_scan = mailbox._scan_sync
+        first_scan_entered = threading.Event()
+        release_first_scan = threading.Event()
+        scan_paths: list[str] = []
+        manual_request_read_new_settings = threading.Event()
+        original_settings_getter = mailbox._settings_getter
+
+        def observe_settings():
+            settings = original_settings_getter()
+            if settings.folder_path == str(second_folder):
+                manual_request_read_new_settings.set()
+            return settings
+
+        def controlled_scan(settings=None, partition=None):
+            path = settings.folder_path if settings is not None else ""
+            scan_paths.append(path)
+            if path == str(self.folder):
+                first_scan_entered.set()
+                if not release_first_scan.wait(3):
+                    raise TimeoutError("first scan was not released")
+            return original_scan(settings, partition)
+
+        mailbox._settings_getter = observe_settings
+        with mock.patch.object(mailbox, "_scan_sync", side_effect=controlled_scan):
+            first = asyncio.create_task(mailbox.scan_now())
+            self.assertTrue(await asyncio.wait_for(asyncio.to_thread(first_scan_entered.wait, 3), timeout=4))
+            self._configure(folder=second_folder)
+            manual = asyncio.create_task(mailbox.scan_now())
+            self.assertTrue(await asyncio.wait_for(
+                asyncio.to_thread(manual_request_read_new_settings.wait, 3), timeout=4,
+            ))
+            release_first_scan.set()
+            first_result, manual_result = await asyncio.gather(first, manual)
+
+        self.assertEqual(first_result.last_imported_count, 1)
+        self.assertEqual(manual_result.last_imported_count, 1)
+        self.assertEqual(scan_paths, [str(self.folder), str(second_folder)])
+        self.assertEqual(
+            {item.content.submission_key for item in self.service.list(partition="production")},
+            {"second"},
+        )
+
+    async def test_partition_change_during_file_read_retries_in_new_partition(self) -> None:
+        self._configure()
+        (self.folder / "report-1.json").write_text(report().model_dump_json(), encoding="utf-8")
+        partition = ["production"]
+        mailbox = ActivityMailbox(
+            self.service,
+            settings_getter=lambda: self.settings_store.get_snapshot().activity_mailbox,
+            registration_loader=lambda: self.registrations,
+            partition_getter=lambda: partition[0],
+        )
+        original_read = mailbox._read_completed_report
+
+        def switch_partition_after_read(entry, expected_key):
+            content = original_read(entry, expected_key)
+            partition[0] = "sandbox"
+            self.registrations = (registration(partition="sandbox"),)
+            return content
+
+        with mock.patch.object(mailbox, "_read_completed_report", side_effect=switch_partition_after_read):
+            retried = await mailbox.scan_now()
+
+        self.assertEqual(retried.last_imported_count, 1)
+        self.assertEqual(self.service.list(partition="production"), [])
+        self.assertEqual(
+            [item.content.submission_key for item in self.service.list(partition="sandbox")],
+            ["report-1"],
+        )
+
+    async def test_unexpected_scan_failure_builds_readiness_status_off_event_loop(self) -> None:
+        self._configure()
+        mailbox = self._mailbox()
+        event_loop_thread = threading.get_ident()
+        readiness_threads: list[int] = []
+        original_status = mailbox._base_status
+
+        def record_readiness_thread(settings, partition=None):
+            readiness_threads.append(threading.get_ident())
+            return original_status(settings, partition)
+
+        with mock.patch.object(mailbox, "_scan_sync", side_effect=RuntimeError("scan failed")), \
+             mock.patch.object(mailbox, "_base_status", side_effect=record_readiness_thread):
+            result = await mailbox.scan_now()
+
+        self.assertEqual(result.state, "scan_error")
+        self.assertEqual(len(readiness_threads), 1)
+        self.assertNotEqual(readiness_threads[0], event_loop_thread)
 
     async def test_import_uses_configured_identity_and_durable_idempotency(self) -> None:
         self._configure()

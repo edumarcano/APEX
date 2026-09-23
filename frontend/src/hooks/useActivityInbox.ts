@@ -267,6 +267,7 @@ export function useActivityInbox(
   }, [loadDetail, selectedReportId])
 
   const refresh = useCallback(async (): Promise<void> => {
+    const requestGeneration = generation.current
     let scanError: string | null
     try {
       const status = asMailboxStatus(await fetch(API_ENDPOINTS.activityMailboxScan, {
@@ -278,6 +279,7 @@ export function useActivityInbox(
       scanError = caught instanceof Error ? caught.message : 'The mailbox scan could not be completed.'
     }
     await Promise.all([loadList(), selectedReportId ? loadDetail(selectedReportId) : Promise.resolve()])
+    if (requestGeneration !== generation.current) return
     if (scanError) setError(scanError)
   }, [loadDetail, loadList, selectedReportId])
 

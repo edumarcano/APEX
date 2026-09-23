@@ -188,6 +188,7 @@ export default function SettingsPanel({
   const mcpRuntime = sharedMcpRuntime ?? polledMcpRuntime
   const llamaCppRuntime = useLlamaCppStatus(open)
   const activityMailboxRuntime = useActivityMailboxStatus(open)
+  const refreshActivityMailboxStatus = activityMailboxRuntime.refresh
 
   const microsoftTodoRuntime = useMicrosoftTodoStatus(open)
   useFocusTrap(open, dialogRef, restoreFocusRef)
@@ -283,9 +284,12 @@ export default function SettingsPanel({
 
   const handleSave = useCallback(() => {
     void save().then((saved) => {
-      if (saved) void mcpRuntime.refresh()
+      if (saved) {
+        void mcpRuntime.refresh()
+        void refreshActivityMailboxStatus()
+      }
     })
-  }, [save, mcpRuntime])
+  }, [save, mcpRuntime, refreshActivityMailboxStatus])
 
   const providerRows = useMemo(() => {
     const cloud = modelCatalog.filter((model) => model.runtime === 'cloud')

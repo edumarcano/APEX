@@ -141,4 +141,60 @@ describe('useActivityInbox', () => {
     expect(result.current.reports).toEqual([REPORT])
     expect(result.current.error).toBe('The mailbox folder is unavailable; APEX will retry.')
   })
+
+  it('does not surface a scan error from the previous partition after Refresh completes', async () => {
+    const sandboxReport = {
+      ...REPORT,
+      id: 'report-sandbox',
+      partition: 'sandbox',
+      report: { ...REPORT.report, submission_key: 'sandbox-key' },
+    }
+    let activePartition: 'production' | 'sandbox' = 'production'
+    let resolveScan: ((value: Response) => void) | undefined
+    vi.mocked(fetch).mockImplementation((input) => {
+      const target = String(input)
+      if (target.endsWith('/activity/mailbox/scan')) {
+        return new Promise((resolve) => { resolveScan = resolve })
+      }
+      if (target.endsWith('/context-reviews')) return Promise.resolve(response([]))
+      if (target.endsWith('/report-sandbox')) return Promise.resolve(response(sandboxReport))
+      if (target.endsWith('/report-1')) return Promise.resolve(response(REPORT))
+      if (target.includes('/activity/reports?')) {
+        return Promise.resolve(response(activePartition === 'production' ? [REPORT] : [sandboxReport]))
+      }
+      throw new Error(`Unexpected activity request ${target}`)
+    })
+
+    let refreshPromise: Promise<void> | undefined
+    const { result, rerender } = renderHook(
+      ({ partition }: { partition: 'production' | 'sandbox' }) => useActivityInbox(true, partition),
+      { initialProps: { partition: 'production' } },
+    )
+    await waitFor(() => expect(result.current.detail?.id).toBe(REPORT.id))
+
+    act(() => { refreshPromise = result.current.refresh() })
+    await waitFor(() => expect(resolveScan).toBeDefined())
+    activePartition = 'sandbox'
+    rerender({ partition: 'sandbox' })
+    await waitFor(() => expect(result.current.detail?.id).toBe(sandboxReport.id))
+
+    await act(async () => {
+      resolveScan?.(response({
+        enabled: true,
+        state: 'folder_unavailable',
+        folder_available: false,
+        client_registered: true,
+        client_enabled: true,
+        client_can_submit: true,
+        client_partition_matches: true,
+        last_scan_at: '2026-09-22T12:00:00Z',
+        last_imported_count: 0,
+        last_error: 'Old partition mailbox error.',
+      }))
+      await refreshPromise
+    })
+
+    expect(result.current.reports).toEqual([sandboxReport])
+    expect(result.current.error).toBeNull()
+  })
 })
