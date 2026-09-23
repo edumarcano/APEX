@@ -287,7 +287,7 @@ export function useActivityInbox(
       const updated = asReport(body)
       if (!updated) throw new Error('The activity disposition response was invalid.')
       if (requestGeneration !== generation.current) return false
-      setDetail(updated)
+      if (selectedReportIdRef.current === updated.id) setDetail(updated)
       setReports((current) => current.map((report) => report.id === updated.id ? updated : report))
       setError(null)
       if (dispositionFilter !== 'all' && dispositionFilter !== disposition) await loadList()
@@ -312,7 +312,7 @@ export function useActivityInbox(
       }).then(responseBody)
       const review = asReview(body)
       if (!review) throw new Error('The context proposal response was invalid.')
-      await loadDetail(detail.id)
+      if (selectedReportIdRef.current === detail.id) await loadDetail(detail.id)
       if (requestGeneration !== generation.current) return null
       setError(null)
       return review

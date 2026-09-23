@@ -490,11 +490,11 @@ The optional submission gateway must remain on loopback. Beta.4 does not depend 
 
 Outside tools should continue to use their own interfaces for task creation, progress, configuration, and detailed results. APEX should show a concise activity record and a link back to the original work instead of recreating those interfaces.
 
-Give each source a separate registration that can be disabled. For the local CLI, its client ID is source attribution, not software authentication. Bound and attribute submissions, then treat them as untrusted until reviewed or reconciled.
+Each submission carries a caller-declared source ID for attribution. It does not authenticate the submitting program, and beta.4 has no per-source registration, disable, or revocation control. Reports remain associated with the claimed source ID and stay available as historical records.
 
 The main APEX backend and database remain local. The optional provider-neutral mailbox reads completed reports from one operator-selected local folder and uses the same activity service as other submission paths. It does not depend on a Google Drive API or prove which program created a file.
 
-Removing an external tool should not require a code change. Its access can be revoked while its earlier submissions remain available as historical sources.
+Removing an external tool does not require a code change, but beta.4 cannot revoke that source independently. The optional local gateway can be stopped as a whole; it does not authenticate callers.
 
 ---
 

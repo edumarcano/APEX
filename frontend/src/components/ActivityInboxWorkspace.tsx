@@ -96,7 +96,7 @@ function ContextProposalForm({
   const [effectiveAt, setEffectiveAt] = useState('')
 
   useEffect(() => {
-    const selected = options.find((option) => option.reference === reference) ?? options[0]
+    const selected = options[0]
     // eslint-disable-next-line react-hooks/set-state-in-effect -- A selected report initializes its proposal fields.
     setReference(selected?.reference ?? '/outcome')
     setText(selected?.text ?? '')
@@ -105,7 +105,17 @@ function ContextProposalForm({
     setObjectValue('')
     setEffectiveAt('')
   // eslint-disable-next-line react-hooks/exhaustive-deps -- Change drafts only when the immutable report changes.
-  }, [options, report.id])
+  }, [report.id])
+
+  const selectFinding = (nextReference: string): void => {
+    const next = options.find((option) => option.reference === nextReference)
+    setReference(nextReference)
+    if (next) setText(next.text)
+    setSubject('')
+    setPredicate('')
+    setObjectValue('')
+    setEffectiveAt('')
+  }
 
   const submit = async (): Promise<void> => {
     const input: ActivityContextProposalInput = {
@@ -128,11 +138,7 @@ function ContextProposalForm({
       </div>
       <label className="block text-xs text-zinc-300">
         Finding
-        <select value={reference} disabled={disabled || pending} onChange={(event) => {
-          const next = options.find((option) => option.reference === event.target.value)
-          setReference(event.target.value)
-          if (next) setText(next.text)
-        }} className="mt-1 w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-2 text-sm text-zinc-100 focus:border-[#D8B4FE] focus:outline-none disabled:opacity-45">
+        <select value={reference} disabled={disabled || pending} onChange={(event) => selectFinding(event.target.value)} className="mt-1 w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-2 text-sm text-zinc-100 focus:border-[#D8B4FE] focus:outline-none disabled:opacity-45">
           {options.map((option) => <option key={option.reference} value={option.reference}>{option.label}</option>)}
         </select>
       </label>

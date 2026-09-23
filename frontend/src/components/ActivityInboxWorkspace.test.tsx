@@ -51,4 +51,73 @@ describe('ActivityInboxWorkspace', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('The mailbox folder is unavailable; APEX will retry.')
     expect(screen.getByRole('button', { name: /External report/ })).toBeInTheDocument()
   })
+
+  it('preserves the draft across same-report refreshes and resets it for a newly selected report', async () => {
+    const user = userEvent.setup()
+    const inbox = inboxFixture()
+    const onOpenReview = vi.fn().mockResolvedValue(null)
+    const { rerender } = render(<ActivityInboxWorkspace inbox={inbox} demoModeActive={false} sandboxMode={false} onOpenReview={onOpenReview} />)
+
+    const text = screen.getByLabelText('Proposed context')
+    await user.clear(text)
+    await user.type(text, 'My edited context')
+    await user.click(screen.getByText('Structured context fields'))
+    await user.type(screen.getByLabelText('Subject'), 'Edited subject')
+
+    const refreshedReport = {
+      ...report,
+      disposition: 'reviewed' as const,
+      received_at: '2026-09-22T12:00:00Z',
+      report: { ...report.report },
+    }
+    const refreshedInbox = { ...inbox, reports: [refreshedReport], detail: refreshedReport }
+    rerender(<ActivityInboxWorkspace inbox={refreshedInbox} demoModeActive={false} sandboxMode={false} onOpenReview={onOpenReview} />)
+
+    expect(screen.getByLabelText('Proposed context')).toHaveValue('My edited context')
+    expect(screen.getByLabelText('Subject')).toHaveValue('Edited subject')
+
+    const nextReport = {
+      ...report,
+      id: 'report-2',
+      received_at: '2026-09-23T12:00:00Z',
+      report: {
+        ...report.report,
+        title: 'Next report',
+        findings: [{ title: 'New finding', text: 'Evidence from the next report.', derivation: 'unknown' as const }],
+      },
+    }
+    const nextInbox = {
+      ...refreshedInbox,
+      reports: [refreshedReport, nextReport],
+      detail: nextReport,
+      selectedReportId: nextReport.id,
+    }
+    rerender(<ActivityInboxWorkspace inbox={nextInbox} demoModeActive={false} sandboxMode={false} onOpenReview={onOpenReview} />)
+
+    expect(screen.getByLabelText('Proposed context')).toHaveValue('Evidence from the next report.')
+    expect(screen.getByLabelText('Subject')).toHaveValue('')
+  })
+
+  it('replaces the text and clears structured fields when the operator selects another finding', async () => {
+    const user = userEvent.setup()
+    const twoFindingReport = {
+      ...report,
+      report: {
+        ...report.report,
+        findings: [
+          ...report.report.findings,
+          { title: 'Second finding', text: 'Second evidence statement.', derivation: 'unknown' as const },
+        ],
+      },
+    }
+    const inbox = { ...inboxFixture(), reports: [twoFindingReport], detail: twoFindingReport }
+    render(<ActivityInboxWorkspace inbox={inbox} demoModeActive={false} sandboxMode={false} onOpenReview={vi.fn().mockResolvedValue(null)} />)
+
+    await user.click(screen.getByText('Structured context fields'))
+    await user.type(screen.getByLabelText('Subject'), 'First finding subject')
+    await user.selectOptions(screen.getByLabelText('Finding'), '/findings/1')
+
+    expect(screen.getByLabelText('Proposed context')).toHaveValue('Second evidence statement.')
+    expect(screen.getByLabelText('Subject')).toHaveValue('')
+  })
 })

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
@@ -126,7 +127,8 @@ async def submit_activity_report(request: Request) -> ActivitySubmissionResponse
         if content_type != "application/json":
             raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Activity submissions require application/json.")
         payload = ActivitySubmissionRequest.model_validate_json(await read_bounded_activity_body(request))
-        receipt = get_activity_service().submit(
+        receipt = await asyncio.to_thread(
+            get_activity_service().submit,
             client_id=payload.client_id, principal="operator",
             partition=get_conversation_service().partition(), content=payload.report,
         )
@@ -203,12 +205,17 @@ def list_activity_context_reviews(report_id: UUID) -> list[ActivityContextReview
         links = get_activity_service().context_review_links(report_id, partition=partition)
         knowledge = get_knowledge_service()
         responses: list[ActivityContextReviewLinkResponse] = []
+        review_service = ActivityContextReviewService(
+            get_activity_service(), knowledge, get_action_service(),
+        )
         for link in links:
             try:
-                review = knowledge.get_review(link.review_id, partition=partition)
+                review = review_service.resolve_linked_review(link, partition=partition)
             except KnowledgeNotFoundError:
                 # A retry may observe a reserved link before its interrupted review
                 # creation completes. It is not a usable decision yet.
+                continue
+            if review is None:
                 continue
             responses.append(ActivityContextReviewLinkResponse(
                 finding_reference=link.finding_reference,

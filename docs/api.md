@@ -350,7 +350,7 @@ Report content is limited to 256 KiB and remains immutable. Artifact references 
 
 ### GET `/api/v1/activity/reports`
 
-Lists up to 100 newest reports in the current partition. `client_id`, `disposition` (`new`, `reviewed`, or `dismissed`), and `limit` are optional filters. This branch exposes no disposition mutation route.
+Lists up to 100 newest reports in the current partition. `client_id`, `disposition` (`new`, `reviewed`, or `dismissed`), and `limit` are optional filters.
 
 ### GET `/api/v1/activity/mailbox/status`
 
@@ -379,8 +379,6 @@ The local operator can select a stable finding reference and submit the normal c
 Accepted claims retain an `external_activity` source with the report-and-finding locator, original selected text, `external_tool` origin, occurrence time when the report supplied one, and the report's declared derivation. Retried identical proposals return the linked review. A report is never indexed directly.
 
 External activity is untrusted inbox material. Receiving, reading, reviewing, dismissing, or reopening a report never creates knowledge, changes retrieval, adds prompt context, affects attention or briefings, or approves a review. Retraction remains an explicit context operation.
-
-The separately started activity gateway is not part of this API schema. It exposes a liveness probe, JSON submission, and a Streamable HTTP MCP endpoint; see [External activity gateway](configuration.md#external-activity-gateway) for its startup and boundary contract.
 
 The separately started activity gateway is not part of this API schema. It exposes a liveness probe, JSON submission, and a Streamable HTTP MCP endpoint; see [External activity gateway](configuration.md#external-activity-gateway) for its startup and boundary contract.
 

@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+import threading
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
+from core.activity import ActivityReportContent, ActivityService, ActivityStore
 from core.activity.gateway import GatewayConfigurationError, GatewayOptions, create_gateway_app
+from core.settings.store import RuntimeSettingsStore
 import core.activity.gateway as gateway
 
 
@@ -22,10 +29,106 @@ def _report(key: str) -> dict[str, object]:
     }
 
 
+def _gateway_request(payload: dict[str, object]) -> Request:
+    body = json.dumps(payload).encode("utf-8")
+    sent = False
+
+    async def receive() -> dict[str, object]:
+        nonlocal sent
+        if sent:
+            return {"type": "http.request", "body": b"", "more_body": False}
+        sent = True
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    return Request(
+        {
+            "type": "http", "http_version": "1.1", "method": "POST",
+            "scheme": "http", "path": "/v1/activity/reports",
+            "raw_path": b"/v1/activity/reports", "query_string": b"",
+            "headers": [(b"host", b"127.0.0.1:8001"), (b"content-type", b"application/json")],
+            "client": ("127.0.0.1", 50000), "server": ("127.0.0.1", 8001),
+        },
+        receive,
+    )
+
+
 class GatewayOptionsTests(unittest.TestCase):
     def test_gateway_rejects_non_loopback(self) -> None:
         with self.assertRaisesRegex(GatewayConfigurationError, "loopback"):
             GatewayOptions(host="0.0.0.0").validate()
+
+
+class GatewayPartitionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        prefix = f".gateway-settings-test-{uuid4().hex}"
+        self.config_path = root / f"{prefix}.json"
+        self.local_config_path = root / f"{prefix}.local.json"
+        self.addCleanup(self.config_path.unlink, missing_ok=True)
+        self.addCleanup(self.local_config_path.unlink, missing_ok=True)
+        self.store = ActivityStore(None)
+        self.store.initialize()
+        self.addCleanup(self.store.close)
+        self.activity_service = ActivityService(self.store)
+        self.service = gateway.GatewaySubmissionService(self.activity_service)
+
+        def fresh_settings_store(*, force_new: bool = False):
+            self.assertTrue(force_new, "gateway must not reuse its cached settings snapshot")
+            return RuntimeSettingsStore(
+                config_path=self.config_path,
+                local_config_path=self.local_config_path,
+            )
+
+        self.settings_store_factory = fresh_settings_store
+
+    def _write_persisted_settings(self, *, base_sandbox: bool, local_sandbox: bool) -> None:
+        self.config_path.write_text(
+            json.dumps({"ask_apex": {"sandbox_mode": base_sandbox}}),
+            encoding="utf-8",
+        )
+        self.local_config_path.write_text(
+            json.dumps({"ask_apex": {"sandbox_mode": local_sandbox}}),
+            encoding="utf-8",
+        )
+
+    def _submit(self, key: str) -> None:
+        self.service.submit(
+            client_id="codex",
+            report=ActivityReportContent.model_validate(_report(key)),
+        )
+
+    def test_submissions_follow_persisted_sandbox_switches(self) -> None:
+        # The local layer takes precedence over tracked config.json, as it does
+        # for settings changes written by the API.
+        self._write_persisted_settings(base_sandbox=True, local_sandbox=False)
+        with mock.patch.object(gateway, "is_dev_mode", return_value=True), mock.patch.object(
+            gateway, "get_settings_store", side_effect=self.settings_store_factory,
+        ):
+            self._submit("before-sandbox")
+            self._write_persisted_settings(base_sandbox=False, local_sandbox=True)
+            self._submit("in-sandbox")
+            self._write_persisted_settings(base_sandbox=True, local_sandbox=False)
+            self._submit("after-sandbox")
+
+        self.assertCountEqual(
+            [item.content.submission_key for item in self.activity_service.list(partition="production")],
+            ["before-sandbox", "after-sandbox"],
+        )
+        self.assertCountEqual(
+            [item.content.submission_key for item in self.activity_service.list(partition="sandbox")],
+            ["in-sandbox"],
+        )
+
+    def test_disabled_dev_mode_stays_in_production_without_reading_settings(self) -> None:
+        self._write_persisted_settings(base_sandbox=True, local_sandbox=True)
+        with mock.patch.object(gateway, "is_dev_mode", return_value=False), mock.patch.object(
+            gateway, "get_settings_store",
+        ) as settings_store:
+            self._submit("dev-mode-disabled")
+
+        settings_store.assert_not_called()
+        self.assertEqual(len(self.activity_service.list(partition="production")), 1)
+        self.assertEqual(self.activity_service.list(partition="sandbox"), [])
 
 
 class GatewayHttpTests(unittest.TestCase):
@@ -184,6 +287,42 @@ class GatewayHttpTests(unittest.TestCase):
         }, session_id=session_id)
         self.assertTrue(invalid_id.json()["result"]["isError"])
         self.assertEqual(len(self.app.state.activity_service.list(partition="production")), 1)
+
+
+class GatewayAsyncSubmissionTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.app = create_gateway_app(GatewayOptions())
+        self.endpoint = next(
+            route.endpoint for route in self.app.routes
+            if getattr(route, "path", None) == "/v1/activity/reports"
+        )
+
+    async def test_json_submission_keeps_event_loop_responsive_during_storage(self) -> None:
+        entered = threading.Event()
+        release = threading.Event()
+        finished = threading.Event()
+
+        def blocking_submit(*, client_id: str, report) -> dict[str, object]:
+            entered.set()
+            release.wait(3)
+            finished.set()
+            return {"id": "report-id", "received_at": "2026-09-23T00:00:00+00:00", "duplicate": False}
+
+        request = _gateway_request({"client_id": "codex", "report": _report("async-gateway")})
+        with mock.patch.object(self.app.state.submission_service, "submit", side_effect=blocking_submit):
+            submission = asyncio.create_task(self.endpoint(request))
+            self.assertTrue(await asyncio.wait_for(asyncio.to_thread(entered.wait, 3), timeout=4))
+            loop_progress = asyncio.Event()
+            asyncio.get_running_loop().call_soon(loop_progress.set)
+            try:
+                await asyncio.wait_for(loop_progress.wait(), timeout=1)
+                self.assertFalse(finished.is_set(), "storage completed before the event loop could progress")
+            finally:
+                release.set()
+            response = await submission
+
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(json.loads(response.body)["duplicate"])
 
 
 if __name__ == "__main__":
