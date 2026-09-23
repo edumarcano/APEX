@@ -307,6 +307,24 @@ function parseMicrosoftTodoSettings(value: unknown): RuntimeSettings['microsoft_
   return { reminder_list_id: value.reminder_list_id }
 }
 
+function parseActivityMailboxSettings(
+  value: unknown,
+): RuntimeSettings['activity_mailbox'] | null {
+  if (value === undefined) {
+    return { enabled: false, folder_path: '' }
+  }
+  if (!isRecord(value) || typeof value.enabled !== 'boolean' ||
+    typeof value.folder_path !== 'string' ||
+    value.folder_path.length > 4096 || value.folder_path.includes('\0') ||
+    value.folder_path !== value.folder_path.trim()) {
+    return null
+  }
+  return {
+    enabled: value.enabled,
+    folder_path: value.folder_path,
+  }
+}
+
 function parseMcpSettings(value: unknown): McpSettings | null {
   if (!isRecord(value) || typeof value.enabled !== 'boolean' || !isRecord(value.servers)) {
     return null
@@ -445,12 +463,14 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   const tool_profiles = parseToolProfiles(value.tool_profiles)
   const llama_cpp = parseLlamaCppSettings(value.llama_cpp)
   const microsoft_todo = parseMicrosoftTodoSettings(value.microsoft_todo)
+  const activity_mailbox = parseActivityMailboxSettings(value.activity_mailbox)
   if (
     !features ||
     !modules ||
     !mcp ||
     !llama_cpp ||
     !microsoft_todo ||
+    !activity_mailbox ||
     !calendar ||
     !isRecord(value.ask_apex) ||
     !isRecord(value.briefing) ||
@@ -514,6 +534,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     mcp,
     llama_cpp,
     microsoft_todo,
+    activity_mailbox,
   }
 }
 
@@ -570,6 +591,7 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
     },
     llama_cpp: { ...settings.llama_cpp },
     microsoft_todo: { ...settings.microsoft_todo },
+    activity_mailbox: { ...settings.activity_mailbox },
   }
 }
 
@@ -732,6 +754,11 @@ export function diffSettingsPatch(
     patch.microsoft_todo = microsoftTodo
   }
 
+  const activityMailbox = diffSection(baseline.activity_mailbox, draft.activity_mailbox)
+  if (activityMailbox) {
+    patch.activity_mailbox = activityMailbox
+  }
+
   return patch
 }
 
@@ -748,7 +775,8 @@ export function isSettingsPatchEmpty(patch: SettingsPatch): boolean {
     patch.voice === undefined &&
     patch.mcp === undefined &&
     patch.llama_cpp === undefined &&
-    patch.microsoft_todo === undefined
+    patch.microsoft_todo === undefined &&
+    patch.activity_mailbox === undefined
   )
 }
 

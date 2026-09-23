@@ -1,6 +1,6 @@
 # APEX API
 
-This is the behavioral reference for APEX's loopback HTTP API at `http://127.0.0.1:8000`. It explains workflows, ownership, and meaningful errors. FastAPI's generated [`/docs`](http://127.0.0.1:8000/docs) and [`/openapi.json`](http://127.0.0.1:8000/openapi.json) are the canonical exhaustive request and response schemas. The current documented contract version is `20`.
+This is the behavioral reference for APEX's loopback HTTP API at `http://127.0.0.1:8000`. It explains workflows, ownership, and meaningful errors. FastAPI's generated [`/docs`](http://127.0.0.1:8000/docs) and [`/openapi.json`](http://127.0.0.1:8000/openapi.json) are the canonical exhaustive request and response schemas. The current documented contract version is `21`.
 
 The API has no authentication and is intentionally bound to loopback. `APEX_ALLOWED_ORIGINS` controls browser CORS policy; it does not authorize non-browser clients or make remote binding safe. See [Configuration](configuration.md) and [Privacy](privacy.md).
 
@@ -35,6 +35,8 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | POST | `/api/v1/reminders/dismiss` | Dismiss a reviewed uncertain local reminder |
 | POST | `/api/v1/activity/reports` | Receive one local external activity report |
 | GET | `/api/v1/activity/reports` | List reports in the current partition |
+| GET | `/api/v1/activity/mailbox/status` | Read local-folder mailbox readiness and latest scan status |
+| POST | `/api/v1/activity/mailbox/scan` | Scan the configured mailbox folder now |
 | GET | `/api/v1/activity/reports/{report_id}` | Inspect one immutable report |
 | PATCH | `/api/v1/activity/reports/{report_id}` | Set its reversible Inbox disposition |
 | GET | `/api/v1/activity/reports/{report_id}/context-reviews` | List durable reviews linked from this report |
@@ -116,11 +118,11 @@ Returns boot-time HUD values such as Agent query enablement, the effective model
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `20`.
+Returns the resolved settings envelope. The current contract version is `21`.
 
 ```json
 {
-  "schema_version": 20,
+  "schema_version": 21,
   "settings": {
     "user_designation": "",
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": false },
@@ -150,7 +152,8 @@ Returns the resolved settings envelope. The current contract version is `20`.
     "voice": { "engine": "google", "gender": "female", "mode": "automatic" },
     "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } },
     "llama_cpp": { "enabled": false, "managed": false, "host": "http://127.0.0.1:8080", "executable_path": "", "preset_path": "" },
-    "microsoft_todo": { "reminder_list_id": "" }
+    "microsoft_todo": { "reminder_list_id": "" },
+    "activity_mailbox": { "enabled": false, "folder_path": "" }
   },
   "local_file_present": false,
   "local_override_active": false,
@@ -166,7 +169,7 @@ Returns the resolved settings envelope. The current contract version is `20`.
 
 ### PATCH `/api/v1/settings`
 
-Accepts a strict partial patch for the optional user designation, connectors, sports modules, followed football teams, market symbols, Google Calendar selection and label display, Agent query settings, tool profiles, briefing, voice, llama.cpp enablement, loopback host, optional managed-server paths, and tracked MCP enablement. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
+Accepts a strict partial patch for the optional user designation, connectors, sports modules, followed football teams, market symbols, Google Calendar selection and label display, Agent query settings, tool profiles, briefing, voice, llama.cpp enablement, loopback host, optional managed-server paths, tracked MCP enablement, and local activity mailbox settings. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
 
 ```json
 {
@@ -339,15 +342,23 @@ Archives one explicitly reviewed uncertain local row after the operator has insp
 
 ### POST `/api/v1/activity/reports`
 
-Receives one report from a registered local source. The request contains a configured `client_id` and a version-one `report` object. A report requires `submission_key`, `title`, `task_status`, and `outcome`; it may contain findings, evidence links, artifact references, unresolved questions, suggested follow-up, subject or project labels, occurrence time, a native task URL, and a Markdown body. A structured finding may declare `derivation: "model_interpretation"`; omitted derivation remains `unknown`.
+Receives one report from a local caller. The request contains a caller-declared `client_id` matching `^[a-z][a-z0-9_-]{0,63}$` and a version-one `report` object. A report requires `submission_key`, `title`, `task_status`, and `outcome`; it may contain findings, evidence links, artifact references, unresolved questions, suggested follow-up, subject or project labels, occurrence time, a native task URL, and a Markdown body. A structured finding may declare `derivation: "model_interpretation"`; omitted derivation remains `unknown`.
 
-APEX records the server-derived production or sandbox partition, the local operator principal, the configured source ID, and a display-name snapshot. The client must be explicitly enabled, permit `operator`, include `activity:submit`, and match that partition. Repeating identical content with the same client, partition, and submission key returns the original report with `duplicate: true`; changed content with the key returns `409`.
+APEX records the server-derived production or sandbox partition, the local operator principal, and the claimed source ID as both `client_id` and the new receipt's `client_display_name`. The ID is attribution only and does not authenticate the submitting program. Repeating identical content with the same source ID, partition, and submission key returns the original report with `duplicate: true`; changed content with the key returns `409`.
 
 Report content is limited to 256 KiB and remains immutable. Artifact references are stored without fetching URLs, reading directories, or accepting binary uploads. Stable future-review evidence locations are `/findings/<index>` when structured findings exist, or `/outcome` and `/markdown_body` when no structured finding exists. `DEMO_MODE` rejects submissions. The local route requires a loopback Host header, permits only the documented local browser origins, and requires `application/json`.
 
 ### GET `/api/v1/activity/reports`
 
 Lists up to 100 newest reports in the current partition. `client_id`, `disposition` (`new`, `reviewed`, or `dismissed`), and `limit` are optional filters. This branch exposes no disposition mutation route.
+
+### GET `/api/v1/activity/mailbox/status`
+
+Returns the main backend's local mailbox settings state, configured-folder availability, and the latest scan time, import count, and retryable error. The mailbox remains disabled unless Runtime Settings enable it.
+
+### POST `/api/v1/activity/mailbox/scan`
+
+Scans the folder from Runtime Settings and waits for the result. Each top-level JSON file must be an `ActivitySubmissionRequest` envelope with `client_id` and `report`; bare report objects are rejected. The request takes no body or path; callers cannot choose a directory. Concurrent manual and scheduled scans share one in-progress scan. The route is available only on the main loopback service, not the narrow activity gateway. A failed or partial scan returns status and an error while leaving existing Inbox reports available for the caller to reload. See [Optional local-folder mailbox](configuration.md#optional-local-folder-mailbox) for file format, size, attribution, and retry behavior.
 
 ### GET `/api/v1/activity/reports/{report_id}`
 

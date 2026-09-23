@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections import Counter
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Final, Literal, cast
@@ -62,7 +61,6 @@ __all__ = [
     "VOICE_GENDER",
     "is_dev_mode",
     "load_feature_flags",
-    "load_activity_client_registrations",
     "load_module_flags",
 ]
 
@@ -301,51 +299,6 @@ def load_module_flags() -> dict[str, bool]:
         elif value is not None:
             _LOGGER.warning('Module %r must be a boolean; ignoring invalid value.', key)
     return result
-
-
-def load_activity_client_registrations(*, refresh: bool = False):
-    """Load static external-activity source registrations from ``config.json``.
-
-    Invalid entries are ignored individually so an unrelated configuration typo
-    cannot prevent the local API from starting. A source must be configured
-    explicitly before it can submit a report.
-    """
-    from core.activity.models import ActivityClientRegistration
-
-    config_data = _CONFIG_DATA
-    if refresh:
-        try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as config_file:
-                loaded = json.load(config_file)
-            if not isinstance(loaded, dict):
-                raise ValueError("Config root must be a JSON object.")
-            config_data = loaded
-        except (OSError, ValueError, json.JSONDecodeError) as exc:
-            _LOGGER.warning("Unable to refresh external activity registrations: %s", exc)
-            return ()
-    root = config_data.get("external_activity", {})
-    if not isinstance(root, dict):
-        _LOGGER.warning('Config key "external_activity" must be a JSON object.')
-        return ()
-    raw_clients = root.get("clients", [])
-    if not isinstance(raw_clients, list):
-        _LOGGER.warning('Config key "external_activity.clients" must be an array.')
-        return ()
-    raw_ids = [raw.get("id") for raw in raw_clients if isinstance(raw, dict) and isinstance(raw.get("id"), str)]
-    duplicate_ids = {client_id for client_id, count in Counter(raw_ids).items() if count > 1}
-    registrations = []
-    for index, raw in enumerate(raw_clients):
-        raw_id = raw.get("id") if isinstance(raw, dict) else None
-        if raw_id in duplicate_ids:
-            _LOGGER.warning("Ignoring duplicate external activity client ID %r; the ID is unavailable.", raw_id)
-            continue
-        try:
-            registration = ActivityClientRegistration.model_validate(raw)
-        except Exception as exc:
-            _LOGGER.warning("Ignoring invalid external_activity.clients[%s]: %s", index, exc)
-            continue
-        registrations.append(registration)
-    return tuple(registrations)
 
 
 _feature_map = load_feature_flags()

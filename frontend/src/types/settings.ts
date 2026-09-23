@@ -25,6 +25,28 @@ export interface MicrosoftTodoSettings {
   reminder_list_id: string
 }
 
+export interface ActivityMailboxSettings {
+  enabled: boolean
+  folder_path: string
+}
+
+export type ActivityMailboxState =
+  | 'disabled'
+  | 'demo_mode'
+  | 'not_configured'
+  | 'folder_unavailable'
+  | 'ready'
+  | 'scan_error'
+
+export interface ActivityMailboxStatusResponse {
+  enabled: boolean
+  state: ActivityMailboxState
+  folder_available: boolean | null
+  last_scan_at: string | null
+  last_imported_count: number
+  last_error: string | null
+}
+
 
 export interface FeaturesSettings {
   weather: boolean
@@ -134,6 +156,7 @@ export interface RuntimeSettings {
   mcp: McpSettings
   llama_cpp: LlamaCppSettings
   microsoft_todo: MicrosoftTodoSettings
+  activity_mailbox: ActivityMailboxSettings
 }
 
 export interface FeaturesPatch {
@@ -233,6 +256,11 @@ export interface MicrosoftTodoPatch {
   reminder_list_id?: string
 }
 
+export interface ActivityMailboxPatch {
+  enabled?: boolean
+  folder_path?: string
+}
+
 export type LlamaCppServerState =
   | 'disabled'
   | 'external_connected'
@@ -266,6 +294,7 @@ export interface SettingsPatch {
   mcp?: McpPatch
   llama_cpp?: LlamaCppPatch
   microsoft_todo?: MicrosoftTodoPatch
+  activity_mailbox?: ActivityMailboxPatch
 }
 
 export interface SettingsResponse {

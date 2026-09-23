@@ -47,6 +47,7 @@ describe('useActivityInbox', () => {
 
     const { result } = renderHook(() => useActivityInbox(true, 'production'))
     await waitFor(() => expect(result.current.detail?.id).toBe('report-1'))
+    expect(result.current.sources).toEqual([{ id: 'codex', label: 'codex' }])
 
     await act(async () => { await result.current.setDisposition('dismissed') })
     expect(result.current.detail?.disposition).toBe('dismissed')
@@ -66,6 +67,11 @@ describe('useActivityInbox', () => {
     let resolveStaleList: ((value: Response) => void) | undefined
     vi.mocked(fetch).mockImplementation((input) => {
       const target = String(input)
+      if (target.endsWith('/activity/mailbox/scan')) return Promise.resolve(response({
+        enabled: false, state: 'disabled', folder_available: null,
+        last_scan_at: null,
+        last_imported_count: 0, last_error: null,
+      }))
       if (target.endsWith('/context-reviews')) return Promise.resolve(response([]))
       if (target.endsWith('/report-1')) return Promise.resolve(response(REPORT))
       if (!target.includes('/activity/reports?')) throw new Error(`Unexpected activity request ${target}`)
@@ -100,5 +106,90 @@ describe('useActivityInbox', () => {
     expect(result.current.linkedReviews).toEqual([])
     expect(result.current.selectedReportId).toBeNull()
     expect(result.current.isLoading).toBe(false)
+  })
+
+  it('waits for the mailbox scan before reloading Inbox and keeps reports visible on scan failure', async () => {
+    const order: string[] = []
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const target = String(input)
+      if (target.endsWith('/activity/mailbox/scan')) {
+        order.push('scan')
+        return response({
+          enabled: true, state: 'folder_unavailable', folder_available: false,
+          last_scan_at: '2026-09-22T12:00:00Z',
+          last_imported_count: 0, last_error: 'The mailbox folder is unavailable; APEX will retry.',
+        })
+      }
+      if (target.endsWith('/context-reviews')) return response([])
+      if (target.endsWith('/report-1')) return response(REPORT)
+      if (target.includes('/activity/reports?')) {
+        order.push('list')
+        return response([REPORT])
+      }
+      throw new Error(`Unexpected activity request ${target}`)
+    })
+
+    const { result } = renderHook(() => useActivityInbox(true, 'production'))
+    await waitFor(() => expect(result.current.detail?.id).toBe(REPORT.id))
+    order.length = 0
+
+    await act(async () => { await result.current.refresh() })
+
+    expect(order[0]).toBe('scan')
+    expect(order).toContain('list')
+    expect(result.current.reports).toEqual([REPORT])
+    expect(result.current.error).toBe('The mailbox folder is unavailable; APEX will retry.')
+  })
+
+  it('does not surface a scan error from the previous partition after Refresh completes', async () => {
+    const sandboxReport = {
+      ...REPORT,
+      id: 'report-sandbox',
+      partition: 'sandbox',
+      report: { ...REPORT.report, submission_key: 'sandbox-key' },
+    }
+    let activePartition: 'production' | 'sandbox' = 'production'
+    let resolveScan: ((value: Response) => void) | undefined
+    vi.mocked(fetch).mockImplementation((input) => {
+      const target = String(input)
+      if (target.endsWith('/activity/mailbox/scan')) {
+        return new Promise((resolve) => { resolveScan = resolve })
+      }
+      if (target.endsWith('/context-reviews')) return Promise.resolve(response([]))
+      if (target.endsWith('/report-sandbox')) return Promise.resolve(response(sandboxReport))
+      if (target.endsWith('/report-1')) return Promise.resolve(response(REPORT))
+      if (target.includes('/activity/reports?')) {
+        return Promise.resolve(response(activePartition === 'production' ? [REPORT] : [sandboxReport]))
+      }
+      throw new Error(`Unexpected activity request ${target}`)
+    })
+
+    let refreshPromise: Promise<void> | undefined
+    const { result, rerender } = renderHook(
+      ({ partition }: { partition: 'production' | 'sandbox' }) => useActivityInbox(true, partition),
+      { initialProps: { partition: 'production' } },
+    )
+    await waitFor(() => expect(result.current.detail?.id).toBe(REPORT.id))
+
+    act(() => { refreshPromise = result.current.refresh() })
+    await waitFor(() => expect(resolveScan).toBeDefined())
+    activePartition = 'sandbox'
+    rerender({ partition: 'sandbox' })
+    await waitFor(() => expect(result.current.detail?.id).toBe(sandboxReport.id))
+
+    await act(async () => {
+      resolveScan?.(response({
+        enabled: true,
+        state: 'folder_unavailable',
+        folder_available: false,
+        last_scan_at: '2026-09-22T12:00:00Z',
+        last_imported_count: 0,
+        last_error: 'Old partition mailbox error.',
+      }))
+      await refreshPromise
+    })
+
+    expect(result.current.reports).toEqual([sandboxReport])
+    expect(result.current.error).toBeNull()
   })
 })

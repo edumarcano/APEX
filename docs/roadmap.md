@@ -458,12 +458,14 @@ The Cortex Records and Review views and the CLI expose current claims, evidence,
 
 ## v2.0.0-beta.4 - External Activity Inbox
 
-**Status:** Planned
+**Status:** In Progress
 
 **Objective:**
 Give outside tools one simple way to report completed work, findings, evidence, and follow-up items into APEX.
 
-The first version should be inbound-only. External clients may submit information, but they should not be able to retrieve personal context, call Cortex tools, approve actions, or change trusted knowledge directly.
+The first version is inbound-only. The local Inbox, report review path, CLI, JSON and Markdown import, optional loopback-only submission gateway, and optional local-folder mailbox are in place on this branch.
+
+Reports are untrusted input. Receiving or inspecting one does not add personal context, call Cortex tools, approve actions, or change trusted knowledge.
 
 APEX should define one internal external-activity format. A useful report may include:
 
@@ -480,22 +482,17 @@ APEX should define one internal external-activity format. A useful report may in
 
 APEX should not import an outside tool's full conversation or internal task history by default.
 
-Different connection methods should feed the same internal service. Initial adapters may include:
+Different local submission methods feed the same internal service. Version one uses the generic APEX CLI and JSON or Markdown file import. A local program that needs HTTP or MCP may use the optional loopback-only gateway; it is not a remote client endpoint.
 
-* an APEX CLI command for local and desktop tools;
-* JSON or Markdown file import;
-* a narrow authenticated HTTP submission route;
-* remote MCP tools where the client supports them.
+Automatic ingestion of a completed report from a real client's configured folder remains unverified for beta.4. The mailbox scans at startup and periodically, and Inbox Refresh requests an immediate scan; see [configuration](configuration.md#optional-local-folder-mailbox) for setup.
 
-Gemini Spark should be the first real client because it is already part of the operator's workflow.
-
-A second client, such as Grok Bot, should be used to prove that the design is generic. Adding the second source should mainly require a client registration and credentials rather than product-specific application code.
+The optional submission gateway must remain on loopback. Beta.4 does not depend on public reachability or an APEX-built tunnel or account system.
 
 Outside tools should continue to use their own interfaces for task creation, progress, configuration, and detailed results. APEX should show a concise activity record and a link back to the original work instead of recreating those interfaces.
 
-Every client should have a separate, revocable identity. Submissions should be size-limited, rate-limited, attributed, and treated as untrusted until reviewed or reconciled.
+Give each source a separate registration that can be disabled. For the local CLI, its client ID is source attribution, not software authentication. Bound and attribute submissions, then treat them as untrusted until reviewed or reconciled.
 
-The main APEX backend and database should remain private. Public reachability, encrypted transport, and authentication should use existing networking and identity tools rather than an APEX-built tunnel or account system.
+The main APEX backend and database remain local. The optional provider-neutral mailbox reads completed reports from one operator-selected local folder and uses the same activity service as other submission paths. It does not depend on a Google Drive API or prove which program created a file.
 
 Removing an external tool should not require a code change. Its access can be revoked while its earlier submissions remain available as historical sources.
 

@@ -1,7 +1,6 @@
 """Immutable external activity inbox storage and local service boundary."""
 
 from core.activity.models import (
-    ActivityClientRegistration,
     ActivityDisposition,
     ActivityReport,
     ActivityReportContent,
@@ -9,22 +8,18 @@ from core.activity.models import (
     ActivitySubmissionReceipt,
 )
 from core.activity.service import (
-    ActivityClientDisabledError,
     ActivityNotFoundError,
-    ActivityPermissionError,
     ActivityService,
+    ActivityUnavailableError,
     get_activity_service,
     set_activity_service,
 )
 from core.activity.store import ActivityConflictError, ActivityStore, ActivityStoreError
 
 __all__ = [
-    "ActivityClientDisabledError",
-    "ActivityClientRegistration",
     "ActivityConflictError",
     "ActivityDisposition",
     "ActivityNotFoundError",
-    "ActivityPermissionError",
     "ActivityReport",
     "ActivityReportContent",
     "ActivityService",
@@ -32,6 +27,7 @@ __all__ = [
     "ActivityStoreError",
     "ActivitySubmissionRequest",
     "ActivitySubmissionReceipt",
+    "ActivityUnavailableError",
     "get_activity_service",
     "set_activity_service",
 ]

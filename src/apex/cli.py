@@ -151,12 +151,12 @@ def build_parser() -> argparse.ArgumentParser:
     activity_import = activity_commands.add_parser("import", help="Import a JSON or Markdown report file offline.")
     _add_json_option(activity_import)
     activity_import.add_argument("path", help="Path to a JSON report or Markdown body file.")
-    activity_import.add_argument("--client", required=True, help="Configured activity client ID.")
+    activity_import.add_argument("--client", required=True, help="Caller-declared source ID (lowercase letters, digits, hyphen, or underscore).")
     _add_activity_metadata_arguments(activity_import, include_client=False, include_markdown_file=False)
     activity_import.set_defaults(handler=_activity_import)
     activity_list = activity_commands.add_parser("list", help="List received reports in the current partition.")
     _add_json_option(activity_list)
-    activity_list.add_argument("--client", help="Filter by configured client ID.")
+    activity_list.add_argument("--client", help="Filter by caller-declared source ID.")
     activity_list.add_argument("--disposition", choices=("new", "reviewed", "dismissed"), help="Filter inbox disposition.")
     activity_list.add_argument("--limit", type=int, default=50, help="Maximum reports to return (1-100, default 50).")
     activity_list.set_defaults(handler=_activity_list)
@@ -355,7 +355,7 @@ def _add_context_capture_arguments(
 def _add_activity_metadata_arguments(parser: argparse.ArgumentParser, *, include_client: bool = True, include_markdown_file: bool = False) -> None:
     """Add version-one fields used for direct submission and Markdown imports."""
     if include_client:
-        parser.add_argument("--client", required=True, help="Configured activity client ID.")
+        parser.add_argument("--client", required=True, help="Caller-declared source ID (lowercase letters, digits, hyphen, or underscore).")
     parser.add_argument("--submission-key", help="Stable retry key; required for direct or Markdown input.")
     parser.add_argument("--title", help="Short report title; required for direct or Markdown input.")
     parser.add_argument("--task-status", help="Task status; required for direct or Markdown input.")

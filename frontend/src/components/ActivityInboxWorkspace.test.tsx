@@ -12,7 +12,7 @@ const report = {
 
 function inboxFixture(): UseActivityInboxResult {
   return {
-    reports: [report], detail: report, linkedReviews: [], selectedReportId: report.id, sourceFilter: 'all', dispositionFilter: 'all', sources: [{ id: 'codex', label: 'Codex' }], isLoading: false, isDetailLoading: false, mutation: null, error: null,
+    reports: [report], detail: report, linkedReviews: [], selectedReportId: report.id, sourceFilter: 'all', dispositionFilter: 'all', sources: [{ id: 'codex', label: 'codex' }], isLoading: false, isDetailLoading: false, mutation: null, error: null,
     setSourceFilter: vi.fn(), setDispositionFilter: vi.fn(), selectReport: vi.fn(), refresh: vi.fn().mockResolvedValue(undefined), setDisposition: vi.fn().mockResolvedValue(true), proposeContext: vi.fn().mockResolvedValue(null),
   }
 }
@@ -31,6 +31,8 @@ describe('ActivityInboxWorkspace', () => {
     expect(screen.getByRole('complementary', { name: 'Activity reports' })).toHaveClass('scrollbar-thin')
     expect(screen.getByRole('article')).toHaveClass('lg:overflow-y-auto')
     expect(screen.getByRole('article')).toHaveClass('scrollbar-thin')
+    expect(screen.getAllByText('Codex · completed')).toHaveLength(2)
+    expect(screen.getByRole('option', { name: 'codex' })).toBeInTheDocument()
     expect(document.querySelector('script')).toBeNull()
     expect(document.querySelector('img')).toBeNull()
     expect(screen.queryByRole('link', { name: 'unsafe' })).not.toBeInTheDocument()
@@ -40,5 +42,13 @@ describe('ActivityInboxWorkspace', () => {
     screen.getByRole('button', { name: 'reviewed' }).focus()
     await user.keyboard('{Enter}')
     expect(inbox.setDisposition).toHaveBeenCalledWith('reviewed')
+  })
+
+  it('shows a mailbox scan error without replacing reports already in the Inbox', () => {
+    const inbox = { ...inboxFixture(), error: 'The mailbox folder is unavailable; APEX will retry.' }
+    render(<ActivityInboxWorkspace inbox={inbox} demoModeActive={false} sandboxMode={false} onOpenReview={vi.fn().mockResolvedValue(null)} />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('The mailbox folder is unavailable; APEX will retry.')
+    expect(screen.getByRole('button', { name: /External report/ })).toBeInTheDocument()
   })
 })

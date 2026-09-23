@@ -15,7 +15,6 @@ from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from ipaddress import ip_address
-from typing import Literal
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, status
@@ -27,17 +26,16 @@ from starlette.types import ASGIApp, Message, Scope, Send
 
 from core import database
 from core.activity import (
-    ActivityClientDisabledError,
     ActivityConflictError,
-    ActivityPermissionError,
     ActivityReportContent,
     ActivityService,
     ActivityStore,
     ActivityStoreError,
     ActivitySubmissionRequest,
+    ActivityUnavailableError,
 )
 from core.activity.boundary import MAX_ACTIVITY_REQUEST_BYTES, require_local_submission_headers
-from core.config import DEMO_MODE, load_activity_client_registrations
+from core.config import DEMO_MODE
 from core.conversations.service import ConversationService
 
 _LOGGER = logging.getLogger(__name__)
@@ -67,19 +65,14 @@ def _loopback_bind_host(host: str) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class GatewayOptions:
-    mode: Literal["local", "cloudflare"] = "local"
     host: str = "127.0.0.1"
     port: int = 8001
 
     def validate(self) -> None:
         if not 1 <= self.port <= 65535:
             raise GatewayConfigurationError("Gateway port must be between 1 and 65535.")
-        if self.mode == "local" and not _loopback_bind_host(self.host):
-            raise GatewayConfigurationError("Local gateway mode must bind to a loopback address.")
-        if self.mode == "cloudflare":
-            raise GatewayConfigurationError(
-                "Cloudflare mode requires request verification, which is not available until beta.4 Branch 5."
-            )
+        if not _loopback_bind_host(self.host):
+            raise GatewayConfigurationError("Activity gateway must bind to a loopback address.")
 
     @property
     def local_hosts(self) -> tuple[str, ...]:
@@ -99,22 +92,22 @@ class GatewayOptions:
 
 
 class _FixedWindowLimiter:
-    """Keep a bounded, process-local count for both submission adapters."""
+    """Keep one bounded, process-local count shared by both submission adapters."""
 
     def __init__(self, *, now: Callable[[], float] = time.monotonic) -> None:
         self._now = now
-        self._windows: dict[str, tuple[float, int]] = {}
+        self._window: tuple[float, int] | None = None
         self._lock = threading.Lock()
 
-    def check(self, client_id: str) -> None:
+    def check(self) -> None:
         now = self._now()
         with self._lock:
-            started_at, count = self._windows.get(client_id, (now, 0))
+            started_at, count = self._window or (now, 0)
             if now - started_at >= _RATE_WINDOW_SECONDS:
                 started_at, count = now, 0
             if count >= _RATE_ATTEMPTS:
                 raise GatewayRateLimitError("activity_rate_limited")
-            self._windows[client_id] = (started_at, count + 1)
+            self._window = (started_at, count + 1)
 
 
 class GatewaySubmissionService:
@@ -125,7 +118,7 @@ class GatewaySubmissionService:
         self._limiter = limiter or _FixedWindowLimiter()
 
     def submit(self, *, client_id: str, report: ActivityReportContent) -> dict[str, object]:
-        self._limiter.check(client_id)
+        self._limiter.check()
         receipt = self._activity_service.submit(
             client_id=client_id,
             principal="operator",
@@ -213,10 +206,8 @@ def _gateway_error(error: Exception) -> HTTPException:
         return HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Activity submission rate limit exceeded.")
     if isinstance(error, ActivityConflictError):
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The submission key was already used for different report content.")
-    if isinstance(error, ActivityClientDisabledError):
-        return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Activity client is disabled or unavailable.")
-    if isinstance(error, ActivityPermissionError):
-        return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Activity submission is not permitted for this client and partition.")
+    if isinstance(error, ActivityUnavailableError):
+        return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Activity submissions are unavailable in demo mode.")
     if isinstance(error, ActivityStoreError):
         if str(error) == "report_too_large":
             return HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Activity report exceeds the 256 KiB limit.")
@@ -228,12 +219,7 @@ def create_gateway_app(options: GatewayOptions = GatewayOptions()) -> FastAPI:
     """Build the opt-in gateway without importing the main API or connectors."""
     options.validate()
     store = ActivityStore(None if DEMO_MODE else database.DB_NAME)
-    service = ActivityService(
-        store,
-        load_activity_client_registrations(),
-        registration_loader=lambda: load_activity_client_registrations(refresh=True),
-        demo_mode=DEMO_MODE,
-    )
+    service = ActivityService(store, demo_mode=DEMO_MODE)
     submissions = GatewaySubmissionService(service)
     mcp = FastMCP("APEX Activity Submission", instructions="Submit one external activity report to the local APEX inbox.")
 
@@ -303,7 +289,6 @@ def create_gateway_app(options: GatewayOptions = GatewayOptions()) -> FastAPI:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Start APEX's submission-only external activity gateway.")
-    parser.add_argument("--mode", choices=("local", "cloudflare"), default="local")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8001)
     return parser
@@ -311,7 +296,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
-    options = GatewayOptions(mode=args.mode, host=args.host, port=args.port)
+    options = GatewayOptions(host=args.host, port=args.port)
     options.validate()
     uvicorn.run(create_gateway_app(options), host=options.host, port=options.port)
 

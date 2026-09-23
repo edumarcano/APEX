@@ -71,6 +71,10 @@ export const BASE_SETTINGS: RuntimeSettings = {
   microsoft_todo: {
     reminder_list_id: '',
   },
+  activity_mailbox: {
+    enabled: false,
+    folder_path: '',
+  },
 }
 
 export function buildSettingsResponse(
@@ -78,7 +82,7 @@ export function buildSettingsResponse(
   overrides: Partial<SettingsResponse> = {},
 ): SettingsResponse {
   return {
-    schema_version: 16,
+    schema_version: 21,
     settings,
     local_file_present: false,
     local_override_active: false,

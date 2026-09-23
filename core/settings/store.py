@@ -220,6 +220,9 @@ class RuntimeSettingsStore:
 
         latest_raw = self._load_latest_raw_for_write()
         next_raw = recursive_overlay(latest_raw, patch_ondisk)
+        legacy_mailbox = next_raw.get("activity_mailbox")
+        if isinstance(legacy_mailbox, dict):
+            legacy_mailbox.pop("client_id", None)
         next_issues = NormalizationIssues()
         next_local = normalize_layer(
             next_raw,

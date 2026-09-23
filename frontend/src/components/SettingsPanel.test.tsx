@@ -82,6 +82,16 @@ function mockSettingsPanelFetches(
         permission: 'Tasks.ReadWrite',
       })
     }
+    if (url === API_ENDPOINTS.activityMailboxStatus) {
+      return jsonResponse({
+        enabled: false,
+        state: 'disabled',
+        folder_available: null,
+        last_scan_at: null,
+        last_imported_count: 0,
+        last_error: null,
+      })
+    }
     return jsonResponse({})
   })
 }
@@ -110,6 +120,16 @@ describe('SettingsPanel', () => {
     expect(dialog).toContainElement(document.activeElement as HTMLElement)
     await user.tab({ shift: true })
     expect(dialog).toContainElement(document.activeElement as HTMLElement)
+  })
+
+  it('shows the optional local mailbox settings without a client registration control', async () => {
+    mockSettingsPanelFetches()
+    renderPanel()
+
+    expect(await screen.findByRole('switch', { name: 'Enable mailbox' })).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByLabelText('Absolute folder path')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/client id/i)).not.toBeInTheDocument()
+    expect(await screen.findByText(/Disabled. APEX will not read this folder./)).toBeInTheDocument()
   })
 
   it('keeps focus trapped after settings become ready', async () => {
@@ -254,14 +274,9 @@ describe('SettingsPanel', () => {
   })
 
   it('edits the optional user designation through local settings', async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
-      .mockResolvedValueOnce(
-        jsonResponse({
-          ...buildSettingsResponse(),
-          settings: { ...buildSettingsResponse().settings, user_designation: 'Chief' },
-        }),
-      )
+    const saved = structuredClone(buildSettingsResponse())
+    saved.settings.user_designation = 'Chief'
+    mockSettingsPanelFetches({ patch: jsonResponse(saved) })
     const user = userEvent.setup()
     renderPanel()
 
@@ -279,6 +294,11 @@ describe('SettingsPanel', () => {
       method: 'PATCH',
       body: JSON.stringify({ user_designation: 'Chief' }),
     })
+    await waitFor(() =>
+      expect(
+        vi.mocked(fetch).mock.calls.filter(([input]) => input === API_ENDPOINTS.activityMailboxStatus),
+      ).toHaveLength(2),
+    )
   })
 
   it('preserves the dirty controls and reports a failed save', async () => {

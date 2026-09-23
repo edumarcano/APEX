@@ -9,20 +9,8 @@ from unittest import mock
 
 from fastapi.testclient import TestClient
 
-from core.activity import ActivityClientRegistration
 from core.activity.gateway import GatewayConfigurationError, GatewayOptions, create_gateway_app
 import core.activity.gateway as gateway
-
-
-def _registration(*, enabled: bool = True) -> ActivityClientRegistration:
-    return ActivityClientRegistration(
-        id="codex",
-        display_name="Codex",
-        enabled=enabled,
-        allowed_principals=["operator"],
-        permissions=["activity:submit"],
-        partition="production",
-    )
 
 
 def _report(key: str) -> dict[str, object]:
@@ -35,26 +23,17 @@ def _report(key: str) -> dict[str, object]:
 
 
 class GatewayOptionsTests(unittest.TestCase):
-    def test_local_mode_rejects_non_loopback_and_cloudflare_fails_closed(self) -> None:
+    def test_gateway_rejects_non_loopback(self) -> None:
         with self.assertRaisesRegex(GatewayConfigurationError, "loopback"):
             GatewayOptions(host="0.0.0.0").validate()
-        with self.assertRaisesRegex(GatewayConfigurationError, "Branch 5"):
-            GatewayOptions(mode="cloudflare").validate()
 
 
 class GatewayHttpTests(unittest.TestCase):
     def setUp(self) -> None:
         self.directory = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.directory.name) / "activity.db")
-        self.loaded_registrations = (_registration(),)
         self.database_patch = mock.patch.object(gateway.database, "DB_NAME", self.db_path)
-        self.registration_patch = mock.patch.object(
-            gateway,
-            "load_activity_client_registrations",
-            side_effect=lambda **_kwargs: self.loaded_registrations,
-        )
         self.database_patch.start()
-        self.registration_patch.start()
         self.app = create_gateway_app(GatewayOptions())
         self.client = TestClient(self.app)
         self.client.__enter__()
@@ -66,7 +45,6 @@ class GatewayHttpTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.client.__exit__(None, None, None)
-        self.registration_patch.stop()
         self.database_patch.stop()
         self.directory.cleanup()
 
@@ -88,6 +66,7 @@ class GatewayHttpTests(unittest.TestCase):
         self.assertTrue(retry.json()["duplicate"])
         self.assertEqual(first.json()["id"], retry.json()["id"])
         self.assertEqual(self.client.get("/api/v1/activity/reports").status_code, 404)
+        self.assertEqual(self.client.get("/api/v1/activity/mailbox/status").status_code, 404)
         self.assertEqual(self.client.get("/api/v1/cortex/agent").status_code, 404)
 
     def test_custom_loopback_binding_accepts_only_its_configured_host(self) -> None:
@@ -153,7 +132,7 @@ class GatewayHttpTests(unittest.TestCase):
             response = self.client.post(
                 "/v1/activity/reports",
                 headers=self.headers,
-                json={"client_id": "codex", "report": _report(f"rate-{index}")},
+                json={"client_id": f"source-{index}", "report": _report(f"rate-{index}")},
             )
             self.assertEqual(response.status_code, 201)
 
@@ -165,7 +144,7 @@ class GatewayHttpTests(unittest.TestCase):
         self._mcp_request({"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}, session_id=session_id)
         limited = self._mcp_request({
             "jsonrpc": "2.0", "id": 2, "method": "tools/call",
-            "params": {"name": "submit_activity", "arguments": {"client_id": "codex", "report": _report("rate-mcp")}},
+            "params": {"name": "submit_activity", "arguments": {"client_id": "different-source", "report": _report("rate-mcp")}},
         }, session_id=session_id)
         result = limited.json()["result"]
         self.assertTrue(result["isError"])
@@ -199,18 +178,11 @@ class GatewayHttpTests(unittest.TestCase):
         reports = self.app.state.activity_service.list(partition="production")
         self.assertEqual([report.content.submission_key for report in reports], ["mcp-key"])
 
-        self.loaded_registrations = (_registration(enabled=False),)
-        disabled = self._mcp_request({
+        invalid_id = self._mcp_request({
             "jsonrpc": "2.0", "id": 4, "method": "tools/call",
-            "params": {"name": "submit_activity", "arguments": {"client_id": "codex", "report": _report("disabled-key")}},
+            "params": {"name": "submit_activity", "arguments": {"client_id": "Bad ID", "report": _report("invalid-key")}},
         }, session_id=session_id)
-        self.assertTrue(disabled.json()["result"]["isError"])
-        self.loaded_registrations = ()
-        removed = self._mcp_request({
-            "jsonrpc": "2.0", "id": 5, "method": "tools/call",
-            "params": {"name": "submit_activity", "arguments": {"client_id": "codex", "report": _report("removed-key")}},
-        }, session_id=session_id)
-        self.assertTrue(removed.json()["result"]["isError"])
+        self.assertTrue(invalid_id.json()["result"]["isError"])
         self.assertEqual(len(self.app.state.activity_service.list(partition="production")), 1)
 
 

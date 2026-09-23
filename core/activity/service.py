@@ -1,21 +1,16 @@
-"""Authorization and partition boundary for local external activity receipts."""
+"""Source attribution boundary for local external activity receipts."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from uuid import UUID
 
-from core.activity.models import ActivityClientRegistration, ActivityReportContent
+from core.activity.models import ActivityReportContent, is_valid_activity_client_id
 from core.activity.store import ActivityNotFoundError, ActivityStore, ActivityStoreError
 
 _service: "ActivityService | None" = None
 
 
-class ActivityPermissionError(ActivityStoreError):
-    pass
-
-
-class ActivityClientDisabledError(ActivityPermissionError):
+class ActivityUnavailableError(ActivityStoreError):
     pass
 
 
@@ -36,34 +31,20 @@ class ActivityService:
     def __init__(
         self,
         store: ActivityStore,
-        registrations: tuple[ActivityClientRegistration, ...],
         *,
-        registration_loader: Callable[[], tuple[ActivityClientRegistration, ...]] | None = None,
         demo_mode: bool = False,
     ) -> None:
         self.store = store
-        self._registrations = {registration.id: registration for registration in registrations}
-        self._registration_loader = registration_loader
         self._demo_mode = demo_mode
 
     def submit(self, *, client_id: str, principal: str, partition: str, content: ActivityReportContent):
         if self._demo_mode:
-            raise ActivityPermissionError("activity_unavailable_in_demo")
-        registrations = (
-            {registration.id: registration for registration in self._registration_loader()}
-            if self._registration_loader is not None
-            else self._registrations
-        )
-        registration = registrations.get(client_id)
-        if registration is None or not registration.enabled:
-            raise ActivityClientDisabledError("activity_client_disabled")
-        if registration.partition != partition:
-            raise ActivityPermissionError("activity_client_partition_mismatch")
-        if "activity:submit" not in registration.permissions or principal not in registration.allowed_principals:
-            raise ActivityPermissionError("activity_submission_not_permitted")
+            raise ActivityUnavailableError("activity_unavailable_in_demo")
+        if not is_valid_activity_client_id(client_id):
+            raise ActivityStoreError("activity_client_id_invalid")
         return self.store.submit(
-            partition=partition, client_id=registration.id,
-            client_display_name=registration.display_name, principal=principal, content=content,
+            partition=partition, client_id=client_id,
+            client_display_name=client_id, principal=principal, content=content,
         )
 
     def list(self, *, partition: str, client_id: str | None = None, disposition: str | None = None, limit: int = 50):

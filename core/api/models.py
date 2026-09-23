@@ -39,6 +39,24 @@ class ActivityReportResponse(BaseModel):
     report: ActivityReportContent
 
 
+class ActivityMailboxStatusResponse(BaseModel):
+    """Local mailbox readiness and result of its latest completed scan."""
+
+    enabled: bool
+    state: Literal[
+        "disabled",
+        "demo_mode",
+        "not_configured",
+        "folder_unavailable",
+        "ready",
+        "scan_error",
+    ]
+    folder_available: bool | None
+    last_scan_at: str | None
+    last_imported_count: int
+    last_error: str | None
+
+
 class ActivitySubmissionResponse(ActivityReportResponse):
     duplicate: bool
 

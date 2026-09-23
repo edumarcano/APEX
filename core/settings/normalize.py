@@ -6,6 +6,7 @@ import copy
 import logging
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -22,6 +23,7 @@ from core.agent.model_catalog import (
 )
 from core.config import is_dev_mode
 from core.settings.models import (
+    ActivityMailboxSettings,
     VALID_AGENT_KEYS,
     VALID_BRIEFING_MODES,
     VALID_VOICE_ENGINES,
@@ -72,6 +74,7 @@ EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
         "mcp",
         "llama_cpp",
         "microsoft_todo",
+        "activity_mailbox",
     }
 )
 _DEFAULT_LLAMA_CPP_HOST = "http://127.0.0.1:8080"
@@ -138,7 +141,6 @@ def normalize_layer(
                 "agent_system_prompt",
                 "local_agent_system_prompt",
                 "cortex_runs",
-                "external_activity",
                 "gemini",
                 "ollama",
                 "llama_cpp",
@@ -209,6 +211,10 @@ def normalize_layer(
             microsoft_todo = _normalize_microsoft_todo(value, layer_name, issues)
             if microsoft_todo is not None:
                 normalized["microsoft_todo"] = microsoft_todo
+        elif key == "activity_mailbox":
+            mailbox = _normalize_activity_mailbox(value, layer_name, issues)
+            if mailbox is not None:
+                normalized["activity_mailbox"] = mailbox
 
     return normalized
 
@@ -235,6 +241,57 @@ def _normalize_microsoft_todo(
         _LOGGER.warning("microsoft_todo.reminder_list_id in %s is invalid; ignoring.", layer_name)
         return {}
     return {"reminder_list_id": list_id}
+
+
+def _normalize_activity_mailbox(
+    value: Any, layer_name: str, issues: NormalizationIssues | None
+) -> dict[str, Any] | None:
+    """Normalize the optional activity folder, which is always machine-local."""
+    if layer_name != "config.local.json":
+        _record_warning(
+            issues,
+            "activity_mailbox is machine-local and must be configured in config.local.json",
+        )
+        _LOGGER.warning(
+            "Ignoring activity_mailbox in %s; configure it in config.local.json.",
+            layer_name,
+        )
+        return None
+    if not isinstance(value, dict):
+        _record_error(issues, "activity_mailbox must be an object")
+        _LOGGER.warning("activity_mailbox in %s must be an object; ignoring.", layer_name)
+        return None
+
+    allowed = {"enabled", "folder_path"}
+    for key in value:
+        if key != "client_id" and key not in allowed:
+            _record_warning(issues, "activity_mailbox contains unknown fields")
+            _LOGGER.warning("Ignoring unknown activity_mailbox field %r in %s.", key, layer_name)
+
+    normalized: dict[str, Any] = {}
+    if "enabled" in value:
+        enabled = value["enabled"]
+        if isinstance(enabled, bool):
+            normalized["enabled"] = enabled
+        else:
+            _record_error(issues, "activity_mailbox.enabled must be a boolean")
+
+    if "folder_path" in value:
+        folder_path = value["folder_path"]
+        if not isinstance(folder_path, str):
+            _record_error(issues, "activity_mailbox.folder_path must be a string")
+        else:
+            folder_path = folder_path.strip()
+            if "\x00" in folder_path:
+                _record_error(issues, "activity_mailbox.folder_path must not contain null bytes")
+            elif folder_path and not Path(folder_path).is_absolute():
+                _record_error(issues, "activity_mailbox.folder_path must be an absolute path")
+            elif len(folder_path) > 4096:
+                _record_error(issues, "activity_mailbox.folder_path exceeds the maximum length")
+            else:
+                normalized["folder_path"] = folder_path
+
+    return normalized
 
 
 def _normalize_calendar(
@@ -1182,6 +1239,19 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     ):
         reminder_list_id = ""
     microsoft_todo = MicrosoftTodoSettings(reminder_list_id=reminder_list_id)
+    activity_mailbox_raw = (
+        merged.get("activity_mailbox")
+        if isinstance(merged.get("activity_mailbox"), dict)
+        else {}
+    )
+    activity_mailbox = ActivityMailboxSettings(
+        enabled=bool(activity_mailbox_raw.get("enabled", False)),
+        folder_path=(
+            activity_mailbox_raw.get("folder_path", "")
+            if isinstance(activity_mailbox_raw.get("folder_path", ""), str)
+            else ""
+        ),
+    )
     return RuntimeSettingsSnapshot(
         user_designation=(
             merged.get("user_designation", "")
@@ -1200,6 +1270,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         mcp=mcp,
         llama_cpp=llama_cpp,
         microsoft_todo=microsoft_todo,
+        activity_mailbox=activity_mailbox,
     )
 
 
@@ -1229,6 +1300,7 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
         "mcp": snapshot.mcp.model_dump(),
         "llama_cpp": snapshot.llama_cpp.model_dump(),
         "microsoft_todo": snapshot.microsoft_todo.model_dump(),
+        "activity_mailbox": snapshot.activity_mailbox.model_dump(),
     }
 
 
@@ -1353,4 +1425,8 @@ def patch_to_ondisk(patch: SettingsPatch) -> dict[str, Any]:
         ondisk["microsoft_todo"] = {
             "reminder_list_id": patch.microsoft_todo.reminder_list_id,
         }
+    if patch.activity_mailbox is not None:
+        activity_mailbox = patch.activity_mailbox.model_dump(exclude_none=True)
+        if activity_mailbox:
+            ondisk["activity_mailbox"] = activity_mailbox
     return ondisk
