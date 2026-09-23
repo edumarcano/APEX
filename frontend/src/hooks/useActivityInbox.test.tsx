@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { ContextReview } from '../types/context'
 import { useActivityInbox } from './useActivityInbox'
 
 const REPORT = {
@@ -15,6 +16,11 @@ const REPORT = {
 const REVIEW = {
   id: 'review-1', partition: 'production', operation: 'capture', proposal: { kind: 'note', text: 'Keep this.' }, evidence: {},
   expected_revisions: {}, reason_codes: ['external_activity'], decision: 'pending', action_id: 'action-1', decision_at: null, created_at: '2026-09-21T12:01:00Z',
+}
+const SECOND_REPORT = {
+  ...REPORT,
+  id: 'report-2',
+  report: { ...REPORT.report, submission_key: 'key-2', title: 'Second report' },
 }
 
 function response(body: unknown, status = 200): Response {
@@ -60,6 +66,83 @@ describe('useActivityInbox', () => {
       await result.current.proposeContext({ finding_reference: '/findings/0', kind: 'note', text: 'Keep this.' })
     })
     expect(result.current.linkedReviews).toEqual([{ finding_reference: '/findings/0', review: REVIEW }])
+  })
+
+  it('keeps the selected detail when a disposition response arrives after selection changes', async () => {
+    let resolvePatch: ((value: Response) => void) | undefined
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      const target = String(input)
+      if (target.endsWith('/context-reviews')) return Promise.resolve(response([]))
+      if (target.endsWith('/report-1') && init?.method === 'PATCH') {
+        return new Promise((resolve) => { resolvePatch = resolve })
+      }
+      if (target.endsWith('/report-1')) return Promise.resolve(response(REPORT))
+      if (target.endsWith('/report-2')) return Promise.resolve(response(SECOND_REPORT))
+      if (target.includes('/activity/reports?')) return Promise.resolve(response([REPORT, SECOND_REPORT]))
+      throw new Error(`Unexpected activity request ${target}`)
+    })
+
+    const { result } = renderHook(() => useActivityInbox(true, 'production'))
+    await waitFor(() => expect(result.current.detail?.id).toBe(REPORT.id))
+
+    let dispositionPromise: Promise<boolean> | undefined
+    act(() => { dispositionPromise = result.current.setDisposition('dismissed') })
+    await waitFor(() => expect(resolvePatch).toBeDefined())
+    act(() => { result.current.selectReport(SECOND_REPORT.id) })
+    await waitFor(() => expect(result.current.detail?.id).toBe(SECOND_REPORT.id))
+
+    await act(async () => {
+      resolvePatch?.(response({ ...REPORT, disposition: 'dismissed' }))
+      await expect(dispositionPromise).resolves.toBe(true)
+    })
+
+    expect(result.current.selectedReportId).toBe(SECOND_REPORT.id)
+    expect(result.current.detail?.id).toBe(SECOND_REPORT.id)
+    expect(result.current.reports).toEqual([
+      { ...REPORT, disposition: 'dismissed' },
+      SECOND_REPORT,
+    ])
+  })
+
+  it('does not reload a proposal report after selection changes', async () => {
+    let resolveProposal: ((value: Response) => void) | undefined
+    let firstReportDetailRequests = 0
+    vi.mocked(fetch).mockImplementation((input) => {
+      const target = String(input)
+      if (target.includes('/context-proposals')) {
+        return new Promise((resolve) => { resolveProposal = resolve })
+      }
+      if (target.endsWith('/context-reviews')) return Promise.resolve(response([]))
+      if (target.endsWith('/report-1')) {
+        firstReportDetailRequests += 1
+        return Promise.resolve(response(REPORT))
+      }
+      if (target.endsWith('/report-2')) return Promise.resolve(response(SECOND_REPORT))
+      if (target.includes('/activity/reports?')) return Promise.resolve(response([REPORT, SECOND_REPORT]))
+      throw new Error(`Unexpected activity request ${target}`)
+    })
+
+    const { result } = renderHook(() => useActivityInbox(true, 'production'))
+    await waitFor(() => expect(result.current.detail?.id).toBe(REPORT.id))
+
+    let proposalPromise: Promise<ContextReview | null> | undefined
+    act(() => {
+      proposalPromise = result.current.proposeContext({
+        finding_reference: '/findings/0', kind: 'note', text: 'Keep this.',
+      })
+    })
+    await waitFor(() => expect(resolveProposal).toBeDefined())
+    act(() => { result.current.selectReport(SECOND_REPORT.id) })
+    await waitFor(() => expect(result.current.detail?.id).toBe(SECOND_REPORT.id))
+
+    await act(async () => {
+      resolveProposal?.(response(REVIEW))
+      await expect(proposalPromise).resolves.toEqual(REVIEW)
+    })
+
+    expect(firstReportDetailRequests).toBe(1)
+    expect(result.current.detail?.id).toBe(SECOND_REPORT.id)
+    expect(result.current.isDetailLoading).toBe(false)
   })
 
   it('clears production records and ignores stale requests when the partition changes', async () => {

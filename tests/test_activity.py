@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 import tempfile
@@ -15,6 +16,7 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from starlette.requests import Request
 
 from core.activity import (
     ActivityConflictError,
@@ -43,6 +45,29 @@ def _report(*, key: str = "report-1", outcome: str = "Done") -> ActivityReportCo
     return ActivityReportContent(
         submission_key=key, title="Review branch", task_status="completed", outcome=outcome,
         findings=[{"text": "All focused checks passed."}],
+    )
+
+
+def _activity_request(payload: dict[str, object]) -> Request:
+    body = json.dumps(payload).encode("utf-8")
+    sent = False
+
+    async def receive() -> dict[str, object]:
+        nonlocal sent
+        if sent:
+            return {"type": "http.request", "body": b"", "more_body": False}
+        sent = True
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    return Request(
+        {
+            "type": "http", "http_version": "1.1", "method": "POST",
+            "scheme": "http", "path": "/api/v1/activity/reports",
+            "raw_path": b"/api/v1/activity/reports", "query_string": b"",
+            "headers": [(b"host", b"127.0.0.1:8000"), (b"content-type", b"application/json")],
+            "client": ("127.0.0.1", 50000), "server": ("127.0.0.1", 8000),
+        },
+        receive,
     )
 
 
@@ -404,6 +429,52 @@ class ActivityContextReviewTests(unittest.TestCase):
             (review.evidence["derivation"], review.evidence["occurred_at"]),
             ("model_interpretation", "2026-09-21T12:00:00+00:00"),
         )
+
+
+class ActivityAsyncSubmissionTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.store = ActivityStore(None)
+        self.store.initialize()
+        self.service = ActivityService(self.store)
+
+    def tearDown(self) -> None:
+        self.store.close()
+
+    async def test_json_submission_keeps_event_loop_responsive_during_storage(self) -> None:
+        entered = threading.Event()
+        release = threading.Event()
+        finished = threading.Event()
+
+        class BlockingService:
+            def submit(_self, **kwargs):
+                entered.set()
+                release.wait(3)
+                try:
+                    return self.service.submit(**kwargs)
+                finally:
+                    finished.set()
+
+        conversation = SimpleNamespace(partition=lambda: "production")
+        request = _activity_request({
+            "client_id": "codex", "report": _report(key="async-api").model_dump(mode="json"),
+        })
+        with mock.patch.object(activity_router, "DEMO_MODE", False), mock.patch.object(
+            activity_router, "get_activity_service", return_value=BlockingService(),
+        ), mock.patch.object(activity_router, "get_conversation_service", return_value=conversation):
+            submission = asyncio.create_task(activity_router.submit_activity_report(request))
+            self.assertTrue(await asyncio.wait_for(asyncio.to_thread(entered.wait, 3), timeout=4))
+            loop_progress = asyncio.Event()
+            asyncio.get_running_loop().call_soon(loop_progress.set)
+            try:
+                await asyncio.wait_for(loop_progress.wait(), timeout=1)
+                self.assertFalse(finished.is_set(), "storage completed before the event loop could progress")
+            finally:
+                release.set()
+            response = await submission
+
+        self.assertFalse(response.duplicate)
+        self.assertEqual(response.report.outcome, "Done")
+        self.assertEqual(len(self.service.list(partition="production")), 1)
 
 
 class ActivityApiTests(unittest.TestCase):

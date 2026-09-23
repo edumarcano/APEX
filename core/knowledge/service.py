@@ -99,6 +99,16 @@ class KnowledgeService:
     def list_reviews(self, *, partition: str, decisions=("pending",), limit: int = 50):
         return self.store.list_reviews(partition=partition, decisions=decisions, limit=limit)
 
+    def list_refreshed_activity_reviews(
+        self, *, partition: str, activity_id: str, finding_reference: str,
+        proposal_hash: str, after_created_at: str,
+    ):
+        return self.store.list_refreshed_activity_reviews(
+            partition=partition, activity_id=activity_id,
+            finding_reference=finding_reference, proposal_hash=proposal_hash,
+            after_created_at=after_created_at,
+        )
+
     def accept_review(self, review_id, *, partition: str, action_id: str | None = None):
         return self.store.accept_review(review_id, partition=partition, action_id=action_id)
 

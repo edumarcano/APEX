@@ -281,6 +281,12 @@ class KnowledgeStore:
             "CREATE INDEX IF NOT EXISTS idx_knowledge_predecessors_predecessor ON knowledge_record_predecessors(predecessor_record_id)",
             "CREATE INDEX IF NOT EXISTS idx_knowledge_history_record ON knowledge_history(record_id, created_at)",
             "CREATE INDEX IF NOT EXISTS idx_knowledge_reviews_partition_pending ON knowledge_reviews(partition, decision, created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_knowledge_reviews_activity_identity "
+            "ON knowledge_reviews(partition, json_extract(evidence_json, '$.activity_id'), "
+            "json_extract(evidence_json, '$.finding_reference'), "
+            "json_extract(evidence_json, '$.activity_proposal_hash'), created_at DESC) "
+            "WHERE json_extract(evidence_json, '$.activity_id') IS NOT NULL "
+            "AND json_extract(evidence_json, '$.finding_reference') IS NOT NULL",
         )
         for statement in statements:
             conn.execute(statement)
@@ -1276,6 +1282,35 @@ class KnowledgeStore:
                 "SELECT id,partition,operation,proposal_json,evidence_json,expected_revisions_json,reason_codes_json,decision,action_id,decision_at,created_at FROM knowledge_reviews "
                 "WHERE partition=? AND decision IN (%s) ORDER BY created_at DESC,id LIMIT ?" % ",".join("?" for _ in decisions),
                 (partition, *decisions, limit),
+            ).fetchall()
+        return [self._review(row) for row in rows]
+
+    def list_refreshed_activity_reviews(
+        self, *, partition: str, activity_id: str, finding_reference: str,
+        proposal_hash: str, after_created_at: str,
+    ) -> list[KnowledgeReview]:
+        """Find refreshes for one activity proposal without walking global review history.
+
+        The explicit hash covers reviews created by current builds. Reviews from
+        before that evidence field existed are still discoverable by their
+        report/finding identity, then callers can verify the frozen proposal.
+        """
+        if (
+            partition not in _PARTITIONS or not activity_id or not finding_reference
+            or not proposal_hash or not after_created_at
+        ):
+            raise KnowledgeStoreError("review_filter_invalid")
+        with self._connection() as conn:
+            rows = conn.execute(
+                "SELECT id,partition,operation,proposal_json,evidence_json,expected_revisions_json,"
+                "reason_codes_json,decision,action_id,decision_at,created_at FROM knowledge_reviews "
+                "WHERE partition=? AND json_extract(evidence_json,'$.activity_id')=? "
+                "AND json_extract(evidence_json,'$.finding_reference')=? "
+                "AND (json_extract(evidence_json,'$.activity_proposal_hash')=? "
+                "OR json_extract(evidence_json,'$.activity_proposal_hash') IS NULL) "
+                "AND instr(reason_codes_json, '\"refresh_revalidated\"')>0 "
+                "AND created_at>? ORDER BY created_at DESC,id DESC",
+                (partition, activity_id, finding_reference, proposal_hash, after_created_at),
             ).fetchall()
         return [self._review(row) for row in rows]
 

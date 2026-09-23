@@ -8,6 +8,7 @@ Streamable HTTP transport.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import threading
 import time
@@ -35,14 +36,25 @@ from core.activity import (
     ActivityUnavailableError,
 )
 from core.activity.boundary import MAX_ACTIVITY_REQUEST_BYTES, require_local_submission_headers
-from core.config import DEMO_MODE
-from core.conversations.service import ConversationService
+from core.config import DEMO_MODE, is_dev_mode
+from core.settings import get_settings_store
 
 _LOGGER = logging.getLogger(__name__)
 _BODY_LIMIT_BYTES = MAX_ACTIVITY_REQUEST_BYTES
 _RATE_WINDOW_SECONDS = 60.0
 _RATE_ATTEMPTS = 30
 _LOCAL_ORIGIN_TEMPLATE = "http://{host}:{port}"
+
+
+def _submission_partition() -> str:
+    """Resolve the current persisted sandbox setting for each gateway submit."""
+    if not is_dev_mode():
+        return "production"
+    # The gateway is a separate process from the API that writes config.local.json.
+    # Use an isolated fresh store so this request sees its atomic on-disk update
+    # without reloading or mutating any process-wide settings snapshot.
+    settings = get_settings_store(force_new=True).get_snapshot()
+    return "sandbox" if settings.ask_apex.sandbox_mode else "production"
 
 
 class GatewayConfigurationError(ValueError):
@@ -122,7 +134,7 @@ class GatewaySubmissionService:
         receipt = self._activity_service.submit(
             client_id=client_id,
             principal="operator",
-            partition=ConversationService.partition(),
+            partition=_submission_partition(),
             content=report,
         )
         _LOGGER.info(
@@ -273,7 +285,9 @@ def create_gateway_app(options: GatewayOptions = GatewayOptions()) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Activity submissions require application/json.")
         try:
             payload = ActivitySubmissionRequest.model_validate_json(await request.body())
-            receipt = submissions.submit(client_id=payload.client_id, report=payload.report)
+            receipt = await asyncio.to_thread(
+                submissions.submit, client_id=payload.client_id, report=payload.report,
+            )
             return JSONResponse(receipt, status_code=status.HTTP_201_CREATED)
         except ValidationError as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Activity report is invalid.") from exc

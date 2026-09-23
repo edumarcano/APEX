@@ -294,3 +294,44 @@ class ActivityStore:
         return ActivityContextReviewLink(
             UUID(str(row[0])), str(row[1]), str(row[2]), str(row[3]), UUID(str(row[4])), str(row[5]),
         )
+
+    def rebind_context_review_link(
+        self, *, report_id: UUID, partition: str, finding_reference: str,
+        proposal_hash: str, expected_review_id: UUID, review_id: UUID, action_id: str,
+    ) -> ActivityContextReviewLink:
+        """Move a retry identity to a deliberately refreshed review exactly once."""
+        if partition not in _PARTITIONS or not finding_reference or not proposal_hash or not action_id:
+            raise ActivityStoreError("context_review_link_invalid")
+        with self._connection() as conn, conn:
+            conn.execute("BEGIN IMMEDIATE")
+            current = conn.execute(
+                "SELECT report_id,partition,finding_reference,proposal_hash,review_id,action_id "
+                "FROM activity_context_review_links WHERE report_id=? AND finding_reference=? "
+                "AND proposal_hash=? AND partition=?",
+                (str(report_id), finding_reference, proposal_hash, partition),
+            ).fetchone()
+            if current is None:
+                raise ActivityNotFoundError("activity_not_found")
+            if str(current[4]) == str(review_id):
+                return ActivityContextReviewLink(
+                    UUID(str(current[0])), str(current[1]), str(current[2]), str(current[3]),
+                    UUID(str(current[4])), str(current[5]),
+                )
+            if str(current[4]) == str(expected_review_id):
+                conn.execute(
+                    "UPDATE activity_context_review_links SET review_id=?,action_id=? "
+                    "WHERE report_id=? AND finding_reference=? AND proposal_hash=? AND partition=? AND review_id=?",
+                    (str(review_id), action_id, str(report_id), finding_reference, proposal_hash,
+                     partition, str(expected_review_id)),
+                )
+                current = conn.execute(
+                    "SELECT report_id,partition,finding_reference,proposal_hash,review_id,action_id "
+                    "FROM activity_context_review_links WHERE report_id=? AND finding_reference=? "
+                    "AND proposal_hash=? AND partition=?",
+                    (str(report_id), finding_reference, proposal_hash, partition),
+                ).fetchone()
+            assert current is not None
+            return ActivityContextReviewLink(
+                UUID(str(current[0])), str(current[1]), str(current[2]), str(current[3]),
+                UUID(str(current[4])), str(current[5]),
+            )
