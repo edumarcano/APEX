@@ -6,7 +6,6 @@ import asyncio
 import json
 import logging
 import os
-import re
 import stat
 import threading
 from dataclasses import dataclass
@@ -26,12 +25,8 @@ from core.activity.store import ActivityConflictError, ActivityStoreError, _MAX_
 from core.settings.models import ActivityMailboxSettings
 
 _LOGGER = logging.getLogger(__name__)
-_SAFE_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
-_WINDOWS_RESERVED_NAMES = {
-    "con", "prn", "aux", "nul",
-    *(f"com{number}" for number in range(1, 10)),
-    *(f"lpt{number}" for number in range(1, 10)),
-}
+_MAX_DIAGNOSTIC_FILES = 3
+_MAX_DIAGNOSTIC_FILENAME = 64
 _mailbox: "ActivityMailbox | None" = None
 MailboxState = Literal[
     "disabled",
@@ -72,10 +67,58 @@ def _same_file_version(left: os.stat_result, right: os.stat_result) -> bool:
     return not (left.st_ino and right.st_ino) or (left.st_dev, left.st_ino) == (right.st_dev, right.st_ino)
 
 
-def _safe_key(value: str) -> bool:
-    if not _SAFE_KEY.fullmatch(value):
-        return False
-    return value.split(".", 1)[0].casefold() not in _WINDOWS_RESERVED_NAMES
+def _safe_filename(name: str) -> str:
+    """Keep scan diagnostics short and safe to render in the Inbox."""
+    rendered = "".join(
+        char if char.isascii() and char.isprintable() and char not in '\\/:*?"<>|' else "_"
+        for char in name
+    )
+    if len(rendered) > _MAX_DIAGNOSTIC_FILENAME:
+        rendered = rendered[:_MAX_DIAGNOSTIC_FILENAME - 3] + "..."
+    return rendered or "<unnamed>"
+
+
+def _failure_reason(error: Exception) -> str:
+    """Map internal failures to a small, content-free diagnostic vocabulary."""
+    if isinstance(error, ActivityConflictError):
+        return "key conflict"
+    if isinstance(error, ValidationError):
+        if any(
+            detail.get("type") == "json_invalid"
+            for detail in error.errors(include_input=False, include_url=False)
+        ):
+            return "invalid JSON"
+        return "invalid report fields"
+    if isinstance(error, json.JSONDecodeError):
+        return "invalid JSON"
+    if isinstance(error, UnicodeError):
+        return "invalid JSON"
+    if isinstance(error, OSError):
+        return "unreadable"
+    if isinstance(error, ValueError):
+        return {
+            "mailbox_entry_not_regular": "not a regular file",
+            "mailbox_report_too_large": "oversized",
+            "mailbox_file_changed": "changing file",
+        }.get(str(error), "invalid report fields")
+    if isinstance(error, (ActivityClientDisabledError, ActivityPermissionError)):
+        return "submission not permitted"
+    if isinstance(error, ActivityStoreError):
+        return "submission failed"
+    return "scan failed"
+
+
+def _format_scan_failures(
+    count: int, examples: list[tuple[str, str]]
+) -> str:
+    summary = f"{count} mailbox file(s) failed; APEX will retry on the next scan."
+    if not examples:
+        return summary
+    details = "; ".join(
+        f"{_safe_filename(filename)} ({reason})"
+        for filename, reason in examples[:_MAX_DIAGNOSTIC_FILES]
+    )
+    return f"{summary} First issues: {details}."
 
 
 class ActivityMailbox:
@@ -204,10 +247,11 @@ class ActivityMailbox:
 
         imported = 0
         failures = 0
+        failure_examples: list[tuple[str, str]] = []
         try:
             with os.scandir(settings.folder_path) as folder_entries:
                 entries = sorted(
-                    (entry for entry in folder_entries if entry.name.endswith(".json")),
+                    (entry for entry in folder_entries if entry.name.casefold().endswith(".json")),
                     key=lambda entry: entry.name.casefold(),
                 )
         except OSError:
@@ -230,16 +274,10 @@ class ActivityMailbox:
 
         for entry in entries:
             if self._settings_getter() != settings or self._partition_getter() != partition:
-                failures += 1
                 break
-            stem = entry.name[:-5]
-            if not _safe_key(stem):
-                failures += 1
-                continue
             try:
-                content = self._read_completed_report(entry, stem)
+                content = self._read_completed_report(entry)
                 if self._settings_getter() != settings or self._partition_getter() != partition:
-                    failures += 1
                     break
                 receipt = self._activity_service.submit(
                     client_id=settings.client_id,
@@ -247,19 +285,15 @@ class ActivityMailbox:
                     partition=partition,
                     content=content,
                 )
-            except (OSError, UnicodeError, json.JSONDecodeError, ValidationError,
-                    ActivityConflictError, ActivityClientDisabledError,
-                    ActivityPermissionError, ActivityStoreError, ValueError):
+            except Exception as error:
                 failures += 1
+                if len(failure_examples) < _MAX_DIAGNOSTIC_FILES:
+                    failure_examples.append((entry.name, _failure_reason(error)))
                 continue
             if not receipt.duplicate:
                 imported += 1
 
-        last_error = (
-            "Some mailbox files were not imported; APEX will retry on the next scan."
-            if failures
-            else None
-        )
+        last_error = _format_scan_failures(failures, failure_examples) if failures else None
         result = MailboxStatus(
             enabled=True,
             state="scan_error" if failures else "ready",
@@ -277,7 +311,7 @@ class ActivityMailbox:
             result.last_error, result.last_imported_count,
         )
 
-    def _read_completed_report(self, entry: os.DirEntry[str], expected_key: str) -> ActivityReportContent:
+    def _read_completed_report(self, entry: os.DirEntry[str]) -> ActivityReportContent:
         path = Path(entry.path)
         before_path = entry.stat(follow_symlinks=False)
         if not stat.S_ISREG(before_path.st_mode):
@@ -306,10 +340,7 @@ class ActivityMailbox:
             or not _same_file_version(opened_after, after_path)
         ):
             raise ValueError("mailbox_file_changed")
-        content = ActivityReportContent.model_validate_json(raw)
-        if content.submission_key != expected_key:
-            raise ValueError("mailbox_filename_key_mismatch")
-        return content
+        return ActivityReportContent.model_validate_json(raw)
 
     def _base_status(
         self, settings: ActivityMailboxSettings, partition: str | None = None

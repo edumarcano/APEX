@@ -358,7 +358,7 @@ Returns the main backend's local mailbox settings state, configured-folder avail
 
 ### POST `/api/v1/activity/mailbox/scan`
 
-Scans the folder from Runtime Settings and waits for the result. The request takes no body or path; callers cannot choose a directory. Concurrent manual and scheduled scans share one in-progress scan. The route is available only on the main loopback service, not the narrow activity gateway. A failed or partial scan returns status and an error while leaving existing Inbox reports available for the caller to reload. See [Optional local-folder mailbox](configuration.md#optional-local-folder-mailbox) for file naming, size, attribution, and retry behavior.
+Scans the folder from Runtime Settings and waits for the result. The request takes no body or path; callers cannot choose a directory. Concurrent manual and scheduled scans share one in-progress scan. The route is available only on the main loopback service, not the narrow activity gateway. A failed or partial scan returns status and an error while leaving existing Inbox reports available for the caller to reload. See [Optional local-folder mailbox](configuration.md#optional-local-folder-mailbox) for file format, size, attribution, and retry behavior.
 
 ### GET `/api/v1/activity/reports/{report_id}`
 

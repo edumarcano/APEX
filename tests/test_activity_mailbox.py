@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import tempfile
 import threading
 import unittest
 from pathlib import Path
 from unittest import mock
 
+import core.activity.mailbox as mailbox_module
 from core.activity import ActivityClientRegistration, ActivityReportContent, ActivityService, ActivityStore
 from core.activity.mailbox import ActivityMailbox, run_activity_mailbox_poller
 from core.settings.models import SettingsPatch
@@ -242,8 +244,8 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
         )
         original_read = mailbox._read_completed_report
 
-        def switch_partition_after_read(entry, expected_key):
-            content = original_read(entry, expected_key)
+        def switch_partition_after_read(entry):
+            content = original_read(entry)
             partition[0] = "sandbox"
             self.registrations = (registration(partition="sandbox"),)
             return content
@@ -304,27 +306,142 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
         source.write_text(report(outcome="Changed").model_dump_json(), encoding="utf-8")
         conflicted = await self._mailbox().scan_now()
         self.assertEqual(conflicted.state, "scan_error")
+        self.assertIn("key conflict", conflicted.last_error or "")
         self.assertEqual(len(self.service.list(partition="production")), 1)
 
-    async def test_incomplete_malformed_oversized_and_mismatched_files_retry_without_import(self) -> None:
+        source.write_text(content.model_dump_json(), encoding="utf-8")
+        recovered = await self._mailbox().scan_now()
+        self.assertEqual(recovered.state, "ready")
+        self.assertIsNone(recovered.last_error)
+        self.assertEqual(recovered.last_imported_count, 0)
+
+    async def test_descriptive_filenames_with_spaces_and_uppercase_extension_import(self) -> None:
         self._configure()
-        partial = self.folder / "partial.json"
+        (self.folder / "Agent run completed report.json").write_text(
+            report(key="report-key").model_dump_json(), encoding="utf-8",
+        )
+        (self.folder / "Another descriptive report.JSON").write_text(
+            report(key="second-key").model_dump_json(), encoding="utf-8",
+        )
+
+        result = await self._mailbox().scan_now()
+
+        self.assertEqual(result.last_imported_count, 2)
+        self.assertEqual(result.state, "ready")
+        self.assertEqual(
+            {item.content.submission_key for item in self.service.list(partition="production")},
+            {"report-key", "second-key"},
+        )
+
+    async def test_identical_content_under_different_names_uses_service_idempotency(self) -> None:
+        self._configure()
+        serialized = report(key="shared-key").model_dump_json()
+        (self.folder / "first completed report.json").write_text(serialized, encoding="utf-8")
+        (self.folder / "copy from sync.JSON").write_text(serialized, encoding="utf-8")
+
+        first = await self._mailbox().scan_now()
+        second = await self._mailbox().scan_now()
+
+        self.assertEqual(first.last_imported_count, 1)
+        self.assertEqual(first.state, "ready")
+        self.assertEqual(second.last_imported_count, 0)
+        self.assertEqual(second.state, "ready")
+        self.assertEqual(len(self.service.list(partition="production")), 1)
+
+    async def test_failures_continue_past_good_files_and_recovery_clears_diagnostics(self) -> None:
+        self._configure()
+        partial = self.folder / "01-partial.json"
         partial.write_text('{"version":"1",', encoding="utf-8")
-        oversized = self.folder / "large.json"
+        invalid = self.folder / "02-invalid-fields.json"
+        invalid.write_text('{"private report text":"do not expose"}', encoding="utf-8")
+        oversized = self.folder / "03-large.json"
         oversized.write_bytes(b" " * (256 * 1024 + 1))
-        wrong_key = self.folder / "name.json"
-        wrong_key.write_text(report(key="different").model_dump_json(), encoding="utf-8")
-        (self.folder / "unsafe key.json").write_text(report(key="unsafe").model_dump_json(), encoding="utf-8")
-        (self.folder / "directory.json").mkdir()
+        directory = self.folder / "04-directory.json"
+        directory.mkdir()
+        (self.folder / "05-good report.JSON").write_text(
+            report(key="already-good").model_dump_json(), encoding="utf-8",
+        )
 
         failed = await self._mailbox().scan_now()
         self.assertEqual(failed.state, "scan_error")
-        self.assertEqual(self.service.list(partition="production"), [])
+        self.assertEqual(failed.last_imported_count, 1)
+        self.assertIn("4 mailbox file(s) failed", failed.last_error or "")
+        self.assertIn("invalid JSON", failed.last_error or "")
+        self.assertIn("invalid report fields", failed.last_error or "")
+        self.assertIn("oversized", failed.last_error or "")
+        self.assertNotIn("private report text", failed.last_error or "")
+        self.assertEqual(len(self.service.list(partition="production")), 1)
 
         partial.write_text(report(key="partial").model_dump_json(), encoding="utf-8")
+        invalid.write_text(report(key="valid-after-retry").model_dump_json(), encoding="utf-8")
+        oversized.write_text(report(key="size-recovered").model_dump_json(), encoding="utf-8")
+        directory.rmdir()
         retried = await self._mailbox().scan_now()
-        self.assertEqual(retried.last_imported_count, 1)
-        self.assertEqual([item.content.submission_key for item in self.service.list(partition="production")], ["partial"])
+        self.assertEqual(retried.state, "ready")
+        self.assertIsNone(retried.last_error)
+        self.assertEqual(retried.last_imported_count, 3)
+        self.assertEqual(
+            {item.content.submission_key for item in self.service.list(partition="production")},
+            {"already-good", "partial", "valid-after-retry", "size-recovered"},
+        )
+
+    async def test_diagnostics_bound_examples_and_sanitize_long_filenames(self) -> None:
+        self._configure()
+        filenames = [f"{index}-" + "x" * 110 + ".json" for index in range(6)]
+        for filename in filenames:
+            (self.folder / filename).write_text("{", encoding="utf-8")
+
+        result = await self._mailbox().scan_now()
+
+        self.assertEqual(result.state, "scan_error")
+        self.assertIn("6 mailbox file(s) failed", result.last_error or "")
+        self.assertEqual((result.last_error or "").count("(invalid JSON)"), 3)
+        self.assertIn("...", result.last_error or "")
+        self.assertLessEqual(len(result.last_error or ""), 500)
+        self.assertTrue(all(filename not in (result.last_error or "") for filename in filenames))
+
+    async def test_unreadable_changing_and_nonregular_files_have_safe_reasons(self) -> None:
+        self._configure()
+        (self.folder / "a-changing.json").write_text(report(key="changing").model_dump_json(), encoding="utf-8")
+        (self.folder / "b-directory.json").mkdir()
+        (self.folder / "c-unreadable.json").write_text(report(key="unreadable").model_dump_json(), encoding="utf-8")
+        (self.folder / "d-good.JSON").write_text(report(key="good").model_dump_json(), encoding="utf-8")
+        original_open = os.open
+        original_same_version = mailbox_module._same_file_version
+        changing_stat = (self.folder / "a-changing.json").stat()
+        changing_identity = (
+            changing_stat.st_dev, changing_stat.st_ino,
+            changing_stat.st_size, changing_stat.st_mtime_ns,
+        )
+        simulated_change = False
+
+        def simulate_change(left, right):
+            nonlocal simulated_change
+            for stat_result in (left, right):
+                identity = (
+                    stat_result.st_dev, stat_result.st_ino,
+                    stat_result.st_size, stat_result.st_mtime_ns,
+                )
+                if not simulated_change and identity == changing_identity:
+                    simulated_change = True
+                    return False
+            return original_same_version(left, right)
+
+        def controlled_open(path, flags, *args, **kwargs):
+            if Path(path).name == "c-unreadable.json":
+                raise PermissionError("sensitive operating system detail")
+            return original_open(path, flags, *args, **kwargs)
+
+        with mock.patch("core.activity.mailbox._same_file_version", side_effect=simulate_change), \
+             mock.patch("core.activity.mailbox.os.open", side_effect=controlled_open):
+            result = await self._mailbox().scan_now()
+
+        self.assertEqual(result.state, "scan_error")
+        self.assertEqual(result.last_imported_count, 1, result)
+        self.assertIn("changing file", result.last_error or "")
+        self.assertIn("not a regular file", result.last_error or "")
+        self.assertIn("unreadable", result.last_error or "")
+        self.assertNotIn("sensitive operating system detail", result.last_error or "")
 
     async def test_invalid_disabled_permission_and_wrong_partition_clients_fail_closed(self) -> None:
         self._configure()
