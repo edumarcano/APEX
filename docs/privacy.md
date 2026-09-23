@@ -16,11 +16,15 @@ When personal context is enabled for a model runtime, APEX can send selected cur
 
 ## External activity reports
 
-External activity reports, including their structured findings and imported Markdown, are retained in local SQLite and may contain private content. APEX does not send reports to models automatically and does not add them to retrieval, prompts, attention, or briefings.
+External activity reports, including their structured findings and imported Markdown, are retained in local SQLite and may contain private content. APEX does not send raw reports to models automatically or add them directly to retrieval, prompts, attention, or briefings. The optional mailbox leaves the original files in the operator-selected folder; if that folder is synced, its sync tool controls any external copies.
+
+When the operator accepts a context review linked to a report, the resulting normalized claim enters personal-context retrieval with its external source provenance. If retrieval is enabled for a model runtime, selected claims can then enter model prompts, including cloud requests. Normal retrieval does not include the full report or original source evidence.
 
 ## Briefings
 
 Focused briefings use the fixed OpenRouter DeepSeek V4 Flash route with its privacy requirements. Flash briefings use the fixed local Gemma route. Interactive model selection does not affect either briefing route. Structured briefings call no model.
+
+Automatic voice delivery may speak short activation and briefing cues containing the saved user designation, briefing mode, and collection health. With Google Cloud TTS selected, that cue text may be sent to Google; local speech engines keep it on the machine. Manual and off voice modes do not speak contextual cues.
 
 Calendar reads are limited to the calendars selected in Runtime Settings. Briefing and Agent calendar context can include selected event metadata, such as titles, times, and locations. When cloud briefing or model requests use that context, it is sent to the configured provider. Calendar labels are included by default; turn off **Show calendar names with events** in Runtime Settings to suppress labels from event attribution and model-visible calendar context. This does not remove the selected event metadata itself.
 

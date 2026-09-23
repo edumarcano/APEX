@@ -74,7 +74,7 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | POST | `/api/v1/cortex/context/reviews/{review_id}/accept` | Execute and verify a review |
 | POST | `/api/v1/cortex/context/reviews/{review_id}/refresh` | Revalidate a stale review before another decision |
 | POST | `/api/v1/cortex/context/reviews/{review_id}/reject` | Reject a review |
-| POST | `/api/v1/activity/reports/{report_id}/context-proposals` | Create a pending review from immutable activity evidence |
+| POST | `/api/v1/activity/reports/{report_id}/context-proposals` | Create or retrieve a review linked to immutable activity evidence |
 | GET | `/api/v1/cortex/context` | List local personal-context records in the current partition |
 | GET | `/api/v1/cortex/context/{record_id}` | Inspect one record, its sources, history, and related records |
 | GET | `/api/v1/cortex/context/entities` | Search unmerged local entities and exact aliases |
@@ -379,9 +379,9 @@ Returns the report's linked context reviews and their current decisions in the c
 
 ### POST `/api/v1/activity/reports/{report_id}/context-proposals`
 
-The local operator can select a stable finding reference and submit the normal context capture fields, with an optional `correction_record_id`. The server reads the finding from the immutable stored report; callers cannot replace its evidence text. New claims and corrections always return a pending existing context review, so acceptance, rejection, refresh, and verification use the normal context-review routes.
+The local operator can select a stable finding reference and submit the normal context capture fields, with an optional `correction_record_id`. The server reads the finding from the immutable stored report; callers cannot replace its evidence text. A new proposal creates a pending context review. Retrying the same proposal returns its linked review with its current decision, including `accepted` or `rejected`. Acceptance, rejection, refresh, and verification use the normal context-review routes.
 
-Accepted claims retain an `external_activity` source with the report-and-finding locator, original selected text, `external_tool` origin, occurrence time when the report supplied one, and the report's declared derivation. Retried identical proposals return the linked review. A report is never indexed directly.
+Accepted claims retain an `external_activity` source with the report-and-finding locator, original selected text, `external_tool` origin, occurrence time when the report supplied one, and the report's declared derivation. A report is never indexed directly.
 
 External activity is untrusted inbox material. Receiving, reading, reviewing, dismissing, or reopening a report never creates knowledge, changes retrieval, adds prompt context, affects attention or briefings, or approves a review. Retraction remains an explicit context operation.
 
