@@ -461,9 +461,7 @@ The Cortex Records and Review views and the CLI expose current claims, evidence,
 **Status:** Complete
 
 **Objective:**
-Give outside tools a local, inbound-only way to report completed work, findings, evidence, and follow-up items. APEX now accepts versioned reports through the CLI, JSON and Markdown import, an optional loopback-only HTTP and MCP gateway, and an optional local-folder mailbox. Inbox keeps immutable reports with caller-claimed source labels, partition isolation, and reversible dispositions.
-
-An operator can turn selected report evidence into a pending personal-context review; only an accepted review changes trusted context. Source IDs provide attribution, not authentication or individual revocation, and the gateway must stay on loopback. Automatic ingestion from a real external client's folder remains unverified; see [Configuration](configuration.md#optional-local-folder-mailbox) for the mailbox contract.
+Give outside tools a local inbox for completed work, findings, evidence, and follow-up items.
 
 ---
 
