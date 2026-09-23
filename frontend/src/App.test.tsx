@@ -1038,7 +1038,7 @@ describe('App contextual voice cues', () => {
     })
   })
 
-  it('uses no-snapshot copy only when refresh fails and skips conflict or cancellation', async () => {
+  it('uses telemetry refresh failure copy only when refresh fails and skips conflict or cancellation', async () => {
     const user = userEvent.setup()
     const events: string[] = []
     appMocks.activated = true
@@ -1051,7 +1051,7 @@ describe('App contextual voice cues', () => {
     const failedRender = render(<App />)
     await user.click(screen.getByRole('button', { name: 'Refresh All & Generate Briefing' }))
     await waitFor(() => {
-      expect(events).toEqual(['refresh', 'cue:briefing_refresh', 'cue:briefing_no_snapshot'])
+      expect(events).toEqual(['refresh', 'cue:briefing_refresh', 'cue:telemetry_refresh_failed'])
     })
     expect(appMocks.generateFromSnapshot).not.toHaveBeenCalled()
 

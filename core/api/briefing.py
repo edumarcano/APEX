@@ -801,6 +801,16 @@ def _synthesize_from_snapshot(
                     "Briefing ledger persistence failed: persistence_error"
                 )
 
+        if (
+            speak_fillers
+            and mode != "structured"
+            and synthesis_result.provider == "raw"
+        ):
+            _speak_voice_cue_best_effort(
+                "briefing_structured_fallback_ready",
+                mode=mode,
+            )
+
         if spoken:
             voice_thread = threading.Thread(
                 target=bind_run_id_context(_speak_and_cleanup),
@@ -829,11 +839,6 @@ def _synthesize_from_snapshot(
     except Exception:
         if filler_thread is not None and filler_thread.ident is not None:
             filler_thread.join()
-        if speak_fillers:
-            _speak_voice_cue_best_effort(
-                "briefing_generation_failed",
-                mode=mode,
-            )
         raise
     finally:
         if not voice_thread_started:
@@ -926,7 +931,7 @@ def trigger_briefing(*, mode: BriefingMode | None = None) -> BriefingResponse:
                     detail=str(exc),
                 ) from None
             except Exception:
-                _speak_voice_cue_best_effort("briefing_no_snapshot")
+                _speak_voice_cue_best_effort("telemetry_refresh_failed")
                 raise
 
             return _synthesize_from_snapshot(

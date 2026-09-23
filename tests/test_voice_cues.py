@@ -63,8 +63,8 @@ class VoiceCueFormattingTests(unittest.TestCase):
             "briefing_collection_complete": "I’ve gathered what’s available. I’m preparing your Focused briefing.",
             "briefing_partial_sources": "Some sources didn’t respond. I’ll use what’s available while preparing your Focused briefing.",
             "briefing_sources_unavailable": "None of your telemetry sources responded. I’m preparing your Focused briefing with that limitation.",
-            "briefing_no_snapshot": "I couldn’t gather usable telemetry, so I can’t prepare your briefing yet.",
-            "briefing_generation_failed": "I couldn’t finish your Focused briefing this time. You can try again when you’re ready.",
+            "telemetry_refresh_failed": "I couldn’t refresh your telemetry just now. Please try again.",
+            "briefing_structured_fallback_ready": "I couldn’t complete your Focused briefing. I’ve prepared a Structured briefing instead.",
         }
         for cue, expected in cases.items():
             with self.subTest(cue=cue):
@@ -171,7 +171,7 @@ class BriefingCueFailureTests(unittest.TestCase):
         self.assertEqual([call.args[0] for call in speak.call_args_list], ["start_with_briefing"])
         self.assertFalse(self.lock.locked())
 
-    def test_collection_failure_plays_no_snapshot_after_start_cue(self) -> None:
+    def test_collection_failure_plays_refresh_failure_after_start_cue(self) -> None:
         from core.api.briefing import trigger_briefing
 
         settings = SimpleNamespace(get_snapshot=lambda: SimpleNamespace())
@@ -190,11 +190,11 @@ class BriefingCueFailureTests(unittest.TestCase):
 
         self.assertEqual(
             [call.args[0] for call in speak.call_args_list],
-            ["start_with_briefing", "briefing_no_snapshot"],
+            ["start_with_briefing", "telemetry_refresh_failed"],
         )
         self.assertFalse(self.lock.locked())
 
-    def test_generation_failure_waits_for_filler_and_releases_pipeline_lock(self) -> None:
+    def test_generation_failure_waits_for_filler_without_failure_cue_and_releases_lock(self) -> None:
         from core.api.briefing import _synthesize_from_snapshot
         from core.api.state import _TRIGGER_LOCK
 
@@ -242,7 +242,7 @@ class BriefingCueFailureTests(unittest.TestCase):
                     cue_context="existing_snapshot",
                 )
 
-        self.assertEqual(spoken, ["filler_started", "filler_finished", "generation_failure"])
+        self.assertEqual(spoken, ["filler_started", "filler_finished"])
         self.assertFalse(_TRIGGER_LOCK.locked())
 
 

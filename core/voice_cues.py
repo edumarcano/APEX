@@ -17,8 +17,8 @@ VoiceCueName = Literal[
     "briefing_collection_complete",
     "briefing_partial_sources",
     "briefing_sources_unavailable",
-    "briefing_no_snapshot",
-    "briefing_generation_failed",
+    "telemetry_refresh_failed",
+    "briefing_structured_fallback_ready",
 ]
 
 BRIEFING_CUES = frozenset(
@@ -29,7 +29,7 @@ BRIEFING_CUES = frozenset(
         "briefing_collection_complete",
         "briefing_partial_sources",
         "briefing_sources_unavailable",
-        "briefing_generation_failed",
+        "briefing_structured_fallback_ready",
     }
 )
 
@@ -75,8 +75,8 @@ def format_voice_cue(
     if cue == "activation_no_fresh_telemetry":
         return "I’m standing by without fresh telemetry."
 
-    if cue == "briefing_no_snapshot":
-        return "I couldn’t gather usable telemetry, so I can’t prepare your briefing yet."
+    if cue == "telemetry_refresh_failed":
+        return "I couldn’t refresh your telemetry just now. Please try again."
 
     if mode_name is None:
         raise ValueError(f"Cue {cue!r} requires a briefing mode.")
@@ -93,6 +93,6 @@ def format_voice_cue(
         return f"Some sources didn’t respond. I’ll use what’s available while preparing your {mode_name} briefing."
     if cue == "briefing_sources_unavailable":
         return f"None of your telemetry sources responded. I’m preparing your {mode_name} briefing with that limitation."
-    if cue == "briefing_generation_failed":
-        return f"I couldn’t finish your {mode_name} briefing this time. You can try again when you’re ready."
+    if cue == "briefing_structured_fallback_ready":
+        return f"I couldn’t complete your {mode_name} briefing. I’ve prepared a Structured briefing instead."
     raise ValueError(f"Unsupported voice cue: {cue!r}")

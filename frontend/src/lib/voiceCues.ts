@@ -12,8 +12,8 @@ export type VoiceCueName =
   | 'briefing_collection_complete'
   | 'briefing_partial_sources'
   | 'briefing_sources_unavailable'
-  | 'briefing_no_snapshot'
-  | 'briefing_generation_failed'
+  | 'telemetry_refresh_failed'
+  | 'briefing_structured_fallback_ready'
 
 export async function requestVoiceCue(
   cue: VoiceCueName,

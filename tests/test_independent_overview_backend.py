@@ -327,12 +327,12 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
         ), mock.patch(
             "core.api.voice.speaker.try_speak", return_value="pyttsx3"
         ):
-            no_snapshot = self.client.post(
+            refresh_failure = self.client.post(
                 "/api/v1/voice/cue",
-                json={"cue": "briefing_no_snapshot"},
+                json={"cue": "telemetry_refresh_failed"},
             )
-        self.assertEqual(no_snapshot.status_code, 200)
-        self.assertEqual(no_snapshot.json()["status"], "spoken")
+        self.assertEqual(refresh_failure.status_code, 200)
+        self.assertEqual(refresh_failure.json()["status"], "spoken")
 
         missing_mode = self.client.post(
             "/api/v1/voice/cue",

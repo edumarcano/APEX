@@ -250,20 +250,26 @@ class BriefingRouterContractTests(unittest.TestCase):
             failed_connectors=[],
         )
         settings_mock = SimpleNamespace(
+            user_designation=None,
             voice=SimpleNamespace(mode="automatic", engine="google", gender="female"),
         )
+        spoken: list[str] = []
         with patch("core.api.briefing.get_settings_store", return_value=SimpleNamespace(get_snapshot=lambda: settings_mock)), patch(
             "core.api.briefing.is_dev_mode", return_value=False
-        ), patch("core.api.briefing.database"):
+        ), patch("core.api.briefing.database"), patch(
+            "core.api.briefing.speaker.speak", side_effect=spoken.append
+        ):
             response = _synthesize_from_snapshot(
                 snapshot=snapshot,
                 mode="structured",
                 run_id="run-test",
-                speak_fillers=False,
+                speak_fillers=True,
+                cue_context="existing_snapshot",
             )
         self.assertFalse(response.metadata.spoken)
+        self.assertEqual(spoken, ["I’m preparing your Structured briefing now."])
 
-    def test_fallback_to_structured_mode_delivery_policy_is_not_spoken(self) -> None:
+    def test_fallback_to_structured_is_not_spoken_and_cue_follows_filler(self) -> None:
         from core.api.briefing import _synthesize_from_snapshot
         from core.telemetry.models import TelemetrySnapshot
 
@@ -276,6 +282,7 @@ class BriefingRouterContractTests(unittest.TestCase):
             failed_connectors=[],
         )
         settings_mock = SimpleNamespace(
+            user_designation=None,
             voice=SimpleNamespace(mode="automatic", engine="google", gender="female"),
         )
         raw_result = SynthesisResult(
@@ -284,19 +291,28 @@ class BriefingRouterContractTests(unittest.TestCase):
             provider="raw",
             fallback_reason="openrouter_unavailable",
         )
+        spoken: list[str] = []
         with patch("core.api.briefing.get_settings_store", return_value=SimpleNamespace(get_snapshot=lambda: settings_mock)), patch(
             "core.api.briefing.is_dev_mode", return_value=False
         ), patch("core.api.briefing.database"), patch(
             "core.synthesis.router.SynthesisRouter.synthesize_mode", return_value=raw_result
-        ):
+        ), patch("core.api.briefing.speaker.speak", side_effect=spoken.append):
             response = _synthesize_from_snapshot(
                 snapshot=snapshot,
                 mode="focused",
                 run_id="run-fallback-test",
-                speak_fillers=False,
+                speak_fillers=True,
+                cue_context="existing_snapshot",
             )
         self.assertFalse(response.metadata.spoken)
         self.assertEqual(response.metadata.synthesis_provider, "raw")
+        self.assertEqual(
+            spoken,
+            [
+                "I’m preparing your Focused briefing now.",
+                "I couldn’t complete your Focused briefing. I’ve prepared a Structured briefing instead.",
+            ],
+        )
 
     def test_flash_payload_is_compact_and_omits_healthy_connector_noise(self) -> None:
         source = rich_facts().model_copy(

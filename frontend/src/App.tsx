@@ -1018,7 +1018,7 @@ export default function App(): ReactElement {
     }
     if (outcome.kind === 'failure') {
       if (voiceMode === 'automatic' && !demoModeActive) {
-        await requestVoiceCue('briefing_no_snapshot')
+        await requestVoiceCue('telemetry_refresh_failed')
       }
       return
     }
