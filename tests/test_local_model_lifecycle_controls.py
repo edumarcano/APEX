@@ -31,6 +31,8 @@ def _local_settings_mock(*, context_window: int = 16384) -> mock.Mock:
     settings.ask_apex.cloud.hosted_tools.google_search = True
     settings.ask_apex.cloud.hosted_tools.google_maps = True
     settings.ask_apex.cloud.last_model = "gpt-5.6-luna"
+    settings.user_designation = ""
+    settings.agent_display_name = ""
     return settings
 
 
@@ -422,7 +424,6 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         settings = mock.Mock()
         settings = _local_settings_mock()
         settings.ask_apex.enabled = True
-        settings.user_designation = ""
         missing = {
             "provider": "llama_cpp",
             "reachable": True,

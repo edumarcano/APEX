@@ -1240,12 +1240,14 @@ def set_tool_profile_default(
 def cortex_agent() -> CortexAgentResponse:
     """Return the native Agent and its unified model catalog."""
     from core.api.cortex import build_model_catalog
+    from core.agent.catalog import resolve_agent_display_name
 
-    settings = get_settings_store().get_snapshot().ask_apex
+    settings = get_settings_store().get_snapshot()
     catalog = build_model_catalog()
     return CortexAgentResponse(
+        display_name=resolve_agent_display_name(settings.agent_display_name),
         description=AGENT_SPECS["apex"].description,
-        selected_model=settings.selected_model,
+        selected_model=settings.ask_apex.selected_model,
         model_catalog=catalog,
     )
 

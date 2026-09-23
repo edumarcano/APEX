@@ -81,7 +81,7 @@ class SettingsApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/settings")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["schema_version"], 21)
+        self.assertEqual(payload["schema_version"], 22)
         self.assertTrue(payload["settings"]["features"]["market"])
         self.assertTrue(payload["settings"]["features"]["weather"])
         self.assertEqual(payload["settings"]["briefing"]["default_mode"], "flash")
@@ -369,6 +369,7 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["cortex_initial_selection"]["agent"], "apex")
+        self.assertEqual(payload["cortex_initial_selection"]["display_name"], "Apex Agent")
         self.assertEqual(payload["cortex_initial_selection"]["model_id"], "qwen3:1.7b")
         self.assertEqual(payload["cortex_initial_selection"]["runtime"], "local")
         self.assertFalse(payload["ask_apex_enabled"])
@@ -402,6 +403,33 @@ class SettingsApiTests(unittest.TestCase):
         with mock.patch("core.agent.catalog.is_dev_mode", return_value=False):
             config_payload = self.client.get("/api/v1/config").json()
         self.assertEqual(config_payload["cortex_initial_selection"]["agent"], "apex")
+        self.assertEqual(config_payload["cortex_initial_selection"]["display_name"], "Apex Agent")
+
+    def test_agent_display_name_round_trips_and_feeds_config(self) -> None:
+        response = self.client.patch(
+            "/api/v1/settings",
+            json={"agent_display_name": "  Nova  "},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["settings"]["agent_display_name"], "Nova")
+        written = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertEqual(written["agent_display_name"], "Nova")
+
+        boot = self.client.get("/api/v1/config")
+        self.assertEqual(boot.status_code, 200)
+        self.assertEqual(boot.json()["cortex_initial_selection"]["display_name"], "Nova")
+        self.assertEqual(boot.json()["cortex_initial_selection"]["agent"], "apex")
+
+        invalid = self.client.patch(
+            "/api/v1/settings",
+            json={"agent_display_name": "x" * 81},
+        )
+        self.assertEqual(invalid.status_code, 422)
+        self.assertEqual(
+            json.loads(self.local_path.read_text(encoding="utf-8"))["agent_display_name"],
+            "Nova",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

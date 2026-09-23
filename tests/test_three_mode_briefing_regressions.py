@@ -99,6 +99,7 @@ class BriefingProjectionRegressionTests(unittest.TestCase):
             ask_apex=SimpleNamespace(enabled=True),
             features=SimpleNamespace(market=False),
             voice=SimpleNamespace(mode="off"),
+            agent_display_name="",
         )
         with patch("core.api.routers.system.get_settings_store", return_value=SimpleNamespace(get_snapshot=lambda: snapshot)), patch(
             "core.api.routers.system.resolve_model_selection", return_value=("local", "gemma-4-E2B-Q4_K_M.gguf", None)

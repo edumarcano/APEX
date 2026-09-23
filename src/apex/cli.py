@@ -403,8 +403,14 @@ def _status(_args: argparse.Namespace, client: ApiClient, json_mode: bool) -> in
         agent = selection.get("agent")
         runtime = selection.get("runtime")
         effort = selection.get("effort")
+        display_name = selection.get("display_name")
         payload["agent"] = {
             "key": agent if isinstance(agent, str) else "apex",
+            "display_name": (
+                display_name
+                if isinstance(display_name, str) and display_name.strip()
+                else "Apex Agent"
+            ),
             "runtime": runtime if isinstance(runtime, str) else None,
             "effort": effort if isinstance(effort, str) else None,
             "model_id": selection.get("model_id") if isinstance(selection.get("model_id"), str) else None,
@@ -881,7 +887,12 @@ def _render_status(payload: object) -> None:
             print(f"{key.capitalize()}: {value}")
     agent = payload.get("agent")
     if isinstance(agent, dict) and isinstance(agent.get("key"), str):
-        description = agent["key"]
+        label = agent.get("display_name")
+        description = (
+            label
+            if isinstance(label, str) and label.strip()
+            else agent["key"]
+        )
         if isinstance(agent.get("runtime"), str):
             description += f" ({agent['runtime']})"
         print(f"Agent: {description}")
@@ -897,7 +908,12 @@ def _render_models(payload: object) -> None:
     if not isinstance(catalog, list):
         print("APEX returned an invalid model catalog.")
         return
-    print("Apex Agent")
+    header = payload.get("display_name")
+    print(
+        header
+        if isinstance(header, str) and header.strip()
+        else "Apex Agent"
+    )
     for model in catalog:
         if not isinstance(model, dict):
             continue

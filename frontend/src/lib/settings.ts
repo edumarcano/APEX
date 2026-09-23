@@ -510,6 +510,8 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   return {
     user_designation:
       typeof value.user_designation === 'string' ? value.user_designation : '',
+    agent_display_name:
+      typeof value.agent_display_name === 'string' ? value.agent_display_name : '',
     features,
     modules,
     football,
@@ -546,6 +548,7 @@ export function resolveAgentKey(settings: RuntimeSettings['ask_apex']): AgentKey
 export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings {
   return {
     user_designation: settings.user_designation,
+    agent_display_name: settings.agent_display_name,
     features: { ...settings.features },
     modules: { ...settings.modules },
     football: {
@@ -665,6 +668,10 @@ export function diffSettingsPatch(
     patch.user_designation = draft.user_designation
   }
 
+  if (baseline.agent_display_name !== draft.agent_display_name) {
+    patch.agent_display_name = draft.agent_display_name
+  }
+
   const features = diffSection(baseline.features, draft.features)
   if (features) {
     patch.features = features
@@ -765,6 +772,7 @@ export function diffSettingsPatch(
 export function isSettingsPatchEmpty(patch: SettingsPatch): boolean {
   return (
     patch.user_designation === undefined &&
+    patch.agent_display_name === undefined &&
     patch.features === undefined &&
     patch.modules === undefined &&
     patch.football === undefined &&

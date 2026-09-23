@@ -818,6 +818,7 @@ def _execute_agent_turn(
     tool_selection: ToolSelectionDiagnostics | None = None,
     disable_hud_context: bool = False,
     user_designation: str = "",
+    agent_display_name: str = "",
     action_provenance: Mapping[str, object] | None = None,
     context_bundle: ContextBundle | None = None,
     execution_control: ExecutionControl | None = None,
@@ -856,6 +857,7 @@ def _execute_agent_turn(
                 agent_key,
                 base_prompt,
                 user_designation=user_designation,
+                agent_display_name=agent_display_name,
             )
             + build_tool_access_instruction(
                 [descriptor.name for descriptor in selected_tools or []],
@@ -1003,6 +1005,7 @@ def _estimate_agent_request(
         agent_key,
         base_prompt,
         user_designation=get_settings_store().get_snapshot().user_designation,
+        agent_display_name=get_settings_store().get_snapshot().agent_display_name,
     ) + build_tool_access_instruction(
         [descriptor.name for descriptor in selection.descriptors],
         hosted_tool_names=tuple(sorted(getattr(profile, "hosted_tools", ()))),
@@ -1133,6 +1136,7 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
         google_search_enabled=google_search,
         google_maps_enabled=google_maps,
         model_id=payload.model_id,
+        agent_display_name=get_settings_store().get_snapshot().agent_display_name,
     )
     history: list[AgentMessage] = []
     history_partition = "production"
@@ -1248,6 +1252,7 @@ def query_agent(
         google_search_enabled=google_search,
         google_maps_enabled=google_maps,
         model_id=payload.model_id,
+        agent_display_name=settings.agent_display_name,
     )
     selection = resolve_selected_tools(
         agent_key,
@@ -1356,6 +1361,7 @@ def query_agent(
                 tool_selection=selection.diagnostics,
                 disable_hud_context=False,
                 user_designation=settings.user_designation,
+                agent_display_name=settings.agent_display_name,
                 action_provenance=action_provenance,
                 context_bundle=context_bundle,
                 execution_control=execution_control,
@@ -1382,6 +1388,7 @@ def query_agent(
         tool_selection=selection.diagnostics,
         disable_hud_context=False,
         user_designation=settings.user_designation,
+        agent_display_name=settings.agent_display_name,
         action_provenance=action_provenance,
         context_bundle=context_bundle,
         execution_control=execution_control,

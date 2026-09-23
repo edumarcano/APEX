@@ -1,6 +1,6 @@
 # APEX API
 
-This is the behavioral reference for APEX's loopback HTTP API at `http://127.0.0.1:8000`. It explains workflows, ownership, and meaningful errors. FastAPI's generated [`/docs`](http://127.0.0.1:8000/docs) and [`/openapi.json`](http://127.0.0.1:8000/openapi.json) are the canonical exhaustive request and response schemas. The current documented contract version is `21`.
+This is the behavioral reference for APEX's loopback HTTP API at `http://127.0.0.1:8000`. It explains workflows, ownership, and meaningful errors. FastAPI's generated [`/docs`](http://127.0.0.1:8000/docs) and [`/openapi.json`](http://127.0.0.1:8000/openapi.json) are the canonical exhaustive request and response schemas. The current documented contract version is `22`.
 
 The API has no authentication and is intentionally bound to loopback. `APEX_ALLOWED_ORIGINS` controls browser CORS policy; it does not authorize non-browser clients or make remote binding safe. See [Configuration](configuration.md) and [Privacy](privacy.md).
 
@@ -118,13 +118,14 @@ Returns boot-time HUD values such as Agent query enablement, the effective model
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `21`.
+Returns the resolved settings envelope. The current contract version is `22`.
 
 ```json
 {
-  "schema_version": 21,
+  "schema_version": 22,
   "settings": {
     "user_designation": "",
+    "agent_display_name": "",
     "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": false },
     "modules": { "football": false, "f1": true },
     "football": { "teams": [] },
@@ -169,11 +170,12 @@ Returns the resolved settings envelope. The current contract version is `21`.
 
 ### PATCH `/api/v1/settings`
 
-Accepts a strict partial patch for the optional user designation, connectors, sports modules, followed football teams, market symbols, Google Calendar selection and label display, Agent query settings, tool profiles, briefing, voice, llama.cpp enablement, loopback host, optional managed-server paths, tracked MCP enablement, and local activity mailbox settings. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
+Accepts a strict partial patch for the optional user designation, optional agent display name, connectors, sports modules, followed football teams, market symbols, Google Calendar selection and label display, Agent query settings, tool profiles, briefing, voice, llama.cpp enablement, loopback host, optional managed-server paths, tracked MCP enablement, and local activity mailbox settings. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
 
 ```json
 {
   "user_designation": "Chief",
+  "agent_display_name": "Nova",
   "briefing": { "default_mode": "structured" },
   "voice": { "mode": "manual" },
   "mcp": { "servers": { "github": { "enabled": true } } }
@@ -184,7 +186,7 @@ The store validates and transactionally replaces `config.local.json` before publ
 
 `ask_apex.local.reasoning_mode` accepts `none` or `focused` for llama.cpp models and only `none` for Ollama models. `focused` is request-level and does not trigger a local model unload/reload; unsupported model/mode combinations return `422`.
 
-Environment modes, prompt text, credentials, endpoints, commands, allowlists, and tool risks are not patchable. The optional `user_designation` is the only personalization field and is persisted to the gitignored local settings overlay. Machine-local llama.cpp `executable_path` and `preset_path` also persist only to `config.local.json`.
+Environment modes, prompt text, credentials, endpoints, commands, allowlists, and tool risks are not patchable. The optional `user_designation` and `agent_display_name` personalization fields persist to the gitignored local settings overlay. Machine-local llama.cpp `executable_path` and `preset_path` also persist only to `config.local.json`.
 
 ### GET `/api/v1/google-calendar/calendars`
 

@@ -471,6 +471,35 @@ export default function SettingsPanel({
                     Optional. APEX uses it when addressing you in future requests and briefings.
                   </p>
                 </div>
+                <div className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2.5">
+                  <label
+                    htmlFor="settings-agent-display-name"
+                    className="text-xs tracking-wide text-[color:var(--hud-text)]"
+                  >
+                    Agent name
+                  </label>
+                  <input
+                    id="settings-agent-display-name"
+                    type="text"
+                    value={draft.agent_display_name}
+                    maxLength={80}
+                    placeholder="Apex Agent"
+                    aria-describedby={`${titleId}-agent-name-help`}
+                    onChange={(event) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        agent_display_name: event.target.value,
+                      }))
+                    }
+                    className="hud-command-surface mt-1.5 w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
+                  />
+                  <p
+                    id={`${titleId}-agent-name-help`}
+                    className="mt-1.5 text-[11px] leading-relaxed text-zinc-500"
+                  >
+                    Optional local name for the Apex Agent in Cortex, the CLI, and assistant replies. Leave blank for Apex Agent.
+                  </p>
+                </div>
               </section>
 
               <section className="space-y-2.5" aria-labelledby={`${titleId}-agent-queries`}>

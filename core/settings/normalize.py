@@ -62,6 +62,7 @@ _MODULE_KEYS: frozenset[str] = frozenset({"football", "f1"})
 EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
     {
         "user_designation",
+        "agent_display_name",
         "features",
         "modules",
         "football",
@@ -161,6 +162,15 @@ def normalize_layer(
             designation = _normalize_user_designation(value, layer_name, issues)
             if designation is not None:
                 normalized["user_designation"] = designation
+        elif key == "agent_display_name":
+            if layer_name == "config.json":
+                _LOGGER.warning(
+                    "Ignoring agent_display_name in tracked config.json; configure it in config.local.json."
+                )
+                continue
+            display_name = _normalize_agent_display_name(value, layer_name, issues)
+            if display_name is not None:
+                normalized["agent_display_name"] = display_name
         elif key == "features":
             normalized["features"] = _normalize_features(
                 value, layer_name, issues
@@ -343,6 +353,28 @@ def _normalize_user_designation(
         _record_error(issues, "user_designation must be at most 80 characters")
         _LOGGER.warning(
             "user_designation in %s exceeds the maximum length; ignoring.",
+            layer_name,
+        )
+        return None
+    return normalized
+
+
+def _normalize_agent_display_name(
+    value: Any, layer_name: str, issues: NormalizationIssues | None
+) -> str | None:
+    """Normalize the optional local agent display name without exposing its value."""
+    if not isinstance(value, str):
+        _record_error(issues, "agent_display_name must be a string")
+        _LOGGER.warning(
+            "agent_display_name in %s must be a string; ignoring.", layer_name
+        )
+        return None
+
+    normalized = " ".join(value.split())
+    if len(normalized) > 80:
+        _record_error(issues, "agent_display_name must be at most 80 characters")
+        _LOGGER.warning(
+            "agent_display_name in %s exceeds the maximum length; ignoring.",
             layer_name,
         )
         return None
@@ -1258,6 +1290,11 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
             if isinstance(merged.get("user_designation", ""), str)
             else ""
         ),
+        agent_display_name=(
+            merged.get("agent_display_name", "")
+            if isinstance(merged.get("agent_display_name", ""), str)
+            else ""
+        ),
         features=features,
         modules=modules,
         football=football,
@@ -1278,6 +1315,7 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
     """Serialize a snapshot to on-disk editable section keys."""
     return {
         "user_designation": snapshot.user_designation,
+        "agent_display_name": snapshot.agent_display_name,
         "features": snapshot.features.model_dump(),
         "modules": snapshot.modules.model_dump(),
         "calendar": snapshot.calendar.model_dump(),
@@ -1315,6 +1353,10 @@ def apply_patch_to_snapshot(
         patch_data["user_designation"] = " ".join(
             patch_data["user_designation"].split()
         )
+    if "agent_display_name" in patch_data:
+        patch_data["agent_display_name"] = " ".join(
+            patch_data["agent_display_name"].split()
+        )
     return RuntimeSettingsSnapshot.model_validate(recursive_overlay(data, patch_data))
 
 
@@ -1323,6 +1365,8 @@ def patch_to_ondisk(patch: SettingsPatch) -> dict[str, Any]:
     ondisk: dict[str, Any] = {}
     if patch.user_designation is not None:
         ondisk["user_designation"] = " ".join(patch.user_designation.split())
+    if patch.agent_display_name is not None:
+        ondisk["agent_display_name"] = " ".join(patch.agent_display_name.split())
     if patch.features is not None:
         features = {
             key: value

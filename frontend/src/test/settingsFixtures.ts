@@ -6,6 +6,7 @@ import type {
 
 export const BASE_SETTINGS: RuntimeSettings = {
   user_designation: '',
+  agent_display_name: '',
   features: {
     weather: true,
     sports: true,
@@ -82,7 +83,7 @@ export function buildSettingsResponse(
   overrides: Partial<SettingsResponse> = {},
 ): SettingsResponse {
   return {
-    schema_version: 21,
+    schema_version: 22,
     settings,
     local_file_present: false,
     local_override_active: false,

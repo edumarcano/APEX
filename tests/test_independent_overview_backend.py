@@ -16,6 +16,7 @@ from core.api.cortex import _build_hud_context
 from core.api.routers.cortex import cortex_agent
 from core.agent.providers.cloud_verification import clear_cloud_status_cache
 from core.connectors.models import ConnectorResult, utc_now_iso
+from core.settings.models import SettingsPatch
 from core.settings.store import RuntimeSettingsStore, reset_settings_store_for_tests
 from core.telemetry.service import get_telemetry_service, reset_telemetry_service_for_tests
 from core.telemetry.store import build_snapshot_from_results
@@ -82,8 +83,14 @@ class CortexAgentCatalogTests(unittest.TestCase):
             "core.settings.get_settings_store",
             return_value=self.store,
         )
+        self._cortex_store_patch = mock.patch(
+            "core.api.routers.cortex.get_settings_store",
+            return_value=self.store,
+        )
         self._store_patch.start()
+        self._cortex_store_patch.start()
         self.addCleanup(self._store_patch.stop)
+        self.addCleanup(self._cortex_store_patch.stop)
         self.addCleanup(reset_settings_store_for_tests)
         self.addCleanup(self._tmp.cleanup)
 
@@ -93,6 +100,12 @@ class CortexAgentCatalogTests(unittest.TestCase):
         self.assertEqual(response.display_name, "Apex Agent")
         self.assertTrue(any(model.runtime == "cloud" for model in response.model_catalog))
         self.assertTrue(any(model.runtime == "local" for model in response.model_catalog))
+
+    def test_cortex_agent_uses_saved_display_name(self) -> None:
+        self.store.apply_patch(SettingsPatch(agent_display_name="Nova"))
+        response = cortex_agent()
+        self.assertEqual(response.key, "apex")
+        self.assertEqual(response.display_name, "Nova")
 
 
 class HudContextTests(unittest.TestCase):

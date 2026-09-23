@@ -4,7 +4,7 @@ APEX keeps portable defaults in `config.json` and machine-specific settings, cre
 
 ## Runtime Settings
 
-Runtime Settings persist the editable parts of the resolved configuration. `ask_apex` uses schema version 21 and has one native identity plus model-based routing:
+Runtime Settings persist the editable parts of the resolved configuration. Schema version `22` covers `ask_apex` model routing and optional local personalization fields. `ask_apex` has one native identity plus model-based routing:
 
 ```json
 {
@@ -17,6 +17,8 @@ Runtime Settings persist the editable parts of the resolved configuration. `ask_
 ```
 
 Current default model mapping is `apex` -> `deepseek/deepseek-v4-flash-0731`; `selected_model` is authoritative. Selecting a cloud or local model remembers that choice and its controls in the matching runtime section. Cloud and local personal-context preferences are independent. Cloud tool profiles default to All APEX Tools; local profiles default to No APEX Tools.
+
+Optional `user_designation` and `agent_display_name` are machine-local personalization fields stored only in `config.local.json`. An empty `agent_display_name` keeps the default visible name Apex Agent.
 
 Home and Cortex share this model selection. Home applies per-turn overrides: the lowest supported cloud effort, or a 16K local context with reasoning disabled. Those overrides never change saved Cortex preferences.
 

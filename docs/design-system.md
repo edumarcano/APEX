@@ -161,7 +161,7 @@ The local context meter uses monospace tabular numerals and displays used/availa
 
 ### Cortex Agent and model selector
 
-Cortex shows Apex Agent with one model selector grouped by Cloud and Local. Model-supported controls appear below the selected model. The Agent card can show provider or local runtime, availability, and compact pricing, while the catalog stays in the model selector. Provider and runtime are information derived from the model, not separate routing controls.
+Cortex shows the Apex Agent (or a local display name when set) with one model selector grouped by Cloud and Local. Model-supported controls appear below the selected model. The Agent card can show provider or local runtime, availability, and compact pricing, while the catalog stays in the model selector. Provider and runtime are information derived from the model, not separate routing controls.
 
 The selected model determines which reasoning controls, hosted tools, local context options, and lifecycle controls make sense. Home may offer a smaller Agent trigger, but those detailed model controls stay in Cortex. The composer shows only the short Agent name and a send control.
 

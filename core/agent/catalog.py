@@ -76,15 +76,27 @@ class AgentSpec:
     capability_tags: tuple[str, ...]
 
 
+def agent_identity_instruction(display_name: str) -> str:
+    """Format the Apex Agent identity sentence for a resolved display name."""
+    return f"You are {display_name}, APEX's built-in personal operations assistant."
+
+
 AGENT_SPECS: dict[str, AgentSpec] = {
     "apex": AgentSpec(
         key="apex",
         display_name="Apex Agent",
         description="APEX's built-in personal operations assistant for briefings, trusted context, connected services, and APEX actions.",
-        identity_instruction="You are Apex Agent, APEX's built-in personal operations assistant.",
+        identity_instruction=agent_identity_instruction("Apex Agent"),
         capability_tags=("APEX", "Personal operations"),
     ),
 }
+
+
+def resolve_agent_display_name(saved: str = "") -> str:
+    """Return the saved display name when set, otherwise the catalog default."""
+    normalized = " ".join(saved.split())
+    return normalized if normalized else AGENT_SPECS["apex"].display_name
+
 
 def is_agent_visible(key: str) -> bool:
     return key in AGENT_SPECS
@@ -131,11 +143,13 @@ def compose_agent_system_instruction(
     *,
     model_profile: ModelProfile | None = None,
     user_designation: str = "",
+    agent_display_name: str = "",
 ) -> str:
     """Compose identity, behavior, and optional user-addressing instructions."""
     if agent_key != "apex":
         raise ValueError(f"Unknown Agent key: {agent_key!r}")
-    identity = AGENT_SPECS["apex"].identity_instruction
+    resolved_name = resolve_agent_display_name(agent_display_name)
+    identity = agent_identity_instruction(resolved_name)
     if model_profile is not None:
         identity = (
             f"{identity} You are currently powered by {model_profile.display_name}."
@@ -211,6 +225,7 @@ def build_concrete_agent(
     google_search_enabled: bool = True,
     google_maps_enabled: bool = True,
     model_id: str | None = None,
+    agent_display_name: str = "",
 ) -> AgentModelProfile:
     """Materialize a provider-specific model configuration for an Agent."""
     if agent_key != "apex":
@@ -228,6 +243,7 @@ def build_concrete_agent(
         "apex",
         AGENT_SYSTEM_PROMPT if model_profile.runtime == "cloud" else LOCAL_AGENT_SYSTEM_PROMPT,
         model_profile=model_profile,
+        agent_display_name=agent_display_name,
     )
 
     if model_profile.provider == "gemini":

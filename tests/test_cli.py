@@ -87,14 +87,37 @@ class CliTests(unittest.TestCase):
         self.assertFalse(status_session.trust_env)
         self.assertTrue(status_session.closed)
 
+        custom_code, custom_output, _, _ = self._run(
+            ["status"],
+            [
+                _Response(200, {"status": "ready", "config": "ok", "database": "ok"}),
+                _Response(
+                    200,
+                    {
+                        "cortex_initial_selection": {
+                            "runtime": "cloud",
+                            "agent": "apex",
+                            "display_name": "Nova",
+                            "model_id": "gpt-5.6-luna",
+                            "effort": "low",
+                        },
+                    },
+                ),
+            ],
+        )
+        self.assertEqual(custom_code, 0)
+        self.assertIn("Nova", custom_output)
+        self.assertNotIn("Agent: apex", custom_output)
+
         agent_code, agent_output, _, agent_session = self._run(
             ["models"],
-            [_Response(200, {"key": "apex", "model_catalog": [{
+            [_Response(200, {"key": "apex", "display_name": "Nova", "model_catalog": [{
                 "model_id": "deepseek/deepseek-v4-flash-0731", "display_name": "DeepSeek V4 Flash",
                 "runtime": "cloud", "provider": "openrouter", "status": "available",
             }]})],
         )
         self.assertEqual(agent_code, 0)
+        self.assertIn("Nova", agent_output)
         self.assertIn("DeepSeek", agent_output)
         self.assertEqual(agent_session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/agent")
 

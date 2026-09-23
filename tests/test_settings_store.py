@@ -131,6 +131,27 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertEqual(saved["activity_mailbox"], {"enabled": True, "folder_path": str(folder)})
         self.assertEqual(saved["microsoft_todo"], {"reminder_list_id": "personal"})
 
+    def test_agent_display_name_is_local_only_and_validated(self) -> None:
+        _write_json(self.config_path, {"agent_display_name": "Tracked"})
+        store = self._store()
+        self.assertEqual(store.get_snapshot().agent_display_name, "")
+
+        _write_json(self.local_path, {"agent_display_name": "  Nova  Agent  "})
+        store = self._store()
+        self.assertEqual(store.get_snapshot().agent_display_name, "Nova Agent")
+
+        store.apply_patch(SettingsPatch(agent_display_name=""))
+        saved = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["agent_display_name"], "")
+
+        _write_json(self.local_path, {"agent_display_name": "x" * 81})
+        store = self._store()
+        self.assertFalse(store.local_override_active)
+        self.assertIn("agent_display_name", store.load_warning or "")
+
+        with self.assertRaises(ValidationError):
+            SettingsPatch.model_validate({"agent_display_name": "x" * 81})
+
     def _temp_root(self) -> Path:
         return self.config_path.parent
 
