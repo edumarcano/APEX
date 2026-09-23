@@ -18,10 +18,12 @@ from core.activity import (
 )
 from core.activity.boundary import read_bounded_activity_body, require_local_submission_headers
 from core.activity.review import ActivityContextReviewError, ActivityContextReviewService
+from core.activity.mailbox import MailboxStatus, get_activity_mailbox
 from core.api.models import (
     ActivityContextProposalRequest,
     ActivityContextReviewLinkResponse,
     ActivityDispositionRequest,
+    ActivityMailboxStatusResponse,
     ActivityReportResponse,
     ActivitySubmissionResponse,
     ContextReviewResponse,
@@ -53,6 +55,21 @@ def _response(report) -> ActivityReportResponse:
     )
 
 
+def _mailbox_response(result: MailboxStatus) -> ActivityMailboxStatusResponse:
+    return ActivityMailboxStatusResponse(
+        enabled=result.enabled,
+        state=result.state,
+        folder_available=result.folder_available,
+        client_registered=result.client_registered,
+        client_enabled=result.client_enabled,
+        client_can_submit=result.client_can_submit,
+        client_partition_matches=result.client_partition_matches,
+        last_scan_at=result.last_scan_at,
+        last_imported_count=result.last_imported_count,
+        last_error=result.last_error,
+    )
+
+
 def _error(error: Exception) -> HTTPException:
     if isinstance(error, ActivityNotFoundError):
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Activity report was not found.")
@@ -73,6 +90,30 @@ def _error(error: Exception) -> HTTPException:
     if isinstance(error, KnowledgeConflictError):
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Context changed or cannot be reconciled.")
     return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Activity inbox is unavailable.")
+
+
+@router.get(
+    "/api/v1/activity/mailbox/status",
+    response_model=ActivityMailboxStatusResponse,
+)
+def get_activity_mailbox_status() -> ActivityMailboxStatusResponse:
+    """Return local folder and client readiness without exposing a scan path."""
+    try:
+        return _mailbox_response(get_activity_mailbox().status())
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.post(
+    "/api/v1/activity/mailbox/scan",
+    response_model=ActivityMailboxStatusResponse,
+)
+async def scan_activity_mailbox() -> ActivityMailboxStatusResponse:
+    """Scan only the operator-configured mailbox folder and wait for completion."""
+    try:
+        return _mailbox_response(await get_activity_mailbox().scan_now())
+    except Exception as exc:
+        raise _error(exc) from exc
 
 
 @router.post("/api/v1/activity/reports", response_model=ActivitySubmissionResponse, status_code=status.HTTP_201_CREATED)

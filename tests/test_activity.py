@@ -26,6 +26,7 @@ from core.activity import (
     ActivityStoreError,
 )
 from core.activity.review import ActivityContextReviewError, ActivityContextReviewService
+from core.activity.mailbox import MailboxStatus
 from core.actions import ActionService, ActionStore
 from core.knowledge import KnowledgeService, KnowledgeStore
 from core.knowledge.capture import CAPABILITY_NAME, ContextCaptureExecutor, ContextCaptureVerifier
@@ -462,6 +463,30 @@ class ActivityApiTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.store.close()
+
+    def test_mailbox_status_and_scan_use_only_the_configured_folder(self) -> None:
+        status = MailboxStatus(
+            enabled=True, state="ready", folder_available=True,
+            client_registered=True, client_enabled=True, client_can_submit=True,
+            client_partition_matches=True, last_scan_at="2026-09-21T00:00:00+00:00",
+            last_imported_count=1, last_error=None,
+        )
+        mailbox = SimpleNamespace(
+            status=mock.Mock(return_value=status),
+            scan_now=mock.AsyncMock(return_value=status),
+        )
+        with mock.patch.object(activity_router, "get_activity_mailbox", return_value=mailbox):
+            current = self.client.get("/api/v1/activity/mailbox/status")
+            scanned = self.client.post(
+                "/api/v1/activity/mailbox/scan",
+                json={"folder_path": "C:\\caller-selected-folder"},
+            )
+
+        self.assertEqual(current.status_code, 200)
+        self.assertEqual(current.json()["state"], "ready")
+        self.assertEqual(scanned.status_code, 200)
+        self.assertEqual(scanned.json()["last_imported_count"], 1)
+        mailbox.scan_now.assert_awaited_once_with()
 
     def test_local_submission_list_and_detail_stay_in_current_partition(self) -> None:
         conversation = SimpleNamespace(partition=lambda: "production")

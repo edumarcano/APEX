@@ -86,6 +86,7 @@ class GatewayHttpTests(unittest.TestCase):
         self.assertTrue(retry.json()["duplicate"])
         self.assertEqual(first.json()["id"], retry.json()["id"])
         self.assertEqual(self.client.get("/api/v1/activity/reports").status_code, 404)
+        self.assertEqual(self.client.get("/api/v1/activity/mailbox/status").status_code, 404)
         self.assertEqual(self.client.get("/api/v1/cortex/agent").status_code, 404)
 
     def test_custom_loopback_binding_accepts_only_its_configured_host(self) -> None:

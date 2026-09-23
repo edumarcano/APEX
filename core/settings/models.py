@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 
 from pydantic import (
@@ -46,7 +47,7 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 20
+SETTINGS_SCHEMA_VERSION: int = 21
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 LlamaCppServerState = Literal[
@@ -351,6 +352,38 @@ class MicrosoftTodoSettings(BaseModel):
         return value
 
 
+def _normalize_mailbox_folder_path(value: str) -> str:
+    normalized = value.strip()
+    if "\x00" in normalized:
+        raise ValueError("folder_path must not contain null bytes")
+    if normalized and not Path(normalized).is_absolute():
+        raise ValueError("folder_path must be an absolute path")
+    return normalized
+
+
+class ActivityMailboxSettings(BaseModel):
+    """Machine-local folder used for optional external activity delivery."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    enabled: bool = False
+    folder_path: StrictStr = Field(default="", max_length=4096)
+    client_id: StrictStr = Field(default="", max_length=64)
+
+    @field_validator("folder_path")
+    @classmethod
+    def validate_folder_path(cls, value: str) -> str:
+        return _normalize_mailbox_folder_path(value)
+
+    @field_validator("client_id")
+    @classmethod
+    def validate_client_id(cls, value: str) -> str:
+        normalized = value.strip()
+        if "\x00" in normalized:
+            raise ValueError("client_id must not contain null bytes")
+        return normalized
+
+
 class RuntimeSettingsSnapshot(BaseModel):
     """Immutable published view of resolved editable settings."""
 
@@ -373,6 +406,7 @@ class RuntimeSettingsSnapshot(BaseModel):
     mcp: McpSettings = Field(default_factory=McpSettings)
     llama_cpp: LlamaCppSettings = Field(default_factory=LlamaCppSettings)
     microsoft_todo: MicrosoftTodoSettings = Field(default_factory=MicrosoftTodoSettings)
+    activity_mailbox: ActivityMailboxSettings = Field(default_factory=ActivityMailboxSettings)
 
 
 class FeaturesPatch(BaseModel):
@@ -588,6 +622,31 @@ class MicrosoftTodoPatch(BaseModel):
         return value
 
 
+class ActivityMailboxPatch(BaseModel):
+    """Partial machine-local mailbox settings patch."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool | None = None
+    folder_path: StrictStr | None = Field(default=None, max_length=4096)
+    client_id: StrictStr | None = Field(default=None, max_length=64)
+
+    @field_validator("folder_path")
+    @classmethod
+    def validate_folder_path(cls, value: str | None) -> str | None:
+        return _normalize_mailbox_folder_path(value) if value is not None else None
+
+    @field_validator("client_id")
+    @classmethod
+    def validate_client_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if "\x00" in normalized:
+            raise ValueError("client_id must not contain null bytes")
+        return normalized
+
+
 class LlamaCppServerStatusResponse(BaseModel):
     """Sanitized llama.cpp server ownership status for the Settings UI."""
 
@@ -618,6 +677,7 @@ class SettingsPatch(BaseModel):
     mcp: McpPatch | None = None
     llama_cpp: LlamaCppPatch | None = None
     microsoft_todo: MicrosoftTodoPatch | None = None
+    activity_mailbox: ActivityMailboxPatch | None = None
 
 
 class SettingsResponse(BaseModel):

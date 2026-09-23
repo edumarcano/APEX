@@ -463,7 +463,7 @@ The Cortex Records and Review views and the CLI expose current claims, evidence,
 **Objective:**
 Give outside tools one simple way to report completed work, findings, evidence, and follow-up items into APEX.
 
-The first version is inbound-only. The local Inbox, report review path, CLI, JSON and Markdown import, and optional loopback-only submission gateway are in place. A real-client trial from a local terminal remains before this milestone is complete.
+The first version is inbound-only. The local Inbox, report review path, CLI, JSON and Markdown import, optional loopback-only submission gateway, and optional local-folder mailbox are in place on this branch. The Grok Bot report and private-folder sync handoff were verified; automatic APEX mailbox ingestion still needs an end-to-end trial before this milestone is complete.
 
 Reports are untrusted input. Receiving or inspecting one does not add personal context, call Cortex tools, approve actions, or change trusted knowledge.
 
@@ -484,7 +484,7 @@ APEX should not import an outside tool's full conversation or internal task hist
 
 Different local submission methods feed the same internal service. Version one uses the generic APEX CLI and JSON or Markdown file import. A local program that needs HTTP or MCP may use the optional loopback-only gateway; it is not a remote client endpoint.
 
-The first real-client trial should use Grok Bot to produce a report for the APEX CLI to import from the local terminal. The trial exercises the generic report format and does not require a Grok-specific APEX adapter. The actual Grok Bot local-terminal integration is unverified until the trial is run.
+The Grok Bot trial produced a version-one report that imported through the generic CLI, and a separate private-folder sync trial confirmed the file reached the local PC after wake. These trials did not exercise automatic APEX mailbox ingestion; that remains to be verified with startup polling, periodic intake, and Inbox Refresh. No Grok-specific APEX adapter is required.
 
 The trial procedure and its expected receipt and Inbox checks are in [the CLI guide](cli.md#first-client-trial-grok-bot-local-terminal).
 
@@ -494,7 +494,7 @@ Outside tools should continue to use their own interfaces for task creation, pro
 
 Give each source a separate registration that can be disabled. For the local CLI, its client ID is source attribution, not software authentication. Bound and attribute submissions, then treat them as untrusted until reviewed or reconciled.
 
-The main APEX backend and database remain local. A private synced-folder mailbox is an optional beta.4 follow-up only after a genuine Grok Bot report file reaches the existing private sync folder. If that transfer proof fails, defer the mailbox follow-up; do not add another importer path before the local file flow is proven.
+The main APEX backend and database remain local. The optional provider-neutral mailbox reads completed reports from one operator-selected local folder and uses the same activity service as other submission paths. It does not depend on a Google Drive API or prove which program created a file.
 
 Removing an external tool should not require a code change. Its access can be revoked while its earlier submissions remain available as historical sources.
 

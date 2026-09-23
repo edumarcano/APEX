@@ -77,6 +77,41 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertTrue(settings.cloud.personal_context_enabled)
         self.assertTrue(settings.local.personal_context_enabled)
 
+    def test_activity_mailbox_settings_persist_only_in_the_local_layer(self) -> None:
+        folder = self._temp_root() / "synced reports"
+        settings = self._store().apply_patch(SettingsPatch.model_validate({
+            "activity_mailbox": {
+                "enabled": True,
+                "folder_path": str(folder),
+                "client_id": "codex",
+            },
+        }))
+
+        self.assertTrue(settings.activity_mailbox.enabled)
+        self.assertEqual(settings.activity_mailbox.folder_path, str(folder))
+        local = json.loads(self.local_path.read_text(encoding="utf-8"))
+        tracked = json.loads(self.config_path.read_text(encoding="utf-8"))
+        self.assertEqual(local["activity_mailbox"], {
+            "enabled": True,
+            "folder_path": str(folder),
+            "client_id": "codex",
+        })
+        self.assertNotIn("activity_mailbox", tracked)
+
+    def test_activity_mailbox_rejects_relative_paths_and_ignores_tracked_values(self) -> None:
+        with self.assertRaises(ValidationError):
+            SettingsPatch.model_validate({"activity_mailbox": {"folder_path": "relative"}})
+
+        _write_json(self.config_path, {
+            "activity_mailbox": {"enabled": True, "folder_path": str(self.config_path.parent), "client_id": "codex"},
+        })
+        settings = self._store().get_snapshot().activity_mailbox
+        self.assertFalse(settings.enabled)
+        self.assertEqual(settings.folder_path, "")
+
+    def _temp_root(self) -> Path:
+        return self.config_path.parent
+
     def test_invalid_models_are_rejected_at_the_patch_boundary(self) -> None:
         with self.assertRaises(ValidationError):
             SettingsPatch.model_validate(

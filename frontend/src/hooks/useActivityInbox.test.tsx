@@ -66,6 +66,12 @@ describe('useActivityInbox', () => {
     let resolveStaleList: ((value: Response) => void) | undefined
     vi.mocked(fetch).mockImplementation((input) => {
       const target = String(input)
+      if (target.endsWith('/activity/mailbox/scan')) return Promise.resolve(response({
+        enabled: false, state: 'disabled', folder_available: null,
+        client_registered: false, client_enabled: false, client_can_submit: false,
+        client_partition_matches: false, last_scan_at: null,
+        last_imported_count: 0, last_error: null,
+      }))
       if (target.endsWith('/context-reviews')) return Promise.resolve(response([]))
       if (target.endsWith('/report-1')) return Promise.resolve(response(REPORT))
       if (!target.includes('/activity/reports?')) throw new Error(`Unexpected activity request ${target}`)
@@ -100,5 +106,39 @@ describe('useActivityInbox', () => {
     expect(result.current.linkedReviews).toEqual([])
     expect(result.current.selectedReportId).toBeNull()
     expect(result.current.isLoading).toBe(false)
+  })
+
+  it('waits for the mailbox scan before reloading Inbox and keeps reports visible on scan failure', async () => {
+    const order: string[] = []
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const target = String(input)
+      if (target.endsWith('/activity/mailbox/scan')) {
+        order.push('scan')
+        return response({
+          enabled: true, state: 'folder_unavailable', folder_available: false,
+          client_registered: true, client_enabled: true, client_can_submit: true,
+          client_partition_matches: true, last_scan_at: '2026-09-22T12:00:00Z',
+          last_imported_count: 0, last_error: 'The mailbox folder is unavailable; APEX will retry.',
+        })
+      }
+      if (target.endsWith('/context-reviews')) return response([])
+      if (target.endsWith('/report-1')) return response(REPORT)
+      if (target.includes('/activity/reports?')) {
+        order.push('list')
+        return response([REPORT])
+      }
+      throw new Error(`Unexpected activity request ${target}`)
+    })
+
+    const { result } = renderHook(() => useActivityInbox(true, 'production'))
+    await waitFor(() => expect(result.current.detail?.id).toBe(REPORT.id))
+    order.length = 0
+
+    await act(async () => { await result.current.refresh() })
+
+    expect(order[0]).toBe('scan')
+    expect(order).toContain('list')
+    expect(result.current.reports).toEqual([REPORT])
+    expect(result.current.error).toBe('The mailbox folder is unavailable; APEX will retry.')
   })
 })

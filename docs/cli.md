@@ -93,7 +93,7 @@ Reports do not automatically enter personal context, retrieval, prompts, briefin
 
 ### First client trial: Grok Bot local terminal
 
-This trial uses the generic local importer. The actual Grok Bot local-terminal integration has not been verified; the steps below describe APEX's side and require a local Bot setup that can produce a JSON file and run a command.
+Grok Bot has produced a version-one report that imported through the generic CLI. A separate trial confirmed a report written to a private Google Drive folder synced to a local folder after the PC woke. These trials did not exercise APEX's automatic mailbox polling. The steps below document how to repeat the CLI import with a genuine report; see [Optional local-folder mailbox](configuration.md#optional-local-folder-mailbox) for the still-unverified automatic intake path.
 
 Merge this registration into `config.json`. If the file already has `external_activity.clients`, add the entry to that array and keep the other clients. The ID is source attribution, not a credential. Select the partition that APEX currently uses: it is `sandbox` only when both `DEV_MODE=true` and the saved Ask Apex **Sandbox mode** setting are enabled; otherwise it is `production`. `DEMO_MODE` rejects submissions.
 

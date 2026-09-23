@@ -47,6 +47,8 @@ export const API_ENDPOINTS = {
   activityReport: (reportId: string) => `${API_BASE}/api/v1/activity/reports/${encodeURIComponent(reportId)}`,
   activityReportContextReviews: (reportId: string) => `${API_BASE}/api/v1/activity/reports/${encodeURIComponent(reportId)}/context-reviews`,
   activityReportContextProposals: (reportId: string) => `${API_BASE}/api/v1/activity/reports/${encodeURIComponent(reportId)}/context-proposals`,
+  activityMailboxStatus: `${API_BASE}/api/v1/activity/mailbox/status`,
+  activityMailboxScan: `${API_BASE}/api/v1/activity/mailbox/scan`,
   cortexContextActions: `${API_BASE}/api/v1/cortex/context/actions`,
   cortexRetrievalStatus: `${API_BASE}/api/v1/cortex/retrieval/status`,
   cortexRetrievalPrepare: `${API_BASE}/api/v1/cortex/retrieval/prepare`,

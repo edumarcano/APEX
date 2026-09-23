@@ -4,7 +4,7 @@ APEX keeps portable defaults in `config.json` and machine-specific settings, cre
 
 ## Runtime Settings
 
-Runtime Settings persist the editable parts of the resolved configuration. `ask_apex` uses schema version 20 and has one native identity plus model-based routing:
+Runtime Settings persist the editable parts of the resolved configuration. `ask_apex` uses schema version 21 and has one native identity plus model-based routing:
 
 ```json
 {
@@ -57,6 +57,26 @@ APEX keeps unavailable saved IDs so they can be removed deliberately. It reads s
 ```
 
 A registration is checked for every submission. Disabling or removing it preserves reports already received, while new submissions under that ID fail. Report content cannot choose a partition; configure distinct registrations when both production and sandbox submissions are needed. Missing required registration fields and invalid permission values deny submission. Duplicate IDs are unavailable, regardless of their array order. Invalid registration entries are ignored with a startup warning.
+
+### Optional local-folder mailbox
+
+The main APEX backend can poll one operator-selected folder for completed report files. The mailbox is disabled by default. Its enabled flag, absolute folder path, and client ID are machine-local Runtime Settings stored in the gitignored `config.local.json`; keep credentials in `.env` and the client registration above in `config.json`.
+
+```json
+{
+  "activity_mailbox": {
+    "enabled": true,
+    "folder_path": "/absolute/path/to/activity-mailbox",
+    "client_id": "grok-bot"
+  }
+}
+```
+
+On Windows, use an absolute path such as `C:\\Users\\<you>\\AppData\\Local\\APEX\\activity-mailbox`. Create the folder in a private local or synced location and grant access only to the operator and the sync tool. APEX scans it at startup and about every 60 seconds; Inbox **Refresh** requests an immediate scan. A missing folder remains configured and is retried. Runtime setting changes take effect without restarting APEX.
+
+Place only completed, top-level `.json` report files in the folder. Each file must contain the version-one report object described in [the CLI guide](cli.md#external-activity), be at most 256 KiB, and be named `<submission_key>.json` using letters, numbers, hyphens, or underscores. Write to a temporary filename and rename to the final name only after the file is complete. APEX leaves source files in place; identical rescans reuse the original receipt, while changed content with the same client and key follows the normal conflict behavior.
+
+The selected client must be registered, enabled, permit the local `operator`, allow `activity:submit`, and match the current partition. APEX assigns that client and partition outside the file, so report content cannot select them. The folder's client ID is source attribution chosen by the operator; it does not prove which program created a file. Mailbox reports enter the same untrusted Inbox as CLI, JSON/MCP gateway, and API submissions. The mailbox uses no provider API and adds no remote endpoint.
 
 ## External activity gateway
 

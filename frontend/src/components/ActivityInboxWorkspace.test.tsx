@@ -41,4 +41,12 @@ describe('ActivityInboxWorkspace', () => {
     await user.keyboard('{Enter}')
     expect(inbox.setDisposition).toHaveBeenCalledWith('reviewed')
   })
+
+  it('shows a mailbox scan error without replacing reports already in the Inbox', () => {
+    const inbox = { ...inboxFixture(), error: 'The mailbox folder is unavailable; APEX will retry.' }
+    render(<ActivityInboxWorkspace inbox={inbox} demoModeActive={false} sandboxMode={false} onOpenReview={vi.fn().mockResolvedValue(null)} />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('The mailbox folder is unavailable; APEX will retry.')
+    expect(screen.getByRole('button', { name: /External report/ })).toBeInTheDocument()
+  })
 })
