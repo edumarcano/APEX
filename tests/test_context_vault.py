@@ -576,6 +576,50 @@ class ContextVaultSelectionTests(unittest.TestCase):
         self.assertEqual(preview.eligible_count, 0)
         self.assertEqual(preview.records[0].exclusion_reasons, ("sensitive",))
 
+    def test_v12_preserves_explicit_sensitive_clear_after_review_acceptance(self) -> None:
+        _, review = self.store.submit_operator(
+            partition="production", values={"kind": "note", "text": "Cleared private claim."},
+            sensitive=True, idempotency_key="v11-cleared-sensitive",
+        )
+        assert review is not None
+        self.store.accept_review(review.id, partition="production")
+        record = next(
+            item for item in self.store.list_records(partition="production", statuses=("active",))
+            if item.text == "Cleared private claim."
+        )
+        self.assertTrue(record.sensitive)
+
+        # Beta.5 had backfilled this accepted review. A later operator decision
+        # in v11 must remain authoritative when v12 repeats that backfill.
+        conn = sqlite3.connect(self.path)
+        try:
+            with conn:
+                conn.execute("UPDATE schema_versions SET version=11 WHERE domain='knowledge'")
+        finally:
+            conn.close()
+        cleared = self.store.set_sensitive(
+            record.id, partition="production", sensitive=False,
+            expected_updated_at=record.updated_at,
+        )
+        self.assertFalse(cleared.sensitive)
+
+        self.store.close()
+        migrated = KnowledgeStore(self.path)
+        migrated.initialize()
+        self.store = migrated
+        self.knowledge = KnowledgeService(migrated)
+        current = migrated.get_record(record.id, partition="production").record
+        self.assertFalse(current.sensitive)
+
+        scope = ContextVaultScopeSettings(
+            id=uuid4(), name="Explicitly cleared", enabled=True, record_ids=(current.id,),
+        )
+        preview = self._selection_service(
+            self.knowledge, enabled=True, scopes=(scope,),
+        ).preview(scope.id)
+        self.assertEqual(preview.eligible_count, 1)
+        self.assertTrue(preview.records[0].eligible)
+
     def test_preview_uses_one_snapshot_during_review_acceptance(self) -> None:
         record = self._record(entity_id=self.store.create_entity("Project Race").id, index=401)
         proposal = {"record_id": str(record.id), "expected_updated_at": record.updated_at}

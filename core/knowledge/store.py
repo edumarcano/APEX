@@ -594,9 +594,14 @@ class KnowledgeStore:
         if sensitive_review_ids:
             placeholders = ",".join("?" for _ in sensitive_review_ids)
             conn.execute(
-                "UPDATE knowledge_records SET sensitive=1 WHERE id IN ("
-                "SELECT DISTINCT record_id FROM knowledge_history "
-                "WHERE operation='review_accepted' AND review_id IN (" + placeholders + "))",
+                "UPDATE knowledge_records SET sensitive=1 WHERE sensitive=0 AND id IN ("
+                "SELECT accepted.record_id FROM ("
+                "SELECT record_id,MAX(created_at) AS accepted_at FROM knowledge_history "
+                "WHERE operation='review_accepted' AND review_id IN (" + placeholders + ") "
+                "GROUP BY record_id) AS accepted WHERE NOT EXISTS ("
+                "SELECT 1 FROM knowledge_history AS cleared WHERE cleared.record_id=accepted.record_id "
+                "AND cleared.operation='sensitivity_changed' AND cleared.reason_code='sensitive_disabled' "
+                "AND cleared.created_at > accepted.accepted_at))",
                 sensitive_review_ids,
             )
 
