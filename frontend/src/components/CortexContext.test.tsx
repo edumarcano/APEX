@@ -208,6 +208,25 @@ describe("CortexContext", () => {
     expect(screen.getByRole("tabpanel", { name: /Review/ })).toBeInTheDocument();
   });
 
+  it("keeps the sensitivity reload action available while retaining the selected record detail", () => {
+    const refreshSelectedRecord = vi.fn();
+    render(
+      <CortexContext
+        inspector={inspectorFixture({
+          sensitivityMutation: false,
+          sensitivityRefreshRequired: true,
+          refreshSelectedRecord,
+        })}
+        demoModeActive={false}
+        onOpenActions={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("checkbox", { name: "Mark record sensitive" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Reload record" }));
+    expect(refreshSelectedRecord).toHaveBeenCalledOnce();
+  });
+
   it("opens an Inbox-linked review by its exact id", () => {
     const inspector = inspectorFixture({ selectedReviewId: null, reviewDetail: null });
     render(

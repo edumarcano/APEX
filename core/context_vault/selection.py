@@ -46,6 +46,7 @@ class ContextVaultPreview:
     destination_configured: bool
     records: tuple[ContextVaultPreviewRecord, ...]
     selection_issues: tuple[ContextVaultSelectionIssue, ...]
+    hypothetical_enabled: bool = False
 
     @property
     def eligible_count(self) -> int:
@@ -118,6 +119,22 @@ class ContextVaultSelectionService:
 
     def preview(self, scope_id: UUID) -> ContextVaultPreview:
         scope, snapshot = self._scope_snapshot(scope_id)
+        return self._build_preview(scope, snapshot, hypothetical_enabled=False)
+
+    def preview_candidate(
+        self, candidate_scope: ContextVaultScopeSettings,
+    ) -> ContextVaultPreview:
+        """Preview an unsaved scope as if export were enabled, without changing settings."""
+        snapshot = self._selection_snapshot(candidate_scope)
+        return self._build_preview(candidate_scope, snapshot, hypothetical_enabled=True)
+
+    def _build_preview(
+        self,
+        scope: ContextVaultScopeSettings,
+        snapshot: ContextVaultSelectionSnapshot,
+        *,
+        hypothetical_enabled: bool,
+    ) -> ContextVaultPreview:
         entity_states = dict(snapshot.entity_states)
         selection_issues = tuple(
             ContextVaultSelectionIssue(
@@ -133,11 +150,16 @@ class ContextVaultSelectionService:
             if str(entity_id) not in entity_states or entity_states[str(entity_id)] is not None
         )
 
+        evaluation_scope = (
+            scope.model_copy(update={"enabled": True})
+            if hypothetical_enabled else scope
+        )
+        evaluation_vault_enabled = True if hypothetical_enabled else self._settings.enabled
         preview_records = tuple(
             self._preview_record(
                 item.record,
-                vault_enabled=self._settings.enabled,
-                scope=scope,
+                vault_enabled=evaluation_vault_enabled,
+                scope=evaluation_scope,
                 is_pending=item.pending_review,
                 operator_excluded=item.operator_excluded,
             )
@@ -148,6 +170,7 @@ class ContextVaultSelectionService:
             vault_enabled=self._settings.enabled, scope_enabled=scope.enabled,
             destination_configured=self._destination_configured,
             records=preview_records, selection_issues=selection_issues,
+            hypothetical_enabled=hypothetical_enabled,
         )
 
     @property
@@ -195,12 +218,17 @@ class ContextVaultSelectionService:
         scope = next((candidate for candidate in self._settings.scopes if candidate.id == scope_id), None)
         if scope is None:
             raise KeyError("context_vault_scope_not_found")
+        return scope, self._selection_snapshot(scope)
+
+    def _selection_snapshot(
+        self, scope: ContextVaultScopeSettings,
+    ) -> ContextVaultSelectionSnapshot:
         snapshot = self._knowledge.context_vault_selection_snapshot(
             selected_entity_ids=scope.selected_entity_ids,
             record_ids=scope.record_ids,
             excluded_record_ids=scope.excluded_record_ids,
         )
-        return scope, snapshot
+        return snapshot
 
     @staticmethod
     def _is_export_eligible(

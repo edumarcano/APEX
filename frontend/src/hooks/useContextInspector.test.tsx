@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { API_ENDPOINTS } from '../lib/api'
 import { useContextInspector } from './useContextInspector'
 
 const RECORD = {
@@ -51,6 +52,119 @@ describe('useContextInspector', () => {
     expect(result.current.retrieval?.state).toBe('ready')
   })
 
+  it('uses the observed record revision for sensitivity changes and asks to reload on conflict', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(response([RECORD]))
+      .mockResolvedValueOnce(response(STATUS))
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(response(DETAIL))
+      .mockResolvedValueOnce(response({ detail: 'Context changed or cannot be reconciled.' }, 409))
+
+    const { result } = renderHook(() => useContextInspector(true, vi.fn()))
+    await waitFor(() => expect(result.current.records).toHaveLength(1))
+    await act(async () => { await result.current.selectRecord(RECORD.id) })
+    await waitFor(() => expect(result.current.detail?.id).toBe(RECORD.id))
+
+    let changed = true
+    await act(async () => { changed = await result.current.updateSensitivity(true) })
+
+    expect(changed).toBe(false)
+    expect(result.current.sensitivityRefreshRequired).toBe(true)
+    expect(fetch).toHaveBeenLastCalledWith(
+      expect.stringContaining(`/api/v1/cortex/context/${RECORD.id}/sensitivity`),
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ sensitive: true, expected_updated_at: RECORD.updated_at }),
+      }),
+    )
+  })
+
+  it('keeps a conflicting sensitivity edit locked until the record reload succeeds', async () => {
+    const refreshedDetail = { ...DETAIL, updated_at: '2026-08-19T00:00:00Z' }
+    let detailReads = 0
+    let patchAttempts = 0
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+      if (url.includes('/sensitivity') && method === 'PATCH') {
+        patchAttempts += 1
+        return Promise.resolve(patchAttempts === 1
+          ? response({ detail: 'Context changed.' }, 409)
+          : response({ sensitive: true }))
+      }
+      if (url === API_ENDPOINTS.cortexContextRecord(RECORD.id)) {
+        detailReads += 1
+        if (detailReads === 2) return Promise.resolve(response({ detail: 'Temporary reload failure.' }, 503))
+        return Promise.resolve(response(detailReads >= 3 ? refreshedDetail : DETAIL))
+      }
+      if (url.includes('/api/v1/cortex/context?')) return Promise.resolve(response([RECORD]))
+      if (url.endsWith('/retrieval/status')) return Promise.resolve(response(STATUS))
+      if (url.includes('/reviews?')) return Promise.resolve(response([]))
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+
+    const { result } = renderHook(() => useContextInspector(true, vi.fn()))
+    await waitFor(() => expect(result.current.records).toHaveLength(1))
+    await act(async () => { await result.current.selectRecord(RECORD.id) })
+    await act(async () => { await result.current.updateSensitivity(true) })
+    expect(result.current.sensitivityRefreshRequired).toBe(true)
+
+    let blocked = true
+    await act(async () => { blocked = await result.current.updateSensitivity(true) })
+    expect(blocked).toBe(false)
+    expect(patchAttempts).toBe(1)
+
+    await act(async () => { await result.current.refreshSelectedRecord() })
+    expect(result.current.sensitivityRefreshRequired).toBe(true)
+    expect(result.current.selectedRecordId).toBe(RECORD.id)
+    expect(result.current.detail?.id).toBe(RECORD.id)
+
+    await act(async () => { await result.current.refreshSelectedRecord() })
+    expect(result.current.sensitivityRefreshRequired).toBe(false)
+    expect(result.current.detail?.updated_at).toBe(refreshedDetail.updated_at)
+    let changed = false
+    await act(async () => { changed = await result.current.updateSensitivity(true) })
+    expect(changed).toBe(true)
+    expect(patchAttempts).toBe(2)
+    expect(result.current.selectedRecordId).toBe(RECORD.id)
+  })
+
+  it('does not navigate back to a record when its sensitivity save finishes after selection changes', async () => {
+    const secondRecord = { ...RECORD, id: 'record-2', text: 'The selected record stays current.' }
+    const secondDetail = { ...DETAIL, ...secondRecord }
+    let resolvePatch: ((value: Response) => void) | undefined
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+      if (url.includes('/sensitivity') && method === 'PATCH') {
+        return new Promise<Response>((resolve) => { resolvePatch = resolve })
+      }
+      if (url === API_ENDPOINTS.cortexContextRecord(RECORD.id)) return Promise.resolve(response(DETAIL))
+      if (url === API_ENDPOINTS.cortexContextRecord(secondRecord.id)) return Promise.resolve(response(secondDetail))
+      if (url.includes('/api/v1/cortex/context?')) return Promise.resolve(response([RECORD, secondRecord]))
+      if (url.endsWith('/retrieval/status')) return Promise.resolve(response(STATUS))
+      if (url.includes('/reviews?')) return Promise.resolve(response([]))
+      throw new Error(`Unexpected request: ${method} ${url}`)
+    })
+
+    const { result } = renderHook(() => useContextInspector(true, vi.fn()))
+    await waitFor(() => expect(result.current.records).toHaveLength(2))
+    await act(async () => { await result.current.selectRecord(RECORD.id) })
+    let mutation: Promise<boolean> | undefined
+    act(() => { mutation = result.current.updateSensitivity(true) })
+    await waitFor(() => expect(resolvePatch).toBeDefined())
+    await act(async () => { await result.current.selectRecord(secondRecord.id) })
+    expect(result.current.detail?.id).toBe(secondRecord.id)
+
+    await act(async () => {
+      resolvePatch?.(response({ sensitive: true }))
+      expect(await mutation).toBe(true)
+    })
+    expect(result.current.selectedRecordId).toBe(secondRecord.id)
+    expect(result.current.detail?.id).toBe(secondRecord.id)
+  })
+
   it('toggles the selected context record', async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(response([RECORD]))
@@ -79,7 +193,7 @@ describe('useContextInspector', () => {
       .mockResolvedValueOnce(response({ ...DETAIL, id: 'record-2', text: 'Second record' }))
     const { result } = renderHook(() => useContextInspector(true, vi.fn()))
     await waitFor(() => expect(result.current.records).toHaveLength(1))
-    let firstRequest: Promise<void>
+    let firstRequest: Promise<boolean>
     act(() => { firstRequest = result.current.selectRecord(RECORD.id) })
     await act(async () => { await result.current.selectRecord('record-2') })
     await waitFor(() => expect(result.current.detail?.id).toBe('record-2'))

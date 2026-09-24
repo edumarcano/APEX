@@ -101,6 +101,35 @@ class ContextVaultSelectionTests(unittest.TestCase):
         again = self._selection_service(self.knowledge, enabled=True, scopes=(scope,)).preview(scope.id)
         self.assertNotIn(str(sandbox_record.id), {record.record_id for record in again.records})
 
+    def test_candidate_preview_hypothetically_activates_unsaved_scope_without_persisting(self) -> None:
+        entity = self.store.create_entity("Project Preview")
+        ordinary = self._record(entity_id=entity.id, index=120)
+        sensitive_record = self._record(entity_id=entity.id, index=121)
+        sensitive = self.store.set_sensitive(
+            sensitive_record.id,
+            partition="production",
+            sensitive=True,
+            expected_updated_at=sensitive_record.updated_at,
+        )
+        scope = ContextVaultScopeSettings(
+            id=uuid4(), name="Draft Project", enabled=False,
+            selected_entity_ids=(entity.id,), include_sensitive=False,
+        )
+
+        service = self._selection_service(self.knowledge, enabled=False, scopes=())
+        preview = service.preview_candidate(scope)
+
+        by_id = {record.record_id: record for record in preview.records}
+        self.assertTrue(preview.hypothetical_enabled)
+        self.assertFalse(preview.vault_enabled)
+        self.assertFalse(preview.scope_enabled)
+        self.assertTrue(by_id[str(ordinary.id)].eligible)
+        self.assertEqual(by_id[str(ordinary.id)].exclusion_reasons, ())
+        self.assertEqual(by_id[str(sensitive.id)].exclusion_reasons, ("sensitive",))
+        self.assertEqual(preview.scope_name, "Draft Project")
+        self.assertFalse(service.status().enabled)
+        self.assertEqual(service.status().scopes, ())
+
     def test_production_revision_advances_at_committed_export_input_changes(self) -> None:
         initial_revision = self.store.context_vault_revision()
         sandbox = self._record(

@@ -19,6 +19,7 @@ from core.agent.types import (
 from core.activity.models import ActivityReportContent
 from core.connectors.models import ConnectorFreshness, ConnectorHealthEntry, ConnectorStatus
 from core.voice_cues import BRIEFING_CUES, VoiceCueName
+from core.settings.models import ContextVaultScopeSettings
 
 
 DigestStatus = Literal[
@@ -565,7 +566,14 @@ class ContextSensitivityUpdateRequest(BaseModel):
 class ContextVaultPreviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    scope_id: UUID
+    scope_id: UUID | None = None
+    candidate_scope: ContextVaultScopeSettings | None = None
+
+    @model_validator(mode="after")
+    def validate_scope_choice(self) -> "ContextVaultPreviewRequest":
+        if (self.scope_id is None) == (self.candidate_scope is None):
+            raise ValueError("provide exactly one of scope_id or candidate_scope")
+        return self
 
 
 class ContextVaultScopeStatusResponse(BaseModel):
@@ -625,6 +633,7 @@ class ContextVaultPreviewResponse(BaseModel):
     scope_name: str
     vault_enabled: bool
     scope_enabled: bool
+    hypothetical_enabled: bool = False
     destination_configured: bool
     export_restricted: bool = False
     restriction_code: str | None = None

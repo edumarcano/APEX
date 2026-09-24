@@ -100,6 +100,21 @@ export interface ContextVaultScopeStatus {
 export interface ContextVaultStatus {
   enabled: boolean
   destination_configured: boolean
+  export_restricted: boolean
+  restriction_code: string | null
+  dirty: boolean
+  refreshing: boolean
+  knowledge_revision: number | null
+  exported_revision: number | null
+  last_attempt_at: string | null
+  attempt_count: number
+  last_success_at: string | null
+  owned_file_count: number
+  changed_file_count: number
+  removed_file_count: number
+  last_error_code: string | null
+  destination_path: string | null
+  retained_destinations: string[]
   scopes: ContextVaultScopeStatus[]
 }
 
@@ -129,7 +144,10 @@ export interface ContextVaultPreview {
   scope_name: string
   vault_enabled: boolean
   scope_enabled: boolean
+  hypothetical_enabled: boolean
   destination_configured: boolean
+  export_restricted: boolean
+  restriction_code: string | null
   candidate_count: number
   eligible_count: number
   records: ContextVaultPreviewRecord[]
