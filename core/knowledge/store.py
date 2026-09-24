@@ -576,9 +576,11 @@ class KnowledgeStore:
                 "CHECK(sensitive IN (0, 1))"
             )
 
-        # Older accepted sensitive reviews kept the policy only in reason_codes.
-        # Their acceptance history provides the exact records affected, including
-        # replacements and conflict peers, without guessing from provenance.
+        KnowledgeStore._backfill_accepted_sensitive_reviews(conn)
+
+    @staticmethod
+    def _backfill_accepted_sensitive_reviews(conn: sqlite3.Connection) -> None:
+        """Mark only records linked to explicitly sensitive accepted reviews."""
         sensitive_review_ids = []
         for review_id, reason_codes_json in conn.execute(
             "SELECT id,reason_codes_json FROM knowledge_reviews WHERE decision='accepted'"
@@ -600,7 +602,12 @@ class KnowledgeStore:
 
     @staticmethod
     def _migrate_to_v12(conn: sqlite3.Connection) -> None:
-        """Restore explicit sensitivity on pending reviews created before v11."""
+        """Restore legacy pending-review policy and repair v11 acceptances."""
+        # A pending beta.4 review could be accepted by beta.5 before this
+        # migration ran. Its acceptance history identifies the exact records
+        # to repair, just as it does during the initial sensitive-column migration.
+        KnowledgeStore._backfill_accepted_sensitive_reviews(conn)
+
         rows = conn.execute(
             "SELECT id,operation,proposal_json,evidence_json,reason_codes_json "
             "FROM knowledge_reviews WHERE decision='pending'"

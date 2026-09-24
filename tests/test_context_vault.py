@@ -517,6 +517,65 @@ class ContextVaultSelectionTests(unittest.TestCase):
         self.assertEqual(preview.eligible_count, 0)
         self.assertEqual(preview.records[0].exclusion_reasons, ("sensitive",))
 
+    def test_v12_repairs_sensitive_review_accepted_while_schema_was_v11(self) -> None:
+        ordinary, ordinary_review = self.store.submit_operator(
+            partition="production", values={"kind": "note", "text": "Existing ordinary claim."},
+            sensitive=False, idempotency_key="v11-existing-ordinary",
+        )
+        self.assertIsNone(ordinary_review)
+        assert ordinary is not None
+        _, review = self.store.submit_operator(
+            partition="production", values={"kind": "note", "text": "Legacy accepted private claim."},
+            sensitive=True, idempotency_key="v11-accepted-sensitive",
+        )
+        assert review is not None
+
+        # Reproduce beta.5's persisted state: the review's sensitivity marker
+        # is missing, acceptance creates an ordinary record, and the DB is v11.
+        conn = sqlite3.connect(self.path)
+        try:
+            row = conn.execute(
+                "SELECT proposal_json,evidence_json FROM knowledge_reviews WHERE id=?",
+                (str(review.id),),
+            ).fetchone()
+            proposal, evidence = json.loads(row[0]), json.loads(row[1])
+            proposal.pop("sensitive", None)
+            evidence.pop("sensitive", None)
+            with conn:
+                conn.execute(
+                    "UPDATE knowledge_reviews SET proposal_json=?,evidence_json=? WHERE id=?",
+                    (json.dumps(proposal), json.dumps(evidence), str(review.id)),
+                )
+                conn.execute("UPDATE schema_versions SET version=11 WHERE domain='knowledge'")
+        finally:
+            conn.close()
+
+        self.store.accept_review(review.id, partition="production")
+        accepted = next(
+            item for item in self.store.list_records(partition="production", statuses=("active",))
+            if item.text == "Legacy accepted private claim."
+        )
+        self.assertFalse(accepted.sensitive)
+
+        self.store.close()
+        migrated = KnowledgeStore(self.path)
+        migrated.initialize()
+        self.store = migrated
+        self.knowledge = KnowledgeService(migrated)
+        repaired = migrated.get_record(accepted.id, partition="production").record
+        self.assertTrue(repaired.sensitive)
+        self.assertFalse(migrated.get_record(ordinary.id, partition="production").record.sensitive)
+
+        scope = ContextVaultScopeSettings(
+            id=uuid4(), name="Legacy accepted private", enabled=True,
+            record_ids=(repaired.id,),
+        )
+        preview = self._selection_service(
+            self.knowledge, enabled=True, scopes=(scope,),
+        ).preview(scope.id)
+        self.assertEqual(preview.eligible_count, 0)
+        self.assertEqual(preview.records[0].exclusion_reasons, ("sensitive",))
+
     def test_preview_uses_one_snapshot_during_review_acceptance(self) -> None:
         record = self._record(entity_id=self.store.create_entity("Project Race").id, index=401)
         proposal = {"record_id": str(record.id), "expected_updated_at": record.updated_at}
