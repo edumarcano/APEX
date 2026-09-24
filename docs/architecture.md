@@ -72,6 +72,26 @@ information with current evidence; proposed text remains non-current until the
 operator accepts it. A stale decision must be refreshed and deliberately
 decided again.
 
+## Context vault publication
+
+APEX keeps canonical knowledge in the knowledge store and treats the configured
+vault as a generated local copy. One worker owned by the FastAPI lifespan
+coalesces committed production changes, snapshots all enabled scopes, renders
+Markdown, and publishes files off the event loop. Manual refresh and managed
+copy removal use the same serialization boundary. SQLite advances the
+production knowledge revision in each source transaction; a before-and-after
+revision check catches changes across the per-scope snapshots and publication.
+If the revision or saved selection changes mid-refresh, the worker leaves the
+state dirty and reconciles again.
+
+The publisher and runtime keep ownership hashes, interrupted work, revisions,
+counts, timestamps, and sanitized errors in the local application database.
+Startup reconciles enabled scopes and recovers pending publication. Failures
+retain dirty state, receive a bounded retry window, and wait for a new change or
+manual refresh afterward. Disablement retains generated files; explicit removal
+deletes only tracked files and never prunes the destination tree. Export status
+reports local completion, not sync or indexing by another application.
+
 ## Market telemetry
 
 Market is a telemetry connector for Home rather than a briefing fact source. Telemetry refreshes it in the normal sequential connector lifecycle and records its health in the shared snapshot. The Market client owns Alpha Vantage access, a versioned file-backed cache, and per-symbol daily request gates; the Market route only reads that cache. A symbol can make at most one request per UTC calendar day. Repeated failures back off for 1, 2, 4, then up to 8 days, while provider-wide transport, authentication, or rate failures defer remaining requests until the next UTC day. Daily OHLCV history stays in the Market display projection, while the telemetry snapshot carries only bounded symbol summaries and a collection revision. This keeps chart data out of briefing payloads and lets Home update the card only after collection.

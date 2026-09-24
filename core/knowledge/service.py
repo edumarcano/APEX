@@ -43,6 +43,9 @@ class KnowledgeService:
             excluded_record_ids=excluded_record_ids,
         )
 
+    def context_vault_revision(self, *, partition: str = "production") -> int:
+        return self.store.context_vault_revision(partition=partition)
+
     def set_sensitive(self, record_id, *, partition: str, sensitive: bool, expected_updated_at: str):
         return self.store.set_sensitive(
             record_id, partition=partition, sensitive=sensitive, expected_updated_at=expected_updated_at,

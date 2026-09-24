@@ -101,6 +101,71 @@ class ContextVaultSelectionTests(unittest.TestCase):
         again = self._selection_service(self.knowledge, enabled=True, scopes=(scope,)).preview(scope.id)
         self.assertNotIn(str(sandbox_record.id), {record.record_id for record in again.records})
 
+    def test_production_revision_advances_at_committed_export_input_changes(self) -> None:
+        initial_revision = self.store.context_vault_revision()
+        sandbox = self._record(
+            entity_id=self.store.create_entity("Sandbox only").id,
+            index=900,
+            partition="sandbox",
+        )
+        self.assertGreater(sandbox.id.int, 0)
+        self.assertEqual(self.store.context_vault_revision(), initial_revision)
+
+        events: list[tuple[int, int]] = []
+        self.store.set_context_vault_change_callback(
+            lambda revision: events.append((revision, self.store.context_vault_revision()))
+        )
+        record = self._record(
+            entity_id=self.store.create_entity("Production revision").id,
+            index=901,
+        )
+        created_revision = self.store.context_vault_revision()
+        self.assertGreater(created_revision, initial_revision)
+        self.assertTrue(events)
+        self.assertTrue(all(observed == current for observed, current in events))
+
+        proposal = {"record_id": str(record.id), "expected_updated_at": record.updated_at}
+        review = self.store.create_review(
+            partition="production",
+            operation="retract",
+            proposal=proposal,
+            evidence={},
+            expected_revisions=self.store.review_snapshot(
+                partition="production", operation="retract", proposal=proposal,
+            ),
+            reason_codes=("operator_review",),
+        )
+        challenge_revision = self.store.context_vault_revision()
+        self.assertGreater(challenge_revision, created_revision)
+        self.store.reject_review(review.id, partition="production")
+        self.assertGreater(self.store.context_vault_revision(), challenge_revision)
+
+        current = self.store.get_record(record.id, partition="production").record
+        before_sensitivity = self.store.context_vault_revision()
+        self.store.set_sensitive(
+            record.id, partition="production", sensitive=True,
+            expected_updated_at=current.updated_at,
+        )
+        self.assertGreater(self.store.context_vault_revision(), before_sensitivity)
+
+    def test_rolled_back_export_input_change_does_not_notify_runtime(self) -> None:
+        record = self._record(entity_id=self.store.create_entity("Rollback").id, index=902)
+        before_revision = self.store.context_vault_revision()
+        events: list[int] = []
+        self.store.set_context_vault_change_callback(events.append)
+
+        with self.assertRaisesRegex(RuntimeError, "rollback test"):
+            with self.store._connection() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                conn.execute(
+                    "UPDATE knowledge_records SET sensitive=1 WHERE id=? AND partition='production'",
+                    (str(record.id),),
+                )
+                raise RuntimeError("rollback test")
+
+        self.assertEqual(self.store.context_vault_revision(), before_revision)
+        self.assertEqual(events, [])
+
     def test_entity_selection_matches_object_entity(self) -> None:
         subject = self.store.create_entity("Project Orion")
         selected_object = self.store.create_entity("Budget Review")

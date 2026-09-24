@@ -37,6 +37,7 @@ from core.config import (
     DEMO_MODE,
     ENV_PATH,
     MAX_RECENT_CONVERSATION_MESSAGES,
+    APEX_CONTEXT_VAULT_PATH,
 )
 from core.agent.local_runtime.coordinator import check_idle_local_models_loop
 from core.agent.local_runtime.registry import any_local_runtime_enabled
@@ -45,6 +46,7 @@ from core import database, speaker
 from core.conversations import ConversationService, ConversationStore, set_conversation_service
 from core.runs import CortexRunCoordinator, RunService, RunStore, set_run_coordinator, set_run_service
 from core.knowledge import KnowledgeService, KnowledgeStore, set_knowledge_service
+from core.context_vault.runtime import ContextVaultRuntime, set_context_vault_runtime
 from core.knowledge.capture import ContextCaptureExecutor, ContextCaptureVerifier, CAPABILITY_NAME
 from core.knowledge.reconciliation import (
     CAPABILITY_NAME as RECONCILIATION_CAPABILITY_NAME,
@@ -114,6 +116,7 @@ async def _app_lifespan(_app: FastAPI):
     activity_mailbox: ActivityMailbox | None = None
     activity_mailbox_stop: asyncio.Event | None = None
     activity_mailbox_task: asyncio.Task[None] | None = None
+    context_vault_runtime: ContextVaultRuntime | None = None
     llama_supervisor = get_llama_cpp_server_supervisor()
     lifecycle_error: BaseException | None = None
 
@@ -254,6 +257,19 @@ async def _app_lifespan(_app: FastAPI):
             reminder_service.reconcile()
             set_reminder_service(reminder_service)
         get_settings_store()
+        if not DEMO_MODE:
+            context_vault_runtime = ContextVaultRuntime(
+                knowledge=KnowledgeService(knowledge_store),
+                settings_getter=lambda: get_settings_store().get_snapshot().context_vault,
+                database_path=database.DB_NAME,
+                destination=APEX_CONTEXT_VAULT_PATH,
+                production_allowed=lambda: conversation_service.partition() == "production",
+            )
+            knowledge_store.set_context_vault_change_callback(
+                context_vault_runtime.notify_knowledge_change
+            )
+            set_context_vault_runtime(context_vault_runtime)
+            startup_tasks.append(context_vault_runtime.start())
         speaker.initialize()
 
         async def _managed_llama_startup() -> None:
@@ -329,6 +345,8 @@ async def _app_lifespan(_app: FastAPI):
             idle_model_stop.set()
         if activity_mailbox_stop is not None:
             activity_mailbox_stop.set()
+        if context_vault_runtime is not None:
+            context_vault_runtime.request_stop()
         application_tasks = startup_tasks + (
             [idle_model_task] if idle_model_task is not None else []
         )
@@ -373,6 +391,9 @@ async def _app_lifespan(_app: FastAPI):
         set_run_coordinator(None)
         set_retrieval_service(None)
         set_knowledge_service(None)
+        if knowledge_store is not None:
+            knowledge_store.set_context_vault_change_callback(None)
+        set_context_vault_runtime(None)
         set_activity_service(None)
         set_activity_mailbox(None)
         if conversation_store is not None:

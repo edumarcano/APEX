@@ -26,6 +26,12 @@ uv run apex context review list --decision pending --decision stale --limit 20
 uv run apex context review show <review-id>
 uv run apex context review accept <review-id>
 uv run apex context review reject <review-id>
+uv run apex context vault status --json
+uv run apex context vault preview <scope-id>
+uv run apex context vault configure --enabled --scopes-file .\vault-scopes.json
+uv run apex context vault configure --disabled
+uv run apex context vault refresh
+uv run apex context vault remove
 uv run apex activity submit --client codex --submission-key report-001 --title "Review branch" --task-status completed --outcome "Ready for review" --finding "Tests passed"
 uv run apex activity import .\report.json --client codex
 uv run apex activity import .\report.md --client codex --submission-key report-002 --title "Investigation" --task-status completed --outcome "No reproduction"
@@ -77,6 +83,19 @@ expected revisions. A stale `409` is reported as an error; repeating the same
 CLI decision does not refresh the review. Refresh it in Cortex Review or through
 the API, then decide the newly returned review. Rejecting a review successfully
 exits with code `0`.
+
+`context vault status` reports local export revisions, dirty and refresh state,
+file counts, sanitized errors, and any old destinations that still contain
+copies. `preview` shows one scope's candidates and exclusions. `configure`
+updates global enablement and can replace all scope settings from a JSON array
+in `--scopes-file`; omitting the file preserves the current scopes. `refresh`
+waits for one serialized local publication and exits nonzero if the returned
+status is dirty or has a sanitized error. Disable exports before `remove`;
+while enabled, removal returns `409 Conflict`. The command then deletes only
+files tracked as APEX-owned and leaves handwritten files and `.obsidian/` in
+place. Removal also exits nonzero if the returned status has a sanitized error.
+Disabling exports retains generated files. Commands accept `--json` for
+machine-readable output, including failure status.
 
 `briefing` uses the normal full refresh-and-generate route. Omitting `--mode` uses the saved Flash default; supported overrides are `flash`, `focused`, and `structured`. These are breaking identifiers: the former Agent-named values are rejected.
 

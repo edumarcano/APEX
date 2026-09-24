@@ -186,6 +186,90 @@ class CliTests(unittest.TestCase):
         self.assertEqual(session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/retrieval/prepare")
         self.assertEqual(session.calls[0]["timeout"], (3.0, 600.0))
 
+    def test_context_vault_commands_use_typed_routes_and_json_payloads(self) -> None:
+        status_payload = {
+            "enabled": True, "destination_configured": True, "dirty": False,
+            "exported_revision": 8, "knowledge_revision": 8, "owned_file_count": 3,
+        }
+        status_code, status_output, _, status_session = self._run(
+            ["context", "vault", "status", "--json"], [_Response(200, status_payload)],
+        )
+        self.assertEqual(status_code, 0)
+        self.assertEqual(json.loads(status_output), status_payload)
+        self.assertEqual(status_session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/vault")
+
+        scope_id = "5aaca3c0-2aec-4fa2-b838-8f03a68a7f4e"
+        preview_payload = {"scope_id": scope_id, "eligible_count": 1, "records": []}
+        preview_code, preview_output, _, preview_session = self._run(
+            ["context", "vault", "preview", scope_id, "--json"],
+            [_Response(200, preview_payload)],
+        )
+        self.assertEqual(preview_code, 0)
+        self.assertEqual(json.loads(preview_output), preview_payload)
+        self.assertEqual(preview_session.calls[0]["method"], "POST")
+        self.assertEqual(preview_session.calls[0]["json"], {"scope_id": scope_id})
+
+        saved_settings = {"settings": {"context_vault": {"enabled": True, "scopes": []}}}
+        configure_code, configure_output, _, configure_session = self._run(
+            ["context", "vault", "configure", "--enabled", "--json"],
+            [_Response(200, saved_settings)],
+        )
+        self.assertEqual(configure_code, 0)
+        self.assertEqual(json.loads(configure_output), saved_settings["settings"]["context_vault"])
+        self.assertEqual(configure_session.calls[0]["method"], "PATCH")
+        self.assertEqual(
+            configure_session.calls[0]["json"],
+            {"context_vault": {"enabled": True}},
+        )
+
+        refresh_code, _, _, refresh_session = self._run(
+            ["context", "vault", "refresh", "--json"], [_Response(200, status_payload)],
+        )
+        self.assertEqual(refresh_code, 0)
+        self.assertEqual(refresh_session.calls[0]["method"], "POST")
+        self.assertEqual(
+            refresh_session.calls[0]["timeout"],
+            (cli._CONNECT_TIMEOUT_SECONDS, cli._LONG_READ_TIMEOUT_SECONDS),
+        )
+
+        remove_code, _, _, remove_session = self._run(
+            ["context", "vault", "remove", "--json"], [_Response(200, status_payload)],
+        )
+        self.assertEqual(remove_code, 0)
+        self.assertEqual(remove_session.calls[0]["method"], "DELETE")
+        self.assertEqual(
+            remove_session.calls[0]["timeout"],
+            (cli._CONNECT_TIMEOUT_SECONDS, cli._LONG_READ_TIMEOUT_SECONDS),
+        )
+
+    def test_context_vault_refresh_and_remove_emit_failure_status_with_nonzero_exit(self) -> None:
+        cases = (
+            (
+                "refresh",
+                {"enabled": True, "dirty": True, "last_error_code": "destination_unavailable"},
+            ),
+            (
+                "remove",
+                {"enabled": False, "dirty": False, "last_error_code": "unowned_collision"},
+            ),
+            (
+                "refresh",
+                {"enabled": True, "dirty": True, "last_error_code": None},
+            ),
+        )
+        for command, payload in cases:
+            with self.subTest(command=command, payload=payload):
+                code, output, _, session = self._run(
+                    ["context", "vault", command, "--json"], [_Response(200, payload)],
+                )
+
+                self.assertEqual(code, 1)
+                self.assertEqual(json.loads(output), payload)
+                self.assertEqual(
+                    session.calls[0]["method"],
+                    "POST" if command == "refresh" else "DELETE",
+                )
+
     def test_context_list_encodes_repeated_filters_and_query(self) -> None:
         code, output, _, session = self._run(
             [

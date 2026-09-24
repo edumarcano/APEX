@@ -79,8 +79,14 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | GET | `/api/v1/cortex/context/{record_id}` | Inspect one record, its sources, history, and related records |
 | PATCH | `/api/v1/cortex/context/{record_id}/sensitivity` | Revision-check a record's sensitivity classification |
 | GET | `/api/v1/cortex/context/entities` | Search unmerged local entities and exact aliases |
-| GET | `/api/v1/cortex/context-vault` | Read saved Context vault selection status |
-| POST | `/api/v1/cortex/context-vault/preview` | Preview every selected production record and its exclusions |
+| GET | `/api/v1/cortex/vault` | Read selection and local export status |
+| POST | `/api/v1/cortex/vault/preview` | Preview every selected production record and its exclusions |
+| POST | `/api/v1/cortex/vault/refresh` | Serialize a manual local export refresh |
+| DELETE | `/api/v1/cortex/vault/copies` | Remove managed files after export is disabled (409 while enabled) |
+| GET | `/api/v1/cortex/context-vault` | Compatibility alias for vault status |
+| POST | `/api/v1/cortex/context-vault/preview` | Compatibility alias for vault preview |
+| POST | `/api/v1/cortex/context-vault/refresh` | Compatibility alias for vault refresh |
+| DELETE | `/api/v1/cortex/context-vault/copies` | Compatibility alias for managed-copy removal |
 | POST | `/api/v1/cortex/context/actions` | Propose an approval-gated context reconciliation operation |
 | GET | `/api/v1/cortex/retrieval/status` | Show local retrieval readiness and indexing state |
 | POST | `/api/v1/cortex/retrieval/prepare` | Explicitly prepare the local embedding model and backfill vectors |
@@ -699,7 +705,9 @@ Demo mode leaves context inspection available but rejects saves, action proposal
 
 Context record responses include the persisted `sensitive` flag. `PATCH /api/v1/cortex/context/{record_id}/sensitivity` accepts `sensitive` and the observed `expected_updated_at`; a stale revision returns `409`. Each change is recorded in append-only knowledge history. Sensitivity is carried forward by corrections and conflict resolution when any affected predecessor is sensitive; clearing it requires this explicit revision-checked operation.
 
-`GET /api/v1/cortex/context-vault` reports the saved global and per-scope enablement, selection counts, and whether `APEX_CONTEXT_VAULT_PATH` is configured. `POST /api/v1/cortex/context-vault/preview` accepts `{ "scope_id": "<stable-scope-id>" }` and returns every matching production record, eligibility, exclusion reasons, selection issues, and projected stable paths. It does not use the ordinary 100-record context-list cap, read source snapshots or review proposals, include sandbox records, or write files. Conflicting, superseded, retracted, pending-review, operator-excluded, and non-opted-in sensitive records are ineligible. Merged selected entities require explicit reselection. The preview remains a read-only selection contract. A callable local renderer and publisher now exist, but no API, CLI, startup task, or automatic refresh invokes them yet.
+`GET /api/v1/cortex/vault` reports saved global and per-scope settings plus local export state: current and exported knowledge revisions, dirty and in-progress state, attempt and file counts, timestamps, sanitized errors, destination, and any old roots whose copies were retained. `/api/v1/cortex/context-vault` remains an alias for compatibility. `POST /api/v1/cortex/vault/preview` accepts `{ "scope_id": "<stable-scope-id>" }` and returns every matching production record, eligibility, exclusion reasons, selection issues, and projected stable paths. It does not use the ordinary 100-record context-list cap, read source snapshots or review proposals, include sandbox records, or write files. Conflicting, superseded, retracted, pending-review, operator-excluded, and non-opted-in sensitive records are ineligible. Merged selected entities require explicit reselection. The old preview route remains an alias.
+
+When exports are enabled, one lifespan-owned worker reconciles at startup and after committed production knowledge or selection changes. The status describes local file publication only; it does not claim that a sync service copied files or that another application indexed them. `POST /api/v1/cortex/vault/refresh` requests a serialized publication and returns the resulting status, including any sanitized error. Disable exports before calling `DELETE /api/v1/cortex/vault/copies`; it returns `409` while exports are enabled. Removal deletes only files recorded as APEX-owned; it does not recursively delete the destination or remove handwritten files or `.obsidian/`. Disabling the vault stops updates and retains existing files; enabled scope deselection removes obsolete managed copies during refresh. Changing the configured root leaves the old root in place and reports it, including when export is disabled. Demo and sandbox requests receive an explicit restriction status, and refresh or removal returns `403` in those modes.
 
 When personal context is enabled for an Apex Agent turn, prompt assembly reloads
 the selected records from canonical storage. It excludes rejected proposals and

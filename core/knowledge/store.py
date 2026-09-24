@@ -10,7 +10,7 @@ import threading
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterator, Mapping, Sequence
+from typing import Any, Callable, Iterator, Mapping, Sequence
 from uuid import UUID, uuid4
 
 from core.connectors.models import utc_now_iso
@@ -107,22 +107,72 @@ class KnowledgeStore:
         self._memory_connection = connection or (
             sqlite3.connect(":memory:", check_same_thread=False) if db_path is None else None
         )
+        self._context_vault_change_callback: Callable[[int], None] | None = None
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
         with self._lock:
             if self._memory_connection is not None:
                 self._memory_connection.execute("PRAGMA foreign_keys=ON")
-                yield self._memory_connection
+                before_revision = self._current_context_vault_revision(self._memory_connection)
+                try:
+                    yield self._memory_connection
+                finally:
+                    if not self._memory_connection.in_transaction:
+                        self._notify_context_vault_change(self._memory_connection, before_revision)
                 return
             assert self._db_path is not None
             conn = sqlite3.connect(self._db_path, timeout=30.0)
+            before_revision: int | None = None
             try:
                 conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA foreign_keys=ON")
+                before_revision = self._current_context_vault_revision(conn)
                 yield conn
             finally:
+                if not conn.in_transaction:
+                    self._notify_context_vault_change(conn, before_revision)
                 conn.close()
+
+    @staticmethod
+    def _current_context_vault_revision(conn: sqlite3.Connection) -> int | None:
+        try:
+            row = conn.execute(
+                "SELECT revision FROM knowledge_partition_revisions WHERE partition='production'"
+            ).fetchone()
+        except sqlite3.Error:
+            return None
+        return int(row[0]) if row is not None else None
+
+    def _notify_context_vault_change(
+        self, conn: sqlite3.Connection, before_revision: int | None,
+    ) -> None:
+        callback = self._context_vault_change_callback
+        if callback is None or before_revision is None:
+            return
+        after_revision = self._current_context_vault_revision(conn)
+        if after_revision is not None and after_revision != before_revision:
+            try:
+                callback(after_revision)
+            except Exception:
+                # A wakeup is best effort; the durable revision remains authoritative.
+                pass
+
+    def set_context_vault_change_callback(
+        self, callback: Callable[[int], None] | None,
+    ) -> None:
+        """Notify the application after production knowledge commits change."""
+        self._context_vault_change_callback = callback
+
+    def context_vault_revision(self, *, partition: str = "production") -> int:
+        if partition not in _PARTITIONS:
+            raise KnowledgeStoreError("record_filter_invalid")
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT revision FROM knowledge_partition_revisions WHERE partition=?",
+                (partition,),
+            ).fetchone()
+        return int(row[0]) if row is not None else 0
 
     @contextmanager
     def _write_connection(self, connection: sqlite3.Connection | None = None) -> Iterator[sqlite3.Connection]:
@@ -166,6 +216,7 @@ class KnowledgeStore:
                     self._migrate_to_v10(conn)
                 if version < 11:
                     self._migrate_to_v11(conn)
+                self._create_context_vault_revision_triggers(conn)
                 if version <= _KNOWLEDGE_SCHEMA_VERSION:
                     conn.execute(
                         "INSERT INTO schema_versions(domain, version) VALUES ('knowledge', ?) "
@@ -301,6 +352,73 @@ class KnowledgeStore:
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_reviews_idempotency "
                 "ON knowledge_reviews(partition,idempotency_key) WHERE idempotency_key IS NOT NULL"
             )
+
+    @staticmethod
+    def _create_context_vault_revision_triggers(conn: sqlite3.Connection) -> None:
+        """Advance the production export revision with its source transaction."""
+        statements = (
+            "CREATE TRIGGER IF NOT EXISTS context_vault_revision_records_insert "
+            "AFTER INSERT ON knowledge_records WHEN NEW.partition='production' BEGIN "
+            "UPDATE knowledge_partition_revisions SET revision=revision+1 WHERE partition='production'; END",
+            "CREATE TRIGGER IF NOT EXISTS context_vault_revision_records_update "
+            "AFTER UPDATE ON knowledge_records WHEN OLD.partition='production' OR NEW.partition='production' BEGIN "
+            "UPDATE knowledge_partition_revisions SET revision=revision+1 WHERE partition='production'; END",
+            "CREATE TRIGGER IF NOT EXISTS context_vault_revision_records_delete "
+            "AFTER DELETE ON knowledge_records WHEN OLD.partition='production' BEGIN "
+            "UPDATE knowledge_partition_revisions SET revision=revision+1 WHERE partition='production'; END",
+            "CREATE TRIGGER IF NOT EXISTS context_vault_revision_sources_insert "
+            "AFTER INSERT ON knowledge_sources WHEN NEW.partition='production' BEGIN "
+            "UPDATE knowledge_partition_revisions SET revision=revision+1 WHERE partition='production'; END",
+            "CREATE TRIGGER IF NOT EXISTS context_vault_revision_sources_update "
+            "AFTER UPDATE ON knowledge_sources WHEN OLD.partition='production' OR NEW.partition='production' BEGIN "
+            "UPDATE knowledge_partition_revisions SET revision=revision+1 WHERE partition='production'; END",
+            "CREATE TRIGGER IF NOT EXISTS context_vault_revision_sources_delete "
+            "AFTER DELETE ON knowledge_sources WHEN OLD.partition='production' BEGIN "
+            "UPDATE knowledge_partition_revisions SET revision=revision+1 WHERE partition='production'; END",
+            "CREATE TRIGGER IF NOT EXISTS context_vault_revision_source_links_insert "
+            "AFTER INSERT ON knowledge_record_sources WHEN EXISTS (SELECT 1 FROM knowledge_records WHERE id=NEW.record_id AND partition='production') BEGIN "
+            "UPDATE knowledge_partition_revisions SET revision=revision+1 WHERE partition='production'; END",
+            "CREATE TRIGGER IF NOT EXISTS context_vault_revision_source_links_update "
+            "AFTER UPDATE ON knowledge_record_sources WHEN EXISTS (SELECT 1 FROM knowledge_records WHERE id=OLD.record_id AND partition='production') "
+            "OR EXISTS (SELECT 1 FROM knowledge_records WHERE id=NEW.record_id AND partition='production') BEGIN "
+            "UPDATE knowledge_partition_revisions SET revision=revision+1 WHERE partition='production'; END",
+            "CREATE TRIGGER IF NOT EXISTS context_vault_revision_source_links_delete "
+            "AFTER DELETE ON knowledge_record_sources WHEN EXISTS (SELECT 1 FROM knowledge_records WHERE id=OLD.record_id AND partition='production') BEGIN "
+            "UPDATE knowledge_partition_revisions SET revision=revision+1 WHERE partition='production'; END",
+            "CREATE TRIGGER IF NOT EXISTS context_vault_revision_predecessors_insert "
+            "AFTER INSERT ON knowledge_record_predecessors WHEN EXISTS (SELECT 1 FROM knowledge_records WHERE id=NEW.record_id AND partition='production') "
+            "OR EXISTS (SELECT 1 FROM knowledge_records WHERE id=NEW.predecessor_record_id AND partition='production') BEGIN "
+            "UPDATE knowledge_partition_revisions SET revision=revision+1 WHERE partition='production'; END",
+            "CREATE TRIGGER IF NOT EXISTS context_vault_revision_predecessors_update "
+            "AFTER UPDATE ON knowledge_record_predecessors WHEN EXISTS (SELECT 1 FROM knowledge_records WHERE id=OLD.record_id AND partition='production') "
+            "OR EXISTS (SELECT 1 FROM knowledge_records WHERE id=OLD.predecessor_record_id AND partition='production') "
+            "OR EXISTS (SELECT 1 FROM knowledge_records WHERE id=NEW.record_id AND partition='production') "
+            "OR EXISTS (SELECT 1 FROM knowledge_records WHERE id=NEW.predecessor_record_id AND partition='production') BEGIN "
+            "UPDATE knowledge_partition_revisions SET revision=revision+1 WHERE partition='production'; END",
+            "CREATE TRIGGER IF NOT EXISTS context_vault_revision_predecessors_delete "
+            "AFTER DELETE ON knowledge_record_predecessors WHEN EXISTS (SELECT 1 FROM knowledge_records WHERE id=OLD.record_id AND partition='production') "
+            "OR EXISTS (SELECT 1 FROM knowledge_records WHERE id=OLD.predecessor_record_id AND partition='production') BEGIN "
+            "UPDATE knowledge_partition_revisions SET revision=revision+1 WHERE partition='production'; END",
+            "CREATE TRIGGER IF NOT EXISTS context_vault_revision_reviews_insert "
+            "AFTER INSERT ON knowledge_reviews WHEN NEW.partition='production' BEGIN "
+            "UPDATE knowledge_partition_revisions SET revision=revision+1 WHERE partition='production'; END",
+            "CREATE TRIGGER IF NOT EXISTS context_vault_revision_reviews_update "
+            "AFTER UPDATE ON knowledge_reviews WHEN OLD.partition='production' OR NEW.partition='production' BEGIN "
+            "UPDATE knowledge_partition_revisions SET revision=revision+1 WHERE partition='production'; END",
+            "CREATE TRIGGER IF NOT EXISTS context_vault_revision_reviews_delete "
+            "AFTER DELETE ON knowledge_reviews WHEN OLD.partition='production' BEGIN "
+            "UPDATE knowledge_partition_revisions SET revision=revision+1 WHERE partition='production'; END",
+            "CREATE TRIGGER IF NOT EXISTS context_vault_revision_entities_update "
+            "AFTER UPDATE ON entities WHEN EXISTS (SELECT 1 FROM knowledge_records WHERE partition='production' AND "
+            "(subject_entity_id=OLD.id OR object_entity_id=OLD.id OR subject_entity_id=NEW.id OR object_entity_id=NEW.id)) BEGIN "
+            "UPDATE knowledge_partition_revisions SET revision=revision+1 WHERE partition='production'; END",
+            "CREATE TRIGGER IF NOT EXISTS context_vault_revision_entities_delete "
+            "AFTER DELETE ON entities WHEN EXISTS (SELECT 1 FROM knowledge_records WHERE partition='production' "
+            "AND (subject_entity_id=OLD.id OR object_entity_id=OLD.id)) BEGIN "
+            "UPDATE knowledge_partition_revisions SET revision=revision+1 WHERE partition='production'; END",
+        )
+        for statement in statements:
+            conn.execute(statement)
 
     @staticmethod
     def _has_review_schema(conn: sqlite3.Connection) -> bool:

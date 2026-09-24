@@ -581,6 +581,21 @@ class ContextVaultScopeStatusResponse(BaseModel):
 class ContextVaultStatusResponse(BaseModel):
     enabled: bool
     destination_configured: bool
+    export_restricted: bool = False
+    restriction_code: str | None = None
+    dirty: bool = False
+    refreshing: bool = False
+    knowledge_revision: int | None = None
+    exported_revision: int | None = None
+    last_attempt_at: str | None = None
+    attempt_count: int = 0
+    last_success_at: str | None = None
+    owned_file_count: int = 0
+    changed_file_count: int = 0
+    removed_file_count: int = 0
+    last_error_code: str | None = None
+    destination_path: str | None = None
+    retained_destinations: list[str] = Field(default_factory=list)
     scopes: list[ContextVaultScopeStatusResponse] = Field(default_factory=list)
 
 
@@ -611,6 +626,8 @@ class ContextVaultPreviewResponse(BaseModel):
     vault_enabled: bool
     scope_enabled: bool
     destination_configured: bool
+    export_restricted: bool = False
+    restriction_code: str | None = None
     candidate_count: int
     eligible_count: int
     records: list[ContextVaultPreviewRecordResponse] = Field(default_factory=list)
