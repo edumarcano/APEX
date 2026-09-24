@@ -8,8 +8,8 @@
 
 ## Current Focus
 
-**Current Phase:** [Phase V: APEX 2.0 Beta](#phase-v-apex-20-beta)  
-**Active Milestone:** [v2.0.0-beta.5 - Context Vault & Sharing](#v200-beta5---context-vault--sharing)  
+**Current Phase:** [Phase V: APEX 2.0 Beta](#phase-v-apex-20-beta)
+**Active Milestone:** [v2.0.0-beta.5 - Context Vault & Sharing](#v200-beta5---context-vault--sharing)
 **Current Direction:** [APEX 2.0 Direction](#apex-20-direction)
 
 ### Navigation
@@ -657,5 +657,5 @@ Models, note applications, sync providers, and outside AI products should remain
 
 APEX is currently in **Phase V: APEX 2.0 Beta**.
 
-**Next milestone:**  
+**Next milestone:**
 [v2.0.0-beta.5 - Context Vault & Sharing](#v200-beta5---context-vault--sharing)
