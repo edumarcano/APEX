@@ -22,6 +22,7 @@ from core.settings import (
     SettingsResponse,
     get_settings_store,
 )
+from core.context_vault.runtime import get_context_vault_runtime
 from core.agent.local_runtime.coordinator import (
     end_local_runtime_transition,
     try_begin_local_runtime_transition,
@@ -152,6 +153,8 @@ async def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
         return _build_settings_response()
 
     transition_held = False
+    vault_transition_held = False
+    vault_runtime = get_context_vault_runtime()
     if payload.llama_cpp is not None:
         acquired = await asyncio.to_thread(try_begin_local_runtime_transition)
         if not acquired:
@@ -165,6 +168,12 @@ async def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
         transition_held = True
 
     try:
+        if vault_runtime is not None and (
+            payload.context_vault is not None
+            or (payload.ask_apex is not None and payload.ask_apex.sandbox_mode is not None)
+        ):
+            await vault_runtime.acquire_settings_transition()
+            vault_transition_held = True
         if payload.llama_cpp is not None:
             try:
                 proposed_snapshot = await asyncio.to_thread(store.preview_patch, payload)
@@ -213,6 +222,18 @@ async def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
                     "Active settings were not changed."
                 ),
             ) from None
+        if (
+            payload.context_vault is not None
+            or (payload.ask_apex is not None and payload.ask_apex.sandbox_mode is not None)
+        ):
+            runtime = get_context_vault_runtime()
+            if runtime is not None:
+                try:
+                    await runtime.notify_selection_change()
+                except Exception:
+                    # The worker also compares the committed settings fingerprint;
+                    # a missed wakeup cannot lose the durable configuration change.
+                    _LOGGER.warning("Context vault settings wakeup failed.")
         if payload.llama_cpp is not None:
             current_llama = store.get_snapshot().llama_cpp
             supervisor = get_llama_cpp_server_supervisor()
@@ -241,6 +262,8 @@ async def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
                 await manager.reconfigure(load_mcp_config())
         return _build_settings_response()
     finally:
+        if vault_transition_held and vault_runtime is not None:
+            vault_runtime.release_settings_transition()
         if transition_held:
             await asyncio.to_thread(end_local_runtime_transition)
 

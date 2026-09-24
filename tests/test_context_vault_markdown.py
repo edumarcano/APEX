@@ -226,6 +226,31 @@ class ContextVaultMarkdownTests(unittest.TestCase):
         self.assertEqual(unknown_scope_note.read_text(encoding="utf-8"), "Keep this too")
         self.assertEqual(result.removed_file_count, len(first_files) - 1)
 
+    def test_remove_managed_copies_leaves_handwritten_files_and_vault_directories(self) -> None:
+        scope_id, record_id = uuid4(), uuid4()
+        publisher = self._publisher()
+        files = self._projection(scope_id, record_id)
+        publisher.publish(files)
+        vault = self.root / "vault"
+        handwritten = vault / "handwritten.md"
+        obsidian_settings = vault / ".obsidian" / "app.json"
+        handwritten.write_text("Keep this note", encoding="utf-8")
+        obsidian_settings.parent.mkdir(parents=True)
+        obsidian_settings.write_text("{}", encoding="utf-8")
+        owned_path = vault / f"scopes/{scope_id}/records/{record_id}.md"
+        owned_path.write_text("Edited generated note", encoding="utf-8")
+
+        result = publisher.remove_managed()
+
+        self.assertEqual(result.removed_file_count, len(files))
+        self.assertFalse((vault / "index.md").exists())
+        self.assertFalse(owned_path.exists())
+        self.assertTrue((vault / f"scopes/{scope_id}/records").is_dir())
+        self.assertEqual(handwritten.read_text(encoding="utf-8"), "Keep this note")
+        self.assertEqual(obsidian_settings.read_text(encoding="utf-8"), "{}")
+        self.assertEqual(publisher.state().owned_files, ())
+        self.assertFalse(publisher.state().pending)
+
     def test_unowned_collisions_and_unsafe_paths_are_rejected(self) -> None:
         scope_id, record_id = uuid4(), uuid4()
         publisher = self._publisher()

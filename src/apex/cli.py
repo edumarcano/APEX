@@ -261,6 +261,40 @@ def build_parser() -> argparse.ArgumentParser:
         review_decision.add_argument("review_id", help="Opaque context review ID.")
         review_decision.set_defaults(handler=handler)
 
+    context_vault = context_commands.add_parser("vault", help="Inspect and manage local Context vault exports.")
+    _add_json_option(context_vault)
+    vault_commands = context_vault.add_subparsers(dest="vault_command", required=True)
+
+    vault_status = vault_commands.add_parser("status", help="Show local vault export status.")
+    _add_json_option(vault_status)
+    vault_status.set_defaults(handler=_context_vault_status)
+
+    vault_preview = vault_commands.add_parser("preview", help="Preview one selected vault scope.")
+    _add_json_option(vault_preview)
+    vault_preview.add_argument("scope_id", help="Stable scope UUID.")
+    vault_preview.set_defaults(handler=_context_vault_preview)
+
+    vault_configure = vault_commands.add_parser("configure", help="Update vault enablement and optional scope settings.")
+    _add_json_option(vault_configure)
+    vault_enablement = vault_configure.add_mutually_exclusive_group(required=True)
+    vault_enablement.add_argument("--enabled", dest="enabled", action="store_true", help="Enable vault exports.")
+    vault_enablement.add_argument("--disabled", dest="enabled", action="store_false", help="Disable exports and retain generated files.")
+    vault_configure.add_argument(
+        "--scopes-file", type=Path,
+        help="JSON file containing the complete scopes array to save.",
+    )
+    vault_configure.set_defaults(handler=_context_vault_configure)
+
+    vault_refresh = vault_commands.add_parser("refresh", help="Refresh enabled vault scopes now.")
+    _add_json_option(vault_refresh)
+    vault_refresh.set_defaults(handler=_context_vault_refresh)
+
+    vault_remove = vault_commands.add_parser(
+        "remove", help="Remove APEX-owned files after disabling export.",
+    )
+    _add_json_option(vault_remove)
+    vault_remove.set_defaults(handler=_context_vault_remove)
+
     briefing = commands.add_parser("briefing", help="Refresh and generate a briefing.")
     _add_json_option(briefing)
     briefing.add_argument(
@@ -470,6 +504,72 @@ def _context_status(_args: argparse.Namespace, client: ApiClient, json_mode: boo
         "retrieval status",
     )
     _emit(payload, json_mode, _render_context_status)
+    return 0
+
+
+def _context_vault_status(_args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    payload = _require_mapping(client.request("GET", "/api/v1/cortex/vault"), "Context vault status")
+    _emit(payload, json_mode, _render_context_vault_status)
+    return 0
+
+
+def _context_vault_preview(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    payload = _require_mapping(
+        client.request(
+            "POST", "/api/v1/cortex/vault/preview", payload={"scope_id": args.scope_id},
+        ),
+        "Context vault preview",
+    )
+    _emit(payload, json_mode, _render_context_vault_preview)
+    return 0
+
+
+def _context_vault_configure(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    context_vault: dict[str, object] = {"enabled": args.enabled}
+    if args.scopes_file is not None:
+        try:
+            scopes = json.loads(args.scopes_file.read_text(encoding="utf-8"))
+        except OSError as exc:
+            raise CliError("invalid_input", "Could not read the Context vault scopes file.") from exc
+        except json.JSONDecodeError as exc:
+            raise CliError("invalid_input", "Context vault scopes file must contain valid JSON.") from exc
+        if not isinstance(scopes, list) or any(not isinstance(scope, dict) for scope in scopes):
+            raise CliError("invalid_input", "Context vault scopes file must contain a JSON array of scope objects.")
+        context_vault["scopes"] = scopes
+    response = _require_mapping(
+        client.request("PATCH", "/api/v1/settings", payload={"context_vault": context_vault}),
+        "updated settings",
+    )
+    settings = response.get("settings")
+    result = settings.get("context_vault") if isinstance(settings, dict) else None
+    if not isinstance(result, dict):
+        raise CliError("invalid_response", "APEX did not return the saved Context vault settings.")
+    _emit(result, json_mode, _render_context_vault_settings)
+    return 0
+
+
+def _context_vault_refresh(_args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    payload = _require_mapping(
+        client.request("POST", "/api/v1/cortex/vault/refresh", long_running=True),
+        "Context vault refresh status",
+    )
+    _emit(payload, json_mode, _render_context_vault_status)
+    return _context_vault_operation_exit_code(payload)
+
+
+def _context_vault_remove(_args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
+    payload = _require_mapping(
+        client.request("DELETE", "/api/v1/cortex/vault/copies", long_running=True),
+        "Context vault removal status",
+    )
+    _emit(payload, json_mode, _render_context_vault_status)
+    return _context_vault_operation_exit_code(payload)
+
+
+def _context_vault_operation_exit_code(payload: dict[str, object]) -> int:
+    """Preserve status output while signaling a failed or still-dirty operation."""
+    if payload.get("last_error_code") or payload.get("dirty") is True:
+        return 1
     return 0
 
 
@@ -1235,6 +1335,65 @@ def _render_context_status(payload: object) -> None:
     error = payload.get("error_category")
     if isinstance(error, str) and error:
         print(f"Status: {error}")
+
+
+def _render_context_vault_status(payload: object) -> None:
+    if not isinstance(payload, dict):
+        print("APEX returned an unexpected Context vault status.")
+        return
+    enabled = "enabled" if payload.get("enabled") else "disabled"
+    dirty = "pending changes" if payload.get("dirty") else "up to date"
+    print(f"Context vault exports are {enabled}; {dirty}.")
+    if payload.get("export_restricted"):
+        print(f"Production export is restricted ({payload.get('restriction_code') or 'restricted'}).")
+    destination = payload.get("destination_path")
+    if isinstance(destination, str) and destination:
+        print(f"Destination: {destination}")
+    current_revision = payload.get("knowledge_revision")
+    exported_revision = payload.get("exported_revision")
+    print(
+        f"Revision: {exported_revision if exported_revision is not None else 'none'} / "
+        f"{current_revision if current_revision is not None else 'unknown'}; "
+        f"{payload.get('owned_file_count', 0)} managed files."
+    )
+    if payload.get("refreshing"):
+        print("Refresh is in progress.")
+    if payload.get("last_error_code"):
+        print(f"Last error: {payload['last_error_code']}")
+    retained = payload.get("retained_destinations")
+    if isinstance(retained, list) and retained:
+        print("Copies retained at: " + ", ".join(str(item) for item in retained))
+
+
+def _render_context_vault_preview(payload: object) -> None:
+    if not isinstance(payload, dict):
+        print("APEX returned an unexpected Context vault preview.")
+        return
+    print(
+        f"{payload.get('scope_name', 'Scope')}: {payload.get('eligible_count', 0)} of "
+        f"{payload.get('candidate_count', 0)} candidate records are eligible."
+    )
+    if payload.get("export_restricted"):
+        print(f"Production export is restricted ({payload.get('restriction_code') or 'restricted'}).")
+    records = payload.get("records")
+    if isinstance(records, list):
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            state = "eligible" if record.get("eligible") else "excluded"
+            reasons = record.get("exclusion_reasons")
+            suffix = f" ({', '.join(str(item) for item in reasons)})" if isinstance(reasons, list) and reasons else ""
+            print(f"- {record.get('record_id')}: {state}{suffix} — {record.get('text', '')}")
+
+
+def _render_context_vault_settings(payload: object) -> None:
+    if not isinstance(payload, dict):
+        print("APEX returned unexpected Context vault settings.")
+        return
+    enabled = "enabled" if payload.get("enabled") else "disabled"
+    scopes = payload.get("scopes")
+    count = len(scopes) if isinstance(scopes, list) else 0
+    print(f"Context vault exports are {enabled} across {count} scope(s).")
 
 
 def _render_briefing(payload: object) -> None:

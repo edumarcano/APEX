@@ -80,6 +80,10 @@ from core.knowledge.store import KnowledgeConflictError, KnowledgeNotFoundError,
 from core.context import ContextAssembler, ContextPolicy
 from core.knowledge import get_knowledge_service
 from core.context_vault.selection import ContextVaultSelectionService
+from core.context_vault.runtime import (
+    ContextVaultRuntimeError,
+    get_context_vault_runtime,
+)
 from core.api.models import (
     CortexAgentResponse,
     ModelVerificationRequest,
@@ -178,10 +182,77 @@ def _context_record(record) -> ContextRecordResponse:
 
 
 def _context_vault_selection_service() -> ContextVaultSelectionService:
+    restricted = _context_vault_restriction_code() is not None
     return ContextVaultSelectionService(
         get_knowledge_service(), get_settings_store().get_snapshot().context_vault,
-        destination_configured=APEX_CONTEXT_VAULT_PATH is not None and not DEMO_MODE,
+        destination_configured=APEX_CONTEXT_VAULT_PATH is not None and not restricted,
     )
+
+
+def _context_vault_restriction_code() -> str | None:
+    if DEMO_MODE:
+        return "demo_mode"
+    try:
+        if get_conversation_service().partition() == "sandbox":
+            return "sandbox_mode"
+    except RuntimeError:
+        settings = get_settings_store().get_snapshot()
+        if is_dev_mode() and settings.ask_apex.sandbox_mode:
+            return "sandbox_mode"
+    return None
+
+
+def _context_vault_status_response() -> ContextVaultStatusResponse:
+    selection = _context_vault_selection_service().status()
+    runtime = get_context_vault_runtime()
+    operational = runtime.status() if runtime is not None else None
+    restricted = _context_vault_restriction_code() is not None
+    return ContextVaultStatusResponse(
+        enabled=selection.enabled,
+        destination_configured=selection.destination_configured,
+        export_restricted=restricted,
+        restriction_code=_context_vault_restriction_code(),
+        dirty=operational.dirty if operational is not None else False,
+        refreshing=operational.refreshing if operational is not None else False,
+        knowledge_revision=operational.knowledge_revision if operational is not None else None,
+        exported_revision=operational.exported_revision if operational is not None else None,
+        last_attempt_at=operational.last_attempt_at if operational is not None else None,
+        attempt_count=operational.attempt_count if operational is not None else 0,
+        last_success_at=operational.last_success_at if operational is not None else None,
+        owned_file_count=operational.owned_file_count if operational is not None else 0,
+        changed_file_count=operational.changed_file_count if operational is not None else 0,
+        removed_file_count=operational.removed_file_count if operational is not None else 0,
+        last_error_code=operational.last_error_code if operational is not None else None,
+        destination_path=(
+            None if restricted else operational.destination_path if operational is not None
+            else str(APEX_CONTEXT_VAULT_PATH) if APEX_CONTEXT_VAULT_PATH is not None else None
+        ),
+        retained_destinations=(
+            list(operational.retained_destinations)
+            if operational is not None and not restricted else []
+        ),
+        scopes=[ContextVaultScopeStatusResponse(
+            id=scope.id, name=scope.name, enabled=scope.enabled,
+            selected_entity_count=scope.selected_entity_count,
+            record_count=scope.record_count,
+            excluded_record_count=scope.excluded_record_count,
+            include_sensitive=scope.include_sensitive,
+        ) for scope in selection.scopes],
+    )
+
+
+def _ensure_context_vault_write_allowed() -> None:
+    restriction = _context_vault_restriction_code()
+    if restriction == "demo_mode":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Production Context vault writes are unavailable in demo mode.",
+        )
+    if restriction == "sandbox_mode":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Production Context vault writes are unavailable in sandbox mode.",
+        )
 
 
 def _context_review(review) -> ContextReviewResponse:
@@ -297,25 +368,17 @@ def list_context_records(
         raise _context_error(exc) from exc
 
 
+@router.get("/api/v1/cortex/vault", response_model=ContextVaultStatusResponse)
 @router.get("/api/v1/cortex/context-vault", response_model=ContextVaultStatusResponse)
 def get_context_vault_status() -> ContextVaultStatusResponse:
-    """Report saved selection settings and whether a local destination is configured."""
+    """Report vault selection settings and local export state."""
     try:
-        state = _context_vault_selection_service().status()
-        return ContextVaultStatusResponse(
-            enabled=state.enabled, destination_configured=state.destination_configured,
-            scopes=[ContextVaultScopeStatusResponse(
-                id=scope.id, name=scope.name, enabled=scope.enabled,
-                selected_entity_count=scope.selected_entity_count,
-                record_count=scope.record_count,
-                excluded_record_count=scope.excluded_record_count,
-                include_sensitive=scope.include_sensitive,
-            ) for scope in state.scopes],
-        )
+        return _context_vault_status_response()
     except Exception as exc:
         raise _context_error(exc) from exc
 
 
+@router.post("/api/v1/cortex/vault/preview", response_model=ContextVaultPreviewResponse)
 @router.post("/api/v1/cortex/context-vault/preview", response_model=ContextVaultPreviewResponse)
 def preview_context_vault(payload: ContextVaultPreviewRequest) -> ContextVaultPreviewResponse:
     """Preview a scope against all canonical production records without writing files."""
@@ -335,6 +398,8 @@ def preview_context_vault(payload: ContextVaultPreviewRequest) -> ContextVaultPr
             scope_id=state.scope_id, scope_name=state.scope_name,
             vault_enabled=state.vault_enabled, scope_enabled=state.scope_enabled,
             destination_configured=state.destination_configured,
+            export_restricted=_context_vault_restriction_code() is not None,
+            restriction_code=_context_vault_restriction_code(),
             candidate_count=len(records), eligible_count=state.eligible_count,
             records=records,
             selection_issues=[ContextVaultSelectionIssueResponse(
@@ -344,6 +409,45 @@ def preview_context_vault(payload: ContextVaultPreviewRequest) -> ContextVaultPr
         )
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Context vault scope was not found.") from exc
+    except Exception as exc:
+        raise _context_error(exc) from exc
+
+
+@router.post("/api/v1/cortex/vault/refresh", response_model=ContextVaultStatusResponse)
+@router.post("/api/v1/cortex/context-vault/refresh", response_model=ContextVaultStatusResponse)
+async def refresh_context_vault() -> ContextVaultStatusResponse:
+    """Serialize a manual publication with the lifespan-owned refresh worker."""
+    _ensure_context_vault_write_allowed()
+    runtime = get_context_vault_runtime()
+    if runtime is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Context vault runtime is unavailable.")
+    try:
+        await runtime.refresh_now()
+        return await asyncio.to_thread(_context_vault_status_response)
+    except ContextVaultRuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=exc.code) from None
+    except Exception as exc:
+        raise _context_error(exc) from exc
+
+
+@router.delete("/api/v1/cortex/vault/copies", response_model=ContextVaultStatusResponse)
+@router.delete("/api/v1/cortex/context-vault/copies", response_model=ContextVaultStatusResponse)
+async def remove_context_vault_copies() -> ContextVaultStatusResponse:
+    """Remove tracked APEX-owned notes while retaining other vault files."""
+    _ensure_context_vault_write_allowed()
+    runtime = get_context_vault_runtime()
+    if runtime is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Context vault runtime is unavailable.")
+    try:
+        await runtime.remove_managed()
+        return await asyncio.to_thread(_context_vault_status_response)
+    except ContextVaultRuntimeError as exc:
+        if exc.code == "disable_export_before_removal":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Disable Context vault export before removing generated copies.",
+            ) from None
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=exc.code) from None
     except Exception as exc:
         raise _context_error(exc) from exc
 

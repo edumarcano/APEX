@@ -173,6 +173,53 @@ class ContextVaultPublisher:
     def state(self) -> ContextVaultPublicationState:
         return self._state.public_state(self._load_validated())
 
+    def remove_managed(self) -> ContextVaultPublishResult:
+        """Remove only files recorded as APEX-owned, without pruning directories."""
+        try:
+            state = self._load_validated()
+            pending = state.pending or {}
+            desired = self._hash_map(pending.get("desired", {}), allow_empty=True)
+            published = self._hash_map(pending.get("published", {}), allow_empty=True)
+            known_owned = set(state.owned) | set(published)
+            temporaries = self._temp_map(pending.get("temps", {}))
+
+            self._validate_directory_chain(self._root)
+            self._validate_paths(known_owned | set(desired))
+            self._validate_temp_paths(temporaries)
+            for relative, digest in desired.items():
+                target = self._path(relative)
+                if (
+                    relative not in known_owned
+                    and os.path.lexists(target)
+                    and self._file_hash(target) == digest
+                ):
+                    known_owned.add(relative)
+
+            # Validate every generated target before deleting the first one. A
+            # failure leaves ownership state intact so a later retry can finish.
+            targets = [self._path(relative) for relative in sorted(known_owned)]
+            for target in targets:
+                if os.path.lexists(target):
+                    self._validate_regular_file(target)
+            self._cleanup_pending_temps(temporaries)
+            removed = 0
+            for target in targets:
+                if os.path.lexists(target):
+                    target.unlink()
+                    removed += 1
+            self._state.finish(self._destination_key, {})
+            return ContextVaultPublishResult(
+                owned_file_count=0,
+                changed_file_count=0,
+                removed_file_count=removed,
+            )
+        except ContextVaultPublicationError as exc:
+            self._record_failure(exc.code)
+            raise
+        except Exception:
+            self._record_failure("publication_failed")
+            raise ContextVaultPublicationError("publication_failed") from None
+
     def publish(self, files: Mapping[str, str]) -> ContextVaultPublishResult:
         try:
             desired = self._validate_projection(files)

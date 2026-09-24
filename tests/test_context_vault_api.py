@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from core.api import app
 from core.context_vault.selection import ContextVaultSelectionService
+from core.context_vault.runtime import ContextVaultRuntimeError
 from core.knowledge.service import KnowledgeService
 from core.knowledge.store import KnowledgeStore
 from core.retrieval.store import RetrievalStore
@@ -60,11 +61,16 @@ class ContextVaultApiTests(unittest.TestCase):
             response = self.client.post(
                 "/api/v1/cortex/context-vault/preview", json={"scope_id": str(scope.id)},
             )
+            canonical = self.client.post(
+                "/api/v1/cortex/vault/preview", json={"scope_id": str(scope.id)},
+            )
             missing = self.client.post(
                 "/api/v1/cortex/context-vault/preview", json={"scope_id": str(uuid4())},
             )
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(canonical.status_code, 200)
+        self.assertEqual(canonical.json(), response.json())
         payload = response.json()
         self.assertEqual(payload["candidate_count"], 1)
         self.assertEqual(payload["eligible_count"], 1)
@@ -75,6 +81,46 @@ class ContextVaultApiTests(unittest.TestCase):
         self.assertNotIn("private/wire/locator", json.dumps(payload))
         self.assertNotIn("Private source text", json.dumps(payload))
         self.assertEqual(missing.status_code, 404)
+
+    def test_status_aliases_preserve_compatibility_and_report_runtime_restrictions(self) -> None:
+        service = ContextVaultSelectionService(
+            self.knowledge, ContextVaultSettings(enabled=True), destination_configured=True,
+        )
+        with mock.patch(
+            "core.api.routers.cortex._context_vault_selection_service", return_value=service,
+        ), mock.patch(
+            "core.api.routers.cortex._context_vault_restriction_code", return_value="sandbox_mode",
+        ):
+            legacy = self.client.get("/api/v1/cortex/context-vault")
+            canonical = self.client.get("/api/v1/cortex/vault")
+            refresh = self.client.post("/api/v1/cortex/vault/refresh")
+            remove = self.client.delete("/api/v1/cortex/vault/copies")
+
+        self.assertEqual(legacy.status_code, 200)
+        self.assertEqual(canonical.status_code, 200)
+        self.assertEqual(canonical.json(), legacy.json())
+        self.assertTrue(canonical.json()["export_restricted"])
+        self.assertEqual(canonical.json()["restriction_code"], "sandbox_mode")
+        self.assertEqual(refresh.status_code, 403)
+        self.assertEqual(remove.status_code, 403)
+
+    def test_managed_copy_removal_requires_exports_to_be_disabled(self) -> None:
+        runtime = mock.Mock()
+        runtime.remove_managed = mock.AsyncMock(
+            side_effect=ContextVaultRuntimeError("disable_export_before_removal"),
+        )
+        with mock.patch(
+            "core.api.routers.cortex._context_vault_restriction_code", return_value=None,
+        ), mock.patch(
+            "core.api.routers.cortex.get_context_vault_runtime", return_value=runtime,
+        ):
+            response = self.client.delete("/api/v1/cortex/vault/copies")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            response.json()["detail"],
+            "Disable Context vault export before removing generated copies.",
+        )
 
     def test_sensitivity_route_maps_stale_revision_and_blocks_demo_writes(self) -> None:
         record = self._record()
