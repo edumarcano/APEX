@@ -471,7 +471,7 @@ Give outside tools a local inbox for completed work, findings, evidence, and fol
 
 **Status:** In Progress
 
-**Objective:**  
+**Objective:**
 Maintain a portable Markdown copy of selected, trusted APEX context that can be opened in Obsidian and shared with AI applications through a synced folder.
 
 APEX remains the source of truth. The vault is generated from accepted records and can be rebuilt without changing or losing the underlying personal context.
@@ -500,7 +500,7 @@ This milestone does not add bidirectional note editing, a live remote context ga
 
 **Status:** Planned
 
-**Objective:**  
+**Objective:**
 Redesign briefings as a configurable, interactive way to understand the personal environment, using the context, review, run, and external-activity foundations established by the earlier betas.
 
 The redesign should begin with the operator's real briefing needs rather than preserving the current modes unchanged. Specialized briefings may serve different purposes, such as starting the day, reviewing a project, or catching up on outside work. The first version should support a useful, manageable set of experiences without trying to anticipate every possible mode.
@@ -531,7 +531,7 @@ This is the final feature beta before v2.0.0. Its scope should settle the briefi
 
 **Status:** Planned
 
-**Objective:**  
+**Objective:**
 Consolidate the six beta milestones into a stable APEX 2.0 release without adding another major feature area.
 
 The release should settle the contracts for personal context and evidence, review decisions, Apex Agent runs, verified actions, external activity, generated context vaults, briefing configuration, and persistent attention.
