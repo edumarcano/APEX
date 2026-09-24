@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Literal
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
@@ -47,7 +48,7 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 22
+SETTINGS_SCHEMA_VERSION: int = 23
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 LlamaCppServerState = Literal[
@@ -252,6 +253,52 @@ class CalendarSettings(BaseModel):
         return value
 
 
+class ContextVaultScopeSettings(BaseModel):
+    """One stable, operator-selected set of canonical context records."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: UUID
+    name: StrictStr = Field(min_length=1, max_length=80)
+    enabled: bool = False
+    selected_entity_ids: tuple[UUID, ...] = Field(default=(), max_length=500)
+    record_ids: tuple[UUID, ...] = Field(default=(), max_length=1000)
+    excluded_record_ids: tuple[UUID, ...] = Field(default=(), max_length=1000)
+    include_sensitive: bool = False
+
+    @field_validator("name")
+    @classmethod
+    def _normalize_scope_name(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("scope name must not be empty")
+        return normalized
+
+    @field_validator("selected_entity_ids", "record_ids", "excluded_record_ids")
+    @classmethod
+    def _validate_unique_scope_ids(cls, value: tuple[UUID, ...]) -> tuple[UUID, ...]:
+        if len(set(value)) != len(value):
+            raise ValueError("context vault selection IDs must be unique")
+        return value
+
+
+class ContextVaultSettings(BaseModel):
+    """One disabled-by-default local Context vault and its named scopes."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    enabled: bool = False
+    scopes: tuple[ContextVaultScopeSettings, ...] = Field(default=(), max_length=100)
+
+    @field_validator("scopes")
+    @classmethod
+    def _validate_unique_scope_ids(cls, value: tuple[ContextVaultScopeSettings, ...]) -> tuple[ContextVaultScopeSettings, ...]:
+        identifiers = [scope.id for scope in value]
+        if len(set(identifiers)) != len(identifiers):
+            raise ValueError("context vault scope IDs must be unique")
+        return value
+
+
 class ToolProfile(BaseModel):
     """One persisted or built-in stable tool selection."""
 
@@ -394,6 +441,7 @@ class RuntimeSettingsSnapshot(BaseModel):
     football: FootballSettings = Field(default_factory=FootballSettings)
     market: MarketSettings = Field(default_factory=MarketSettings)
     calendar: CalendarSettings = Field(default_factory=CalendarSettings)
+    context_vault: ContextVaultSettings = Field(default_factory=ContextVaultSettings)
     ask_apex: AgentSettings = Field(default_factory=AgentSettings)
     tool_profiles: ToolProfilesSettings = Field(default_factory=ToolProfilesSettings)
     briefing: BriefingSettings = Field(default_factory=BriefingSettings)
@@ -470,6 +518,15 @@ class CalendarPatch(BaseModel):
             if not calendar_id or len(calendar_id) > 512 or calendar_id != calendar_id.strip():
                 raise ValueError("selected_calendar_ids must contain trimmed identifiers up to 512 characters")
         return value
+
+
+class ContextVaultPatch(BaseModel):
+    """Partial global enablement and a replaceable collection of scopes."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool | None = None
+    scopes: tuple[ContextVaultScopeSettings, ...] | None = Field(default=None, max_length=100)
 
 
 class CloudHostedToolsPatch(BaseModel):
@@ -654,6 +711,7 @@ class SettingsPatch(BaseModel):
     football: FootballPatch | None = None
     market: MarketPatch | None = None
     calendar: CalendarPatch | None = None
+    context_vault: ContextVaultPatch | None = None
     ask_apex: AgentSettingsPatch | None = None
     tool_profiles: ToolProfilesPatch | None = None
     briefing: BriefingPatch | None = None

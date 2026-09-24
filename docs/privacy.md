@@ -12,6 +12,8 @@ Provider-hosted grounding is separate from APEX-managed tool calls. It is enable
 
 Original evidence, normalized claims, provenance, and append-only knowledge history are stored separately in the local SQLite database. APEX does not encrypt that database. Corrections and retractions preserve earlier evidence and history rather than erasing them, and pending review proposals remain outside normal retrieval.
 
+Canonical claims have a persisted sensitivity classification. New sensitive captures retain that classification when their review is accepted; corrections and conflict resolution carry it forward if any predecessor is sensitive. Existing claims linked to an accepted sensitive review are backfilled as sensitive, and other existing claims start unclassified. Changing a record's classification requires a revision-checked operator mutation that adds a history event. Context vault selection is disabled with no selected records by default, and sensitive records remain excluded unless a scope explicitly opts in. The current vault API only previews canonical selections; it does not write a second copy yet. A later renderer and publisher are required before `APEX_CONTEXT_VAULT_PATH` is used.
+
 When personal context is enabled for a model runtime, APEX can send selected current claims with concise provenance and effective-time labels as untrusted reference context. Full source evidence and knowledge history stay out of the prompt, and a pending proposal's replacement text is not sent as current knowledge. A cloud model provider receives the selected context included in that request; local models keep it on the configured local inference boundary.
 
 ## External activity reports

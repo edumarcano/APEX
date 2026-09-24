@@ -1,10 +1,10 @@
 # Configuration
 
-APEX keeps portable defaults in `config.json` and machine-specific settings, credentials, local paths, and model runtime details in `config.local.json` and `.env`. Do not commit secrets or GGUF paths.
+APEX keeps portable defaults in `config.json`, editable non-secret Runtime Settings in `config.local.json`, and credentials, environment-only switches, and the Context vault destination path in `.env`. Do not commit secrets or GGUF paths.
 
 ## Runtime Settings
 
-Runtime Settings persist the editable parts of the resolved configuration. Schema version `22` covers `ask_apex` model routing and optional local personalization fields. `ask_apex` has one native identity plus model-based routing:
+Runtime Settings persist the editable parts of the resolved configuration. Schema version `23` includes Context vault selections and `ask_apex` model routing. `ask_apex` has one native identity plus model-based routing:
 
 ```json
 {
@@ -21,6 +21,12 @@ Current default model mapping is `apex` -> `deepseek/deepseek-v4-flash-0731`; `s
 Optional `user_designation` and `agent_display_name` are machine-local personalization fields stored only in `config.local.json`. An empty `agent_display_name` keeps the default visible name Apex Agent.
 
 Home and Cortex share this model selection. Home applies per-turn overrides: the lowest supported cloud effort, or a 16K local context with reasoning disabled. Those overrides never change saved Cortex preferences.
+
+## Context vault selection
+
+The Context vault selection is disabled by default and starts with no scopes or selected records. Configure its global `enabled` flag and scope list through `PATCH /api/v1/settings`; each scope has a stable ID, name, enable flag, selected entity IDs, explicit record IDs, excluded record IDs, and an `include_sensitive` opt-in. Selected entities match canonical records where the entity is the subject or object. Merged entity IDs remain selected but produce a reselection issue instead of silently selecting the merge target. Record exclusions continue through known replacement and conflict-resolution lineage.
+
+Set `APEX_CONTEXT_VAULT_PATH` in `.env` to an absolute machine-specific directory for the later local publisher. The setting is optional. This implementation exposes status and a full production-record selection preview, including eligibility reasons and projected `records/<record-id>.md` paths; it does not render or write vault files. A follow-on renderer and publisher are required before the configured destination is used.
 
 ## Google Calendar selection
 

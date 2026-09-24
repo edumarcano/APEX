@@ -26,6 +26,7 @@ __all__ = [
     "CortexRunsConfig",
     "AGENT_SYSTEM_PROMPT",
     "LOCAL_AGENT_SYSTEM_PROMPT",
+    "APEX_CONTEXT_VAULT_PATH",
     "CONFIG_PATH",
     "LOCAL_MAX_RECENT_CONVERSATION_MESSAGES",
     "MAX_RECENT_CONVERSATION_MESSAGES",
@@ -78,6 +79,22 @@ _VALID_DEV_AI_SYNTHESIS: Final[frozenset[str]] = frozenset({"flash", "focused", 
 _VALID_DEV_TTS_PLAYBACK: Final[frozenset[str]] = frozenset({"pyttsx3", "google", "kokoro"})
 DevAiSynthesisMode = Literal["flash", "focused", "structured"]
 DevTtsPlaybackMode = Literal["pyttsx3", "google", "kokoro"]
+
+
+def _parse_optional_absolute_path(raw: str | None, *, key: str) -> Path | None:
+    if raw is None or not raw.strip():
+        return None
+    value = raw.strip().strip("'\"")
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        _LOGGER.warning("Invalid %s; the path must be absolute.", key)
+        return None
+    return path
+
+
+APEX_CONTEXT_VAULT_PATH: Final[Path | None] = _parse_optional_absolute_path(
+    os.getenv("APEX_CONTEXT_VAULT_PATH"), key="APEX_CONTEXT_VAULT_PATH"
+)
 
 
 def _parse_env_bool(raw: str | None, *, key: str, default: bool) -> bool:

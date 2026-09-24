@@ -152,6 +152,36 @@ describe('settings cloning and mutations', () => {
     expect(clone.mcp.servers.github).not.toBe(BASE_SETTINGS.mcp.servers.github)
   })
 
+  it('preserves Context vault selections through parse, clone, and patch', () => {
+    const vaultSettings = {
+      ...BASE_SETTINGS,
+      context_vault: {
+        enabled: true,
+        scopes: [{
+          id: '2b3f6110-4c85-4f4f-950a-8aefba30c120',
+          name: 'Planning',
+          enabled: true,
+          selected_entity_ids: ['ac907b7a-c7a4-441c-ad2c-b044d1247cbc'],
+          record_ids: [],
+          excluded_record_ids: [],
+          include_sensitive: false,
+        }],
+      },
+    }
+    const parsed = parseSettingsResponse(buildSettingsResponse(vaultSettings))
+    expect(parsed?.settings.context_vault).toEqual(vaultSettings.context_vault)
+
+    const clone = cloneRuntimeSettings(vaultSettings)
+    expect(clone.context_vault).not.toBe(vaultSettings.context_vault)
+    expect(clone.context_vault.scopes[0]).not.toBe(vaultSettings.context_vault.scopes[0])
+    expect(clone.context_vault.scopes[0]?.selected_entity_ids)
+      .not.toBe(vaultSettings.context_vault.scopes[0]?.selected_entity_ids)
+
+    expect(diffSettingsPatch(BASE_SETTINGS, clone)).toEqual({
+      context_vault: vaultSettings.context_vault,
+    })
+  })
+
   it('resolves the singular Apex Agent from settings', () => {
     expect(resolveAgentKey(BASE_SETTINGS.ask_apex)).toBe('apex')
   })

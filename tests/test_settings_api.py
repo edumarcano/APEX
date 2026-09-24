@@ -81,7 +81,7 @@ class SettingsApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/settings")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["schema_version"], 22)
+        self.assertEqual(payload["schema_version"], 23)
         self.assertTrue(payload["settings"]["features"]["market"])
         self.assertTrue(payload["settings"]["features"]["weather"])
         self.assertEqual(payload["settings"]["briefing"]["default_mode"], "flash")
@@ -97,6 +97,7 @@ class SettingsApiTests(unittest.TestCase):
             payload["settings"]["calendar"],
             {"selected_calendar_ids": ["primary"], "show_calendar_names": True},
         )
+        self.assertEqual(payload["settings"]["context_vault"], {"enabled": False, "scopes": []})
         self.assertFalse(payload["settings"]["mcp"]["enabled"])
         self.assertFalse(payload["settings"]["mcp"]["servers"]["github"]["enabled"])
         self.assertIn("local_file_present", payload)
@@ -129,6 +130,32 @@ class SettingsApiTests(unittest.TestCase):
             [{"id": 81, "name": "Barcelona"}],
         )
         self.assertEqual(written["market"]["symbols"], ["SPY", "AAPL"])
+
+    def test_patch_context_vault_selection_round_trips_without_a_destination(self) -> None:
+        scope = {
+            "id": "2b3f6110-4c85-4f4f-950a-8aefba30c120",
+            "name": "Planning",
+            "enabled": True,
+            "selected_entity_ids": ["ac907b7a-c7a4-441c-ad2c-b044d1247cbc"],
+            "record_ids": [],
+            "excluded_record_ids": [],
+            "include_sensitive": False,
+        }
+        response = self.client.patch(
+            "/api/v1/settings",
+            json={"context_vault": {"enabled": True, "scopes": [scope]}},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["settings"]["context_vault"],
+            {"enabled": True, "scopes": [scope]},
+        )
+        written = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            written["context_vault"],
+            {"enabled": True, "scopes": [scope]},
+        )
 
     def test_market_patch_is_exposed_by_boot_config(self) -> None:
         response = self.client.patch(

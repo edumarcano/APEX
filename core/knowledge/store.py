@@ -15,6 +15,8 @@ from uuid import UUID, uuid4
 
 from core.connectors.models import utc_now_iso
 from core.knowledge.models import (
+    ContextVaultRecordSnapshot,
+    ContextVaultSelectionSnapshot,
     Entity,
     KnowledgeHistoryEvent,
     KnowledgeRecord,
@@ -32,11 +34,11 @@ _SOURCE_KINDS = {"conversation_message", "manual", "external_activity"}
 _SOURCE_ORIGINS = {"operator_input", "connected_service", "external_tool", "unknown"}
 _DERIVATIONS = {"direct", "model_interpretation", "unknown"}
 _PARTITIONS = {"production", "sandbox"}
-_KNOWLEDGE_SCHEMA_VERSION = 10
+_KNOWLEDGE_SCHEMA_VERSION = 11
 _SOURCE_SELECT = "id,kind,partition,locator,original_text,content_hash,created_at,origin,occurred_at"
 _RECORD_SELECT = (
     "id,partition,kind,text,status,subject_entity_id,predicate,object_entity_id,object_value,"
-    "effective_at,supersedes_record_id,created_at,updated_at"
+    "effective_at,supersedes_record_id,created_at,updated_at,sensitive"
 )
 _SOURCE_SELECT_S = "s." + _SOURCE_SELECT.replace(",", ",s.")
 _RECORD_SELECT_R = "r." + _RECORD_SELECT.replace(",", ",r.")
@@ -162,6 +164,8 @@ class KnowledgeStore:
                 self._migrate_to_v9(conn)
                 if version < 10:
                     self._migrate_to_v10(conn)
+                if version < 11:
+                    self._migrate_to_v11(conn)
                 if version <= _KNOWLEDGE_SCHEMA_VERSION:
                     conn.execute(
                         "INSERT INTO schema_versions(domain, version) VALUES ('knowledge', ?) "
@@ -211,6 +215,7 @@ class KnowledgeStore:
                 subject_entity_id TEXT REFERENCES entities(id), predicate TEXT,
                 object_entity_id TEXT REFERENCES entities(id), object_value TEXT, effective_at TEXT,
                 supersedes_record_id TEXT REFERENCES knowledge_records(id), created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                sensitive INTEGER NOT NULL DEFAULT 0 CHECK(sensitive IN (0, 1)),
                 CHECK((subject_entity_id IS NULL AND predicate IS NULL AND object_entity_id IS NULL AND object_value IS NULL)
                    OR (subject_entity_id IS NOT NULL AND predicate IS NOT NULL AND (object_entity_id IS NOT NULL OR object_value IS NOT NULL))),
                 CHECK(NOT (object_entity_id IS NOT NULL AND object_value IS NOT NULL))
@@ -443,6 +448,37 @@ class KnowledgeStore:
                 )
 
     @staticmethod
+    def _migrate_to_v11(conn: sqlite3.Connection) -> None:
+        columns = {str(column[1]) for column in conn.execute("PRAGMA table_info(knowledge_records)")}
+        if "sensitive" not in columns:
+            conn.execute(
+                "ALTER TABLE knowledge_records ADD COLUMN sensitive INTEGER NOT NULL DEFAULT 0 "
+                "CHECK(sensitive IN (0, 1))"
+            )
+
+        # Older accepted sensitive reviews kept the policy only in reason_codes.
+        # Their acceptance history provides the exact records affected, including
+        # replacements and conflict peers, without guessing from provenance.
+        sensitive_review_ids = []
+        for review_id, reason_codes_json in conn.execute(
+            "SELECT id,reason_codes_json FROM knowledge_reviews WHERE decision='accepted'"
+        ).fetchall():
+            try:
+                reason_codes = json.loads(str(reason_codes_json))
+            except (TypeError, ValueError):
+                continue
+            if isinstance(reason_codes, list) and "sensitive" in reason_codes:
+                sensitive_review_ids.append(str(review_id))
+        if sensitive_review_ids:
+            placeholders = ",".join("?" for _ in sensitive_review_ids)
+            conn.execute(
+                "UPDATE knowledge_records SET sensitive=1 WHERE id IN ("
+                "SELECT DISTINCT record_id FROM knowledge_history "
+                "WHERE operation='review_accepted' AND review_id IN (" + placeholders + "))",
+                sensitive_review_ids,
+            )
+
+    @staticmethod
     def _source(row: Sequence[object]) -> KnowledgeSource:
         return KnowledgeSource(
             id=UUID(str(row[0])), kind=str(row[1]), partition=str(row[2]), locator=str(row[3]),
@@ -500,6 +536,7 @@ class KnowledgeStore:
             effective_at=str(row[9]) if row[9] else None,
             supersedes_record_id=UUID(str(row[10])) if row[10] else None,
             created_at=str(row[11]), updated_at=str(row[12]),
+            sensitive=bool(row[13]) if len(row) > 13 else False,
         )
 
     def create_source(
@@ -737,10 +774,10 @@ class KnowledgeStore:
                 conn.execute("UPDATE knowledge_records SET status = 'superseded', updated_at = ? WHERE id = ?", (now, str(predecessor_id)))
             try:
                 conn.execute(
-                    "INSERT INTO knowledge_records VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO knowledge_records VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (str(identifier), partition, kind, text, status, str(subject_entity_id) if subject_entity_id else None,
                      predicate, str(object_entity_id) if object_entity_id else None, object_value, effective_at,
-                     str(predecessor_ids[0]) if predecessor_ids else None, now, now),
+                     str(predecessor_ids[0]) if predecessor_ids else None, now, now, 0),
                 )
                 conn.executemany(
                     "INSERT INTO knowledge_record_sources(record_id,source_id,action_id,linked_at,derivation) VALUES (?, ?, ?, ?, ?)",
@@ -778,6 +815,48 @@ class KnowledgeStore:
             updated = conn.execute(f"SELECT {_RECORD_SELECT} FROM knowledge_records WHERE id = ?", (str(record_id),)).fetchone()
         assert updated is not None
         return self._record(updated)
+
+    def set_sensitive(
+        self, record_id: UUID, *, partition: str, sensitive: bool, expected_updated_at: str,
+    ) -> KnowledgeRecord:
+        """Change a record's export sensitivity only at the observed revision."""
+        if partition not in _PARTITIONS or not isinstance(sensitive, bool) or not expected_updated_at:
+            raise KnowledgeStoreError("record_invalid")
+        now = utc_now_iso()
+        with self._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = conn.execute(
+                    f"SELECT {_RECORD_SELECT} FROM knowledge_records WHERE id=? AND partition=?",
+                    (str(record_id), partition),
+                ).fetchone()
+                if row is None:
+                    raise KnowledgeNotFoundError("record_not_found")
+                if str(row[12]) != expected_updated_at:
+                    raise KnowledgeConflictError("record_changed")
+                current = bool(row[13])
+                if current == sensitive:
+                    conn.commit()
+                    return self._record(row)
+                conn.execute(
+                    "UPDATE knowledge_records SET sensitive=?,updated_at=? WHERE id=?",
+                    (int(sensitive), now, str(record_id)),
+                )
+                self._record_history(
+                    conn, record_id=record_id, operation="sensitivity_changed", actor="operator",
+                    reason_code="sensitive_enabled" if sensitive else "sensitive_disabled", created_at=now,
+                )
+                self._sync_retrieval(conn)
+                updated = conn.execute(
+                    f"SELECT {_RECORD_SELECT} FROM knowledge_records WHERE id=? AND partition=?",
+                    (str(record_id), partition),
+                ).fetchone()
+                assert updated is not None
+                conn.commit()
+                return self._record(updated)
+            except Exception:
+                conn.rollback()
+                raise
 
     def get_record(self, record_id: UUID, *, partition: str) -> KnowledgeRecordDetail:
         with self._connection() as conn:
@@ -847,6 +926,164 @@ class KnowledgeStore:
                 [*params, limit],
             ).fetchall()
         return [self._record(row) for row in rows]
+
+    def context_vault_selection_snapshot(
+        self, *, selected_entity_ids: Sequence[UUID], record_ids: Sequence[UUID],
+        excluded_record_ids: Sequence[UUID],
+    ) -> ContextVaultSelectionSnapshot:
+        """Load every selection input from one transactionally consistent snapshot."""
+        if len(selected_entity_ids) > 500 or len(record_ids) > 1_000 or len(excluded_record_ids) > 1_000:
+            raise KnowledgeStoreError("context_vault_selection_too_large")
+        with self._connection() as conn:
+            conn.execute("BEGIN")
+            try:
+                entity_states = self._context_vault_entity_states_in_transaction(
+                    conn, selected_entity_ids,
+                )
+                excluded_ids = self._context_vault_record_lineage_ids_in_transaction(
+                    conn, excluded_record_ids,
+                )
+                requested_ids = tuple(dict.fromkeys((
+                    *(str(identifier) for identifier in record_ids), *sorted(excluded_ids),
+                )))
+                candidates = self._context_vault_candidates_in_transaction(
+                    conn, selected_entity_ids=selected_entity_ids, record_ids=requested_ids,
+                )
+                candidate_ids = tuple(record.id for record in candidates)
+                pending_ids = self._context_vault_pending_record_ids_in_transaction(
+                    conn, partition="production", record_ids=candidate_ids,
+                )
+                source_metadata = self._context_vault_source_metadata_in_transaction(conn, candidate_ids)
+                snapshots = tuple(
+                    ContextVaultRecordSnapshot(
+                        record=record,
+                        updated_at=record.updated_at,
+                        pending_review=str(record.id) in pending_ids,
+                        operator_excluded=str(record.id) in excluded_ids,
+                        source_metadata=tuple(source_metadata.get(str(record.id), ())),
+                    )
+                    for record in candidates
+                )
+                conn.commit()
+                return ContextVaultSelectionSnapshot(
+                    records=snapshots,
+                    entity_states=tuple(sorted(entity_states.items())),
+                )
+            except Exception:
+                conn.rollback()
+                raise
+
+    def _context_vault_candidates_in_transaction(
+        self, conn: sqlite3.Connection, *, selected_entity_ids: Sequence[UUID], record_ids: Sequence[str],
+    ) -> list[KnowledgeRecord]:
+        """Load all selected production records without the regular 100-row cap."""
+        records: dict[str, KnowledgeRecord] = {}
+        selected_ids = tuple(dict.fromkeys(str(identifier) for identifier in record_ids))
+        entity_ids = tuple(dict.fromkeys(str(identifier) for identifier in selected_entity_ids))
+        for start in range(0, len(selected_ids), 400):
+            batch = selected_ids[start:start + 400]
+            rows = conn.execute(
+                f"SELECT {_RECORD_SELECT} FROM knowledge_records WHERE partition='production' "
+                "AND id IN (%s)" % ",".join("?" for _ in batch),
+                batch,
+            ).fetchall()
+            records.update({str(row[0]): self._record(row) for row in rows})
+        for start in range(0, len(entity_ids), 400):
+            batch = entity_ids[start:start + 400]
+            rows = conn.execute(
+                f"SELECT {_RECORD_SELECT} FROM knowledge_records WHERE partition='production' "
+                "AND (subject_entity_id IN (%s) OR object_entity_id IN (%s))"
+                % (",".join("?" for _ in batch), ",".join("?" for _ in batch)),
+                (*batch, *batch),
+            ).fetchall()
+            records.update({str(row[0]): self._record(row) for row in rows})
+        return sorted(records.values(), key=lambda record: (record.updated_at, str(record.id)), reverse=True)
+
+    @staticmethod
+    def _context_vault_record_lineage_ids_in_transaction(
+        conn: sqlite3.Connection, record_ids: Sequence[UUID],
+    ) -> set[str]:
+        """Return production record IDs at or after selected exclusions."""
+        identifiers = tuple(dict.fromkeys(str(identifier) for identifier in record_ids))
+        lineage: set[str] = set()
+        for start in range(0, len(identifiers), 400):
+            batch = identifiers[start:start + 400]
+            rows = conn.execute(
+                "WITH RECURSIVE lineage(id) AS ("
+                "SELECT id FROM knowledge_records WHERE partition='production' AND id IN (%s) "
+                "UNION "
+                "SELECT predecessor.record_id FROM knowledge_record_predecessors predecessor "
+                "JOIN lineage parent ON predecessor.predecessor_record_id=parent.id "
+                "JOIN knowledge_records record ON record.id=predecessor.record_id "
+                "WHERE record.partition='production' AND predecessor.relation IN ('supersedes','conflict_resolution')"
+                ") SELECT id FROM lineage" % ",".join("?" for _ in batch),
+                batch,
+            ).fetchall()
+            lineage.update(str(row[0]) for row in rows)
+        return lineage
+
+    @staticmethod
+    def _context_vault_entity_states_in_transaction(
+        conn: sqlite3.Connection, entity_ids: Sequence[UUID],
+    ) -> dict[str, str | None]:
+        identifiers = tuple(dict.fromkeys(str(identifier) for identifier in entity_ids))
+        states: dict[str, str | None] = {}
+        for start in range(0, len(identifiers), 400):
+            batch = identifiers[start:start + 400]
+            rows = conn.execute(
+                "SELECT id,merged_into_entity_id FROM entities WHERE id IN (%s)"
+                % ",".join("?" for _ in batch),
+                batch,
+            ).fetchall()
+            states.update({str(row[0]): str(row[1]) if row[1] else None for row in rows})
+        return states
+
+    @staticmethod
+    def _context_vault_pending_record_ids_in_transaction(
+        conn: sqlite3.Connection, *, partition: str, record_ids: Sequence[UUID],
+    ) -> set[str]:
+        if partition not in _PARTITIONS:
+            raise KnowledgeStoreError("review_filter_invalid")
+        selected = {str(identifier) for identifier in record_ids}
+        if not selected:
+            return set()
+        pending: set[str] = set()
+        rows = conn.execute(
+            "SELECT expected_revisions_json FROM knowledge_reviews "
+            "WHERE partition=? AND decision='pending'",
+            (partition,),
+        ).fetchall()
+        for (revisions_json,) in rows:
+            try:
+                revisions = json.loads(str(revisions_json))
+            except (TypeError, ValueError):
+                continue
+            if isinstance(revisions, dict):
+                pending.update(selected.intersection(revisions))
+        return pending
+
+    def _context_vault_source_metadata_in_transaction(
+        self, conn: sqlite3.Connection, record_ids: Sequence[UUID],
+    ) -> dict[str, list[KnowledgeRecordSource]]:
+        metadata: dict[str, list[KnowledgeRecordSource]] = {}
+        identifiers = tuple(dict.fromkeys(str(identifier) for identifier in record_ids))
+        for start in range(0, len(identifiers), 400):
+            batch = identifiers[start:start + 400]
+            rows = conn.execute(
+                "SELECT link.record_id," + _SOURCE_SELECT_S + ",link.derivation,link.action_id,link.linked_at "
+                "FROM knowledge_record_sources link JOIN knowledge_sources s ON s.id=link.source_id "
+                "WHERE link.record_id IN (%s) ORDER BY link.record_id,link.linked_at,link.source_id"
+                % ",".join("?" for _ in batch),
+                batch,
+            ).fetchall()
+            for row in rows:
+                metadata.setdefault(str(row[0]), []).append(
+                    KnowledgeRecordSource(
+                        source=self._source(row[1:10]), derivation=str(row[10]),
+                        action_id=str(row[11]) if row[11] else None, linked_at=str(row[12]),
+                    )
+                )
+        return metadata
 
     def one_hop_relationships(self, entity_id: UUID, *, partition: str) -> list[KnowledgeRecord]:
         return self.list_records(partition=partition, statuses=("active", "conflicting"), entity_id=entity_id)
@@ -928,11 +1165,20 @@ class KnowledgeStore:
                 if str(row[4]) != "conflicting" or not row[5] or not row[6]:
                     raise KnowledgeConflictError("conflict_resolution_invalid")
                 rows = conn.execute(
-                    "SELECT id FROM knowledge_records WHERE partition=? AND subject_entity_id=? AND predicate=? "
+                    "SELECT id,sensitive FROM knowledge_records WHERE partition=? AND subject_entity_id=? AND predicate=? "
                     "AND status IN ('active','conflicting')",
                     (partition, str(row[5]), str(row[6])),
                 ).fetchall()
-                conn.execute("UPDATE knowledge_records SET status='active',updated_at=? WHERE id=?", (now, target_id))
+                inherited_sensitive = bool(row[13]) or any(bool(peer[1]) for peer in rows)
+                conn.execute(
+                    "UPDATE knowledge_records SET status='active',sensitive=?,updated_at=? WHERE id=?",
+                    (int(inherited_sensitive), now, target_id),
+                )
+                if inherited_sensitive and not bool(row[13]):
+                    self._record_history(
+                        conn, record_id=target_id, operation="sensitivity_changed", actor="operator",
+                        reason_code="sensitive_inherited", action_id=action_id, created_at=now,
+                    )
                 others = [str(item[0]) for item in rows if str(item[0]) != target_id]
                 if others:
                     conn.execute(
@@ -1020,6 +1266,9 @@ class KnowledgeStore:
                 capture = arguments.get("capture")
                 if not isinstance(capture, dict):
                     raise KnowledgeStoreError("correction_invalid")
+                requested_sensitive = capture.get("sensitive", False)
+                if not isinstance(requested_sensitive, bool):
+                    raise KnowledgeStoreError("correction_invalid")
                 kind = str(capture.get("kind", ""))
                 text = _required_text(str(capture.get("text", "")), "text")
                 from core.knowledge.capture import reject_secret_text, validate_effective_at
@@ -1059,11 +1308,22 @@ class KnowledgeStore:
                     predicate = _required_text(str(predicate), "predicate", limit=240)
                     if object_value:
                         object_value = _required_text(str(object_value), "object_value", limit=1_000)
+                peer_rows = []
+                if subject_id and predicate:
+                    peer_rows = conn.execute(
+                        "SELECT sensitive FROM knowledge_records WHERE partition=? AND subject_entity_id=? "
+                        "AND predicate=? AND status IN ('active','conflicting')",
+                        (partition, str(subject_id), str(predicate)),
+                    ).fetchall()
+                inherited_sensitive = (
+                    bool(row[13]) or requested_sensitive or any(bool(peer[0]) for peer in peer_rows)
+                )
                 conn.execute("UPDATE knowledge_records SET status='superseded',updated_at=? WHERE id=?", (now, target_id))
                 created = self._insert_record_in_transaction(
                     conn, partition=partition, kind=kind, text=text, status="active", now=now,
                     subject_entity_id=subject_id, predicate=predicate, object_entity_id=object_id,
                     object_value=object_value, effective_at=capture.get("effective_at"),
+                    sensitive=inherited_sensitive,
                 )
                 conn.execute("UPDATE knowledge_records SET supersedes_record_id=? WHERE id=?", (target_id, str(created.id)))
                 self._link_predecessor(conn, record_id=created.id, predecessor_record_id=target_id, relation="supersedes", linked_at=now)
@@ -1073,6 +1333,12 @@ class KnowledgeStore:
                 )
                 self._record_history(conn, record_id=target_id, operation="superseded", actor="operator", reason_code="record_correction", related_record_id=created.id, action_id=action_id, created_at=now)
                 self._record_history(conn, record_id=created.id, operation="created", actor="operator", reason_code="correction_created", related_record_id=target_id, action_id=action_id, created_at=now)
+                if inherited_sensitive:
+                    self._record_history(
+                        conn, record_id=created.id, operation="sensitivity_changed", actor="operator",
+                        reason_code=("sensitive_enabled" if requested_sensitive else "sensitive_inherited"),
+                        related_record_id=target_id, action_id=action_id, created_at=now,
+                    )
                 self._record_history(conn, record_id=created.id, operation="source_linked", actor="operator", reason_code=derivation, source_id=source_id, action_id=action_id, created_at=now)
                 target_id, outcome = str(created.id), "corrected"
                 self._sync_retrieval(conn)
@@ -1120,6 +1386,8 @@ class KnowledgeStore:
         if operation in {"capture", "correct"}:
             reject_secret_text(str(capture.get("text", "")))
             validate_effective_at(capture.get("effective_at"))
+            if not isinstance(capture.get("sensitive", False), bool):
+                raise KnowledgeStoreError("review_invalid")
             if evidence.get("original_text") is not None:
                 reject_secret_text(str(evidence["original_text"]))
 
@@ -1506,19 +1774,30 @@ class KnowledgeStore:
                     affected = [record.id]
                     if "known_conflict" in review.reason_codes and record.subject_entity_id and record.predicate:
                         peers = conn.execute(
-                            "SELECT id FROM knowledge_records WHERE partition=? AND subject_entity_id=? AND predicate=? AND status IN ('active','conflicting')",
+                            "SELECT id,sensitive FROM knowledge_records WHERE partition=? AND subject_entity_id=? AND predicate=? AND status IN ('active','conflicting')",
                             (partition, str(record.subject_entity_id), record.predicate),
                         ).fetchall()
-                        predecessors = [str(row[0]) for row in peers if str(row[0]) != str(record.id)]
-                        conn.execute("UPDATE knowledge_records SET status='active',updated_at=? WHERE id=?", (utc_now_iso(), str(record.id)))
+                        predecessors = [str(peer[0]) for peer in peers if str(peer[0]) != str(record.id)]
+                        inherited_sensitive = record.sensitive or any(bool(peer[1]) for peer in peers)
+                        now = utc_now_iso()
+                        conn.execute(
+                            "UPDATE knowledge_records SET status='active',sensitive=?,updated_at=? WHERE id=?",
+                            (int(inherited_sensitive), now, str(record.id)),
+                        )
+                        if inherited_sensitive and not record.sensitive:
+                            self._record_history(
+                                conn, record_id=record.id, operation="sensitivity_changed", actor="operator",
+                                reason_code="sensitive_inherited", action_id=effect_id,
+                                review_id=str(review_id), created_at=now,
+                            )
                         if predecessors:
                             conn.execute(
                                 "UPDATE knowledge_records SET status='superseded',updated_at=? WHERE id IN (%s)" % ",".join("?" for _ in predecessors),
-                                (utc_now_iso(), *predecessors),
+                                (now, *predecessors),
                             )
                             for predecessor in predecessors:
-                                self._link_predecessor(conn, record_id=record.id, predecessor_record_id=predecessor, relation="conflict_resolution", linked_at=utc_now_iso())
-                                self._record_history(conn, record_id=predecessor, operation="superseded", actor="operator", reason_code="review_replacement", related_record_id=record.id, action_id=effect_id, review_id=str(review_id), created_at=utc_now_iso())
+                                self._link_predecessor(conn, record_id=record.id, predecessor_record_id=predecessor, relation="conflict_resolution", linked_at=now)
+                                self._record_history(conn, record_id=predecessor, operation="superseded", actor="operator", reason_code="review_replacement", related_record_id=record.id, action_id=effect_id, review_id=str(review_id), created_at=now)
                             affected.extend(UUID(identifier) for identifier in predecessors)
                         self._sync_retrieval(conn)
                 else:
@@ -1741,7 +2020,13 @@ class KnowledgeStore:
         ).fetchone()
         if target is None or str(target[4]) != "active" or str(target[12]) != expected_updated_at:
             raise KnowledgeConflictError("record_changed")
-        capture = self.capture_decision(partition=partition, sensitive=sensitive, connection=conn, **dict(values))
+        capture_values = dict(values)
+        requested_sensitive = capture_values.pop("sensitive", sensitive)
+        if not isinstance(requested_sensitive, bool):
+            raise KnowledgeStoreError("correction_invalid")
+        capture = self.capture_decision(
+            partition=partition, sensitive=requested_sensitive, connection=conn, **capture_values,
+        )
         snapshot = dict(capture["expected_revisions"])
         snapshot[str(target[0])] = str(target[12])
         entity_ids = [str(item) for item in (target[5], target[7]) if item]
@@ -1847,7 +2132,7 @@ class KnowledgeStore:
                         return None, self.get_review(UUID(result["id"]), partition=partition)
 
                 operation = "capture"
-                proposal: dict[str, object] = dict(values)
+                proposal: dict[str, object] = {**dict(values), "sensitive": sensitive}
                 if correction_record_id is not None:
                     operation = "correct"
                     decision = self._correction_decision_in_transaction(
@@ -1858,7 +2143,7 @@ class KnowledgeStore:
                     proposal = {
                         "record_id": correction_record_id,
                         "expected_updated_at": expected_updated_at or "",
-                        "capture": dict(values),
+                        "capture": {**dict(values), "sensitive": sensitive},
                     }
                 else:
                     decision = self.capture_decision(
@@ -1869,7 +2154,7 @@ class KnowledgeStore:
                 evidence = {
                     "source_kind": "manual", "locator": f"manual/{action_id}",
                     "original_text": str(values["text"]), "source_origin": "operator_input",
-                    "derivation": "direct", "occurred_at": None,
+                    "derivation": "direct", "occurred_at": None, "sensitive": sensitive,
                 }
                 if decision["requires_review"]:
                     review = self._create_review_in_transaction(
@@ -1890,7 +2175,7 @@ class KnowledgeStore:
                     record, _source, _outcome = self.apply_capture(
                         action_id=action_id, partition=partition, source_kind="manual", locator=evidence["locator"],
                         original_text=evidence["original_text"], source_origin="operator_input", derivation="direct",
-                        connection=conn, **dict(values),
+                        sensitive=sensitive, connection=conn, **dict(values),
                     )
                 else:
                     outcome = self.reconcile(
@@ -1921,10 +2206,12 @@ class KnowledgeStore:
         predicate: str | None = None, object_entity: str | None = None,
         object_value: str | None = None, effective_at: str | None = None,
         source_origin: str | None = None, source_occurred_at: str | None = None,
-        derivation: str = "unknown", connection: sqlite3.Connection | None = None,
+        derivation: str = "unknown", sensitive: bool = False,
+        connection: sqlite3.Connection | None = None,
     ) -> tuple[KnowledgeRecord, KnowledgeSource, str]:
         """Apply one approved capture once and record an auditable outcome."""
-        if partition not in _PARTITIONS or source_kind not in _SOURCE_KINDS or kind not in _KINDS or derivation not in _DERIVATIONS:
+        if (partition not in _PARTITIONS or source_kind not in _SOURCE_KINDS or kind not in _KINDS
+                or derivation not in _DERIVATIONS or not isinstance(sensitive, bool)):
             raise KnowledgeStoreError("capture_invalid")
         from core.knowledge.capture import reject_secret_text, validate_effective_at
 
@@ -1950,7 +2237,7 @@ class KnowledgeStore:
                 "JOIN knowledge_sources s ON s.id=e.source_id WHERE e.action_id=?", (action_id,)
             ).fetchone()
             if existing_effect is not None:
-                return self._record(existing_effect[:13]), self._source(existing_effect[13:22]), "confirmed"
+                return self._record(existing_effect[:14]), self._source(existing_effect[14:23]), "confirmed"
             source_row = conn.execute(
                 f"SELECT {_SOURCE_SELECT} FROM knowledge_sources "
                 "WHERE kind=? AND partition=? AND locator=? AND content_hash=?",
@@ -1998,7 +2285,7 @@ class KnowledgeStore:
                         status, outcome = "active", "created"
                     record = self._insert_record_in_transaction(conn, partition=partition, kind=kind, text=text, status=status,
                         subject_entity_id=subject_id, predicate=predicate, object_entity_id=object_id, object_value=object_value,
-                        effective_at=effective_at, now=now)
+                        effective_at=effective_at, sensitive=sensitive, now=now)
             else:
                 normalized = normalize_alias(text)
                 candidates = conn.execute(
@@ -2014,9 +2301,24 @@ class KnowledgeStore:
                 else:
                     record, outcome = self._insert_record_in_transaction(
                         conn, partition=partition, kind=kind, text=text, status="active",
-                        effective_at=effective_at, now=now,
+                        effective_at=effective_at, sensitive=sensitive, now=now,
                     ), "created"
                     transitioned = []
+            if sensitive and not record.sensitive:
+                conn.execute(
+                    "UPDATE knowledge_records SET sensitive=1,updated_at=? WHERE id=?",
+                    (now, str(record.id)),
+                )
+                self._record_history(
+                    conn, record_id=record.id, operation="sensitivity_changed",
+                    reason_code="sensitive_enabled", action_id=action_id, created_at=now,
+                )
+                refreshed = conn.execute(
+                    f"SELECT {_RECORD_SELECT} FROM knowledge_records WHERE id=? AND partition=?",
+                    (str(record.id), partition),
+                ).fetchone()
+                assert refreshed is not None
+                record = self._record(refreshed)
             if outcome in {"created", "conflicting"}:
                 for peer in transitioned:
                     self._record_history(
@@ -2057,11 +2359,12 @@ class KnowledgeStore:
     @staticmethod
     def _insert_record_in_transaction(conn: sqlite3.Connection, *, partition: str, kind: str, text: str, status: str,
         now: str, subject_entity_id: UUID | None = None, predicate: str | None = None,
-        object_entity_id: UUID | None = None, object_value: str | None = None, effective_at: str | None = None) -> KnowledgeRecord:
+        object_entity_id: UUID | None = None, object_value: str | None = None, effective_at: str | None = None,
+        sensitive: bool = False) -> KnowledgeRecord:
         identifier = uuid4()
-        conn.execute("INSERT INTO knowledge_records VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)",
+        conn.execute("INSERT INTO knowledge_records VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)",
             (str(identifier), partition, kind, text, status, str(subject_entity_id) if subject_entity_id else None,
-             predicate, str(object_entity_id) if object_entity_id else None, object_value, effective_at, now, now))
+             predicate, str(object_entity_id) if object_entity_id else None, object_value, effective_at, now, now, int(sensitive)))
         row = conn.execute(f"SELECT {_RECORD_SELECT} FROM knowledge_records WHERE id=?", (str(identifier),)).fetchone()
         assert row is not None
         return KnowledgeStore._record(row)
@@ -2073,7 +2376,7 @@ class KnowledgeStore:
                 "FROM knowledge_action_effects e JOIN knowledge_records r ON r.id=e.record_id "
                 "JOIN knowledge_sources s ON s.id=e.source_id WHERE e.action_id=?", (action_id,)
             ).fetchone()
-        return (self._record(row[:13]), self._source(row[13:22]), str(row[22])) if row else None
+        return (self._record(row[:14]), self._source(row[14:23]), str(row[23])) if row else None
 
     def _sync_retrieval(self, conn: sqlite3.Connection) -> None:
         if self._memory_connection is not None:
