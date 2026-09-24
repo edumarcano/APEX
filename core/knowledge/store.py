@@ -954,6 +954,13 @@ class KnowledgeStore:
                     conn, partition="production", record_ids=candidate_ids,
                 )
                 source_metadata = self._context_vault_source_metadata_in_transaction(conn, candidate_ids)
+                entity_ids = tuple(dict.fromkeys(
+                    str(identifier)
+                    for record in candidates
+                    for identifier in (record.subject_entity_id, record.object_entity_id)
+                    if identifier is not None
+                ))
+                entity_names = self._context_vault_entity_names_in_transaction(conn, entity_ids)
                 snapshots = tuple(
                     ContextVaultRecordSnapshot(
                         record=record,
@@ -968,6 +975,7 @@ class KnowledgeStore:
                 return ContextVaultSelectionSnapshot(
                     records=snapshots,
                     entity_states=tuple(sorted(entity_states.items())),
+                    entity_names=tuple(sorted(entity_names.items())),
                 )
             except Exception:
                 conn.rollback()
@@ -1039,6 +1047,23 @@ class KnowledgeStore:
         return states
 
     @staticmethod
+    def _context_vault_entity_names_in_transaction(
+        conn: sqlite3.Connection, entity_ids: Sequence[str],
+    ) -> dict[str, str]:
+        """Load names for the relationship endpoints in this same read snapshot."""
+        identifiers = tuple(dict.fromkeys(entity_ids))
+        names: dict[str, str] = {}
+        for start in range(0, len(identifiers), 400):
+            batch = identifiers[start:start + 400]
+            rows = conn.execute(
+                "SELECT id,name FROM entities WHERE id IN (%s)"
+                % ",".join("?" for _ in batch),
+                batch,
+            ).fetchall()
+            names.update({str(row[0]): str(row[1]) for row in rows})
+        return names
+
+    @staticmethod
     def _context_vault_pending_record_ids_in_transaction(
         conn: sqlite3.Connection, *, partition: str, record_ids: Sequence[UUID],
     ) -> set[str]:
@@ -1072,7 +1097,8 @@ class KnowledgeStore:
             rows = conn.execute(
                 "SELECT link.record_id," + _SOURCE_SELECT_S + ",link.derivation,link.action_id,link.linked_at "
                 "FROM knowledge_record_sources link JOIN knowledge_sources s ON s.id=link.source_id "
-                "WHERE link.record_id IN (%s) ORDER BY link.record_id,link.linked_at,link.source_id"
+                "WHERE link.record_id IN (%s) AND s.partition='production' "
+                "ORDER BY link.record_id,link.linked_at,link.source_id"
                 % ",".join("?" for _ in batch),
                 batch,
             ).fetchall()

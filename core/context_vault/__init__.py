@@ -1,1 +1,1 @@
-"""Selection and status contracts for the local Context vault."""
+"""Selection, rendering, and local publication for the Context vault."""

@@ -123,3 +123,4 @@ class ContextVaultSelectionSnapshot:
 
     records: tuple[ContextVaultRecordSnapshot, ...]
     entity_states: tuple[tuple[str, str | None], ...]
+    entity_names: tuple[tuple[str, str], ...] = field(default_factory=tuple)

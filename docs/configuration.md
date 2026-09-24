@@ -26,7 +26,11 @@ Home and Cortex share this model selection. Home applies per-turn overrides: the
 
 The Context vault selection is disabled by default and starts with no scopes or selected records. Configure its global `enabled` flag and scope list through `PATCH /api/v1/settings`; each scope has a stable ID, name, enable flag, selected entity IDs, explicit record IDs, excluded record IDs, and an `include_sensitive` opt-in. Selected entities match canonical records where the entity is the subject or object. Merged entity IDs remain selected but produce a reselection issue instead of silently selecting the merge target. Record exclusions continue through known replacement and conflict-resolution lineage.
 
-Set `APEX_CONTEXT_VAULT_PATH` in `.env` to an absolute machine-specific directory for the later local publisher. The setting is optional. This implementation exposes status and a full production-record selection preview, including eligibility reasons and projected `records/<record-id>.md` paths; it does not render or write vault files. A follow-on renderer and publisher are required before the configured destination is used.
+Set `APEX_CONTEXT_VAULT_PATH` in `.env` to an absolute machine-specific directory for local Markdown publication. The setting is optional. The callable publisher creates `index.md` and stable `scopes/<scope-id>/` folders. Each scope has its own index, entity notes, and record notes named with immutable IDs. Links inside a scope stay within that scope, so its folder can be copied by itself.
+
+The publisher includes only active production records without a pending challenge; sensitive records require that scope's opt-in. Record notes include the canonical claim, relationship fields, timestamps, source IDs and source kind/origin/derivation. They omit original source evidence and source locators. APEX stores ownership hashes and pending file paths in local SQLite state outside the vault. It regenerates edited files at owned paths and removes obsolete owned notes, while leaving other files, including handwritten notes and `.obsidian/`, untouched. It refuses an unowned file at a generated path and does not recursively delete the destination.
+
+The status and preview API still reports selection only; no API, CLI, startup task, or automatic refresh invokes the publisher yet. Local publication completion does not indicate that another application or cloud sync service has copied or indexed the files.
 
 ## Google Calendar selection
 
