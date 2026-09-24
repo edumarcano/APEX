@@ -1,6 +1,6 @@
 # APEX API
 
-This is the behavioral reference for APEX's loopback HTTP API at `http://127.0.0.1:8000`. It explains workflows, ownership, and meaningful errors. FastAPI's generated [`/docs`](http://127.0.0.1:8000/docs) and [`/openapi.json`](http://127.0.0.1:8000/openapi.json) are the canonical exhaustive request and response schemas. The current documented contract version is `22`.
+This is the behavioral reference for APEX's loopback HTTP API at `http://127.0.0.1:8000`. It explains workflows, ownership, and meaningful errors. FastAPI's generated [`/docs`](http://127.0.0.1:8000/docs) and [`/openapi.json`](http://127.0.0.1:8000/openapi.json) are the canonical exhaustive request and response schemas. The current documented contract version is `23`.
 
 The API has no authentication and is intentionally bound to loopback. `APEX_ALLOWED_ORIGINS` controls browser CORS policy; it does not authorize non-browser clients or make remote binding safe. See [Configuration](configuration.md) and [Privacy](privacy.md).
 
@@ -77,7 +77,10 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | POST | `/api/v1/activity/reports/{report_id}/context-proposals` | Create or retrieve a review linked to immutable activity evidence |
 | GET | `/api/v1/cortex/context` | List local personal-context records in the current partition |
 | GET | `/api/v1/cortex/context/{record_id}` | Inspect one record, its sources, history, and related records |
+| PATCH | `/api/v1/cortex/context/{record_id}/sensitivity` | Revision-check a record's sensitivity classification |
 | GET | `/api/v1/cortex/context/entities` | Search unmerged local entities and exact aliases |
+| GET | `/api/v1/cortex/context-vault` | Read saved Context vault selection status |
+| POST | `/api/v1/cortex/context-vault/preview` | Preview every selected production record and its exclusions |
 | POST | `/api/v1/cortex/context/actions` | Propose an approval-gated context reconciliation operation |
 | GET | `/api/v1/cortex/retrieval/status` | Show local retrieval readiness and indexing state |
 | POST | `/api/v1/cortex/retrieval/prepare` | Explicitly prepare the local embedding model and backfill vectors |
@@ -119,11 +122,11 @@ Returns boot-time HUD values such as Agent query enablement, the effective model
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `22`.
+Returns the resolved settings envelope. The current contract version is `23`.
 
 ```json
 {
-  "schema_version": 22,
+  "schema_version": 23,
   "settings": {
     "user_designation": "",
     "agent_display_name": "",
@@ -132,6 +135,7 @@ Returns the resolved settings envelope. The current contract version is `22`.
     "football": { "teams": [] },
     "market": { "symbols": [] },
     "calendar": { "selected_calendar_ids": ["primary"], "show_calendar_names": true },
+    "context_vault": { "enabled": false, "scopes": [] },
     "ask_apex": {
       "enabled": true,
       "selected_model": "deepseek/deepseek-v4-flash-0731",
@@ -165,13 +169,13 @@ Returns the resolved settings envelope. The current contract version is `22`.
 }
 ```
 
-`football.teams`, `market.symbols`, `calendar`, `tool_profiles`, and `microsoft_todo.reminder_list_id` are returned in the resolved settings snapshot. Apex Agent settings persist the selected model and independent cloud/local controls; the model catalog derives provider or local runtime. The selected provider/runtime remains in execution metadata and historical records. The optional Microsoft To Do list ID is opaque, bounded to 512 characters, and is never selected or cleared automatically. OpenAPI contains the complete shape. Tool profiles persist through the same settings store, but the dedicated `/api/v1/cortex/tool-profiles` routes are the canonical mutation workflow for built-in/custom profiles and per-runtime defaults.
+`football.teams`, `market.symbols`, `calendar`, `context_vault`, `tool_profiles`, and `microsoft_todo.reminder_list_id` are returned in the resolved settings snapshot. Apex Agent settings persist the selected model and independent cloud/local controls; the model catalog derives provider or local runtime. The selected provider/runtime remains in execution metadata and historical records. The optional Microsoft To Do list ID is opaque, bounded to 512 characters, and is never selected or cleared automatically. OpenAPI contains the complete shape. Tool profiles persist through the same settings store, but the dedicated `/api/v1/cortex/tool-profiles` routes are the canonical mutation workflow for built-in/custom profiles and per-runtime defaults.
 
 `settings.briefing.default_mode` remains a persisted compatibility field. The Home command rail is the visible control for changing it and writes the selected mode immediately; the value is returned by `/api/v1/config` on the next startup.
 
 ### PATCH `/api/v1/settings`
 
-Accepts a strict partial patch for the optional user designation, optional agent display name, connectors, sports modules, followed football teams, market symbols, Google Calendar selection and label display, Agent query settings, tool profiles, briefing, voice, llama.cpp enablement, loopback host, optional managed-server paths, tracked MCP enablement, and local activity mailbox settings. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
+Accepts a strict partial patch for the optional user designation, optional agent display name, connectors, sports modules, followed football teams, market symbols, Google Calendar selection and label display, Context vault enablement and scopes, Agent query settings, tool profiles, briefing, voice, llama.cpp enablement, loopback host, optional managed-server paths, tracked MCP enablement, and local activity mailbox settings. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
 
 ```json
 {
@@ -179,6 +183,7 @@ Accepts a strict partial patch for the optional user designation, optional agent
   "agent_display_name": "Nova",
   "briefing": { "default_mode": "structured" },
   "voice": { "mode": "manual" },
+  "context_vault": { "enabled": true, "scopes": [] },
   "mcp": { "servers": { "github": { "enabled": true } } }
 }
 ```
@@ -689,6 +694,12 @@ revalidation, and unknown outcomes are verified before a replacement is created.
 Rejection preserves the current claim. Record detail includes pending review IDs.
 
 Demo mode leaves context inspection available but rejects saves, action proposals, and review decisions with `403`. Context capture text that resembles credentials or private keys is rejected with `422` rather than stored as evidence.
+
+### Sensitivity and Context vault preview
+
+Context record responses include the persisted `sensitive` flag. `PATCH /api/v1/cortex/context/{record_id}/sensitivity` accepts `sensitive` and the observed `expected_updated_at`; a stale revision returns `409`. Each change is recorded in append-only knowledge history. Sensitivity is carried forward by corrections and conflict resolution when any affected predecessor is sensitive; clearing it requires this explicit revision-checked operation.
+
+`GET /api/v1/cortex/context-vault` reports the saved global and per-scope enablement, selection counts, and whether `APEX_CONTEXT_VAULT_PATH` is configured. `POST /api/v1/cortex/context-vault/preview` accepts `{ "scope_id": "<stable-scope-id>" }` and returns every matching production record, eligibility, exclusion reasons, selection issues, and projected stable paths. It does not use the ordinary 100-record context-list cap, read source snapshots or review proposals, include sandbox records, or write files. Conflicting, superseded, retracted, pending-review, operator-excluded, and non-opted-in sensitive records are ineligible. Merged selected entities require explicit reselection. The preview is the selection contract only; a later renderer and publisher must create the files in the configured destination.
 
 When personal context is enabled for an Apex Agent turn, prompt assembly reloads
 the selected records from canonical storage. It excludes rejected proposals and

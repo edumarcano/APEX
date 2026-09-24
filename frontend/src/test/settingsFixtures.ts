@@ -29,6 +29,10 @@ export const BASE_SETTINGS: RuntimeSettings = {
     selected_calendar_ids: ['primary'],
     show_calendar_names: true,
   },
+  context_vault: {
+    enabled: false,
+    scopes: [],
+  },
   ask_apex: {
     enabled: true,
     selected_model: 'deepseek/deepseek-v4-flash-0731',
@@ -83,7 +87,7 @@ export function buildSettingsResponse(
   overrides: Partial<SettingsResponse> = {},
 ): SettingsResponse {
   return {
-    schema_version: 22,
+    schema_version: 23,
     settings,
     local_file_present: false,
     local_override_active: false,

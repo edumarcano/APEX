@@ -28,10 +28,12 @@ from core.settings import (
     get_settings_store,
 )
 from core.config import (
+    APEX_CONTEXT_VAULT_PATH,
     CORTEX_RUNS_MAX_ELAPSED_SECONDS,
     CORTEX_RUNS_MAX_MODEL_TURNS,
     CORTEX_RUNS_MAX_RETRIES,
     CORTEX_RUNS_MAX_TOOL_CALLS,
+    DEMO_MODE,
     is_dev_mode,
 )
 from core.api.cortex import (
@@ -77,6 +79,7 @@ from core.knowledge.reconciliation import CAPABILITY_NAME as RECONCILIATION_CAPA
 from core.knowledge.store import KnowledgeConflictError, KnowledgeNotFoundError, KnowledgeStoreError
 from core.context import ContextAssembler, ContextPolicy
 from core.knowledge import get_knowledge_service
+from core.context_vault.selection import ContextVaultSelectionService
 from core.api.models import (
     CortexAgentResponse,
     ModelVerificationRequest,
@@ -103,6 +106,13 @@ from core.api.models import (
     ContextSourceResponse,
     ContextReviewResponse,
     ContextReviewDecisionRequest,
+    ContextSensitivityUpdateRequest,
+    ContextVaultPreviewRequest,
+    ContextVaultPreviewResponse,
+    ContextVaultPreviewRecordResponse,
+    ContextVaultSelectionIssueResponse,
+    ContextVaultStatusResponse,
+    ContextVaultScopeStatusResponse,
 )
 
 router = APIRouter(tags=["cortex"])
@@ -163,7 +173,14 @@ def _context_record(record) -> ContextRecordResponse:
         predicate=record.predicate, object_entity=_context_entity(record.object_entity_id, partition=record.partition),
         object_value=record.object_value, effective_at=record.effective_at,
         supersedes_record_id=str(record.supersedes_record_id) if record.supersedes_record_id else None,
-        created_at=record.created_at, updated_at=record.updated_at,
+        created_at=record.created_at, updated_at=record.updated_at, sensitive=record.sensitive,
+    )
+
+
+def _context_vault_selection_service() -> ContextVaultSelectionService:
+    return ContextVaultSelectionService(
+        get_knowledge_service(), get_settings_store().get_snapshot().context_vault,
+        destination_configured=APEX_CONTEXT_VAULT_PATH is not None and not DEMO_MODE,
     )
 
 
@@ -276,6 +293,72 @@ def list_context_records(
             statuses=tuple(status_filter or ("active", "conflicting")), kind=kind, query=q, limit=limit,
         )
         return [_context_record(record) for record in records]
+    except Exception as exc:
+        raise _context_error(exc) from exc
+
+
+@router.get("/api/v1/cortex/context-vault", response_model=ContextVaultStatusResponse)
+def get_context_vault_status() -> ContextVaultStatusResponse:
+    """Report saved selection settings and whether a local destination is configured."""
+    try:
+        state = _context_vault_selection_service().status()
+        return ContextVaultStatusResponse(
+            enabled=state.enabled, destination_configured=state.destination_configured,
+            scopes=[ContextVaultScopeStatusResponse(
+                id=scope.id, name=scope.name, enabled=scope.enabled,
+                selected_entity_count=scope.selected_entity_count,
+                record_count=scope.record_count,
+                excluded_record_count=scope.excluded_record_count,
+                include_sensitive=scope.include_sensitive,
+            ) for scope in state.scopes],
+        )
+    except Exception as exc:
+        raise _context_error(exc) from exc
+
+
+@router.post("/api/v1/cortex/context-vault/preview", response_model=ContextVaultPreviewResponse)
+def preview_context_vault(payload: ContextVaultPreviewRequest) -> ContextVaultPreviewResponse:
+    """Preview a scope against all canonical production records without writing files."""
+    try:
+        state = _context_vault_selection_service().preview(payload.scope_id)
+        records = [
+            ContextVaultPreviewRecordResponse(
+                record_id=record.record_id, kind=record.kind, text=record.text, status=record.status,
+                sensitive=record.sensitive, subject_entity_id=record.subject_entity_id,
+                predicate=record.predicate, object_entity_id=record.object_entity_id,
+                object_value=record.object_value, eligible=record.eligible,
+                exclusion_reasons=list(record.exclusion_reasons), projected_path=record.projected_path,
+            )
+            for record in state.records
+        ]
+        return ContextVaultPreviewResponse(
+            scope_id=state.scope_id, scope_name=state.scope_name,
+            vault_enabled=state.vault_enabled, scope_enabled=state.scope_enabled,
+            destination_configured=state.destination_configured,
+            candidate_count=len(records), eligible_count=state.eligible_count,
+            records=records,
+            selection_issues=[ContextVaultSelectionIssueResponse(
+                entity_id=issue.entity_id, reason_code=issue.reason_code,
+                replacement_entity_id=issue.replacement_entity_id,
+            ) for issue in state.selection_issues],
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Context vault scope was not found.") from exc
+    except Exception as exc:
+        raise _context_error(exc) from exc
+
+
+@router.patch("/api/v1/cortex/context/{record_id}/sensitivity", response_model=ContextRecordResponse)
+def update_context_sensitivity(record_id: UUID, payload: ContextSensitivityUpdateRequest) -> ContextRecordResponse:
+    """Change a record's sensitivity classification at its observed revision."""
+    if DEMO_MODE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Context writes are unavailable in demo mode.")
+    try:
+        record = get_knowledge_service().set_sensitive(
+            record_id, partition=get_conversation_service().partition(),
+            sensitive=payload.sensitive, expected_updated_at=payload.expected_updated_at,
+        )
+        return _context_record(record)
     except Exception as exc:
         raise _context_error(exc) from exc
 

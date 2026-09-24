@@ -552,6 +552,69 @@ class ContextRecordResponse(BaseModel):
     supersedes_record_id: str | None = None
     created_at: str
     updated_at: str
+    sensitive: bool = False
+
+
+class ContextSensitivityUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sensitive: bool
+    expected_updated_at: str = Field(min_length=1, max_length=64)
+
+
+class ContextVaultPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scope_id: UUID
+
+
+class ContextVaultScopeStatusResponse(BaseModel):
+    id: str
+    name: str
+    enabled: bool
+    selected_entity_count: int
+    record_count: int
+    excluded_record_count: int
+    include_sensitive: bool
+
+
+class ContextVaultStatusResponse(BaseModel):
+    enabled: bool
+    destination_configured: bool
+    scopes: list[ContextVaultScopeStatusResponse] = Field(default_factory=list)
+
+
+class ContextVaultSelectionIssueResponse(BaseModel):
+    entity_id: str
+    reason_code: str
+    replacement_entity_id: str | None = None
+
+
+class ContextVaultPreviewRecordResponse(BaseModel):
+    record_id: str
+    kind: Literal["idea", "preference", "decision", "goal", "fact", "constraint", "note", "observation"]
+    text: str
+    status: Literal["active", "conflicting", "superseded", "retracted"]
+    sensitive: bool
+    subject_entity_id: str | None = None
+    predicate: str | None = None
+    object_entity_id: str | None = None
+    object_value: str | None = None
+    eligible: bool
+    exclusion_reasons: list[str] = Field(default_factory=list)
+    projected_path: str
+
+
+class ContextVaultPreviewResponse(BaseModel):
+    scope_id: str
+    scope_name: str
+    vault_enabled: bool
+    scope_enabled: bool
+    destination_configured: bool
+    candidate_count: int
+    eligible_count: int
+    records: list[ContextVaultPreviewRecordResponse] = Field(default_factory=list)
+    selection_issues: list[ContextVaultSelectionIssueResponse] = Field(default_factory=list)
 
 
 class ContextSourceResponse(BaseModel):

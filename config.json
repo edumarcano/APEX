@@ -23,6 +23,10 @@
     ],
     "show_calendar_names": true
   },
+  "context_vault": {
+    "enabled": false,
+    "scopes": []
+  },
   "tts_settings": {
     "primary_tts": "google",
     "voice_gender": "female"

@@ -22,6 +22,7 @@ export interface ContextRecord {
   supersedes_record_id: string | null
   created_at: string
   updated_at: string
+  sensitive: boolean
 }
 
 export interface ContextSource {
@@ -79,6 +80,60 @@ export interface ContextSaveInput extends ContextCaptureInput {
   sensitive?: boolean
   correction_record_id?: string
   expected_updated_at?: string
+}
+
+export interface ContextSensitivityUpdateInput {
+  sensitive: boolean
+  expected_updated_at: string
+}
+
+export interface ContextVaultScopeStatus {
+  id: string
+  name: string
+  enabled: boolean
+  selected_entity_count: number
+  record_count: number
+  excluded_record_count: number
+  include_sensitive: boolean
+}
+
+export interface ContextVaultStatus {
+  enabled: boolean
+  destination_configured: boolean
+  scopes: ContextVaultScopeStatus[]
+}
+
+export interface ContextVaultSelectionIssue {
+  entity_id: string
+  reason_code: string
+  replacement_entity_id: string | null
+}
+
+export interface ContextVaultPreviewRecord {
+  record_id: string
+  kind: ContextKind
+  text: string
+  status: ContextStatus
+  sensitive: boolean
+  subject_entity_id: string | null
+  predicate: string | null
+  object_entity_id: string | null
+  object_value: string | null
+  eligible: boolean
+  exclusion_reasons: string[]
+  projected_path: string
+}
+
+export interface ContextVaultPreview {
+  scope_id: string
+  scope_name: string
+  vault_enabled: boolean
+  scope_enabled: boolean
+  destination_configured: boolean
+  candidate_count: number
+  eligible_count: number
+  records: ContextVaultPreviewRecord[]
+  selection_issues: ContextVaultSelectionIssue[]
 }
 
 export interface ContextSaveResult {

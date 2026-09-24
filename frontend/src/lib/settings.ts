@@ -9,6 +9,7 @@ import type {
 import type {
   BriefingMode,
   CalendarSettings,
+  ContextVaultSettings,
   FeaturesSettings,
   FootballSettings,
   MarketSettings,
@@ -434,6 +435,42 @@ function parseCalendarSettings(value: unknown): CalendarSettings | null {
   return { selected_calendar_ids: [...ids], show_calendar_names: value.show_calendar_names }
 }
 
+function parseContextVaultSettings(value: unknown): ContextVaultSettings | null {
+  if (value === undefined) return { enabled: false, scopes: [] }
+  if (!isRecord(value) || typeof value.enabled !== 'boolean' || !Array.isArray(value.scopes)) {
+    return null
+  }
+  const scopes: ContextVaultSettings['scopes'] = []
+  for (const scope of value.scopes) {
+    if (!isRecord(scope) || typeof scope.id !== 'string' || !scope.id.trim() ||
+      typeof scope.name !== 'string' || !scope.name.trim() || scope.name.trim().length > 80 ||
+      typeof scope.enabled !== 'boolean' || typeof scope.include_sensitive !== 'boolean' ||
+      !Array.isArray(scope.selected_entity_ids) || !Array.isArray(scope.record_ids) ||
+      !Array.isArray(scope.excluded_record_ids)) {
+      return null
+    }
+    const selections = [scope.selected_entity_ids, scope.record_ids, scope.excluded_record_ids]
+    if (selections.some((ids) => ids.length > 1000 ||
+      !ids.every((id) => typeof id === 'string' && id.trim().length > 0) ||
+      new Set(ids).size !== ids.length)) {
+      return null
+    }
+    scopes.push({
+      id: scope.id,
+      name: scope.name.trim(),
+      enabled: scope.enabled,
+      selected_entity_ids: [...scope.selected_entity_ids],
+      record_ids: [...scope.record_ids],
+      excluded_record_ids: [...scope.excluded_record_ids],
+      include_sensitive: scope.include_sensitive,
+    })
+  }
+  if (scopes.length > 100 || new Set(scopes.map((scope) => scope.id)).size !== scopes.length) {
+    return null
+  }
+  return { enabled: value.enabled, scopes }
+}
+
 function footballTeamsEqual(
   left: FootballSettings['teams'],
   right: FootballSettings['teams'],
@@ -458,6 +495,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   const football = parseFootballSettings(value.football)
   const market = parseMarketSettings(value.market)
   const calendar = parseCalendarSettings(value.calendar)
+  const context_vault = parseContextVaultSettings(value.context_vault)
   const mcp = parseMcpSettings(value.mcp)
   const hasToolProfiles = isRecord(value.tool_profiles)
   const tool_profiles = parseToolProfiles(value.tool_profiles)
@@ -472,6 +510,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     !microsoft_todo ||
     !activity_mailbox ||
     !calendar ||
+    !context_vault ||
     !isRecord(value.ask_apex) ||
     !isRecord(value.briefing) ||
     !isRecord(value.voice)
@@ -517,6 +556,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     football,
     market,
     calendar,
+    context_vault,
     ask_apex: {
       enabled: value.ask_apex.enabled,
       selected_model: value.ask_apex.selected_model.trim(),
@@ -560,6 +600,15 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
     calendar: {
       selected_calendar_ids: [...settings.calendar.selected_calendar_ids],
       show_calendar_names: settings.calendar.show_calendar_names,
+    },
+    context_vault: {
+      enabled: settings.context_vault.enabled,
+      scopes: settings.context_vault.scopes.map((scope) => ({
+        ...scope,
+        selected_entity_ids: [...scope.selected_entity_ids],
+        record_ids: [...scope.record_ids],
+        excluded_record_ids: [...scope.excluded_record_ids],
+      })),
     },
     ask_apex: {
       ...settings.ask_apex,
@@ -703,6 +752,18 @@ export function diffSettingsPatch(
     }
   }
 
+  if (JSON.stringify(baseline.context_vault) !== JSON.stringify(draft.context_vault)) {
+    patch.context_vault = {
+      enabled: draft.context_vault.enabled,
+      scopes: draft.context_vault.scopes.map((scope) => ({
+        ...scope,
+        selected_entity_ids: [...scope.selected_entity_ids],
+        record_ids: [...scope.record_ids],
+        excluded_record_ids: [...scope.excluded_record_ids],
+      })),
+    }
+  }
+
   const agentSettings = diffSection(baseline.ask_apex, draft.ask_apex)
   if (agentSettings) {
     patch.ask_apex = agentSettings
@@ -778,6 +839,7 @@ export function isSettingsPatchEmpty(patch: SettingsPatch): boolean {
     patch.football === undefined &&
     patch.market === undefined &&
     patch.calendar === undefined &&
+    patch.context_vault === undefined &&
     patch.ask_apex === undefined &&
     patch.briefing === undefined &&
     patch.voice === undefined &&

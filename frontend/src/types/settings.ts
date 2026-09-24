@@ -80,6 +80,21 @@ export interface CalendarSettings {
   show_calendar_names: boolean
 }
 
+export interface ContextVaultScopeSettings {
+  id: string
+  name: string
+  enabled: boolean
+  selected_entity_ids: string[]
+  record_ids: string[]
+  excluded_record_ids: string[]
+  include_sensitive: boolean
+}
+
+export interface ContextVaultSettings {
+  enabled: boolean
+  scopes: ContextVaultScopeSettings[]
+}
+
 export interface CloudHostedToolsSettings {
   google_search: boolean
   google_maps: boolean
@@ -150,6 +165,7 @@ export interface RuntimeSettings {
   football: FootballSettings
   market: MarketSettings
   calendar: CalendarSettings
+  context_vault: ContextVaultSettings
   ask_apex: AgentSettings
   tool_profiles?: ToolProfilesSettings
   briefing: BriefingSettings
@@ -190,6 +206,11 @@ export interface MarketPatch {
 export interface CalendarPatch {
   selected_calendar_ids?: string[]
   show_calendar_names?: boolean
+}
+
+export interface ContextVaultPatch {
+  enabled?: boolean
+  scopes?: ContextVaultScopeSettings[]
 }
 
 export interface CloudHostedToolsPatch {
@@ -289,6 +310,7 @@ export interface SettingsPatch {
   football?: FootballPatch
   market?: MarketPatch
   calendar?: CalendarPatch
+  context_vault?: ContextVaultPatch
   ask_apex?: AgentSettingsPatch
   tool_profiles?: ToolProfilesPatch
   briefing?: BriefingPatch

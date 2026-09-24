@@ -32,6 +32,7 @@ from core.settings.models import (
     AgentSettings,
     BriefingSettings,
     CalendarSettings,
+    ContextVaultSettings,
     FeaturesSettings,
     LocalSettings,
     FootballSettings,
@@ -68,6 +69,7 @@ EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
         "football",
         "market",
         "calendar",
+        "context_vault",
         "ask_apex",
         "tool_profiles",
         "briefing",
@@ -191,6 +193,10 @@ def normalize_layer(
             calendar = _normalize_calendar(value, layer_name, issues)
             if calendar is not None:
                 normalized["calendar"] = calendar
+        elif key == "context_vault":
+            context_vault = _normalize_context_vault(value, layer_name, issues)
+            if context_vault is not None:
+                normalized["context_vault"] = context_vault
         elif key == "ask_apex":
             agent_settings = _normalize_agent_settings(value, layer_name, issues)
             if agent_settings:
@@ -335,6 +341,22 @@ def _normalize_calendar(
             return None
         result["show_calendar_names"] = value["show_calendar_names"]
     return result
+
+
+def _normalize_context_vault(
+    value: Any, layer_name: str, issues: NormalizationIssues | None
+) -> dict[str, Any] | None:
+    """Validate the complete bounded scope selection without resolving records."""
+    if not isinstance(value, dict):
+        _record_error(issues, "context_vault must be an object")
+        return None
+    try:
+        settings = ContextVaultSettings.model_validate(value)
+    except Exception:
+        _record_error(issues, "context_vault contains invalid settings")
+        _LOGGER.warning("Invalid context_vault settings in %s; ignoring the section.", layer_name)
+        return None
+    return settings.model_dump(mode="json")
 
 
 def _normalize_user_designation(
@@ -1102,6 +1124,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     football_raw = merged.get("football") if isinstance(merged.get("football"), dict) else {}
     market_raw = merged.get("market") if isinstance(merged.get("market"), dict) else {}
     calendar_raw = merged.get("calendar") if isinstance(merged.get("calendar"), dict) else {}
+    context_vault_raw = merged.get("context_vault") if isinstance(merged.get("context_vault"), dict) else {}
     agent_settings_raw = merged.get("ask_apex") if isinstance(merged.get("ask_apex"), dict) else {}
     tool_profiles_raw = (
         merged.get("tool_profiles")
@@ -1151,6 +1174,10 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         )
     except ValueError:
         calendar = CalendarSettings()
+    try:
+        context_vault = ContextVaultSettings.model_validate(context_vault_raw)
+    except Exception:
+        context_vault = ContextVaultSettings()
     agent_settings_snapshot = AgentSettings.model_validate(agent_settings)
     custom_profiles: list[ToolProfile] = []
     for raw_profile in tool_profiles_raw.get("custom_profiles", []):
@@ -1300,6 +1327,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         football=football,
         market=market,
         calendar=calendar,
+        context_vault=context_vault,
         ask_apex=agent_settings_snapshot,
         tool_profiles=tool_profiles,
         briefing=briefing,
@@ -1319,6 +1347,7 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
         "features": snapshot.features.model_dump(),
         "modules": snapshot.modules.model_dump(),
         "calendar": snapshot.calendar.model_dump(),
+        "context_vault": snapshot.context_vault.model_dump(mode="json"),
         "ask_apex": {
             "enabled": snapshot.ask_apex.enabled,
             "selected_model": snapshot.ask_apex.selected_model,
@@ -1400,6 +1429,10 @@ def patch_to_ondisk(patch: SettingsPatch) -> dict[str, Any]:
             calendar["show_calendar_names"] = patch.calendar.show_calendar_names
         if calendar:
             ondisk["calendar"] = calendar
+    if patch.context_vault is not None:
+        context_vault = patch.context_vault.model_dump(exclude_none=True, mode="json")
+        if context_vault:
+            ondisk["context_vault"] = context_vault
     if patch.ask_apex is not None:
         agent_settings_payload: dict[str, Any] = {}
         agent_settings_patch = patch.ask_apex.model_dump(exclude_none=True)

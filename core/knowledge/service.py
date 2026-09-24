@@ -36,6 +36,18 @@ class KnowledgeService:
     def list_records(self, *, partition: str, statuses=("active",), kind: str | None = None, entity_id=None, query: str = "", limit: int = 100):
         return self.store.list_records(partition=partition, statuses=statuses, kind=kind, entity_id=entity_id, query=query, limit=limit)
 
+    def context_vault_selection_snapshot(self, *, selected_entity_ids, record_ids, excluded_record_ids):
+        return self.store.context_vault_selection_snapshot(
+            selected_entity_ids=selected_entity_ids,
+            record_ids=record_ids,
+            excluded_record_ids=excluded_record_ids,
+        )
+
+    def set_sensitive(self, record_id, *, partition: str, sensitive: bool, expected_updated_at: str):
+        return self.store.set_sensitive(
+            record_id, partition=partition, sensitive=sensitive, expected_updated_at=expected_updated_at,
+        )
+
     def resolve_entity(self, alias: str):
         return self.store.resolve_entity(alias)
 

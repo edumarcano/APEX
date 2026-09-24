@@ -76,6 +76,7 @@ class KnowledgeRecord:
     supersedes_record_id: UUID | None
     created_at: str
     updated_at: str
+    sensitive: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,3 +104,22 @@ class KnowledgeRecordDetail:
     superseded_by: tuple[UUID, ...] = field(default_factory=tuple)
     predecessors: tuple[UUID, ...] = field(default_factory=tuple)
     history: tuple[KnowledgeHistoryEvent, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class ContextVaultRecordSnapshot:
+    """Internal, transaction-consistent record data for vault selection/rendering."""
+
+    record: KnowledgeRecord
+    updated_at: str
+    pending_review: bool
+    operator_excluded: bool
+    source_metadata: tuple[KnowledgeRecordSource, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class ContextVaultSelectionSnapshot:
+    """One complete production read snapshot used by preview and later rendering."""
+
+    records: tuple[ContextVaultRecordSnapshot, ...]
+    entity_states: tuple[tuple[str, str | None], ...]
