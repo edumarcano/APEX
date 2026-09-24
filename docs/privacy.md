@@ -16,6 +16,8 @@ Canonical claims have a persisted sensitivity classification. New sensitive capt
 
 When personal context is enabled for a model runtime, APEX can send selected current claims with concise provenance and effective-time labels as untrusted reference context. Full source evidence and knowledge history stay out of the prompt, and a pending proposal's replacement text is not sent as current knowledge. A cloud model provider receives the selected context included in that request; local models keep it on the configured local inference boundary.
 
+The [Context vault guide](context-vault.md) explains how to select, share, and remove generated copies.
+
 ## External activity reports
 
 External activity reports, including their structured findings and imported Markdown, are retained in local SQLite and may contain private content. APEX does not send raw reports to models automatically or add them directly to retrieval, prompts, attention, or briefings. The optional mailbox leaves the original files in the operator-selected folder; if that folder is synced, its sync tool controls any external copies.

@@ -99,6 +99,8 @@ machine-readable output, including failure status.
 
 `briefing` uses the normal full refresh-and-generate route. Omitting `--mode` uses the saved Flash default; supported overrides are `flash`, `focused`, and `structured`. These are breaking identifiers: the former Agent-named values are rejected.
 
+For Context vault setup and sharing, see the [Context vault guide](context-vault.md).
+
 ## External activity
 
 `activity` submits and reads untrusted reports through the local backend. Supply `--client` on each submit or import command, or use it to filter `list`. It is a caller-declared source label, not software authentication, and must match `^[a-z][a-z0-9_-]{0,63}$`. The server assigns the local `operator` principal and its current production or sandbox partition.
