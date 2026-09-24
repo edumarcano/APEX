@@ -92,6 +92,8 @@ manual refresh afterward. Disablement retains generated files; explicit removal
 deletes only tracked files and never prunes the destination tree. Export status
 reports local completion, not sync or indexing by another application.
 
+The [Context vault guide](context-vault.md) covers selection, sharing, and cleanup from the operator's view.
+
 ## Market telemetry
 
 Market is a telemetry connector for Home rather than a briefing fact source. Telemetry refreshes it in the normal sequential connector lifecycle and records its health in the shared snapshot. The Market client owns Alpha Vantage access, a versioned file-backed cache, and per-symbol daily request gates; the Market route only reads that cache. A symbol can make at most one request per UTC calendar day. Repeated failures back off for 1, 2, 4, then up to 8 days, while provider-wide transport, authentication, or rate failures defer remaining requests until the next UTC day. Daily OHLCV history stays in the Market display projection, while the telemetry snapshot carries only bounded symbol summaries and a collection revision. This keeps chart data out of briefing payloads and lets Home update the card only after collection.

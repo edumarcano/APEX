@@ -24,6 +24,8 @@ Home and Cortex share this model selection. Home applies per-turn overrides: the
 
 ## Context vault selection
 
+For setup, sharing, refresh, and cleanup steps, see the [Context vault guide](context-vault.md).
+
 The Context vault selection is disabled by default and starts with no scopes or selected records. Use Cortex → Context → Vault to create and edit scopes, choose entities and records, preview eligible exports, and save or enable a selection. The global `enabled` flag and scope list are also available through `PATCH /api/v1/settings`. Each scope has a stable ID, name, enable flag, selected entity IDs, explicit record IDs, excluded record IDs, and an `include_sensitive` opt-in. Selected entities match canonical records where the entity is the subject or object. Merged entity IDs remain selected but produce a reselection issue instead of silently selecting the merge target. Record exclusions continue through known replacement and conflict-resolution lineage.
 
 Set `APEX_CONTEXT_VAULT_PATH` in `.env` to an absolute machine-specific directory for local Markdown publication. The setting is optional. The callable publisher creates `index.md` and stable `scopes/<scope-id>/` folders. Each scope has its own index, entity notes, and record notes named with immutable IDs. Links inside a scope stay within that scope, so its folder can be copied by itself.

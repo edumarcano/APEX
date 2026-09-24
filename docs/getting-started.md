@@ -170,6 +170,7 @@ uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model ge
 - **Start with Briefing** activates Home, refreshes telemetry, and generates a briefing with the selected mode.
 - Agent queries become available after activation when they are enabled in Settings.
 - Personal-context retrieval is off by default for both cloud and local models. The Cortex Context inspector remains available for adding, inspecting, correcting, retracting, and reviewing local records.
+- Context vault export is off by default. See the [Context vault guide](context-vault.md) when you want to share selected records as local Markdown notes.
 - Runtime Settings writes machine-local overrides to `config.local.json`.
 - `apex_memory.db` stores normal-mode briefing history, Cortex conversations and run records, external activity reports, personal-context sources and history, retrieval indexes, context reviews, the Microsoft To Do reminder cache and offline queue, and durable action history. Demo briefings are not persisted.
 

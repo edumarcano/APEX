@@ -56,6 +56,10 @@ After a Microsoft To Do list is selected, its incomplete tasks become the Home r
   <em>The Cortex workspace using the Apex Agent to review persisted briefing history, with conversation, model, tool, and personal context controls available alongside the chat.</em>
 </p>
 
+### Shares selected context through a vault
+
+The Context vault can publish selected current records as linked Markdown notes in separate scopes. APEX keeps the canonical records; the generated notes can be opened in Obsidian or synced through Google Drive for other tools to read. Export starts disabled and requires an explicit preview and selection. See the [Context vault guide](docs/context-vault.md) for setup, sharing, and cleanup.
+
 ### Reviews outside work in Inbox
 
 Local tools can submit completed-work reports through the APEX CLI, JSON or Markdown import, an optional loopback-only HTTP and MCP gateway, or a configured local-folder mailbox. Inbox shows the immutable reports and lets the operator mark them new, reviewed, or dismissed. A selected finding can be proposed as personal context, but it stays outside trusted retrieval until its linked review is accepted. See [Configuration](docs/configuration.md#external-activity-intake) for intake options and [Privacy](docs/privacy.md#external-activity-reports) for the trust boundary.
