@@ -34,7 +34,7 @@ _SOURCE_KINDS = {"conversation_message", "manual", "external_activity"}
 _SOURCE_ORIGINS = {"operator_input", "connected_service", "external_tool", "unknown"}
 _DERIVATIONS = {"direct", "model_interpretation", "unknown"}
 _PARTITIONS = {"production", "sandbox"}
-_KNOWLEDGE_SCHEMA_VERSION = 11
+_KNOWLEDGE_SCHEMA_VERSION = 12
 _SOURCE_SELECT = "id,kind,partition,locator,original_text,content_hash,created_at,origin,occurred_at"
 _RECORD_SELECT = (
     "id,partition,kind,text,status,subject_entity_id,predicate,object_entity_id,object_value,"
@@ -216,6 +216,8 @@ class KnowledgeStore:
                     self._migrate_to_v10(conn)
                 if version < 11:
                     self._migrate_to_v11(conn)
+                if version < 12:
+                    self._migrate_to_v12(conn)
                 self._create_context_vault_revision_triggers(conn)
                 if version <= _KNOWLEDGE_SCHEMA_VERSION:
                     conn.execute(
@@ -594,6 +596,46 @@ class KnowledgeStore:
                 "SELECT DISTINCT record_id FROM knowledge_history "
                 "WHERE operation='review_accepted' AND review_id IN (" + placeholders + "))",
                 sensitive_review_ids,
+            )
+
+    @staticmethod
+    def _migrate_to_v12(conn: sqlite3.Connection) -> None:
+        """Restore explicit sensitivity on pending reviews created before v11."""
+        rows = conn.execute(
+            "SELECT id,operation,proposal_json,evidence_json,reason_codes_json "
+            "FROM knowledge_reviews WHERE decision='pending'"
+        ).fetchall()
+        for review_id, operation, proposal_json, evidence_json, reason_codes_json in rows:
+            try:
+                reason_codes = json.loads(str(reason_codes_json))
+                proposal = json.loads(str(proposal_json))
+                evidence = json.loads(str(evidence_json))
+            except (TypeError, ValueError):
+                continue
+            if (
+                not isinstance(reason_codes, list)
+                or "sensitive" not in reason_codes
+                or not isinstance(proposal, dict)
+                or not isinstance(evidence, dict)
+            ):
+                continue
+            if str(operation) == "capture":
+                proposal["sensitive"] = True
+            elif str(operation) == "correct":
+                capture = proposal.get("capture")
+                if not isinstance(capture, dict):
+                    continue
+                capture["sensitive"] = True
+            else:
+                continue
+            evidence["sensitive"] = True
+            conn.execute(
+                "UPDATE knowledge_reviews SET proposal_json=?,evidence_json=? WHERE id=?",
+                (
+                    json.dumps(proposal, sort_keys=True, separators=(",", ":")),
+                    json.dumps(evidence, sort_keys=True, separators=(",", ":")),
+                    str(review_id),
+                ),
             )
 
     @staticmethod
