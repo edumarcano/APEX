@@ -209,6 +209,21 @@ class CliTests(unittest.TestCase):
         self.assertEqual(preview_session.calls[0]["method"], "POST")
         self.assertEqual(preview_session.calls[0]["json"], {"scope_id": scope_id})
 
+        preview_text_code, preview_text_output, _, _ = self._run(
+            ["context", "vault", "preview", scope_id],
+            [_Response(200, {
+                "vault_enabled": False, "hypothetical_enabled": False,
+                "scope_name": "Project Atlas", "eligible_count": 1, "candidate_count": 1,
+                "projection_comparison_state": "no_prior_export",
+                "projection_changes": [{"path": "scopes/atlas/index.md", "action": "added"}],
+                "records": [],
+            })],
+        )
+        self.assertEqual(preview_text_code, 0)
+        self.assertIn("Exports are disabled; listed changes show the projection if export is enabled.", preview_text_output)
+        self.assertIn("No successful local export is recorded", preview_text_output)
+        self.assertIn("Added: scopes/atlas/index.md", preview_text_output)
+
         saved_settings = {"settings": {"context_vault": {"enabled": True, "scopes": []}}}
         configure_code, configure_output, _, configure_session = self._run(
             ["context", "vault", "configure", "--enabled", "--json"],

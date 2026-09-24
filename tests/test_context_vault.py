@@ -131,6 +131,25 @@ class ContextVaultSelectionTests(unittest.TestCase):
         self.assertFalse(service.status().enabled)
         self.assertEqual(service.status().scopes, ())
 
+    def test_preview_reports_missing_selected_entities_for_saved_and_candidate_scopes(self) -> None:
+        missing_entity_id = uuid4()
+        saved_scope = ContextVaultScopeSettings(
+            id=uuid4(), name="Saved scope", enabled=True,
+            selected_entity_ids=(missing_entity_id,),
+        )
+        service = self._selection_service(
+            self.knowledge, enabled=True, scopes=(saved_scope,),
+        )
+
+        saved = service.preview(saved_scope.id)
+        candidate = service.preview_candidate(saved_scope.model_copy(update={"enabled": False}))
+
+        for preview in (saved, candidate):
+            self.assertEqual(len(preview.selection_issues), 1)
+            self.assertEqual(preview.selection_issues[0].entity_id, str(missing_entity_id))
+            self.assertEqual(preview.selection_issues[0].reason_code, "entity_unavailable")
+            self.assertIsNone(preview.selection_issues[0].replacement_entity_id)
+
     def test_production_revision_advances_at_committed_export_input_changes(self) -> None:
         initial_revision = self.store.context_vault_revision()
         sandbox = self._record(

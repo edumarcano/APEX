@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from core.api import app
 from core.context_vault.selection import ContextVaultSelectionService
 from core.context_vault.runtime import ContextVaultRuntimeError
+from core.context_vault.service import ContextVaultProjectionChange, ContextVaultProjectionComparison
 from core.knowledge.service import KnowledgeService
 from core.knowledge.store import KnowledgeStore
 from core.retrieval.store import RetrievalStore
@@ -55,8 +56,19 @@ class ContextVaultApiTests(unittest.TestCase):
             self.knowledge, ContextVaultSettings(enabled=True, scopes=(scope,)),
             destination_configured=True,
         )
+        runtime = mock.Mock()
+        runtime.preview_scope_projection.return_value = ContextVaultProjectionComparison(
+            state="compared",
+            changes=(ContextVaultProjectionChange(
+                path=f"scopes/{scope.id}/records/{record.id}.md", action="updated",
+            ),),
+        )
         with mock.patch(
             "core.api.routers.cortex._context_vault_selection_service", return_value=service,
+        ), mock.patch(
+            "core.api.routers.cortex._context_vault_restriction_code", return_value=None,
+        ), mock.patch(
+            "core.api.routers.cortex.get_context_vault_runtime", return_value=runtime,
         ):
             response = self.client.post(
                 "/api/v1/cortex/context-vault/preview", json={"scope_id": str(scope.id)},
@@ -76,6 +88,10 @@ class ContextVaultApiTests(unittest.TestCase):
         self.assertEqual(payload["eligible_count"], 1)
         self.assertEqual(payload["records"][0]["record_id"], str(record.id))
         self.assertEqual(payload["records"][0]["projected_path"], f"records/{record.id}.md")
+        self.assertEqual(payload["projection_comparison_state"], "compared")
+        self.assertEqual(payload["projection_changes"], [{
+            "path": f"scopes/{scope.id}/records/{record.id}.md", "action": "updated",
+        }])
         self.assertNotIn("source_metadata", payload["records"][0])
         self.assertNotIn("review_proposal", payload["records"][0])
         self.assertNotIn("private/wire/locator", json.dumps(payload))
@@ -109,6 +125,72 @@ class ContextVaultApiTests(unittest.TestCase):
         self.assertEqual(payload["eligible_count"], 1)
         self.assertTrue(payload["records"][0]["eligible"])
         self.assertEqual(invalid.status_code, 422)
+
+    def test_missing_selected_entity_is_an_issue_for_saved_and_candidate_previews(self) -> None:
+        missing_entity_id = uuid4()
+        saved_scope = ContextVaultScopeSettings(
+            id=uuid4(), name="Missing entity", enabled=True,
+            selected_entity_ids=(missing_entity_id,),
+        )
+        service = ContextVaultSelectionService(
+            self.knowledge, ContextVaultSettings(enabled=True, scopes=(saved_scope,)),
+            destination_configured=True,
+        )
+        with mock.patch(
+            "core.api.routers.cortex._context_vault_selection_service", return_value=service,
+        ):
+            saved = self.client.post(
+                "/api/v1/cortex/vault/preview", json={"scope_id": str(saved_scope.id)},
+            )
+            candidate = self.client.post(
+                "/api/v1/cortex/vault/preview",
+                json={"candidate_scope": saved_scope.model_dump(mode="json")},
+            )
+
+        for response in (saved, candidate):
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["selection_issues"], [{
+                "entity_id": str(missing_entity_id),
+                "reason_code": "entity_unavailable",
+                "replacement_entity_id": None,
+            }])
+
+    def test_disabled_vault_preview_still_compares_prospective_projection(self) -> None:
+        record = self._record()
+        scope = ContextVaultScopeSettings(
+            id=uuid4(), name="Disabled preview", enabled=True, record_ids=(record.id,),
+        )
+        service = ContextVaultSelectionService(
+            self.knowledge, ContextVaultSettings(enabled=False, scopes=(scope,)),
+            destination_configured=True,
+        )
+        runtime = mock.Mock()
+        runtime.preview_scope_projection.return_value = ContextVaultProjectionComparison(
+            state="no_prior_export",
+            changes=(
+                ContextVaultProjectionChange(path="index.md", action="added"),
+                ContextVaultProjectionChange(
+                    path=f"scopes/{scope.id}/records/{record.id}.md", action="added",
+                ),
+            ),
+        )
+        with mock.patch(
+            "core.api.routers.cortex._context_vault_selection_service", return_value=service,
+        ), mock.patch(
+            "core.api.routers.cortex._context_vault_restriction_code", return_value=None,
+        ), mock.patch(
+            "core.api.routers.cortex.get_context_vault_runtime", return_value=runtime,
+        ):
+            response = self.client.post(
+                "/api/v1/cortex/vault/preview", json={"scope_id": str(scope.id)},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(payload["vault_enabled"])
+        self.assertEqual(payload["projection_comparison_state"], "no_prior_export")
+        self.assertEqual([change["action"] for change in payload["projection_changes"]], ["added", "added"])
+        runtime.preview_scope_projection.assert_called_once()
 
     def test_status_aliases_preserve_compatibility_and_report_runtime_restrictions(self) -> None:
         service = ContextVaultSelectionService(

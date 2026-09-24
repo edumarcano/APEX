@@ -87,6 +87,8 @@ function mountVault(initial: ContextVaultSettings) {
         eligible_count: 1,
         records: [{ ...PREVIEW_RECORD, sensitive: scope.include_sensitive === true }],
         selection_issues: [],
+        projection_comparison_state: 'no_prior_export',
+        projection_changes: [{ path: `scopes/${scope.id}/index.md`, action: 'added' }],
       })
     }
     if (url.startsWith(`${API_ENDPOINTS.cortexContextEntities}?`)) return response([ENTITY])
@@ -121,6 +123,7 @@ describe('ContextVaultPanel', () => {
     expect(screen.getByRole('button', { name: 'Save scope settings' })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: 'Preview draft' }))
     expect(await screen.findByText(/1 of 1 records eligible/)).toBeInTheDocument()
+    expect(await screen.findByText(new RegExp(`scopes/${requests.previews[0].candidate_scope.id}/index\\.md`))).toBeInTheDocument()
     expect(requests.previews[0].candidate_scope).toEqual(expect.objectContaining({
       selected_entity_ids: [ENTITY.id],
       include_sensitive: false,

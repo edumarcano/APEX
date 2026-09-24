@@ -66,6 +66,13 @@ function restrictionText(code: string | null): string {
 }
 
 function PreviewResults({ preview }: { preview: ContextVaultPreview }): ReactElement {
+  const comparisonMessages = {
+    compared: 'Generated notes in this scope compared with the last successful local export.',
+    no_prior_export: 'No successful local export is recorded. These are the notes this scope would add.',
+    destination_unconfigured: 'Note changes cannot be compared until a destination folder is configured.',
+    export_restricted: 'Note changes cannot be compared while production export is restricted.',
+    unavailable: 'Local export history is unavailable, so note changes could not be compared.',
+  } satisfies Record<ContextVaultPreview['projection_comparison_state'], string>
   return (
     <section aria-label="Vault preview" className="space-y-2 rounded-lg border border-white/10 bg-black/20 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -82,6 +89,28 @@ function PreviewResults({ preview }: { preview: ContextVaultPreview }): ReactEle
       {!preview.destination_configured ? (
         <p className="text-xs text-amber-200">No destination folder is configured. Set APEX_CONTEXT_VAULT_PATH before enabling export.</p>
       ) : null}
+      <div role="group" aria-label="Projected vault note changes" className="space-y-1 rounded border border-white/5 p-2">
+        <p className="text-[10px] text-zinc-300">
+          {!preview.vault_enabled && !preview.hypothetical_enabled
+            ? 'Exports are disabled. Listed changes show the projection if export is enabled.'
+            : comparisonMessages[preview.projection_comparison_state]}
+        </p>
+        {preview.projection_comparison_state === 'compared' && preview.projection_changes.length === 0 ? (
+          <p className="text-[10px] text-zinc-500">No generated notes in this scope would change.</p>
+        ) : null}
+        {preview.projection_changes.length ? (
+          <ul className="max-h-32 space-y-1 overflow-y-auto" aria-label="Generated note changes">
+            {preview.projection_changes.map((change) => (
+              <li key={`${change.action}:${change.path}`} className="break-all font-mono text-[10px]">
+                <span className={change.action === 'removed' ? 'text-red-300' : change.action === 'updated' ? 'text-amber-200' : 'text-emerald-300'}>
+                  {change.action}
+                </span>
+                <span className="text-zinc-400"> · {change.path}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
       {preview.selection_issues.map((issue) => (
         <p key={issue.entity_id} className="text-xs text-amber-200">
           Entity {issue.entity_id} needs reselection{issue.replacement_entity_id ? `; its current entity is ${issue.replacement_entity_id}` : ''}.

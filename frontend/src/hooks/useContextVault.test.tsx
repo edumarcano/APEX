@@ -70,6 +70,8 @@ describe('useContextVault', () => {
         eligible_count: 0,
         records: [],
         selection_issues: [],
+        projection_comparison_state: 'no_prior_export',
+        projection_changes: [],
       }))
     const { result } = renderHook(() => useContextVault())
     await waitFor(() => expect(result.current.loadState).toBe('ready'))

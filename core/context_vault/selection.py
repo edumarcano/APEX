@@ -6,7 +6,7 @@ later stage and are deliberately outside this service.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID
 
 from core.knowledge.models import ContextVaultRecordSnapshot, ContextVaultSelectionSnapshot, KnowledgeRecord
@@ -47,6 +47,12 @@ class ContextVaultPreview:
     records: tuple[ContextVaultPreviewRecord, ...]
     selection_issues: tuple[ContextVaultSelectionIssue, ...]
     hypothetical_enabled: bool = False
+    scope_projection: "ContextVaultScopeProjection | None" = field(
+        default=None, repr=False, compare=False,
+    )
+    comparison_projections: tuple["ContextVaultScopeProjection", ...] = field(
+        default=(), repr=False, compare=False,
+    )
 
     @property
     def eligible_count(self) -> int:
@@ -141,10 +147,10 @@ class ContextVaultSelectionService:
                 entity_id=str(entity_id),
                 reason_code=(
                     "entity_merged_requires_reselection"
-                    if entity_states[str(entity_id)] is not None
+                    if entity_states.get(str(entity_id)) is not None
                     else "entity_unavailable"
                 ),
-                replacement_entity_id=entity_states[str(entity_id)],
+                replacement_entity_id=entity_states.get(str(entity_id)),
             )
             for entity_id in scope.selected_entity_ids
             if str(entity_id) not in entity_states or entity_states[str(entity_id)] is not None
@@ -155,6 +161,30 @@ class ContextVaultSelectionService:
             if hypothetical_enabled else scope
         )
         evaluation_vault_enabled = True if hypothetical_enabled else self._settings.enabled
+        scope_projection = None
+        if evaluation_vault_enabled and evaluation_scope.enabled:
+            scope_projection = self._export_scope_snapshot(
+                evaluation_scope, snapshot, vault_enabled=evaluation_vault_enabled,
+            )
+        comparison_scope_projection = None
+        if hypothetical_enabled or scope.enabled:
+            comparison_scope_projection = self._export_scope_snapshot(
+                evaluation_scope.model_copy(update={"enabled": True}),
+                snapshot, vault_enabled=True,
+            )
+        comparison_projections: list[ContextVaultScopeProjection] = []
+        found_scope = False
+        for saved_scope in self._settings.scopes:
+            if saved_scope.id == scope.id:
+                found_scope = True
+                if comparison_scope_projection is not None:
+                    comparison_projections.append(comparison_scope_projection)
+            elif saved_scope.enabled:
+                comparison_projections.append(ContextVaultScopeProjection(
+                    id=str(saved_scope.id), name=saved_scope.name, records=(), entities=(),
+                ))
+        if not found_scope and comparison_scope_projection is not None:
+            comparison_projections.append(comparison_scope_projection)
         preview_records = tuple(
             self._preview_record(
                 item.record,
@@ -171,6 +201,8 @@ class ContextVaultSelectionService:
             destination_configured=self._destination_configured,
             records=preview_records, selection_issues=selection_issues,
             hypothetical_enabled=hypothetical_enabled,
+            scope_projection=scope_projection,
+            comparison_projections=tuple(comparison_projections),
         )
 
     @property
@@ -181,9 +213,19 @@ class ContextVaultSelectionService:
     def export_scope(self, scope_id: UUID) -> ContextVaultScopeProjection:
         """Return eligible production records and their entity names for rendering."""
         scope, snapshot = self._scope_snapshot(scope_id)
+        return self._export_scope_snapshot(scope, snapshot)
+
+    def _export_scope_snapshot(
+        self,
+        scope: ContextVaultScopeSettings,
+        snapshot: ContextVaultSelectionSnapshot,
+        *,
+        vault_enabled: bool | None = None,
+    ) -> ContextVaultScopeProjection:
+        effective_vault_enabled = self._settings.enabled if vault_enabled is None else vault_enabled
         selected_records = tuple(
             item for item in snapshot.records
-            if self._is_export_eligible(item, vault_enabled=self._settings.enabled, scope=scope)
+            if self._is_export_eligible(item, vault_enabled=effective_vault_enabled, scope=scope)
         )
         entity_ids = {
             str(identifier)

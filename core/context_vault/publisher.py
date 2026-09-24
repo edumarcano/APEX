@@ -95,6 +95,43 @@ class ContextVaultPublicationStateStore:
         except (OSError, sqlite3.Error, TypeError, ValueError):
             raise ContextVaultPublicationError("state_unavailable") from None
 
+    @staticmethod
+    def read_last_successful_projection(
+        database_path: str | Path, destination_key: str,
+    ) -> dict[str, str] | None:
+        """Read the last successful owned projection without creating or changing state."""
+        path = Path(database_path).expanduser()
+        if not path.is_absolute():
+            raise ContextVaultPublicationError("state_path_invalid")
+        try:
+            if not path.is_file():
+                return None
+            uri = f"{path.resolve(strict=True).as_uri()}?mode=ro"
+            conn = sqlite3.connect(uri, uri=True, timeout=10.0)
+            try:
+                conn.execute("PRAGMA query_only=ON")
+                table = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' "
+                    "AND name='context_vault_publication_state'"
+                ).fetchone()
+                if table is None:
+                    return None
+                row = conn.execute(
+                    "SELECT owned_files_json,last_success_at "
+                    "FROM context_vault_publication_state WHERE destination_key=?",
+                    (destination_key,),
+                ).fetchone()
+                if row is None or not row[1]:
+                    return None
+                owned = json.loads(str(row[0]))
+                return ContextVaultPublisher._hash_map(owned, allow_empty=True)
+            finally:
+                conn.close()
+        except ContextVaultPublicationError:
+            raise
+        except (OSError, sqlite3.Error, TypeError, ValueError):
+            raise ContextVaultPublicationError("state_unavailable") from None
+
     def save_pending(self, destination_key: str, pending: dict[str, object]) -> None:
         self._update(
             "INSERT INTO context_vault_publication_state(destination_key,owned_files_json,pending_json,last_error_code) "

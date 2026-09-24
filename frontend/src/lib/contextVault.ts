@@ -79,13 +79,15 @@ function parsePreviewRecord(value: unknown): ContextVaultPreview['records'][numb
 }
 
 export function parseContextVaultPreview(value: unknown): ContextVaultPreview | null {
+  const comparisonStates = ['compared', 'no_prior_export', 'destination_unconfigured', 'export_restricted', 'unavailable']
   if (!isRecord(value) || typeof value.scope_id !== 'string' || typeof value.scope_name !== 'string' ||
     typeof value.vault_enabled !== 'boolean' || typeof value.scope_enabled !== 'boolean' ||
     typeof value.hypothetical_enabled !== 'boolean' || typeof value.destination_configured !== 'boolean' ||
     typeof value.export_restricted !== 'boolean' ||
     !(value.restriction_code === null || typeof value.restriction_code === 'string') ||
+    typeof value.projection_comparison_state !== 'string' || !comparisonStates.includes(value.projection_comparison_state) ||
     typeof value.candidate_count !== 'number' || typeof value.eligible_count !== 'number' ||
-    !Array.isArray(value.records) || !Array.isArray(value.selection_issues)) return null
+    !Array.isArray(value.records) || !Array.isArray(value.selection_issues) || !Array.isArray(value.projection_changes)) return null
   const records = value.records.map(parsePreviewRecord)
   if (records.some((item) => item === null)) return null
   const selectionIssues = value.selection_issues.map((issue) => {
@@ -94,7 +96,13 @@ export function parseContextVaultPreview(value: unknown): ContextVaultPreview | 
     return issue
   })
   if (selectionIssues.some((issue) => issue === null)) return null
-  return { ...value, records, selection_issues: selectionIssues } as unknown as ContextVaultPreview
+  const projectionChanges = value.projection_changes.map((change) => {
+    if (!isRecord(change) || typeof change.path !== 'string' ||
+      (change.action !== 'added' && change.action !== 'updated' && change.action !== 'removed')) return null
+    return change
+  })
+  if (projectionChanges.some((change) => change === null)) return null
+  return { ...value, records, selection_issues: selectionIssues, projection_changes: projectionChanges } as unknown as ContextVaultPreview
 }
 
 function parseEntity(value: unknown): ContextEntity | null {
