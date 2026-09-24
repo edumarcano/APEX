@@ -9,7 +9,7 @@
 ## Current Focus
 
 **Current Phase:** [Phase V: APEX 2.0 Beta](#phase-v-apex-20-beta)
-**Next Milestone:** [v2.0.0-beta.5 - Cortex: Personal Attention & Briefings](#v200-beta5---cortex-personal-attention--briefings)
+**Active Milestone:** [v2.0.0-beta.5 - Context Vault & Sharing](#v200-beta5---context-vault--sharing)
 **Current Direction:** [APEX 2.0 Direction](#apex-20-direction)
 
 ### Navigation
@@ -405,25 +405,27 @@ Apex Agent is now APEX's built-in personal operations assistant. The selected mo
 
 This keeps the useful model, tool, and action infrastructure without treating every model or runtime as a separate Agent identity.
 
-Phase V builds on that simpler foundation by improving how APEX stores context, reviews evidence, receives information from outside tools, prepares briefings, and decides what deserves the operator's attention.
+Phase V builds on this foundation with trusted personal context, bounded runs, outside activity reports, portable context, and a redesigned briefing experience.
+
+Cortex should help the operator understand and work with their APEX environment without becoming another general-purpose Agent platform.
 
 ---
 
 ## APEX 2.0 Direction
 
-APEX should be the trusted home for the operator's personal environment.
+APEX should become exceptionally good at understanding, protecting, connecting, and presenting the operator's personal environment.
 
-It should understand useful information from conversations, connected services, files, outside AI tools, and future devices. It should preserve where that information came from, distinguish direct facts from model interpretations, and keep important history when something changes.
+It keeps accepted personal context and the evidence behind it. Conversations, connected-service records, outside reports, and model interpretations remain distinguishable, and important changes retain their history.
 
-Outside tools should normally be used through their native interfaces. APEX does not need custom control panels for tools like Gemini Spark, Grok Bot, Hermes Agent, or other AI products.
+Outside tools should normally be used through their native interfaces. They can submit useful results through the External Activity Inbox without giving APEX responsibility for their sessions, task execution, or controls.
 
-Instead, those tools should be able to leave useful reports, findings, evidence, and follow-up items in one shared APEX inbox. APEX can then relate those results to projects, commitments, existing knowledge, and current telemetry.
+Trusted context can also travel in the other direction. APEX can maintain a selected, readable copy in a local folder, which the operator may sync through Google Drive, open in Obsidian, or use with an AI application. This does not require exposing the APEX backend to the internet.
 
-Connections should be easy to add, disable, or replace. Stopping use of one external product should usually mean revoking or removing a client configuration, not editing the APEX codebase.
+The exported folder is a view of APEX context, not a second source of truth. APEX decides what it generates; the storage provider and receiving applications control access to the copies they receive.
 
-Apex Agent remains the native conversational interface to APEX itself. It can explain personal context, compare connected information, prepare briefings, answer questions about the environment, and propose APEX-managed actions.
+Apex Agent remains the native assistant for this environment. It can explain records, compare connected information, prepare briefings, investigate relevant changes, and propose APEX-managed actions.
 
-The rule for this phase is simple: build the personal layer in APEX and connect mature tools for the general work.
+Adding or removing an outside tool should usually be a configuration or sharing decision. The personal context and its meaning should not depend on which AI products the operator happens to use.
 
 ---
 
@@ -465,110 +467,63 @@ Give outside tools a local inbox for completed work, findings, evidence, and fol
 
 ---
 
-## v2.0.0-beta.5 - Cortex: Personal Attention & Briefings
+## v2.0.0-beta.5 - Context Vault & Sharing
 
-**Status:** Planned
+**Status:** In Progress
 
 **Objective:**
-Turn personal context, connected-service state, external activity, commitments, conflicts, and pending actions into a clearer view of what deserves attention.
+Maintain a portable Markdown copy of selected, trusted APEX context that can be opened in Obsidian and shared with AI applications through a synced folder.
 
-APEX briefings should move beyond summarizing available data. They should help answer:
+APEX remains the source of truth. The vault is generated from accepted records and can be rebuilt without changing or losing the underlying personal context.
 
-* What changed since the last review?
-* What needs my attention now?
-* What can safely wait?
-* What is blocked or overdue?
-* Which outside tasks completed?
-* Which findings conflict with current APEX context?
-* Which commitments or decisions may be affected?
-* Which actions are waiting for approval?
+The vault should contain small, focused notes about the subjects APEX already knows, such as projects, people, decisions, preferences, and commitments. A short index should help readers find their way around. It should not become one large export that every application has to read in full.
 
-APEX should keep a small, persistent attention queue. An item should retain its source and may be marked new, reviewed, dismissed, resolved, or superseded.
+Notes should use ordinary Markdown, readable metadata, and internal links. Related records should link to one another so the vault is useful in Obsidian's graph view, while the meaning of each relationship remains clear in the text. Stable record identifiers, source references, and update times should make it possible to trace an exported note back to APEX.
 
-Attention items may come from personal context, calendar events, tasks, email, connector failures, outside activity reports, unresolved conflicts, action proposals, and later device events.
+The operator should choose the destination folder and what context is included. A project-specific export or a small set of useful personal defaults should be possible without sharing everything else. Raw conversations, private source documents, pending reviews, and external reports should not be exported merely because APEX stores them.
 
-The Home workspace should present these items in a concise way, with links to the supporting source or the native outside application.
+Google Drive should be the first reference setup for synchronization. APEX writes local files and leaves synchronization to the existing Drive application. The same locally available folder should be usable as an Obsidian vault, without requiring Obsidian plugins, Obsidian Sync, or a Google-specific storage implementation inside APEX.
 
-Apex Agent can synthesize the briefing and explain why something matters, but software should select and bound the source material first. The model should not receive unrestricted raw history or decide on its own which records are authoritative.
+The initial direction is one-way: APEX writes the generated notes. Editing those notes in Obsidian does not change accepted APEX context. Handwritten notes may live in a separate area of the vault, and APEX must leave that area and Obsidian's settings alone. Anything placed in a shared folder is still subject to that folder's sharing permissions, including handwritten material.
 
-Briefings should retain a useful deterministic fallback when a model is unavailable or when a model-generated summary would add little value.
+When trusted context changes, APEX should update the affected notes and remove or clearly supersede generated content that is no longer current or allowed in the export. Updates should preserve links and avoid unnecessary rewrites. The operator should be able to see what was exported, when it was last refreshed, and whether an update failed.
 
-The goal is not to create another feed of Agent summaries. The goal is to relate activity from several systems to the operator's personal projects, commitments, decisions, and current environment.
+Sharing should be explicit. APEX can stop exporting a record and remove its managed copy, but it cannot guarantee deletion from another application's history, index, or previously downloaded files. Disabling an export is not the same as recalling information already shared.
+
+Validation should include browsing the linked notes in Obsidian and using the exported context in at least one actual Drive-connected AI workflow. Folder selection and retrieval behavior should be checked in that application rather than assumed to work identically everywhere.
+
+This milestone does not add bidirectional note editing, a live remote context gateway, a cloud database replica, or a custom synchronization service.
 
 ---
 
-## v2.0.0-beta.6 - Scoped Context Access
+## v2.0.0-beta.6 - Cortex: Adaptive Briefings & Attention
 
 **Status:** Planned
 
 **Objective:**
-Allow approved outside clients to retrieve limited APEX context after the inbound activity path has proven useful.
+Redesign briefings as a configurable, interactive way to understand the personal environment, using the context, review, run, and external-activity foundations established by the earlier betas.
 
-This should extend the gateway created for external activity rather than expose the wider APEX backend.
+The redesign should begin with the operator's real briefing needs rather than preserving the current modes unchanged. Specialized briefings may serve different purposes, such as starting the day, reviewing a project, or catching up on outside work. The first version should support a useful, manageable set of experiences without trying to anticipate every possible mode.
 
-MCP should be the first context-access adapter where it fits, but APEX's permissions and retrieval rules should remain independent of MCP so another protocol can replace it later.
+A briefing's purpose should be separate from the model that generates it. Configuration should describe the subjects, sources, time range, level of detail, and presentation the operator wants. Model selection and generation settings should be separate choices, with capability checks where needed. A mode should not require a particular named model simply because that was its original implementation.
 
-Each client should have its own identity and a narrow set of permissions. Access may be limited by project, context type, source, sensitivity, or operation.
+Briefings should combine relevant accepted context, current connector data, pending reviews, verified-action state, and selected external activity. They should help explain what changed, why it matters, what needs a decision, and what can wait. APEX should continue reading its own services directly; the exported vault is for outside consumers, not a replacement for internal context retrieval.
 
-A client may be allowed to:
+External reports need to retain their status as reports. A briefing can say that an outside tool found something or that a finding needs review without presenting it as an accepted fact. Reading or dismissing an Inbox item must not silently promote its contents into trusted knowledge.
 
-* search an approved part of personal context;
-* retrieve information about a specific project or subject;
-* read an approved timeline;
-* receive a context package prepared for one task.
+Attention should persist between briefings. A small set of attention records should prevent the same item from being presented as new every time and let the operator review, dismiss, or resolve it where appropriate. These records should point back to existing tasks, reports, reviews, or actions rather than create another task-management system.
 
-A client should not receive direct database access, unrestricted search across personal history, general Cortex tool access, or a direct world-model write operation.
+The experience should support follow-up. The operator should be able to ask why an item matters, inspect its evidence, narrow the briefing to a subject, request more detail, or move into an approved action. Existing Cortex conversation and run capabilities should support this interaction.
 
-Information returned by the client should still enter through the external activity and review path created in beta.4. Read access should not give the client authority to write.
+More agentic briefing generation should reuse the bounded-run system. Apex Agent may retrieve additional relevant context or check an approved source when needed, while APEX enforces the allowed tools, input limits, time and token budgets, cancellation, and action permissions. Briefings should not introduce a second Agent runtime.
 
-APEX should record which client requested context, what scope was used, and which records were included. Sensitive results may be redacted or withheld according to policy.
+Proactive behavior should begin with a few concrete, opt-in uses. Existing refreshes, newly received reports, or a configured schedule may update attention or prepare a briefing when that is useful. The operator should control when this happens, whether a model may be called, and whether it produces a notification. Repeated or unchanged information should not generate unnecessary work or interruptions.
 
-The main backend should remain local. Remote reachability and identity should come from established private networking, tunneling, reverse-proxy, and authorization tools rather than custom APEX networking infrastructure.
+Only the hooks needed for these uses belong in this milestone. A general webhook platform, workflow engine, always-on autonomous assistant, and broad automation integrations are outside its scope.
 
-External context access should remain optional. The first version may require the APEX machine to be online. A cloud copy or continuously synchronized replica of the personal world model is not part of this milestone.
+A useful non-model view should remain available when generation is unavailable or unnecessary. Briefings should make missing or stale sources clear, and fallback behavior should not silently turn a requested experience into a different one.
 
-Gemini Spark may serve as the first reference client if its available connection method supports the required access. The design should not depend on Spark or any other individual product remaining available.
-
----
-
-## v2.0.0-beta.7 - Events & Proactive Attention
-
-**Status:** Planned
-
-**Objective:**
-Let connected systems tell APEX when something changes so that APEX can update its attention view without repeatedly rescanning every source.
-
-APEX should define a small event format that records:
-
-* the source;
-* the event type;
-* the time;
-* the affected subject;
-* the sensitivity;
-* a duplicate or idempotency key;
-* a reference to the original information.
-
-Events may come from existing APEX connectors, webhooks, operating-system services, automation platforms, device hubs, message brokers, or future physical systems.
-
-Existing tools should remain responsible for schedules, connector setup, message delivery, polling, device communication, and general automation editing. APEX should not build its own automation platform, workflow editor, scheduler, or device hub.
-
-When an event arrives, APEX should decide whether it affects trusted context or deserves attention. It may:
-
-* add evidence for review;
-* update an attention item;
-* flag a conflict;
-* start a bounded Apex Agent run;
-* propose an APEX action;
-* notify the operator;
-* ignore the event.
-
-No outside event should directly perform a sensitive write. Event-triggered work should follow the same limits, approval rules, and verification requirements as work started by the operator.
-
-The HUD and CLI should show important recent events, what APEX did with them, and any resulting items waiting for review.
-
-External event sources should be registered through configuration and removable without changing APEX code.
-
-The same event path should later accept selected Tyto-S3 observations.
+This is the final feature beta before v2.0.0. Its scope should settle the briefing configuration, attention state, interaction model, and relationship with existing APEX services. Additional modes and integrations can follow later without holding the stable release open indefinitely.
 
 ---
 
@@ -577,36 +532,21 @@ The same event path should later accept selected Tyto-S3 observations.
 **Status:** Planned
 
 **Objective:**
-Turn the Phase V beta work into a stable APEX 2.0 platform without adding another major feature area.
+Consolidate the six beta milestones into a stable APEX 2.0 release without adding another major feature area.
 
-The release should settle the contracts for:
+The release should settle the contracts for personal context and evidence, review decisions, Apex Agent runs, verified actions, external activity, generated context vaults, briefing configuration, and persistent attention.
 
-* conversations and personal context;
-* sources and evidence;
-* review and reconciliation;
-* Apex Agent runs;
-* verified actions;
-* external activity;
-* attention items and briefings;
-* scoped client access;
-* connected events.
+Migration work should preserve useful operator data, including conversations, accepted context, source history, reviews, actions, run summaries, reports, and existing briefing history. Remaining obsolete settings and compatibility code should be removed where they are no longer needed.
 
-Old 1.x tables, settings, aliases, persistence paths, and compatibility code should be removed or migrated when they are no longer useful.
+Vault testing should cover export selection, retractions, obsolete generated files, broken links, regeneration, and protection of handwritten notes. Documentation should clearly distinguish local APEX records from copies shared through cloud storage or other applications.
 
-Important operator data should be preserved wherever practical, including conversations, personal context, evidence, review history, action records, run summaries, external activity, attention history, and configuration.
+Briefing testing should cover normal use, missing or stale sources, unreviewed external findings, unavailable models, cancellation, repeated attention items, and opted-in background generation.
 
-Fresh installations and upgraded installations should end with the same current schema, configuration, and runtime behavior.
+APEX should remain usable without Google Drive, Obsidian, an outside AI application, or an optional tracing service. A missing external service must not prevent access to locally stored personal context.
 
-External services should remain optional. APEX should still start, preserve personal context, and support its core local features when an outside client, tracing viewer, tunnel, automation platform, or device source is unavailable.
+Fresh and upgraded installations should reach the same current schema and configuration. Documentation should explain data ownership, privacy boundaries, export behavior, model selection, and the limits of any proactive features.
 
-The stable release should include:
-
-* migration and upgrade testing;
-* security review of external access;
-* graceful-degradation testing;
-* demo scenarios covering normal, busy, quiet, and degraded states;
-* documentation explaining which system owns each kind of data;
-* removal of temporary beta compatibility paths.
+Stable v2.0.0 should mark a reliable foundation for future improvements, not require every possible briefing mode, connection, or automation to be finished.
 
 ---
 
@@ -657,7 +597,7 @@ An existing device hub or message broker may handle discovery, delivery, history
 
 APEX should consume the measurements and events that are useful as personal context. It should preserve device identity, timestamps, and source information.
 
-Cortex should be able to answer questions about current conditions, use recent history in briefings, explain important changes, and respond to selected events through the event path introduced in beta.7.
+Cortex should be able to answer questions about current conditions, use recent history in briefings, and explain important changes. Selected observations may update attention or support an opted-in briefing. Any Tyto-specific event handling should be added in this milestone and reuse existing APEX services where practical.
 
 APEX should not directly manage Tyto firmware or silently turn sensor changes into outside actions.
 
@@ -682,45 +622,40 @@ Before integration begins, Tyto should provide:
 
 # Unscheduled Possibilities
 
-The following ideas are intentionally not assigned to a version.
+These ideas are not requirements for stable v2.0.0. They should be scheduled only when an actual use case needs more than the existing local services, Inbox, context vault, or briefing system provides.
 
-They should be added to the roadmap only after a real APEX use case proves that they are needed.
+* **Live remote context access:** An authenticated MCP or API service may be considered if outside applications genuinely need fresh, interactive retrieval that exported files cannot provide. The existing local submission gateway should not be exposed publicly as a shortcut.
+* **Edits from Obsidian or other note tools:** Changes to exported notes may eventually become proposals for APEX review. They should not silently overwrite accepted personal context.
+* **External task delegation:** APEX may hand a bounded task to Hermes Agent or another isolated runtime when there is a practical reason to start that work from APEX.
+* **Workflow tools and additional event sources:** A specific workflow, webhook, or device connection may justify an adapter to an established tool. APEX should add the connection needed for that use, not build a general automation platform.
+* **Portable procedural skills:** An existing skill format may be adopted when repeated APEX procedures justify it.
+* **A cloud-hosted APEX service:** Live access or processing while the main machine is offline would require a separate design for hosting, security, synchronization, and data ownership. This is different from syncing a generated Markdown vault.
 
-* **External task delegation:** APEX may eventually assign bounded work to Hermes Agent or another autonomous runtime. Hermes should remain isolated and connect through a generic worker or activity interface. Installing Hermes is not enough reason to build the integration.
-* **Workflow runtime integration:** LangGraph, n8n, or another workflow tool may be connected when an actual APEX task requires branching, checkpoints, visual automation, or long-running coordination. APEX should not build its own graph engine.
-* **Portable procedural skills:** APEX may adopt an existing skill format when repeated procedures begin to appear. It should not invent a skill ecosystem in advance.
-* **Cloud context replication:** A synchronized cloud projection may be considered only if access while the APEX machine is offline becomes important enough to justify encryption, synchronization, conflict handling, and deletion propagation.
-* **External Agent control interfaces:** Custom APEX replacements for the native Spark, Grok Bot, Hermes, ChatGPT, or other Agent interfaces are not planned.
+Custom replacements for the native interfaces of outside Agent products are not planned.
 
 ---
 
 # Long-Term Vision
 
-APEX is intended to become the trusted personal dashboard and context home around the tools the operator chooses to use.
+APEX is intended to be the trusted personal dashboard and context home around the tools the operator chooses to use.
 
-It should understand the operator's environment, protect access to it, connect useful outside sources, and present what matters clearly.
+It should understand the operator's environment, preserve where information came from, protect access to it, and make useful connections between projects, commitments, decisions, outside work, and current conditions.
 
-That environment may include people, projects, ideas, decisions, preferences, commitments, conversations, connected services, outside Agent work, system state, files, and physical observations.
+Personal context should be useful both inside and outside APEX. A generated vault can make selected knowledge readable in a note application or available to an AI tool without moving ownership of that knowledge out of APEX.
 
-Apex Agent is the native assistant for that environment. It should be especially good at answering questions about APEX context, explaining why something matters, comparing personal information, preparing briefings, and proposing verified APEX actions.
+Apex Agent is the native assistant for this environment. Its role is to help the operator understand their context, investigate relevant changes, prepare useful briefings, and carry out approved APEX actions.
 
-General-purpose tools should remain general-purpose tools. Their native applications can continue to handle research, coding, browser work, terminal access, long autonomous tasks, and other specialized execution.
+Briefings should become configurable and interactive. Different needs may call for different sources, levels of detail, models, and delivery styles. The lasting value should come from how APEX relates information to the operator's environment, not from a particular model or a fixed collection of briefing modes.
 
-APEX should receive the parts of that work that matter afterward: results, evidence, changes, unresolved questions, and items requiring attention.
+Outside tools can continue to handle research, coding, browsing, terminal work, and long autonomous tasks through their own interfaces. APEX can receive the results that matter and share the context the operator chooses.
 
-An outside tool should be easy to add and easy to remove. Its disappearance should not take personal context with it or leave product-specific code spread throughout APEX.
+The local-first model remains the default. Core records and services stay under the operator's control, while selected exports may be copied into cloud storage. Public APEX hosting is not required.
 
-APEX briefings should become a personal review of the environment rather than a generic summary feed. They should show what changed, what conflicts, what is waiting, what needs a decision, and why it matters to the operator.
-
-The model, provider, outside Agent, connection protocol, automation platform, and device hub should all remain replaceable.
-
-The authoritative personal context should remain under the operator's control.
-
-The local-first model remains the default. APEX should continue to work without a hosted APEX account, while optional external access remains authenticated, limited, revocable, and recorded.
+Models, note applications, sync providers, and outside AI products should remain replaceable. Changing those tools should not mean rebuilding APEX or losing the personal context accumulated within it.
 
 ## Current Focus
 
 APEX is currently in **Phase V: APEX 2.0 Beta**.
 
 **Next milestone:**
-[v2.0.0-beta.5 - Cortex: Personal Attention & Briefings](#v200-beta5---cortex-personal-attention--briefings)
+[v2.0.0-beta.5 - Context Vault & Sharing](#v200-beta5---context-vault--sharing)
