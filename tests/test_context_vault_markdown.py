@@ -331,6 +331,54 @@ class ContextVaultMarkdownTests(unittest.TestCase):
             files[failing_target],
         )
 
+    def test_republication_retains_removed_ownership_after_multiple_interruptions(self) -> None:
+        scope_id, previous_record_id, retry_record_id = uuid4(), uuid4(), uuid4()
+        previous_record = f"scopes/{scope_id}/records/{previous_record_id}.md"
+        retry_record = f"scopes/{scope_id}/records/{retry_record_id}.md"
+        previous_files = {
+            "index.md": "# APEX Context vault\n",
+            f"scopes/{scope_id}/index.md": "# Previous scope\n",
+            previous_record: "# Previous record\n",
+        }
+
+        class InterruptBeforeRootIndex(ContextVaultPublisher):
+            def _atomic_replace(self, source: Path, target: Path) -> None:
+                if target.relative_to(self._root).as_posix() == "index.md":
+                    raise OSError("interrupt before root index")
+                super()._atomic_replace(source, target)
+
+        with self.assertRaises(ContextVaultPublicationError):
+            InterruptBeforeRootIndex(self.root / "vault", self.database_path).publish(previous_files)
+
+        previous_record_path = self.root / "vault" / previous_record
+        self.assertTrue(previous_record_path.exists())
+        retry_files = {
+            "index.md": "# APEX Context vault after deselection\n",
+            retry_record: "# Retry record\n",
+        }
+
+        class InterruptBeforeRetryRecord(ContextVaultPublisher):
+            def _atomic_replace(self, source: Path, target: Path) -> None:
+                if target.relative_to(self._root).as_posix() == retry_record:
+                    raise OSError("interrupt before retry record")
+                super()._atomic_replace(source, target)
+
+        with self.assertRaises(ContextVaultPublicationError):
+            InterruptBeforeRetryRecord(self.root / "vault", self.database_path).publish(retry_files)
+
+        handwritten_retry_path = self.root / "vault" / retry_record
+        handwritten_retry_path.parent.mkdir(parents=True, exist_ok=True)
+        handwritten_retry_path.write_text("Handwritten note", encoding="utf-8")
+
+        result = self._publisher().remove_managed()
+
+        self.assertEqual(result.removed_file_count, 2)
+        self.assertFalse(previous_record_path.exists())
+        self.assertFalse((self.root / "vault" / f"scopes/{scope_id}/index.md").exists())
+        self.assertEqual(handwritten_retry_path.read_text(encoding="utf-8"), "Handwritten note")
+        self.assertEqual(self._publisher().state().owned_files, ())
+        self.assertFalse(self._publisher().state().pending)
+
     def test_pending_intent_does_not_claim_or_delete_unwritten_paths(self) -> None:
         scope_id, record_id = uuid4(), uuid4()
         files = self._projection(scope_id, record_id)

@@ -180,7 +180,8 @@ class ContextVaultPublisher:
             pending = state.pending or {}
             desired = self._hash_map(pending.get("desired", {}), allow_empty=True)
             published = self._hash_map(pending.get("published", {}), allow_empty=True)
-            known_owned = set(state.owned) | set(published)
+            pending_removed = self._path_list(pending.get("removed", []))
+            known_owned = set(state.owned) | set(published) | pending_removed
             temporaries = self._temp_map(pending.get("temps", {}))
 
             self._validate_directory_chain(self._root)
@@ -228,7 +229,10 @@ class ContextVaultPublisher:
             previous_pending = state.pending or {}
             pending_desired = self._hash_map(previous_pending.get("desired", {}), allow_empty=True)
             pending_published = self._hash_map(previous_pending.get("published", {}), allow_empty=True)
-            known_owned = previous_owned | set(pending_published)
+            # Keep ownership of paths awaiting removal across retries. Pending
+            # desired intent alone cannot establish ownership of unwritten files.
+            pending_removed = self._path_list(previous_pending.get("removed", []))
+            known_owned = previous_owned | set(pending_published) | pending_removed
             pending_temps = self._temp_map(previous_pending.get("temps", {}))
 
             self._validate_directory_chain(self._root)
