@@ -25,6 +25,7 @@ FOOTBALL_CACHE_FILENAME = ".football_cache.json"
 FOOTBALL_CACHE_TTL = timedelta(hours=6)
 FOOTBALL_HORIZON = timedelta(days=14)
 FOOTBALL_FIXTURE_CAP_PER_TEAM = 5
+FOOTBALL_UPCOMING_STATUSES = frozenset({"SCHEDULED", "TIMED"})
 try:
     EASTERN_TZ = ZoneInfo("America/New_York")
 except Exception:
@@ -292,29 +293,43 @@ def _write_football_cache(entries: dict[int, list[dict[str, Any]]]) -> None:
         sys.stderr.write("[SPORTS][FOOTBALL][CACHE] write_failed\n")
 
 
-def _normalize_football_match(match: object, *, team_id: int, team_name: str, now: datetime) -> dict[str, Any] | None:
+def _normalize_football_match(
+    match: object,
+    *,
+    team_id: int,
+    team_name: str,
+    now: datetime,
+) -> tuple[str, dict[str, Any] | None]:
+    """Classify a provider match as structurally invalid, ineligible, or an upcoming fixture."""
     if not isinstance(match, dict):
-        return None
+        return "invalid", None
+    status = match.get("status")
+    if not isinstance(status, str):
+        return "invalid", None
     home = match.get("homeTeam")
     away = match.get("awayTeam")
     competition = match.get("competition")
+    if not isinstance(home, dict) or not isinstance(away, dict) or not isinstance(competition, dict):
+        return "invalid", None
     kickoff = _parse_utc_datetime(match.get("utcDate"))
-    if not isinstance(home, dict) or not isinstance(away, dict) or not isinstance(competition, dict) or kickoff is None or kickoff <= now:
-        return None
+    if kickoff is None:
+        return "invalid", None
     home_id, away_id = home.get("id"), away.get("id")
     if home_id == team_id:
         opponent, home_or_away = away.get("name"), "home"
     elif away_id == team_id:
         opponent, home_or_away = home.get("name"), "away"
     else:
-        return None
+        return "invalid", None
     fixture_id = match.get("id")
     competition_id = competition.get("id")
     competition_name = competition.get("name")
-    if isinstance(fixture_id, bool) or not isinstance(fixture_id, int) or isinstance(competition_id, bool) or not isinstance(competition_id, int):
-        return None
+    if isinstance(fixture_id, bool) or not isinstance(fixture_id, int):
+        return "invalid", None
+    if isinstance(competition_id, bool) or not isinstance(competition_id, int):
+        return "invalid", None
     if not all(isinstance(value, str) and value.strip() for value in (opponent, competition_name)):
-        return None
+        return "invalid", None
     fixture = {
         "fixture_id": str(fixture_id),
         "team_id": team_id,
@@ -325,7 +340,11 @@ def _normalize_football_match(match: object, *, team_id: int, team_name: str, no
         "competition": competition_name.strip(),
         "kickoff_at": kickoff.isoformat(),
     }
-    return fixture if _is_valid_football_fixture(fixture, now=now) else None
+    if status not in FOOTBALL_UPCOMING_STATUSES:
+        return "ineligible", None
+    if not _is_valid_football_fixture(fixture, now=now):
+        return "ineligible", None
+    return "eligible", fixture
 
 
 def _football_display_text(fixtures: list[dict[str, Any]]) -> str:
@@ -338,7 +357,7 @@ def _football_display_text(fixtures: list[dict[str, Any]]) -> str:
 
 
 def collect_football(*, force: bool = False) -> ConnectorResult:
-    """Collect each followed team's scheduled fixtures in the next fourteen days."""
+    """Collect each followed team's upcoming fixtures in the next fourteen days."""
     observed_at = utc_now_iso()
     now = datetime.now(timezone.utc)
     teams = get_settings_store().get_snapshot().football.teams
@@ -362,9 +381,11 @@ def collect_football(*, force: bool = False) -> ConnectorResult:
             fresh_cache_used = True
             continue
         try:
+            date_from = now.date().isoformat()
+            date_to = (now + FOOTBALL_HORIZON).date().isoformat()
             url = (
                 "https://api.football-data.org/v4/teams/"
-                f"{team.id}/matches?status=SCHEDULED&limit={FOOTBALL_FIXTURE_CAP_PER_TEAM}"
+                f"{team.id}/matches?dateFrom={date_from}&dateTo={date_to}"
             )
             session = get_connector_http_session("sports")
             response = (
@@ -380,12 +401,21 @@ def collect_football(*, force: bool = False) -> ConnectorResult:
             matches = payload.get("matches") if isinstance(payload, dict) else None
             if not isinstance(matches, list):
                 raise RuntimeError("malformed_payload")
-            team_fixtures = [
-                fixture
-                for match in matches
-                if (fixture := _normalize_football_match(match, team_id=team.id, team_name=team.name, now=now)) is not None
-            ]
-            if matches and not team_fixtures:
+            team_fixtures: list[dict[str, Any]] = []
+            structurally_valid = False
+            for match in matches:
+                outcome, fixture = _normalize_football_match(
+                    match,
+                    team_id=team.id,
+                    team_name=team.name,
+                    now=now,
+                )
+                if outcome == "invalid":
+                    continue
+                structurally_valid = True
+                if outcome == "eligible" and fixture is not None:
+                    team_fixtures.append(fixture)
+            if matches and not structurally_valid:
                 raise RuntimeError("malformed_payload")
             if team_fixtures:
                 team_fixtures.sort(key=lambda fixture: fixture["kickoff_at"])
