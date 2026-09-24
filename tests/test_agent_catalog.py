@@ -51,13 +51,25 @@ class ApexAgentCatalogTests(unittest.TestCase):
     def test_visible_catalogs_are_ordered_by_runtime(self) -> None:
         self.assertEqual(
             [profile.model_id for profile in visible_cloud_models()],
-            ["deepseek/deepseek-v4-flash-0731", "gpt-5.6-luna", "gemini-3.7-flash"],
+            ["deepseek/deepseek-v4-flash-0731", "gemini-3.7-flash"],
         )
         self.assertEqual(
             [profile.model_id for profile in visible_local_models()],
+            ["gemma-4-E2B-Q4_K_M.gguf"],
+        )
+
+    def test_dev_only_models_appear_when_development_mode_is_enabled(self) -> None:
+        self.assertEqual(
+            [profile.model_id for profile in visible_cloud_models(dev_mode=True)],
+            ["deepseek/deepseek-v4-flash-0731", "gpt-5.6-luna", "gemini-3.7-flash"],
+        )
+        self.assertEqual(
+            [profile.model_id for profile in visible_local_models(dev_mode=True)],
             [
                 "gemma-4-E2B-Q4_K_M.gguf",
                 "gemma-4-E4B-Q4_K_M.gguf",
+                "qwen3:1.7b",
+                "qwen3:4b-instruct",
                 "Qwen3.5-4B-Q4_K_M.gguf",
             ],
         )

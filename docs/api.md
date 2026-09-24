@@ -462,7 +462,7 @@ Development-only models appear in the `model_catalog` list only when `DEV_MODE` 
 
 Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Local availability distinguishes an unreachable runtime, missing model, loading model, busy execution slot, and provider-reported residency. Local catalog entries publish model-specific context and reasoning values, options, and defaults.
 
-Registered cloud models include `deepseek/deepseek-v4-flash-0731`, `gpt-5.6-luna`, and `gemini-3.7-flash`. Registered local models include Gemma and Qwen GGUF profiles plus development-only Ollama profiles.
+Registered cloud models include `deepseek/deepseek-v4-flash-0731` and `gemini-3.7-flash`; `gpt-5.6-luna` is development-only. Registered local models include `gemma-4-E2B-Q4_K_M.gguf` in normal operation; `gemma-4-E4B-Q4_K_M.gguf`, `Qwen3.5-4B-Q4_K_M.gguf`, and Ollama profiles are development-only.
 
 ### POST `/api/v1/cortex/models/verify`
 

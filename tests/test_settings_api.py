@@ -89,7 +89,10 @@ class SettingsApiTests(unittest.TestCase):
         self.assertTrue(payload["settings"]["modules"]["f1"])
         ask_apex = payload["settings"]["ask_apex"]
         self.assertEqual(ask_apex["selected_model"], "gpt-5.6-luna")
-        self.assertEqual(ask_apex["cloud"]["last_model"], "gpt-5.6-luna")
+        self.assertEqual(
+            ask_apex["cloud"]["last_model"],
+            "deepseek/deepseek-v4-flash-0731",
+        )
         self.assertEqual(ask_apex["local"]["last_model"], "gemma-4-E2B-Q4_K_M.gguf")
         self.assertTrue(ask_apex["cloud"]["hosted_tools"]["google_maps"])
         self.assertEqual(payload["settings"]["voice"]["engine"], "google")

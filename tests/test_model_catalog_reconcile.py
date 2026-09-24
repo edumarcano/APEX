@@ -31,12 +31,36 @@ class ModelCatalogReconcileTests(unittest.TestCase):
 
     def test_visible_local_model_remains_selected(self) -> None:
         self.assertEqual(
+            reconcile_local_model("gemma-4-E2B-Q4_K_M.gguf", dev_mode=False),
+            "gemma-4-E2B-Q4_K_M.gguf",
+        )
+
+    def test_hidden_cloud_model_falls_back_outside_dev_mode(self) -> None:
+        self.assertEqual(
+            reconcile_cloud_model("gpt-5.6-luna", dev_mode=False),
+            DEFAULT_CLOUD_MODEL,
+        )
+
+    def test_hidden_local_models_fall_back_outside_dev_mode(self) -> None:
+        self.assertEqual(
+            reconcile_local_model("gemma-4-E4B-Q4_K_M.gguf", dev_mode=False),
+            DEFAULT_LOCAL_MODEL,
+        )
+        self.assertEqual(
             reconcile_local_model("Qwen3.5-4B-Q4_K_M.gguf", dev_mode=False),
-            "Qwen3.5-4B-Q4_K_M.gguf",
+            DEFAULT_LOCAL_MODEL,
         )
 
     def test_dev_only_models_remain_when_development_mode_is_enabled(self) -> None:
         self.assertEqual(reconcile_local_model("qwen3:1.7b", dev_mode=True), "qwen3:1.7b")
+        self.assertEqual(
+            reconcile_cloud_model("gpt-5.6-luna", dev_mode=True),
+            "gpt-5.6-luna",
+        )
+        self.assertEqual(
+            reconcile_local_model("Qwen3.5-4B-Q4_K_M.gguf", dev_mode=True),
+            "Qwen3.5-4B-Q4_K_M.gguf",
+        )
 
     def test_local_context_window_reconciles_to_model_capabilities(self) -> None:
         self.assertEqual(

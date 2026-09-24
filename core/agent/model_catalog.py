@@ -67,6 +67,7 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         default_reasoning="medium",
         supports_encrypted_reasoning=True,
         hosted_capabilities=frozenset(),
+        dev_only=True,
     ),
     "gemini-3.7-flash": ModelProfile(
         model_id="gemini-3.7-flash",
@@ -110,6 +111,7 @@ LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
         max_tool_calls=min(4, CORTEX_RUNS_MAX_TOOL_CALLS),
         supports_encrypted_reasoning=False,
         hosted_capabilities=frozenset(),
+        dev_only=True,
     ),
     "qwen3:1.7b": ModelProfile(
         model_id="qwen3:1.7b",
@@ -150,6 +152,7 @@ LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
         max_tool_calls=min(4, CORTEX_RUNS_MAX_TOOL_CALLS),
         supports_encrypted_reasoning=False,
         hosted_capabilities=frozenset(),
+        dev_only=True,
     ),
 }
 
