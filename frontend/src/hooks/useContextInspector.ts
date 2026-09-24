@@ -47,10 +47,14 @@ export function useContextInspector(enabled: boolean, onActionProposed: (action:
   const [isReviewLoading, setIsReviewLoading] = useState(false)
   const [reviewMutation, setReviewMutation] = useState<string | null>(null)
   const [reviewRefreshRequired, setReviewRefreshRequired] = useState(false)
+  const [sensitivityMutation, setSensitivityMutation] = useState(false)
+  const [sensitivityConflictRecordId, setSensitivityConflictRecordId] = useState<string | null>(null)
   const recordRequest = useRef(0)
+  const selectedRecordRef = useRef<string | null>(null)
   const reviewRequest = useRef(0)
+  const sensitivityRefreshRequired = Boolean(selectedRecordId && sensitivityConflictRecordId === selectedRecordId)
   const updateFilters = useCallback((update: SetStateAction<ContextFilters>) => setFilters(update), [])
-  useEffect(() => { const selected = detail ?? records.find((record) => record.id === selectedRecordId); if (selected && filters.kind && selected.kind !== filters.kind) { queueMicrotask(() => { setSelectedRecordId(null); setDetail(null) }) } }, [detail, filters.kind, records, selectedRecordId])
+  useEffect(() => { const selected = detail ?? records.find((record) => record.id === selectedRecordId); if (selected && filters.kind && selected.kind !== filters.kind) { queueMicrotask(() => { recordRequest.current += 1; selectedRecordRef.current = null; setSelectedRecordId(null); setDetail(null); setIsDetailLoading(false) }) } }, [detail, filters.kind, records, selectedRecordId])
   const refresh = useCallback(async (): Promise<void> => {
     if (!enabled) return; setIsLoading(true)
     try {
@@ -67,7 +71,72 @@ export function useContextInspector(enabled: boolean, onActionProposed: (action:
       setRecords(recordsBody as unknown as ContextRecord[]); setRetrieval(asStatus(statusBody)); setReviews(reviewsBody as ContextReview[]); setPendingReviewCount(pendingBody.length); setError(null)
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Context data could not be reached.') } finally { setIsLoading(false) }
   }, [enabled, filters, reviewFilters])
-  const selectRecord = useCallback(async (recordId: string | null, force = false): Promise<void> => { const request = ++recordRequest.current; if (!force && recordId === selectedRecordId) { setSelectedRecordId(null); setDetail(null); return }; setSelectedRecordId(recordId); setDetail(null); if (!recordId || !enabled) return; setIsDetailLoading(true); try { const parsed = asDetail(await fetch(API_ENDPOINTS.cortexContextRecord(recordId)).then(bodyOrError)); if (!parsed) throw new Error('Context detail is unavailable.'); if (request === recordRequest.current) { setDetail(parsed); setError(null) } } catch (cause) { if (request === recordRequest.current) setError(cause instanceof Error ? cause.message : 'Context detail could not be reached.') } finally { if (request === recordRequest.current) setIsDetailLoading(false) } }, [enabled, selectedRecordId])
+  const selectRecord = useCallback(async (recordId: string | null, force = false): Promise<boolean> => {
+    const request = ++recordRequest.current
+    if (!force && recordId === selectedRecordId) {
+      selectedRecordRef.current = null
+      setSelectedRecordId(null)
+      setDetail(null)
+      setIsDetailLoading(false)
+      return false
+    }
+    const preserveCurrentDetail = force && selectedRecordRef.current === recordId
+    selectedRecordRef.current = recordId
+    setSelectedRecordId(recordId)
+    if (!preserveCurrentDetail) setDetail(null)
+    if (!recordId || !enabled) {
+      setIsDetailLoading(false)
+      return false
+    }
+    setIsDetailLoading(true)
+    try {
+      const parsed = asDetail(await fetch(API_ENDPOINTS.cortexContextRecord(recordId)).then(bodyOrError))
+      if (!parsed) throw new Error('Context detail is unavailable.')
+      if (request !== recordRequest.current) return false
+      setDetail(parsed)
+      setError(null)
+      setSensitivityConflictRecordId((current) => current === recordId ? null : current)
+      return true
+    } catch (cause) {
+      if (request === recordRequest.current) setError(cause instanceof Error ? cause.message : 'Context detail could not be reached.')
+      return false
+    } finally {
+      if (request === recordRequest.current) setIsDetailLoading(false)
+    }
+  }, [enabled, selectedRecordId])
+  const updateSensitivity = useCallback(async (sensitive: boolean): Promise<boolean> => {
+    if (!detail || sensitivityMutation || sensitivityConflictRecordId === detail.id) return false
+    const targetId = detail.id
+    setSensitivityMutation(true)
+    try {
+      const response = await fetch(API_ENDPOINTS.cortexContextSensitivity(targetId), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sensitive, expected_updated_at: detail.updated_at }),
+      })
+      const value = await bodyOrError(response)
+      if (!isRecord(value) || value.sensitive !== sensitive) throw new Error('Sensitivity update response was malformed.')
+      setError(null)
+      await refresh()
+      if (selectedRecordRef.current === targetId) await selectRecord(targetId, true)
+      return true
+    } catch (cause) {
+      if (cause instanceof ContextRequestError && cause.status === 409) {
+        if (selectedRecordRef.current === targetId) {
+          setSensitivityConflictRecordId(targetId)
+          setError('Context changed. Reload this record before changing sensitivity again.')
+        }
+      } else if (selectedRecordRef.current === targetId) {
+        setError(cause instanceof Error ? cause.message : 'Record sensitivity could not be changed.')
+      }
+      return false
+    } finally {
+      setSensitivityMutation(false)
+    }
+  }, [detail, refresh, selectRecord, sensitivityConflictRecordId, sensitivityMutation])
+  const refreshSelectedRecord = useCallback(async (): Promise<void> => {
+    if (selectedRecordId) await selectRecord(selectedRecordId, true)
+  }, [selectedRecordId, selectRecord])
   const selectReview = useCallback(
     async (reviewId: string | null): Promise<void> => {
       const request = ++reviewRequest.current
@@ -138,5 +207,5 @@ export function useContextInspector(enabled: boolean, onActionProposed: (action:
   const prepare = useCallback(async () => { if (isPreparing) return; setIsPreparing(true); try { const next = asStatus(await fetch(API_ENDPOINTS.cortexRetrievalPrepare, { method: 'POST' }).then(bodyOrError)); if (!next) throw new Error('Retrieval status is unavailable.'); setRetrieval(next); setError(null) } catch (cause) { setError(cause instanceof Error ? cause.message : 'Retrieval preparation failed.') } finally { setIsPreparing(false) } }, [isPreparing])
   const searchEntities = useCallback(async () => { try { const body = await fetch(`${API_ENDPOINTS.cortexContextEntities}?limit=50`).then(bodyOrError); if (!Array.isArray(body)) throw new Error('Entity data is unavailable.'); setEntities(body as ContextEntity[]) } catch (cause) { setError(cause instanceof Error ? cause.message : 'Entity data could not be reached.') } }, [])
   const rememberVerifiedRecord = useCallback((id: string | null) => { if (id) setLastCreatedRecordId(id); void refresh() }, [refresh])
-  return useMemo(() => ({ records, detail, selectedRecordId, filters, setFilters: updateFilters, retrieval, isLoading, isDetailLoading, isPreparing, error, entities, lastCreatedRecordId, reviews, pendingReviewCount, reviewFilters, setReviewFilters, selectedReviewId, reviewDetail, reviewRecords, isReviewLoading, reviewMutation, reviewRefreshRequired, refresh, selectRecord, selectReview, decideReview, prepare, searchEntities, save, capture: (value: ContextCaptureInput) => postAction(API_ENDPOINTS.cortexContextCapture, value), reconcile: (value: ContextAction) => postAction(API_ENDPOINTS.cortexContextActions, value), rememberVerifiedRecord }), [detail, entities, error, filters, isDetailLoading, isLoading, isPreparing, isReviewLoading, lastCreatedRecordId, pendingReviewCount, prepare, records, refresh, retrieval, reviewDetail, reviewFilters, reviewMutation, reviewRecords, reviewRefreshRequired, reviews, save, searchEntities, selectRecord, selectReview, selectedRecordId, selectedReviewId, decideReview, postAction, rememberVerifiedRecord, updateFilters])
+  return useMemo(() => ({ records, detail, selectedRecordId, filters, setFilters: updateFilters, retrieval, isLoading, isDetailLoading, isPreparing, error, entities, lastCreatedRecordId, reviews, pendingReviewCount, reviewFilters, setReviewFilters, selectedReviewId, reviewDetail, reviewRecords, isReviewLoading, reviewMutation, reviewRefreshRequired, sensitivityMutation, sensitivityRefreshRequired, updateSensitivity, refreshSelectedRecord, refresh, selectRecord, selectReview, decideReview, prepare, searchEntities, save, capture: (value: ContextCaptureInput) => postAction(API_ENDPOINTS.cortexContextCapture, value), reconcile: (value: ContextAction) => postAction(API_ENDPOINTS.cortexContextActions, value), rememberVerifiedRecord }), [detail, entities, error, filters, isDetailLoading, isLoading, isPreparing, isReviewLoading, lastCreatedRecordId, pendingReviewCount, prepare, records, refresh, retrieval, reviewDetail, reviewFilters, reviewMutation, reviewRecords, reviewRefreshRequired, sensitivityMutation, sensitivityRefreshRequired, updateSensitivity, refreshSelectedRecord, reviews, save, searchEntities, selectRecord, selectReview, selectedRecordId, selectedReviewId, decideReview, postAction, rememberVerifiedRecord, updateFilters])
 }

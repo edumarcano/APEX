@@ -82,6 +82,34 @@ class ContextVaultApiTests(unittest.TestCase):
         self.assertNotIn("Private source text", json.dumps(payload))
         self.assertEqual(missing.status_code, 404)
 
+    def test_candidate_preview_accepts_unsaved_scope_and_hypothetical_activation(self) -> None:
+        record = self._record()
+        scope = ContextVaultScopeSettings(
+            id=uuid4(), name="Draft scope", enabled=False,
+            selected_entity_ids=(self.store.get_record(record.id, partition="production").record.subject_entity_id,),
+        )
+        service = ContextVaultSelectionService(
+            self.knowledge, ContextVaultSettings(enabled=False), destination_configured=False,
+        )
+        with mock.patch(
+            "core.api.routers.cortex._context_vault_selection_service", return_value=service,
+        ):
+            response = self.client.post(
+                "/api/v1/cortex/vault/preview",
+                json={"candidate_scope": scope.model_dump(mode="json")},
+            )
+            invalid = self.client.post("/api/v1/cortex/vault/preview", json={})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["hypothetical_enabled"])
+        self.assertFalse(payload["vault_enabled"])
+        self.assertFalse(payload["scope_enabled"])
+        self.assertFalse(payload["destination_configured"])
+        self.assertEqual(payload["eligible_count"], 1)
+        self.assertTrue(payload["records"][0]["eligible"])
+        self.assertEqual(invalid.status_code, 422)
+
     def test_status_aliases_preserve_compatibility_and_report_runtime_restrictions(self) -> None:
         service = ContextVaultSelectionService(
             self.knowledge, ContextVaultSettings(enabled=True), destination_configured=True,

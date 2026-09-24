@@ -30,12 +30,17 @@ export const API_ENDPOINTS = {
   cortexRunEvents: (runId: string) => `${API_BASE}/api/v1/cortex/runs/${encodeURIComponent(runId)}/events`,
   cortexContext: `${API_BASE}/api/v1/cortex/context`,
   cortexContextRecord: (recordId: string) => `${API_BASE}/api/v1/cortex/context/${encodeURIComponent(recordId)}`,
+  cortexContextSensitivity: (recordId: string) => `${API_BASE}/api/v1/cortex/context/${encodeURIComponent(recordId)}/sensitivity`,
   cortexContextEntities: `${API_BASE}/api/v1/cortex/context/entities`,
   cortexContextCapture: `${API_BASE}/api/v1/cortex/context/captures`,
   cortexContextSave: `${API_BASE}/api/v1/cortex/context/saves`,
   cortexContextReviews: `${API_BASE}/api/v1/cortex/context/reviews`,
   cortexContextReview: (reviewId: string) => `${API_BASE}/api/v1/cortex/context/reviews/${encodeURIComponent(reviewId)}`,
   cortexContextReviewDecision: (reviewId: string, decision: 'accept' | 'reject' | 'refresh') => `${API_BASE}/api/v1/cortex/context/reviews/${encodeURIComponent(reviewId)}/${decision}`,
+  cortexVault: `${API_BASE}/api/v1/cortex/vault`,
+  cortexVaultPreview: `${API_BASE}/api/v1/cortex/vault/preview`,
+  cortexVaultRefresh: `${API_BASE}/api/v1/cortex/vault/refresh`,
+  cortexVaultCopies: `${API_BASE}/api/v1/cortex/vault/copies`,
   activityReports: (params?: { clientId?: string; disposition?: string; limit?: number }) => {
     const query = new URLSearchParams()
     if (params?.clientId) query.set('client_id', params.clientId)

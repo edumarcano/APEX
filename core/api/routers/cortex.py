@@ -383,7 +383,12 @@ def get_context_vault_status() -> ContextVaultStatusResponse:
 def preview_context_vault(payload: ContextVaultPreviewRequest) -> ContextVaultPreviewResponse:
     """Preview a scope against all canonical production records without writing files."""
     try:
-        state = _context_vault_selection_service().preview(payload.scope_id)
+        selection = _context_vault_selection_service()
+        if payload.candidate_scope is not None:
+            state = selection.preview_candidate(payload.candidate_scope)
+        else:
+            assert payload.scope_id is not None
+            state = selection.preview(payload.scope_id)
         records = [
             ContextVaultPreviewRecordResponse(
                 record_id=record.record_id, kind=record.kind, text=record.text, status=record.status,
@@ -397,6 +402,7 @@ def preview_context_vault(payload: ContextVaultPreviewRequest) -> ContextVaultPr
         return ContextVaultPreviewResponse(
             scope_id=state.scope_id, scope_name=state.scope_name,
             vault_enabled=state.vault_enabled, scope_enabled=state.scope_enabled,
+            hypothetical_enabled=state.hypothetical_enabled,
             destination_configured=state.destination_configured,
             export_restricted=_context_vault_restriction_code() is not None,
             restriction_code=_context_vault_restriction_code(),

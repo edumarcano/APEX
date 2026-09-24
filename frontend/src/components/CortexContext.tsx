@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import type { useContextInspector } from "../hooks/useContextInspector";
+import { ContextVaultPanel } from "./ContextVaultPanel";
 import type {
   ContextCaptureInput,
   ContextKind,
@@ -16,7 +17,8 @@ import type {
 } from "../types/context";
 
 type Inspector = ReturnType<typeof useContextInspector>;
-type View = "records" | "review";
+type View = "records" | "review" | "vault";
+const VIEWS: View[] = ["records", "review", "vault"];
 const KINDS: ContextKind[] = [
   "idea",
   "preference",
@@ -240,6 +242,39 @@ function RecordDetail({
           <dd>{detail.updated_at}</dd>
         </div>
       </dl>
+      <div className="space-y-1 border-t border-white/10 pt-2">
+        <label className="flex items-center gap-2 text-xs text-zinc-200">
+          <input
+            type="checkbox"
+            aria-label="Mark record sensitive"
+            checked={detail.sensitive}
+            disabled={demoModeActive || inspector.sensitivityMutation || inspector.sensitivityRefreshRequired}
+            onChange={(event) => void inspector.updateSensitivity(event.target.checked)}
+          />
+          Sensitive record
+        </label>
+        <p className="text-[11px] text-zinc-500">
+          Sensitive records stay out of vault exports unless a scope opts in.
+        </p>
+        {inspector.sensitivityMutation ? (
+          <p role="status" className="text-xs text-zinc-400">Updating sensitivity…</p>
+        ) : null}
+        {inspector.sensitivityRefreshRequired ? (
+          <div>
+            <p role="alert" className="text-xs text-amber-200">
+              This record changed. Reload it before changing sensitivity again.
+            </p>
+            <button
+              type="button"
+              disabled={inspector.isDetailLoading}
+              onClick={() => void inspector.refreshSelectedRecord()}
+              className="text-xs text-[#7EB3FF] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {inspector.isDetailLoading ? "Reloading record…" : "Reload record"}
+            </button>
+          </div>
+        ) : null}
+      </div>
       <details>
         <summary className="cursor-pointer text-xs text-[#7EB3FF]">
           Original evidence
@@ -607,7 +642,7 @@ export function CortexContext({
   }, [searchEntities]);
   const selectView = (next: View): void => {
     setView(next);
-    tabs.current[next === "records" ? 0 : 1]?.focus();
+    tabs.current[VIEWS.indexOf(next)]?.focus();
   };
   const openReview = (reviewId: string): void => {
     setView("review");
@@ -620,20 +655,20 @@ export function CortexContext({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openReviewId, inspector.selectReview]);
   const onTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>): void => {
-    const index = view === "records" ? 0 : 1;
+    const index = VIEWS.indexOf(view);
     const next =
       event.key === "Home"
         ? 0
         : event.key === "End"
-          ? 1
+          ? VIEWS.length - 1
           : event.key === "ArrowRight"
-            ? (index + 1) % 2
+            ? (index + 1) % VIEWS.length
             : event.key === "ArrowLeft"
-              ? (index + 1) % 2
+              ? (index + VIEWS.length - 1) % VIEWS.length
               : null;
     if (next === null) return;
     event.preventDefault();
-    selectView(next === 0 ? "records" : "review");
+    selectView(VIEWS[next]);
   };
   const save = async (
     input: ContextCaptureInput,
@@ -703,7 +738,7 @@ export function CortexContext({
           tabIndex={view === "records" ? 0 : -1}
           onKeyDown={onTabKeyDown}
           onClick={() => setView("records")}
-          className="p-2 text-xs"
+          className="p-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-[#7EB3FF]"
         >
           Records
         </button>
@@ -718,9 +753,24 @@ export function CortexContext({
           tabIndex={view === "review" ? 0 : -1}
           onKeyDown={onTabKeyDown}
           onClick={() => setView("review")}
-          className="p-2 text-xs"
+          className="p-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-[#7EB3FF]"
         >
           Review ({inspector.pendingReviewCount})
+        </button>
+        <button
+          ref={(node) => {
+            tabs.current[2] = node;
+          }}
+          id="context-vault-tab"
+          role="tab"
+          aria-controls="context-vault-panel"
+          aria-selected={view === "vault"}
+          tabIndex={view === "vault" ? 0 : -1}
+          onKeyDown={onTabKeyDown}
+          onClick={() => setView("vault")}
+          className="p-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-[#7EB3FF]"
+        >
+          Vault
         </button>
       </div>
       {view === "records" ? (
@@ -854,12 +904,14 @@ export function CortexContext({
             </button>
           ) : null}
         </div>
-      ) : (
+      ) : view === "review" ? (
         <ReviewPanel
           inspector={inspector}
           demoModeActive={demoModeActive}
           onOpenActions={onOpenActions}
         />
+      ) : (
+        <ContextVaultPanel demoModeActive={demoModeActive} />
       )}
     </section>
   );
