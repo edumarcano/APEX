@@ -55,6 +55,7 @@ class OpenRouterProviderTests(unittest.TestCase):
         )
         request = client_cls.return_value.chat.completions.create.call_args.kwargs
         self.assertEqual(request["model"], "deepseek/deepseek-v4-flash-0731")
+        self.assertNotIn("max_tokens", request)
         self.assertEqual(
             request["extra_body"],
             {**OPENROUTER_PRIVACY_POLICY, "reasoning": {"effort": "none"}},
@@ -66,6 +67,28 @@ class OpenRouterProviderTests(unittest.TestCase):
         self.assertEqual(result.usage.cached_input_tokens, 4)
         self.assertEqual(result.usage.reasoning_tokens, 7)
         self.assertEqual(result.usage.output_tokens, 5)
+
+    @mock.patch("core.agent.providers.openrouter.OpenAI")
+    def test_explicit_output_limit_reaches_chat_completions_request(
+        self, client_cls: mock.Mock
+    ) -> None:
+        response = mock.Mock()
+        response.model_dump.return_value = {
+            "model": "deepseek/deepseek-v4-flash-0731",
+            "choices": [{"message": {"content": "bounded"}}],
+        }
+        client_cls.return_value.chat.completions.create.return_value = response
+
+        result = OpenRouterProvider("secret").generate_turn(
+            [AgentMessage(role="user", content="hello")],
+            [],
+            self._profile("none"),
+            output_token_limit=29,
+        )
+
+        request = client_cls.return_value.chat.completions.create.call_args.kwargs
+        self.assertEqual(request["max_tokens"], 29)
+        self.assertEqual(result.message.content, "bounded")
 
     @mock.patch("core.agent.providers.openrouter.OpenAI")
     def test_all_reasoning_efforts_are_sent_inside_extra_body(self, client_cls: mock.Mock) -> None:

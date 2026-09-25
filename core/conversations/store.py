@@ -212,6 +212,52 @@ class ConversationStore:
             )
         return self.get_summary(conversation_id, partition)
 
+    def create_briefing_opening(
+        self,
+        *,
+        connection: sqlite3.Connection,
+        conversation_id: UUID,
+        partition: str,
+        origin: str,
+        title: str,
+        user_id: UUID,
+        agent_id: UUID,
+        prompt: str,
+        request_metadata: dict[str, Any],
+    ) -> tuple[ConversationMessage, ConversationMessage]:
+        """Create a conversation and pending opening turn in a caller transaction."""
+        now = utc_now_iso()
+        connection.execute(
+            """INSERT INTO conversations (
+                id, title, partition, origin, agent, selected_tool_names_json,
+                tool_profile_id, active_leaf_message_id, created_at, updated_at, archived_at
+            ) VALUES (?, ?, ?, ?, 'apex', NULL, NULL, ?, ?, ?, NULL)""",
+            (str(conversation_id), title, partition, origin, str(agent_id), now, now),
+        )
+        connection.execute(
+            """INSERT INTO conversation_messages (
+                id, conversation_id, parent_message_id, role, content, status, agent,
+                request_metadata_json, response_metadata_json, created_at, updated_at
+            ) VALUES (?, ?, NULL, 'user', ?, 'completed', NULL, NULL, NULL, ?, ?)""",
+            (str(user_id), str(conversation_id), prompt, now, now),
+        )
+        connection.execute(
+            """INSERT INTO conversation_messages (
+                id, conversation_id, parent_message_id, role, content, status, agent,
+                request_metadata_json, response_metadata_json, created_at, updated_at
+            ) VALUES (?, ?, ?, 'agent', '', 'pending', 'apex', ?, NULL, ?, ?)""",
+            (str(agent_id), str(conversation_id), str(user_id), _json(request_metadata), now, now),
+        )
+        user_row = connection.execute(
+            "SELECT id,conversation_id,parent_message_id,role,content,status,agent,request_metadata_json,response_metadata_json,created_at,updated_at FROM conversation_messages WHERE id = ?",
+            (str(user_id),),
+        ).fetchone()
+        agent_row = connection.execute(
+            "SELECT id,conversation_id,parent_message_id,role,content,status,agent,request_metadata_json,response_metadata_json,created_at,updated_at FROM conversation_messages WHERE id = ?",
+            (str(agent_id),),
+        ).fetchone()
+        return self._message(user_row), self._message(agent_row)
+
     def list(self, partition: str, archived: bool) -> list[ConversationSummary]:
         with self._connection() as conn:
             rows = conn.execute(
@@ -430,14 +476,42 @@ class ConversationStore:
         result = [AgentMessage(role=str(row[2]), content=str(row[3])) for row in reversed(path) if row[4] == "completed"]
         return result[-limit:]
 
-    def finalize(self, *, conversation_id: UUID, agent_id: UUID, answer: str, status: str, response_metadata: dict[str, Any]) -> ConversationMessage:
+    def finalize(
+        self,
+        *,
+        conversation_id: UUID,
+        agent_id: UUID,
+        answer: str,
+        status: str,
+        response_metadata: dict[str, Any],
+        connection: sqlite3.Connection | None = None,
+    ) -> ConversationMessage:
+        """Finalize a pending answer, optionally in a caller-owned transaction."""
+        if connection is None:
+            with self._connection() as conn, conn:
+                return self.finalize(
+                    conversation_id=conversation_id,
+                    agent_id=agent_id,
+                    answer=answer,
+                    status=status,
+                    response_metadata=response_metadata,
+                    connection=conn,
+                )
         now = utc_now_iso()
-        with self._connection() as conn, conn:
-            result = conn.execute("UPDATE conversation_messages SET content=?, status=?, response_metadata_json=?, updated_at=? WHERE id=? AND conversation_id=? AND status='pending'", (answer, status, _json(response_metadata), now, str(agent_id), str(conversation_id)))
-            if result.rowcount != 1:
-                raise ConversationConflictError("Pending conversation turn was no longer available.")
-            conn.execute("UPDATE conversations SET updated_at=? WHERE id=?", (now, str(conversation_id)))
-            row = conn.execute("SELECT id,conversation_id,parent_message_id,role,content,status,agent,request_metadata_json,response_metadata_json,created_at,updated_at FROM conversation_messages WHERE id=?", (str(agent_id),)).fetchone()
+        result = connection.execute(
+            "UPDATE conversation_messages SET content=?, status=?, response_metadata_json=?, updated_at=? WHERE id=? AND conversation_id=? AND status='pending'",
+            (answer, status, _json(response_metadata), now, str(agent_id), str(conversation_id)),
+        )
+        if result.rowcount != 1:
+            raise ConversationConflictError("Pending conversation turn was no longer available.")
+        connection.execute(
+            "UPDATE conversations SET updated_at=? WHERE id=?",
+            (now, str(conversation_id)),
+        )
+        row = connection.execute(
+            "SELECT id,conversation_id,parent_message_id,role,content,status,agent,request_metadata_json,response_metadata_json,created_at,updated_at FROM conversation_messages WHERE id=?",
+            (str(agent_id),),
+        ).fetchone()
         return self._message(row)
 
     def recover_interrupted(self) -> int:

@@ -98,6 +98,7 @@ class OpenRouterProvider:
         execution_control: Any | None = None,
         stream_observer: ProviderStreamObserver | None = None,
         output_schema: dict[str, Any] | None = None,
+        output_token_limit: int | None = None,
     ) -> ProviderTurnResult:
         request: dict[str, Any] = {
             "model": profile.api_model,
@@ -108,6 +109,8 @@ class OpenRouterProvider:
             # escape hatch alongside the immutable privacy routing policy.
             "extra_body": dict(OPENROUTER_PRIVACY_POLICY),
         }
+        if output_token_limit is not None:
+            request["max_tokens"] = output_token_limit
         if tools:
             request["tools"] = [descriptor_to_openai_schema(tool) for tool in tools]
         if profile.reasoning_effort is not None:

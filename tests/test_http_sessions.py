@@ -189,6 +189,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
 
         conversation_store = mock.Mock()
         run_store = mock.Mock()
+        briefing_session_store = mock.Mock()
         retrieval_store = mock.Mock()
         knowledge_store = mock.Mock()
         activity_store = mock.Mock()
@@ -215,6 +216,12 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             )
             stack.enter_context(mock.patch("core.api.app.RunStore", return_value=run_store))
             stack.enter_context(mock.patch("core.api.app.RunService", return_value=mock.Mock()))
+            stack.enter_context(
+                mock.patch(
+                    "core.api.app.BriefingSessionStore",
+                    return_value=briefing_session_store,
+                )
+            )
             stack.enter_context(
                 mock.patch("core.api.app.CortexRunCoordinator", return_value=coordinator)
             )
@@ -256,6 +263,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             for setter in (
                 "set_action_service",
                 "set_activity_service",
+                "set_briefing_session_queries",
                 "set_connector_http_sessions",
                 "set_conversation_service",
                 "set_knowledge_service",
@@ -272,6 +280,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
 
         conversation_store.close.assert_not_called()
         run_store.close.assert_not_called()
+        briefing_session_store.close.assert_not_called()
         retrieval_store.close.assert_not_called()
         knowledge_store.close.assert_not_called()
         activity_store.close.assert_not_called()

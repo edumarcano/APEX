@@ -392,6 +392,7 @@ class ResponsesApiProvider:
         execution_control: Any | None = None,
         stream_observer: ProviderStreamObserver | None = None,
         output_schema: dict[str, Any] | None = None,
+        output_token_limit: int | None = None,
     ) -> ProviderTurnResult:
         system_instruction = (
             system_instruction_override or profile.system_instruction
@@ -407,6 +408,8 @@ class ResponsesApiProvider:
             "instructions": system_instruction,
             "store": False,
         }
+        if output_token_limit is not None:
+            request["max_output_tokens"] = output_token_limit
         if request_tools:
             request["tools"] = request_tools
         if profile.reasoning_effort:

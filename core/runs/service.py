@@ -103,6 +103,7 @@ class RunHandle:
         stop_reason: RunStopReason,
         evidence: RunCompletionEvidence,
         error: RunError | None = None,
+        connection: Any | None = None,
     ) -> RunRecord:
         """Finalize run in the bound partition."""
         return self.store.finalize_run(
@@ -112,6 +113,7 @@ class RunHandle:
             stop_reason=stop_reason,
             evidence=evidence,
             error=error,
+            connection=connection,
         )
 
 
@@ -141,6 +143,7 @@ class RunService:
         limit_snapshot: RunLimitSnapshot,
         trace_id: str | None = None,
         partition: RunPartition | None = None,
+        connection: Any | None = None,
     ) -> tuple[RunRecord, RunHandle, bool]:
         """
         Create a run in the supplied or active partition and return a
@@ -159,6 +162,7 @@ class RunService:
             requested_model=requested_model,
             limit_snapshot=limit_snapshot,
             trace_id=trace_id,
+            connection=connection,
         )
         handle = RunHandle(
             run_id=record.id,

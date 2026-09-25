@@ -128,6 +128,23 @@ class LlamaCppProviderTests(unittest.TestCase):
 
     @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
     @patch("core.agent.providers.llama_cpp._post_chat")
+    def test_explicit_output_limit_caps_llama_cpp_request(
+        self, mock_post: MagicMock, _activity: MagicMock
+    ) -> None:
+        mock_post.return_value = _load_fixture("basic_answer.json")
+
+        LlamaCppProvider().generate_turn(
+            [AgentMessage(role="user", content="Hi")],
+            [],
+            _local_profile(),
+            output_token_limit=64,
+        )
+
+        payload = mock_post.call_args.args[0]
+        self.assertEqual(payload["max_tokens"], 64)
+
+    @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
+    @patch("core.agent.providers.llama_cpp._post_chat")
     def test_empty_assistant_content(
         self, mock_post: MagicMock, _activity: MagicMock
     ) -> None:

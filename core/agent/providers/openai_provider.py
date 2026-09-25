@@ -45,6 +45,7 @@ class OpenAIProvider:
         execution_control: Any | None = None,
         stream_observer: ProviderStreamObserver | None = None,
         output_schema: dict[str, Any] | None = None,
+        output_token_limit: int | None = None,
     ) -> ProviderTurnResult:
         return self._delegate.generate_turn(
             messages,
@@ -54,4 +55,5 @@ class OpenAIProvider:
             execution_control=execution_control,
             stream_observer=stream_observer,
             output_schema=output_schema,
+            output_token_limit=output_token_limit,
         )
