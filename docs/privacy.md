@@ -20,13 +20,15 @@ The [Context vault guide](context-vault.md) explains how to select, share, and r
 
 ## External activity reports
 
-External activity reports, including their structured findings and imported Markdown, are retained in local SQLite and may contain private content. APEX does not send raw reports to models automatically or add them directly to retrieval, prompts, attention, or briefings. The optional mailbox leaves the original files in the operator-selected folder; if that folder is synced, its sync tool controls any external copies.
+External activity reports, including their structured findings and imported Markdown, are retained in local SQLite and may contain private content. They do not enter retrieval or model prompts automatically. When the operator explicitly generates a Daily briefing, APEX can select up to three relevant, non-dismissed reports from the newest 50 candidates and send bounded excerpts to the selected model as explicitly untrusted evidence. The excerpts identify the content as an external report; this does not promote it to accepted context. The optional mailbox leaves the original files in the operator-selected folder; if that folder is synced, its sync tool controls any external copies.
 
 When the operator accepts a context review linked to a report, the resulting normalized claim enters personal-context retrieval with its external source provenance. If retrieval is enabled for a model runtime, selected claims can then enter model prompts, including cloud requests. Normal retrieval does not include the full report or original source evidence.
 
 ## Briefings
 
-Focused briefings use the fixed OpenRouter DeepSeek V4 Flash route with its privacy requirements. Flash briefings use the fixed local Gemma route. Interactive model selection does not affect either briefing route. Structured briefings call no model.
+The Home Daily action uses the selected Apex Agent model and sends its bounded prompt to that model's configured provider, or to the configured local inference endpoint. A model that cannot fit a minimum useful Daily prompt is rejected before a session is created; Daily does not fall back to another model. A completed session and its canonical artifact and evidence snapshot are stored locally in the active production or sandbox partition. The conversation stores a rendered opening message linked to the artifact. Later turns in that conversation may send up to 500 estimated tokens of cited historical evidence to the model selected for that turn, including a cloud model. This is limited by the ordinary context budget and keeps source trust and snapshot-time labels. Saved accepted context, pending reviews, external reports, and action evidence are included only when personal-context retrieval is enabled for the selected runtime; the original artifact remains unchanged. Full saved evidence remains available through local inspection.
+
+The legacy Focused, Flash, and Structured routes retain their fixed behavior: Focused uses OpenRouter DeepSeek V4 Flash, Flash uses the configured local Gemma route, and Structured calls no model.
 
 Automatic voice delivery may speak short activation and briefing cues containing the saved user designation, briefing mode, and collection health. With Google Cloud TTS selected, that cue text may be sent to Google; local speech engines keep it on the machine. Manual and off voice modes do not speak contextual cues.
 
@@ -42,6 +44,6 @@ OpenTelemetry tracing is optional and disabled by default. When an operator conf
 
 ## Development and demo
 
-`DEV_MODE` masks sensitive briefing inputs before sandbox use. Sandbox uses a restricted non-personal tool allowlist and isolated history, and cannot refresh or remove copies in the production Context vault. Accepted Cortex runs retain their server-derived production or sandbox partition through execution and retrieval indexing, so changing the sandbox setting affects later requests without moving in-flight history or context. `DEMO_MODE` uses deterministic fixtures, cannot write to the production vault, and does not contact configured connectors or model providers on demo paths.
+`DEV_MODE` masks email, calendar, and reminder content before briefing prompts or saved evidence; non-personal telemetry such as weather remains available. Sandbox uses a restricted non-personal tool allowlist and isolated history, and cannot refresh or remove copies in the production Context vault. Accepted Cortex runs retain their server-derived production or sandbox partition through execution and retrieval indexing, so changing the sandbox setting affects later requests without moving in-flight history or context. `DEMO_MODE` uses a deterministic Daily fixture, cannot write to the production vault, and does not contact configured connectors or model providers on demo paths.
 
 Credentials belong in `.env` or the local environment, never in `config.json`, `config.local.json`, documents, or source control.

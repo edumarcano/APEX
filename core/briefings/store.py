@@ -270,6 +270,19 @@ class BriefingSessionStore:
             raise BriefingSessionNotFoundError("Briefing session was not found.")
         return self._record(row)
 
+    def find_by_conversation(
+        self, conversation_id: UUID, partition: str
+    ) -> BriefingSessionRecord | None:
+        """Return the session that owns a conversation in the admitted partition."""
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT s.*, r.status AS run_status FROM briefing_sessions s "
+                "JOIN cortex_runs r ON r.id = s.run_id "
+                "WHERE s.conversation_id = ? AND s.partition = ?",
+                (str(conversation_id), partition),
+            ).fetchone()
+        return self._record(row) if row is not None else None
+
     def list(
         self, partition: str, *, limit: int, offset: int
     ) -> list[BriefingSessionRecord]:

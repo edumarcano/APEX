@@ -189,9 +189,15 @@ class BriefingService:
                 replayed=True,
             )
 
+        active_control: list[RunExecutionControl | None] = [None]
+
         def execute(control: RunExecutionControl) -> BriefingExecutionResult:
+            active_control[0] = control
             generated = self._execute_generation(
                 session_id, request, configuration, control
+            )
+            control.publish_activity(
+                "briefing.stage", {"stage": "persisting", "state": "started"}
             )
             artifact = build_canonical_artifact(
                 session_id=session_id,
@@ -249,7 +255,7 @@ class BriefingService:
                     response_metadata=response_metadata,
                     connection=connection,
                 )
-                return handle.finalize(
+                finalized = handle.finalize(
                     status=status,
                     stop_reason=stop_reason,
                     evidence=RunCompletionEvidence(
@@ -259,6 +265,18 @@ class BriefingService:
                     error=error,
                     connection=connection,
                 )
+            control = active_control[0]
+            if control is not None:
+                control.publish_activity(
+                    "briefing.stage",
+                    {
+                        "stage": "persisting",
+                        "state": "completed" if success else (
+                            "cancelled" if status == "cancelled" else "failed"
+                        ),
+                    },
+                )
+            return finalized
 
         try:
             future = self.coordinator.submit(
@@ -294,8 +312,14 @@ class BriefingService:
     ) -> None:
         if configuration.profile != BUILTIN_BRIEFING_PROFILES[request.profile_id]:
             raise ValueError("Resolved briefing profile does not match the request.")
-        if configuration.model.model_id != request.model_id:
+        if configuration.execution_kind == "model" and configuration.model.model_id != request.model_id:
             raise ValueError("Resolved briefing model does not match the explicit request.")
+        if configuration.execution_kind == "demo" and (
+            request.profile_id != "daily"
+            or configuration.model.provider != "demo"
+            or configuration.model.runtime != "demo"
+        ):
+            raise ValueError("Demo briefing configuration is invalid.")
         if configuration.origin != request.origin:
             raise ValueError("Resolved briefing origin does not match the request.")
 
@@ -306,12 +330,26 @@ __all__ = [
     "BriefingSessionQueries",
     "BriefingService",
     "BriefingStartResult",
+    "get_briefing_service",
     "get_briefing_session_queries",
+    "set_briefing_service",
     "set_briefing_session_queries",
 ]
 
 
+_service: BriefingService | None = None
 _queries: BriefingSessionQueries | None = None
+
+
+def set_briefing_service(service: BriefingService | None) -> None:
+    global _service
+    _service = service
+
+
+def get_briefing_service() -> BriefingService:
+    if _service is None:
+        raise RuntimeError("Briefing generation is unavailable.")
+    return _service
 
 
 def set_briefing_session_queries(
@@ -324,6 +362,11 @@ def set_briefing_session_queries(
 def get_briefing_session_queries() -> BriefingSessionQueries:
     if _queries is None:
         raise RuntimeError("Briefing session service is unavailable.")
+    return _queries
+
+
+def get_briefing_session_queries_optional() -> BriefingSessionQueries | None:
+    """Allow Cortex turns without a briefing store in isolated runtimes."""
     return _queries
 
 
@@ -380,6 +423,7 @@ class BriefingSessionQueries:
             configuration=record.configuration,
             artifact=record.artifact if completed else None,
             evidence_count=len(record.evidence) if completed else 0,
+            evidence_ids=[item.id for item in record.evidence] if completed else [],
             created_at=record.created_at,
             presented_at=record.presented_at,
         )

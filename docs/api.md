@@ -23,6 +23,7 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | POST | `/api/v1/briefings/generate` | Brief from the current snapshot |
 | GET | `/api/v1/briefings/history` | Recent briefing ledger |
 | GET | `/api/v1/briefings/targets` | Briefing synthesis target metadata |
+| POST | `/api/v1/briefing-sessions` | Admit an asynchronous Daily generation |
 | GET | `/api/v1/briefing-sessions` | Saved briefing-session summaries for the active partition |
 | GET | `/api/v1/briefing-sessions/{session_id}` | Saved briefing-session detail and completed artifact |
 | GET | `/api/v1/briefing-sessions/{session_id}/evidence/{evidence_id}` | Evidence captured by a completed session |
@@ -181,7 +182,7 @@ Returns the resolved settings envelope. The current contract version is `23`.
 
 `football.teams`, `market.symbols`, `calendar`, `context_vault`, `tool_profiles`, and `microsoft_todo.reminder_list_id` are returned in the resolved settings snapshot. Apex Agent settings persist the selected model and independent cloud/local controls; the model catalog derives provider or local runtime. The selected provider/runtime remains in execution metadata and historical records. The optional Microsoft To Do list ID is opaque, bounded to 512 characters, and is never selected or cleared automatically. OpenAPI contains the complete shape. Tool profiles persist through the same settings store, but the dedicated `/api/v1/cortex/tool-profiles` routes are the canonical mutation workflow for built-in/custom profiles and per-runtime defaults.
 
-`settings.briefing.default_mode` remains a persisted compatibility field. The Home command rail is the visible control for changing it and writes the selected mode immediately; the value is returned by `/api/v1/config` on the next startup.
+`settings.briefing.default_mode` remains a persisted compatibility field for the legacy briefing routes. Home starts Daily sessions directly and does not change this setting.
 
 ### PATCH `/api/v1/settings`
 
@@ -311,17 +312,38 @@ Returns up to 50 newest briefing records with transcript, digest, runtime metada
 
 Returns live availability and metadata for fixed briefing-generation targets in this order: `flash` (local Gemma), `focused` (OpenRouter DeepSeek V4 Flash), and `structured` (deterministic, no model). Removed Agent-named identifiers are rejected.
 
+### POST `/api/v1/briefing-sessions`
+
+Admits an asynchronous Daily generation using the explicit model from the selected Apex Agent catalog entry. The server captures the active production or sandbox partition, applies the current run limits, and creates a saved session linked to a Cortex conversation. It does not fall back to another model. Demo mode uses a deterministic fixture and does not contact a model provider.
+
+```json
+{
+  "idempotency_key": "ad0b4172-8cd9-4ba2-88c6-90fddc5bdd45",
+  "profile_id": "daily",
+  "model_id": "deepseek/deepseek-v4-flash-0731",
+  "reasoning": "high",
+  "context_window": 16384
+}
+```
+
+`local_reasoning_mode` may be supplied for a compatible local model. The server owns the conversation origin and execution limits. A successful new admission returns `202` with a session ID, conversation ID, run ID, and current run status. Replaying the same idempotency key and request returns the existing session with `200`.
+
+- `409` — the idempotency key conflicts with a different request.
+- `422` — the model or requested controls are unavailable, or its context window cannot fit a useful Daily prompt.
+- `429` — the run coordinator has no free execution slot.
+- `503` — briefing generation is unavailable or shutting down.
+
 ### GET `/api/v1/briefing-sessions`
 
-Returns up to 100 newest session summaries from the active production or sandbox partition. `limit` defaults to 25 and accepts 1–100; `offset` defaults to 0. Summaries include run status and the first-presentation timestamp. Listing does not change presentation state.
+Returns up to 100 newest session summaries from the active production or sandbox partition. `limit` defaults to 25 and accepts 1–100; `offset` defaults to 0. Summaries include run status and the first-presentation timestamp. Listing does not change presentation state. The detail endpoint is addressable by session ID when a caller already knows it, even if it is outside the current summary page.
 
 ### GET `/api/v1/briefing-sessions/{session_id}`
 
-Returns session identity, captured model/profile configuration, run status, and the canonical artifact after successful completion. Failed, cancelled, interrupted, and still-running sessions return metadata without an artifact. Reading a session does not mark it presented. A session in another partition or an unknown session returns `404`.
+Returns session identity, captured model/profile configuration, run status, evidence IDs, and the canonical artifact after successful completion. Failed, cancelled, interrupted, and still-running sessions return metadata without an artifact. Reading a session does not mark it presented. A session in another partition or an unknown session returns `404`.
 
 ### GET `/api/v1/briefing-sessions/{session_id}/evidence/{evidence_id}`
 
-Returns one immutable evidence snapshot or unavailable-source entry captured with the completed artifact. Evidence reads are partition-scoped and have no presentation side effect. A missing session/evidence entry returns `404`; evidence for a session that has not completed returns `409`.
+Returns one immutable evidence snapshot or unavailable-source entry captured with the completed artifact. The Home evidence inspector loads these records on demand. The conversation retains the opening artifact in its normal history. Follow-up turns may include up to 500 estimated tokens from evidence cited by that completed Daily artifact, within the selected model's existing retrieved-context budget. Saved personal context, pending reviews, external reports, and action evidence are included only when personal-context retrieval is enabled for that runtime. The excerpts retain their original trust and snapshot-time labels; they are not fresh reads or approvals. Evidence reads are partition-scoped and have no presentation side effect. A missing session/evidence entry returns `404`; evidence for a session that has not completed returns `409`.
 
 ### POST `/api/v1/briefing-sessions/{session_id}/presented`
 

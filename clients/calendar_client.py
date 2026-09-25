@@ -47,7 +47,7 @@ def _normalize_datetime(value: str, *, time_zone: str | None) -> str:
     return parsed.isoformat()
 
 
-def _normalize_event(item: dict[str, Any], *, calendar_time_zone: str | None, calendar_name: str | None) -> dict[str, Any] | None:
+def _normalize_event(item: dict[str, Any], *, calendar_id: str, calendar_time_zone: str | None, calendar_name: str | None) -> dict[str, Any] | None:
     start = item.get("start")
     if not isinstance(start, dict):
         return None
@@ -80,9 +80,49 @@ def _normalize_event(item: dict[str, Any], *, calendar_time_zone: str | None, ca
         "time_zone": time_zone_name,
         "location": _bounded_text(item.get("location"), "") or None,
     }
+    event_id = _bounded_identifier(item.get("id"))
+    if event_id:
+        event["event_id"] = event_id
+    bounded_calendar_id = _bounded_identifier(calendar_id)
+    if bounded_calendar_id:
+        event["calendar_id"] = bounded_calendar_id
+    recurring_event_id = _bounded_identifier(item.get("recurringEventId"))
+    if recurring_event_id:
+        event["recurring_event_id"] = recurring_event_id
+    original_start = item.get("originalStartTime")
+    if isinstance(original_start, dict):
+        original_datetime = original_start.get("dateTime")
+        original_date = original_start.get("date")
+        original_value = original_datetime if isinstance(original_datetime, str) else original_date
+        if isinstance(original_value, str) and original_value:
+            try:
+                event["original_start"] = (
+                    date.fromisoformat(original_value).isoformat()
+                    if isinstance(original_date, str) and not isinstance(original_datetime, str)
+                    else _normalize_datetime(
+                        original_value,
+                        time_zone=(
+                            str(original_start.get("timeZone"))
+                            if isinstance(original_start.get("timeZone"), str)
+                            else time_zone_name
+                        ),
+                    )
+                )
+            except ValueError:
+                pass
+    revision = _bounded_identifier(item.get("etag")) or _bounded_identifier(item.get("updated"))
+    if revision:
+        event["revision"] = revision
     if calendar_name is not None:
         event["calendar_name"] = calendar_name
     return event
+
+
+def _bounded_identifier(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    return cleaned[:512] or None
 
 
 def _event_sort_key(event: dict[str, Any]) -> tuple[datetime, str]:
@@ -180,7 +220,7 @@ def fetch_selected_calendar_events(service: Any, *, calendar_ids: tuple[str, ...
                 if isinstance(items, list):
                     for item in items:
                         if isinstance(item, dict):
-                            event = _normalize_event(item, calendar_time_zone=calendar_time_zone, calendar_name=names.get(calendar_id, "Saved calendar") if show_calendar_names else None)
+                            event = _normalize_event(item, calendar_id=calendar_id, calendar_time_zone=calendar_time_zone, calendar_name=names.get(calendar_id, "Saved calendar") if show_calendar_names else None)
                             if event is not None:
                                 calendar_events.append(event)
                                 if len(calendar_events) >= _PER_CALENDAR_EVENT_CAP:

@@ -6,7 +6,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 from unittest.mock import patch
 
 from fastapi import FastAPI
@@ -20,6 +20,7 @@ from core.briefings.models import (
     BriefingEvidence,
     BriefingGenerationConfiguration,
     BriefingGenerationRequest,
+    BriefingSessionGenerateRequest,
     BriefingItemDraft,
     BriefingModelConfiguration,
     BriefingSectionDraft,
@@ -126,16 +127,73 @@ class BriefingSessionApiTests(unittest.TestCase):
             coverage=[BriefingCoverage(source="calendar", scope="today", status="complete")],
         )
 
-    def _service(self, executor):
+    def _service(self, executor, resolver=None):
         return BriefingService(
             store=self.session_store,
             conversations=self.conversations,
             runs=self.run_service,
             coordinator=self.coordinator,
             partition_getter=lambda: "production",
-            resolve_configuration=self._configuration,
+            resolve_configuration=resolver or self._configuration,
             execute_generation=executor,
         )
+
+    def test_incompatible_context_is_rejected_before_session_admission(self) -> None:
+        from types import SimpleNamespace
+
+        from core.briefings.runtime import resolve_briefing_configuration
+
+        profile = SimpleNamespace(
+            model_id="test/daily-small-context",
+            provider="openrouter",
+            runtime="cloud",
+            credential_env="OPENROUTER_API_KEY",
+            reasoning_options=("high",),
+            default_reasoning="high",
+            maximum_context_window=4096,
+        )
+        settings = SimpleNamespace(
+            ask_apex=SimpleNamespace(enabled=True),
+        )
+        service = self._service(
+            lambda *_args: self._output(), resolver=resolve_briefing_configuration
+        )
+
+        with (
+            patch("core.briefings.runtime.DEMO_MODE", False),
+            patch("core.briefings.runtime.is_dev_mode", return_value=False),
+            patch("core.briefings.runtime.visible_cloud_models", return_value=[profile]),
+            patch("core.briefings.runtime.visible_local_models", return_value=[]),
+            patch("core.briefings.runtime.model_has_credentials", return_value=True),
+            patch(
+                "core.briefings.runtime.get_settings_store",
+                return_value=SimpleNamespace(get_snapshot=lambda: settings),
+            ),
+            patch("core.briefings.daily.get_visible_model_profile", return_value=profile),
+            patch(
+                "core.agent.catalog.build_concrete_agent",
+                return_value=SimpleNamespace(system_instruction="x" * 1408),
+            ),
+            patch(
+                "core.api.routers.briefings.get_briefing_service",
+                return_value=service,
+            ),
+        ):
+            response = self.client.post(
+                "/api/v1/briefing-sessions",
+                json={
+                    "idempotency_key": str(uuid4()),
+                    "profile_id": "daily",
+                    "model_id": profile.model_id,
+                    "reasoning": "high",
+                    "context_window": 4096,
+                },
+            )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("context window is too small", response.json()["detail"])
+        self.assertEqual(self.session_store.list("production", limit=10, offset=0), [])
+        self.assertEqual(self.run_store.list_runs("production", limit=10), [])
 
     def test_get_and_evidence_reads_do_not_mark_session_presented(self) -> None:
         started = self._service(lambda *_args: self._output()).start(self._request())
@@ -174,6 +232,52 @@ class BriefingSessionApiTests(unittest.TestCase):
         self.assertEqual(
             second_ack.json()["presented_at"], first_ack.json()["presented_at"]
         )
+
+    def test_daily_generation_route_returns_saved_session_and_replays_idempotently(self) -> None:
+        executing = threading.Event()
+        release = threading.Event()
+
+        def wait_for_release(*_args):
+            executing.set()
+            if not release.wait(timeout=3):
+                raise TimeoutError("test release was not signaled")
+            return self._output()
+
+        service = self._service(wait_for_release)
+        with patch(
+            "core.api.routers.briefings.get_briefing_service",
+            return_value=service,
+        ):
+            body = BriefingSessionGenerateRequest(
+                idempotency_key=uuid4(),
+                profile_id="daily",
+                model_id="deepseek/deepseek-v4-flash-0731",
+                reasoning="high",
+            )
+            first = self.client.post(
+                "/api/v1/briefing-sessions", json=body.model_dump(mode="json")
+            )
+            self.assertEqual(first.status_code, 202)
+            self.assertTrue(executing.wait(timeout=3))
+            summary = first.json()
+            self.assertEqual(summary["profile_id"], "daily")
+            self.assertIn(summary["run_status"], {"queued", "running"})
+            self.assertTrue(summary["conversation_id"])
+            self.assertTrue(summary["run_id"])
+
+            future = self.coordinator.future_for(UUID(summary["run_id"]))
+            self.assertIsNotNone(future)
+            release.set()
+            assert future is not None
+            future.result(timeout=3)
+
+            replay = self.client.post(
+                "/api/v1/briefing-sessions", json=body.model_dump(mode="json")
+            )
+
+        self.assertEqual(replay.status_code, 200)
+        self.assertEqual(replay.json()["id"], summary["id"])
+        self.assertEqual(replay.json()["conversation_id"], summary["conversation_id"])
 
     def test_session_and_evidence_reads_are_partition_scoped(self) -> None:
         started = self._service(lambda *_args: self._output()).start(self._request())

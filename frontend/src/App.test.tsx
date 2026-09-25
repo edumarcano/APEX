@@ -117,23 +117,27 @@ vi.mock('./components/SettingsPanel', () => ({
     return null
   },
 }))
-vi.mock('./components/HomeCommandRail', () => ({
-  HomeCommandRail: ({
-    onStartApex,
-    onStartWithBriefing,
-    onRefreshAllAndGenerate,
-  }: {
-    onStartApex: () => void
-    onStartWithBriefing: () => void
-    onRefreshAllAndGenerate: () => void
-  }) => (
-    <div>
-      <button type="button" onClick={onStartApex}>Start APEX</button>
-      <button type="button" onClick={onStartWithBriefing}>Start APEX with briefing</button>
-      <button type="button" onClick={onRefreshAllAndGenerate}>Refresh All &amp; Generate Briefing</button>
-    </div>
-  ),
-}))
+vi.mock('./components/HomeCommandRail', async () => {
+  const { StandbyActions } = await vi.importActual<typeof import('./components/StandbyActions')>('./components/StandbyActions')
+  return {
+    HomeCommandRail: ({
+      onStartApex,
+      onStartWithBriefing,
+      onRefreshAllAndGenerate,
+      startDisabled,
+    }: {
+      onStartApex: () => void
+      onStartWithBriefing: () => void
+      onRefreshAllAndGenerate: () => void
+      startDisabled?: boolean
+    }) => (
+      <div>
+        <StandbyActions onStartApex={onStartApex} onStartWithBriefing={onStartWithBriefing} disabled={startDisabled} />
+        <button type="button" onClick={onRefreshAllAndGenerate}>Refresh All &amp; Generate Briefing</button>
+      </div>
+    ),
+  }
+})
 vi.mock('./components/SystemDiagnostics', () => ({
   SystemDiagnostics: ({ workspaceNavigation }: { workspaceNavigation?: ReactNode }) => (
     <>{workspaceNavigation}</>
@@ -990,134 +994,177 @@ describe('App contextual voice cues', () => {
     })
   })
 
-  it('uses the backend trigger cue once for Start with Briefing', async () => {
-    const user = userEvent.setup()
-    const events: string[] = []
-    appMocks.activated = false
-    stubAppFetch(events)
+})
 
-    render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Start APEX with briefing' }))
-
-    await waitFor(() => expect(appMocks.triggerSynthesis).toHaveBeenCalledWith('flash'))
-    expect(events).toEqual([])
+describe('App Daily session flow', () => {
+  afterEach(() => {
+    appMocks.activated = true
+    appMocks.demoModeActive = false
+    appMocks.requestOperation.mockReset().mockResolvedValue('proceed')
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
-  it('announces refresh before generating from the refreshed snapshot', async () => {
+  it('starts Daily from Standby, keeps a background run alive, and reopens its saved artifact and conversation', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
     const user = userEvent.setup()
-    const events: string[] = []
-    appMocks.activated = true
-    stubAppFetch(events)
-    appMocks.refreshAllWithOutcome.mockImplementation(async () => {
-      events.push('refresh')
-      return {
-        kind: 'success',
-        snapshot: {
-          snapshot_id: 'snap-refreshed',
-          collected_at: '2026-09-23T12:00:00Z',
-          modules: {},
-          sync_health_score: 100,
-          connector_health: [],
-          failed_connectors: [],
-        },
+    const sessionId = '00000000-0000-4000-8000-000000000071'
+    const conversationId = '00000000-0000-4000-8000-000000000072'
+    const userMessageId = '00000000-0000-4000-8000-000000000073'
+    const assistantMessageId = '00000000-0000-4000-8000-000000000074'
+    const sessionSummary = {
+      id: sessionId,
+      profile_id: 'daily',
+      model_id: 'deepseek/deepseek-v4-flash-0731',
+      conversation_id: conversationId,
+      run_id: '00000000-0000-4000-8000-000000000075',
+      run_status: 'running',
+      created_at: '2026-09-25T13:00:00Z',
+      presented_at: null,
+    }
+    const sessionDetail = () => ({
+      id: sessionId,
+      conversation_id: conversationId,
+      opening_message_id: assistantMessageId,
+      run_id: sessionSummary.run_id,
+      run_status: runStatus,
+      configuration: {
+        profile: { id: 'daily', label: 'Daily', purpose: 'A concise view of current information.', definition_version: 2 },
+        model: { model_id: sessionSummary.model_id, provider: 'openrouter', runtime: 'cloud', reasoning: 'low', context_window: 16384, local_reasoning_mode: null },
+        origin: 'hud',
+        execution_kind: 'model',
+      },
+      artifact: runStatus === 'completed' ? {
+        schema_version: 1,
+        session_id: sessionId,
+        created_at: '2026-09-25T13:01:00Z',
+        sections: [{ id: 'section-1', title: 'Today', items: [{
+          id: 'item-1', category: 'observation', title: 'Morning travel', body: 'Leave early for the 9 AM meeting.', evidence_ids: [], record_references: [],
+        }] }],
+        coverage: [],
+        limitations: [],
+      } : null,
+      evidence_count: 0,
+      evidence_ids: [],
+      created_at: '2026-09-25T13:00:00Z',
+      presented_at: presentedAt,
+      speech_status: 'not_requested',
+    })
+    let runStatus: 'running' | 'completed' = 'running'
+    let presentedAt: string | null = null
+    let admissionBody: Record<string, unknown> | null = null
+    let detailReads = 0
+    let conversationReads = 0
+    let presentationWrites = 0
+    let cancellationWrites = 0
+    class VisibleIntersectionObserver {
+      private readonly callback: IntersectionObserverCallback
+      constructor(callback: IntersectionObserverCallback) { this.callback = callback }
+      observe(target: Element): void {
+        const rect = target.getBoundingClientRect()
+        this.callback([{
+          target,
+          isIntersecting: true,
+          intersectionRatio: 1,
+          boundingClientRect: rect,
+          intersectionRect: rect,
+          rootBounds: null,
+          time: 0,
+        }], this as unknown as IntersectionObserver)
       }
-    })
-    appMocks.generateFromSnapshot.mockImplementation(async (snapshotId, mode, cueContext) => {
-      events.push(`generate:${snapshotId}:${mode}:${cueContext}`)
-    })
+      disconnect(): void {}
+      unobserve(): void {}
+      takeRecords(): IntersectionObserverEntry[] { return [] }
+    }
+    vi.stubGlobal('IntersectionObserver', VisibleIntersectionObserver as unknown as typeof IntersectionObserver)
+    appMocks.activated = false
+    appMocks.activate.mockClear()
+    appMocks.requestOperation.mockClear().mockResolvedValue('proceed')
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(String(input))
+      const path = url.pathname
+      if (path.endsWith('/briefing-sessions') && init?.method === 'POST') {
+        admissionBody = JSON.parse(String(init.body)) as Record<string, unknown>
+        return new Response(JSON.stringify(sessionSummary), { status: 202, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith('/briefing-sessions') && init?.method !== 'POST') {
+        return new Response(JSON.stringify(admissionBody ? [{ ...sessionSummary, run_status: runStatus }] : []), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith(`/briefing-sessions/${sessionId}/presented`)) {
+        presentationWrites += 1
+        presentedAt = '2026-09-25T13:02:00Z'
+        return new Response(JSON.stringify(sessionDetail()), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith(`/briefing-sessions/${sessionId}`)) {
+        detailReads += 1
+        return new Response(JSON.stringify(sessionDetail()), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith(`/cortex/runs/${sessionSummary.run_id}/cancel`)) {
+        cancellationWrites += 1
+        return new Response(JSON.stringify({ status: 'cancelling' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith(`/cortex/conversations/${conversationId}`)) {
+        conversationReads += 1
+        const messages = runStatus === 'completed' ? [
+          { id: userMessageId, parent_message_id: null, role: 'user', content: 'Prepare a Daily briefing.', status: 'completed', agent: null, created_at: '2026-09-25T13:00:00Z', updated_at: '2026-09-25T13:00:00Z' },
+          { id: assistantMessageId, parent_message_id: userMessageId, role: 'agent', content: 'Saved Daily opening artifact for the morning meeting.', status: 'completed', agent: 'apex', created_at: '2026-09-25T13:01:00Z', updated_at: '2026-09-25T13:01:00Z' },
+        ] : []
+        const conversation = {
+          id: conversationId,
+          title: 'Daily briefing',
+          archived_at: null,
+          agent: 'apex',
+          selected_tool_names: [],
+          tool_profile_id: null,
+          updated_at: '2026-09-25T13:01:00Z',
+          active_leaf_message_id: runStatus === 'completed' ? assistantMessageId : null,
+          messages,
+        }
+        return new Response(JSON.stringify(conversation), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith('/cortex/conversations') && url.searchParams.get('archived') === 'true') {
+        return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith('/cortex/conversations')) {
+        return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith('/cortex/tool-catalog')) {
+        return new Response(JSON.stringify(catalogFor('apex')), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
 
     render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Refresh All & Generate Briefing' }))
+    await user.click(screen.getByRole('button', { name: 'Start APEX with Daily briefing' }))
 
-    await waitFor(() => {
-      expect(events).toEqual([
-        'refresh',
-        'cue:briefing_refresh',
-        'generate:snap-refreshed:flash:after_refresh',
-      ])
+    await waitFor(() => expect(admissionBody).not.toBeNull())
+    expect(appMocks.requestOperation).toHaveBeenCalledWith('generate_briefing_session', expect.objectContaining({
+      model_id: 'deepseek/deepseek-v4-flash-0731',
+      involves_cloud: true,
+    }))
+    expect(admissionBody).toMatchObject({
+      profile_id: 'daily',
+      model_id: 'deepseek/deepseek-v4-flash-0731',
     })
-  })
+    await waitFor(() => expect(detailReads).toBeGreaterThan(0))
 
-  it('uses telemetry refresh failure copy only when refresh fails and skips conflict or cancellation', async () => {
-    const user = userEvent.setup()
-    const events: string[] = []
-    appMocks.activated = true
-    stubAppFetch(events)
-    appMocks.refreshAllWithOutcome.mockImplementation(async () => {
-      events.push('refresh')
-      return { kind: 'failure', snapshot: null, error: 'network down' }
-    })
+    await user.click(screen.getByRole('button', { name: 'Cortex' }))
+    expect(presentationWrites).toBe(0)
+    expect(cancellationWrites).toBe(0)
+    runStatus = 'completed'
+    await user.click(screen.getByRole('button', { name: 'Home' }))
 
-    const failedRender = render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Refresh All & Generate Briefing' }))
-    await waitFor(() => {
-      expect(events).toEqual(['refresh', 'cue:briefing_refresh', 'cue:telemetry_refresh_failed'])
-    })
-    expect(appMocks.generateFromSnapshot).not.toHaveBeenCalled()
+    const savedSessions = await screen.findByRole('navigation', { name: 'Saved Daily sessions' })
+    const savedSessionButton = savedSessions.querySelector('button')
+    if (!savedSessionButton) throw new Error('The generated Daily session was not listed.')
+    await user.click(savedSessionButton)
 
-    failedRender.unmount()
-    events.length = 0
-    appMocks.refreshAllWithOutcome.mockResolvedValue({
-      kind: 'conflict',
-      snapshot: null,
-      error: 'A telemetry refresh is already in progress',
-    })
-    const conflictRender = render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Refresh All & Generate Briefing' }))
-    await waitFor(() => expect(events).toEqual(['cue:briefing_refresh']))
-    conflictRender.unmount()
-
-    events.length = 0
-    appMocks.refreshAllWithOutcome.mockResolvedValue({
-      kind: 'cancelled',
-      snapshot: null,
-      error: 'The operation was aborted',
-    })
-    const cancelledRender = render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Refresh All & Generate Briefing' }))
-    await waitFor(() => expect(events).toEqual(['cue:briefing_refresh']))
-    cancelledRender.unmount()
-  })
-
-  it('skips frontend briefing cues in demo mode while preserving the refresh and generation flow', async () => {
-    const user = userEvent.setup()
-    const events: string[] = []
-    appMocks.activated = true
-    appMocks.demoModeActive = true
-    stubAppFetch(events)
-    appMocks.refreshAllWithOutcome.mockResolvedValue({
-      kind: 'success',
-      snapshot: createTelemetrySnapshot(),
-    })
-    appMocks.generateFromSnapshot.mockImplementation(async (snapshotId, mode, cueContext) => {
-      events.push(`generate:${snapshotId}:${mode}:${cueContext}`)
-    })
-
-    render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Refresh All & Generate Briefing' }))
-
-    await waitFor(() => {
-      expect(events).toEqual(['generate:snap-current:flash:after_refresh'])
-    })
-  })
-
-  it('skips the no-snapshot frontend cue in demo mode when refresh fails', async () => {
-    const user = userEvent.setup()
-    const events: string[] = []
-    appMocks.activated = true
-    appMocks.demoModeActive = true
-    stubAppFetch(events)
-    appMocks.refreshAllWithOutcome.mockResolvedValue({
-      kind: 'failure',
-      snapshot: null,
-      error: 'refresh failed',
-    })
-
-    render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Refresh All & Generate Briefing' }))
-
-    await waitFor(() => expect(appMocks.refreshAllWithOutcome).toHaveBeenCalledOnce())
-    expect(events).toEqual([])
-    expect(appMocks.generateFromSnapshot).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByText('Morning travel')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Saved Daily opening artifact for the morning meeting.')).toBeInTheDocument())
+    await waitFor(() => expect(presentationWrites).toBe(1))
+    expect(detailReads).toBeGreaterThan(1)
+    expect(conversationReads).toBeGreaterThan(1)
+    expect(cancellationWrites).toBe(0)
+    expect(appMocks.activate).toHaveBeenCalled()
   })
 })

@@ -62,6 +62,16 @@ export const API_ENDPOINTS = {
   actionApprove: (actionId: string) => `${API_BASE}/api/v1/actions/${encodeURIComponent(actionId)}/approve`,
   actionReject: (actionId: string) => `${API_BASE}/api/v1/actions/${encodeURIComponent(actionId)}/reject`,
   actionVerify: (actionId: string) => `${API_BASE}/api/v1/actions/${encodeURIComponent(actionId)}/verify`,
+  briefingSessions: (params?: { limit?: number; offset?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.limit) query.set('limit', String(params.limit))
+    if (params?.offset) query.set('offset', String(params.offset))
+    const qs = query.toString()
+    return qs ? API_BASE + '/api/v1/briefing-sessions?' + qs : API_BASE + '/api/v1/briefing-sessions'
+  },
+  briefingSession: (sessionId: string) => API_BASE + '/api/v1/briefing-sessions/' + encodeURIComponent(sessionId),
+  briefingSessionEvidence: (sessionId: string, evidenceId: string) => API_BASE + '/api/v1/briefing-sessions/' + encodeURIComponent(sessionId) + '/evidence/' + encodeURIComponent(evidenceId),
+  briefingSessionPresented: (sessionId: string) => API_BASE + '/api/v1/briefing-sessions/' + encodeURIComponent(sessionId) + '/presented',
   briefingHistory: `${API_BASE}/api/v1/briefings/history`,
   briefingTargets: `${API_BASE}/api/v1/briefings/targets`,
   briefingsGenerate: `${API_BASE}/api/v1/briefings/generate`,

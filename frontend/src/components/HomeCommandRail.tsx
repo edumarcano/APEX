@@ -1,16 +1,13 @@
 import type { ReactElement } from 'react'
 
-import type { BriefingMode } from '../types/settings'
 import type {
   AgentKey,
   ToolCatalog,
   ToolPreflightEstimate,
-  BriefingTargetStatus,
   ModelCatalogEntry,
 } from '../types/telemetry'
 
 import { AgentQueryBar } from './AgentQueryBar'
-import { BriefingGenerateControl, BriefingModeSelector } from './BriefingControls'
 import { LocalModelControl } from './LocalModelControl'
 import { StandbyActions } from './StandbyActions'
 
@@ -20,7 +17,6 @@ interface HomeCommandRailProps {
   selectedModelId: string
   onModelChange: (modelId: string) => void
   modelCatalog: ModelCatalogEntry[]
-  briefingTargets?: BriefingTargetStatus[]
   isCortexQuerying: boolean
   onAgentSubmit: (
     query: string,
@@ -51,15 +47,12 @@ interface HomeCommandRailProps {
   onStartApex: () => void
   onStartWithBriefing: () => void
   startDisabled: boolean
-  briefingMode: BriefingMode
-  onBriefingModeChange: (runtime: BriefingMode) => void
-  briefingControlsBusy: boolean
-  briefingModeAvailable: boolean
-  hasSnapshot: boolean
-  isRefreshingAll: boolean
-  onRefreshAll: () => void
-  onGenerateBriefing: () => void
-  onRefreshAllAndGenerate: () => void
+  dailySessionsCount: number
+  dailyBusy: boolean
+  hasActiveDailySession: boolean
+  canGenerateDaily: boolean
+  onGenerateDaily: () => void
+  onOpenDailySessions: () => void
   activeLocalModel: ModelCatalogEntry | null
   loadingLocalModel: ModelCatalogEntry | null
   localLifecycleBusy: boolean
@@ -72,7 +65,6 @@ export function HomeCommandRail({
   selectedModelId,
   onModelChange,
   modelCatalog,
-  briefingTargets,
   isCortexQuerying,
   onAgentSubmit,
   toolCatalog = null,
@@ -99,15 +91,12 @@ export function HomeCommandRail({
   onStartApex,
   onStartWithBriefing,
   startDisabled,
-  briefingMode,
-  onBriefingModeChange,
-  briefingControlsBusy,
-  briefingModeAvailable,
-  hasSnapshot,
-  isRefreshingAll,
-  onRefreshAll,
-  onGenerateBriefing,
-  onRefreshAllAndGenerate,
+  dailySessionsCount,
+  dailyBusy,
+  hasActiveDailySession,
+  canGenerateDaily,
+  onGenerateDaily,
+  onOpenDailySessions,
   activeLocalModel,
   loadingLocalModel,
   localLifecycleBusy,
@@ -129,15 +118,10 @@ export function HomeCommandRail({
               onStartApex={onStartApex}
               onStartWithBriefing={onStartWithBriefing}
               disabled={startDisabled}
+              briefingDisabled={!canGenerateDaily || hasActiveDailySession || dailyBusy}
             />
           </div>
-          <BriefingModeSelector
-            value={briefingMode}
-            onChange={onBriefingModeChange}
-            targets={briefingTargets}
-            disabled={briefingControlsBusy}
-            className="col-span-2 justify-self-center w-full max-w-[20rem]"
-          />
+
           <LocalModelControl
             model={activeLocalModel}
             loadingModel={loadingLocalModel}
@@ -186,23 +170,13 @@ export function HomeCommandRail({
             </div>
           </> : null}
           <div className="home-command-grid__briefing-row" data-slot="home-briefing-row">
-            <BriefingModeSelector
-              value={briefingMode}
-              onChange={onBriefingModeChange}
-              targets={briefingTargets}
-              disabled={briefingControlsBusy}
-              className="home-command-grid__briefing min-w-0"
-            />
+            <div className="home-command-grid__briefing min-w-0">
+              <p className="font-orbitron text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-100">Daily</p>
+              <p className="mt-0.5 text-[9px] text-zinc-500">A concise view of current information and evidence</p>
+            </div>
             <div className="home-command-grid__briefing-actions" data-slot="home-briefing-actions">
-              <BriefingGenerateControl
-                mainDisabled={briefingControlsBusy || !briefingModeAvailable || !hasSnapshot}
-                refreshDisabled={briefingControlsBusy || !briefingModeAvailable || isRefreshingAll}
-                busy={briefingControlsBusy || isRefreshingAll}
-                onGenerate={onGenerateBriefing}
-                onRefreshAll={onRefreshAll}
-                onRefreshAndGenerate={onRefreshAllAndGenerate}
-                className="home-command-grid__synthesize"
-              />
+              <button type="button" onClick={onOpenDailySessions} className="h-10 whitespace-nowrap rounded-lg border border-white/10 px-2.5 font-mono text-[10px] text-zinc-300 hover:border-white/20 hover:text-white" aria-label="Open saved Daily sessions">Saved Daily{dailySessionsCount > 0 ? ' (' + dailySessionsCount + ')' : ''}</button>
+              <button type="button" onClick={onGenerateDaily} disabled={!canGenerateDaily || dailyBusy || hasActiveDailySession} className="home-command-grid__synthesize h-10 whitespace-nowrap rounded-lg border border-amber-400/30 bg-amber-950/20 px-3 font-orbitron text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-100 hover:bg-amber-400/15 disabled:cursor-not-allowed disabled:opacity-40">{dailyBusy ? 'Preparing…' : 'Prepare Daily'}</button>
             </div>
           </div>
           <LocalModelControl

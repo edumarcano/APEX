@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import html
 import re
 from email.utils import parsedate_to_datetime
@@ -226,8 +227,17 @@ def _mask_private_message_fields(message: dict[str, Any]) -> None:
             "snippet": _DEV_MASKED_VALUE,
         }
     )
+    for key in ("id", "thread_id", "revision"):
+        value = message.get(key)
+        if isinstance(value, str) and value:
+            message[key] = _masked_identifier(value)
     if "body" in message:
         message.update({"body": _DEV_MASKED_VALUE, "truncated": False})
+
+
+def _masked_identifier(value: str) -> str:
+    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:24]
+    return f"masked:{digest}"
 
 
 def _raise_typed_gmail_error(exc: HttpError) -> None:
@@ -396,6 +406,9 @@ def get_unread_gmail_data(service: Any) -> dict[str, Any]:
 
             emails.append(
                 {
+                    'id': _bounded_text(msg.get('id') or msg_id, limit=_MAX_IDENTIFIER_CHARS),
+                    'thread_id': _bounded_text(msg.get('threadId'), limit=_MAX_IDENTIFIER_CHARS),
+                    'revision': _bounded_text(msg.get('historyId'), limit=_MAX_IDENTIFIER_CHARS),
                     'subject': subject if subject is not None else '',
                     'time': time_str,
                     'sender': sender if sender is not None else '',
@@ -409,6 +422,9 @@ def get_unread_gmail_data(service: Any) -> dict[str, Any]:
                 'count': count,
                 'emails': [
                     {
+                        'id': _masked_identifier(email.get('id', '')),
+                        'thread_id': _masked_identifier(email.get('thread_id', '')),
+                        'revision': '',
                         'subject': _DEV_MASKED_SUBJECT,
                         'time': email.get('time', ''),
                         'sender': _DEV_MASKED_VALUE,
@@ -424,7 +440,7 @@ def get_unread_gmail_data(service: Any) -> dict[str, Any]:
         if is_dev_mode():
             return {
                 'count': 0,
-                'emails': [{'subject': _DEV_OFFLINE_SUBJECT, 'time': '', 'sender': _DEV_MASKED_VALUE, 'received_at': '', 'snippet': _DEV_MASKED_VALUE}],
+                'emails': [{'id': '', 'thread_id': '', 'revision': '', 'subject': _DEV_OFFLINE_SUBJECT, 'time': '', 'sender': _DEV_MASKED_VALUE, 'received_at': '', 'snippet': _DEV_MASKED_VALUE}],
             }
         raise
 

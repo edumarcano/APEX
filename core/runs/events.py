@@ -25,6 +25,7 @@ RunEventType = Literal[
     "action.proposed",
     "usage.updated",
     "runtime.updated",
+    "briefing.stage",
     "run.completed",
 ]
 
@@ -49,6 +50,7 @@ class RunEventBuffer:
         self._record = record
         self._events: deque[RunEvent] = deque(maxlen=limit)
         self._answer = ""
+        self._briefing_stage: dict[str, str] | None = None
         self._sequence = 0
         self._terminal = False
         self._condition = threading.Condition()
@@ -83,6 +85,11 @@ class RunEventBuffer:
                 self._answer = ""
             elif event_type == "response.completed":
                 self._answer = str(event.payload.get("answer", ""))
+            elif event_type == "briefing.stage":
+                stage = event.payload.get("stage")
+                state = event.payload.get("state")
+                if isinstance(stage, str) and isinstance(state, str):
+                    self._briefing_stage = {"stage": stage, "state": state}
             self._events.append(event)
             self._condition.notify_all()
             return event
@@ -98,6 +105,7 @@ class RunEventBuffer:
                 payload={
                     "run": self._record.model_dump(mode="json"),
                     "answer": self._answer,
+                    "briefing_stage": dict(self._briefing_stage) if self._briefing_stage else None,
                 },
             )
 
@@ -209,9 +217,17 @@ def _safe_payload(event_type: RunEventType, payload: dict[str, Any]) -> dict[str
     """Allow only the public fields documented for each closed event type."""
     if event_type == "run.snapshot":
         run = payload.get("run")
+        stage = payload.get("briefing_stage")
+        safe_stage = None
+        if isinstance(stage, dict):
+            stage_value = stage.get("stage")
+            state_value = stage.get("state")
+            if stage_value in {"preparing", "collecting", "selecting", "synthesizing", "persisting"} and state_value in {"started", "completed", "failed", "cancelled"}:
+                safe_stage = {"stage": stage_value, "state": state_value}
         return {
             "run": run if isinstance(run, dict) else {},
             "answer": _text(payload.get("answer")),
+            "briefing_stage": safe_stage,
         }
     if event_type == "run.status":
         return _selected(payload, "status", "stop_reason")
@@ -223,6 +239,15 @@ def _safe_payload(event_type: RunEventType, payload: dict[str, Any]) -> dict[str
         return {"text": _text(payload.get("text"))}
     if event_type == "response.reset":
         return {}
+    if event_type == "briefing.stage":
+        stages = {"preparing", "collecting", "selecting", "synthesizing", "persisting"}
+        states = {"started", "completed", "failed", "cancelled"}
+        stage = payload.get("stage")
+        state = payload.get("state")
+        return {
+            "stage": stage if stage in stages else "preparing",
+            "state": state if state in states else "started",
+        }
     if event_type == "response.completed":
         return {"answer": _text(payload.get("answer"))}
     if event_type == "tool.started":

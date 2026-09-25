@@ -21,7 +21,7 @@ describe('StandbyActions', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'Start APEX' }))
-    await user.click(screen.getByRole('button', { name: 'Start APEX with briefing' }))
+    await user.click(screen.getByRole('button', { name: 'Start APEX with Daily briefing' }))
     expect(onStartApex).toHaveBeenCalledTimes(1)
     expect(onStartWithBriefing).toHaveBeenCalledTimes(1)
   })

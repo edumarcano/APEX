@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Callable
 from datetime import datetime, timezone
 
 from clients import market_client
@@ -86,6 +87,7 @@ class TelemetryService:
         *,
         connectors: list[str] | None = None,
         force: bool = False,
+        before_collect: Callable[[str], None] | None = None,
     ) -> TelemetrySnapshot:
         """
         Refresh telemetry and return the resulting complete snapshot.
@@ -99,7 +101,9 @@ class TelemetryService:
             raise RefreshInProgressError("Telemetry refresh already in progress.")
 
         try:
-            return self._refresh_locked(connectors=connectors, force=force)
+            return self._refresh_locked(
+                connectors=connectors, force=force, before_collect=before_collect
+            )
         finally:
             self._refresh_lock.release()
 
@@ -108,6 +112,7 @@ class TelemetryService:
         *,
         connectors: list[str] | None,
         force: bool,
+        before_collect: Callable[[str], None] | None = None,
     ) -> TelemetrySnapshot:
         names = list(connectors) if connectors else None
         if names is not None:
@@ -149,6 +154,7 @@ class TelemetryService:
             calendar=settings.calendar,
             connectors=names,
             force=force,
+            before_collect=before_collect,
         )
 
         # Partial refresh merges into the prior complete snapshot.

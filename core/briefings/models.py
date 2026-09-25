@@ -20,6 +20,8 @@ BriefingCategory = Literal[
     "suggestion",
 ]
 EvidenceTrust = Literal["observed", "accepted", "pending", "untrusted", "unknown"]
+EvidenceIdentityKind = Literal["provider", "content", "masked", "fixture", "unknown"]
+EvidenceRevisionKind = Literal["provider", "content", "none"]
 CoverageStatus = Literal["complete", "partial", "unavailable", "disabled", "failed"]
 BriefingStage = Literal["preparing", "collecting", "selecting", "synthesizing", "persisting"]
 SpeechDeliveryStatus = Literal["not_requested", "ready", "unavailable"]
@@ -50,9 +52,10 @@ BUILTIN_BRIEFING_PROFILES: dict[BriefingProfileId, BuiltinBriefingProfile] = {
     "daily": BuiltinBriefingProfile(
         id="daily",
         label="Daily",
-        purpose="A concise view of current information, with repetition controlled by the last presented briefing.",
-        source_strategy="current_and_changes",
-        history_strategy="presented_baseline",
+        purpose="A concise view of current information and its supporting evidence.",
+        source_strategy="current",
+        history_strategy="none",
+        definition_version=2,
     ),
     "catch_up": BuiltinBriefingProfile(
         id="catch_up",
@@ -92,8 +95,8 @@ class BriefingModelConfiguration(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     model_id: str
-    provider: Literal["gemini", "ollama", "llama_cpp", "openai", "openrouter"]
-    runtime: Literal["cloud", "local"]
+    provider: Literal["gemini", "ollama", "llama_cpp", "openai", "openrouter", "demo"]
+    runtime: Literal["cloud", "local", "demo"]
     reasoning: str | None = None
     context_window: int | None = Field(default=None, ge=1)
     local_reasoning_mode: Literal["none", "focused"] | None = None
@@ -112,6 +115,20 @@ class BriefingGenerationConfiguration(BaseModel):
     profile: BuiltinBriefingProfile
     model: BriefingModelConfiguration
     origin: BriefingOrigin
+    execution_kind: Literal["model", "demo"] = "model"
+
+
+class BriefingSessionGenerateRequest(BaseModel):
+    """HUD-facing generation request; origin and execution limits stay server-owned."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    idempotency_key: UUID
+    profile_id: BriefingProfileId
+    model_id: str = Field(min_length=1, max_length=160)
+    reasoning: str | None = Field(default=None, min_length=1, max_length=32)
+    context_window: int | None = Field(default=None, ge=1)
+    local_reasoning_mode: Literal["none", "focused"] | None = None
 
 
 class ExistingRecordReference(BaseModel):
@@ -129,12 +146,16 @@ class BriefingEvidence(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     source: Annotated[str, StringConstraints(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_]*$")]
     source_id: OpaqueSourceId
+    identity_kind: EvidenceIdentityKind = "provider"
     revision: str | None = Field(default=None, max_length=512)
+    revision_kind: EvidenceRevisionKind = "none"
     observed_at: datetime | None = None
     effective_at: datetime | None = None
     trust: EvidenceTrust = "unknown"
     content: str | None = Field(default=None, max_length=16_000)
     record_reference: ExistingRecordReference | None = None
+    included_in_synthesis: bool = True
+    selection_priority: int = Field(default=0, ge=0, le=100, exclude=True)
     available: bool = True
     unavailable_reason: str | None = Field(default=None, max_length=240)
 
@@ -289,6 +310,7 @@ class BriefingSessionDetail(BaseModel):
     configuration: BriefingGenerationConfiguration
     artifact: CanonicalBriefingArtifact | None = None
     evidence_count: int = Field(ge=0)
+    evidence_ids: list[UUID] = Field(default_factory=list, max_length=32)
     created_at: datetime
     presented_at: datetime | None = None
     speech_status: SpeechDeliveryStatus = "not_requested"
@@ -384,7 +406,15 @@ def render_artifact_text(artifact: CanonicalBriefingArtifact) -> str:
     """Render a compact durable conversation message from the canonical artifact."""
     blocks: list[str] = []
     for section in artifact.sections:
-        items = [f"- **{item.title}** {item.body}" for item in section.items]
+        items: list[str] = []
+        for item in section.items:
+            labels = [item.category.replace("_", " ")]
+            reference_kinds = {reference.kind for reference in item.record_references}
+            if "context_review" in reference_kinds and item.category != "pending_review":
+                labels.append("pending review")
+            if "external_activity" in reference_kinds and item.category != "external_report":
+                labels.append("untrusted external report")
+            items.append(f"- **[{'; '.join(labels)}] {item.title}** {item.body}")
         if items:
             blocks.append(f"## {section.title}\n" + "\n".join(items))
     if artifact.limitations:

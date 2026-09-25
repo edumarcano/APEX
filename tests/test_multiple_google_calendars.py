@@ -9,7 +9,7 @@ from unittest import mock
 from fastapi import HTTPException
 from clients.calendar_client import fetch_selected_calendar_events, list_readable_calendars
 from core.api.routers.system import get_google_calendar_choices
-from core.connectors.collect import collect_calendar
+from core.connectors.collect import _calendar_data, collect_calendar
 from core.settings import CalendarSettings, FeaturesSettings, ModulesSettings, SettingsPatch
 from core.settings.models import CalendarPatch, RuntimeSettingsSnapshot
 from core.settings.normalize import apply_patch_to_snapshot
@@ -153,6 +153,51 @@ class MultipleGoogleCalendarsTests(unittest.TestCase):
         result = fetch_selected_calendar_events(service, calendar_ids=("primary",), show_calendar_names=False)
 
         self.assertNotIn("calendar_name", result.events[0])
+
+    def test_selected_fetch_preserves_bounded_provider_identity_through_telemetry(self) -> None:
+        now = datetime(2030, 1, 1, tzinfo=timezone.utc)
+        service = _Service(
+            [{"items": [{"id": "team", "summary": "Team"}]}],
+            {
+                "team": {
+                    "timeZone": "UTC",
+                    "items": [{
+                        "id": "instance-42",
+                        "etag": '"revision-7"',
+                        "updated": "2029-12-30T10:00:00Z",
+                        "recurringEventId": "series-9",
+                        "originalStartTime": {"dateTime": "2030-01-02T10:00:00Z"},
+                        "summary": "Planning",
+                        "start": {"dateTime": "2030-01-02T10:00:00Z"},
+                        "end": {"dateTime": "2030-01-02T11:00:00Z"},
+                    }],
+                },
+            },
+        )
+
+        fetched = fetch_selected_calendar_events(service, calendar_ids=("team",))
+        projected = _calendar_data(fetched.events, now=now)
+
+        event = projected["events"][0]
+        self.assertEqual(event["event_id"], "instance-42")
+        self.assertEqual(event["calendar_id"], "team")
+        self.assertEqual(event["recurring_event_id"], "series-9")
+        self.assertEqual(event["original_start"], "2030-01-02T10:00:00+00:00")
+        self.assertEqual(event["revision"], '"revision-7"')
+
+    def test_dev_calendar_fixture_does_not_expose_provider_identity(self) -> None:
+        service = _Service(
+            [{"items": [{"id": "team", "summary": "Team"}]}],
+            {"team": {"items": [{"id": "secret-event", "etag": "secret-revision", "summary": "Private", "start": {"dateTime": "2030-01-02T10:00:00Z"}}]}},
+        )
+
+        with mock.patch("clients.calendar_client.is_dev_mode", return_value=True):
+            result = fetch_selected_calendar_events(service, calendar_ids=("team",))
+
+        self.assertTrue(result.events[0]["summary"].startswith("[HIDDEN]"))
+        self.assertNotIn("event_id", result.events[0])
+        self.assertNotIn("calendar_id", result.events[0])
+        self.assertNotIn("revision", result.events[0])
 
     def test_explicit_empty_selection_remains_empty_when_applied(self) -> None:
         snapshot = apply_patch_to_snapshot(

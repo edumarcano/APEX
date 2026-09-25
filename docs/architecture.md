@@ -4,7 +4,7 @@ APEX is a local-first personal intelligence HUD. FastAPI serves the backend, Rea
 
 ## Core model
 
-- **Home** presents briefings, telemetry, reminders, and quick interaction.
+- **Home** presents the saved Daily briefing, telemetry, reminders, and quick interaction.
 - **Cortex** is the control surface for conversations, model settings, tool selection, context, and approval-gated actions.
 - **Inbox** is the dedicated list-and-detail workspace for immutable, untrusted reports with caller-claimed source labels.
 - **Apex Agent** is the single native personal operations assistant. It understands APEX briefings, trusted context, connected services, and APEX tools.
@@ -41,7 +41,7 @@ Knowledge history records later status changes, evidence links, corrections, con
 
 External activity reports use their own SQLite table, receipt identity, partition, caller-claimed source label, idempotency key, and reversible inbox disposition. The ID syntax is checked at the shared service boundary but does not authenticate the caller. Their structured JSON and Markdown body stay immutable after receipt. Stable future-review evidence locations point to `/findings/<index>`, or to `/outcome` and `/markdown_body` when no structured finding exists.
 
-The activity store has no retrieval synchronization, prompt assembly caller, briefing caller, attention integration, or automatic trust-promotion path. An operator may select one immutable finding and create a linked pending context review. The server freezes the selected report text, locator, external source origin, and occurrence time as `external_activity` evidence; a finding can declare `model_interpretation`, otherwise its derivation is `unknown`. Only accepted context reviews write a normal knowledge record and retrieval entry.
+Activity reports have no retrieval synchronization, general prompt assembly caller, attention integration, or automatic trust-promotion path. A Daily run may select up to three relevant, non-dismissed reports from the newest 50 candidates and include bounded excerpts as explicitly untrusted evidence. An operator may also select one immutable finding and create a linked pending context review. The server freezes the selected report text, locator, external source origin, and occurrence time as `external_activity` evidence; a finding can declare `model_interpretation`, otherwise its derivation is `unknown`. Only accepted context reviews write a normal knowledge record and retrieval entry.
 
 Inbox reads a bounded report list and exact report detail, lets the operator set the separate `new`, `reviewed`, or `dismissed` disposition, and opens linked decisions in Cortex Review. It never changes partitions automatically. Report text, Markdown, and external references remain untrusted display data; the HUD renders text without raw HTML and enables only HTTP(S) links.
 
@@ -118,4 +118,6 @@ When configured, APEX exports failure-isolated distributed traces using OpenTele
 
 ## Briefing routes
 
-Interactive selection never changes briefing execution. Focused uses OpenRouter DeepSeek V4 Flash with High reasoning, Flash uses the fixed Gemma E2B llama.cpp route at 16K with reasoning disabled, and Structured is deterministic. Fallback is Focused, Flash, then Structured.
+Home's Daily action creates a durable session, runs bounded collection and synthesis with the explicitly selected Apex Agent model, and stores a canonical artifact with its source coverage and evidence. The session owns a conversation whose rendered opening assistant message is linked to the artifact; the canonical artifact and evidence remain in briefing-session storage. Follow-up turns use the ordinary conversation history and context policy. A small, relevance-ranked slice of cited saved evidence is attached inside the existing untrusted retrieved-context boundary and budget; personal-context-derived snapshots follow the selected runtime's retrieval setting. The saved evidence inspector still reads the complete snapshots on demand. Daily does not silently switch models when the selected model is unavailable or its context cannot fit a useful prompt.
+
+The legacy compatibility routes retain their fixed behavior: Focused uses OpenRouter DeepSeek V4 Flash with High reasoning, Flash uses the fixed Gemma E2B llama.cpp route at 16K with reasoning disabled, and Structured is deterministic. Their fallback order remains Focused, Flash, then Structured.

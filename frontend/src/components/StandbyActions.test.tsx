@@ -19,10 +19,10 @@ describe('StandbyActions', () => {
     )
 
     const startBtn = screen.getByRole('button', { name: 'Start APEX' })
-    const briefingBtn = screen.getByRole('button', { name: 'Start APEX with briefing' })
+    const briefingBtn = screen.getByRole('button', { name: 'Start APEX with Daily briefing' })
 
     expect(startBtn).toHaveTextContent('Start APEX')
-    expect(briefingBtn).toHaveTextContent('Start with Briefing')
+    expect(briefingBtn).toHaveTextContent('Start with Daily')
 
     await user.click(startBtn)
     expect(onStartApex).toHaveBeenCalledTimes(1)
@@ -41,6 +41,6 @@ describe('StandbyActions', () => {
     )
 
     expect(screen.getByRole('button', { name: 'Start APEX' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Start APEX with briefing' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Start APEX with Daily briefing' })).toBeDisabled()
   })
 })

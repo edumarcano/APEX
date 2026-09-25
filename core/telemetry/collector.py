@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 
 from clients import market_client, news_client, sports_client, weather_client
 from core.connectors.collect import collect_calendar, collect_email, collect_reminders
@@ -76,6 +77,7 @@ def collect_connector_results(
     calendar: CalendarSettings | None = None,
     connectors: list[str] | None = None,
     force: bool = False,
+    before_collect: Callable[[str], None] | None = None,
 ) -> dict[str, ConnectorResult]:
     """
     Collect enabled connectors synchronously.
@@ -92,11 +94,16 @@ def collect_connector_results(
 
     results: dict[str, ConnectorResult] = {}
 
+    def _before(name: str) -> None:
+        if before_collect is not None:
+            before_collect(name)
+
     def _wanted(name: str) -> bool:
         return name in target
 
     if _wanted("weather"):
         if is_connector_enabled("weather", features=features, modules=modules):
+            _before("weather")
             results["weather"] = weather_client.collect_weather()
         else:
             _LOGGER.info("Weather module bypassed via user preference")
@@ -104,6 +111,7 @@ def collect_connector_results(
 
     if _wanted("f1"):
         if is_connector_enabled("f1", features=features, modules=modules):
+            _before("f1")
             results["f1"] = sports_client.collect_f1()
         else:
             if features.sports and not modules.f1:
@@ -114,6 +122,7 @@ def collect_connector_results(
 
     if _wanted("football"):
         if is_connector_enabled("football", features=features, modules=modules):
+            _before("football")
             results["football"] = sports_client.collect_football(force=force)
         else:
             if features.sports and not modules.football:
@@ -122,6 +131,7 @@ def collect_connector_results(
 
     if _wanted("news"):
         if is_connector_enabled("news", features=features, modules=modules):
+            _before("news")
             results["news"] = news_client.collect_news()
         else:
             _LOGGER.info("News module bypassed via user preference")
@@ -129,6 +139,7 @@ def collect_connector_results(
 
     if _wanted("email"):
         if is_connector_enabled("email", features=features, modules=modules):
+            _before("email")
             results["email"] = collect_email()
         else:
             _LOGGER.info("Email module bypassed via user preference")
@@ -136,6 +147,7 @@ def collect_connector_results(
 
     if _wanted("calendar"):
         if is_connector_enabled("calendar", features=features, modules=modules):
+            _before("calendar")
             results["calendar"] = collect_calendar(settings=calendar)
         else:
             _LOGGER.info("Calendar module bypassed via user preference")
@@ -143,10 +155,12 @@ def collect_connector_results(
 
     if _wanted("reminders"):
         # Reminders remain a local DB read and are always collected when requested.
+        _before("reminders")
         results["reminders"] = collect_reminders()
 
     if _wanted("market"):
         if is_connector_enabled("market", features=features, modules=modules):
+            _before("market")
             results["market"] = market_client.collect_market()
         else:
             _LOGGER.info("Market module bypassed via user preference")
