@@ -6,6 +6,7 @@ import asyncio
 import json
 import re
 from concurrent.futures import Future
+from dataclasses import replace
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
@@ -78,6 +79,8 @@ from core.knowledge.capture import CAPABILITY_NAME, ContextCaptureError, reject_
 from core.knowledge.reconciliation import CAPABILITY_NAME as RECONCILIATION_CAPABILITY_NAME
 from core.knowledge.store import KnowledgeConflictError, KnowledgeNotFoundError, KnowledgeStoreError
 from core.context import ContextAssembler, ContextPolicy
+from core.briefings.context import combine_context_bundles, saved_daily_followup_context
+from core.briefings.service import get_briefing_session_queries_optional
 from core.knowledge import get_knowledge_service
 from core.context_vault.selection import ContextVaultPreview, ContextVaultSelectionService
 from core.context_vault.runtime import (
@@ -1092,12 +1095,30 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
         model_id=str(request_metadata["resolved_model"]),
     )
     try:
-        context_bundle = ContextAssembler(
+        briefing_queries = get_briefing_session_queries_optional()
+        briefing_record = (
+            briefing_queries.store.find_by_conversation(conversation_id, partition)
+            if briefing_queries is not None else None
+        )
+        saved_evidence = saved_daily_followup_context(
+            briefing_record, prompt=payload.prompt, policy=context_policy
+        )
+        remaining_policy = replace(
+            context_policy,
+            max_retrieved_tokens=max(
+                0, context_policy.max_retrieved_tokens - saved_evidence.estimated_tokens
+            ),
+        )
+        retrieved_context = ContextAssembler(
             get_retrieval_service(), get_knowledge_service()
         ).assemble(
             prompt=payload.prompt,
             conversation_id=conversation_id,
-            policy=context_policy,
+            policy=remaining_policy,
+        )
+        context_bundle = (
+            combine_context_bundles(retrieved_context, saved_evidence)
+            if saved_evidence.enabled else retrieved_context
         )
     except Exception:
         _compensate_submission_failure(

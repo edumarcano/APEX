@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 
 from core.agent.catalog import build_concrete_agent
 from core.agent.local_runtime.execution import admit_local_model
@@ -26,6 +26,21 @@ ProviderFactory = Callable[[Any, str | None], Any]
 
 class BriefingModelOutputError(ValueError):
     """The provider did not return one bounded, tool-free response."""
+
+
+class InvalidBriefingModelOutputError(BriefingModelOutputError):
+    """A completed provider turn returned content that cannot be repaired as-is."""
+
+    _REPAIR_FEEDBACK = {
+        "tool_call": "The response attempted to call a tool; return only the Daily JSON object.",
+        "oversized": "The response exceeded its output bound; return a concise Daily JSON object.",
+        "empty": "No response content was returned; provide the Daily JSON object.",
+    }
+
+    def __init__(self, reason: Literal["tool_call", "oversized", "empty"]) -> None:
+        repair_feedback = self._REPAIR_FEEDBACK[reason]
+        super().__init__(repair_feedback)
+        self.repair_feedback = repair_feedback
 
 
 def execute_single_call(
@@ -94,17 +109,13 @@ def execute_single_call(
         )
         control.after_model_turn(result)
         if result.message.tool_calls:
-            raise BriefingModelOutputError(
-                "The single-call briefing response attempted to request a tool."
-            )
+            raise InvalidBriefingModelOutputError("tool_call")
         response_content = result.message.content or ""
         response_limit = min(MAX_ARTIFACT_BYTES, output_token_limit * 16)
         if len(response_content.encode("utf-8")) > response_limit:
-            raise BriefingModelOutputError(
-                "The briefing response exceeds its configured output bound."
-            )
+            raise InvalidBriefingModelOutputError("oversized")
         if not response_content.strip():
-            raise BriefingModelOutputError("The selected model returned no briefing content.")
+            raise InvalidBriefingModelOutputError("empty")
         return result
 
     if is_local_profile(concrete_profile):

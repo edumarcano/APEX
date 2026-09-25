@@ -345,6 +345,7 @@ export type PreflightOperation =
   | 'activate_with_briefing'
   | 'refresh_telemetry'
   | 'generate_briefing'
+  | 'generate_briefing_session'
   | 'cortex_query'
 
 export type PreflightWarningCode =

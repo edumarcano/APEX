@@ -103,39 +103,8 @@ class ContextAssembler:
         if not policy.permits_retrieval:
             return ContextBundle()
 
-        personal_candidates: list[tuple[str, ContextReference]] = []
+        personal_candidates = self.personal_candidates(prompt=prompt, policy=policy)
         conversation_candidates: list[tuple[str, ContextReference]] = []
-
-        personal_hits = self._retrieval.search(prompt, namespace="personal_context", partition="production", source_type=None, limit=24)
-        seen: set[str] = set()
-        for hit in personal_hits:
-            if hit.source_id in seen:
-                continue
-            seen.add(hit.source_id)
-            candidate = self._personal_candidate(
-                hit.source_id, label="Personal context", partition=policy.partition,
-            )
-            if candidate is None:
-                continue
-            personal_candidates.append(candidate)
-            if len(personal_candidates) >= policy.max_personal_records:
-                break
-
-        for entity in self._knowledge.entities_mentioned_in(prompt):
-            if len(personal_candidates) >= policy.max_personal_records:
-                break
-            for record in self._knowledge.one_hop_relationships(entity.id, partition=policy.partition):
-                if str(record.id) in seen:
-                    continue
-                seen.add(str(record.id))
-                candidate = self._personal_candidate(
-                    str(record.id), label="Related personal context", partition=policy.partition,
-                )
-                if candidate is None:
-                    continue
-                personal_candidates.append(candidate)
-                if len(personal_candidates) >= policy.max_personal_records:
-                    break
 
         conversation_hits = self._retrieval.search(prompt, namespace="conversation", partition="production", source_type="message", limit=24)
         for hit in conversation_hits:
@@ -147,6 +116,48 @@ class ContextAssembler:
 
         candidates = personal_candidates + conversation_candidates
         return self._bounded(candidates, max_tokens=policy.max_retrieved_tokens)
+
+    def personal_candidates(
+        self, *, prompt: str, policy: ContextPolicy
+    ) -> list[tuple[str, ContextReference]]:
+        """Return only canonically reloaded accepted records, without history excerpts."""
+        if not policy.permits_retrieval:
+            return []
+        candidates: list[tuple[str, ContextReference]] = []
+        personal_hits = self._retrieval.search(
+            prompt, namespace="personal_context", partition="production",
+            source_type=None, limit=24,
+        )
+        seen: set[str] = set()
+        for hit in personal_hits:
+            if hit.source_id in seen:
+                continue
+            seen.add(hit.source_id)
+            candidate = self._personal_candidate(
+                hit.source_id, label="Personal context", partition=policy.partition,
+            )
+            if candidate is None:
+                continue
+            candidates.append(candidate)
+            if len(candidates) >= policy.max_personal_records:
+                break
+
+        for entity in self._knowledge.entities_mentioned_in(prompt):
+            if len(candidates) >= policy.max_personal_records:
+                break
+            for record in self._knowledge.one_hop_relationships(entity.id, partition=policy.partition):
+                if str(record.id) in seen:
+                    continue
+                seen.add(str(record.id))
+                candidate = self._personal_candidate(
+                    str(record.id), label="Related personal context", partition=policy.partition,
+                )
+                if candidate is None:
+                    continue
+                candidates.append(candidate)
+                if len(candidates) >= policy.max_personal_records:
+                    break
+        return candidates
 
     def _personal_candidate(
         self, record_id: str, *, label: str, partition: str,

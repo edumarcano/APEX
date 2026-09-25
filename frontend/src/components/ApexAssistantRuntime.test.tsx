@@ -22,6 +22,12 @@ function response(body: unknown, status = 200): Response {
   })
 }
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((nextResolve) => { resolve = nextResolve })
+  return { promise, resolve }
+}
+
 function sseResponse(events: Array<{ sequence: number; type: string; payload: Record<string, unknown> }>): Response {
   const encoder = new TextEncoder()
   const body = events
@@ -397,6 +403,126 @@ describe('ApexAssistantRuntime', () => {
     const updated = await runtimeRef.current?.patchPreferences({ agent: 'apex', selectedToolNames: ['reminders'], toolProfileId: 'focused' })
     expect(updated).toEqual({ conversationId, agent: 'apex', selected_tool_names: ['reminders'], tool_profile_id: 'focused' })
     expect(fetchMock).toHaveBeenCalled()
+  })
+
+  it('opens an older saved conversation omitted from the active thread-list page and reloads its history', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const olderId = '00000000-0000-4000-8000-000000000041'
+    const userMessageId = '00000000-0000-4000-8000-000000000042'
+    const assistantMessageId = '00000000-0000-4000-8000-000000000043'
+    const runtimeRef: { current: ApexAssistantRuntimeHandle | null } = { current: null }
+    let detailReads = 0
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([])
+      if (url.endsWith(`/api/v1/cortex/conversations/${olderId}`)) {
+        detailReads += 1
+        return response({
+          ...summary,
+          id: olderId,
+          title: 'Older Daily',
+          active_leaf_message_id: assistantMessageId,
+          messages: [
+            { id: userMessageId, parent_message_id: null, role: 'user', content: 'Prepare a Daily briefing.', status: 'completed', agent: null, created_at: '2026-08-18T12:00:00Z', updated_at: '2026-08-18T12:00:00Z' },
+            { id: assistantMessageId, parent_message_id: userMessageId, role: 'agent', content: 'Saved Daily opening artifact.', status: 'completed', agent: 'apex', created_at: '2026-08-18T12:00:01Z', updated_at: '2026-08-18T12:00:01Z' },
+          ],
+        })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    render(
+      <ApexAssistantRuntime
+        config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+        runtimeRef={runtimeRef}
+      >
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+    await waitFor(() => expect(screen.getByText('APEX is ready. Start a session with a focused question.')).toBeInTheDocument())
+
+    await expect(runtimeRef.current?.openConversation(olderId)).resolves.toBe(true)
+
+    await waitFor(() => expect(screen.getByText('Saved Daily opening artifact.')).toBeInTheDocument())
+    expect(detailReads).toBeGreaterThan(1)
+    expect(fetchMock).toHaveBeenCalled()
+  })
+
+  it('keeps the newest requested conversation active when an older detail request finishes later', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const olderId = '00000000-0000-4000-8000-000000000045'
+    const newestId = '00000000-0000-4000-8000-000000000046'
+    const olderUserId = '00000000-0000-4000-8000-000000000047'
+    const olderAgentId = '00000000-0000-4000-8000-000000000048'
+    const newestUserId = '00000000-0000-4000-8000-000000000049'
+    const newestAgentId = '00000000-0000-4000-8000-00000000004a'
+    const runtimeRef: { current: ApexAssistantRuntimeHandle | null } = { current: null }
+    const olderDetail = deferred<Response>()
+    let olderReads = 0
+    let newestReads = 0
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([])
+      if (url.endsWith(`/api/v1/cortex/conversations/${olderId}`)) {
+        olderReads += 1
+        if (olderReads === 1) return olderDetail.promise
+        return response({
+          ...summary,
+          id: olderId,
+          title: 'Older request',
+          active_leaf_message_id: olderAgentId,
+          messages: [
+            { id: olderUserId, parent_message_id: null, role: 'user', content: 'Older saved question.', status: 'completed', agent: null, created_at: '2026-08-18T12:00:00Z', updated_at: '2026-08-18T12:00:00Z' },
+            { id: olderAgentId, parent_message_id: olderUserId, role: 'agent', content: 'Older saved answer.', status: 'completed', agent: 'apex', created_at: '2026-08-18T12:00:01Z', updated_at: '2026-08-18T12:00:01Z' },
+          ],
+        })
+      }
+      if (url.endsWith(`/api/v1/cortex/conversations/${newestId}`)) {
+        newestReads += 1
+        return response({
+          ...summary,
+          id: newestId,
+          title: 'Newest request',
+          active_leaf_message_id: newestAgentId,
+          messages: [
+            { id: newestUserId, parent_message_id: null, role: 'user', content: 'Newest saved question.', status: 'completed', agent: null, created_at: '2026-08-18T13:00:00Z', updated_at: '2026-08-18T13:00:00Z' },
+            { id: newestAgentId, parent_message_id: newestUserId, role: 'agent', content: 'Newest saved answer.', status: 'completed', agent: 'apex', created_at: '2026-08-18T13:00:01Z', updated_at: '2026-08-18T13:00:01Z' },
+          ],
+        })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    render(
+      <ApexAssistantRuntime
+        config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
+        runtimeRef={runtimeRef}
+      >
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+    await waitFor(() => expect(screen.getByText('APEX is ready. Start a session with a focused question.')).toBeInTheDocument())
+
+    const openOlder = runtimeRef.current?.openConversation(olderId)
+    await waitFor(() => expect(olderReads).toBe(1))
+    const openNewest = runtimeRef.current?.openConversation(newestId)
+    await waitFor(() => expect(newestReads).toBeGreaterThan(0))
+    await expect(openNewest).resolves.toBe(true)
+    olderDetail.resolve(response({
+      ...summary,
+      id: olderId,
+      title: 'Older request',
+      active_leaf_message_id: olderAgentId,
+      messages: [
+        { id: olderUserId, parent_message_id: null, role: 'user', content: 'Older saved question.', status: 'completed', agent: null, created_at: '2026-08-18T12:00:00Z', updated_at: '2026-08-18T12:00:00Z' },
+        { id: olderAgentId, parent_message_id: olderUserId, role: 'agent', content: 'Older saved answer.', status: 'completed', agent: 'apex', created_at: '2026-08-18T12:00:01Z', updated_at: '2026-08-18T12:00:01Z' },
+      ],
+    }))
+
+    await expect(openOlder).resolves.toBe(false)
+    await waitFor(() => expect(screen.getByText('Newest saved answer.')).toBeInTheDocument())
+    expect(screen.queryByText('Older saved answer.')).not.toBeInTheDocument()
   })
 
   it('only deletes archived conversations after confirmation', async () => {

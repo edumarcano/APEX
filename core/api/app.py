@@ -45,7 +45,14 @@ from core.agent.providers.llama_cpp_supervisor import get_llama_cpp_server_super
 from core import database, speaker
 from core.conversations import ConversationService, ConversationStore, set_conversation_service
 from core.runs import CortexRunCoordinator, RunService, RunStore, set_run_coordinator, set_run_service
-from core.briefings.service import BriefingSessionQueries, set_briefing_session_queries
+from core.briefings.daily import generate_daily_briefing
+from core.briefings.runtime import resolve_briefing_configuration
+from core.briefings.service import (
+    BriefingService,
+    BriefingSessionQueries,
+    set_briefing_service,
+    set_briefing_session_queries,
+)
 from core.briefings.store import BriefingSessionStore
 from core.knowledge import KnowledgeService, KnowledgeStore, set_knowledge_service
 from core.context_vault.runtime import ContextVaultRuntime, set_context_vault_runtime
@@ -272,6 +279,20 @@ async def _app_lifespan(_app: FastAPI):
             reminder_service.reconcile()
             set_reminder_service(reminder_service)
         get_settings_store()
+        assert briefing_session_store is not None
+        assert conversation_store is not None
+        assert run_coordinator is not None
+        set_briefing_service(
+            BriefingService(
+                store=briefing_session_store,
+                conversations=conversation_store,
+                runs=run_service,
+                coordinator=run_coordinator,
+                partition_getter=conversation_service.partition,
+                resolve_configuration=resolve_briefing_configuration,
+                execute_generation=generate_daily_briefing,
+            )
+        )
         if not DEMO_MODE:
             context_vault_runtime = ContextVaultRuntime(
                 knowledge=KnowledgeService(knowledge_store),
@@ -404,6 +425,7 @@ async def _app_lifespan(_app: FastAPI):
         set_conversation_service(None)
         set_run_service(None)
         set_run_coordinator(None)
+        set_briefing_service(None)
         set_briefing_session_queries(None)
         set_retrieval_service(None)
         set_knowledge_service(None)

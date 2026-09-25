@@ -39,8 +39,27 @@ def resolve_briefing_configuration(
 ) -> BriefingGenerationConfiguration:
     """Resolve exact catalog identity and validate model-specific controls."""
     if DEMO_MODE:
-        raise BriefingModelConfigurationError(
-            "Model-backed briefings are unavailable in demo mode."
+        if request.profile_id != "daily":
+            raise BriefingModelConfigurationError(
+                "Only Daily briefing generation is available in demo mode."
+            )
+        return BriefingGenerationConfiguration(
+            profile=BUILTIN_BRIEFING_PROFILES["daily"],
+            model=BriefingModelConfiguration(
+                model_id="demo/daily-fixture",
+                provider="demo",
+                runtime="demo",
+                reasoning=None,
+                context_window=16_384,
+                local_reasoning_mode=None,
+                max_elapsed_seconds=CORTEX_RUNS_MAX_ELAPSED_SECONDS,
+                max_retries=0,
+                max_model_turns=1,
+                max_tool_calls=1,
+                output_token_limit=512,
+            ),
+            origin=request.origin,
+            execution_kind="demo",
         )
 
     dev_mode = is_dev_mode()
@@ -87,6 +106,8 @@ def resolve_briefing_configuration(
                     "The requested context window exceeds the selected model's catalog limit."
                 )
             context_window = request.context_window
+        if context_window is None:
+            context_window = maximum_context
     else:
         if request.reasoning is not None:
             raise BriefingModelConfigurationError(
@@ -154,7 +175,7 @@ def resolve_briefing_configuration(
                 "The selected local model has no supported runtime."
             )
 
-    return BriefingGenerationConfiguration(
+    configuration = BriefingGenerationConfiguration(
         profile=BUILTIN_BRIEFING_PROFILES[request.profile_id],
         model=BriefingModelConfiguration(
             model_id=profile.model_id,
@@ -170,7 +191,17 @@ def resolve_briefing_configuration(
             output_token_limit=min(4096, MAX_OUTPUT_TOKENS),
         ),
         origin=request.origin,
+        execution_kind="model",
     )
+    if configuration.profile.id == "daily":
+        try:
+            # Resolve the exact Daily system/schema budget before the run is admitted.
+            from core.briefings.daily import validate_daily_context_budget
+
+            validate_daily_context_budget(configuration)
+        except RuntimeError as exc:
+            raise BriefingModelConfigurationError(str(exc)) from None
+    return configuration
 
 
 def get_visible_model_profile(model_id: str) -> ModelProfile:

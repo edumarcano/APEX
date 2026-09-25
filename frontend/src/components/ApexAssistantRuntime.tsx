@@ -66,6 +66,7 @@ export type ApexAssistantRuntimeHandle = {
     options?: { startNewThread?: boolean },
   ) => Promise<boolean>
   patchPreferences: (updates: { agent?: AgentKey; selectedToolNames?: string[] | null; toolProfileId?: string | null }) => Promise<ApexAssistantPatchedPreferences | null>
+  openConversation: (conversationId: string) => Promise<boolean>
 }
 
 export type ApexAssistantPatchedPreferences = ApexAssistantConversationPreferences & {
@@ -366,9 +367,11 @@ export function useApexAssistantComposer(composerOverride?: ApexComposerSubmitRu
   return { submit, isRunning }
 }
 
-function ApexAssistantController({ runtimeRef, branchPersistRef, getActiveRemoteId, getThreadIds, forceHistoryReloadRef, onBranchPersistenceError }: { runtimeRef?: React.MutableRefObject<ApexAssistantRuntimeHandle | null>; branchPersistRef: React.MutableRefObject<(messageId: string) => Promise<void>>; getActiveRemoteId: () => string | undefined; getThreadIds: (remoteId: string) => Map<string, string>; forceHistoryReloadRef: React.MutableRefObject<boolean>; onBranchPersistenceError: (message: string | null) => void }): ReactNode {
+function ApexAssistantController({ runtimeRef, branchPersistRef, getActiveRemoteId, getThreadIds, forceHistoryReloadRef, onBranchPersistenceError, prepareConversationForOpen }: { runtimeRef?: React.MutableRefObject<ApexAssistantRuntimeHandle | null>; branchPersistRef: React.MutableRefObject<(messageId: string) => Promise<void>>; getActiveRemoteId: () => string | undefined; getThreadIds: (remoteId: string) => Map<string, string>; forceHistoryReloadRef: React.MutableRefObject<boolean>; onBranchPersistenceError: (message: string | null) => void; prepareConversationForOpen: (detail: ConversationDetail) => void }): ReactNode {
   const aui = useAui()
   const { submit } = useApexAssistantComposer()
+  const openConversationSequenceRef = useRef(0)
+  const openConversationQueueRef = useRef<Promise<void>>(Promise.resolve())
   const persistBranch = useCallback(async (messageId: string): Promise<void> => {
     const remoteId = getActiveRemoteId() ?? aui.threadListItem.getState().remoteId
     if (!remoteId || !messageId) return
@@ -431,9 +434,32 @@ function ApexAssistantController({ runtimeRef, branchPersistRef, getActiveRemote
           return null
         }
       },
+      openConversation: async (conversationId: string): Promise<boolean> => {
+        const sequence = ++openConversationSequenceRef.current
+        try {
+          const detail = await requestJson<ConversationDetail>(API_ENDPOINTS.cortexConversation(conversationId))
+          if (openConversationSequenceRef.current !== sequence) return false
+          const openPromise = openConversationQueueRef.current.then(async () => {
+            if (openConversationSequenceRef.current !== sequence) return false
+            prepareConversationForOpen(detail)
+            forceHistoryReloadRef.current = true
+            await aui.threads.reload()
+            if (openConversationSequenceRef.current !== sequence) return false
+            await aui.threads.switchToThread(detail.id)
+            if (openConversationSequenceRef.current !== sequence) return false
+            forceHistoryReloadRef.current = true
+            await aui.threads.reloadMainThread()
+            return openConversationSequenceRef.current === sequence
+          })
+          openConversationQueueRef.current = openPromise.then(() => undefined, () => undefined)
+          return await openPromise
+        } catch {
+          return false
+        }
+      },
     }
     return () => { runtimeRef.current = null; branchPersistRef.current = async () => {} }
-  }, [aui, branchPersistRef, getActiveRemoteId, onBranchPersistenceError, persistBranch, runtimeRef, submit])
+  }, [aui, branchPersistRef, forceHistoryReloadRef, getActiveRemoteId, onBranchPersistenceError, persistBranch, prepareConversationForOpen, runtimeRef, submit])
   return null
 }
 
@@ -487,10 +513,18 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
   // turn host re-renders into a request storm.
   const listRequestRef = useRef<Promise<ApexThreadListResult> | null>(null)
   const listCacheRef = useRef<ApexThreadListResult | null>(null)
+  const requiredConversationRef = useRef<ConversationDetail | null>(null)
   const listFailureRef = useRef<{ error: Error; until: number } | null>(null)
   const historyLoadStateRef = useRef<HistoryLoadState>({ inFlight: new Map(), failureUntil: new Map() })
   const forceHistoryReloadRef = useRef(false)
   const pendingAssistantRef = useRef<PendingAssistantMessage | null>(null)
+  const prepareConversationForOpen = useCallback((detail: ConversationDetail): void => {
+    requiredConversationRef.current = detail
+    titleByRemote.current.set(detail.id, detail.title)
+    listCacheRef.current = null
+    listFailureRef.current = null
+    forceListReloadRef.current = true
+  }, [])
   const syncTurnLock = useCallback((activeAgent?: AgentKey): void => {
     const pending = pendingTurnRef.current
     const running = launchTurnRef.current || modelTurnRef.current || pending !== null
@@ -544,6 +578,12 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
           ])
           const regularList = Array.isArray(initialRegular) ? initialRegular : []
           const archivedList = Array.isArray(archived) ? archived : []
+          const requiredConversation = requiredConversationRef.current
+          if (requiredConversation
+            && !regularList.some((item) => item.id === requiredConversation.id)
+            && !archivedList.some((item) => item.id === requiredConversation.id)) {
+            ;(requiredConversation.archived_at ? archivedList : regularList).unshift(requiredConversation)
+          }
           if (!initialSelectedRef.current && regularList[0]) {
             initialSelectedRef.current = true
             const firstId = regularList[0].id
@@ -880,7 +920,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
     reloadThreads,
     threadListError,
   }), [branchPersistenceError, composerContext, reloadThreads, threadListError])
-  return <AssistantRuntimeProvider runtime={runtime}><ApexAssistantComposerContext.Provider value={runtimeContext}><ApexAssistantController branchPersistRef={branchPersistRef} forceHistoryReloadRef={forceHistoryReloadRef} getActiveRemoteId={getActiveRemoteId} getThreadIds={getThreadIds} onBranchPersistenceError={setBranchPersistenceError} runtimeRef={runtimeRef} />{children}</ApexAssistantComposerContext.Provider></AssistantRuntimeProvider>
+  return <AssistantRuntimeProvider runtime={runtime}><ApexAssistantComposerContext.Provider value={runtimeContext}><ApexAssistantController branchPersistRef={branchPersistRef} forceHistoryReloadRef={forceHistoryReloadRef} getActiveRemoteId={getActiveRemoteId} getThreadIds={getThreadIds} onBranchPersistenceError={setBranchPersistenceError} prepareConversationForOpen={prepareConversationForOpen} runtimeRef={runtimeRef} />{children}</ApexAssistantComposerContext.Provider></AssistantRuntimeProvider>
 }
 
 export function ApexAssistantError(): ReactNode {

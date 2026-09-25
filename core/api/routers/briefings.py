@@ -7,7 +7,7 @@ import sqlite3
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from core import database
 from core.api.briefing import (
@@ -28,17 +28,89 @@ from core.api.models import (
 from core.config import DEMO_MODE
 from core.briefings.models import (
     BriefingEvidence,
+    BriefingGenerationRequest,
+    BriefingSessionGenerateRequest,
     BriefingSessionDetail,
     BriefingSessionSummary,
 )
-from core.briefings.service import get_briefing_session_queries
+from core.briefings.runtime import BriefingModelConfigurationError
+from core.briefings.service import get_briefing_service, get_briefing_session_queries
 from core.briefings.store import (
     BriefingSessionConflictError,
     BriefingSessionNotFoundError,
 )
+from core.runs.coordinator import (
+    ActiveConversationRunError,
+    RunCapacityError,
+    RunCoordinatorClosingError,
+)
 
 router = APIRouter(tags=["briefings"])
 _LOGGER = logging.getLogger(__name__)
+
+
+@router.post(
+    "/api/v1/briefing-sessions",
+    response_model=BriefingSessionSummary,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Generate a saved Daily briefing session",
+)
+def generate_briefing_session(
+    body: BriefingSessionGenerateRequest,
+    response: Response,
+) -> BriefingSessionSummary:
+    """Admit a Daily run and return its durable session and conversation IDs."""
+    if body.profile_id != "daily":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only Daily briefing sessions are available in this release.",
+        )
+    try:
+        result = get_briefing_service().start(
+            BriefingGenerationRequest(
+                **body.model_dump(),
+                origin="hud",
+            )
+        )
+    except BriefingModelConfigurationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except RunCapacityError:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="APEX is already running at its current capacity. Try again shortly.",
+        ) from None
+    except ActiveConversationRunError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This conversation already has an active run.",
+        ) from None
+    except RunCoordinatorClosingError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Briefing generation is shutting down.",
+        ) from None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except BriefingSessionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    except RuntimeError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Briefing generation is unavailable.",
+        ) from None
+
+    record = result.session
+    response.status_code = status.HTTP_200_OK if result.replayed else status.HTTP_202_ACCEPTED
+    return BriefingSessionSummary(
+        id=record.id,
+        profile_id=record.request.profile_id,
+        model_id=record.configuration.model.model_id,
+        conversation_id=record.conversation_id,
+        run_id=record.run_id,
+        run_status=record.run_status,
+        created_at=record.created_at,
+        presented_at=record.presented_at,
+    )
 
 
 @router.post(

@@ -115,7 +115,9 @@ Only one local generation may run at a time. APEX checks runtime reachability, i
 
 ## Briefing modes
 
-Briefings are fixed routes, independent of the interactive model. Focused uses OpenRouter DeepSeek V4 Flash with High reasoning; Flash uses Gemma E2B through llama.cpp at 16K with reasoning disabled; Structured is deterministic. Fallback order is Focused, Flash, then Structured.
+The Home Daily action uses the selected Apex Agent model and its supported controls. It does not silently substitute another model, and a model context window that cannot fit a useful Daily prompt is rejected before generation. DEMO mode uses a deterministic fixture without running a model. The `briefing.default_mode` setting remains for the legacy `/api/v1/trigger` and `/api/v1/briefings/generate` compatibility routes.
+
+Those legacy routes retain fixed behavior. Focused uses OpenRouter DeepSeek V4 Flash with High reasoning; Flash uses Gemma E2B through llama.cpp at 16K with reasoning disabled; Structured is deterministic. Their fallback order is Focused, Flash, then Structured.
 
 ## External and managed router modes
 

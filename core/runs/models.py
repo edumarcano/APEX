@@ -60,6 +60,7 @@ RunErrorCode = Literal[
     "resource_exhaustion",
     "interrupted_by_restart",
     "operator_cancelled",
+    "invalid_model_output",
     "internal_error",
 ]
 
@@ -76,6 +77,7 @@ SAFE_ERROR_MESSAGES: dict[str, str] = {
     "resource_exhaustion": "System resources exceeded configured safety gates.",
     "interrupted_by_restart": "Run was interrupted by an APEX restart.",
     "operator_cancelled": "Run was cancelled by operator.",
+    "invalid_model_output": "The selected model returned an invalid response after repair.",
     "internal_error": "An internal execution error occurred.",
 }
 

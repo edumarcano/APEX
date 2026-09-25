@@ -58,6 +58,15 @@ class RunCoordinatorClosingError(RuntimeError):
     """The application is shutting down and cannot admit another run."""
 
 
+class RunExecutionError(RuntimeError):
+    """A safe, classified failure produced by a run's execution path."""
+
+    def __init__(self, *, stop_reason: RunStopReason, error_code: RunErrorCode) -> None:
+        super().__init__(error_code)
+        self.stop_reason = stop_reason
+        self.error_code = error_code
+
+
 class RunHttpError(RuntimeError):
     """A request error that the synchronous route must re-raise."""
 
@@ -617,6 +626,22 @@ class CortexRunCoordinator:
                 span_context.record_terminal(
                     record,
                     error_code="operator_cancelled" if cancelled else code,
+                )
+                return record
+            except RunExecutionError as exc:
+                record, cancelled = self._finalize_stopped_with_cancel_precedence(
+                    handle,
+                    control,
+                    active,
+                    finalize_conversation,
+                    finalize_run,
+                    "failed",
+                    exc.stop_reason,
+                    exc.error_code,
+                )
+                span_context.record_terminal(
+                    record,
+                    error_code="operator_cancelled" if cancelled else exc.error_code,
                 )
                 return record
             except RunHttpError as exc:

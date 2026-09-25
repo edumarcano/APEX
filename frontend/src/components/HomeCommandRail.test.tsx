@@ -74,15 +74,12 @@ function renderRail(overrides: Partial<ComponentProps<typeof HomeCommandRail>> =
     onStartApex: vi.fn(),
     onStartWithBriefing: vi.fn(),
     startDisabled: false,
-    briefingMode: 'flash',
-    onBriefingModeChange: vi.fn(),
-    briefingControlsBusy: false,
-    briefingModeAvailable: true,
-    hasSnapshot: true,
-    isRefreshingAll: false,
-    onRefreshAll: vi.fn(),
-    onGenerateBriefing: vi.fn(),
-    onRefreshAllAndGenerate: vi.fn(),
+    dailySessionsCount: 0,
+    dailyBusy: false,
+    hasActiveDailySession: false,
+    canGenerateDaily: true,
+    onGenerateDaily: vi.fn(),
+    onOpenDailySessions: vi.fn(),
     activeLocalModel: null,
     loadingLocalModel: null,
     localLifecycleBusy: false,
@@ -93,21 +90,27 @@ function renderRail(overrides: Partial<ComponentProps<typeof HomeCommandRail>> =
 }
 
 describe('HomeCommandRail', () => {
-  it('keeps standby activation actions with briefing selection while hiding active-only controls', () => {
+  it('keeps standby activation actions with Daily while hiding active-only controls', () => {
     renderRail({ activated: false })
 
     expect(screen.getByRole('button', { name: 'Start APEX' })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Start APEX with briefing' })).toBeVisible()
-    expect(screen.getByRole('button', { name: /briefing mode: flash/i })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Start APEX with Daily briefing' })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).toBeNull()
-    expect(screen.queryByRole('button', { name: /generate briefing/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /prepare daily/i })).toBeNull()
   })
 
-  it('uses a compact model selector menu without changing briefing selection', async () => {
+  it('keeps Overview activation available when Daily has no usable model', () => {
+    renderRail({ activated: false, agentQueriesEnabled: false, canGenerateDaily: false })
+
+    expect(screen.getByRole('button', { name: 'Start APEX' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Start APEX with Daily briefing' })).toBeDisabled()
+  })
+
+  it('uses a compact model selector menu without changing Daily actions', async () => {
     const onModelChange = vi.fn()
-    const onBriefingModeChange = vi.fn()
+    const onGenerateDaily = vi.fn()
     const user = userEvent.setup()
-    renderRail({ onModelChange, onBriefingModeChange })
+    renderRail({ onModelChange, onGenerateDaily })
 
     const trigger = screen.getByRole('button', { name: /model: gpt-5\.6 luna/i })
     expect(trigger).toBeVisible()
@@ -118,16 +121,15 @@ describe('HomeCommandRail', () => {
     await user.click(within(listbox).getByRole('option', { name: /gemma 4 e2b/i }))
 
     expect(onModelChange).toHaveBeenCalledWith('gemma-4-E2B-Q4_K_M.gguf')
-    expect(onBriefingModeChange).not.toHaveBeenCalled()
+    expect(onGenerateDaily).not.toHaveBeenCalled()
   })
 
-  it('omits only the active assistant row when Agent queries are disabled', () => {
-    renderRail({ agentQueriesEnabled: false })
+  it('keeps Daily visible but disables generation when Agent queries are disabled', () => {
+    renderRail({ agentQueriesEnabled: false, canGenerateDaily: false })
 
     expect(screen.queryByLabelText('Agent query bar')).toBeNull()
-    expect(screen.getByRole('button', { name: /briefing mode: flash/i })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Generate briefing from current telemetry' })).toBeVisible()
-    expect(screen.queryByRole('button', { name: 'Refresh all telemetry' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open saved Daily sessions' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Prepare Daily' })).toBeDisabled()
   })
 
   it('submits with the selected model while keeping the composer free of a second selector', async () => {
@@ -199,7 +201,7 @@ describe('HomeCommandRail', () => {
     expect(screen.getByRole('button', { name: 'Unload gemma-4-E2B-Q4_K_M.gguf' })).toBeDisabled()
   })
 
-  it('renders local model control during standby below briefing mode selector when a model is active', async () => {
+  it('renders local model control during standby when a model is active', async () => {
     const onUnloadLocalModel = vi.fn(async () => true)
     const activeLocalModel = {
       ...localModel(),
@@ -235,6 +237,6 @@ describe('HomeCommandRail', () => {
     expect(rail).toHaveClass('max-w-[42rem]')
     expect(document.querySelector('[data-slot="home-agent-row"]')).toBeVisible()
     expect(document.querySelector('[data-slot="home-briefing-row"]')).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Generate briefing from current telemetry' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Prepare Daily' })).toBeVisible()
   })
 })

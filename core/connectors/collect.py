@@ -33,6 +33,9 @@ def collect_email() -> ConnectorResult:
                 continue
             recent.append(
                 {
+                    "id": str(email.get("id", "")),
+                    "thread_id": str(email.get("thread_id", "")),
+                    "revision": str(email.get("revision", "")),
                     "subject": str(email.get("subject", "")),
                     "time": str(email.get("time", "")),
                     "sender": str(email.get("sender", "")),
@@ -152,6 +155,11 @@ def _calendar_data(
         events.append(
             {
                 "summary": str(event.get("summary") or "Untitled event"),
+                **({"event_id": str(event["event_id"])} if isinstance(event.get("event_id"), str) and event["event_id"] else {}),
+                **({"calendar_id": str(event["calendar_id"])} if isinstance(event.get("calendar_id"), str) and event["calendar_id"] else {}),
+                **({"recurring_event_id": str(event["recurring_event_id"])} if isinstance(event.get("recurring_event_id"), str) and event["recurring_event_id"] else {}),
+                **({"original_start": str(event["original_start"])} if isinstance(event.get("original_start"), str) and event["original_start"] else {}),
+                **({"revision": str(event["revision"])} if isinstance(event.get("revision"), str) and event["revision"] else {}),
                 "start": str(event["start"]),
                 "end": (
                     str(event["end"])

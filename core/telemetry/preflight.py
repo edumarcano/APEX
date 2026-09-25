@@ -83,8 +83,9 @@ _BLOCKER_MESSAGES: dict[PreflightBlockerCode, str] = {
 
 _BRIEFING_MODES = VALID_BRIEFING_MODES
 _CONNECTOR_OPERATIONS = frozenset(
-    {"activate", "activate_with_briefing", "refresh_telemetry"}
+    {"activate", "activate_with_briefing", "refresh_telemetry", "generate_briefing_session"}
 )
+_DAILY_CONNECTORS = frozenset({"reminders", "calendar", "email", "weather"})
 
 
 def _warning(code: PreflightWarningCode) -> PreflightWarning:
@@ -255,7 +256,11 @@ def _effective_connector_names(
         features=settings.features,
         modules=settings.modules,
     )
-    requested = set(request.connectors or CONNECTOR_NAMES)
+    requested = (
+        set(request.connectors or _DAILY_CONNECTORS)
+        if request.operation == "generate_briefing_session"
+        else set(request.connectors or CONNECTOR_NAMES)
+    )
     return requested & enabled
 
 
@@ -323,7 +328,10 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         blockers.append(_blocker("database_failure"))
 
     briefing_mode = (request.briefing_mode or "").strip() or None
-    if briefing_mode is not None and briefing_mode not in _BRIEFING_MODES:
+    if briefing_mode is not None and not (
+        request.operation == "generate_briefing_session"
+        and briefing_mode == "daily"
+    ) and briefing_mode not in _BRIEFING_MODES:
         blockers.append(
             _blocker("invalid_input", f"Unknown briefing mode: {briefing_mode!r}")
         )
@@ -413,7 +421,8 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         )
     )
     blockers.extend(_football_configuration_blockers(effective_connectors, settings))
-    blockers.extend(_connector_credential_blockers(effective_connectors))
+    if request.operation != "generate_briefing_session":
+        blockers.extend(_connector_credential_blockers(effective_connectors))
 
     if request.connectors:
         unknown = sorted(set(request.connectors) - set(CONNECTOR_NAMES))
