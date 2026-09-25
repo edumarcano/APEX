@@ -2,6 +2,41 @@
 
 ---
 
+## v2.0.0-beta.5 - Context Vault & Sharing
+
+**Released:** September 25, 2026
+
+This release lets you publish selected trusted personal context as linked Markdown notes in local folders. Separate scopes can be opened in Obsidian or shared through a synced folder, while APEX keeps the source records and export controls locally.
+
+### What's New
+
+- Added an opt-in Context Vault in Cortex → Context. Scopes select records by entity or record ID, exclude individual records, and preview generated files before publication.
+- Added linked Markdown indexes, entity notes, and record notes under stable scope paths. Scope folders can be used independently, and APEX leaves files it does not own untouched.
+- Added record sensitivity controls and a per-scope opt-in for exporting sensitive records.
+- Added automatic refresh after production context or selection changes, with status, preview, manual refresh, and managed-copy removal in Cortex and the `apex context vault` CLI.
+- Limited the production model catalog to DeepSeek V4 Flash, Gemini 3.7 Flash, and Gemma 4 E2B.
+- Fixed football telemetry to include timed fixtures and report an empty upcoming-fixture window as healthy.
+
+### Architecture Changes
+
+- Restricted exports to eligible active production records. Conflicting, superseded, retracted, and pending-review records are excluded; original source evidence and source locators are not published. Sensitive records require explicit opt-in for each scope.
+- Stored export ownership and local publication status in APEX. Local publication status does not indicate that a sync service copied the files or that another application indexed them.
+
+### API Changes
+
+- Added revision-checked record sensitivity updates and Context Vault routes for status, preview, refresh, and removal of APEX-managed copies. Existing `/api/v1/cortex/context-vault` routes remain available as compatibility aliases.
+- Added Context Vault settings to schema version 23 and `apex context vault` commands for status, preview, configuration, refresh, and removal.
+
+### Frontend Changes
+
+- Added a Vault panel in Cortex → Context for managing scopes, selections, sensitivity, previews, export status, refreshes, and removal of generated copies.
+
+### Documentation Updates
+
+- Added a Context Vault guide for setup, Obsidian, optional synced-folder sharing, external app access, refresh, and cleanup. Updated the API, architecture, CLI, configuration, privacy, getting-started, and README documentation.
+
+---
+
 ## v2.0.0-beta.4 - External Activity Inbox
 
 **Released:** September 23, 2026
