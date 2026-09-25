@@ -481,29 +481,21 @@ Publish selected trusted personal context as linked Markdown notes for Obsidian 
 **Status:** Planned
 
 **Objective:**
-Redesign briefings as a configurable, interactive way to understand the personal environment, using the context, review, run, and external-activity foundations established by the earlier betas.
+Rebuild APEX briefings as a first-class, interactive information system and redesign Home around the three states of Standby, Overview, and Briefing.
 
-The redesign should begin with the operator's real briefing needs rather than preserving the current modes unchanged. Specialized briefings may serve different purposes, such as starting the day, reviewing a project, or catching up on outside work. The first version should support a useful, manageable set of experiences without trying to anticipate every possible mode.
+Briefing generation should use the Apex Agent model catalog as its single model source and run through one shared, bounded execution graph. Built-in briefing profiles should configure that graph rather than own separate model or Agent logic. Beta.6 should initially focus on three differentiated profiles: Daily Briefing for orientation, Catch Up for meaningful changes since the operator last checked, and Deep Briefing for broader reasoning and optional tool-assisted investigation.
 
-A briefing's purpose should be separate from the model that generates it. Configuration should describe the subjects, sources, time range, level of detail, and presentation the operator wants. Model selection and generation settings should be separate choices, with capability checks where needed. A mode should not require a particular named model simply because that was its original implementation.
+Each run should produce a persistent, canonical structured briefing rather than a paragraph plus shallow insights. Visual presentation, follow-up conversation, and optional speech delivery should all consume that same artifact. Briefings should preserve source and trust boundaries, distinguish accepted context from external reports or model interpretations, and retain enough history to avoid repeatedly presenting unchanged information as new.
 
-Briefings should combine relevant accepted context, current connector data, pending reviews, verified-action state, and selected external activity. They should help explain what changed, why it matters, what needs a decision, and what can wait. APEX should continue reading its own services directly; the exported vault is for outside consumers, not a replacement for internal context retrieval.
+Briefing sessions should continue naturally into Apex Agent conversation so the operator can ask follow-up questions, inspect evidence, request deeper explanation, use approved tools, and move into verified actions without introducing a second Agent runtime.
 
-External reports need to retain their status as reports. A briefing can say that an outside tool found something or that a finding needs review without presenting it as an accepted fact. Reading or dismissing an Inbox item must not silently promote its contents into trusted knowledge.
+Speech delivery should be redesigned around a dedicated adaptation step that turns the canonical briefing into content written specifically for listening. It may condense and reorder existing briefing content, but it must not independently investigate or introduce new claims. Existing short APEX voice cues should remain useful, while full transcript-style narration should no longer define the briefing experience.
 
-Attention should persist between briefings. A small set of attention records should prevent the same item from being presented as new every time and let the operator review, dismiss, or resolve it where appropriate. These records should point back to existing tasks, reports, reviews, or actions rather than create another task-management system.
+Home should become one workspace with three specialized states. Standby preserves the current identity-first presentation with simplified entry actions. Overview becomes a telemetry-first dashboard with an uneven, content-driven grid and no chat surface. Briefing becomes a center-weighted three-column workspace where the interactive briefing is primary, controls and system identity live in the left rail, and raw telemetry remains available in a unified right-side evidence rail.
 
-The experience should support follow-up. The operator should be able to ask why an item matters, inspect its evidence, narrow the briefing to a subject, request more detail, or move into an approved action. Existing Cortex conversation and run capabilities should support this interaction.
+The milestone should replace the legacy hardcoded briefing-model paths and static briefing presentation without turning APEX into a general workflow, scheduling, or graph-authoring platform. Custom briefing profiles, scoped Focus briefings, a user-editable graph, and a full scheduling system are deferred. Briefing execution should remain separable from the Home UI so prepared generation can be added later, and a simple CLI or API entry point may be included only if it falls out naturally from the new architecture.
 
-More agentic briefing generation should reuse the bounded-run system. Apex Agent may retrieve additional relevant context or check an approved source when needed, while APEX enforces the allowed tools, input limits, time and token budgets, cancellation, and action permissions. Briefings should not introduce a second Agent runtime.
-
-Proactive behavior should begin with a few concrete, opt-in uses. Existing refreshes, newly received reports, or a configured schedule may update attention or prepare a briefing when that is useful. The operator should control when this happens, whether a model may be called, and whether it produces a notification. Repeated or unchanged information should not generate unnecessary work or interruptions.
-
-Only the hooks needed for these uses belong in this milestone. A general webhook platform, workflow engine, always-on autonomous assistant, and broad automation integrations are outside its scope.
-
-A useful non-model view should remain available when generation is unavailable or unnecessary. Briefings should make missing or stale sources clear, and fallback behavior should not silently turn a requested experience into a different one.
-
-This is the final feature beta before v2.0.0. Its scope should settle the briefing configuration, attention state, interaction model, and relationship with existing APEX services. Additional modes and integrations can follow later without holding the stable release open indefinitely.
+This is the final feature beta before v2.0.0. Its purpose is to settle the briefing architecture, built-in profiles, interactive session model, speech delivery, briefing history behavior, and the Home experience that presents them.
 
 ---
 
