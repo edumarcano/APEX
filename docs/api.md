@@ -23,6 +23,10 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | POST | `/api/v1/briefings/generate` | Brief from the current snapshot |
 | GET | `/api/v1/briefings/history` | Recent briefing ledger |
 | GET | `/api/v1/briefings/targets` | Briefing synthesis target metadata |
+| GET | `/api/v1/briefing-sessions` | Saved briefing-session summaries for the active partition |
+| GET | `/api/v1/briefing-sessions/{session_id}` | Saved briefing-session detail and completed artifact |
+| GET | `/api/v1/briefing-sessions/{session_id}/evidence/{evidence_id}` | Evidence captured by a completed session |
+| POST | `/api/v1/briefing-sessions/{session_id}/presented` | Idempotently acknowledge the first presentation |
 | GET | `/api/v1/reminders` | Active reminders |
 | GET | `/api/v1/reminders/task` | Exact selected-list task detail (`id=todo:…`) |
 | GET | `/api/v1/reminders/completed` | Live bounded completed reminders |
@@ -306,6 +310,22 @@ Returns up to 50 newest briefing records with transcript, digest, runtime metada
 ### GET `/api/v1/briefings/targets`
 
 Returns live availability and metadata for fixed briefing-generation targets in this order: `flash` (local Gemma), `focused` (OpenRouter DeepSeek V4 Flash), and `structured` (deterministic, no model). Removed Agent-named identifiers are rejected.
+
+### GET `/api/v1/briefing-sessions`
+
+Returns up to 100 newest session summaries from the active production or sandbox partition. `limit` defaults to 25 and accepts 1–100; `offset` defaults to 0. Summaries include run status and the first-presentation timestamp. Listing does not change presentation state.
+
+### GET `/api/v1/briefing-sessions/{session_id}`
+
+Returns session identity, captured model/profile configuration, run status, and the canonical artifact after successful completion. Failed, cancelled, interrupted, and still-running sessions return metadata without an artifact. Reading a session does not mark it presented. A session in another partition or an unknown session returns `404`.
+
+### GET `/api/v1/briefing-sessions/{session_id}/evidence/{evidence_id}`
+
+Returns one immutable evidence snapshot or unavailable-source entry captured with the completed artifact. Evidence reads are partition-scoped and have no presentation side effect. A missing session/evidence entry returns `404`; evidence for a session that has not completed returns `409`.
+
+### POST `/api/v1/briefing-sessions/{session_id}/presented`
+
+Records the first time the client presents a completed briefing and returns the session detail. Repeated acknowledgments preserve the original timestamp. The server rejects a session that is pending or did not complete with `409`; a session outside the active partition returns `404`. Clients should call this only after the artifact has actually been shown.
 
 ## Reminders
 

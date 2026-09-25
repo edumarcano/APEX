@@ -45,6 +45,8 @@ from core.agent.providers.llama_cpp_supervisor import get_llama_cpp_server_super
 from core import database, speaker
 from core.conversations import ConversationService, ConversationStore, set_conversation_service
 from core.runs import CortexRunCoordinator, RunService, RunStore, set_run_coordinator, set_run_service
+from core.briefings.service import BriefingSessionQueries, set_briefing_session_queries
+from core.briefings.store import BriefingSessionStore
 from core.knowledge import KnowledgeService, KnowledgeStore, set_knowledge_service
 from core.context_vault.runtime import ContextVaultRuntime, set_context_vault_runtime
 from core.knowledge.capture import ContextCaptureExecutor, ContextCaptureVerifier, CAPABILITY_NAME
@@ -109,6 +111,7 @@ async def _app_lifespan(_app: FastAPI):
     demo_db_lock: threading.RLock | None = None
     conversation_store: ConversationStore | None = None
     run_store: RunStore | None = None
+    briefing_session_store: BriefingSessionStore | None = None
     run_coordinator: CortexRunCoordinator | None = None
     retrieval_store: RetrievalStore | None = None
     knowledge_store: KnowledgeStore | None = None
@@ -162,6 +165,18 @@ async def _app_lifespan(_app: FastAPI):
             run_service, max_workers=CORTEX_RUNS_MAX_CONCURRENT_RUNS
         )
         set_run_coordinator(run_coordinator)
+        briefing_session_store = BriefingSessionStore(
+            None if DEMO_MODE else database.DB_NAME,
+            connection=demo_db,
+            lock=demo_db_lock,
+        )
+        briefing_session_store.initialize()
+        set_briefing_session_queries(
+            BriefingSessionQueries(
+                briefing_session_store,
+                partition_getter=conversation_service.partition,
+            )
+        )
         retrieval_store = RetrievalStore(
             None if DEMO_MODE else database.DB_NAME,
             connection=demo_db,
@@ -389,6 +404,7 @@ async def _app_lifespan(_app: FastAPI):
         set_conversation_service(None)
         set_run_service(None)
         set_run_coordinator(None)
+        set_briefing_session_queries(None)
         set_retrieval_service(None)
         set_knowledge_service(None)
         if knowledge_store is not None:
@@ -398,6 +414,8 @@ async def _app_lifespan(_app: FastAPI):
         set_activity_mailbox(None)
         if conversation_store is not None:
             await _cleanup("closing conversation store", conversation_store.close)
+        if briefing_session_store is not None:
+            await _cleanup("closing briefing session store", briefing_session_store.close)
         if run_store is not None:
             await _cleanup("closing run store", run_store.close)
         if retrieval_store is not None:

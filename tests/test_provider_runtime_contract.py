@@ -455,10 +455,11 @@ class OllamaContractTests(unittest.TestCase):
             "eval_count": 15,
         }
 
+        profile = _concrete_profile("qwen3:1.7b")
         result = OllamaProvider().generate_turn(
             [AgentMessage(role="user", content="Hi")],
             [],
-            _concrete_profile("qwen3:1.7b"),
+            profile,
         )
 
         self.assertEqual(result.message.content, "Local answer")
@@ -469,6 +470,29 @@ class OllamaContractTests(unittest.TestCase):
         self.assertEqual(result.usage.total_tokens, 105)
         self.assertEqual(result.retry_count, 0)
         self.assertIsNotNone(result.provider_ms)
+        self.assertEqual(
+            mock_post.call_args.args[0]["options"]["num_predict"],
+            profile.final_answer_max_tokens,
+        )
+
+    @patch("core.agent.providers.ollama.register_local_activity", return_value=None)
+    @patch("core.agent.providers.ollama._post_chat")
+    def test_explicit_output_limit_reaches_ollama_request(
+        self, mock_post: MagicMock, _activity: MagicMock
+    ) -> None:
+        mock_post.return_value = {
+            "message": {"role": "model", "content": "Bounded local answer"},
+        }
+
+        result = OllamaProvider().generate_turn(
+            [AgentMessage(role="user", content="Hi")],
+            [],
+            _concrete_profile("qwen3:1.7b"),
+            output_token_limit=19,
+        )
+
+        self.assertEqual(mock_post.call_args.args[0]["options"]["num_predict"], 19)
+        self.assertEqual(result.message.content, "Bounded local answer")
 
     @patch("core.agent.providers.ollama.register_local_activity", return_value=None)
     @patch("core.agent.providers.ollama._post_chat")
@@ -695,6 +719,34 @@ class RetryHelperTests(unittest.TestCase):
         assert result.usage is not None
         self.assertEqual(result.usage.input_tokens, 11)
         self.assertEqual(result.usage.output_tokens, 3)
+        self.assertIsNone(
+            mock_client.models.generate_content_stream.call_args.kwargs[
+                "config"
+            ].max_output_tokens
+        )
+
+    @patch("core.agent.providers.gemini.genai.Client")
+    def test_explicit_output_limit_reaches_gemini_generation_config(
+        self, client_cls: MagicMock
+    ) -> None:
+        client = MagicMock()
+        client_cls.return_value = client
+        part = MagicMock(text="Bounded output", function_call=None)
+        candidate = MagicMock()
+        candidate.content.parts = [part]
+        chunk = MagicMock(candidates=[candidate], usage_metadata=None)
+        client.models.generate_content_stream.return_value = [chunk]
+
+        result = GeminiProvider(api_key="test").generate_turn(
+            [AgentMessage(role="user", content="Hello")],
+            [],
+            _concrete_profile("gemini-3.7-flash"),
+            output_token_limit=31,
+        )
+
+        request = client.models.generate_content_stream.call_args.kwargs
+        self.assertEqual(request["config"].max_output_tokens, 31)
+        self.assertEqual(result.message.content, "Bounded output")
 
 
 class ResponsesAdapterTests(unittest.TestCase):
@@ -811,9 +863,37 @@ class ResponsesAdapterTests(unittest.TestCase):
         self.assertFalse(kwargs["store"])
         self.assertNotIn("previous_response_id", kwargs)
         self.assertNotIn("tools", kwargs)
+        self.assertNotIn("max_output_tokens", kwargs)
         self.assertEqual(kwargs["include"], ["reasoning.encrypted_content"])
         self.assertEqual(result.message.content, "Hello from OpenAI")
         self.assertEqual(result.resolved_model, "gpt-5.6-luna")
+
+    @patch("core.agent.providers.responses_api.OpenAI")
+    def test_explicit_output_limit_reaches_responses_api_request(
+        self, mock_openai_cls: MagicMock
+    ) -> None:
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.output = [
+            {
+                "type": "message",
+                "content": [{"type": "output_text", "text": "Bounded answer"}],
+            }
+        ]
+        mock_response.model = "gpt-5.6-luna"
+        mock_response.usage = None
+        mock_client.responses.create.return_value = mock_response
+
+        OpenAIProvider(api_key="test").generate_turn(
+            [AgentMessage(role="user", content="Hi")],
+            [],
+            OPENAI_INTERNAL_PROFILES["openai_default"],
+            output_token_limit=23,
+        )
+
+        request = mock_client.responses.create.call_args.kwargs
+        self.assertEqual(request["max_output_tokens"], 23)
 
     @patch("core.agent.providers.responses_api.OpenAI")
     def test_hosted_tool_events_carry_attributed_durations(

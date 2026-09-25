@@ -23,6 +23,7 @@ from core.runs.models import (
     RunErrorCode,
     RunRecord,
     RunRuntimeMeasurements,
+    RunStatus,
     RunStopReason,
     UsageQuality,
 )
@@ -279,6 +280,9 @@ class RunExecutionControl:
 
 
 FinalizeConversation = Callable[[Any | None, str, str | None], Any]
+FinalizeRun = Callable[
+    [RunHandle, Any | None, RunStatus, RunStopReason, RunError | None], RunRecord
+]
 ExecuteRun = Callable[[RunExecutionControl], Any]
 
 
@@ -406,9 +410,12 @@ class CortexRunCoordinator:
         provider: str,
         runtime: str,
         execute: ExecuteRun,
-        finalize_conversation: FinalizeConversation,
+        finalize_conversation: FinalizeConversation | None = None,
+        finalize_run: FinalizeRun | None = None,
     ) -> Future[Any]:
-        """Submit a previously admitted run; submission failure releases its slot."""
+        """Submit an admitted run with legacy or transaction-owning finalization."""
+        if (finalize_conversation is None) == (finalize_run is None):
+            raise ValueError("Exactly one run finalizer is required.")
         with self._lock:
             active = self._active.get(handle.run_id)
             if active is None:
@@ -425,7 +432,15 @@ class CortexRunCoordinator:
             try:
                 self.events.start(handle.get_record())
                 future = self._executor.submit(
-                    self._run, handle, resolved_model, provider, runtime, active, execute, finalize_conversation
+                    self._run,
+                    handle,
+                    resolved_model,
+                    provider,
+                    runtime,
+                    active,
+                    execute,
+                    finalize_conversation,
+                    finalize_run,
                 )
             except Exception:
                 self._active.pop(handle.run_id, None)
@@ -464,7 +479,8 @@ class CortexRunCoordinator:
         runtime: str,
         active: _ActiveRun,
         execute: ExecuteRun,
-        finalize_conversation: FinalizeConversation,
+        finalize_conversation: FinalizeConversation | None,
+        finalize_run: FinalizeRun | None,
     ) -> Any:
         initial_record = handle.get_record()
         with trace_run(
@@ -530,25 +546,56 @@ class CortexRunCoordinator:
                 control.check_cancelled()
                 control.finish()
                 message_status = "failed" if getattr(response, "error", None) else "completed"
-                conversation = finalize_conversation(response, message_status, None)
-                evidence = RunCompletionEvidence(
-                    final_message_status=conversation.status,
-                    answer_persisted=conversation.status == "completed",
-                    tool_outcome_counts=_tool_outcomes(response),
-                    action_ids=_action_ids(response),
-                )
-                record = handle.finalize(
-                    status="completed" if conversation.status == "completed" else "failed",
-                    stop_reason="end_turn" if conversation.status == "completed" else "provider_error",
-                    evidence=evidence,
-                    error=None if conversation.status == "completed" else RunError(code="provider_error"),
-                )
+                terminal_status: RunStatus = "completed" if message_status == "completed" else "failed"
+                terminal_reason: RunStopReason = "end_turn" if message_status == "completed" else "provider_error"
+                terminal_error = None if message_status == "completed" else RunError(code="provider_error")
+                # Cancellation and durable completion share this lock. A cancel
+                # accepted first changes the ledger to cancelling and wins.
+                with self._lock:
+                    control.check_cancelled()
+                    if handle.get_record().status == "cancelling":
+                        raise ExecutionCancelled()
+                    if finalize_run is not None:
+                        record = finalize_run(
+                            handle, response, terminal_status, terminal_reason, terminal_error
+                        )
+                    else:
+                        assert finalize_conversation is not None
+                        conversation = finalize_conversation(response, message_status, None)
+                        evidence = RunCompletionEvidence(
+                            final_message_status=conversation.status,
+                            answer_persisted=conversation.status == "completed",
+                            tool_outcome_counts=_tool_outcomes(response),
+                            action_ids=_action_ids(response),
+                        )
+                        record = handle.finalize(
+                            status="completed" if conversation.status == "completed" else "failed",
+                            stop_reason="end_turn" if conversation.status == "completed" else "provider_error",
+                            evidence=evidence,
+                            error=None if conversation.status == "completed" else RunError(code="provider_error"),
+                        )
                 self._publish_terminal(record)
                 span_context.record_terminal(record)
                 return record
             except ExecutionCancelled:
-                record = self._finalize_stopped(handle, control, finalize_conversation, "cancelled", "operator_cancelled", "operator_cancelled")
+                record = self._finalize_stopped(handle, control, finalize_conversation, finalize_run, "cancelled", "operator_cancelled", "operator_cancelled")
                 span_context.record_terminal(record, error_code="operator_cancelled")
+                return record
+            except RunConflictError:
+                record, cancelled = self._finalize_stopped_with_cancel_precedence(
+                    handle,
+                    control,
+                    active,
+                    finalize_conversation,
+                    finalize_run,
+                    "failed",
+                    "internal_error",
+                    "internal_error",
+                )
+                span_context.record_terminal(
+                    record,
+                    error_code="operator_cancelled" if cancelled else "internal_error",
+                )
                 return record
             except ExecutionLimitReached as exc:
                 code = {
@@ -557,44 +604,141 @@ class CortexRunCoordinator:
                     "max_tool_calls": "tool_limit",
                     "max_retries": "retry_limit",
                 }[exc.reason]
-                record = self._finalize_stopped(handle, control, finalize_conversation, "failed", exc.reason, code)
-                span_context.record_terminal(record, error_code=code)
+                record, cancelled = self._finalize_stopped_with_cancel_precedence(
+                    handle,
+                    control,
+                    active,
+                    finalize_conversation,
+                    finalize_run,
+                    "failed",
+                    exc.reason,
+                    code,
+                )
+                span_context.record_terminal(
+                    record,
+                    error_code="operator_cancelled" if cancelled else code,
+                )
                 return record
             except RunHttpError as exc:
                 stop_reason, error_code = _http_failure_mapping(exc.status_code)
-                record = self._finalize_stopped(
+                record, cancelled = self._finalize_stopped_with_cancel_precedence(
                     handle,
                     control,
+                    active,
                     finalize_conversation,
+                    finalize_run,
                     "failed",
                     stop_reason,
                     error_code,
                 )
-                span_context.record_terminal(record, error_code=error_code)
+                span_context.record_terminal(
+                    record,
+                    error_code="operator_cancelled" if cancelled else error_code,
+                )
+                if cancelled:
+                    return record
                 raise
             except Exception:
-                record = self._finalize_stopped(handle, control, finalize_conversation, "failed", "internal_error", "internal_error")
-                span_context.record_terminal(record, error_code="internal_error")
+                record, cancelled = self._finalize_stopped_with_cancel_precedence(
+                    handle,
+                    control,
+                    active,
+                    finalize_conversation,
+                    finalize_run,
+                    "failed",
+                    "internal_error",
+                    "internal_error",
+                )
+                error_code = "operator_cancelled" if cancelled else "internal_error"
+                span_context.record_terminal(record, error_code=error_code)
                 return record
             finally:
                 with self._lock:
                     self._active.pop(handle.run_id, None)
                     self._slots.release()
 
-    def _finalize_stopped(self, handle: RunHandle, control: RunExecutionControl, finalize_conversation: FinalizeConversation, status: str, reason: RunStopReason, error_code: RunErrorCode) -> RunRecord:
+    def _finalize_stopped(
+        self,
+        handle: RunHandle,
+        control: RunExecutionControl,
+        finalize_conversation: FinalizeConversation | None,
+        finalize_run: FinalizeRun | None,
+        status: str,
+        reason: RunStopReason,
+        error_code: RunErrorCode,
+    ) -> RunRecord:
         try:
             control.finish()
         except Exception:
             pass
-        conversation = finalize_conversation(None, "interrupted" if status == "cancelled" else "failed", error_code)
-        record = handle.finalize(
-            status=status,  # type: ignore[arg-type]
-            stop_reason=reason,  # type: ignore[arg-type]
-            evidence=RunCompletionEvidence(final_message_status=conversation.status, answer_persisted=False),
-            error=RunError(code=error_code),  # type: ignore[arg-type]
-        )
+        terminal_status: RunStatus = status  # type: ignore[assignment]
+        error = RunError(code=error_code)
+        with self._lock:
+            if finalize_run is not None:
+                record = finalize_run(
+                    handle, None, terminal_status, reason, error
+                )
+            else:
+                assert finalize_conversation is not None
+                conversation = finalize_conversation(
+                    None,
+                    "interrupted" if status == "cancelled" else "failed",
+                    error_code,
+                )
+                record = handle.finalize(
+                    status=terminal_status,
+                    stop_reason=reason,
+                    evidence=RunCompletionEvidence(
+                        final_message_status=conversation.status,
+                        answer_persisted=False,
+                    ),
+                    error=error,
+                )
         self._publish_terminal(record)
         return record
+
+    def _finalize_stopped_with_cancel_precedence(
+        self,
+        handle: RunHandle,
+        control: RunExecutionControl,
+        active: _ActiveRun,
+        finalize_conversation: FinalizeConversation | None,
+        finalize_run: FinalizeRun | None,
+        failure_status: str,
+        failure_reason: RunStopReason,
+        failure_error: RunErrorCode,
+    ) -> tuple[RunRecord, bool]:
+        """Choose cancellation or failure atomically against the cancel request."""
+        with self._lock:
+            cancelled = (
+                active.cancel_event.is_set()
+                or handle.get_record().status == "cancelling"
+            )
+            if cancelled:
+                return (
+                    self._finalize_stopped(
+                        handle,
+                        control,
+                        finalize_conversation,
+                        finalize_run,
+                        "cancelled",
+                        "operator_cancelled",
+                        "operator_cancelled",
+                    ),
+                    True,
+                )
+            return (
+                self._finalize_stopped(
+                    handle,
+                    control,
+                    finalize_conversation,
+                    finalize_run,
+                    failure_status,
+                    failure_reason,
+                    failure_error,
+                ),
+                False,
+            )
 
     def _publish_terminal(self, record: RunRecord) -> None:
         if record.status != "completed":

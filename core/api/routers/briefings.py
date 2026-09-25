@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 import sqlite3
 from typing import Any
+from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from core import database
 from core.api.briefing import (
@@ -25,6 +26,16 @@ from core.api.models import (
     parse_runtime_metadata,
 )
 from core.config import DEMO_MODE
+from core.briefings.models import (
+    BriefingEvidence,
+    BriefingSessionDetail,
+    BriefingSessionSummary,
+)
+from core.briefings.service import get_briefing_session_queries
+from core.briefings.store import (
+    BriefingSessionConflictError,
+    BriefingSessionNotFoundError,
+)
 
 router = APIRouter(tags=["briefings"])
 _LOGGER = logging.getLogger(__name__)
@@ -115,3 +126,65 @@ def get_briefing_history() -> list[dict[str, Any]]:
 def get_briefing_targets() -> list[BriefingTargetStatus]:
     """Return live availability and metadata for fixed briefing synthesis targets."""
     return build_briefing_target_statuses()
+
+
+@router.get(
+    "/api/v1/briefing-sessions",
+    response_model=list[BriefingSessionSummary],
+    summary="List saved briefing sessions",
+)
+def list_briefing_sessions(
+    limit: int = Query(default=25, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> list[BriefingSessionSummary]:
+    """Read saved session metadata from the active account partition."""
+    return get_briefing_session_queries().list(limit=limit, offset=offset)
+
+
+@router.get(
+    "/api/v1/briefing-sessions/{session_id}",
+    response_model=BriefingSessionDetail,
+    summary="Get a saved briefing session",
+)
+def get_briefing_session(session_id: UUID) -> BriefingSessionDetail:
+    """Read a session without marking it presented."""
+    try:
+        return get_briefing_session_queries().get(session_id)
+    except BriefingSessionNotFoundError:
+        raise HTTPException(status_code=404, detail="Briefing session was not found.") from None
+
+
+@router.get(
+    "/api/v1/briefing-sessions/{session_id}/evidence/{evidence_id}",
+    response_model=BriefingEvidence,
+    summary="Get saved briefing evidence",
+)
+def get_briefing_evidence(session_id: UUID, evidence_id: UUID) -> BriefingEvidence:
+    """Read the evidence snapshot captured with a completed session."""
+    try:
+        return get_briefing_session_queries().evidence(session_id, evidence_id)
+    except BriefingSessionNotFoundError:
+        raise HTTPException(status_code=404, detail="Briefing evidence was not found.") from None
+    except BriefingSessionConflictError:
+        raise HTTPException(
+            status_code=409,
+            detail="Evidence is available only after a session completes.",
+        ) from None
+
+
+@router.post(
+    "/api/v1/briefing-sessions/{session_id}/presented",
+    response_model=BriefingSessionDetail,
+    summary="Acknowledge a presented briefing",
+)
+def mark_briefing_presented(session_id: UUID) -> BriefingSessionDetail:
+    """Record the first presentation time; repeated acknowledgments are idempotent."""
+    try:
+        return get_briefing_session_queries().mark_presented(session_id)
+    except BriefingSessionNotFoundError:
+        raise HTTPException(status_code=404, detail="Briefing session was not found.") from None
+    except BriefingSessionConflictError:
+        raise HTTPException(
+            status_code=409,
+            detail="Only a completed briefing session can be marked as presented.",
+        ) from None

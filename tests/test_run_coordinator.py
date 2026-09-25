@@ -140,6 +140,30 @@ class RunCoordinatorTests(unittest.TestCase):
             coordinator.admit(conversation_id=conversation_two, agent_message_id=uuid4())
         )
 
+    def test_submit_requires_exactly_one_finalizer(self) -> None:
+        coordinator = CortexRunCoordinator(self.service, max_workers=1)
+        self.addCleanup(coordinator.close)
+        _conversation_id, _user_id, _agent_id, _record, handle = self._create_run()
+
+        def execute(_control):
+            return None
+
+        for legacy, transactional in (
+            (None, None),
+            (self._finalize, lambda *_args: None),
+        ):
+            with self.subTest(legacy=legacy is not None, transactional=transactional is not None):
+                with self.assertRaisesRegex(ValueError, "Exactly one run finalizer"):
+                    coordinator.submit(
+                        handle=handle,
+                        resolved_model="test-model",
+                        provider="openai",
+                        runtime="cloud",
+                        execute=execute,
+                        finalize_conversation=legacy,
+                        finalize_run=transactional,
+                    )
+
     def test_cancellation_after_start_ends_cancelled_at_next_checkpoint(self) -> None:
         coordinator = CortexRunCoordinator(self.service, max_workers=1)
         self.addCleanup(coordinator.close)
@@ -171,6 +195,69 @@ class RunCoordinatorTests(unittest.TestCase):
         self.assertEqual(completed.status, "cancelled")
         self.assertEqual(completed.stop_reason, "operator_cancelled")
         self.assertEqual(self.service.get_run(record.id).status, "cancelled")
+
+    def test_accepted_cancellation_wins_when_execution_raises(self) -> None:
+        coordinator = CortexRunCoordinator(self.service, max_workers=1)
+        self.addCleanup(coordinator.close)
+        _conversation_id, _user_id, _agent_id, record, handle = self._create_run(
+            coordinator=coordinator
+        )
+        entered_execute = threading.Event()
+        release_execute = threading.Event()
+
+        def execute(_control):
+            entered_execute.set()
+            self.assertTrue(release_execute.wait(timeout=2))
+            raise RuntimeError("provider failed after cancellation")
+
+        future = coordinator.submit(
+            handle=handle,
+            resolved_model="test-model",
+            provider="openai",
+            runtime="cloud",
+            execute=execute,
+            finalize_conversation=self._finalize,
+        )
+        self.assertTrue(entered_execute.wait(timeout=2))
+        self.assertEqual(coordinator.cancel(record.id).status, "cancelling")
+        release_execute.set()
+
+        completed = future.result(timeout=2)
+
+        self.assertEqual(completed.status, "cancelled")
+        self.assertEqual(completed.stop_reason, "operator_cancelled")
+        self.assertEqual(self.service.get_run(record.id).status, "cancelled")
+
+    def test_accepted_cancellation_suppresses_a_later_http_failure(self) -> None:
+        coordinator = CortexRunCoordinator(self.service, max_workers=1)
+        self.addCleanup(coordinator.close)
+        _conversation_id, _user_id, _agent_id, record, handle = self._create_run(
+            coordinator=coordinator
+        )
+        entered_execute = threading.Event()
+        release_execute = threading.Event()
+
+        def execute(_control):
+            entered_execute.set()
+            self.assertTrue(release_execute.wait(timeout=2))
+            raise RunHttpError(status_code=503, detail="provider failure")
+
+        future = coordinator.submit(
+            handle=handle,
+            resolved_model="test-model",
+            provider="openai",
+            runtime="cloud",
+            execute=execute,
+            finalize_conversation=self._finalize,
+        )
+        self.assertTrue(entered_execute.wait(timeout=2))
+        coordinator.cancel(record.id)
+        release_execute.set()
+
+        completed = future.result(timeout=2)
+
+        self.assertEqual(completed.status, "cancelled")
+        self.assertEqual(completed.stop_reason, "operator_cancelled")
 
     def test_cancellation_before_worker_start_ends_cancelled(self) -> None:
         coordinator = CortexRunCoordinator(self.service, max_workers=1)

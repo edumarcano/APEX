@@ -618,11 +618,14 @@ class LlamaCppProvider:
         execution_control: Any | None = None,
         stream_observer: ProviderStreamObserver | None = None,
         output_schema: dict[str, Any] | None = None,
+        output_token_limit: int | None = None,
     ) -> ProviderTurnResult:
         system_instruction = system_instruction_override or profile.system_instruction
         resolved_max_tokens = (
             profile.tool_select_max_tokens if tools else profile.final_answer_max_tokens
         )
+        if output_token_limit is not None:
+            resolved_max_tokens = min(resolved_max_tokens, output_token_limit)
         payload, estimated_tokens, dropped_messages = _budget_payload(
             messages,
             tools,

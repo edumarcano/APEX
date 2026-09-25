@@ -323,6 +323,7 @@ class GeminiProvider:
         execution_control: Any | None = None,
         stream_observer: ProviderStreamObserver | None = None,
         output_schema: dict[str, Any] | None = None,
+        output_token_limit: int | None = None,
     ) -> ProviderTurnResult:
         contents = _messages_to_contents(messages)
 
@@ -344,6 +345,8 @@ class GeminiProvider:
         if schema_applied:
             config_kwargs["response_mime_type"] = "application/json"
             config_kwargs["response_schema"] = output_schema
+        if output_token_limit is not None:
+            config_kwargs["max_output_tokens"] = output_token_limit
 
         configured_tools = list(config_kwargs.get("tools", []))
         if "google_search" in profile.hosted_tools:

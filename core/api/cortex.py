@@ -53,15 +53,13 @@ from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
 from core.agent.providers.ollama_models import OLLAMA_RUNTIME_CONFIGS
 from core.agent.sandbox_context import get_masked_briefing
 from core.agent.loop import is_local_profile
-from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.cloud_verification import (
     cloud_status,
     record_cloud_request_failure,
     record_cloud_request_success,
     verify_cloud_agent,
 )
-from core.agent.providers.ollama import OllamaProvider
-from core.agent.providers.llama_cpp import LlamaCppProvider
+from core.agent.providers.factory import create_provider
 from core.agent.local_runtime.contract import LocalModelProfile, LocalModelRef, SystemVitals
 from core.agent.local_runtime.coordinator import (
     check_resource_gate,
@@ -81,8 +79,6 @@ from core.agent.local_runtime.registry import (
     get_local_runtime_backend,
     iter_local_runtime_backends,
 )
-from core.agent.providers.openai_provider import OpenAIProvider
-from core.agent.providers.openrouter import OpenRouterProvider
 from core.agent.pricing import PRICING_VERSION, agent_pricing
 from core.agent.types import (
     AgentMessage,
@@ -794,17 +790,7 @@ def _build_hud_context(
 
 
 def _create_provider(profile: AgentModelProfile, api_key: str):
-    if profile.provider == "gemini":
-        return GeminiProvider(api_key=api_key)
-    if profile.provider == "openai":
-        return OpenAIProvider(api_key=api_key)
-    if profile.provider == "openrouter":
-        return OpenRouterProvider(api_key=api_key)
-    if profile.provider == "ollama":
-        return OllamaProvider()
-    if profile.provider == "llama_cpp":
-        return LlamaCppProvider()
-    raise ValueError(f"Unsupported inference provider: {profile.provider!r}")
+    return create_provider(profile, api_key)
 
 
 def _execute_agent_turn(
@@ -839,14 +825,7 @@ def _execute_agent_turn(
         )
 
         if is_local_profile(profile):
-            if profile.provider == "ollama":
-                provider = OllamaProvider()
-            elif profile.provider == "llama_cpp":
-                provider = LlamaCppProvider()
-            else:
-                raise ValueError(
-                    f"Unsupported local provider: {profile.provider!r}"
-                )
+            provider = create_provider(profile)
             base_prompt = config.LOCAL_AGENT_SYSTEM_PROMPT
         else:
             provider = _create_provider(profile, api_key or "")

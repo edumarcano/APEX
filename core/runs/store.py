@@ -264,6 +264,7 @@ class RunStore:
         requested_model: str,
         limit_snapshot: RunLimitSnapshot,
         trace_id: str | None = None,
+        connection: sqlite3.Connection | None = None,
     ) -> tuple[RunRecord, bool]:
         """
         Create a new run record or return an identical existing run by agent_message_id.
@@ -275,102 +276,119 @@ class RunStore:
             RunNotFoundError: If conversation or message references do not exist in partition.
             RunConflictError: If conversation is archived or parameters conflict with existing agent_message_id.
         """
+        if connection is not None:
+            return self.create_run_in_transaction(
+                connection,
+                run_id=run_id,
+                conversation_id=conversation_id,
+                partition=partition,
+                user_message_id=user_message_id,
+                agent_message_id=agent_message_id,
+                requested_model=requested_model,
+                limit_snapshot=limit_snapshot,
+                trace_id=trace_id,
+            )
+        with self._connection() as conn, conn:
+            return self.create_run_in_transaction(
+                conn,
+                run_id=run_id,
+                conversation_id=conversation_id,
+                partition=partition,
+                user_message_id=user_message_id,
+                agent_message_id=agent_message_id,
+                requested_model=requested_model,
+                limit_snapshot=limit_snapshot,
+                trace_id=trace_id,
+            )
+
+    def create_run_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        run_id: UUID,
+        conversation_id: UUID,
+        partition: RunPartition,
+        user_message_id: UUID,
+        agent_message_id: UUID,
+        requested_model: str,
+        limit_snapshot: RunLimitSnapshot,
+        trace_id: str | None = None,
+    ) -> tuple[RunRecord, bool]:
+        """Create a run using the caller's active SQLite transaction."""
         if partition not in _VALID_PARTITIONS:
             raise RunConflictError(f"Invalid partition: {partition}")
         if trace_id is not None and not _TRACE_ID_PATTERN.fullmatch(trace_id):
             raise RunConflictError("Trace ID must be a 32-character lowercase hexadecimal value.")
-
+        connection.row_factory = sqlite3.Row
         now = utc_now_iso()
-        # New runs omit the retired cumulative-token ceiling. Existing rows
-        # retain it and are parsed by RunLimitSnapshot for history inspection.
         snapshot_json = _json(limit_snapshot.model_dump(exclude_none=True))
-
-        with self._connection() as conn, conn:
-            conv_row = conn.execute(
-                "SELECT archived_at FROM conversations WHERE id = ? AND partition = ?",
-                (str(conversation_id), partition),
-            ).fetchone()
-            if conv_row is None:
-                raise RunNotFoundError("Conversation was not found in partition.")
-            if conv_row["archived_at"] is not None:
-                raise RunConflictError("Archived conversations cannot start runs.")
-
-            user_msg = conn.execute(
-                "SELECT role FROM conversation_messages WHERE id = ? AND conversation_id = ?",
-                (str(user_message_id), str(conversation_id)),
-            ).fetchone()
-            if user_msg is None:
-                raise RunNotFoundError("User message was not found in this conversation.")
-            if user_msg["role"] != "user":
-                raise RunConflictError("User message ID must refer to a user message.")
-
-            agent_msg = conn.execute(
-                "SELECT role, status FROM conversation_messages WHERE id = ? AND conversation_id = ?",
-                (str(agent_message_id), str(conversation_id)),
-            ).fetchone()
-            if agent_msg is None:
-                raise RunNotFoundError("Agent message was not found in this conversation.")
-            if agent_msg["role"] != "agent":
-                raise RunConflictError("Agent message ID must refer to an agent message.")
-            if agent_msg["status"] != "pending":
-                raise RunConflictError("Agent message must be pending when a run starts.")
-
-            existing = conn.execute(
-                "SELECT * FROM cortex_runs WHERE agent_message_id = ?",
-                (str(agent_message_id),),
-            ).fetchone()
-            if existing is not None:
-                record = self._record(existing)
-                if (
-                    record.conversation_id != conversation_id
-                    or record.user_message_id != user_message_id
-                    or record.requested_model != requested_model
-                    or record.partition != partition
-                ):
-                    raise RunConflictError(
-                        "Agent message ID cannot be reused with conflicting run parameters."
-                    )
-                return record, True
-
-            conn.execute(
-                """
-                INSERT INTO cortex_runs (
-                    id, conversation_id, partition, user_message_id, agent_message_id,
-                    requested_model, resolved_model, provider, runtime, status, stop_reason,
-                    created_at, started_at, completed_at, updated_at, limit_snapshot_json,
-                    turns_count, tool_calls_count, retries_count, total_tokens, elapsed_seconds,
-                    usage_quality, runtime_measurements_json, final_message_status,
-                    answer_persisted, tool_outcome_counts_json, action_ids_json, trace_id,
-                    error_code
-                ) VALUES (
-                    ?, ?, ?, ?, ?,
-                    ?, NULL, NULL, NULL, 'queued', NULL,
-                    ?, NULL, NULL, ?, ?,
-                    0, 0, 0, 0, 0.0,
-                    'unavailable', NULL, NULL,
-                    0, NULL, NULL, ?,
-                    NULL
+        conv_row = connection.execute(
+            "SELECT archived_at FROM conversations WHERE id = ? AND partition = ?",
+            (str(conversation_id), partition),
+        ).fetchone()
+        if conv_row is None:
+            raise RunNotFoundError("Conversation was not found in partition.")
+        if conv_row["archived_at"] is not None:
+            raise RunConflictError("Archived conversations cannot start runs.")
+        user_msg = connection.execute(
+            "SELECT role FROM conversation_messages WHERE id = ? AND conversation_id = ?",
+            (str(user_message_id), str(conversation_id)),
+        ).fetchone()
+        if user_msg is None:
+            raise RunNotFoundError("User message was not found in this conversation.")
+        if user_msg["role"] != "user":
+            raise RunConflictError("User message ID must refer to a user message.")
+        agent_msg = connection.execute(
+            "SELECT role, status FROM conversation_messages WHERE id = ? AND conversation_id = ?",
+            (str(agent_message_id), str(conversation_id)),
+        ).fetchone()
+        if agent_msg is None:
+            raise RunNotFoundError("Agent message was not found in this conversation.")
+        if agent_msg["role"] != "agent":
+            raise RunConflictError("Agent message ID must refer to an agent message.")
+        if agent_msg["status"] != "pending":
+            raise RunConflictError("Agent message must be pending when a run starts.")
+        existing = connection.execute(
+            "SELECT * FROM cortex_runs WHERE agent_message_id = ?",
+            (str(agent_message_id),),
+        ).fetchone()
+        if existing is not None:
+            record = self._record(existing)
+            if (
+                record.conversation_id != conversation_id
+                or record.user_message_id != user_message_id
+                or record.requested_model != requested_model
+                or record.partition != partition
+            ):
+                raise RunConflictError(
+                    "Agent message ID cannot be reused with conflicting run parameters."
                 )
-                """,
-                (
-                    str(run_id),
-                    str(conversation_id),
-                    partition,
-                    str(user_message_id),
-                    str(agent_message_id),
-                    requested_model,
-                    now,
-                    now,
-                    snapshot_json,
-                    trace_id,
-                ),
+            return record, True
+        connection.execute(
+            """
+            INSERT INTO cortex_runs (
+                id, conversation_id, partition, user_message_id, agent_message_id,
+                requested_model, resolved_model, provider, runtime, status, stop_reason,
+                created_at, started_at, completed_at, updated_at, limit_snapshot_json,
+                turns_count, tool_calls_count, retries_count, total_tokens, elapsed_seconds,
+                usage_quality, runtime_measurements_json, final_message_status,
+                answer_persisted, tool_outcome_counts_json, action_ids_json, trace_id, error_code
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 'queued', NULL,
+                ?, NULL, NULL, ?, ?, 0, 0, 0, 0, 0.0, 'unavailable', NULL, NULL,
+                0, NULL, NULL, ?, NULL
             )
-            created = conn.execute(
-                "SELECT * FROM cortex_runs WHERE id = ?",
-                (str(run_id),),
-            ).fetchone()
-            assert created is not None
-            return self._record(created), False
+            """,
+            (
+                str(run_id), str(conversation_id), partition, str(user_message_id),
+                str(agent_message_id), requested_model, now, now, snapshot_json, trace_id,
+            ),
+        )
+        created = connection.execute(
+            "SELECT * FROM cortex_runs WHERE id = ?", (str(run_id),)
+        ).fetchone()
+        assert created is not None
+        return self._record(created), False
 
     def get_run(self, run_id: UUID, partition: str) -> RunRecord:
         """Fetch run record by ID within a specific partition."""
@@ -588,61 +606,81 @@ class RunStore:
         stop_reason: RunStopReason,
         evidence: RunCompletionEvidence,
         error: RunError | None = None,
+        connection: sqlite3.Connection | None = None,
     ) -> RunRecord:
         """Transition run to a terminal state (completed, failed, cancelled, interrupted)."""
+        if connection is not None:
+            return self.finalize_run_in_transaction(
+                connection,
+                run_id,
+                partition=partition,
+                status=status,
+                stop_reason=stop_reason,
+                evidence=evidence,
+                error=error,
+            )
+        with self._connection() as conn, conn:
+            return self.finalize_run_in_transaction(
+                conn,
+                run_id,
+                partition=partition,
+                status=status,
+                stop_reason=stop_reason,
+                evidence=evidence,
+                error=error,
+            )
+
+    def finalize_run_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        run_id: UUID,
+        *,
+        partition: str,
+        status: RunStatus,
+        stop_reason: RunStopReason,
+        evidence: RunCompletionEvidence,
+        error: RunError | None = None,
+    ) -> RunRecord:
+        """Finalize a run in the caller transaction; an accepted cancel blocks success."""
         if status not in {"completed", "failed", "cancelled", "interrupted"}:
             raise RunConflictError(f"Cannot finalize with non-terminal status: {status}")
         if stop_reason not in _VALID_STOP_REASONS:
             raise RunConflictError(f"Invalid stop reason: {stop_reason}")
-
-        # Enforce rule: Only completed means a final answer was persisted
-        persisted = 1 if (status == "completed" and evidence.answer_persisted) else 0
-
+        persisted = int(status == "completed" and evidence.answer_persisted)
         now = utc_now_iso()
-        err_code = error.code if error else None
         tool_outcomes = _json(evidence.tool_outcome_counts) if evidence.tool_outcome_counts else None
         action_ids = _json(evidence.action_ids) if evidence.action_ids else None
-
-        with self._connection() as conn, conn:
-            res = conn.execute(
-                """
-                UPDATE cortex_runs
-                SET status = ?, stop_reason = ?, completed_at = ?, updated_at = ?,
-                    final_message_status = ?, answer_persisted = ?,
-                    tool_outcome_counts_json = ?, action_ids_json = ?,
-                    error_code = ?
-                WHERE id = ? AND partition = ? AND status IN ('queued', 'running', 'cancelling')
-                """,
-                (
-                    status,
-                    stop_reason,
-                    now,
-                    now,
-                    evidence.final_message_status,
-                    persisted,
-                    tool_outcomes,
-                    action_ids,
-                    err_code,
-                    str(run_id),
-                    partition,
-                ),
-            )
-            if res.rowcount != 1:
-                row = conn.execute(
-                    "SELECT status FROM cortex_runs WHERE id = ? AND partition = ?",
-                    (str(run_id), partition),
-                ).fetchone()
-                if row is None:
-                    raise RunNotFoundError(f"Run {run_id} was not found in partition {partition}.")
-                raise RunConflictError(
-                    f"Run {run_id} is already in terminal state '{row['status']}'."
-                )
-            row = conn.execute(
-                "SELECT * FROM cortex_runs WHERE id = ?",
-                (str(run_id),),
+        connection.row_factory = sqlite3.Row
+        result = connection.execute(
+            """
+            UPDATE cortex_runs
+            SET status = ?, stop_reason = ?, completed_at = ?, updated_at = ?,
+                final_message_status = ?, answer_persisted = ?,
+                tool_outcome_counts_json = ?, action_ids_json = ?, error_code = ?
+            WHERE id = ? AND partition = ? AND status IN ('queued', 'running', 'cancelling')
+              AND (? != 'completed' OR status IN ('queued', 'running'))
+            """,
+            (
+                status, stop_reason, now, now, evidence.final_message_status, persisted,
+                tool_outcomes, action_ids, error.code if error else None,
+                str(run_id), partition, status,
+            ),
+        )
+        if result.rowcount != 1:
+            row = connection.execute(
+                "SELECT status FROM cortex_runs WHERE id = ? AND partition = ?",
+                (str(run_id), partition),
             ).fetchone()
-            assert row is not None
-            return self._record(row)
+            if row is None:
+                raise RunNotFoundError(f"Run {run_id} was not found in partition {partition}.")
+            raise RunConflictError(
+                f"Run {run_id} cannot transition from status '{row['status']}'."
+            )
+        row = connection.execute(
+            "SELECT * FROM cortex_runs WHERE id = ?", (str(run_id),)
+        ).fetchone()
+        assert row is not None
+        return self._record(row)
 
     def recover_interrupted(self) -> int:
         """
