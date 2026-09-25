@@ -13,6 +13,7 @@ function completedDemoSession(itemCount: number): BriefingSessionDetail {
     opening_message_id: '00000000-0000-4000-8000-000000000003',
     run_id: '00000000-0000-4000-8000-000000000004',
     run_status: 'completed',
+    run_error_code: null,
     configuration: {
       profile: { id: 'daily', label: 'Daily', purpose: 'A concise view of current information.', definition_version: 2 },
       model: { model_id: 'demo/daily-fixture', provider: 'demo', runtime: 'demo', reasoning: null, context_window: null, local_reasoning_mode: null },
@@ -122,6 +123,17 @@ afterEach(() => {
 })
 
 describe('DailyBriefingPanel', () => {
+  it('explains a classified model-output failure and how to retry', () => {
+    const session = completedDemoSession(0)
+    session.run_status = 'failed'
+    session.run_error_code = 'invalid_model_output'
+    session.artifact = null
+    renderPanel(vi.fn(async () => {}), session)
+
+    expect(screen.getByText(/did not pass Daily validation after one repair attempt/)).toBeInTheDocument()
+    expect(screen.getByText(/Start a new Daily run to try again/)).toBeInTheDocument()
+  })
+
   it('shows pending and untrusted status before evidence is fetched', () => {
     vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver as unknown as typeof IntersectionObserver)
     const session = completedDemoSession(2)

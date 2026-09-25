@@ -9,7 +9,11 @@ from unittest.mock import patch
 from uuid import uuid4
 
 from core.agent.types import AgentMessage, ToolCall
-from core.briefings.execution import BriefingModelOutputError, execute_single_call
+from core.briefings.execution import (
+    BriefingModelOutputError,
+    InvalidBriefingModelOutputError,
+    execute_single_call,
+)
 from core.briefings.models import (
     BUILTIN_BRIEFING_PROFILES,
     BriefingGenerationConfiguration,
@@ -199,7 +203,7 @@ class BriefingSingleCallTests(unittest.TestCase):
         provider = ToolReturningProvider()
         control = _ExecutionControl()
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
-            with self.assertRaisesRegex(BriefingModelOutputError, "tool"):
+            with self.assertRaisesRegex(InvalidBriefingModelOutputError, "tool"):
                 execute_single_call(
                     configuration=self._configuration(),
                     prompt="Make one structured call.",
@@ -208,6 +212,33 @@ class BriefingSingleCallTests(unittest.TestCase):
                     provider_factory=lambda _profile, _key: provider,
                 )
         self.assertEqual((control.before, control.after), (1, 1))
+
+    def test_empty_and_oversized_provider_responses_are_repairable_output_errors(self) -> None:
+        class ContentReturningProvider(_SingleCallProvider):
+            def __init__(self, content: str) -> None:
+                super().__init__()
+                self.content = content
+
+            def generate_turn(self, messages, tools, profile, **kwargs):
+                self.calls.append((messages, tools, profile, kwargs))
+                return ProviderTurnResult(
+                    message=AgentMessage(role="agent", content=self.content),
+                )
+
+        for content, feedback in (("", "No response content"), ("x" * 769, "output bound")):
+            with self.subTest(feedback=feedback), patch.dict(
+                os.environ, {"OPENROUTER_API_KEY": "test-key"}
+            ):
+                with self.assertRaises(InvalidBriefingModelOutputError) as raised:
+                    execute_single_call(
+                        configuration=self._configuration(),
+                        prompt="Make one structured call.",
+                        output_schema={"type": "object"},
+                        control=_ExecutionControl(),  # type: ignore[arg-type]
+                        provider_factory=lambda _profile, _key: ContentReturningProvider(content),
+                    )
+
+            self.assertIn(feedback, raised.exception.repair_feedback)
 
 
 if __name__ == "__main__":

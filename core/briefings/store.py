@@ -12,6 +12,7 @@ from typing import Any, Iterator
 from uuid import UUID
 
 from core.connectors.models import utc_now_iso
+from core.runs.models import SAFE_ERROR_MESSAGES
 from core.briefings.models import (
     BriefingEvidence,
     BriefingGenerationConfiguration,
@@ -159,7 +160,7 @@ class BriefingSessionStore:
             with self._connection() as conn:
                 return self.lookup_idempotency(partition, request, connection=conn)
         row = connection.execute(
-            "SELECT s.*, r.status AS run_status FROM briefing_sessions s "
+            "SELECT s.*, r.status AS run_status, r.error_code AS run_error_code FROM briefing_sessions s "
             "JOIN cortex_runs r ON r.id = s.run_id "
             "WHERE s.partition = ? AND s.idempotency_key = ?",
             (partition, str(request.idempotency_key)),
@@ -207,7 +208,7 @@ class BriefingSessionStore:
                 "Briefing session identifiers or idempotency key already exist."
             ) from exc
         row = connection.execute(
-            "SELECT s.*, r.status AS run_status FROM briefing_sessions s "
+            "SELECT s.*, r.status AS run_status, r.error_code AS run_error_code FROM briefing_sessions s "
             "JOIN cortex_runs r ON r.id = s.run_id WHERE s.id = ?",
             (str(session_id),),
         ).fetchone()
@@ -261,7 +262,7 @@ class BriefingSessionStore:
     ) -> BriefingSessionRecord:
         with self._connection() as conn:
             row = conn.execute(
-                "SELECT s.*, r.status AS run_status FROM briefing_sessions s "
+                "SELECT s.*, r.status AS run_status, r.error_code AS run_error_code FROM briefing_sessions s "
                 "JOIN cortex_runs r ON r.id = s.run_id "
                 "WHERE s.id = ? AND s.partition = ?",
                 (str(session_id), partition),
@@ -276,7 +277,7 @@ class BriefingSessionStore:
         """Return the session that owns a conversation in the admitted partition."""
         with self._connection() as conn:
             row = conn.execute(
-                "SELECT s.*, r.status AS run_status FROM briefing_sessions s "
+                "SELECT s.*, r.status AS run_status, r.error_code AS run_error_code FROM briefing_sessions s "
                 "JOIN cortex_runs r ON r.id = s.run_id "
                 "WHERE s.conversation_id = ? AND s.partition = ?",
                 (str(conversation_id), partition),
@@ -290,7 +291,7 @@ class BriefingSessionStore:
         bounded_offset = max(0, offset)
         with self._connection() as conn:
             rows = conn.execute(
-                "SELECT s.*, r.status AS run_status FROM briefing_sessions s "
+                "SELECT s.*, r.status AS run_status, r.error_code AS run_error_code FROM briefing_sessions s "
                 "JOIN cortex_runs r ON r.id = s.run_id "
                 "WHERE s.partition = ? ORDER BY s.created_at DESC, s.rowid DESC "
                 "LIMIT ? OFFSET ?",
@@ -329,7 +330,7 @@ class BriefingSessionStore:
                 (utc_now_iso(), str(session_id), partition),
             )
             updated = conn.execute(
-                "SELECT s.*, r.status AS run_status FROM briefing_sessions s "
+                "SELECT s.*, r.status AS run_status, r.error_code AS run_error_code FROM briefing_sessions s "
                 "JOIN cortex_runs r ON r.id = s.run_id WHERE s.id = ?",
                 (str(session_id),),
             ).fetchone()
@@ -366,4 +367,9 @@ class BriefingSessionStore:
             ),
             evidence=[BriefingEvidence.model_validate(item) for item in evidence_value],
             run_status=row["run_status"],
+            run_error_code=(
+                row["run_error_code"]
+                if row["run_error_code"] in SAFE_ERROR_MESSAGES
+                else None
+            ),
         )

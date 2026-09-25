@@ -66,6 +66,7 @@ export type BriefingSessionDetail = {
   opening_message_id: string
   run_id: string
   run_status: BriefingSessionStatus
+  run_error_code: string | null
   configuration: {
     profile: { id: 'daily'; label: 'Daily'; purpose: string; definition_version: number }
     model: {

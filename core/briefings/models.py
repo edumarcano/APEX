@@ -9,6 +9,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
+from core.runs.models import RunErrorCode
+
 BriefingProfileId = Literal["daily", "catch_up", "deep"]
 BriefingOrigin = Literal["hud", "cli"]
 BriefingCategory = Literal[
@@ -284,6 +286,7 @@ class BriefingSessionRecord(BaseModel):
     run_status: Literal[
         "queued", "running", "cancelling", "completed", "failed", "cancelled", "interrupted"
     ]
+    run_error_code: RunErrorCode | None = None
 
 
 class BriefingSessionSummary(BaseModel):
@@ -307,6 +310,7 @@ class BriefingSessionDetail(BaseModel):
     opening_message_id: UUID
     run_id: UUID
     run_status: str
+    run_error_code: RunErrorCode | None = None
     configuration: BriefingGenerationConfiguration
     artifact: CanonicalBriefingArtifact | None = None
     evidence_count: int = Field(ge=0)

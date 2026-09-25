@@ -339,7 +339,7 @@ Returns up to 100 newest session summaries from the active production or sandbox
 
 ### GET `/api/v1/briefing-sessions/{session_id}`
 
-Returns session identity, captured model/profile configuration, run status, evidence IDs, and the canonical artifact after successful completion. Failed, cancelled, interrupted, and still-running sessions return metadata without an artifact. Reading a session does not mark it presented. A session in another partition or an unknown session returns `404`.
+Returns session identity, captured model/profile configuration, run status, a safe `run_error_code` when the run has a classified error, evidence IDs, and the canonical artifact after successful completion. `invalid_model_output` means the model response failed host validation after one repair attempt. Failed, cancelled, interrupted, and still-running sessions return metadata without an artifact. Reading a session does not mark it presented. A session in another partition or an unknown session returns `404`.
 
 ### GET `/api/v1/briefing-sessions/{session_id}/evidence/{evidence_id}`
 

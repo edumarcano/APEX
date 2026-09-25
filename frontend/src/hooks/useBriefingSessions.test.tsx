@@ -30,6 +30,7 @@ function detail(runStatus: BriefingSessionDetail['run_status'] = 'completed'): B
     opening_message_id: '00000000-0000-4000-8000-000000000004',
     run_id: summary.run_id,
     run_status: runStatus,
+    run_error_code: null,
     configuration: {
       profile: { id: 'daily', label: 'Daily', purpose: 'A concise view of current information.', definition_version: 2 },
       model: { model_id: summary.model_id, provider: 'demo', runtime: 'demo', reasoning: null, context_window: null, local_reasoning_mode: null },

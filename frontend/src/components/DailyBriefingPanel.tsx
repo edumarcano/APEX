@@ -174,7 +174,7 @@ export function DailyBriefingPanel({
           </div>
           {session.configuration.execution_kind === 'demo' ? <p className="mb-3 rounded-md border border-blue-400/15 bg-blue-950/20 px-2 py-1.5 text-[10px] text-blue-100">DEMO fixture. No model was run and no live personal sources were read.</p> : null}
           {isRunning ? <p className="mb-3 animate-pulse font-mono text-[10px] uppercase tracking-wider text-[#A5C7FF]" role="status">Preparing and synthesizing Daily from the available snapshot…</p> : null}
-          {session.run_status === 'failed' || session.run_status === 'interrupted' || session.run_status === 'cancelled' ? <p className="mb-3 rounded-md border border-amber-400/20 bg-amber-950/15 px-2 py-1.5 text-xs text-amber-100">This Daily run {session.run_status}. It did not produce a completed artifact.</p> : null}
+          {session.run_status === 'failed' || session.run_status === 'interrupted' || session.run_status === 'cancelled' ? <p className="mb-3 rounded-md border border-amber-400/20 bg-amber-950/15 px-2 py-1.5 text-xs text-amber-100">{session.run_error_code === 'invalid_model_output' ? 'The model response did not pass Daily validation after one repair attempt. Start a new Daily run to try again.' : `This Daily run ${session.run_status}. It did not produce a completed artifact.`}</p> : null}
           {!artifact && !isRunning && !isLoadingSession ? <p className="text-xs text-zinc-500">No completed artifact is available for this session.</p> : null}
           {artifact ? <div data-testid="daily-artifact" className="space-y-4">
             <div ref={artifactVisibilityRef}>

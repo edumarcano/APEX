@@ -420,6 +420,7 @@ class BriefingSessionQueries:
             opening_message_id=record.opening_message_id,
             run_id=record.run_id,
             run_status=record.run_status,
+            run_error_code=record.run_error_code,
             configuration=record.configuration,
             artifact=record.artifact if completed else None,
             evidence_count=len(record.evidence) if completed else 0,
