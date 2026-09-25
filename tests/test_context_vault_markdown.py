@@ -9,10 +9,12 @@ from uuid import UUID, uuid4
 
 from core.context_vault.publisher import (
     ContextVaultPublicationError,
+    ContextVaultPublicationStateStore,
     ContextVaultPublisher,
 )
 from core.context_vault.render import ContextVaultMarkdownRenderer
 from core.context_vault.selection import ContextVaultSelectionService
+from core.context_vault.service import compare_scope_projection
 from core.knowledge.service import KnowledgeService
 from core.knowledge.store import KnowledgeStore
 from core.retrieval.store import RetrievalStore
@@ -183,6 +185,116 @@ class ContextVaultMarkdownTests(unittest.TestCase):
         self.assertNotIn(f"scopes/{scope.id}/records/{pending.id}.md", scope_files)
         self.assertNotIn(f"scopes/{scope.id}/records/{excluded.id}.md", scope_files)
 
+    def test_preview_diff_reports_modified_notes_and_removed_excluded_or_retracted_records(self) -> None:
+        entity = self.store.create_entity("Projection Project")
+        record, _ = self._record(entity_id=entity.id, text="Original claim")
+        scope = ContextVaultScopeSettings(
+            id=uuid4(), name="Projection", enabled=True,
+            selected_entity_ids=(entity.id,), include_sensitive=True,
+        )
+        selection = self._service(self.knowledge, scope)
+        first_preview = selection.preview(scope.id)
+        assert first_preview.scope_projection is not None
+        publisher = self._publisher("projection-vault")
+        publisher.publish(self.renderer.render((first_preview.scope_projection,)))
+        baseline = dict(publisher.state().owned_files)
+
+        current = self.store.get_record(record.id, partition="production").record
+        self.store.set_sensitive(
+            record.id, partition="production", sensitive=True,
+            expected_updated_at=current.updated_at,
+        )
+        updated_preview = self._service(self.knowledge, scope).preview(scope.id)
+        updated = compare_scope_projection(
+            self.renderer, scope_id=str(scope.id), projections=updated_preview.comparison_projections,
+            owned_file_hashes=baseline,
+        )
+        self.assertEqual(updated.state, "compared")
+        self.assertIn(
+            (f"scopes/{scope.id}/records/{record.id}.md", "updated"),
+            tuple((change.path, change.action) for change in updated.changes),
+        )
+
+        renamed_scope = scope.model_copy(update={"name": "Renamed projection"})
+        renamed_preview = selection.preview_candidate(renamed_scope)
+        renamed = compare_scope_projection(
+            self.renderer, scope_id=str(scope.id), projections=renamed_preview.comparison_projections,
+            owned_file_hashes=baseline,
+        )
+        self.assertIn(("index.md", "updated"), tuple((change.path, change.action) for change in renamed.changes))
+        self.assertIn(
+            (f"scopes/{scope.id}/index.md", "updated"),
+            tuple((change.path, change.action) for change in renamed.changes),
+        )
+
+        excluded_scope = scope.model_copy(update={"excluded_record_ids": (record.id,)})
+        excluded_preview = self._service(self.knowledge, excluded_scope).preview(scope.id)
+        excluded = compare_scope_projection(
+            self.renderer, scope_id=str(scope.id), projections=excluded_preview.comparison_projections,
+            owned_file_hashes=baseline,
+        )
+        excluded_changes = {(change.path, change.action) for change in excluded.changes}
+        self.assertIn((f"scopes/{scope.id}/records/{record.id}.md", "removed"), excluded_changes)
+        self.assertIn((f"scopes/{scope.id}/entities/{entity.id}.md", "removed"), excluded_changes)
+        self.assertIn((f"scopes/{scope.id}/index.md", "updated"), excluded_changes)
+
+        self.store.set_status(record.id, partition="production", status="retracted")
+        retracted_preview = self._service(self.knowledge, scope).preview(scope.id)
+        retracted = compare_scope_projection(
+            self.renderer, scope_id=str(scope.id), projections=retracted_preview.comparison_projections,
+            owned_file_hashes=baseline,
+        )
+        self.assertIn(
+            (f"scopes/{scope.id}/records/{record.id}.md", "removed"),
+            tuple((change.path, change.action) for change in retracted.changes),
+        )
+
+    def test_preview_diff_marks_new_scope_and_absent_export_baseline_as_additions(self) -> None:
+        entity = self.store.create_entity("New projection project")
+        record, _ = self._record(entity_id=entity.id, text="New claim")
+        scope = ContextVaultScopeSettings(
+            id=uuid4(), name="New scope", enabled=True, record_ids=(record.id,),
+        )
+        preview = self._service(self.knowledge, scope).preview_candidate(scope)
+        assert preview.scope_projection is not None
+        additions = compare_scope_projection(
+            self.renderer, scope_id=str(scope.id), projections=preview.comparison_projections,
+            owned_file_hashes=None,
+        )
+        self.assertEqual(additions.state, "no_prior_export")
+        self.assertTrue(additions.changes)
+        self.assertTrue(all(change.action == "added" for change in additions.changes))
+        self.assertIn("index.md", {change.path for change in additions.changes})
+
+        existing = self._publisher("other-scope-vault")
+        existing.publish({"index.md": "# Prior export\n"})
+        baseline = dict(existing.state().owned_files)
+        new_scope = compare_scope_projection(
+            self.renderer, scope_id=str(scope.id), projections=preview.comparison_projections,
+            owned_file_hashes=baseline,
+        )
+        self.assertEqual(new_scope.state, "compared")
+        self.assertTrue(new_scope.changes)
+        self.assertIn(("index.md", "updated"), tuple((change.path, change.action) for change in new_scope.changes))
+        self.assertTrue(all(
+            change.action == "added" for change in new_scope.changes if change.path != "index.md"
+        ))
+
+    def test_reading_absent_publisher_state_does_not_create_a_baseline_table(self) -> None:
+        state = ContextVaultPublicationStateStore.read_last_successful_projection(
+            self.database_path, str(self.root / "unpublished-vault"),
+        )
+        self.assertIsNone(state)
+        connection = sqlite3.connect(self.database_path)
+        try:
+            exists = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='context_vault_publication_state'",
+            ).fetchone()
+        finally:
+            connection.close()
+        self.assertIsNone(exists)
+
     def test_publisher_is_noop_for_unchanged_notes_and_preserves_mtimes(self) -> None:
         scope_id, record_id = uuid4(), uuid4()
         files = self._projection(scope_id, record_id)
@@ -330,6 +442,54 @@ class ContextVaultMarkdownTests(unittest.TestCase):
             (self.root / "vault" / failing_target).read_text(encoding="utf-8"),
             files[failing_target],
         )
+
+    def test_republication_retains_removed_ownership_after_multiple_interruptions(self) -> None:
+        scope_id, previous_record_id, retry_record_id = uuid4(), uuid4(), uuid4()
+        previous_record = f"scopes/{scope_id}/records/{previous_record_id}.md"
+        retry_record = f"scopes/{scope_id}/records/{retry_record_id}.md"
+        previous_files = {
+            "index.md": "# APEX Context vault\n",
+            f"scopes/{scope_id}/index.md": "# Previous scope\n",
+            previous_record: "# Previous record\n",
+        }
+
+        class InterruptBeforeRootIndex(ContextVaultPublisher):
+            def _atomic_replace(self, source: Path, target: Path) -> None:
+                if target.relative_to(self._root).as_posix() == "index.md":
+                    raise OSError("interrupt before root index")
+                super()._atomic_replace(source, target)
+
+        with self.assertRaises(ContextVaultPublicationError):
+            InterruptBeforeRootIndex(self.root / "vault", self.database_path).publish(previous_files)
+
+        previous_record_path = self.root / "vault" / previous_record
+        self.assertTrue(previous_record_path.exists())
+        retry_files = {
+            "index.md": "# APEX Context vault after deselection\n",
+            retry_record: "# Retry record\n",
+        }
+
+        class InterruptBeforeRetryRecord(ContextVaultPublisher):
+            def _atomic_replace(self, source: Path, target: Path) -> None:
+                if target.relative_to(self._root).as_posix() == retry_record:
+                    raise OSError("interrupt before retry record")
+                super()._atomic_replace(source, target)
+
+        with self.assertRaises(ContextVaultPublicationError):
+            InterruptBeforeRetryRecord(self.root / "vault", self.database_path).publish(retry_files)
+
+        handwritten_retry_path = self.root / "vault" / retry_record
+        handwritten_retry_path.parent.mkdir(parents=True, exist_ok=True)
+        handwritten_retry_path.write_text("Handwritten note", encoding="utf-8")
+
+        result = self._publisher().remove_managed()
+
+        self.assertEqual(result.removed_file_count, 2)
+        self.assertFalse(previous_record_path.exists())
+        self.assertFalse((self.root / "vault" / f"scopes/{scope_id}/index.md").exists())
+        self.assertEqual(handwritten_retry_path.read_text(encoding="utf-8"), "Handwritten note")
+        self.assertEqual(self._publisher().state().owned_files, ())
+        self.assertFalse(self._publisher().state().pending)
 
     def test_pending_intent_does_not_claim_or_delete_unwritten_paths(self) -> None:
         scope_id, record_id = uuid4(), uuid4()

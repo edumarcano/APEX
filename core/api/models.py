@@ -628,6 +628,11 @@ class ContextVaultPreviewRecordResponse(BaseModel):
     projected_path: str
 
 
+class ContextVaultProjectionChangeResponse(BaseModel):
+    path: str
+    action: Literal["added", "updated", "removed"]
+
+
 class ContextVaultPreviewResponse(BaseModel):
     scope_id: str
     scope_name: str
@@ -641,6 +646,10 @@ class ContextVaultPreviewResponse(BaseModel):
     eligible_count: int
     records: list[ContextVaultPreviewRecordResponse] = Field(default_factory=list)
     selection_issues: list[ContextVaultSelectionIssueResponse] = Field(default_factory=list)
+    projection_comparison_state: Literal[
+        "compared", "no_prior_export", "destination_unconfigured", "export_restricted", "unavailable",
+    ] = "unavailable"
+    projection_changes: list[ContextVaultProjectionChangeResponse] = Field(default_factory=list)
 
 
 class ContextSourceResponse(BaseModel):

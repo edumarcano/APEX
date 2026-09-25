@@ -1375,6 +1375,32 @@ def _render_context_vault_preview(payload: object) -> None:
     )
     if payload.get("export_restricted"):
         print(f"Production export is restricted ({payload.get('restriction_code') or 'restricted'}).")
+    if payload.get("hypothetical_enabled"):
+        print("Preview evaluated as enabled.")
+    comparison_state = payload.get("projection_comparison_state")
+    if not payload.get("vault_enabled") and not payload.get("hypothetical_enabled"):
+        print("Exports are disabled; listed changes show the projection if export is enabled.")
+    if comparison_state == "compared":
+        print("Generated note changes since the last successful local export:")
+    elif comparison_state == "no_prior_export":
+        print("No successful local export is recorded; these are notes the scope would add:")
+    elif comparison_state == "destination_unconfigured":
+        print("Note changes cannot be compared because no destination is configured.")
+    elif comparison_state == "export_restricted":
+        print("Note changes cannot be compared while production export is restricted.")
+    else:
+        print("Local export history is unavailable; note changes could not be compared.")
+    changes = payload.get("projection_changes")
+    if isinstance(changes, list):
+        if comparison_state == "compared" and not changes:
+            print("No generated notes in this scope would change.")
+        for change in changes:
+            if not isinstance(change, dict):
+                continue
+            action = change.get("action")
+            path = change.get("path")
+            if isinstance(action, str) and isinstance(path, str):
+                print(f"- {action.title()}: {path}")
     records = payload.get("records")
     if isinstance(records, list):
         for record in records:

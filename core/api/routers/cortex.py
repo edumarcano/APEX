@@ -79,11 +79,12 @@ from core.knowledge.reconciliation import CAPABILITY_NAME as RECONCILIATION_CAPA
 from core.knowledge.store import KnowledgeConflictError, KnowledgeNotFoundError, KnowledgeStoreError
 from core.context import ContextAssembler, ContextPolicy
 from core.knowledge import get_knowledge_service
-from core.context_vault.selection import ContextVaultSelectionService
+from core.context_vault.selection import ContextVaultPreview, ContextVaultSelectionService
 from core.context_vault.runtime import (
     ContextVaultRuntimeError,
     get_context_vault_runtime,
 )
+from core.context_vault.service import ContextVaultProjectionComparison
 from core.api.models import (
     CortexAgentResponse,
     ModelVerificationRequest,
@@ -114,6 +115,7 @@ from core.api.models import (
     ContextVaultPreviewRequest,
     ContextVaultPreviewResponse,
     ContextVaultPreviewRecordResponse,
+    ContextVaultProjectionChangeResponse,
     ContextVaultSelectionIssueResponse,
     ContextVaultStatusResponse,
     ContextVaultScopeStatusResponse,
@@ -186,6 +188,21 @@ def _context_vault_selection_service() -> ContextVaultSelectionService:
     return ContextVaultSelectionService(
         get_knowledge_service(), get_settings_store().get_snapshot().context_vault,
         destination_configured=APEX_CONTEXT_VAULT_PATH is not None and not restricted,
+    )
+
+
+def _context_vault_projection_comparison(state: ContextVaultPreview) -> ContextVaultProjectionComparison:
+    restriction = _context_vault_restriction_code()
+    if restriction is not None:
+        return ContextVaultProjectionComparison(state="export_restricted")
+    if not state.destination_configured:
+        return ContextVaultProjectionComparison(state="destination_unconfigured")
+    runtime = get_context_vault_runtime()
+    if runtime is None:
+        return ContextVaultProjectionComparison(state="unavailable")
+    return runtime.preview_scope_projection(
+        scope_id=state.scope_id,
+        projections=state.comparison_projections,
     )
 
 
@@ -389,6 +406,7 @@ def preview_context_vault(payload: ContextVaultPreviewRequest) -> ContextVaultPr
         else:
             assert payload.scope_id is not None
             state = selection.preview(payload.scope_id)
+        comparison = _context_vault_projection_comparison(state)
         records = [
             ContextVaultPreviewRecordResponse(
                 record_id=record.record_id, kind=record.kind, text=record.text, status=record.status,
@@ -412,6 +430,10 @@ def preview_context_vault(payload: ContextVaultPreviewRequest) -> ContextVaultPr
                 entity_id=issue.entity_id, reason_code=issue.reason_code,
                 replacement_entity_id=issue.replacement_entity_id,
             ) for issue in state.selection_issues],
+            projection_comparison_state=comparison.state,
+            projection_changes=[ContextVaultProjectionChangeResponse(
+                path=change.path, action=change.action,
+            ) for change in comparison.changes],
         )
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Context vault scope was not found.") from exc

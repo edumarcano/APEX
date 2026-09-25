@@ -64,6 +64,15 @@ and link times, source origin and derivation, original evidence, concise
 knowledge-history entries, related record IDs, and pending review IDs. The
 detail response is the place to inspect original evidence and recorded changes.
 
+`context vault preview <scope-id>` lists eligible and excluded records together
+with generated notes that would be added, updated, or removed under that scope,
+and changes to the shared root index, compared with the last successful local
+export. A new scope or a destination without a successful export is shown as
+additions. While export is disabled, preview still shows the projection that
+would be published if enabled. The comparison uses APEX's local ownership
+hashes; it does not confirm external sync or indexing. Use `--json` to print
+the complete response.
+
 `context add` sends direct operator input to the save route. Use `--subject`,
 `--predicate`, and exactly one of `--object-entity` or `--object-value` for a
 structured claim; `--effective-at` accepts an ISO-8601 date or timestamp. Use

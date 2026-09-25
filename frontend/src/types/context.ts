@@ -139,6 +139,18 @@ export interface ContextVaultPreviewRecord {
   projected_path: string
 }
 
+export type ContextVaultProjectionComparisonState =
+  | 'compared'
+  | 'no_prior_export'
+  | 'destination_unconfigured'
+  | 'export_restricted'
+  | 'unavailable'
+
+export interface ContextVaultProjectionChange {
+  path: string
+  action: 'added' | 'updated' | 'removed'
+}
+
 export interface ContextVaultPreview {
   scope_id: string
   scope_name: string
@@ -152,6 +164,8 @@ export interface ContextVaultPreview {
   eligible_count: number
   records: ContextVaultPreviewRecord[]
   selection_issues: ContextVaultSelectionIssue[]
+  projection_comparison_state: ContextVaultProjectionComparisonState
+  projection_changes: ContextVaultProjectionChange[]
 }
 
 export interface ContextSaveResult {

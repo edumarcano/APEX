@@ -45,8 +45,8 @@ class KnowledgeStoreTests(unittest.TestCase):
         try:
             with conn:
                 version = conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()
-                self.assertEqual(version[0], 11)
-                conn.execute("UPDATE schema_versions SET version = 12 WHERE domain = 'knowledge'")
+                self.assertEqual(version[0], 12)
+                conn.execute("UPDATE schema_versions SET version = 13 WHERE domain = 'knowledge'")
         finally:
             conn.close()
         with self.assertRaises(KnowledgeStoreError):
@@ -105,7 +105,7 @@ class KnowledgeStoreTests(unittest.TestCase):
         self.store.initialize()
         conn = sqlite3.connect(self.path)
         try:
-            self.assertEqual(conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()[0], 11)
+            self.assertEqual(conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()[0], 12)
         finally:
             conn.close()
 
@@ -178,7 +178,7 @@ class KnowledgeStoreTests(unittest.TestCase):
         self.store.initialize()
         conn = sqlite3.connect(self.path)
         try:
-            self.assertEqual(conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()[0], 11)
+            self.assertEqual(conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()[0], 12)
         finally:
             conn.close()
 

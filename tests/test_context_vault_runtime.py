@@ -9,6 +9,7 @@ from uuid import uuid4
 from unittest import mock
 
 from core.context_vault.publisher import ContextVaultPublisher
+from core.context_vault.selection import ContextVaultSelectionService
 from core.context_vault.runtime import ContextVaultRuntime, ContextVaultRuntimeError
 from core.knowledge.service import KnowledgeService
 from core.knowledge.store import KnowledgeStore
@@ -93,6 +94,41 @@ class ContextVaultRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(generated.exists())
         self.assertFalse((self.destination / "index.md").exists())
         self.assertEqual(handwritten.read_text(encoding="utf-8"), "Keep")
+
+    async def test_preview_uses_local_owned_hashes_and_does_not_touch_destination(self) -> None:
+        scope = self.settings.scopes[0]
+        selection = ContextVaultSelectionService(
+            self.knowledge, self.settings, destination_configured=True,
+        )
+        first_preview = selection.preview(scope.id)
+        first = self.runtime.preview_scope_projection(
+            scope_id=str(scope.id), projections=first_preview.comparison_projections,
+        )
+
+        self.assertEqual(first.state, "no_prior_export")
+        self.assertTrue(first.changes)
+        self.assertFalse(self.destination.exists())
+
+        await self.runtime.refresh_now()
+        generated = self.destination / f"scopes/{scope.id}/records/{self.record.id}.md"
+        original = generated.read_bytes()
+        original_mtime = generated.stat().st_mtime_ns
+        self.store.set_status(self.record.id, partition="production", status="retracted")
+        changed_preview = ContextVaultSelectionService(
+            self.knowledge, self.settings, destination_configured=True,
+        ).preview(scope.id)
+        changed = self.runtime.preview_scope_projection(
+            scope_id=str(scope.id), projections=changed_preview.comparison_projections,
+        )
+
+        self.assertEqual(changed.state, "compared")
+        self.assertIn(
+            (f"scopes/{scope.id}/records/{self.record.id}.md", "removed"),
+            tuple((change.path, change.action) for change in changed.changes),
+        )
+        self.assertTrue(generated.exists())
+        self.assertEqual(generated.read_bytes(), original)
+        self.assertEqual(generated.stat().st_mtime_ns, original_mtime)
 
     async def test_change_during_publication_keeps_dirty_and_republishes_latest_revision(self) -> None:
         original = ContextVaultPublisher.publish

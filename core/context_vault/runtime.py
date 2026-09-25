@@ -17,11 +17,16 @@ from typing import Callable, Iterator
 
 from core.context_vault.publisher import (
     ContextVaultPublicationError,
+    ContextVaultPublicationStateStore,
     ContextVaultPublisher,
     ContextVaultPublishResult,
 )
 from core.context_vault.render import ContextVaultMarkdownRenderer
-from core.context_vault.selection import ContextVaultSelectionService
+from core.context_vault.selection import ContextVaultScopeProjection, ContextVaultSelectionService
+from core.context_vault.service import (
+    ContextVaultProjectionComparison,
+    compare_scope_projection,
+)
 from core.knowledge.service import KnowledgeService
 from core.settings.models import ContextVaultSettings
 
@@ -409,6 +414,28 @@ class ContextVaultRuntime:
             ),
             export_restricted=not allowed,
             restriction_code=self._restriction_code() if not allowed else None,
+        )
+
+    def preview_scope_projection(
+        self,
+        *,
+        scope_id: str,
+        projections: tuple[ContextVaultScopeProjection, ...],
+    ) -> ContextVaultProjectionComparison:
+        """Compare a preview with local publisher state without touching the destination."""
+        if not self._production_allowed():
+            return ContextVaultProjectionComparison(state="export_restricted")
+        if self._destination is None:
+            return ContextVaultProjectionComparison(state="destination_unconfigured")
+        try:
+            baseline = ContextVaultPublicationStateStore.read_last_successful_projection(
+                self._state._path, _destination_key(self._destination) or "",
+            )
+        except ContextVaultPublicationError:
+            return ContextVaultProjectionComparison(state="unavailable")
+        return compare_scope_projection(
+            self._renderer, scope_id=scope_id, projections=projections,
+            owned_file_hashes=baseline,
         )
 
     async def run(self) -> None:
