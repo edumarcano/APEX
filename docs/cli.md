@@ -101,8 +101,9 @@ in `--scopes-file`; omitting the file preserves the current scopes. `refresh`
 waits for one serialized local publication and exits nonzero if the returned
 status is dirty or has a sanitized error. Disable exports before `remove`;
 while enabled, removal returns `409 Conflict`. The command then deletes only
-files tracked as APEX-owned and leaves handwritten files and `.obsidian/` in
-place. Removal also exits nonzero if the returned status has a sanitized error.
+files tracked as APEX-owned at the currently configured destination. It leaves
+handwritten files and `.obsidian/` in place. Removal also exits nonzero if the
+returned status has a sanitized error.
 Disabling exports retains generated files. Commands accept `--json` for
 machine-readable output, including failure status.
 
