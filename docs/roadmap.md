@@ -9,7 +9,7 @@
 ## Current Focus
 
 **Current Phase:** [Phase V: APEX 2.0 Beta](#phase-v-apex-20-beta)
-**Active Milestone:** [v2.0.0-beta.5 - Context Vault & Sharing](#v200-beta5---context-vault--sharing)
+**Next Milestone:** [v2.0.0-beta.6 - Cortex: Adaptive Briefings & Attention](#v200-beta6---cortex-adaptive-briefings--attention)
 **Current Direction:** [APEX 2.0 Direction](#apex-20-direction)
 
 ### Navigation
@@ -469,30 +469,10 @@ Give outside tools a local inbox for completed work, findings, evidence, and fol
 
 ## v2.0.0-beta.5 - Context Vault & Sharing
 
-**Status:** In Progress
+**Status:** Complete
 
 **Objective:**
-Maintain a portable Markdown copy of selected, trusted APEX context that can be opened in Obsidian and shared with AI applications through a synced folder.
-
-APEX remains the source of truth. The vault is generated from accepted records and can be rebuilt without changing or losing the underlying personal context.
-
-The vault should contain small, focused notes about the subjects APEX already knows, such as projects, people, decisions, preferences, and commitments. A short index should help readers find their way around. It should not become one large export that every application has to read in full.
-
-Notes should use ordinary Markdown, readable metadata, and internal links. Related records should link to one another so the vault is useful in Obsidian's graph view, while the meaning of each relationship remains clear in the text. Stable record identifiers, source references, and update times should make it possible to trace an exported note back to APEX.
-
-The operator should choose the destination folder and what context is included. A project-specific export or a small set of useful personal defaults should be possible without sharing everything else. Raw conversations, private source documents, pending reviews, and external reports should not be exported merely because APEX stores them.
-
-Google Drive should be the first reference setup for synchronization. APEX writes local files and leaves synchronization to the existing Drive application. The same locally available folder should be usable as an Obsidian vault, without requiring Obsidian plugins, Obsidian Sync, or a Google-specific storage implementation inside APEX.
-
-The initial direction is one-way: APEX writes the generated notes. Editing those notes in Obsidian does not change accepted APEX context. Handwritten notes may live in a separate area of the vault, and APEX must leave that area and Obsidian's settings alone. Anything placed in a shared folder is still subject to that folder's sharing permissions, including handwritten material.
-
-When trusted context changes, APEX should update the affected notes and remove or clearly supersede generated content that is no longer current or allowed in the export. Updates should preserve links and avoid unnecessary rewrites. The operator should be able to see what was exported, when it was last refreshed, and whether an update failed.
-
-Sharing should be explicit. APEX can stop exporting a record and remove its managed copy, but it cannot guarantee deletion from another application's history, index, or previously downloaded files. Disabling an export is not the same as recalling information already shared.
-
-Validation should include browsing the linked notes in Obsidian and using the exported context in at least one actual Drive-connected AI workflow. Folder selection and retrieval behavior should be checked in that application rather than assumed to work identically everywhere.
-
-This milestone does not add bidirectional note editing, a live remote context gateway, a cloud database replica, or a custom synchronization service.
+Publish selected trusted personal context as linked Markdown notes for Obsidian and sharing through synced folders.
 
 ---
 
@@ -658,4 +638,4 @@ Models, note applications, sync providers, and outside AI products should remain
 APEX is currently in **Phase V: APEX 2.0 Beta**.
 
 **Next milestone:**
-[v2.0.0-beta.5 - Context Vault & Sharing](#v200-beta5---context-vault--sharing)
+[v2.0.0-beta.6 - Cortex: Adaptive Briefings & Attention](#v200-beta6---cortex-adaptive-briefings--attention)

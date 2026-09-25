@@ -58,7 +58,7 @@ After a Microsoft To Do list is selected, its incomplete tasks become the Home r
 
 ### Shares selected context through a vault
 
-The Context vault can publish selected current records as linked Markdown notes in separate scopes. APEX keeps the canonical records; the generated notes can be opened in Obsidian or synced through Google Drive for other tools to read. Export starts disabled and requires an explicit preview and selection. See the [Context vault guide](docs/context-vault.md) for setup, sharing, and cleanup.
+The Context vault can publish selected current records as linked Markdown notes in separate scopes. APEX keeps the canonical records; the generated notes can be opened in Obsidian or synced through Google Drive for other tools to read. Export starts disabled. Cortex asks you to preview a scope before enabling export; the API and CLI can enable it directly, so preview their selections first. See the [Context vault guide](docs/context-vault.md) for setup, sharing, and cleanup.
 
 ### Reviews outside work in Inbox
 
