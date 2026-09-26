@@ -502,7 +502,6 @@ def _generate_speech_script(
     feedback = ""
     last_error = "script_invalid"
     last_parsed: BriefingSpeechScript | None = None
-    last_schema_output = ""
     for attempt in range(2):
         raw = ""
         last_parsed = None
@@ -540,9 +539,13 @@ def _generate_speech_script(
             last_error = feedback
         except ValidationError:
             previous = raw[:MAX_SPEECH_OUTPUT_BYTES // 2]
-            last_schema_output = raw
             feedback = "Return JSON matching the required highlights schema."
             last_error = "script_schema_invalid"
+            control.check_cancelled()
+            recovered = _recover_structurally_invalid_speech_script(raw, artifact)
+            control.check_cancelled()
+            if recovered is not None:
+                return recovered
         except Exception as exc:  # noqa: BLE001
             if attempt:
                 _LOGGER.info("Briefing speech model call failed (%s).", type(exc).__name__)
@@ -556,14 +559,6 @@ def _generate_speech_script(
             last_parsed,
             artifact,
             failure_reason=last_error,
-        )
-        control.check_cancelled()
-        if recovered is not None:
-            return recovered
-    if last_error == "script_schema_invalid" and last_schema_output:
-        control.check_cancelled()
-        recovered = _recover_structurally_invalid_speech_script(
-            last_schema_output, artifact
         )
         control.check_cancelled()
         if recovered is not None:

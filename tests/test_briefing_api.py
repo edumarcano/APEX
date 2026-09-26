@@ -1170,7 +1170,7 @@ class BriefingSessionApiTests(unittest.TestCase):
             artifact, record.configuration, provider
         )
 
-        self.assertEqual(provider.generate_turn.call_count, 2)
+        self.assertEqual(provider.generate_turn.call_count, 1)
         self.assertNotIn(items[0].id, [item.item_id for item in script.highlights])
         self.assertGreater(len(script.highlights), 0)
         self.assertLessEqual(len(script.highlights), MAX_HIGHLIGHTS)
@@ -1191,10 +1191,12 @@ class BriefingSessionApiTests(unittest.TestCase):
             {"item_id": str(safe.id), "text": f"{safe.title}. {safe.body}"},
         ]}) + "\n```"
 
+        provider = self._repeating_speech_provider(output)
         script = self._generate_speech_with_provider(
-            artifact, record.configuration, self._repeating_speech_provider(output)
+            artifact, record.configuration, provider
         )
 
+        self.assertEqual(provider.generate_turn.call_count, 1)
         self.assertEqual([item.item_id for item in script.highlights], [safe.id])
         validate_speech_script(script, artifact)
 
