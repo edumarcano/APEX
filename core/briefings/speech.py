@@ -41,7 +41,7 @@ _LOGGER = logging.getLogger(__name__)
 MAX_SPEECH_PROMPT_BYTES = 96 * 1024
 MAX_SPEECH_OUTPUT_BYTES = 8 * 1024
 MAX_SPEECH_OUTPUT_TOKENS = 4096
-MAX_SPEECH_SECONDS = 120
+MAX_SPEECH_SECONDS = 240
 MAX_PROVIDER_RETRIES = 2
 MAX_SPEECH_TURNS = 2
 MAX_HIGHLIGHTS = 8
@@ -537,6 +537,16 @@ def _generate_speech_script(
             previous = raw[:MAX_SPEECH_OUTPUT_BYTES // 2]
             feedback = str(exc)
             last_error = feedback
+            if last_parsed is not None:
+                control.check_cancelled()
+                recovered = _recover_validated_speech_script(
+                    last_parsed,
+                    artifact,
+                    failure_reason=last_error,
+                )
+                control.check_cancelled()
+                if recovered is not None:
+                    return recovered
         except ValidationError:
             previous = raw[:MAX_SPEECH_OUTPUT_BYTES // 2]
             feedback = "Return JSON matching the required highlights schema."
@@ -553,16 +563,6 @@ def _generate_speech_script(
             previous = ""
             feedback = "The response did not match the required item references or factual qualifiers."
             last_error = "speech_model_unavailable"
-    if last_parsed is not None and "script_" in last_error:
-        control.check_cancelled()
-        recovered = _recover_validated_speech_script(
-            last_parsed,
-            artifact,
-            failure_reason=last_error,
-        )
-        control.check_cancelled()
-        if recovered is not None:
-            return recovered
     if "script_" in last_error:
         # Keep the API's unavailable code generic while recording a bounded
         # validator reason for diagnosis. Never log provider output or artifact text.
@@ -801,6 +801,18 @@ class BriefingSpeechService:
             self._cancel_preparation_result(job)
         except BriefingSpeechUnavailableError as exc:
             self._fail_preparation_result(job, str(exc)[:64])
+        except BriefingSpeechDeadlineError as exc:
+            reason = str(exc)
+            safe_reason = reason if reason in {
+                "speech_deadline_exceeded", "speech_retry_limit", "speech_turn_limit",
+            } else "speech_limit_unknown"
+            _LOGGER.info("Briefing speech model budget ended (reason=%s).", safe_reason)
+            self._fail_preparation_result(
+                job,
+                "speech_model_timeout"
+                if safe_reason == "speech_deadline_exceeded"
+                else "speech_model_unavailable",
+            )
         except Exception as exc:  # noqa: BLE001
             code = "speech_audio_unavailable"
             if isinstance(exc, RuntimeError) and str(exc) == "speech_cancelled":

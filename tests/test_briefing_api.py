@@ -37,6 +37,7 @@ from core.briefings.models import (
     build_canonical_artifact,
 )
 from core.briefings.speech import (
+    BriefingSpeechDeadlineError,
     BriefingSpeechHighlight,
     BriefingSpeechScript,
     BriefingSpeechService,
@@ -1004,6 +1005,27 @@ class BriefingSessionApiTests(unittest.TestCase):
         )
         return provider
 
+    def test_speech_generation_allows_a_longer_bounded_model_call(self) -> None:
+        record = self._completed_session()
+        assert record.artifact is not None
+        item = record.artifact.sections[0].items[0]
+        output = json.dumps({"highlights": [{
+            "item_id": str(item.id),
+            "text": f"{item.title}. {item.body}",
+        }]})
+        configuration = record.configuration.model_copy(update={
+            "model": record.configuration.model.model_copy(update={
+                "max_elapsed_seconds": 600,
+            }),
+        })
+        provider = self._repeating_speech_provider(output)
+
+        self._generate_speech_with_provider(record.artifact, configuration, provider)
+
+        control = provider.generate_turn.call_args.kwargs["execution_control"]
+        self.assertGreater(control.remaining_seconds(), 120)
+        self.assertLessEqual(control.remaining_seconds(), 240)
+
     def test_speech_generation_recovers_exact_selected_source_after_numeric_drift(
         self,
     ) -> None:
@@ -1026,7 +1048,7 @@ class BriefingSessionApiTests(unittest.TestCase):
             artifact, record.configuration, provider
         )
 
-        self.assertEqual(provider.generate_turn.call_count, 2)
+        self.assertEqual(provider.generate_turn.call_count, 1)
         self.assertEqual(
             script.highlights,
             [BriefingSpeechHighlight(
@@ -1069,7 +1091,7 @@ class BriefingSessionApiTests(unittest.TestCase):
             artifact, record.configuration, provider
         )
 
-        self.assertEqual(provider.generate_turn.call_count, 2)
+        self.assertEqual(provider.generate_turn.call_count, 1)
         self.assertEqual(
             script.highlights,
             [BriefingSpeechHighlight(
@@ -1134,7 +1156,7 @@ class BriefingSessionApiTests(unittest.TestCase):
             artifact, record.configuration, provider
         )
 
-        self.assertEqual(provider.generate_turn.call_count, 2)
+        self.assertEqual(provider.generate_turn.call_count, 1)
         self.assertEqual(
             script.highlights,
             [BriefingSpeechHighlight(
@@ -1512,6 +1534,45 @@ class BriefingSessionApiTests(unittest.TestCase):
                 play_job.future.result(timeout=3)
         finally:
             release_playback.set()
+
+    def test_speech_model_deadline_is_not_reported_as_audio_failure(self) -> None:
+        record = self._completed_session()
+        generation_started = threading.Event()
+        release_generation = threading.Event()
+
+        def timeout_generation(*_args):
+            generation_started.set()
+            if not release_generation.wait(timeout=3):
+                raise TimeoutError("speech deadline test release was not signaled")
+            raise BriefingSpeechDeadlineError("speech_deadline_exceeded")
+
+        try:
+            with (
+                patch(
+                    "core.briefings.speech._generate_speech_script",
+                    side_effect=timeout_generation,
+                ),
+                patch("core.speaker.synthesize_audio") as synthesize,
+            ):
+                response = self.client.post(
+                    f"/api/v1/briefing-sessions/{record.id}/speech/prepare"
+                )
+                self.assertEqual(response.status_code, 202)
+                self.assertTrue(generation_started.wait(timeout=3))
+                with self.speech_service._lock:
+                    job = self.speech_service._active
+                assert job is not None and job.future is not None
+                release_generation.set()
+                job.future.result(timeout=3)
+                status = self.client.get(
+                    f"/api/v1/briefing-sessions/{record.id}/speech"
+                ).json()
+
+            self.assertEqual(status["status"], "unavailable")
+            self.assertEqual(status["error_code"], "speech_model_timeout")
+            synthesize.assert_not_called()
+        finally:
+            release_generation.set()
 
     def test_deleted_briefing_during_preparation_does_not_fail_worker(self) -> None:
         record = self._completed_session()

@@ -67,6 +67,13 @@ describe('BriefingSpeechControl', () => {
     expect(prepare).toHaveBeenCalledTimes(1)
   })
 
+  it('identifies a speech-writing timeout without blaming audio', () => {
+    render(<BriefingSpeechControl {...props({ speech: speech('unavailable', 'speech_model_timeout') })} />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('The selected model took too long to prepare spoken highlights. Retry preparation.')
+    expect(screen.getByRole('button', { name: 'Retry preparation' })).toBeEnabled()
+  })
+
   it('keeps retry controls separate from long unavailable copy', async () => {
     const user = userEvent.setup()
     const prepare = vi.fn(async () => undefined)

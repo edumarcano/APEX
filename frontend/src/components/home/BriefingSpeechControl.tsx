@@ -30,7 +30,9 @@ function statusText(props: BriefingSpeechControlProps): string {
       if (props.speech.error_code === 'speaker_busy') return 'Voice output is busy. Try playing again.'
       if (props.speech.error_code) return 'Playback failed. Play again to retry.'
       return props.playbackCompleted ? 'Playback complete.' : 'Spoken highlights are ready.'
-    case 'unavailable': return `Spoken highlights are unavailable${props.speech.error_code ? ` (${props.speech.error_code})` : ''}.`
+    case 'unavailable':
+      if (props.speech.error_code === 'speech_model_timeout') return 'The selected model took too long to prepare spoken highlights. Retry preparation.'
+      return `Spoken highlights are unavailable${props.speech.error_code ? ` (${props.speech.error_code})` : ''}.`
     case 'cancelled': return 'Speech preparation was cancelled.'
     case 'playing': return 'Playing spoken highlights…'
     case 'stopping': return 'Stopping spoken highlights…'
