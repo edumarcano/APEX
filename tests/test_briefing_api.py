@@ -925,7 +925,7 @@ class BriefingSessionApiTests(unittest.TestCase):
         )
         request = client.models.generate_content_stream.call_args.kwargs
         self.assertEqual(request["model"], "gemini-3.7-flash")
-        self.assertEqual(request["config"].max_output_tokens, 2048)
+        self.assertEqual(request["config"].max_output_tokens, 4096)
         self.assertEqual(request["config"].response_mime_type, "application/json")
         self.assertIsNone(request["config"].tools)
 
