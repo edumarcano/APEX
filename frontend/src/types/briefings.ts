@@ -1,8 +1,19 @@
+export type BriefingProfileId = 'daily' | 'catch_up' | 'deep'
+
+export type BriefingProfileSummary = {
+  id: BriefingProfileId
+  label: string
+  purpose: string
+  investigation_required: boolean
+  available: boolean
+  unavailable_reason: string | null
+}
+
 export type BriefingSessionStatus = 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
 
 export type BriefingSessionSummary = {
   id: string
-  profile_id: 'daily'
+  profile_id: BriefingProfileId
   model_id: string
   conversation_id: string
   run_id: string
@@ -68,7 +79,7 @@ export type BriefingSessionDetail = {
   run_status: BriefingSessionStatus
   run_error_code: string | null
   configuration: {
-    profile: { id: 'daily'; label: 'Daily'; purpose: string; definition_version: number }
+    profile: { id: BriefingProfileId; label: string; purpose: string; definition_version: number }
     model: {
       model_id: string
       provider: string

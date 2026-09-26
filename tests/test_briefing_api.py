@@ -20,6 +20,7 @@ from core.agent.types import AgentMessage
 from core.briefings.daily import generate_daily_briefing
 from core.briefings.execution import InvalidBriefingModelOutputError
 from core.briefings.models import (
+    AVAILABLE_BRIEFING_PROFILES,
     BUILTIN_BRIEFING_PROFILES,
     BriefingCoverage,
     BriefingDraft,
@@ -284,6 +285,54 @@ class BriefingSessionApiTests(unittest.TestCase):
         self.assertEqual(
             second_ack.json()["presented_at"], first_ack.json()["presented_at"]
         )
+
+    def test_profile_catalog_lists_builtins_with_availability(self) -> None:
+        response = self.client.get("/api/v1/briefing-profiles")
+
+        self.assertEqual(response.status_code, 200)
+        catalog = response.json()
+        self.assertEqual([entry["id"] for entry in catalog], list(BUILTIN_BRIEFING_PROFILES))
+        for entry in catalog:
+            profile = BUILTIN_BRIEFING_PROFILES[entry["id"]]
+            self.assertEqual(entry["label"], profile.label)
+            self.assertEqual(entry["investigation_required"], profile.investigation_required)
+            available = entry["id"] in AVAILABLE_BRIEFING_PROFILES
+            self.assertEqual(entry["available"], available)
+            if available:
+                self.assertIsNone(entry["unavailable_reason"])
+            else:
+                self.assertTrue(entry["unavailable_reason"])
+        self.assertTrue(next(e for e in catalog if e["id"] == "daily")["available"])
+
+    def test_generation_and_catalog_share_profile_availability(self) -> None:
+        unavailable = sorted(set(BUILTIN_BRIEFING_PROFILES) - AVAILABLE_BRIEFING_PROFILES)
+        service = self._service(lambda *_args: self._output())
+        with patch("core.api.routers.briefings.get_briefing_service", return_value=service):
+            for profile_id in unavailable:
+                response = self.client.post(
+                    "/api/v1/briefing-sessions",
+                    json={
+                        "idempotency_key": str(uuid4()),
+                        "profile_id": profile_id,
+                        "model_id": "deepseek/deepseek-v4-flash-0731",
+                    },
+                )
+                self.assertEqual(response.status_code, 422, profile_id)
+
+            with patch("core.briefings.models.AVAILABLE_BRIEFING_PROFILES", frozenset()):
+                catalog = self.client.get("/api/v1/briefing-profiles").json()
+                response = self.client.post(
+                    "/api/v1/briefing-sessions",
+                    json={
+                        "idempotency_key": str(uuid4()),
+                        "profile_id": "daily",
+                        "model_id": "deepseek/deepseek-v4-flash-0731",
+                    },
+                )
+
+        self.assertFalse(any(entry["available"] for entry in catalog))
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(self.client.get("/api/v1/briefing-sessions").json(), [])
 
     def test_daily_generation_route_returns_saved_session_and_replays_idempotently(self) -> None:
         executing = threading.Event()

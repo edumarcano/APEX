@@ -3,11 +3,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { API_ENDPOINTS } from '../lib/api'
 import type {
   BriefingEvidence,
+  BriefingProfileId,
+  BriefingProfileSummary,
   BriefingSessionDetail,
   BriefingSessionSummary,
 } from '../types/briefings'
 
-type DailyGenerationOptions = {
+type BriefingGenerationOptions = {
   modelId: string
   reasoning?: string | null
   contextWindow?: number | null
@@ -16,6 +18,7 @@ type DailyGenerationOptions = {
 
 type HookState = {
   sessions: BriefingSessionSummary[]
+  profiles: BriefingProfileSummary[]
   selectedSessionId: string | null
   activeSession: BriefingSessionDetail | null
   evidenceById: Record<string, BriefingEvidence>
@@ -56,7 +59,7 @@ function updateSummary(
 export type UseBriefingSessionsResult = HookState & {
   hasActiveSession: boolean
   refreshSessions: () => Promise<void>
-  generateDaily: (options: DailyGenerationOptions) => Promise<BriefingSessionSummary>
+  generate: (profileId: BriefingProfileId, options: BriefingGenerationOptions) => Promise<BriefingSessionSummary>
   openSession: (sessionId: string) => Promise<BriefingSessionDetail>
   loadEvidence: (sessionId: string, evidenceId: string) => Promise<void>
   markPresented: (sessionId: string) => Promise<void>
@@ -65,6 +68,7 @@ export type UseBriefingSessionsResult = HookState & {
 
 export function useBriefingSessions(): UseBriefingSessionsResult {
   const [sessions, setSessions] = useState<BriefingSessionSummary[]>([])
+  const [profiles, setProfiles] = useState<BriefingProfileSummary[]>([])
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [activeSession, setActiveSession] = useState<BriefingSessionDetail | null>(null)
   const [evidenceById, setEvidenceById] = useState<Record<string, BriefingEvidence>>({})
@@ -118,7 +122,7 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
         setActiveSession(detail)
         setSessions((current) => updateSummary(current, {
           id: detail.id,
-          profile_id: 'daily',
+          profile_id: detail.configuration.profile.id,
           model_id: detail.configuration.model.model_id,
           conversation_id: detail.conversation_id,
           run_id: detail.run_id,
@@ -161,21 +165,21 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
     }
   }, [])
 
-  const generateDaily = useCallback(async (options: DailyGenerationOptions): Promise<BriefingSessionSummary> => {
+  const generate = useCallback(async (profileId: BriefingProfileId, options: BriefingGenerationOptions): Promise<BriefingSessionSummary> => {
     if (generatingRef.current || sessions.some((session) => ACTIVE_STATUSES.has(session.run_status))) {
       throw new Error('A Daily briefing is already running.')
     }
     generatingRef.current = true
     setIsGenerating(true)
     setError(null)
-    const fingerprint = JSON.stringify(options)
+    const fingerprint = JSON.stringify({ profileId, options })
     if (idempotencyRef.current?.fingerprint !== fingerprint) {
       idempotencyRef.current = { fingerprint, key: crypto.randomUUID() }
     }
     try {
       const body = {
         idempotency_key: idempotencyRef.current.key,
-        profile_id: 'daily',
+        profile_id: profileId,
         model_id: options.modelId,
         ...(options.reasoning ? { reasoning: options.reasoning } : {}),
         ...(options.contextWindow ? { context_window: options.contextWindow } : {}),
@@ -220,6 +224,14 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
   }, [refreshSessions])
 
   useEffect(() => {
+    let cancelled = false
+    requestJson<BriefingProfileSummary[]>(API_ENDPOINTS.briefingProfiles)
+      .then((next) => { if (!cancelled && Array.isArray(next)) setProfiles(next) })
+      .catch(() => undefined)
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
     const session = activeSession
     if (!session || !ACTIVE_STATUSES.has(session.run_status)) return undefined
     const timeout = window.setTimeout(() => { void openSession(session.id).catch(() => undefined) }, 900)
@@ -228,6 +240,7 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
 
   return {
     sessions,
+    profiles,
     selectedSessionId,
     activeSession,
     evidenceById,
@@ -239,7 +252,7 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
     error,
     hasActiveSession: isGenerating || sessions.some((session) => ACTIVE_STATUSES.has(session.run_status)),
     refreshSessions,
-    generateDaily,
+    generate,
     openSession,
     loadEvidence,
     markPresented,

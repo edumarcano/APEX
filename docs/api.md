@@ -23,7 +23,8 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | POST | `/api/v1/briefings/generate` | Brief from the current snapshot |
 | GET | `/api/v1/briefings/history` | Recent briefing ledger |
 | GET | `/api/v1/briefings/targets` | Briefing synthesis target metadata |
-| POST | `/api/v1/briefing-sessions` | Admit an asynchronous Daily generation |
+| GET | `/api/v1/briefing-profiles` | Built-in briefing profiles and whether each can generate |
+| POST | `/api/v1/briefing-sessions` | Admit an asynchronous generation for an available profile |
 | GET | `/api/v1/briefing-sessions` | Saved briefing-session summaries for the active partition |
 | GET | `/api/v1/briefing-sessions/{session_id}` | Saved briefing-session detail and completed artifact |
 | GET | `/api/v1/briefing-sessions/{session_id}/evidence/{evidence_id}` | Evidence captured by a completed session |
@@ -312,6 +313,10 @@ Returns up to 50 newest briefing records with transcript, digest, runtime metada
 
 Returns live availability and metadata for fixed briefing-generation targets in this order: `flash` (local Gemma), `focused` (OpenRouter DeepSeek V4 Flash), and `structured` (deterministic, no model). Removed Agent-named identifiers are rejected.
 
+### GET `/api/v1/briefing-profiles`
+
+Returns the built-in briefing profiles in a stable order. Each entry includes `id`, `label`, `purpose`, `investigation_required`, `available`, and `unavailable_reason`. `available` reports whether `POST /api/v1/briefing-sessions` accepts the profile in this release; unavailable profiles include a short reason. The catalog is static and does not report model eligibility.
+
 ### POST `/api/v1/briefing-sessions`
 
 Admits an asynchronous Daily generation using the explicit model from the selected Apex Agent catalog entry. The server captures the active production or sandbox partition, applies the current run limits, and creates a saved session linked to a Cortex conversation. It does not fall back to another model. Demo mode uses a deterministic fixture and does not contact a model provider.
@@ -329,7 +334,7 @@ Admits an asynchronous Daily generation using the explicit model from the select
 `local_reasoning_mode` may be supplied for a compatible local model. The server owns the conversation origin and execution limits. A successful new admission returns `202` with a session ID, conversation ID, run ID, and current run status. Replaying the same idempotency key and request returns the existing session with `200`.
 
 - `409` — the idempotency key conflicts with a different request.
-- `422` — the model or requested controls are unavailable, or its context window cannot fit a useful Daily prompt.
+- `422` — the profile is not available, the model or requested controls are unavailable, or its context window cannot fit a useful Daily prompt.
 - `429` — the run coordinator has no free execution slot.
 - `503` — briefing generation is unavailable or shutting down.
 

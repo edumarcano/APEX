@@ -26,9 +26,11 @@ from core.api.models import (
     parse_runtime_metadata,
 )
 from core.config import DEMO_MODE
+from core.briefings import models as briefing_models
 from core.briefings.models import (
     BriefingEvidence,
     BriefingGenerationRequest,
+    BriefingProfileSummary,
     BriefingSessionGenerateRequest,
     BriefingSessionDetail,
     BriefingSessionSummary,
@@ -49,21 +51,31 @@ router = APIRouter(tags=["briefings"])
 _LOGGER = logging.getLogger(__name__)
 
 
+@router.get(
+    "/api/v1/briefing-profiles",
+    response_model=list[BriefingProfileSummary],
+    summary="List built-in briefing profiles and their availability",
+)
+def list_briefing_profiles() -> list[BriefingProfileSummary]:
+    """Return the static built-in profile catalog; model eligibility is separate."""
+    return briefing_models.briefing_profile_catalog()
+
+
 @router.post(
     "/api/v1/briefing-sessions",
     response_model=BriefingSessionSummary,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Generate a saved Daily briefing session",
+    summary="Generate a saved briefing session for an available profile",
 )
 def generate_briefing_session(
     body: BriefingSessionGenerateRequest,
     response: Response,
 ) -> BriefingSessionSummary:
-    """Admit a Daily run and return its durable session and conversation IDs."""
-    if body.profile_id != "daily":
+    """Admit a run for an available built-in profile and return its durable session and conversation IDs."""
+    if body.profile_id not in briefing_models.AVAILABLE_BRIEFING_PROFILES:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Only Daily briefing sessions are available in this release.",
+            detail=briefing_models.UNAVAILABLE_BRIEFING_PROFILE_REASON,
         )
     try:
         result = get_briefing_service().start(
