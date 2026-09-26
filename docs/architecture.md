@@ -4,7 +4,7 @@ APEX is a local-first personal intelligence HUD. FastAPI serves the backend, Rea
 
 ## Core model
 
-- **Home** presents the saved Daily briefing, telemetry, reminders, and quick interaction.
+- **Home** moves between Standby, Overview (telemetry and reminders), and Briefing (profile controls, the saved briefing thread, and a telemetry rail).
 - **Cortex** is the control surface for conversations, model settings, tool selection, context, and approval-gated actions.
 - **Inbox** is the dedicated list-and-detail workspace for immutable, untrusted reports with caller-claimed source labels.
 - **Apex Agent** is the single native personal operations assistant. It understands APEX briefings, trusted context, connected services, and APEX tools.
