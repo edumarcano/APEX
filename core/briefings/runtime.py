@@ -39,12 +39,12 @@ def resolve_briefing_configuration(
 ) -> BriefingGenerationConfiguration:
     """Resolve exact catalog identity and validate model-specific controls."""
     if DEMO_MODE:
-        if request.profile_id != "daily":
+        if request.profile_id not in {"daily", "catch_up"}:
             raise BriefingModelConfigurationError(
-                "Only Daily briefing generation is available in demo mode."
+                "This briefing profile is not available in demo mode."
             )
         return BriefingGenerationConfiguration(
-            profile=BUILTIN_BRIEFING_PROFILES["daily"],
+            profile=BUILTIN_BRIEFING_PROFILES[request.profile_id],
             model=BriefingModelConfiguration(
                 model_id="demo/daily-fixture",
                 provider="demo",
@@ -193,9 +193,9 @@ def resolve_briefing_configuration(
         origin=request.origin,
         execution_kind="model",
     )
-    if configuration.profile.id == "daily":
+    if configuration.profile.id in {"daily", "catch_up"}:
         try:
-            # Resolve the exact Daily system/schema budget before the run is admitted.
+            # Resolve the exact briefing system/schema budget before the run is admitted.
             from core.briefings.daily import validate_daily_context_budget
 
             validate_daily_context_budget(configuration)

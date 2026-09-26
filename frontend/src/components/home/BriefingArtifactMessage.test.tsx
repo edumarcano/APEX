@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { BriefingSessionDetail } from '../../types/briefings'
+import { formatBriefingTime } from '../../lib/briefingFormat'
 import { BriefingArtifactMessage } from './BriefingArtifactMessage'
 
 function completedDemoSession(): BriefingSessionDetail {
@@ -33,6 +34,14 @@ function completedDemoSession(): BriefingSessionDetail {
       }],
       coverage: [{ source: 'calendar', scope: 'today', status: 'partial', observed_at: null, window_start: null, window_end: null, freshness_seconds: null, truncated: true, reason: 'Calendar was slow.' }],
       limitations: ['Email was not read.'],
+      comparison: {
+        outcome: 'compared', summary: 'Found 1 changed item since the source checkpoints.',
+        material_change_count: 1, no_material_changes: false,
+        sources: [{
+          source: 'calendar', status: 'compared', baseline_session_id: 'prior-session',
+          baseline_snapshot_at: '2026-09-24T13:00:00Z', current_snapshot_at: '2026-09-25T13:00:00Z', reason: null,
+        }],
+      },
     },
     evidence_count: 1,
     evidence_ids: ['evidence-1'],
@@ -67,6 +76,112 @@ describe('BriefingArtifactMessage', () => {
 
     expect(screen.getByText(/Deterministic demo fixture/)).toBeInTheDocument()
     expect(screen.getByText(/DEMO fixture\. No model was run/)).toBeInTheDocument()
+  })
+
+  it('shows the Catch Up comparison period before its sections and source details', async () => {
+    const session = completedDemoSession()
+    session.configuration.profile = { id: 'catch_up', label: 'Catch Up', purpose: 'Changes since you last checked.', definition_version: 1 }
+    renderMessage(session)
+
+    const banner = screen.getByRole('region', { name: 'Catch Up comparison' })
+    expect(banner).toHaveTextContent('Found 1 changed item since the source checkpoints.')
+    expect(banner.textContent).toMatch(/baseline .*2026/)
+    expect(banner.textContent).toMatch(/current .*2026/)
+    const disclosure = screen.getByText(/Source coverage and limits/).closest('details')
+    expect(disclosure).not.toHaveAttribute('open')
+    await userEvent.click(screen.getByText(/Source coverage and limits/))
+    const comparison = screen.getByRole('region', { name: 'Source comparison' })
+    expect(comparison.textContent).toMatch(/baseline .*2026/)
+    expect(comparison.textContent).toMatch(/current .*2026/)
+  })
+
+  it('orders the combined period by actual instants when source offsets differ', () => {
+    const session = completedDemoSession()
+    session.configuration.profile = { id: 'catch_up', label: 'Catch Up', purpose: 'Changes since you last checked.', definition_version: 1 }
+    const earliestBaseline = '2026-09-25T02:00:00+02:00'
+    const laterBaseline = '2026-09-24T23:30:00-04:00'
+    const earlierCurrent = '2026-09-26T05:30:00+02:00'
+    const latestCurrent = '2026-09-26T03:00:00-04:00'
+    session.artifact!.comparison!.sources = [
+      {
+        source: 'calendar', status: 'compared', baseline_session_id: 'prior-calendar',
+        baseline_snapshot_at: laterBaseline, current_snapshot_at: latestCurrent, reason: null,
+      },
+      {
+        source: 'email', status: 'compared', baseline_session_id: 'prior-email',
+        baseline_snapshot_at: earliestBaseline, current_snapshot_at: earlierCurrent, reason: null,
+      },
+    ]
+
+    const banner = renderMessage(session).getByRole('region', { name: 'Catch Up comparison' })
+
+    expect(banner).toHaveTextContent(`baseline ${formatBriefingTime(earliestBaseline)}`)
+    expect(banner).toHaveTextContent(`current ${formatBriefingTime(latestCurrent)}`)
+  })
+
+  it('shows the explicit no-change result instead of a generic empty artifact', () => {
+    const session = completedDemoSession()
+    session.artifact!.sections = []
+    session.artifact!.comparison = {
+      outcome: 'no_change', summary: 'No material changes were found since the recorded source checkpoints.',
+      sources: [{
+        source: 'calendar', status: 'compared', baseline_session_id: 'prior-session',
+        baseline_snapshot_at: '2026-09-24T13:00:00Z', current_snapshot_at: '2026-09-25T13:00:00Z', reason: null,
+      }], material_change_count: 0, no_material_changes: true,
+    }
+    session.configuration.profile = { id: 'catch_up', label: 'Catch Up', purpose: 'Changes since you last checked.', definition_version: 1 }
+    renderMessage(session)
+
+    expect(screen.getByText(/No material changes were found/)).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Catch Up comparison' })).toHaveTextContent('baseline')
+    expect(screen.queryByText('No briefing items were produced.')).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['initial', 'This is the first source checkpoint.'],
+    ['limited', 'Some source comparisons are limited.'],
+  ] as const)('shows the %s comparison result and period by default', (outcome, summary) => {
+    const session = completedDemoSession()
+    session.configuration.profile = { id: 'catch_up', label: 'Catch Up', purpose: 'Changes since you last checked.', definition_version: 1 }
+    session.artifact!.comparison = {
+      outcome, summary, material_change_count: 0, no_material_changes: true,
+      sources: [{
+        source: 'calendar', status: outcome === 'initial' ? 'initial' : 'limited',
+        baseline_session_id: null, baseline_snapshot_at: null,
+        current_snapshot_at: '2026-09-25T13:00:00Z', reason: outcome === 'limited' ? 'source_unavailable' : null,
+      }],
+    }
+    renderMessage(session)
+
+    const banner = screen.getByRole('region', { name: 'Catch Up comparison' })
+    expect(banner).toHaveTextContent(summary)
+    expect(banner).toHaveTextContent('current snapshot')
+  })
+
+  it('labels synthesis inclusion separately from artifact citation', async () => {
+    const session = completedDemoSession()
+    session.evidence_ids = ['evidence-1', 'evidence-2']
+    const evidence = (sourceId: string, included: boolean) => ({
+      id: sourceId, source: 'calendar', source_id: sourceId,
+      identity_kind: 'provider' as const, revision: null, revision_kind: 'none' as const,
+      observed_at: '2026-09-25T13:00:00Z', effective_at: null, trust: 'observed' as const,
+      content: 'Saved source content.', record_reference: null,
+      included_in_synthesis: included, available: true, unavailable_reason: null,
+    })
+    render(<BriefingArtifactMessage
+      session={session}
+      isLoadingSession={false}
+      evidence={{
+        evidenceById: { 'evidence-1': evidence('event-1', true), 'evidence-2': evidence('event-2', true) },
+        loadingIds: [], errors: {}, onLoadEvidence: vi.fn(async () => {}),
+      }}
+      onMarkPresented={vi.fn(async () => {})}
+    />)
+
+    await userEvent.click(screen.getByText('Evidence (1)'))
+    expect(screen.getByText('sent to synthesis · cited in briefing')).toBeInTheDocument()
+    await userEvent.click(screen.getByText(/Other captured evidence \(1\)/))
+    expect(screen.getByText('sent to synthesis · not cited in briefing')).toBeInTheDocument()
   })
 
   it('includes coverage and limitations with the artifact', () => {

@@ -2,18 +2,25 @@
 
 from __future__ import annotations
 
+import json
+import sqlite3
 import tempfile
 import threading
 import unittest
+from contextlib import closing
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
+from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 from unittest.mock import MagicMock, patch
 
 from core.api.routers.cortex import _submit_run
+from core.briefings.history import compare_history
 from core.briefings.models import (
     BUILTIN_BRIEFING_PROFILES,
+    NORMALIZATION_VERSION,
     BriefingCoverage,
     BriefingDraft,
     BriefingEvidence,
@@ -22,20 +29,177 @@ from core.briefings.models import (
     BriefingItemDraft,
     BriefingModelConfiguration,
     BriefingSectionDraft,
+    build_canonical_artifact,
     render_artifact_text,
 )
 from core.briefings.daily import generate_daily_briefing
 from core.briefings.context import saved_daily_followup_context
-from core.briefings.service import BriefingGenerationOutput, BriefingService, BriefingSessionQueries
-from core.briefings.store import BriefingSessionStore
+from core.briefings.service import BriefingGenerationOutput, BriefingHistoryContext, BriefingService, BriefingSessionQueries
+from core.briefings.store import BriefingSessionConflictError, BriefingSessionStore
 from core.context import ContextPolicy
 from core.conversations.store import ConversationStore
 from core.conversations.models import ConversationTurnRequest
 from core.conversations.service import ConversationService
 from core.runs.coordinator import CortexRunCoordinator
+from core.runs.models import RunCompletionEvidence, RunLimitSnapshot
 from core.runs.service import RunService
 from core.runs.store import RunStore
 from core.settings.store import RuntimeSettingsStore
+
+
+class BriefingSessionSchemaMigrationTests(unittest.TestCase):
+    def test_v1_row_survives_history_column_upgrade_and_remains_readable(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "apex_memory.db"
+            conversations = ConversationStore(db_path)
+            conversations.initialize()
+            run_store = RunStore(db_path)
+            run_store.initialize()
+            session_store = BriefingSessionStore(db_path)
+
+            request = BriefingSessionLifecycleTests._request()
+            configuration = BriefingSessionLifecycleTests._configuration(request)
+            session_id = uuid4()
+            conversation_id = uuid4()
+            user_message_id = uuid4()
+            opening_message_id = uuid4()
+            run_id = uuid4()
+            created_at = datetime.now(timezone.utc).replace(microsecond=0)
+            output = BriefingSessionLifecycleTests._output()
+            artifact = build_canonical_artifact(
+                session_id=session_id,
+                draft=output.draft,
+                evidence=output.evidence,
+                coverage=output.coverage,
+                created_at=created_at,
+            )
+
+            with closing(sqlite3.connect(db_path)) as connection, connection:
+                connection.row_factory = sqlite3.Row
+                connection.execute("PRAGMA foreign_keys=ON")
+                connection.execute("BEGIN IMMEDIATE")
+                conversations.create_briefing_opening(
+                    connection=connection,
+                    conversation_id=conversation_id,
+                    partition="production",
+                    origin="hud",
+                    title="Daily briefing",
+                    user_id=user_message_id,
+                    agent_id=opening_message_id,
+                    prompt="Prepare a Daily briefing.",
+                    request_metadata={
+                        "briefing_session_id": str(session_id),
+                        "profile_id": request.profile_id,
+                        "model_id": request.model_id,
+                    },
+                )
+                _run, handle, replayed = RunService(run_store).create_run(
+                    run_id=run_id,
+                    conversation_id=conversation_id,
+                    user_message_id=user_message_id,
+                    agent_message_id=opening_message_id,
+                    requested_model=request.model_id,
+                    limit_snapshot=RunLimitSnapshot(
+                        max_elapsed_seconds=configuration.model.max_elapsed_seconds,
+                        max_retries=configuration.model.max_retries,
+                        max_model_turns=configuration.model.max_model_turns,
+                        max_tool_calls=configuration.model.max_tool_calls,
+                    ),
+                    partition="production",
+                    connection=connection,
+                )
+                self.assertFalse(replayed)
+                conversations.finalize(
+                    conversation_id=conversation_id,
+                    agent_id=opening_message_id,
+                    answer=render_artifact_text(artifact),
+                    status="completed",
+                    response_metadata={
+                        "briefing_session_id": str(session_id),
+                        "artifact_schema_version": artifact.schema_version,
+                    },
+                    connection=connection,
+                )
+                handle.finalize(
+                    status="completed",
+                    stop_reason="end_turn",
+                    evidence=RunCompletionEvidence(
+                        final_message_status="completed", answer_persisted=True
+                    ),
+                    connection=connection,
+                )
+
+            created_at_text = created_at.isoformat().replace("+00:00", "Z")
+            with closing(sqlite3.connect(db_path)) as connection, connection:
+                connection.execute(
+                    """CREATE TABLE briefing_sessions (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')),
+                        idempotency_key TEXT NOT NULL,
+                        conversation_id TEXT NOT NULL UNIQUE REFERENCES conversations(id) ON DELETE CASCADE,
+                        opening_message_id TEXT NOT NULL UNIQUE REFERENCES conversation_messages(id) ON DELETE CASCADE,
+                        run_id TEXT NOT NULL UNIQUE REFERENCES cortex_runs(id) ON DELETE CASCADE,
+                        profile_id TEXT NOT NULL CHECK(profile_id IN ('daily', 'catch_up', 'deep')),
+                        created_at TEXT NOT NULL,
+                        presented_at TEXT,
+                        request_json TEXT NOT NULL CHECK(json_valid(request_json)),
+                        configuration_json TEXT NOT NULL CHECK(json_valid(configuration_json)),
+                        artifact_json TEXT CHECK(artifact_json IS NULL OR json_valid(artifact_json)),
+                        evidence_json TEXT CHECK(evidence_json IS NULL OR json_valid(evidence_json)),
+                        UNIQUE(partition, idempotency_key)
+                    )"""
+                )
+                connection.execute(
+                    "INSERT INTO schema_versions(domain, version) VALUES ('briefing_sessions', 1)"
+                )
+                connection.execute(
+                    """INSERT INTO briefing_sessions (
+                        id, partition, idempotency_key, conversation_id, opening_message_id,
+                        run_id, profile_id, created_at, presented_at, request_json,
+                        configuration_json, artifact_json, evidence_json
+                    ) VALUES (?, 'production', ?, ?, ?, ?, 'daily', ?, ?, ?, ?, ?, ?)""",
+                    (
+                        str(session_id), str(request.idempotency_key), str(conversation_id),
+                        str(opening_message_id), str(run_id), created_at_text,
+                        created_at_text, json.dumps(request.model_dump(mode="json")),
+                        json.dumps(configuration.model_dump(mode="json")),
+                        json.dumps(artifact.model_dump(mode="json")),
+                        json.dumps([
+                            item.model_dump(mode="json") for item in output.evidence
+                        ]),
+                    ),
+                )
+
+            session_store.initialize()
+
+            with closing(sqlite3.connect(db_path)) as connection, connection:
+                columns = {
+                    row[1]
+                    for row in connection.execute("PRAGMA table_info(briefing_sessions)")
+                }
+                version = connection.execute(
+                    "SELECT version FROM schema_versions WHERE domain = 'briefing_sessions'"
+                ).fetchone()[0]
+            restored = session_store.get(session_id, "production")
+
+            self.assertIn("history_json", columns)
+            self.assertEqual(version, 2)
+            self.assertEqual(restored.request.profile_id, "daily")
+            self.assertIsNone(restored.history)
+            self.assertIsNotNone(restored.artifact)
+            assert restored.artifact is not None
+            self.assertEqual(restored.artifact.sections[0].items[0].title, "Planning meeting")
+            self.assertEqual(restored.evidence[0].content, output.evidence[0].content)
+            self.assertEqual(restored.run_status, "completed")
+            self.assertEqual(
+                conversations.detail(conversation_id, "production").messages[-1].status,
+                "completed",
+            )
+            self.assertEqual(run_store.get_run(run_id, "production").status, "completed")
+
+            session_store.close()
+            run_store.close()
+            conversations.close()
 
 
 class BriefingSessionLifecycleTests(unittest.TestCase):
@@ -405,6 +569,109 @@ class BriefingSessionLifecycleTests(unittest.TestCase):
         self.assertTrue(retry.replayed)
         self.assertEqual(retry.session.id, first.session.id)
         self.assertEqual(retry.session.conversation_id, first.session.conversation_id)
+
+    def test_frozen_history_uses_presented_completed_sessions_and_source_time(self) -> None:
+        def snapshot(at: datetime, content: str) -> BriefingGenerationOutput:
+            evidence = BriefingEvidence(
+                source="calendar", source_id="event-1", identity_kind="provider",
+                semantic_fingerprint=sha256(content.encode("utf-8")).hexdigest(),
+                normalization_version=NORMALIZATION_VERSION, observed_at=at,
+                trust="observed", content=content,
+            )
+            return BriefingGenerationOutput(
+                draft=BriefingDraft(sections=[BriefingSectionDraft(
+                    title="Calendar", items=[BriefingItemDraft(
+                        category="observation", title="Planning event", body=content,
+                        evidence_ids=[evidence.id],
+                    )],
+                )]),
+                evidence=[evidence],
+                coverage=[BriefingCoverage(
+                    source="calendar", scope="Selected calendars",
+                    scope_key="calendar:selected:test-v1",
+                    normalization_version=NORMALIZATION_VERSION,
+                    status="complete", observed_at=at,
+                )],
+            )
+
+        before = datetime(2026, 9, 24, 10, tzinfo=timezone.utc)
+        newest_snapshot = datetime(2026, 9, 25, 10, tzinfo=timezone.utc)
+        unpresented_snapshot = datetime(2026, 9, 26, 10, tzinfo=timezone.utc)
+        current_snapshot = datetime(2026, 9, 27, 10, tzinfo=timezone.utc)
+        latest = self._service(lambda *_args: snapshot(newest_snapshot, "Later source observation.")).start(self._request())
+        latest.future.result(timeout=3)
+        self.session_store.mark_presented(latest.session.id, "production")
+
+        # This session is created and presented later, but its source observation is older.
+        older = self._service(lambda *_args: snapshot(before, "Stale cached source observation.")).start(self._request())
+        older.future.result(timeout=3)
+        self.session_store.mark_presented(older.session.id, "production")
+
+        unopened = self._service(lambda *_args: snapshot(unpresented_snapshot, "Never shown to the user.")).start(self._request())
+        unopened.future.result(timeout=3)
+
+        def fail_generation(*_args):
+            raise RuntimeError("expected failure")
+
+        failed = self._service(fail_generation).start(self._request())
+        failed.future.result(timeout=3)
+
+        execution_started = threading.Event()
+        release_execution = threading.Event()
+
+        def cancel_before_complete(*_args):
+            execution_started.set()
+            if not release_execution.wait(timeout=3):
+                raise TimeoutError("test executor release was not signaled")
+            return snapshot(current_snapshot, "Cancelled source observation.")
+
+        cancelled = self._service(cancel_before_complete).start(self._request())
+        self.assertTrue(execution_started.wait(timeout=3))
+        self.coordinator.cancel(cancelled.session.run_id)
+        release_execution.set()
+        cancelled.future.result(timeout=3)
+
+        with self.assertRaises(BriefingSessionConflictError):
+            self.session_store.mark_presented(failed.session.id, "production")
+        with self.assertRaises(BriefingSessionConflictError):
+            self.session_store.mark_presented(cancelled.session.id, "production")
+
+        captured: dict[str, BriefingHistoryContext] = {}
+
+        def capture_history(*args):
+            captured["history"] = args[4]
+            return snapshot(current_snapshot, "Current source observation.")
+
+        current_request = self._request()
+        current_service = self._service(capture_history)
+        current = current_service.start(current_request)
+        current.future.result(timeout=3)
+        history = captured["history"]
+        self.assertEqual(set(history.selection.session_ids), {latest.session.id, older.session.id})
+        self.assertNotIn(unopened.session.id, history.selection.session_ids)
+        self.assertNotIn(failed.session.id, history.selection.session_ids)
+        self.assertNotIn(cancelled.session.id, history.selection.session_ids)
+
+        current_output = snapshot(current_snapshot, "Current source observation.")
+        compared = compare_history(
+            evidence=current_output.evidence,
+            coverage=current_output.coverage,
+            history=history,
+        )
+        self.assertEqual(compared.comparison.sources[0].baseline_session_id, latest.session.id)
+
+        self.session_store.mark_presented(current.session.id, "production")
+        later = self._service(lambda *_args: snapshot(
+            datetime(2026, 9, 28, 10, tzinfo=timezone.utc), "Later presented observation."
+        )).start(self._request())
+        later.future.result(timeout=3)
+        self.session_store.mark_presented(later.session.id, "production")
+        retry = current_service.start(current_request)
+
+        self.assertTrue(retry.replayed)
+        self.assertEqual(retry.session.id, current.session.id)
+        self.assertIsNotNone(current.session.history)
+        self.assertEqual(retry.session.history.selection, current.session.history.selection)
 
     def test_concurrent_same_key_requests_create_one_session(self) -> None:
         request = self._request()

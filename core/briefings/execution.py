@@ -32,9 +32,9 @@ class InvalidBriefingModelOutputError(BriefingModelOutputError):
     """A completed provider turn returned content that cannot be repaired as-is."""
 
     _REPAIR_FEEDBACK = {
-        "tool_call": "The response attempted to call a tool; return only the Daily JSON object.",
-        "oversized": "The response exceeded its output bound; return a concise Daily JSON object.",
-        "empty": "No response content was returned; provide the Daily JSON object.",
+        "tool_call": "The response attempted to call a tool; return only the briefing JSON object.",
+        "oversized": "The response exceeded its output bound; return a concise briefing JSON object.",
+        "empty": "No response content was returned; provide the briefing JSON object.",
     }
 
     def __init__(self, reason: Literal["tool_call", "oversized", "empty"]) -> None:

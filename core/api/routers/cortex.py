@@ -79,7 +79,7 @@ from core.knowledge.capture import CAPABILITY_NAME, ContextCaptureError, reject_
 from core.knowledge.reconciliation import CAPABILITY_NAME as RECONCILIATION_CAPABILITY_NAME
 from core.knowledge.store import KnowledgeConflictError, KnowledgeNotFoundError, KnowledgeStoreError
 from core.context import ContextAssembler, ContextPolicy
-from core.briefings.context import combine_context_bundles, saved_daily_followup_context
+from core.briefings.context import combine_context_bundles, saved_briefing_followup_context
 from core.briefings.service import get_briefing_session_queries_optional
 from core.knowledge import get_knowledge_service
 from core.context_vault.selection import ContextVaultPreview, ContextVaultSelectionService
@@ -1100,7 +1100,7 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
             briefing_queries.store.find_by_conversation(conversation_id, partition)
             if briefing_queries is not None else None
         )
-        saved_evidence = saved_daily_followup_context(
+        saved_evidence = saved_briefing_followup_context(
             briefing_record, prompt=payload.prompt, policy=context_policy
         )
         remaining_policy = replace(

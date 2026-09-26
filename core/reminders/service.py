@@ -57,6 +57,7 @@ class ReminderList:
     source_state: ReminderSourceState
     cache_timestamp: str | None
     pending_sync_count: int
+    list_id: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -89,7 +90,7 @@ class ReminderService:
         list_id = self._selected_list_id()
         local = self._local_items()
         if not list_id:
-            return self._assemble([], local, "unavailable", None)
+            return self._assemble([], local, "unavailable", None, list_id)
 
         if self._is_connected():
             try:
@@ -122,7 +123,7 @@ class ReminderService:
                         for task in remote
                     ],
                 )
-                return self._assemble(remote, local, "live", None)
+                return self._assemble(remote, local, "live", None, list_id)
             except _EXPECTED_READ_ERRORS as exc:
                 _LOGGER.warning(
                     "Microsoft To Do reminder read unavailable: error_type=%s",
@@ -131,7 +132,7 @@ class ReminderService:
 
         cached = database.fetch_microsoft_todo_reminder_cache(list_id)
         if cached is None:
-            return self._assemble([], local, "unavailable", None)
+            return self._assemble([], local, "unavailable", None, list_id)
         fetched_at, tasks = cached
         remote = [
             {
@@ -145,7 +146,7 @@ class ReminderService:
             for task in tasks[:50]
             if isinstance(task, dict) and task.get("id") and task.get("title")
         ]
-        return self._assemble(remote, local, "stale", fetched_at)
+        return self._assemble(remote, local, "stale", fetched_at, list_id)
 
     def create(self, note: str) -> dict[str, object]:
         """Quick-add remotely when known connected, otherwise queue locally."""
@@ -509,6 +510,7 @@ class ReminderService:
     def _assemble(
         self, remote: list[dict[str, object]], local: list[dict[str, str]],
         source_state: ReminderSourceState, cache_timestamp: str | None,
+        list_id: str | None = None,
     ) -> ReminderList:
         public_remote = [
             {key: value for key, value in item.items() if key != "last_modified_at"}
@@ -519,6 +521,7 @@ class ReminderService:
             source_state=source_state,
             cache_timestamp=cache_timestamp,
             pending_sync_count=sum(item["sync_state"] == "pending" for item in local),
+            list_id=list_id,
         )
 
     def _selected_list_id(self) -> str:

@@ -362,10 +362,10 @@ def collect_football(*, force: bool = False) -> ConnectorResult:
     now = datetime.now(timezone.utc)
     teams = get_settings_store().get_snapshot().football.teams
     if not teams:
-        return ConnectorResult(name="football", status="unavailable", freshness="none", reason_code="configuration_failure", observed_at=observed_at, display_text="Football fixture configuration is unavailable.", data={"fixtures": [], "configured_team_count": 0})
+        return ConnectorResult(name="football", status="unavailable", freshness="none", reason_code="configuration_failure", observed_at=observed_at, display_text="Football fixture configuration is unavailable.", data={"fixtures": [], "configured_team_count": 0, "configured_team_ids": []})
     football_api_key = os.getenv("FOOTBALL_API_KEY")
     if not football_api_key:
-        return ConnectorResult(name="football", status="unavailable", freshness="none", reason_code="missing_credentials", observed_at=observed_at, display_text="Football fixture telemetry unavailable.", data={"fixtures": [], "configured_team_count": len(teams)})
+        return ConnectorResult(name="football", status="unavailable", freshness="none", reason_code="missing_credentials", observed_at=observed_at, display_text="Football fixture telemetry unavailable.", data={"fixtures": [], "configured_team_count": len(teams), "configured_team_ids": [team.id for team in teams]})
 
     cache = _read_football_cache(now=now)
     fixtures: list[dict[str, Any]] = []
@@ -431,7 +431,11 @@ def collect_football(*, force: bool = False) -> ConnectorResult:
     if live_entries:
         _write_football_cache({**{team_id: fixtures for team_id, (_, fixtures) in cache.items()}, **live_entries})
     fixtures.sort(key=lambda fixture: fixture["kickoff_at"])
-    data = {"fixtures": fixtures, "configured_team_count": len(teams)}
+    data = {
+        "fixtures": fixtures,
+        "configured_team_count": len(teams),
+        "configured_team_ids": [team.id for team in teams],
+    }
     if failures:
         if fixtures:
             return ConnectorResult(name="football", status="degraded", freshness="stale", reason_code=failures[0], observed_at=observed_at, display_text=_football_display_text(fixtures), data=data)

@@ -465,7 +465,7 @@ class BriefingSessionApiTests(unittest.TestCase):
         self.assertEqual(detail_response.status_code, 200)
         self.assertEqual(detail_response.json()["run_error_code"], "invalid_model_output")
         log_text = "\n".join(captured.output)
-        self.assertIn("Daily synthesis output remained invalid after one repair attempt", log_text)
+        self.assertIn("Briefing synthesis output remained invalid after one repair attempt", log_text)
         self.assertIn(f"run_id={run.id}", log_text)
         self.assertIn("stage=draft_validation", log_text)
         self.assertNotIn(model_response, log_text)

@@ -319,7 +319,7 @@ Returns the built-in briefing profiles in a stable order. Each entry includes `i
 
 ### POST `/api/v1/briefing-sessions`
 
-Admits an asynchronous Daily generation using the explicit model from the selected Apex Agent catalog entry. The server captures the active production or sandbox partition, applies the current run limits, and creates a saved session linked to a Cortex conversation. It does not fall back to another model. Demo mode uses a deterministic fixture and does not contact a model provider.
+Admits an asynchronous Daily or Catch Up generation using the explicit model from the selected Apex Agent catalog entry. The server captures the active production or sandbox partition, applies the current run limits, and creates a saved session linked to a Cortex conversation. It does not fall back to another model. Demo mode uses a deterministic fixture and does not contact a model provider. Catch Up uses the current source inventory and the presented source history selected when the run is admitted; it calls no model when the deterministic comparison finds no material changes.
 
 ```json
 {
@@ -334,9 +334,19 @@ Admits an asynchronous Daily generation using the explicit model from the select
 `local_reasoning_mode` may be supplied for a compatible local model. The server owns the conversation origin and execution limits. A successful new admission returns `202` with a session ID, conversation ID, run ID, and current run status. Replaying the same idempotency key and request returns the existing session with `200`.
 
 - `409` — the idempotency key conflicts with a different request.
-- `422` — the profile is not available, the model or requested controls are unavailable, or its context window cannot fit a useful Daily prompt.
+- `422` — the profile is not available, the model or requested controls are unavailable, or its context window cannot fit a useful briefing prompt.
 - `429` — the run coordinator has no free execution slot.
 - `503` — briefing generation is unavailable or shutting down.
+
+### Catch Up comparison history
+
+The admission transaction freezes up to 100 newest presented, completed sessions from the active partition. Reading a session does not make it a checkpoint; the client records presentation through `POST /api/v1/briefing-sessions/{session_id}/presented`. Catch Up compares each source independently with history from the same normalized source scope. The newest complete, untruncated presented inventory is the membership checkpoint: a newer partial or capped snapshot does not replace it. Catch Up does not infer new items from incomplete-list membership. For bounded unread email and news, it can still identify a genuinely new message or article when a stable provider ID is available and its received/published timestamp falls after the prior source observation and no later than the current observation. Unmatched items without that timestamp evidence remain not comparable. A source with changed settings or a different normalization version has no compatible baseline.
+
+The artifact's `comparison` field reports the overall outcome and, for each source, its status, baseline/current observation times, and any limitation reason. A partial, failed, disabled, stale, or missing source can make the overall result limited; Catch Up only claims changes supported by comparable evidence. The same comparison metadata is stored with the completed session and returned by the session detail endpoint.
+
+Catch Up uses each source's `observed_at` as its “last checked” time, not the session's creation, completion, or presentation time. The visible combined period runs from the earliest comparable source baseline to the latest current source observation; source details retain the exact per-source times. Reminder and calendar items can become newly time-sensitive when their fixed attention window advances. Market prices count as material only after a 5% move from the baseline. Weather counts condition changes or changes of at least 5°F in temperature, 20 percentage points in precipitation chance, 0.1 inch in precipitation, or 5 mph in wind; forecast-date rollover alone is not material. Missing comparison values or a regressed source timestamp make that source limited rather than supporting a no-change claim.
+
+Source inventories are bounded: reminders include at most 8 items in the selected list; calendar includes at most 12 selected-calendar events in its 14-day window; email includes at most 8 unread primary-inbox records; weather includes current conditions and up to 3 forecast days; cached news includes at most 5 headlines; F1 includes the next-race snapshot; football includes at most 6 fixtures; and market includes at most 12 configured symbols. A top-five news rotation alone does not establish that a headline was newly published; unmatched news without a stable article ID and post-checkpoint publication time is not called new. Personal evidence is retrieval/relevance-limited; pending reviews include at most 5 items, external reports select at most 3 relevant reports from the newest 50 candidates, and verified action outcomes include at most 20 records. The persisted observed inventory is capped at 32 evidence records and model synthesis at 18 evidence records; omitted synthesis evidence does not reduce the persisted source-coverage claim.
 
 ### GET `/api/v1/briefing-sessions`
 
@@ -344,11 +354,11 @@ Returns up to 100 newest session summaries from the active production or sandbox
 
 ### GET `/api/v1/briefing-sessions/{session_id}`
 
-Returns session identity, captured model/profile configuration, run status, a safe `run_error_code` when the run has a classified error, evidence IDs, and the canonical artifact after successful completion. `invalid_model_output` means the model response failed host validation after one repair attempt. Failed, cancelled, interrupted, and still-running sessions return metadata without an artifact. Reading a session does not mark it presented. A session in another partition or an unknown session returns `404`.
+Returns session identity, captured model/profile configuration, run status, a safe `run_error_code` when the run has a classified error, evidence IDs, and the canonical artifact after successful completion. The artifact includes source comparison outcome and per-source checkpoint times when history comparison applies. `invalid_model_output` means the model response failed host validation after one repair attempt. Failed, cancelled, interrupted, and still-running sessions return metadata without an artifact. Reading a session does not mark it presented. A session in another partition or an unknown session returns `404`.
 
 ### GET `/api/v1/briefing-sessions/{session_id}/evidence/{evidence_id}`
 
-Returns one immutable evidence snapshot or unavailable-source entry captured with the completed artifact. The Home evidence inspector loads these records on demand. The conversation retains the opening artifact in its normal history. Follow-up turns may include up to 500 estimated tokens from evidence cited by that completed Daily artifact, within the selected model's existing retrieved-context budget. Saved personal context, pending reviews, external reports, and action evidence are included only when personal-context retrieval is enabled for that runtime. The excerpts retain their original trust and snapshot-time labels; they are not fresh reads or approvals. Evidence reads are partition-scoped and have no presentation side effect. A missing session/evidence entry returns `404`; evidence for a session that has not completed returns `409`.
+Returns one immutable evidence snapshot or unavailable-source entry captured with the completed artifact. The Home evidence inspector loads these records on demand. The conversation retains the opening artifact in its normal history. Follow-up turns may include up to 500 estimated tokens from evidence cited by that completed Daily or Catch Up artifact, within the selected model's existing retrieved-context budget. Saved personal context, pending reviews, external reports, and action evidence are included only when personal-context retrieval is enabled for that runtime. The excerpts retain their trust, comparison role, and captured-time labels; they are not fresh reads or approvals. Evidence reads are partition-scoped and have no presentation side effect. A missing session/evidence entry returns `404`; evidence for a session that has not completed returns `409`.
 
 ### POST `/api/v1/briefing-sessions/{session_id}/presented`
 

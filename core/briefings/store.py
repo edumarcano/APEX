@@ -14,9 +14,12 @@ from uuid import UUID
 from core.connectors.models import utc_now_iso
 from core.runs.models import SAFE_ERROR_MESSAGES
 from core.briefings.models import (
+    BriefingComparison,
     BriefingEvidence,
     BriefingGenerationConfiguration,
     BriefingGenerationRequest,
+    BriefingHistorySelection,
+    BriefingSessionHistory,
     BriefingSessionRecord,
     CanonicalBriefingArtifact,
     validate_snapshot_size,
@@ -111,7 +114,7 @@ class BriefingSessionStore:
             row = conn.execute(
                 "SELECT version FROM schema_versions WHERE domain = 'briefing_sessions'"
             ).fetchone()
-            if row is not None and int(row["version"]) > 1:
+            if row is not None and int(row["version"]) > 2:
                 raise BriefingSessionStoreError(
                     "Briefing session schema is newer than this APEX build."
                 )
@@ -130,20 +133,55 @@ class BriefingSessionStore:
                     presented_at TEXT,
                     request_json TEXT NOT NULL CHECK(json_valid(request_json)),
                     configuration_json TEXT NOT NULL CHECK(json_valid(configuration_json)),
+                    history_json TEXT CHECK(history_json IS NULL OR json_valid(history_json)),
                     artifact_json TEXT CHECK(artifact_json IS NULL OR json_valid(artifact_json)),
                     evidence_json TEXT CHECK(evidence_json IS NULL OR json_valid(evidence_json)),
                     UNIQUE(partition, idempotency_key)
                 )
                 """
             )
+            columns = {
+                row["name"] for row in conn.execute("PRAGMA table_info(briefing_sessions)")
+            }
+            if "history_json" not in columns:
+                conn.execute(
+                    "ALTER TABLE briefing_sessions ADD COLUMN history_json TEXT "
+                    "CHECK(history_json IS NULL OR json_valid(history_json))"
+                )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_briefing_sessions_partition_created "
                 "ON briefing_sessions(partition, created_at DESC)"
             )
             conn.execute(
-                "INSERT INTO schema_versions(domain, version) VALUES ('briefing_sessions', 1) "
+                "INSERT INTO schema_versions(domain, version) VALUES ('briefing_sessions', 2) "
                 "ON CONFLICT(domain) DO UPDATE SET version = excluded.version"
             )
+
+    def capture_history_selection(
+        self, connection: sqlite3.Connection, partition: str
+    ) -> BriefingHistorySelection:
+        """Freeze the newest presented completed sessions within the admission transaction."""
+        rows = connection.execute(
+            """
+            SELECT s.id
+            FROM briefing_sessions s
+            JOIN cortex_runs r ON r.id = s.run_id
+            WHERE s.partition = ? AND s.presented_at IS NOT NULL
+                AND r.status = 'completed'
+                AND s.artifact_json IS NOT NULL
+            ORDER BY s.created_at DESC, s.rowid DESC
+            LIMIT 100
+            """,
+            (partition,),
+        ).fetchall()
+        return BriefingHistorySelection(
+            captured_at=datetime.fromisoformat(utc_now_iso().replace("Z", "+00:00")),
+            session_ids=[UUID(row["id"]) for row in rows],
+        )
+
+    @staticmethod
+    def _history_json(history: BriefingSessionHistory) -> str:
+        return _json(history.model_dump(mode="json"))
 
     @staticmethod
     def request_json(request: BriefingGenerationRequest) -> str:
@@ -181,6 +219,7 @@ class BriefingSessionStore:
         partition: str,
         request: BriefingGenerationRequest,
         configuration: BriefingGenerationConfiguration,
+        history_selection: BriefingHistorySelection,
         conversation_id: UUID,
         opening_message_id: UUID,
         run_id: UUID,
@@ -193,14 +232,15 @@ class BriefingSessionStore:
                 INSERT INTO briefing_sessions (
                     id, partition, idempotency_key, conversation_id, opening_message_id,
                     run_id, profile_id, created_at, presented_at, request_json,
-                    configuration_json, artifact_json, evidence_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL)
+                    configuration_json, history_json, artifact_json, evidence_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, NULL)
                 """,
                 (
                     str(session_id), partition, str(request.idempotency_key),
                     str(conversation_id), str(opening_message_id), str(run_id),
                     request.profile_id, now, self.request_json(request),
                     _json(configuration.model_dump(mode="json")),
+                    self._history_json(BriefingSessionHistory(selection=history_selection)),
                 ),
             )
         except sqlite3.IntegrityError as exc:
@@ -230,7 +270,7 @@ class BriefingSessionStore:
             raise BriefingSessionConflictError("Artifact identity does not match its session.")
         session = connection.execute(
             """
-            SELECT s.artifact_json, r.status AS run_status
+            SELECT s.artifact_json, s.history_json, r.status AS run_status
             FROM briefing_sessions s JOIN cortex_runs r ON r.id = s.run_id
             WHERE s.id = ? AND s.partition = ?
             """,
@@ -244,12 +284,19 @@ class BriefingSessionStore:
             )
         if session["artifact_json"] is not None:
             raise BriefingSessionConflictError("A completed briefing artifact is immutable.")
+        history_value = _decode(session["history_json"])
+        if history_value is None:
+            raise BriefingSessionConflictError("Briefing history selection is missing.")
+        history = BriefingSessionHistory.model_validate(history_value).model_copy(
+            update={"comparison": artifact.comparison}
+        )
         cursor = connection.execute(
-            "UPDATE briefing_sessions SET artifact_json = ?, evidence_json = ? "
+            "UPDATE briefing_sessions SET artifact_json = ?, evidence_json = ?, history_json = ? "
             "WHERE id = ? AND partition = ? AND artifact_json IS NULL",
             (
                 artifact.model_dump_json(),
                 _json([item.model_dump(mode="json") for item in evidence]),
+                self._history_json(history),
                 str(session_id),
                 partition,
             ),
@@ -298,6 +345,60 @@ class BriefingSessionStore:
                 (partition, bounded_limit, bounded_offset),
             ).fetchall()
         return [self._record(row) for row in rows]
+
+    def get_many(
+        self,
+        session_ids: list[UUID],
+        partition: str,
+        *,
+        connection: sqlite3.Connection | None = None,
+    ) -> dict[UUID, BriefingSessionRecord]:
+        """Load a bounded history batch without per-session queries."""
+        if not session_ids:
+            return {}
+        if connection is None:
+            with self._connection() as conn:
+                return self.get_many(session_ids, partition, connection=conn)
+        unique_ids = list(dict.fromkeys(session_ids))[:100]
+        placeholders = ",".join("?" for _ in unique_ids)
+        rows = connection.execute(
+            "SELECT s.*, r.status AS run_status, r.error_code AS run_error_code "
+            "FROM briefing_sessions s JOIN cortex_runs r ON r.id = s.run_id "
+            f"WHERE s.partition = ? AND s.id IN ({placeholders})",
+            (partition, *(str(session_id) for session_id in unique_ids)),
+        ).fetchall()
+        return {
+            UUID(row["id"]): self._record(row)
+            for row in rows
+        }
+
+    def history_candidates(
+        self, session_id: UUID, partition: str
+    ) -> tuple[BriefingHistorySelection, list[BriefingSessionRecord]]:
+        """Read a run's frozen admission selection and its available history snapshots."""
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT s.*, r.status AS run_status, r.error_code AS run_error_code "
+                "FROM briefing_sessions s JOIN cortex_runs r ON r.id = s.run_id "
+                "WHERE s.id = ? AND s.partition = ?",
+                (str(session_id), partition),
+            ).fetchone()
+            if row is None:
+                raise BriefingSessionNotFoundError("Briefing session was not found.")
+            current = self._record(row)
+            if current.history is None:
+                return BriefingHistorySelection(captured_at=current.created_at), []
+            records = self.get_many(
+                current.history.selection.session_ids,
+                partition,
+                connection=conn,
+            )
+        ordered = [
+            records[identifier]
+            for identifier in current.history.selection.session_ids
+            if identifier in records
+        ]
+        return current.history.selection, ordered
 
     def evidence(
         self, session_id: UUID, partition: str, evidence_id: UUID
@@ -358,6 +459,11 @@ class BriefingSessionStore:
             presented_at=(
                 datetime.fromisoformat(row["presented_at"].replace("Z", "+00:00"))
                 if row["presented_at"]
+                else None
+            ),
+            history=(
+                BriefingSessionHistory.model_validate(_decode(row["history_json"]))
+                if row["history_json"] is not None
                 else None
             ),
             artifact=(

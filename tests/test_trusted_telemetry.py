@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import unittest
 from unittest.mock import Mock, patch
 
@@ -323,7 +324,11 @@ class ConnectorValidationTests(unittest.TestCase):
     def test_news_partial_transport_failure_is_degraded(self) -> None:
         response = Mock()
         response.raise_for_status.return_value = None
-        response.json.return_value = {"articles": [{"title": "Verified headline"}]}
+        article_url = "https://news.example/articles/roadmap"
+        response.json.return_value = {"articles": [{
+            "title": "Verified headline", "url": article_url,
+            "publishedAt": "2026-09-25T12:00:00Z",
+        }]}
 
         with patch.object(news_client, "api_key", "test-key"), patch.object(
             news_client.time,
@@ -341,6 +346,27 @@ class ConnectorValidationTests(unittest.TestCase):
         self.assertEqual(result.status, "degraded")
         self.assertEqual(result.reason_code, "partial_failure")
         self.assertEqual(len(result.data["headlines"]), 1)
+        self.assertEqual(
+            result.data["headlines"][0]["article_id"],
+            hashlib.sha256(article_url.encode("utf-8")).hexdigest(),
+        )
+
+    def test_news_malformed_article_url_keeps_headline_without_stable_id(self) -> None:
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {"articles": [{
+            "title": "Useful headline", "url": "https://[invalid",
+        }]}
+
+        with patch.object(news_client, "api_key", "test-key"), patch.object(
+            news_client.time, "sleep",
+        ), patch.object(news_client.requests, "get", return_value=response):
+            result = news_client.collect_news()
+
+        self.assertEqual(result.status, "healthy")
+        self.assertEqual(len(result.data["headlines"]), 1)
+        self.assertEqual(result.data["headlines"][0]["headline"], "Useful headline")
+        self.assertNotIn("article_id", result.data["headlines"][0])
 
     def test_malformed_fresh_f1_cache_is_not_scored_healthy(self) -> None:
         malformed_cache = {
