@@ -19,7 +19,7 @@ from core.briefings.daily import (
     _catch_up_candidates,
     _fit_evidence_to_context,
     _mark_comparison_synthesis_limited,
-    generate_daily_briefing,
+    generate_briefing_generation,
 )
 from core.briefings.daily_inputs import (
     _external_inputs,
@@ -187,8 +187,9 @@ class DailyInputTests(unittest.TestCase):
             patch("core.briefings.daily.is_dev_mode", return_value=False),
             patch("core.briefings.daily_inputs.is_dev_mode", return_value=False),
             patch("core.briefings.daily.execute_single_call") as execute_single_call,
+            patch("core.briefings.daily.investigate_deep") as investigate_deep,
         ):
-            output = generate_daily_briefing(
+            output = generate_briefing_generation(
                 uuid4(), catch_up_request, catch_up_configuration, _Control(), history
             )
 
@@ -205,6 +206,7 @@ class DailyInputTests(unittest.TestCase):
         self.assertNotIn(output.comparison.summary, output.draft.limitations)
         self.assertTrue(any("was disabled" in item for item in output.draft.limitations))
         execute_single_call.assert_not_called()
+        investigate_deep.assert_not_called()
 
     def test_catch_up_includes_labeled_first_snapshot_when_other_sources_are_unchanged(self) -> None:
         unchanged = BriefingEvidence(
@@ -868,7 +870,7 @@ class DailyInputTests(unittest.TestCase):
         request = BriefingGenerationRequest(
             idempotency_key=uuid4(), profile_id="daily", model_id="demo/daily-fixture"
         )
-        output = generate_daily_briefing(
+        output = generate_briefing_generation(
             uuid4(), request, configuration, _Control()  # type: ignore[arg-type]
         )
 
@@ -981,10 +983,11 @@ class DailyInputTests(unittest.TestCase):
             patch("core.briefings.execution.get_visible_model_profile", return_value=visible_profile),
             patch("core.briefings.execution.build_concrete_agent", return_value=model_profile),
             patch("core.briefings.execution.model_has_credentials", return_value=True),
+            patch("core.briefings.daily.investigate_deep") as investigate_deep,
             patch("core.agent.providers.openrouter.OpenAI", openai),
             patch.dict(os.environ, {"OPENROUTER_API_KEY": "fixture-key"}),
         ):
-            output = generate_daily_briefing(
+            output = generate_briefing_generation(
                 uuid4(), request, _model_configuration(), control  # type: ignore[arg-type]
             )
 
@@ -994,6 +997,7 @@ class DailyInputTests(unittest.TestCase):
         self.assertTrue(row.included_in_synthesis)
         self.assertEqual(output.draft.sections[0].items[0].category, "observation")
         self.assertEqual(output.draft.sections[0].items[0].evidence_ids, [row.id])
+        investigate_deep.assert_not_called()
         self.assertIn(("briefing.stage", {"stage": "synthesizing", "state": "completed"}), control.events)
         self.assertTrue(captured["rows"])
         self.assertEqual(len(captured["prompts"]), 2)  # type: ignore[arg-type]

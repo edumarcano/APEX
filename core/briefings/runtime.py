@@ -193,12 +193,12 @@ def resolve_briefing_configuration(
         origin=request.origin,
         execution_kind="model",
     )
-    if configuration.profile.id in {"daily", "catch_up"}:
+    if configuration.profile.id in {"daily", "catch_up", "deep"}:
         try:
             # Resolve the exact briefing system/schema budget before the run is admitted.
-            from core.briefings.daily import validate_daily_context_budget
+            from core.briefings.daily import validate_briefing_context_budget
 
-            validate_daily_context_budget(configuration)
+            validate_briefing_context_budget(configuration)
         except RuntimeError as exc:
             raise BriefingModelConfigurationError(str(exc)) from None
     return configuration

@@ -748,6 +748,34 @@ class RetryHelperTests(unittest.TestCase):
         self.assertEqual(request["config"].max_output_tokens, 31)
         self.assertEqual(result.message.content, "Bounded output")
 
+    @patch("core.agent.providers.gemini.genai.Client")
+    def test_gemini_briefings_use_json_mode_without_provider_schema(
+        self, client_cls: MagicMock
+    ) -> None:
+        from core.briefings.models import BriefingDraft
+
+        client = MagicMock()
+        part = MagicMock(text='{"sections":[],"limitations":[]}', function_call=None)
+        candidate = MagicMock()
+        candidate.content.parts = [part]
+        client.models.generate_content_stream.return_value = [
+            MagicMock(candidates=[candidate], usage_metadata=None)
+        ]
+        client_cls.return_value = client
+
+        result = GeminiProvider(api_key="test").generate_turn(
+            [AgentMessage(role="user", content="Return a briefing draft.")],
+            [],
+            _concrete_profile("gemini-3.7-flash"),
+            output_schema=BriefingDraft.model_json_schema(),
+        )
+
+        config = client.models.generate_content_stream.call_args.kwargs["config"]
+        self.assertFalse(result.output_schema_applied)
+        self.assertEqual(config.response_mime_type, "application/json")
+        self.assertIsNone(config.response_schema)
+        self.assertIsNone(config.response_json_schema)
+
 
 class ResponsesAdapterTests(unittest.TestCase):
     def test_message_conversion_preserves_tool_loop_and_store_false_contract(

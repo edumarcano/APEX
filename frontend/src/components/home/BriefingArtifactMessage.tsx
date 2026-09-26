@@ -27,6 +27,7 @@ export function BriefingArtifactMessage({ session, isLoadingSession, evidence, o
   const otherEvidenceIds = session.evidence_ids.filter((id) => !referencedEvidenceIds.has(id))
   const isDemo = session.configuration.execution_kind === 'demo'
   const isCatchUp = session.configuration.profile.id === 'catch_up'
+  const investigation = artifact.investigation
   return <article data-testid="briefing-artifact" className="space-y-4" aria-label={`${session.configuration.profile.label} briefing`}>
     <header ref={presentationRef}>
       <p className="font-orbitron text-[11px] uppercase tracking-[0.15em] text-[#A5C7FF]">{session.configuration.profile.label} briefing</p>
@@ -34,6 +35,14 @@ export function BriefingArtifactMessage({ session, isLoadingSession, evidence, o
         {formatBriefingTime(artifact.created_at)} · {isDemo ? 'Deterministic demo fixture' : session.configuration.model.model_id}
       </p>
       {isDemo ? <p className="mt-2 rounded-md border border-blue-400/15 bg-blue-950/20 px-2 py-1.5 text-[10px] text-blue-100">DEMO fixture. No model was run and no live personal sources were read.</p> : null}
+      {session.configuration.profile.id === 'deep' && investigation ? <div className="mt-2 rounded-md border border-violet-400/15 bg-violet-950/15 px-2.5 py-2 text-[10px] text-violet-100" role="status">
+        <p>{investigation.status === 'no_read_needed'
+          ? 'Deep used the saved snapshot; no additional read was needed.'
+          : investigation.status === 'limited'
+            ? `Deep investigation was limited after ${investigation.result_count} untrusted read result${investigation.result_count === 1 ? '' : 's'}.`
+            : `Deep added ${investigation.result_count} untrusted bounded read result${investigation.result_count === 1 ? '' : 's'}.`}</p>
+        {investigation.limitations.length > 0 ? <ul className="mt-1 list-disc pl-4 text-violet-100/80">{investigation.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul> : null}
+      </div> : null}
       {artifact.sections.length === 0 && !(isCatchUp && artifact.comparison) ? <p className="mt-2 text-sm text-zinc-300">{artifact.comparison?.summary ?? 'No briefing items were produced.'}</p> : null}
     </header>
     {isCatchUp && artifact.comparison ? <CatchUpComparisonBanner comparison={artifact.comparison} /> : null}

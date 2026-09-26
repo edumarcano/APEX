@@ -20,11 +20,11 @@ _WORD = re.compile(r"[a-z0-9]{4,}")
 def saved_briefing_followup_context(
     record: BriefingSessionRecord | None, *, prompt: str, policy: ContextPolicy
 ) -> ContextBundle:
-    """Select only evidence cited by a completed Daily or Catch Up artifact in this partition."""
+    """Select only evidence cited by a completed briefing artifact in this partition."""
     if (
         record is None
         or record.partition != policy.partition
-        or record.request.profile_id not in {"daily", "catch_up"}
+        or record.request.profile_id not in {"daily", "catch_up", "deep"}
         or record.run_status != "completed"
         or record.artifact is None
     ):

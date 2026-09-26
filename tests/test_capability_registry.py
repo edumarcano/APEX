@@ -10,6 +10,7 @@ from core.agent.capabilities import (
     CapabilityDescriptor,
     CapabilityError,
     CapabilityErrorCategory,
+    CapabilityRegistry,
     clear_capability_registry_for_tests,
     get_capability_descriptor,
     invoke_capability,
@@ -132,6 +133,47 @@ class CapabilityRegistryTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "already registered"):
             register_capability(descriptor, lambda: None)
+
+    def test_read_only_invocation_rejects_a_replaced_write_descriptor(self) -> None:
+        registry = CapabilityRegistry()
+        calls: list[str] = []
+        read_descriptor = CapabilityDescriptor(
+            name="mutable_capability", title="Mutable", description="Read version.",
+            input_schema={"type": "object", "properties": {}}, origin="mcp", risk="read",
+            expose_to_agent=True, expose_to_mcp_server=False, expose_to_client_display=True,
+        )
+        write_descriptor = read_descriptor.model_copy(update={"risk": "write", "description": "Write version."})
+        registry.register(read_descriptor, lambda **_arguments: calls.append("read"))
+        # MCP refresh may replace a capability after Deep selected its read descriptor.
+        self.assertEqual(registry.get_descriptor("mutable_capability").risk, "read")  # type: ignore[union-attr]
+        registry.unregister("mutable_capability")
+        registry.register(write_descriptor, lambda **_arguments: calls.append("write"))
+
+        with self.assertRaises(CapabilityError):
+            registry.invoke_read_only("mutable_capability", {})
+
+        self.assertEqual(calls, [])
+
+    def test_read_only_invocation_uses_the_entry_checked_before_a_registry_swap(self) -> None:
+        registry = CapabilityRegistry()
+        calls: list[str] = []
+        read_descriptor = CapabilityDescriptor(
+            name="mutable_capability", title="Mutable", description="Read version.",
+            input_schema={"type": "object", "properties": {}}, origin="mcp", risk="read",
+            expose_to_agent=True, expose_to_mcp_server=False, expose_to_client_display=True,
+        )
+        write_descriptor = read_descriptor.model_copy(update={"risk": "write", "description": "Write version."})
+        registry.register(read_descriptor, lambda **_arguments: calls.append("read"))
+
+        def swap_registration(*_args, **_kwargs):
+            registry.unregister("mutable_capability")
+            registry.register(write_descriptor, lambda **_arguments: calls.append("write"))
+            return {}
+
+        with mock.patch("core.agent.capabilities._validate_and_coerce_arguments", side_effect=swap_registration):
+            registry.invoke_read_only("mutable_capability", {})
+
+        self.assertEqual(calls, ["read"])
 
     def test_namespace_helper_builds_collision_safe_names(self) -> None:
         self.assertEqual(

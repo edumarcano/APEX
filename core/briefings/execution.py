@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 import os
+import re
 from collections.abc import Callable
 from typing import Any, Literal
+
+from google.genai.errors import APIError
 
 from core.agent.catalog import build_concrete_agent
 from core.agent.local_runtime.execution import admit_local_model
@@ -22,6 +28,8 @@ from core.briefings.runtime import get_visible_model_profile
 from core.runs.coordinator import RunExecutionControl
 
 ProviderFactory = Callable[[Any, str | None], Any]
+_LOGGER = logging.getLogger(__name__)
+_SAFE_PROVIDER_FIELD_PATH = re.compile(r"[A-Za-z0-9_.\[\]-]{1,160}\Z")
 
 
 class BriefingModelOutputError(ValueError):
@@ -40,6 +48,7 @@ class InvalidBriefingModelOutputError(BriefingModelOutputError):
     def __init__(self, reason: Literal["tool_call", "oversized", "empty"]) -> None:
         repair_feedback = self._REPAIR_FEEDBACK[reason]
         super().__init__(repair_feedback)
+        self.reason = reason
         self.repair_feedback = repair_feedback
 
 
@@ -99,14 +108,26 @@ def execute_single_call(
 
     def _generate() -> ProviderTurnResult:
         control.before_model_turn()
-        result = provider.generate_turn(
-            [AgentMessage(role="user", content=prompt)],
-            [],
-            concrete_profile,
-            execution_control=control,
-            output_schema=output_schema,
-            output_token_limit=output_token_limit,
-        )
+        try:
+            result = provider.generate_turn(
+                [AgentMessage(role="user", content=prompt)],
+                [],
+                concrete_profile,
+                execution_control=control,
+                output_schema=output_schema,
+                output_token_limit=output_token_limit,
+            )
+        except APIError as exc:
+            _log_google_api_error(
+                exc,
+                configuration=configuration,
+                control=control,
+                prompt=prompt,
+                system_instruction=system_instruction,
+                output_schema=output_schema,
+                output_token_limit=output_token_limit,
+            )
+            raise
         control.after_model_turn(result)
         if result.message.tool_calls:
             raise InvalidBriefingModelOutputError("tool_call")
@@ -122,3 +143,99 @@ def execute_single_call(
         with admit_local_model(concrete_profile):
             return _generate()
     return _generate()
+
+
+def _log_google_api_error(
+    error: APIError,
+    *,
+    configuration: BriefingGenerationConfiguration,
+    control: RunExecutionControl,
+    prompt: str,
+    system_instruction: str,
+    output_schema: dict[str, Any],
+    output_token_limit: int,
+) -> None:
+    schema_json = json.dumps(
+        output_schema, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    schema_hash = hashlib.sha256(schema_json.encode("utf-8")).hexdigest()[:12]
+    run_id = getattr(getattr(control, "handle", None), "run_id", None) or "unknown"
+    fields = _safe_google_field_paths(getattr(error, "details", None))
+    _LOGGER.warning(
+        "Briefing provider request failed: run_id=%s profile=%s provider=%s model=%s "
+        "http_status=%s api_status=%s reason=%s fields=%s input_bytes=%s "
+        "system_instruction_bytes=%s schema_bytes=%s schema_sha256=%s output_token_limit=%s",
+        run_id,
+        configuration.profile.id,
+        configuration.model.provider,
+        configuration.model.model_id,
+        error.code,
+        _safe_log_value(getattr(error, "status", None), fallback="unknown"),
+        _google_error_reason(error, fields),
+        ",".join(fields) if fields else "none",
+        len(prompt.encode("utf-8")),
+        len(system_instruction.encode("utf-8")),
+        len(schema_json.encode("utf-8")),
+        schema_hash,
+        output_token_limit,
+    )
+
+
+def _safe_google_field_paths(details: Any) -> list[str]:
+    """Extract only bounded request field paths from Google's structured errors."""
+    fields: set[str] = set()
+    visited = 0
+
+    def visit(value: Any, depth: int = 0) -> None:
+        nonlocal visited
+        if depth > 6 or visited >= 128:
+            return
+        visited += 1
+        if isinstance(value, dict):
+            violations = value.get("fieldViolations")
+            if isinstance(violations, list):
+                for violation in violations[:8]:
+                    if not isinstance(violation, dict):
+                        continue
+                    field = violation.get("field")
+                    if isinstance(field, str) and _SAFE_PROVIDER_FIELD_PATH.fullmatch(field):
+                        fields.add(field)
+            for child in value.values():
+                visit(child, depth + 1)
+        elif isinstance(value, list):
+            for child in value[:32]:
+                visit(child, depth + 1)
+
+    visit(details)
+    return sorted(fields)[:5]
+
+
+def _google_error_reason(error: APIError, fields: list[str]) -> str:
+    status = str(getattr(error, "status", "") or "").casefold()
+    message = str(getattr(error, "message", "") or "").casefold()
+    field_text = " ".join(fields).casefold()
+    if any(
+        field_name in message or field_name in field_text
+        for field_name in ("response_schema", "response_json_schema")
+    ):
+        return "structured_output_schema_rejected"
+    if "max_output_tokens" in message or "max_output_tokens" in field_text:
+        return "output_limit_rejected"
+    if error.code == 413 or any(
+        marker in message for marker in ("too many tokens", "input too large", "request too large")
+    ):
+        return "request_size_rejected"
+    if error.code == 429 or status == "resource_exhausted":
+        return "rate_limited"
+    if error.code in {401, 403}:
+        return "credentials_or_permission_rejected"
+    if error.code == 400 or status == "invalid_argument":
+        return "invalid_argument"
+    return "provider_request_rejected"
+
+
+def _safe_log_value(value: Any, *, fallback: str) -> str:
+    if not isinstance(value, str):
+        return fallback
+    normalized = re.sub(r"[^A-Za-z0-9_.-]", "_", value)[:64]
+    return normalized or fallback

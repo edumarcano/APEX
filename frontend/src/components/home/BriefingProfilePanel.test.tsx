@@ -10,6 +10,7 @@ import { BriefingProfilePanel } from './BriefingProfilePanel'
 const profiles: BriefingProfileSummary[] = [
   { id: 'daily', label: 'Daily', purpose: 'Current information.', investigation_required: false, available: true, unavailable_reason: null },
   { id: 'catch_up', label: 'Catch Up', purpose: 'What changed since a briefing was presented.', investigation_required: false, available: true, unavailable_reason: null },
+  { id: 'deep', label: 'Deep', purpose: 'An evidence-backed investigation across relevant current information and context.', investigation_required: true, available: true, unavailable_reason: null },
 ]
 
 const catalog: ModelCatalogEntry[] = [
@@ -86,7 +87,7 @@ function failedSession(): BriefingSessionDetail {
 }
 
 describe('BriefingProfilePanel', () => {
-  it('enables Catch Up while keeping Deep unavailable', async () => {
+  it('enables the built-in briefing profiles, including Deep', async () => {
     const user = userEvent.setup()
     render(<BriefingProfilePanel {...baseProps()} />)
 
@@ -96,6 +97,23 @@ describe('BriefingProfilePanel', () => {
     const catchUp = screen.getByRole('radio', { name: /Catch Up/ })
     expect(catchUp).toBeEnabled()
     expect(catchUp).toHaveTextContent('What changed since a briefing was presented.')
+    expect(screen.getByRole('radio', { name: /Deep/ })).toBeEnabled()
+  })
+
+  it('shows the bounded investigation expectation and live Deep stage', () => {
+    const session = failedSession()
+    session.run_status = 'running'
+    session.configuration.profile = { id: 'deep', label: 'Deep', purpose: 'An evidence-backed investigation.', definition_version: 1 }
+    session.active_stage = { stage: 'investigating', state: 'started' }
+    render(<BriefingProfilePanel {...baseProps({
+      profileId: 'deep',
+      activeSession: session,
+      selectedSessionId: session.id,
+      hasActiveSession: true,
+    })} />)
+
+    expect(screen.getByText(/take longer and use more model time.*small, read-only set of relevant sources/)).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Deep is checking relevant read sources')
   })
 
   it('generates Catch Up with the selected model only when Generate is pressed', async () => {

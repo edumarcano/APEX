@@ -8,6 +8,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
+from google.genai.errors import APIError
+
 from core.agent.types import AgentMessage, ToolCall
 from core.briefings.execution import (
     BriefingModelOutputError,
@@ -99,6 +101,7 @@ class _ExecutionControl:
     def __init__(self) -> None:
         self.before = 0
         self.after = 0
+        self.handle = SimpleNamespace(run_id="briefing-run-diagnostic-test")
 
     def before_model_turn(self) -> None:
         self.before += 1
@@ -164,6 +167,89 @@ class BriefingSingleCallTests(unittest.TestCase):
         self.assertEqual(kwargs["output_schema"], {"type": "object"})
         self.assertIs(kwargs["execution_control"], control)
         self.assertEqual((control.before, control.after), (1, 1))
+
+    def test_google_api_error_logs_safe_run_scoped_request_diagnostics(self) -> None:
+        configuration = BriefingGenerationConfiguration(
+            profile=BUILTIN_BRIEFING_PROFILES["deep"],
+            model=BriefingModelConfiguration(
+                model_id="gemini-3.7-flash",
+                provider="gemini",
+                runtime="cloud",
+                reasoning=None,
+                context_window=None,
+                max_elapsed_seconds=30,
+                max_retries=1,
+                max_model_turns=1,
+                max_tool_calls=1,
+                output_token_limit=48,
+            ),
+            origin="hud",
+        )
+        prompt_sentinel = "PRIVATE_PROMPT_DIAGNOSTIC_SENTINEL"
+        evidence_sentinel = "PRIVATE_EVIDENCE_DIAGNOSTIC_SENTINEL"
+        error = APIError(
+            400,
+            {
+                "error": {
+                    "code": 400,
+                    "status": "INVALID_ARGUMENT",
+                    "message": f"Invalid generation_config.response_json_schema: {prompt_sentinel}",
+                    "details": [
+                        {
+                            "@type": "type.googleapis.com/google.rpc.BadRequest",
+                            "fieldViolations": [
+                                {
+                                    "field": "generation_config.response_json_schema",
+                                    "description": evidence_sentinel,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            },
+        )
+
+        class _RejectingGoogleProvider:
+            def generate_turn(self, *_args, **_kwargs):
+                raise error
+
+        control = _ExecutionControl()
+        with (
+            patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}),
+            patch(
+                "core.briefings.execution.get_visible_model_profile",
+                return_value=SimpleNamespace(
+                    provider="gemini", runtime="cloud", credential_env="GEMINI_API_KEY"
+                ),
+            ),
+            patch("core.briefings.execution.model_has_credentials", return_value=True),
+            patch(
+                "core.briefings.execution.build_concrete_agent",
+                return_value=SimpleNamespace(system_instruction="Safe briefing system instruction."),
+            ),
+            patch("core.briefings.execution.is_local_profile", return_value=False),
+        ):
+            with self.assertLogs("core.briefings.execution", level="WARNING") as captured:
+                with self.assertRaises(APIError):
+                    execute_single_call(
+                        configuration=configuration,
+                        prompt=prompt_sentinel,
+                        output_schema={"type": "object"},
+                        control=control,  # type: ignore[arg-type]
+                        provider_factory=lambda *_args: _RejectingGoogleProvider(),
+                    )
+
+        log_text = "\n".join(captured.output)
+        self.assertIn("run_id=briefing-run-diagnostic-test", log_text)
+        self.assertIn("profile=deep", log_text)
+        self.assertIn("provider=gemini", log_text)
+        self.assertIn("model=gemini-3.7-flash", log_text)
+        self.assertIn("http_status=400", log_text)
+        self.assertIn("api_status=INVALID_ARGUMENT", log_text)
+        self.assertIn("reason=structured_output_schema_rejected", log_text)
+        self.assertIn("fields=generation_config.response_json_schema", log_text)
+        self.assertNotIn(prompt_sentinel, log_text)
+        self.assertNotIn(evidence_sentinel, log_text)
 
     def test_prompt_and_context_bounds_reject_before_provider_call(self) -> None:
         provider_calls = []

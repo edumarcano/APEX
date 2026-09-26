@@ -18,6 +18,8 @@ from core.briefings.models import (
     BriefingHistorySelection,
     BriefingGenerationConfiguration,
     BriefingGenerationRequest,
+    BriefingInvestigationMetadata,
+    BriefingStageProgress,
     BriefingSessionDetail,
     BriefingSessionRecord,
     BriefingSessionSummary,
@@ -63,6 +65,7 @@ class BriefingGenerationOutput(BaseModel):
     evidence: list[BriefingEvidence]
     coverage: list[BriefingCoverage]
     comparison: BriefingComparison | None = None
+    investigation: BriefingInvestigationMetadata | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +128,10 @@ class BriefingService:
 
         configuration = self._resolve_configuration(request)
         self._validate_configuration(request, configuration)
+        if request.profile_id == "deep":
+            from core.briefings.investigation import validate_deep_preflight
+
+            validate_deep_preflight(configuration, partition=partition)  # type: ignore[arg-type]
         session_id = uuid4()
         conversation_id = uuid4()
         user_message_id = uuid4()
@@ -240,6 +247,7 @@ class BriefingService:
                 evidence=generated.evidence,
                 coverage=generated.coverage,
                 comparison=generated.comparison,
+                investigation=generated.investigation,
             )
             return BriefingExecutionResult(
                 artifact=artifact,
@@ -414,9 +422,11 @@ class BriefingSessionQueries:
         self,
         store: BriefingSessionStore,
         partition_getter: Callable[[], str],
+        coordinator: CortexRunCoordinator | None = None,
     ) -> None:
         self.store = store
         self._partition_getter = partition_getter
+        self._coordinator = coordinator
 
     def list(
         self, *, limit: int = 25, offset: int = 0
@@ -438,18 +448,35 @@ class BriefingSessionQueries:
         ]
 
     def get(self, session_id: UUID) -> BriefingSessionDetail:
-        return self._detail(self.store.get(session_id, self._partition_getter()))
+        record = self.store.get(session_id, self._partition_getter())
+        return self._detail(record, self._active_stage(record.run_id))
 
     def evidence(self, session_id: UUID, evidence_id: UUID) -> BriefingEvidence:
         return self.store.evidence(session_id, self._partition_getter(), evidence_id)
 
     def mark_presented(self, session_id: UUID) -> BriefingSessionDetail:
-        return self._detail(
-            self.store.mark_presented(session_id, self._partition_getter())
-        )
+        record = self.store.mark_presented(session_id, self._partition_getter())
+        return self._detail(record, self._active_stage(record.run_id))
+
+    def _active_stage(self, run_id: UUID) -> BriefingStageProgress | None:
+        if self._coordinator is None:
+            return None
+        buffer = self._coordinator.events.get(run_id)
+        if buffer is None:
+            return None
+        value = buffer.snapshot().payload.get("briefing_stage")
+        if not isinstance(value, dict):
+            return None
+        try:
+            return BriefingStageProgress.model_validate(value)
+        except ValueError:
+            return None
 
     @staticmethod
-    def _detail(record: BriefingSessionRecord) -> BriefingSessionDetail:
+    def _detail(
+        record: BriefingSessionRecord,
+        active_stage: BriefingStageProgress | None = None,
+    ) -> BriefingSessionDetail:
         completed = record.run_status == "completed" and record.artifact is not None
         return BriefingSessionDetail(
             id=record.id,
@@ -464,4 +491,5 @@ class BriefingSessionQueries:
             evidence_ids=[item.id for item in record.evidence] if completed else [],
             created_at=record.created_at,
             presented_at=record.presented_at,
+            active_stage=active_stage,
         )

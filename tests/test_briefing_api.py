@@ -8,6 +8,7 @@ import threading
 import unittest
 from contextlib import ExitStack, contextmanager
 from types import SimpleNamespace
+from typing import Any
 from uuid import UUID, uuid4
 from unittest.mock import patch
 
@@ -17,7 +18,7 @@ from fastapi.testclient import TestClient
 from core.api.routers import briefings as briefing_routes
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.types import AgentMessage
-from core.briefings.daily import generate_daily_briefing
+from core.briefings.daily import generate_briefing_generation
 from core.briefings.execution import InvalidBriefingModelOutputError
 from core.briefings.models import (
     AVAILABLE_BRIEFING_PROFILES,
@@ -304,6 +305,15 @@ class BriefingSessionApiTests(unittest.TestCase):
                 self.assertTrue(entry["unavailable_reason"])
         self.assertTrue(next(e for e in catalog if e["id"] == "daily")["available"])
 
+    def test_profile_catalog_marks_deep_unavailable_in_demo_mode(self) -> None:
+        with patch("core.api.routers.briefings.DEMO_MODE", True):
+            response = self.client.get("/api/v1/briefing-profiles")
+
+        self.assertEqual(response.status_code, 200)
+        deep = next(entry for entry in response.json() if entry["id"] == "deep")
+        self.assertFalse(deep["available"])
+        self.assertIn("unavailable in demo mode", deep["unavailable_reason"])
+
     def test_generation_and_catalog_share_profile_availability(self) -> None:
         unavailable = sorted(set(BUILTIN_BRIEFING_PROFILES) - AVAILABLE_BRIEFING_PROFILES)
         service = self._service(lambda *_args: self._output())
@@ -382,10 +392,12 @@ class BriefingSessionApiTests(unittest.TestCase):
 
     def test_invalid_daily_draft_can_be_repaired_and_saved(self) -> None:
         calls: list[str] = []
+        output_schemas: list[dict[str, Any]] = []
 
         def model_call(**kwargs):
             prompt = kwargs["prompt"]
             calls.append(prompt)
+            output_schemas.append(kwargs["output_schema"])
             if len(calls) == 1:
                 return ProviderTurnResult(
                     message=AgentMessage(
@@ -412,7 +424,7 @@ class BriefingSessionApiTests(unittest.TestCase):
                 message=AgentMessage(role="agent", content=json.dumps(output))
             )
 
-        service = self._service(generate_daily_briefing)
+        service = self._service(generate_briefing_generation)
         with self._patched_daily_generation(model_call) as evidence:
             started = service.start(self._request())
             assert started.future is not None
@@ -424,6 +436,11 @@ class BriefingSessionApiTests(unittest.TestCase):
         self.assertEqual(run.status, "completed")
         self.assertIsNone(run.error)
         self.assertEqual(len(calls), 2)
+        self.assertEqual(len(output_schemas), 2)
+        for output_schema in output_schemas:
+            item_properties = output_schema["$defs"]["BriefingItemDraft"]["properties"]
+            self.assertNotIn("record_references", item_properties)
+            self.assertNotIn("ExistingRecordReference", output_schema["$defs"])
         self.assertIn("Safe validation feedback", calls[1])
         self.assertIn("empty result with usable evidence", calls[1])
         self.assertEqual(detail_response.status_code, 200)
@@ -447,7 +464,7 @@ class BriefingSessionApiTests(unittest.TestCase):
                 )
             )
 
-        service = self._service(generate_daily_briefing)
+        service = self._service(generate_briefing_generation)
         with self.assertLogs("core.briefings.daily", level="WARNING") as captured:
             with self._patched_daily_generation(
                 model_call, evidence_content=evidence_content
@@ -468,16 +485,60 @@ class BriefingSessionApiTests(unittest.TestCase):
         self.assertIn("Briefing synthesis output remained invalid after one repair attempt", log_text)
         self.assertIn(f"run_id={run.id}", log_text)
         self.assertIn("stage=draft_validation", log_text)
+        self.assertIn("first_failure=draft_schema_invalid", log_text)
+        self.assertIn("repair_failure=draft_schema_invalid", log_text)
         self.assertNotIn(model_response, log_text)
         self.assertNotIn(evidence_content, log_text)
         self.assertNotIn(model_response, "\n".join(self.connection.iterdump()))
         self.assertNotIn(evidence_content, "\n".join(self.connection.iterdump()))
 
+    def test_unknown_evidence_reference_is_reported_without_logging_model_content(self) -> None:
+        unknown_evidence_id = uuid4()
+        model_content = "PRIVATE_UNKNOWN_REFERENCE_MODEL_CONTENT"
+        evidence_content = "PRIVATE_UNKNOWN_REFERENCE_EVIDENCE_CONTENT"
+
+        def model_call(**_kwargs):
+            return ProviderTurnResult(
+                message=AgentMessage(
+                    role="agent",
+                    content=json.dumps({
+                        "sections": [{
+                            "title": "Today",
+                            "items": [{
+                                "category": "observation",
+                                "title": "Private item",
+                                "body": model_content,
+                                "evidence_ids": [str(unknown_evidence_id)],
+                            }],
+                        }],
+                        "limitations": [],
+                    }),
+                )
+            )
+
+        service = self._service(generate_briefing_generation)
+        with self.assertLogs("core.briefings.daily", level="WARNING") as captured:
+            with self._patched_daily_generation(
+                model_call, evidence_content=evidence_content
+            ):
+                started = service.start(self._request())
+                assert started.future is not None
+                run = started.future.result(timeout=3)
+
+        self.assertEqual(run.status, "failed")
+        self.assertEqual(run.error.code if run.error else None, "invalid_model_output")
+        log_text = "\n".join(captured.output)
+        self.assertIn("first_failure=unknown_evidence_ids", log_text)
+        self.assertIn("repair_failure=unknown_evidence_ids", log_text)
+        self.assertNotIn(model_content, log_text)
+        self.assertNotIn(str(unknown_evidence_id), log_text)
+        self.assertNotIn(evidence_content, log_text)
+
     def test_persistent_provider_output_error_is_classified_at_safe_stage(self) -> None:
         def reject_provider_output(**_kwargs):
             raise InvalidBriefingModelOutputError("empty")
 
-        service = self._service(generate_daily_briefing)
+        service = self._service(generate_briefing_generation)
         with self.assertLogs("core.briefings.daily", level="WARNING") as captured:
             with self._patched_daily_generation(reject_provider_output):
                 started = service.start(self._request())

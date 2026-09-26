@@ -1,4 +1,4 @@
-"""Bounded Daily briefing collection, evidence selection, and synthesis."""
+"""Shared bounded collection, history selection, and briefing synthesis."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any
 from uuid import UUID
 
 from core.briefings.daily_inputs import (
-    CORE_DAILY_SOURCES,
+    CORE_BRIEFING_SOURCES,
     SOURCE_SCOPES,
     _MAX_OBSERVED_EVIDENCE,
     _MAX_SYNTHESIS_EVIDENCE,
@@ -22,6 +22,10 @@ from core.briefings.daily_inputs import (
 )
 from core.briefings.execution import InvalidBriefingModelOutputError, execute_single_call
 from core.briefings.history import compare_history
+from core.briefings.investigation import (
+    MAX_DEEP_TOOL_RESULTS,
+    investigate_deep,
+)
 from core.briefings.models import (
     NORMALIZATION_VERSION,
     MAX_PROMPT_BYTES,
@@ -32,6 +36,7 @@ from core.briefings.models import (
     BriefingGenerationConfiguration,
     BriefingGenerationRequest,
     BriefingHistorySelection,
+    BriefingInvestigationMetadata,
     BriefingItemDraft,
     BriefingSectionDraft,
     ExistingRecordReference,
@@ -49,8 +54,8 @@ from core.telemetry.service import (
 )
 
 
-class DailyBriefingError(RuntimeError):
-    """Safe failure to prepare a bounded Daily synthesis request."""
+class BriefingExecutionError(RuntimeError):
+    """Safe failure to prepare a bounded briefing request."""
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,12 +64,12 @@ _MAX_REPAIR_FEEDBACK_BYTES = 512
 _REPAIR_PROMPT_RESERVE_BYTES = 3_072
 
 
-def validate_daily_context_budget(
+def validate_briefing_context_budget(
     configuration: BriefingGenerationConfiguration,
 ) -> None:
     """Reject a model before admission when one evidence-backed prompt cannot fit."""
     if (
-        configuration.profile.id not in {"daily", "catch_up"}
+        configuration.profile.id not in {"daily", "catch_up", "deep"}
         or configuration.execution_kind == "demo"
         or configuration.model.context_window is None
     ):
@@ -117,20 +122,20 @@ def validate_daily_context_budget(
             BriefingDraft.model_json_schema(),
             reserve_bytes=_REPAIR_PROMPT_RESERVE_BYTES,
         )
-    except DailyBriefingError:
-        raise DailyBriefingError(
+    except BriefingExecutionError:
+        raise BriefingExecutionError(
             "The selected model context window is too small for an evidence-backed briefing."
         ) from None
 
 
-def generate_daily_briefing(
+def generate_briefing_generation(
     session_id: UUID,
     request: BriefingGenerationRequest,
     configuration: BriefingGenerationConfiguration,
     control: RunExecutionControl,
     history: BriefingHistoryContext | None = None,
 ) -> BriefingGenerationOutput:
-    """Run Daily or Catch Up through one bounded evidence and synthesis path."""
+    """Run a normal briefing through one bounded evidence and synthesis path."""
     now = datetime.now(timezone.utc)
     if history is None:
         history = BriefingHistoryContext(
@@ -139,12 +144,12 @@ def generate_daily_briefing(
         )
     if configuration.execution_kind == "demo":
         return _demo_output(session_id, request, control, history, now=now)
-    return _generate_model_daily(
+    return _generate_model_briefing(
         session_id, request, configuration, control, history, now=now
     )
 
 
-def _generate_model_daily(
+def _generate_model_briefing(
     session_id: UUID,
     request: BriefingGenerationRequest,
     configuration: BriefingGenerationConfiguration,
@@ -230,9 +235,15 @@ def _generate_model_daily(
                 comparison=comparison,
             )
 
+        evidence_limit = (
+            _MAX_SYNTHESIS_EVIDENCE - MAX_DEEP_TOOL_RESULTS
+            if profile_id == "deep"
+            else _MAX_SYNTHESIS_EVIDENCE
+        )
         selected, omitted_sources = _select_evidence(
             synthesis_candidates,
             previous_by_current_id=analysis.previous_by_current_id,
+            limit=evidence_limit,
         )
         synthesis_limits = set(omitted_sources)
         if synthesis_limits:
@@ -242,15 +253,41 @@ def _generate_model_daily(
         # selected, keeping the complete session evidence under its 50-record cap.
         historical = [item for item in selected if item.comparison_role == "historical"]
         persisted_evidence = current_evidence + historical
-        if len(persisted_evidence) > _MAX_OBSERVED_EVIDENCE + _MAX_SYNTHESIS_EVIDENCE:
-            raise DailyBriefingError("The bounded briefing evidence snapshot exceeded its limit.")
+        if len(persisted_evidence) > _MAX_OBSERVED_EVIDENCE + evidence_limit:
+            raise BriefingExecutionError("The bounded briefing evidence snapshot exceeded its limit.")
+
+        investigation: BriefingInvestigationMetadata | None = None
+        synthesis_evidence = list(selected)
+        if profile_id == "deep":
+            current_stage = "investigating"
+            _stage(control, "investigating", "started")
+            control.check_cancelled()
+            investigation_result = investigate_deep(
+                evidence=selected,
+                coverage=coverage,
+                configuration=configuration,
+                control=control,
+                partition=partition,
+            )
+            investigation = investigation_result.metadata
+            persisted_evidence.extend(investigation_result.evidence)
+            synthesis_evidence.extend(investigation_result.evidence)
+            if investigation.limitations:
+                draft_limitations = list(investigation.limitations)
+            else:
+                draft_limitations = []
+            _stage(control, "investigating", "completed")
+            if len(persisted_evidence) > 50:
+                raise BriefingExecutionError("Deep briefing evidence exceeded its 50-record limit.")
+        else:
+            draft_limitations = []
 
         current_stage = "synthesizing"
         _stage(control, "synthesizing", "started")
         draft, included_evidence, comparison = _synthesize(
             session_id=session_id,
             evidence=persisted_evidence,
-            synthesis_evidence=selected,
+            synthesis_evidence=synthesis_evidence,
             coverage=coverage,
             comparison=comparison,
             configuration=configuration,
@@ -258,6 +295,10 @@ def _generate_model_daily(
             now=now,
             synthesis_limits=synthesis_limits,
         )
+        if draft_limitations:
+            draft = draft.model_copy(update={
+                "limitations": list(dict.fromkeys([*draft.limitations, *draft_limitations]))[:24],
+            })
         control.check_cancelled()
         _stage(control, "synthesizing", "completed")
         evidence = _mark_included(persisted_evidence, included_evidence)
@@ -266,6 +307,7 @@ def _generate_model_daily(
             evidence=evidence,
             coverage=coverage,
             comparison=comparison,
+            investigation=investigation,
         )
     except Exception:
         _stage(control, current_stage, "failed")
@@ -278,7 +320,7 @@ def _collect_snapshot(
     service = get_telemetry_service()
     try:
         snapshot = service.refresh(
-            connectors=list(CORE_DAILY_SOURCES),
+            connectors=list(CORE_BRIEFING_SOURCES),
             force=False,
             before_collect=lambda _name: control.check_cancelled(),
         )
@@ -298,6 +340,7 @@ def _select_evidence(
     observed: list[BriefingEvidence],
     *,
     previous_by_current_id: dict[UUID, BriefingEvidence] | None = None,
+    limit: int = _MAX_SYNTHESIS_EVIDENCE,
 ) -> tuple[list[BriefingEvidence], set[str]]:
     previous_by_current_id = previous_by_current_id or {}
     unique: dict[tuple[str, str], BriefingEvidence] = {}
@@ -326,7 +369,7 @@ def _select_evidence(
     selected: list[BriefingEvidence] = []
     omitted_sources: set[str] = set()
     for _priority_value, _effective, _source, group in groups:
-        if len(selected) + len(group) > _MAX_SYNTHESIS_EVIDENCE:
+        if len(selected) + len(group) > limit:
             omitted_sources.update(item.source for item in group)
             continue
         selected.extend(group)
@@ -457,7 +500,7 @@ def _synthesize(
     now: datetime,
     synthesis_limits: set[str] | None = None,
 ) -> tuple[BriefingDraft, list[BriefingEvidence], BriefingComparison]:
-    output_schema = BriefingDraft.model_json_schema()
+    output_schema = _synthesis_output_schema()
     usable_evidence = list(synthesis_evidence)
     synthesis_limits = set(synthesis_limits or ())
     prompt_limit_bytes = _fit_evidence_to_context(
@@ -474,6 +517,7 @@ def _synthesize(
     previous_response = ""
     repair_feedback = ""
     failure_stage = "draft_validation"
+    attempt_failures: list[tuple[str, tuple[str, ...]]] = []
     for attempt in range(2):
         control.check_cancelled()
         prompt = base_prompt
@@ -495,11 +539,14 @@ def _synthesize(
             )
             raw = result.message.content or ""
             failure_stage = "draft_validation"
+            validation_phase = "draft_json"
             try:
                 parsed = BriefingDraft.model_validate_json(raw)
+                validation_phase = "empty_result"
                 if not any(section.items for section in parsed.sections) and usable_evidence:
                     if not any(len(limit.strip()) >= 16 for limit in parsed.limitations):
                         raise ValueError("An empty briefing with usable evidence needs an explicit limitation.")
+                validation_phase = "canonical_artifact"
                 parsed = _attach_canonical_references(parsed, usable_evidence)
                 # Canonical construction is the authoritative trust/reference validation.
                 from core.briefings.models import build_canonical_artifact
@@ -518,26 +565,52 @@ def _synthesize(
                     comparison,
                 )
             except Exception as exc:
+                attempt_failures.append(_validation_failure_diagnostic(exc, validation_phase))
                 repair_feedback = _validation_feedback(exc)
                 previous_response = raw
         except Exception as exc:
             if not isinstance(exc, InvalidBriefingModelOutputError):
                 raise
             failure_stage = "provider_output"
+            attempt_failures.append((f"provider_output_{exc.reason}", ()))
             repair_feedback = exc.repair_feedback
             previous_response = ""
         if attempt:
             run_id = getattr(control.handle, "run_id", None) or "unknown"
+            first_failure = _format_failure_diagnostic(
+                attempt_failures[0] if attempt_failures else ("unknown", ())
+            )
+            repair_failure = _format_failure_diagnostic(
+                attempt_failures[-1] if attempt_failures else ("unknown", ())
+            )
             _LOGGER.warning(
-                "Briefing synthesis output remained invalid after one repair attempt: run_id=%s stage=%s",
+                "Briefing synthesis output remained invalid after one repair attempt: "
+                "run_id=%s stage=%s first_failure=%s repair_failure=%s",
                 run_id,
                 failure_stage,
+                first_failure,
+                repair_failure,
             )
             raise RunExecutionError(
                 stop_reason="provider_error",
                 error_code="invalid_model_output",
             ) from None
-    raise DailyBriefingError("The selected model could not produce a valid briefing.")
+    raise BriefingExecutionError("The selected model could not produce a valid briefing.")
+
+
+def _synthesis_output_schema() -> dict[str, Any]:
+    """Return only fields the model is allowed to author in a briefing draft."""
+    schema = BriefingDraft.model_json_schema()
+    definitions = schema.get("$defs")
+    if isinstance(definitions, dict):
+        item_definition = definitions.get("BriefingItemDraft")
+        if isinstance(item_definition, dict):
+            properties = item_definition.get("properties")
+            if isinstance(properties, dict):
+                properties.pop("record_references", None)
+        # Record references are attached from canonical evidence after parsing.
+        definitions.pop("ExistingRecordReference", None)
+    return schema
 
 
 def _fit_evidence_to_context(
@@ -576,7 +649,7 @@ def _fit_evidence_to_context(
             context_window - system_bytes - schema_bytes - model.output_token_limit - 512 - reserve_bytes,
         )
     if available < 256:
-        raise DailyBriefingError("The selected model leaves too little room for a briefing.")
+        raise BriefingExecutionError("The selected model leaves too little room for a briefing.")
     while evidence:
         _record_synthesis_limits(original_evidence, evidence, synthesis_limits)
         prompt_comparison = (
@@ -596,7 +669,7 @@ def _fit_evidence_to_context(
         if len(evidence) == 1:
             content = evidence[0].content or ""
             if len(content) <= 128:
-                raise DailyBriefingError("The selected model leaves too little room for useful briefing evidence.")
+                raise BriefingExecutionError("The selected model leaves too little room for useful briefing evidence.")
             evidence[0] = evidence[0].model_copy(update={"content": content[:max(128, len(content) // 2)]})
         else:
             last = evidence[-1]
@@ -615,7 +688,7 @@ def _fit_evidence_to_context(
         profile_id=configuration.profile.id, now=now,
         synthesis_limits=synthesis_limits,
     ).encode("utf-8")) > available:
-        raise DailyBriefingError("The selected model leaves too little room for a briefing request.")
+        raise BriefingExecutionError("The selected model leaves too little room for a briefing request.")
     return min(MAX_PROMPT_BYTES, available + reserve_bytes)
 
 
@@ -668,6 +741,12 @@ def _build_prompt(
             "compatible baseline existed. In the bounded email and news inventories, only treat an unmatched "
             "message or article as new when its stable ID and received/published timestamp place it after the "
             "source checkpoint; a refreshed top-items list alone does not prove an item is new."
+        )
+    elif profile_id == "deep":
+        objective = (
+            "Prepare an evidence-backed Deep briefing from the current snapshot, relevant history, and any "
+            "bounded read results supplied below. Do not omit relevant evidence only because it was unchanged. "
+            "Separate observed facts from inferences, state uncertainty, and cite every item to exact evidence IDs."
         )
     else:
         objective = (
@@ -731,7 +810,7 @@ def _build_repair_prompt(
         - 2,
     )
     if allowed_response_bytes < 2:
-        raise DailyBriefingError(
+        raise BriefingExecutionError(
             "The selected model context window cannot fit the bounded briefing repair prompt."
         )
     encoded_response = _bounded_json_string(previous_response, allowed_response_bytes)
@@ -741,7 +820,7 @@ def _build_repair_prompt(
         len(suffix.encode("utf-8")) > _REPAIR_PROMPT_RESERVE_BYTES
         or len(prompt.encode("utf-8")) > prompt_limit_bytes
     ):
-        raise DailyBriefingError(
+        raise BriefingExecutionError(
             "The selected model context window cannot fit the bounded briefing repair prompt."
         )
     return prompt
@@ -898,3 +977,68 @@ def _validation_feedback(error: Exception) -> str:
     if "trust" in text or "category" in text:
         return "Use the required category for each evidence trust level."
     return "The response did not match the required JSON fields or host validation rules."
+
+
+def _validation_failure_diagnostic(
+    error: Exception, phase: str
+) -> tuple[str, tuple[str, ...]]:
+    issue_types = _safe_validation_issue_types(error)
+    if phase == "draft_json":
+        if "json_invalid" in issue_types:
+            return "malformed_json", issue_types
+        return "draft_schema_invalid", issue_types
+    if phase == "empty_result":
+        return "empty_result_missing_limitation", issue_types
+
+    message = str(error).casefold()
+    if "evidence ids must be unique" in message:
+        return "duplicate_evidence_ids", issue_types
+    if "may reference only supplied evidence" in message:
+        return "unknown_evidence_ids", issue_types
+    if "must reference supporting evidence" in message:
+        return "unsupported_evidence_reference", issue_types
+    if "unavailable evidence cannot support" in message:
+        return "unavailable_evidence_reference", issue_types
+    if "preserve the evidence trust category" in message:
+        return "trust_category_mismatch", issue_types
+    if "record references must be carried" in message:
+        return "record_reference_mismatch", issue_types
+    if issue_types:
+        return "canonical_artifact_invalid", issue_types
+    return "canonical_artifact_rejected", issue_types
+
+
+def _safe_validation_issue_types(error: Exception) -> tuple[str, ...]:
+    errors_method = getattr(error, "errors", None)
+    if not callable(errors_method):
+        return ()
+    try:
+        errors = errors_method(include_input=False, include_url=False)
+    except TypeError:
+        errors = errors_method()
+    except Exception:
+        return ()
+    if not isinstance(errors, list):
+        return ()
+    issue_types: list[str] = []
+    for item in errors[:8]:
+        if not isinstance(item, dict):
+            continue
+        issue_type = item.get("type")
+        if not isinstance(issue_type, str):
+            continue
+        safe_type = "".join(
+            character
+            for character in issue_type
+            if character.isalnum() or character in "_.-"
+        )[:64]
+        if safe_type and safe_type not in issue_types:
+            issue_types.append(safe_type)
+    return tuple(issue_types[:4])
+
+
+def _format_failure_diagnostic(diagnostic: tuple[str, tuple[str, ...]]) -> str:
+    reason, issue_types = diagnostic
+    if not issue_types:
+        return reason
+    return f"{reason}[{','.join(issue_types)}]"

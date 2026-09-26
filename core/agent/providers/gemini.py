@@ -46,6 +46,7 @@ def _merge_fragmented_json(existing: dict[str, Any], fragment: str) -> dict[str,
         existing.update(parsed)
     return existing
 
+
 def _wrap_untrusted_tool_output(result: ToolResult) -> str:
     return (
         f"<untrusted_tool_output name='{result.name}'>\n"
@@ -341,10 +342,12 @@ class GeminiProvider:
             config_kwargs["automatic_function_calling"] = (
                 types.AutomaticFunctionCallingConfig(disable=True)
             )
-        schema_applied = bool(output_schema and not tools)
-        if schema_applied:
+        # Gemini rejected both the provider-native schema and JSON Schema
+        # projection for briefing output. Keep JSON mode, then enforce the
+        # complete contract through APEX's parser and canonical validation.
+        schema_applied = False
+        if output_schema and not tools:
             config_kwargs["response_mime_type"] = "application/json"
-            config_kwargs["response_schema"] = output_schema
         if output_token_limit is not None:
             config_kwargs["max_output_tokens"] = output_token_limit
 

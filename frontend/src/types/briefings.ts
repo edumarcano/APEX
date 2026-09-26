@@ -10,6 +10,23 @@ export type BriefingProfileSummary = {
 }
 
 export type BriefingSessionStatus = 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
+export type BriefingStage = 'preparing' | 'collecting' | 'selecting' | 'investigating' | 'synthesizing' | 'persisting'
+
+export type BriefingStageProgress = {
+  stage: BriefingStage
+  state: 'started' | 'completed' | 'failed' | 'cancelled'
+}
+
+export type BriefingInvestigationMetadata = {
+  status: 'completed' | 'limited' | 'no_read_needed'
+  offered_tool_names: string[]
+  used_tool_names: string[]
+  result_count: number
+  turns_used: number
+  tool_calls_used: number
+  time_budget_seconds: number
+  limitations: string[]
+}
 
 export type BriefingSessionSummary = {
   id: string
@@ -98,6 +115,7 @@ export type BriefingArtifact = {
   }>
   limitations: string[]
   comparison?: BriefingComparison | null
+  investigation?: BriefingInvestigationMetadata | null
 }
 
 export type BriefingSessionDetail = {
@@ -126,6 +144,7 @@ export type BriefingSessionDetail = {
   created_at: string
   presented_at: string | null
   speech_status: 'not_requested' | 'ready' | 'unavailable'
+  active_stage?: BriefingStageProgress | null
 }
 
 export type BriefingSessionWithEvidence = BriefingSessionDetail & {
