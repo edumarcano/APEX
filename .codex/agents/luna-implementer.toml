@@ -1,3 +1,5 @@
+name = "luna-implementer"
+description = "Use for substantial implementation of an approved or reconciled plan, including multi-file coding, tests, debugging, and validation while the parent retains architecture and final review."
 model = "gpt-6-luna"
 model_reasoning_effort = "max"
 service_tier = "fast"
