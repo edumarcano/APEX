@@ -865,6 +865,7 @@ class BriefingSessionApiTests(unittest.TestCase):
             )],
             created_at=datetime.now(timezone.utc),
         )
+
         output = json.dumps({
             "highlights": [
                 {
@@ -928,6 +929,245 @@ class BriefingSessionApiTests(unittest.TestCase):
         self.assertEqual(request["config"].max_output_tokens, 4096)
         self.assertEqual(request["config"].response_mime_type, "application/json")
         self.assertIsNone(request["config"].tools)
+
+    @staticmethod
+    def _artifact_with_items(items: list[tuple[str, str, str]]):
+        evidence = [
+            BriefingEvidence(
+                source="calendar",
+                source_id=f"speech-multi-item-{index}",
+                trust={
+                    "external_report": "untrusted",
+                    "pending_review": "pending",
+                }.get(category, "observed"),
+                content=body,
+            )
+            for index, (category, _title, body) in enumerate(items)
+        ]
+        draft_items = [
+            BriefingItemDraft(
+                category=category,
+                title=title,
+                body=body,
+                evidence_ids=[item_evidence.id],
+            )
+            for (category, title, body), item_evidence in zip(
+                items, evidence, strict=True
+            )
+        ]
+        return build_canonical_artifact(
+            session_id=uuid4(),
+            draft=BriefingDraft(sections=[BriefingSectionDraft(
+                title="Today",
+                items=draft_items,
+            )]),
+            evidence=evidence,
+            coverage=[BriefingCoverage(source="calendar", scope="today", status="complete")],
+            created_at=datetime.now(timezone.utc),
+        )
+
+    def _generate_speech_with_provider(
+        self,
+        artifact,
+        configuration: BriefingGenerationConfiguration,
+        provider,
+    ) -> BriefingSpeechScript:
+        with (
+            patch(
+                "core.briefings.execution.get_visible_model_profile",
+                return_value=SimpleNamespace(
+                    provider=configuration.model.provider,
+                    runtime=configuration.model.runtime,
+                    credential_env=None,
+                ),
+            ),
+            patch("core.briefings.execution.model_has_credentials", return_value=True),
+            patch(
+                "core.briefings.execution.build_concrete_agent",
+                return_value=SimpleNamespace(system_instruction="Selected catalog profile."),
+            ),
+        ):
+            return _generate_speech_script(
+                artifact,
+                configuration,
+                threading.Event(),
+                provider_factory=lambda _profile, _key: provider,
+            )
+
+    @staticmethod
+    def _repeating_speech_provider(output: str) -> MagicMock:
+        provider = MagicMock()
+        provider.generate_turn.return_value = ProviderTurnResult(
+            message=AgentMessage(role="agent", content=output)
+        )
+        return provider
+
+    def test_speech_generation_recovers_exact_selected_source_after_numeric_drift(
+        self,
+    ) -> None:
+        record = self._completed_session()
+        artifact = self._artifact_with_items([
+            (
+                "observation",
+                "Transit update",
+                "The route includes 6 stops and 24 miles.",
+            ),
+        ])
+        item = artifact.sections[0].items[0]
+        invalid_output = json.dumps({"highlights": [{
+            "item_id": str(item.id),
+            "text": "Transit update. The route includes 7 stops and 24 miles.",
+        }]})
+
+        provider = self._repeating_speech_provider(invalid_output)
+        script = self._generate_speech_with_provider(
+            artifact, record.configuration, provider
+        )
+
+        self.assertEqual(provider.generate_turn.call_count, 2)
+        self.assertEqual(
+            script.highlights,
+            [BriefingSpeechHighlight(
+                item_id=item.id,
+                text="Transit update. The route includes 6 stops and 24 miles.",
+            )],
+        )
+        validate_speech_script(script, artifact)
+
+    def test_speech_generation_salvages_only_individually_valid_highlights(
+        self,
+    ) -> None:
+        record = self._completed_session()
+        artifact = self._artifact_with_items([
+            (
+                "observation",
+                "Transit update",
+                "The route includes 6 stops and 24 miles.",
+            ),
+            (
+                "observation",
+                "Planning notes",
+                "Review the planning notes before the meeting.",
+            ),
+        ])
+        invalid_item, valid_item = artifact.sections[0].items
+        invalid_output = json.dumps({"highlights": [
+            {
+                "item_id": str(invalid_item.id),
+                "text": "Transit update. The route includes 7 stops and 24 miles.",
+            },
+            {
+                "item_id": str(valid_item.id),
+                "text": "Review the planning notes before the meeting.",
+            },
+        ]})
+
+        provider = self._repeating_speech_provider(invalid_output)
+        script = self._generate_speech_with_provider(
+            artifact, record.configuration, provider
+        )
+
+        self.assertEqual(provider.generate_turn.call_count, 2)
+        self.assertEqual(
+            script.highlights,
+            [BriefingSpeechHighlight(
+                item_id=valid_item.id,
+                text="Review the planning notes before the meeting.",
+            )],
+        )
+        validate_speech_script(script, artifact)
+
+    def test_speech_generation_does_not_recover_changed_dates_or_qualifiers(
+        self,
+    ) -> None:
+        record = self._completed_session()
+        cases = [
+            (
+                "observation",
+                "Schedule",
+                "The review is scheduled for Tuesday, June 8 at 10:00.",
+                "The review is scheduled for Monday, June 8 at 10:00.",
+            ),
+            (
+                "external_report",
+                "Service report",
+                "According to an external report, the service reached 5%.",
+                "The service reached 5%.",
+            ),
+        ]
+        for category, title, source, spoken in cases:
+            with self.subTest(category=category):
+                artifact = self._artifact_with_items([(category, title, source)])
+                item = artifact.sections[0].items[0]
+                invalid_output = json.dumps({"highlights": [{
+                    "item_id": str(item.id),
+                    "text": spoken,
+                }]})
+
+                provider = self._repeating_speech_provider(invalid_output)
+                with self.assertRaises(BriefingSpeechUnavailableError) as failure:
+                    self._generate_speech_with_provider(
+                        artifact, record.configuration, provider
+                    )
+                self.assertEqual(str(failure.exception), "script_invalid")
+                self.assertEqual(provider.generate_turn.call_count, 2)
+
+    def test_speech_generation_replaces_model_citation_with_exact_source(self) -> None:
+        record = self._completed_session()
+        artifact = self._artifact_with_items([
+            (
+                "observation",
+                "Planning notes",
+                "Review the planning notes before the meeting.",
+            ),
+        ])
+        item = artifact.sections[0].items[0]
+        invalid_output = json.dumps({"highlights": [{
+            "item_id": str(item.id),
+            "text": "Review the planning notes before the meeting. [1]",
+        }]})
+
+        provider = self._repeating_speech_provider(invalid_output)
+        script = self._generate_speech_with_provider(
+            artifact, record.configuration, provider
+        )
+
+        self.assertEqual(provider.generate_turn.call_count, 2)
+        self.assertEqual(
+            script.highlights,
+            [BriefingSpeechHighlight(
+                item_id=item.id,
+                text="Planning notes. Review the planning notes before the meeting.",
+            )],
+        )
+        self.assertNotIn("[1]", script.highlights[0].text)
+        validate_speech_script(script, artifact)
+
+    def test_speech_generation_leaves_url_source_unavailable_after_numeric_drift(
+        self,
+    ) -> None:
+        record = self._completed_session()
+        artifact = self._artifact_with_items([
+            (
+                "observation",
+                "Planning notes",
+                "Review this item at https://example.com/item.",
+            ),
+        ])
+        item = artifact.sections[0].items[0]
+        invalid_output = json.dumps({"highlights": [{
+            "item_id": str(item.id),
+            "text": "Planning notes. Review this item at 1:00.",
+        }]})
+
+        provider = self._repeating_speech_provider(invalid_output)
+        with self.assertRaises(BriefingSpeechUnavailableError) as failure:
+            self._generate_speech_with_provider(
+                artifact, record.configuration, provider
+            )
+
+        self.assertEqual(str(failure.exception), "script_invalid")
+        self.assertEqual(provider.generate_turn.call_count, 2)
 
     def test_speech_generation_repairs_invalid_script_once_with_safe_feedback(self) -> None:
         record = self._completed_session()

@@ -20,6 +20,7 @@ from core import speaker
 from core.briefings.execution import ProviderFactory, execute_single_call
 from core.briefings.models import (
     BriefingGenerationConfiguration,
+    BriefingItem,
     BriefingSessionRecord,
     CanonicalBriefingArtifact,
     SpeechDeliveryStatus,
@@ -165,6 +166,11 @@ _URL_OR_CITATION = re.compile(
     r"https?://|www\.|\[[0-9]+\]|\[[^\]]+\]\([^)]+\)",
     re.IGNORECASE,
 )
+_SOURCE_CATEGORY_PREFIX = {
+    "external_report": "External report. ",
+    "pending_review": "Pending review. ",
+    "suggestion": "Suggestion. ",
+}
 
 
 def canonical_artifact_sha256(artifact: CanonicalBriefingArtifact) -> str:
@@ -234,21 +240,76 @@ def validate_speech_script(
             raise BriefingSpeechValidationError("script_contains_url_or_citation")
 
 
+def _recover_validated_speech_script(
+    script: BriefingSpeechScript,
+    artifact: CanonicalBriefingArtifact,
+    *,
+    failure_reason: str,
+) -> BriefingSpeechScript | None:
+    """Keep safe model highlights or read an exact source item after number drift."""
+    valid_highlights: list[BriefingSpeechHighlight] = []
+    for highlight in script.highlights:
+        try:
+            validate_speech_script(
+                BriefingSpeechScript(highlights=[highlight]), artifact
+            )
+        except BriefingSpeechValidationError:
+            continue
+        valid_highlights.append(highlight)
+
+    if valid_highlights:
+        recovered = BriefingSpeechScript(highlights=valid_highlights)
+        validate_speech_script(recovered, artifact)
+        return recovered
+
+    if failure_reason != "script_numeric_fact_mismatch":
+        return None
+
+    items = {
+        item.id: item
+        for section in artifact.sections
+        for item in section.items
+    }
+    for selected in script.highlights:
+        item = items.get(selected.item_id)
+        if item is None:
+            continue
+        highlight = _exact_source_highlight(item)
+        if highlight is None:
+            continue
+        recovered = BriefingSpeechScript(highlights=[highlight])
+        try:
+            validate_speech_script(recovered, artifact)
+        except BriefingSpeechValidationError:
+            continue
+        return recovered
+    return None
+
+
+def _exact_source_highlight(item: BriefingItem) -> BriefingSpeechHighlight | None:
+    """Build one bounded reading from a model-selected canonical item."""
+    text = (
+        _SOURCE_CATEGORY_PREFIX.get(item.category, "")
+        + f"{item.title}. {item.body}"
+    ).strip()
+    if len(text) > MAX_HIGHLIGHT_CHARS or _URL_OR_CITATION.search(text):
+        return None
+    try:
+        return BriefingSpeechHighlight(item_id=item.id, text=text)
+    except ValidationError:
+        return None
+
+
 def _deterministic_demo_script(
     artifact: CanonicalBriefingArtifact,
 ) -> BriefingSpeechScript:
     """Read a few exact demo artifact items without calling any model."""
     selected: list[BriefingSpeechHighlight] = []
     script_chars = 0
-    category_prefix = {
-        "external_report": "External report. ",
-        "pending_review": "Pending review. ",
-        "suggestion": "Suggestion. ",
-    }
     for section in artifact.sections:
         for item in section.items:
             text = (
-                category_prefix.get(item.category, "")
+                _SOURCE_CATEGORY_PREFIX.get(item.category, "")
                 + f"{item.title}. {item.body}"
             ).strip()
             if (
@@ -392,8 +453,10 @@ def _generate_speech_script(
     previous = ""
     feedback = ""
     last_error = "script_invalid"
+    last_parsed: BriefingSpeechScript | None = None
     for attempt in range(2):
         raw = ""
+        last_parsed = None
         control.check_cancelled()
         if attempt:
             prompt = _speech_prompt(
@@ -415,6 +478,7 @@ def _generate_speech_script(
             if len(raw.encode("utf-8")) > MAX_SPEECH_OUTPUT_BYTES:
                 raise BriefingSpeechValidationError("script_output_too_large")
             parsed = BriefingSpeechScript.model_validate_json(raw)
+            last_parsed = parsed
             validate_speech_script(parsed, artifact)
             return parsed
         except BriefingSpeechCancelledError:
@@ -436,6 +500,16 @@ def _generate_speech_script(
             previous = ""
             feedback = "The response did not match the required item references or factual qualifiers."
             last_error = "speech_model_unavailable"
+    if last_parsed is not None and "script_" in last_error:
+        control.check_cancelled()
+        recovered = _recover_validated_speech_script(
+            last_parsed,
+            artifact,
+            failure_reason=last_error,
+        )
+        control.check_cancelled()
+        if recovered is not None:
+            return recovered
     if "script_" in last_error:
         # Keep the API's unavailable code generic while recording a bounded
         # validator reason for diagnosis. Never log provider output or artifact text.
