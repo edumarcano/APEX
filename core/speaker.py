@@ -3,13 +3,18 @@ from __future__ import annotations
 import ctypes
 import io
 import logging
+import math
 import os
 import queue
 import re
+import subprocess
+import sys
+import tempfile
 import threading
 import time
 import unicodedata
 import wave
+import json
 from pathlib import Path
 from typing import Any, Literal
 
@@ -30,6 +35,9 @@ _KOKORO_LOCK = threading.Lock()
 _KOKORO_SYNTH_LOCK = threading.Lock()
 _ACTIVE_ENGINE_LOCK = threading.Lock()
 _CANCEL_EVENT = threading.Event()
+_CACHED_PLAYBACK_LOCK = threading.Lock()
+_CACHED_PLAYBACK_ID: str | None = None
+_CACHED_PLAYBACK_EVENT: threading.Event | None = None
 
 _GOOGLE_TTS_CLIENT: Any | None = None
 _KOKORO_CLIENT: Any | None = None
@@ -51,6 +59,10 @@ KOKORO_CPU_SAMPLE_SECONDS = 0.1
 KOKORO_CPU_STABLE_SAMPLES = 2
 TTS_CHUNK_MAX_CHARS = 320
 TTS_SYNTHESIS_TIMEOUT_SECONDS = 20.0
+MAX_CACHED_AUDIO_CHUNKS = 16
+MAX_CACHED_AUDIO_CHUNK_BYTES = 4 * 1024 * 1024
+MAX_CACHED_AUDIO_BYTES = 12 * 1024 * 1024
+MAX_CACHED_AUDIO_SECONDS = 180.0
 _PLAYBACK_POLL_MS = 50
 
 _MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]]+)\]\([^)]+\)")
@@ -315,6 +327,10 @@ def initialize() -> dict[str, dict[str, Any]]:
 def cancel() -> None:
     """Cancel active playback and suppress queued chunks."""
     _CANCEL_EVENT.set()
+    with _CACHED_PLAYBACK_LOCK:
+        cached_event = _CACHED_PLAYBACK_EVENT
+        if cached_event is not None:
+            cached_event.set()
     try:
         if pygame.mixer.get_init() is not None:
             pygame.mixer.music.stop()
@@ -460,6 +476,337 @@ def _synthesize_kokoro_chunk(text: str, *, gender: str) -> bytes:
         raise ImportError("numpy is not installed; install the tts-kokoro extra.") from exc
     pcm_data = (np.clip(samples, -1.0, 1.0) * 32767.0).astype(np.int16).tobytes()
     return _pack_pcm_to_wav_bytes(pcm_data, int(sample_rate))
+
+
+def _mp3_duration_seconds(data: bytes) -> float:
+    """Read MPEG audio frame headers without trusting provider metadata."""
+    offset = 0
+    if data.startswith(b"ID3") and len(data) >= 10:
+        size_bytes = data[6:10]
+        if any(byte & 0x80 for byte in size_bytes):
+            raise ValueError("invalid_mp3_header")
+        tag_size = (
+            (size_bytes[0] << 21)
+            | (size_bytes[1] << 14)
+            | (size_bytes[2] << 7)
+            | size_bytes[3]
+        )
+        offset = min(len(data), 10 + tag_size)
+    frame_count = 0
+    duration = 0.0
+    while offset + 4 <= len(data):
+        header = int.from_bytes(data[offset:offset + 4], "big")
+        if (header >> 21) != 0x7FF:
+            offset += 1
+            continue
+        version = (header >> 19) & 0b11
+        layer = (header >> 17) & 0b11
+        bitrate_index = (header >> 12) & 0b1111
+        sample_index = (header >> 10) & 0b11
+        if version == 1 or layer != 1 or bitrate_index in {0, 15} or sample_index == 3:
+            offset += 1
+            continue
+        mpeg1_bitrates = (0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320)
+        mpeg2_bitrates = (0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160)
+        rates = (44100, 48000, 32000)
+        sample_rate = rates[sample_index]
+        if version == 2:
+            sample_rate //= 2
+        elif version == 0:
+            sample_rate //= 4
+        bitrate = (mpeg1_bitrates if version == 3 else mpeg2_bitrates)[bitrate_index]
+        padding = (header >> 9) & 1
+        frame_bytes = (144000 if version == 3 else 72000) * bitrate // sample_rate + padding
+        if frame_bytes < 4 or offset + frame_bytes > len(data):
+            offset += 1
+            continue
+        frame_count += 1
+        duration += (1152 if version == 3 else 576) / sample_rate
+        offset += frame_bytes
+    if frame_count == 0 or not duration:
+        raise ValueError("invalid_mp3_audio")
+    return duration
+
+
+def _audio_duration_seconds(data: bytes, content_type: str) -> float:
+    if content_type == "audio/wav":
+        with wave.open(io.BytesIO(data), "rb") as wav_file:
+            rate = wav_file.getframerate()
+            if rate <= 0:
+                raise ValueError("invalid_wav_audio")
+            return wav_file.getnframes() / rate
+    if content_type == "audio/mpeg":
+        return _mp3_duration_seconds(data)
+    raise ValueError("unsupported_audio_type")
+
+
+def _synthesize_pyttsx3_wav(
+    text: str,
+    *,
+    gender: str,
+    cancellation_event: threading.Event,
+) -> bytes:
+    with tempfile.TemporaryDirectory(prefix="apex-speech-") as directory:
+        output_path = os.path.join(directory, "speech.wav")
+        process = subprocess.Popen(
+            [sys.executable, "-m", "core.speaker_export", output_path],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        payload = json.dumps({"text": text, "gender": gender}).encode("utf-8")
+        deadline = time.monotonic() + TTS_SYNTHESIS_TIMEOUT_SECONDS
+        try:
+            input_bytes: bytes | None = payload
+            while process.poll() is None:
+                if cancellation_event.is_set():
+                    process.terminate()
+                    try:
+                        process.wait(timeout=1.0)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=1.0)
+                    raise RuntimeError("speech_cancelled")
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    process.kill()
+                    process.wait(timeout=1.0)
+                    raise TimeoutError("pyttsx3_synthesis_timeout")
+                try:
+                    process.communicate(input=input_bytes, timeout=min(0.1, remaining))
+                    input_bytes = None
+                except subprocess.TimeoutExpired:
+                    input_bytes = None
+            if process.returncode != 0:
+                raise RuntimeError("pyttsx3_synthesis_failed")
+            with open(output_path, "rb") as audio_file:
+                audio = audio_file.read(MAX_CACHED_AUDIO_CHUNK_BYTES + 1)
+            if not audio or len(audio) > MAX_CACHED_AUDIO_CHUNK_BYTES:
+                raise ValueError("pyttsx3_audio_size_invalid")
+            return audio
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=1.0)
+
+
+def _admit_kokoro_for_event(cancellation_event: threading.Event) -> tuple[bool, str | None]:
+    try:
+        ram = float(psutil.virtual_memory().percent)
+    except (OSError, AttributeError, TypeError, ValueError):
+        ram = 0.0
+    if ram >= KOKORO_RAM_LIMIT:
+        return False, "kokoro_ram_pressure"
+    deadline = time.monotonic() + KOKORO_CPU_RECOVERY_SECONDS
+    stable = 0
+    while True:
+        if cancellation_event.is_set():
+            return False, "speech_cancelled"
+        try:
+            cpu = float(psutil.cpu_percent(interval=KOKORO_CPU_SAMPLE_SECONDS))
+        except (OSError, AttributeError, TypeError, ValueError):
+            return True, None
+        if cpu <= KOKORO_CPU_LIMIT:
+            stable += 1
+            if stable >= KOKORO_CPU_STABLE_SAMPLES:
+                return True, None
+        else:
+            stable = 0
+        if time.monotonic() >= deadline:
+            return False, "kokoro_cpu_timeout"
+
+
+def synthesize_audio(
+    text: str,
+    *,
+    tts_override: str,
+    voice_gender: str,
+    cancellation_event: threading.Event,
+) -> tuple[list[dict[str, Any]], ResolvedTtsEngine]:
+    """Prepare ordered, independently playable audio chunks without starting playback."""
+    prepared = prepare_text(text)
+    if not prepared:
+        raise ValueError("speech_text_empty")
+    chunks = chunk_text(prepared)
+    if not chunks or len(chunks) > MAX_CACHED_AUDIO_CHUNKS:
+        raise ValueError("speech_audio_chunk_count_invalid")
+    gender = _normalize_voice_gender(voice_gender)
+    selected = _normalize_engine(tts_override)
+
+    def synthesize_all(engine: ResolvedTtsEngine) -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = []
+        total_bytes = 0
+        total_duration = 0.0
+        for chunk in chunks:
+            if cancellation_event.is_set():
+                raise RuntimeError("speech_cancelled")
+            if engine == "google":
+                data = fetch_google_audio(chunk, _get_active_google_voice(gender))
+                content_type = "audio/mpeg"
+            elif engine == "kokoro":
+                data = _synthesize_kokoro_chunk(chunk, gender=gender)
+                content_type = "audio/wav"
+            else:
+                data = _synthesize_pyttsx3_wav(
+                    chunk,
+                    gender=gender,
+                    cancellation_event=cancellation_event,
+                )
+                content_type = "audio/wav"
+            if cancellation_event.is_set():
+                raise RuntimeError("speech_cancelled")
+            if not data or len(data) > MAX_CACHED_AUDIO_CHUNK_BYTES:
+                raise ValueError("speech_audio_chunk_size_invalid")
+            duration = _audio_duration_seconds(data, content_type)
+            if not 0 < duration <= 60:
+                raise ValueError("speech_audio_chunk_duration_invalid")
+            total_bytes += len(data)
+            total_duration += duration
+            if total_bytes > MAX_CACHED_AUDIO_BYTES or total_duration > MAX_CACHED_AUDIO_SECONDS:
+                raise ValueError("speech_audio_bundle_limit_exceeded")
+            result.append({
+                "audio": data,
+                "content_type": content_type,
+                "engine": engine,
+                "duration_seconds": duration,
+            })
+        return result
+
+    if selected == "kokoro":
+        admitted, reason = _admit_kokoro_for_event(cancellation_event)
+        if not admitted:
+            if cancellation_event.is_set():
+                raise RuntimeError("speech_cancelled")
+            _LOGGER.info("Kokoro unavailable for saved speech (%s); using local pyttsx3.", reason)
+            selected = "pyttsx3"
+    try:
+        return synthesize_all(selected), selected
+    except Exception:
+        if cancellation_event.is_set() or selected == "pyttsx3":
+            raise
+        # Cached speech follows legacy fallback rules. Kokoro never escalates to cloud TTS.
+        _LOGGER.info("Saved speech engine %s failed; falling back to local pyttsx3.", selected)
+        return synthesize_all("pyttsx3"), "pyttsx3"
+
+
+def _play_cached_audio_bytes(
+    data: bytes,
+    cancellation_event: threading.Event,
+    *,
+    deadline: float,
+) -> None:
+    if not data:
+        raise ValueError("empty_audio")
+    if cancellation_event.is_set():
+        raise RuntimeError("speech_cancelled")
+    if pygame.mixer.get_init() is None:
+        raise RuntimeError("audio_not_ready")
+    if time.monotonic() >= deadline:
+        raise TimeoutError("cached_audio_playback_timeout")
+    stream = io.BytesIO(data)
+    pygame.mixer.music.load(stream)
+    pygame.mixer.music.play()
+    try:
+        while pygame.mixer.music.get_busy():
+            if cancellation_event.is_set():
+                pygame.mixer.music.stop()
+                raise RuntimeError("speech_cancelled")
+            if time.monotonic() >= deadline:
+                raise TimeoutError("cached_audio_playback_timeout")
+            pygame.time.wait(_PLAYBACK_POLL_MS)
+        if cancellation_event.is_set():
+            raise RuntimeError("speech_cancelled")
+    finally:
+        pygame.mixer.music.stop()
+        unload = getattr(pygame.mixer.music, "unload", None)
+        if callable(unload):
+            unload()
+
+
+def try_play_cached_audio(
+    chunks: list[dict[str, Any]],
+    *,
+    playback_id: str,
+    cancellation_event: threading.Event,
+) -> bool:
+    """Play cached chunks serially under one shared speaker lock."""
+    global _CACHED_PLAYBACK_ID, _CACHED_PLAYBACK_EVENT
+    if not chunks:
+        return False
+    if len(chunks) > MAX_CACHED_AUDIO_CHUNKS:
+        raise ValueError("cached_audio_chunk_count_invalid")
+    if not _SPEAK_LOCK.acquire(blocking=False):
+        return False
+    try:
+        playable: list[tuple[bytes, float]] = []
+        total_bytes = 0
+        total_duration = 0.0
+        for chunk in chunks:
+            content_type = chunk.get("content_type")
+            audio = chunk.get("audio")
+            duration = chunk.get("duration_seconds")
+            if content_type not in {"audio/mpeg", "audio/wav"} or not isinstance(audio, bytes):
+                raise ValueError("cached_audio_chunk_invalid")
+            if (
+                not isinstance(duration, (int, float))
+                or not math.isfinite(float(duration))
+                or not 0 < float(duration) <= 60
+            ):
+                raise ValueError("cached_audio_duration_invalid")
+            total_duration += float(duration)
+            total_bytes += len(audio)
+            if len(audio) > MAX_CACHED_AUDIO_CHUNK_BYTES:
+                raise ValueError("cached_audio_chunk_limit_exceeded")
+            if (
+                total_bytes > MAX_CACHED_AUDIO_BYTES
+                or total_duration > MAX_CACHED_AUDIO_SECONDS
+            ):
+                raise ValueError("cached_audio_bundle_limit_exceeded")
+            playable.append((audio, float(duration)))
+        started_at = time.monotonic()
+        playback_budget = min(
+            (total_duration * 2) + (len(playable) * 5),
+            (MAX_CACHED_AUDIO_SECONDS * 2) + (MAX_CACHED_AUDIO_CHUNKS * 5),
+        )
+        playback_deadline = started_at + playback_budget
+        with _CACHED_PLAYBACK_LOCK:
+            if cancellation_event.is_set():
+                return False
+            _CACHED_PLAYBACK_ID = playback_id
+            _CACHED_PLAYBACK_EVENT = cancellation_event
+        for audio, duration in playable:
+            if cancellation_event.is_set():
+                raise RuntimeError("speech_cancelled")
+            chunk_deadline = min(
+                playback_deadline,
+                time.monotonic() + (duration * 2) + 5,
+            )
+            _play_cached_audio_bytes(
+                audio,
+                cancellation_event,
+                deadline=chunk_deadline,
+            )
+        return True
+    finally:
+        with _CACHED_PLAYBACK_LOCK:
+            if _CACHED_PLAYBACK_ID == playback_id:
+                _CACHED_PLAYBACK_ID = None
+                _CACHED_PLAYBACK_EVENT = None
+        _SPEAK_LOCK.release()
+
+
+def cancel_cached_audio(playback_id: str) -> bool:
+    """Cancel only the cached playback owned by ``playback_id``."""
+    with _CACHED_PLAYBACK_LOCK:
+        if _CACHED_PLAYBACK_ID != playback_id or _CACHED_PLAYBACK_EVENT is None:
+            return False
+        _CACHED_PLAYBACK_EVENT.set()
+        try:
+            if pygame.mixer.get_init() is not None:
+                pygame.mixer.music.stop()
+        except Exception:  # noqa: BLE001
+            pass
+        return True
 
 
 def _synthesize_chunk(engine: ResolvedTtsEngine, text: str, *, gender: str) -> bytes:

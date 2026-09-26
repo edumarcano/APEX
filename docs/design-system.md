@@ -90,8 +90,8 @@ Reuse these established primitives instead of creating competing panel chrome.
 
 ### Briefing and voice controls
 
-- Keep briefing controls in the Briefing profile panel: profile selector, Apex Agent model selector, Generate and Cancel, saved sessions, source coverage, and the resident local-model unload control. The panel reserves a slot for future speech controls.
-- Navigating between workspaces never generates or speaks a briefing. Only the explicit Generate action or the Standby Briefing action starts a session.
+- Keep briefing controls in the Briefing profile panel: profile selector, Apex Agent model selector, Generate and Cancel, saved sessions, source coverage, the resident local-model unload control, and the speech controls. Speech offers explicit Prepare, Play, and Stop actions with accessible preparation, playback, unavailable, and retry states. It never autoplays or regenerates on replay.
+- Navigating between workspaces never generates or speaks a briefing. Generate and the Standby Briefing action start a session; speech starts only after an explicit Prepare or Play action.
 - Render a completed artifact as the opening message in the Home thread. Its heading marks the briefing as presented only after it has been visible.
 - Summarize routine tool results compactly in the Home thread. Errors, action approvals, and trust labels always render in full.
 - Share telemetry domain components between Overview cards and the Briefing telemetry rail rather than maintaining separate renderings. The rail is one bordered glass scroll panel; each domain renders as an internal section (heading, status LED, refresh controls, body) separated by hairlines, without its own card chrome.

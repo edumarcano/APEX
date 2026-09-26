@@ -1165,6 +1165,17 @@ describe('App briefing session flow', () => {
     let detailReads = 0
     let presentationWrites = 0
     let cancellationWrites = 0
+    let speechReads = 0
+    let speechPrepares = 0
+    let speechPlays = 0
+    let speechStatus: 'not_requested' | 'preparing' | 'ready' = 'not_requested'
+    const speechResponse = () => ({
+      session_id: sessionId,
+      artifact_sha256: 'canonical-artifact-digest',
+      status: speechStatus,
+      error_code: null,
+      engine: 'google',
+    })
     class VisibleIntersectionObserver {
       private readonly callback: IntersectionObserverCallback
       constructor(callback: IntersectionObserverCallback) { this.callback = callback }
@@ -1198,6 +1209,25 @@ describe('App briefing session flow', () => {
       }
       if (path.endsWith('/briefing-sessions') && init?.method !== 'POST') {
         return new Response(JSON.stringify(admissionBody ? [{ ...sessionSummary, run_status: runStatus }] : []), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith(`/briefing-sessions/${sessionId}/speech/prepare`)) {
+        speechPrepares += 1
+        speechStatus = 'preparing'
+        return new Response(JSON.stringify(speechResponse()), { status: 202, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith(`/briefing-sessions/${sessionId}/speech/play`)) {
+        speechPlays += 1
+        speechStatus = 'ready'
+        return new Response(JSON.stringify(speechResponse()), { status: 202, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith(`/briefing-sessions/${sessionId}/speech/stop`)) {
+        speechStatus = 'ready'
+        return new Response(JSON.stringify(speechResponse()), { status: 202, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith(`/briefing-sessions/${sessionId}/speech`)) {
+        speechReads += 1
+        if (speechStatus === 'preparing' && speechReads > 1) speechStatus = 'ready'
+        return new Response(JSON.stringify(speechResponse()), { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
       if (path.endsWith(`/briefing-sessions/${sessionId}/presented`)) {
         presentationWrites += 1
@@ -1263,6 +1293,12 @@ describe('App briefing session flow', () => {
     const artifact = await screen.findByTestId('briefing-artifact')
     expect(within(artifact).getByText('Morning travel')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Briefing' })).toHaveAttribute('data-layout', 'workspace')
+    const prepareSpeech = await screen.findByRole('button', { name: 'Prepare highlights' })
+    expect(speechReads).toBeGreaterThan(0)
+    expect(speechPlays).toBe(0)
+    await user.click(prepareSpeech)
+    await waitFor(() => expect(speechPrepares).toBe(1))
+    expect(speechPlays).toBe(0)
     await waitFor(() => expect(presentationWrites).toBe(1))
     expect(admissions).toBe(1)
 
@@ -1278,5 +1314,5 @@ describe('App briefing session flow', () => {
     expect(admissions).toBe(1)
     expect(presentationWrites).toBe(1)
     expect(cancellationWrites).toBe(0)
-  })
+  }, 10000)
 })

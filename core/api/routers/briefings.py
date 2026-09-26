@@ -36,6 +36,13 @@ from core.briefings.models import (
     BriefingSessionSummary,
 )
 from core.briefings.runtime import BriefingModelConfigurationError
+from core.briefings.speech import (
+    BriefingSpeechBusyError,
+    BriefingSpeechNotAllowedError,
+    BriefingSpeechStatusResponse,
+    BriefingSpeechUnavailableError,
+    get_briefing_speech_service,
+)
 from core.briefings.service import get_briefing_service, get_briefing_session_queries
 from core.briefings.store import (
     BriefingSessionConflictError,
@@ -272,3 +279,104 @@ def mark_briefing_presented(session_id: UUID) -> BriefingSessionDetail:
             status_code=409,
             detail="Only a completed briefing session can be marked as presented.",
         ) from None
+
+
+def _briefing_speech_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, BriefingSessionNotFoundError):
+        return HTTPException(status_code=404, detail="Briefing session was not found.")
+    if isinstance(exc, BriefingSpeechNotAllowedError):
+        return HTTPException(status_code=403, detail="Briefing speech is not available.")
+    if isinstance(exc, BriefingSpeechBusyError):
+        return HTTPException(status_code=429, detail="Briefing speech is busy. Try again shortly.")
+    if isinstance(exc, BriefingSpeechUnavailableError):
+        return HTTPException(status_code=503, detail="Briefing speech is unavailable.")
+    if isinstance(exc, BriefingSessionConflictError):
+        return HTTPException(status_code=409, detail=str(exc))
+    return HTTPException(status_code=503, detail="Briefing speech is unavailable.")
+
+
+@router.get(
+    "/api/v1/briefing-sessions/{session_id}/speech",
+    response_model=BriefingSpeechStatusResponse,
+    summary="Get saved speech preparation status for a briefing",
+)
+def get_briefing_speech_status(session_id: UUID) -> BriefingSpeechStatusResponse:
+    """Read speech status and exact canonical-artifact binding; audio stays local."""
+    try:
+        return get_briefing_speech_service().status(session_id)
+    except (
+        BriefingSessionNotFoundError,
+        BriefingSessionConflictError,
+        BriefingSpeechNotAllowedError,
+        BriefingSpeechUnavailableError,
+    ) as exc:
+        raise _briefing_speech_error(exc) from None
+
+
+@router.post(
+    "/api/v1/briefing-sessions/{session_id}/speech/prepare",
+    response_model=BriefingSpeechStatusResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Prepare grounded speech for a saved briefing",
+)
+def prepare_briefing_speech(
+    session_id: UUID,
+    response: Response,
+    force: bool = Query(default=False),
+) -> BriefingSpeechStatusResponse:
+    """Queue bounded speech adaptation and cached local audio synthesis."""
+    try:
+        result, already_ready = get_briefing_speech_service().prepare(
+            session_id,
+            force=force,
+        )
+        if already_ready:
+            response.status_code = status.HTTP_200_OK
+        else:
+            response.status_code = status.HTTP_202_ACCEPTED
+        return result
+    except (
+        BriefingSessionNotFoundError,
+        BriefingSessionConflictError,
+        BriefingSpeechNotAllowedError,
+        BriefingSpeechBusyError,
+        BriefingSpeechUnavailableError,
+    ) as exc:
+        raise _briefing_speech_error(exc) from None
+
+
+@router.post(
+    "/api/v1/briefing-sessions/{session_id}/speech/play",
+    response_model=BriefingSpeechStatusResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Play cached speech for a saved briefing",
+)
+def play_briefing_speech(session_id: UUID) -> BriefingSpeechStatusResponse:
+    """Play only a previously prepared cache through the shared speaker."""
+    try:
+        return get_briefing_speech_service().play(session_id)
+    except (
+        BriefingSessionNotFoundError,
+        BriefingSessionConflictError,
+        BriefingSpeechNotAllowedError,
+        BriefingSpeechBusyError,
+        BriefingSpeechUnavailableError,
+    ) as exc:
+        raise _briefing_speech_error(exc) from None
+
+
+@router.post(
+    "/api/v1/briefing-sessions/{session_id}/speech/stop",
+    response_model=BriefingSpeechStatusResponse,
+    summary="Stop speech preparation or playback for a saved briefing",
+)
+def stop_briefing_speech(session_id: UUID) -> BriefingSpeechStatusResponse:
+    """Cancel this session's speech job without stopping unrelated speaker use."""
+    try:
+        return get_briefing_speech_service().stop(session_id)
+    except (
+        BriefingSessionNotFoundError,
+        BriefingSessionConflictError,
+        BriefingSpeechUnavailableError,
+    ) as exc:
+        raise _briefing_speech_error(exc) from None
