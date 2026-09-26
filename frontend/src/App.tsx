@@ -1,12 +1,4 @@
 import {
-  Calendar,
-  CheckSquare,
-  Clock,
-  CloudSun,
-  Mail,
-  Newspaper,
-} from 'lucide-react'
-import {
   useCallback,
   useEffect,
   useMemo,
@@ -16,28 +8,20 @@ import {
   type ReactElement,
 } from 'react'
 
-import { ApexLogo, type ApexLogoProps } from './components/ApexLogo'
+import { type ApexLogoProps } from './components/ApexLogo'
 import { CelestialBackground } from './components/CelestialBackground'
 import { CortexWorkspace } from './components/CortexWorkspace'
 import { ActivityInboxWorkspace } from './components/ActivityInboxWorkspace'
 import { ApexAssistantRuntime, type ApexAssistantRunConfig, type ApexAssistantRuntimeHandle } from './components/ApexAssistantRuntime'
-import { BriefingDigest } from './components/BriefingDigest'
-import { DailyBriefingPanel } from './components/DailyBriefingPanel'
-import { CalendarEventList } from './components/CalendarEventList'
-import { FootballFixtureList } from './components/FootballFixtureList'
-import { MarketTickerCard } from './components/MarketTickerCard'
 import { PreflightDialog } from './components/PreflightDialog'
-import { ReminderListRow } from './components/ReminderListRow'
-import { ReminderQuickAdd } from './components/ReminderQuickAdd'
 import { ReminderReviewDialog } from './components/ReminderReviewDialog'
 import { ReminderTaskDialog } from './components/ReminderTaskDialog'
 import { CompletedRemindersDialog } from './components/CompletedRemindersDialog'
-import { ScrollFadeContainer } from './components/ScrollFadeContainer'
 import SettingsPanel from './components/SettingsPanel'
-import { HomeCommandRail } from './components/HomeCommandRail'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
-import { TelemetryCard } from './components/TelemetryCard'
-import { VoiceSignalGlyph } from './components/VoiceSignalGlyph'
+import { HomeWorkspace } from './components/home/HomeWorkspace'
+import type { HomeIdentityProps } from './components/home/HomeIdentity'
+import type { HomeTelemetryData } from './components/home/HomeTelemetry'
 import { useApexData } from './hooks/useApexData'
 import { useCortex } from './hooks/useCortex'
 import { useActions } from './hooks/useActions'
@@ -45,6 +29,7 @@ import { useActivityInbox } from './hooks/useActivityInbox'
 import { useAppActivation } from './hooks/useAppActivation'
 import { useBriefingPipeline } from './hooks/useBriefingPipeline'
 import { useBriefingSessions } from './hooks/useBriefingSessions'
+import { resolveBriefingLayoutPhase, useHomeView } from './hooks/useHomeView'
 import { useMarketData } from './hooks/useMarketData'
 import { useMcpStatus } from './hooks/useMcpStatus'
 import { usePreflight } from './hooks/usePreflight'
@@ -75,6 +60,7 @@ import type {
   LocalReasoningMode,
   TelemetrySnapshot,
 } from './types/telemetry'
+import type { BriefingProfileId } from './types/briefings'
 import type { ContextReview } from './types/context'
 import type {
   CloudHostedToolsSettings,
@@ -203,7 +189,6 @@ export default function App(): ReactElement {
   const [cloudEffort, setCloudEffort] = useState<CloudEffort>('medium')
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
   const [workspace, setWorkspace] = useState<'home' | 'cortex' | 'inbox'>('home')
-  const [dailyPanelOpen, setDailyPanelOpen] = useState(false)
   const [dailyConversationReady, setDailyConversationReady] = useState<string | null>(null)
   const completedDailyHistoryRef = useRef(new Set<string>())
   const dailyOpenSequenceRef = useRef(0)
@@ -225,7 +210,6 @@ export default function App(): ReactElement {
   const [localPersonalContextEnabled, setLocalPersonalContextEnabled] = useState(false)
   const [localContextWindow, setLocalContextWindow] = useState(16384)
   const [localReasoningMode, setLocalReasoningMode] = useState<LocalReasoningMode>('none')
-  const [draftPrompt, setDraftPrompt] = useState('')
   const [submissionPending, setSubmissionPending] = useState(false)
   const submissionPendingRef = useRef(false)
   const [toolProfileFeedback, setToolProfileFeedback] = useState<string | null>(null)
@@ -287,7 +271,10 @@ export default function App(): ReactElement {
   const actions = useActions(
     workspace === 'cortex' && !demoModeActive,
   )
-  const { activated, activate } = useAppActivation()
+  const { activated, activate, deactivate } = useAppActivation()
+  const homeView = useHomeView({ activated, deactivate })
+  const { selectView: selectHomeView } = homeView
+  const homeBriefingOpen = workspace === 'home' && homeView.view === 'briefing'
   const preflight = usePreflight()
   const telemetry = useTelemetrySnapshot()
   const [marketSymbols, setMarketSymbols] = useState<readonly string[] | null>(null)
@@ -303,11 +290,8 @@ export default function App(): ReactElement {
   const dailySessions = useBriefingSessions()
   const {
     openSession: openDailySession,
-    refreshSessions: refreshDailySessions,
     generate: generateBriefing,
     cancelSession: cancelDailySession,
-    sessions: savedDailySessions,
-    selectedSessionId: selectedDailySessionId,
     hasActiveSession: hasActiveDailySession,
   } = dailySessions
   const voiceDelivery = useVoiceDelivery(
@@ -380,7 +364,7 @@ export default function App(): ReactElement {
     localReasoningMode: usesHomeAssistantContract ? homeOverrides.localReasoningMode : null,
     selectedToolNames: toolCatalogState.selectedToolNames,
     toolProfileId: toolCatalogState.activeToolProfileId,
-    prompt: draftPrompt,
+    prompt: '',
     conversationId: assistantConversationId,
     snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
     enabled: Boolean(
@@ -691,32 +675,6 @@ export default function App(): ReactElement {
   const logoGlowColor = visualColors.logo
 
   const pendingReminderCount = activeReminders.length
-  const isDormant = !activated
-  const wingTransition =
-    'transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)]'
-  const wingHeightClass = 'xl:h-full'
-  const leftWingDormantClasses = 'opacity-0 -translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
-  const leftWingActiveClasses = 'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
-  const rightWingDormantClasses = 'opacity-0 translate-x-12 scale-95 pointer-events-none xl:max-w-0 xl:flex-[0_0_0%] overflow-hidden'
-  const rightWingActiveClasses = 'opacity-100 translate-x-0 scale-100 pointer-events-auto xl:max-w-full xl:flex-1 overflow-visible'
-  const centerColumnDormantClasses = 'grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] xl:max-w-full xl:flex-1'
-  const centerColumnActiveClasses = 'grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] pt-0 xl:max-w-[33.33%] xl:flex-1 xl:min-h-0 min-w-0'
-
-  // The logo is always visible and the insights panel stays mounted while the
-  // Home telemetry columns transition around it.
-  const showDigest = !isDormant
-  const digestWrapperClass = [
-    'hud-digest-wrapper transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu min-h-0 w-full min-w-0 max-w-full',
-    showDigest
-      ? 'max-h-[220px] xl:max-h-[240px] opacity-100 mb-3 xl:mb-4 overflow-hidden'
-      : 'max-h-0 opacity-0 mb-0 overflow-hidden pointer-events-none',
-  ].join(' ')
-
-  const logoShellClass = 'hud-logo-shell flex min-h-0 w-full items-center justify-center py-4 xl:py-0'
-
-  const largeLogoWrapperClass = 'hud-logo-wrapper relative flex h-full min-h-0 flex-col items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu opacity-100 scale-100'
-
-  const logoSizeClass = 'hud-logo-mark h-48 w-auto sm:h-56 xl:h-64'
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent): void => {
@@ -776,7 +734,7 @@ export default function App(): ReactElement {
   const handleOpenDailySession = useCallback(async (sessionId: string): Promise<void> => {
     const sequence = ++dailyOpenSequenceRef.current
     dailyOpeningSessionsRef.current.set(sessionId, sequence)
-    setDailyPanelOpen(true)
+    selectHomeView('briefing')
     setDailyConversationReady(null)
     try {
       const session = await openDailySession(sessionId)
@@ -787,17 +745,9 @@ export default function App(): ReactElement {
     } finally {
       if (dailyOpeningSessionsRef.current.get(sessionId) === sequence) dailyOpeningSessionsRef.current.delete(sessionId)
     }
-  }, [openDailySession, openDailyConversation])
+  }, [openDailySession, openDailyConversation, selectHomeView])
 
-  const handleOpenDailySessions = useCallback((): void => {
-    setDailyPanelOpen(true)
-    const selected = savedDailySessions.find((session) => session.id === selectedDailySessionId)
-      ?? savedDailySessions[0]
-    if (selected) void handleOpenDailySession(selected.id)
-    else void refreshDailySessions()
-  }, [refreshDailySessions, selectedDailySessionId, savedDailySessions, handleOpenDailySession])
-
-  const startDailyBriefing = useCallback(async (activateHome = false): Promise<void> => {
+  const startBriefing = useCallback(async (profileId: BriefingProfileId, activateHome = false): Promise<void> => {
     if (hasActiveDailySession || (!agentQueriesEnabled && !demoModeActive)) return
     const sequence = ++dailyOpenSequenceRef.current
     const resolution = await preflight.requestOperation('generate_briefing_session', {
@@ -806,10 +756,10 @@ export default function App(): ReactElement {
     })
     if (resolution !== 'proceed' || sequence !== dailyOpenSequenceRef.current) return
     if (activateHome) activate()
-    setDailyPanelOpen(true)
+    selectHomeView('briefing')
     setDailyConversationReady(null)
     try {
-      const summary = await generateBriefing('daily', {
+      const summary = await generateBriefing(profileId, {
         modelId: selectedModel,
         reasoning: homeSelectedEntry?.runtime === 'cloud' ? cloudEffort : null,
         contextWindow: homeSelectedEntry?.runtime === 'local' ? localContextWindow : null,
@@ -825,11 +775,12 @@ export default function App(): ReactElement {
     } catch {
       // The sessions hook retains the admission or generation failure for the Home panel.
     }
-  }, [agentQueriesEnabled, activate, cloudEffort, generateBriefing, hasActiveDailySession, demoModeActive, homeSelectedEntry, localContextWindow, localReasoningMode, openDailyConversation, preflight, selectedModel])
+  }, [agentQueriesEnabled, activate, cloudEffort, generateBriefing, hasActiveDailySession, demoModeActive, homeSelectedEntry, localContextWindow, localReasoningMode, openDailyConversation, preflight, selectHomeView, selectedModel])
 
-  const handleStartWithBriefing = useCallback(async (): Promise<void> => {
-    await startDailyBriefing(true)
-  }, [startDailyBriefing])
+  const handleStartOverview = useCallback((): void => {
+    selectHomeView('overview')
+    void handleStartApex()
+  }, [handleStartApex, selectHomeView])
 
   useEffect(() => {
     const handleGlobalEnter = (event: KeyboardEvent): void => {
@@ -856,14 +807,14 @@ export default function App(): ReactElement {
         return
       }
 
-      void handleStartApex()
+      handleStartOverview()
     }
 
     window.addEventListener('keydown', handleGlobalEnter)
     return () => {
       window.removeEventListener('keydown', handleGlobalEnter)
     }
-  }, [activated, handleStartApex, preflight.dialogOpen, preflight.isChecking])
+  }, [activated, handleStartOverview, preflight.dialogOpen, preflight.isChecking])
 
   const dailyControlsBusy = preflight.isChecking || preflight.dialogOpen || dailySessions.isGenerating
   const canGenerateDaily = Boolean(agentQueriesEnabled || demoModeActive)
@@ -895,12 +846,6 @@ export default function App(): ReactElement {
   const f1Module = telemetry.snapshot?.modules.f1
   const footballModule = telemetry.snapshot?.modules.football
   const remindersModule = telemetry.snapshot?.modules.reminders
-
-  const wingGapClass = 'gap-4'
-  const weatherPanelLayoutClass = 'xl:flex-[0.5_1_0] xl:min-h-0'
-  const eventsPanelLayoutClass = 'xl:flex-[1.5_1_0] xl:min-h-0'
-  const marketPanelLayoutClass = 'xl:flex-[1.35_1_0]'
-  const rightTelemetryPanelClass = 'flex-none xl:flex-1 xl:min-h-0'
 
   const attentionTiers = useMemo(() => {
     const options = {
@@ -976,7 +921,6 @@ export default function App(): ReactElement {
     return 'Weather unavailable.'
   })()
 
-  const primaryTemperatureF = weatherInfo.temperatureF
 
   const handleMarkReminderRead = (id: string): void => {
     setReminderActionError(null)
@@ -1000,13 +944,9 @@ export default function App(): ReactElement {
     return outcome
   }, [createReminder])
 
-  const handleGenerateBriefing = useCallback(async (): Promise<void> => {
-    await startDailyBriefing()
-  }, [startDailyBriefing])
-
   useEffect(() => {
     const session = dailySessions.activeSession
-    if (workspace !== 'home' || !dailyPanelOpen || !session || dailySessions.selectedSessionId !== session.id || session.run_status !== 'completed' || !session.artifact) return
+    if (!homeBriefingOpen || !session || dailySessions.selectedSessionId !== session.id || session.run_status !== 'completed' || !session.artifact) return
     if (completedDailyHistoryRef.current.has(session.id) && assistantConversationId === session.conversation_id) return
     if (dailyOpeningSessionsRef.current.has(session.id)) return
     const sequence = ++dailyOpenSequenceRef.current
@@ -1014,18 +954,11 @@ export default function App(): ReactElement {
     void openDailyConversation(session.conversation_id, session.id, sequence).finally(() => {
       if (dailyOpeningSessionsRef.current.get(session.id) === sequence) dailyOpeningSessionsRef.current.delete(session.id)
     })
-  }, [assistantConversationId, dailyPanelOpen, dailySessions.activeSession, dailySessions.selectedSessionId, openDailyConversation, workspace])
+  }, [assistantConversationId, homeBriefingOpen, dailySessions.activeSession, dailySessions.selectedSessionId, openDailyConversation])
 
   const handleCancelDailySession = useCallback((sessionId: string): void => {
     void cancelDailySession(sessionId).catch(() => undefined)
   }, [cancelDailySession])
-  const handleSpeakBriefing = useCallback((): void => {
-    const text = briefing.briefing.trim()
-    if (!text || voiceMode === 'off') {
-      return
-    }
-    void voiceDelivery.speak(text)
-  }, [briefing.briefing, voiceMode, voiceDelivery])
 
   const logoStatus =
     !activated
@@ -1050,8 +983,6 @@ export default function App(): ReactElement {
   const newsItems = parseNewsTelemetry(newsModule?.display_text ?? '')
   const calendarInfo = resolveCalendarTelemetry(calendarModule)
   const footballInfo = resolveFootballTelemetry(footballModule)
-
-  const synthesisInsights = briefing.insights
 
   const eventsCompactValue = hasSnapshot
     ? [
@@ -1353,29 +1284,6 @@ export default function App(): ReactElement {
     )
   }, [persistAgentSettings])
 
-  const handleHomeSubmit = useCallback(async (
-    query: string,
-    selectedToolNames: string[],
-    toolProfileId: string | null,
-  ): Promise<boolean> => {
-    const selectedEntry = fullModelCatalog.find((entry) => entry.model_id === selectedModel)
-      ?? fullModelCatalog[0]
-    const overrides = resolveHomeQueryOverrides(selectedEntry)
-    const accepted = await assistantRuntimeRef.current?.submitPrompt(query, {
-      agent: overrides.agent,
-      modelId: overrides.modelId,
-      effort: overrides.effort,
-      contextWindow: overrides.contextWindow,
-      localReasoningMode: overrides.localReasoningMode,
-      selectedToolNames,
-      toolProfileId,
-    }, { startNewThread: true }) ?? false
-    if (accepted) {
-      navigateWorkspace('cortex')
-    }
-    return accepted
-  }, [fullModelCatalog, navigateWorkspace, selectedModel])
-
   const handleAssistantConversationChange = useCallback((summary: {
     id: string
     agent: AgentKey
@@ -1405,6 +1313,90 @@ export default function App(): ReactElement {
       void actions.refresh()
     }
   }, [actions])
+
+  const briefingPhase = resolveBriefingLayoutPhase({
+    session: dailySessions.activeSession,
+    selectedSession: dailySessions.sessions.find((session) => session.id === dailySessions.selectedSessionId) ?? null,
+    isGenerating: dailySessions.isGenerating,
+  })
+  const briefingEvidence = useMemo(() => ({
+    evidenceById: dailySessions.evidenceById,
+    loadingIds: dailySessions.evidenceLoadingIds,
+    errors: dailySessions.evidenceErrors,
+    onLoadEvidence: dailySessions.loadEvidence,
+  }), [dailySessions.evidenceById, dailySessions.evidenceErrors, dailySessions.evidenceLoadingIds, dailySessions.loadEvidence])
+  const homeIdentity: HomeIdentityProps = {
+    logoProps: cortexLogoProps,
+    glyphProps: {
+      step: activeStep,
+      status: logoStatus,
+      isSpeaking,
+      activeTtsEngine: resolvedTtsEngine,
+      systemLoadThrottled: resolvedSystemThrottled,
+      isCortexQuerying,
+      isLocalModelLoading,
+      loadingDisplayName,
+      isTelemetryCollecting,
+    },
+  }
+  const homeTelemetry: HomeTelemetryData = {
+    hasSnapshot,
+    isRefreshingAll,
+    onRefreshConnector: handleRefreshConnector,
+    attentionTiers,
+    attentionStagger,
+    weather: {
+      info: weatherInfo,
+      body: weatherBody,
+      ledState: weatherLedState,
+      statusMessage: weatherStatusMessage,
+      showAttribution: weatherModule?.status === 'healthy',
+    },
+    events: {
+      f1Text: f1ScheduleTelemetryText,
+      ledState: calendarLedState,
+      statusMessage: eventsStatusMessage,
+      compactValue: eventsCompactValue,
+      calendar: calendarInfo,
+      football: footballInfo,
+      footballModule,
+      calendarRefreshing,
+      f1Refreshing,
+      footballRefreshing,
+    },
+    market: { data: marketData, isLoading: isMarketLoading, enabled: marketEnabled },
+    inbox: {
+      ledState: emailLedState,
+      statusMessage: emailStatusMessage,
+      compactValue: inboxCompactValue,
+      count: emailInfo.count,
+      items: emailInfo.items,
+      refreshing: emailRefreshing,
+    },
+    news: {
+      ledState: newsLedState,
+      statusMessage: newsStatusMessage,
+      compactValue: newsCompactValue,
+      items: newsItems,
+      refreshing: newsRefreshing,
+    },
+    reminders: {
+      ledState: resolveModuleLedState(remindersModule, remindersRefreshing),
+      statusMessage: remindersStatusMessage,
+      compactValue: remindersCompactValue,
+      items: activeReminders,
+      sourceState: reminderSourceState ?? null,
+      actionError: reminderActionError,
+      refreshDisabled: isRefreshingAll || isReminderRefreshPending,
+      onRefresh: handleRefreshReminders,
+      onOpenCompleted: () => setIsCompletedRemindersOpen(true),
+      onSave: handleReminderSave,
+      onMarkRead: handleMarkReminderRead,
+      onEdit: (id) => setReminderTaskDialog({ id, mode: 'edit' }),
+      onDelete: (id) => setReminderTaskDialog({ id, mode: 'delete' }),
+      onReview: () => setIsReminderReviewOpen(true),
+    },
+  }
 
   return (
     <main
@@ -1486,447 +1478,53 @@ export default function App(): ReactElement {
           onResponseChange={handleAssistantResponseChange}
         >
         {workspace === 'home' ? (
-          <>
-        <div className="hud-body-layout flex w-full flex-col gap-4 overflow-visible xl:h-full xl:min-h-0 xl:flex-1 xl:flex-row xl:overflow-hidden xl:gap-6">
-            {/* COLUMN 1: LEFT WING */}
-            <div
-              className={`hud-wing-column order-2 flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} xl:order-1 xl:min-h-0 xl:flex xl:flex-col ${wingTransition} ${isDormant ? leftWingDormantClasses : leftWingActiveClasses}`}
-            >
-              <div className={`flex min-h-0 flex-col ${wingGapClass} xl:flex xl:flex-1`}>
-                <TelemetryCard
-                  title="Weather"
-                  icon={CloudSun}
-                  primaryTemperatureF={primaryTemperatureF}
-                  apparentTemperatureF={weatherInfo.apparentTempF}
-                  tempMaxF={weatherInfo.tempMaxF}
-                  tempMinF={weatherInfo.tempMinF}
-                  windSpeedMph={weatherInfo.windSpeedMph}
-                  weatherTimeline={weatherInfo.timeline}
-                  weatherCondition={weatherInfo.condition}
-                  ledState={weatherLedState}
-                  onRefresh={() => handleRefreshConnector('weather')}
-                  refreshDisabled={isRefreshingAll}
-                  statusMessage={weatherStatusMessage}
-                  compactValue={weatherBody}
-                  headerAction={weatherModule?.status === 'healthy' ? (
-                    <span
-                      className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-x-1 text-[9px] leading-tight text-[color:var(--hud-muted-text)]"
-                      aria-label="Weather by Open-Meteo. Location by GeoNames. Licensed under CC BY 4.0. Adapted by APEX."
-                    >
-                      <span>Weather by</span>
-                      <a
-                        href="https://open-meteo.com/"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="hover:text-[color:var(--hud-text)]"
-                      >
-                        Open-Meteo
-                      </a>
-                      <span>· Location by</span>
-                      <a
-                        href="https://www.geonames.org/"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="hover:text-[color:var(--hud-text)]"
-                      >
-                        GeoNames
-                      </a>
-                      <span>·</span>
-                      <a
-                        href="https://creativecommons.org/licenses/by/4.0/"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="hover:text-[color:var(--hud-text)]"
-                      >
-                        CC BY 4.0
-                      </a>
-                      <span>· adapted by APEX</span>
-                    </span>
-                  ) : undefined}
-                  attentionTier={attentionTiers.weather}
-                  attentionStaggerMs={attentionStagger.weather}
-                  className={`min-h-0 ${weatherPanelLayoutClass}`}
-                >
-                  {primaryTemperatureF == null ? (
-                    <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">
-                      {weatherBody}
-                    </p>
-                  ) : null}
-                </TelemetryCard>
-
-                <TelemetryCard
-                  title="Events"
-                  icon={Calendar}
-                  f1TelemetryText={f1ScheduleTelemetryText}
-                  ledState={calendarLedState}
-                  refreshActions={[
-                    { label: 'Calendar', onRefresh: () => handleRefreshConnector('calendar'), disabled: isRefreshingAll, loading: calendarRefreshing },
-                    { label: 'F1', onRefresh: () => handleRefreshConnector('f1'), disabled: isRefreshingAll, loading: f1Refreshing },
-                    { label: 'Football', onRefresh: () => handleRefreshConnector('football'), disabled: isRefreshingAll, loading: footballRefreshing },
-                  ]}
-                  statusMessage={eventsStatusMessage}
-                  compactValue={eventsCompactValue}
-                  attentionTier={attentionTiers.events}
-                  attentionStaggerMs={attentionStagger.events}
-                  className={`min-h-0 ${eventsPanelLayoutClass}`}
-                >
-                  {calendarRefreshing && !hasSnapshot ? (
-                    <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
-                      Loading schedule…
-                    </p>
-                  ) : (
-                    <>
-                      <CalendarEventList
-                        telemetry={calendarInfo}
-                        hasSnapshot={hasSnapshot}
-                      />
-                      <FootballFixtureList telemetry={footballInfo} module={footballModule} hasSnapshot={hasSnapshot} />
-                    </>
-                  )}
-                </TelemetryCard>
-
-                    <MarketTickerCard
-                      data={marketData}
-                      isLoading={isMarketLoading}
-                      enabled={marketEnabled}
-                      attentionTier={attentionTiers.market}
-                      attentionStaggerMs={attentionStagger.market}
-                      className={`min-h-0 w-full ${marketPanelLayoutClass}`}
-                    />
-              </div>
-            </div>
-
-            {/* COLUMN 2: CENTER REACTOR */}
-            <div
-              className={`hud-center-column order-1 relative z-[var(--z-core-logo)] min-w-0 items-stretch justify-items-center gap-4 xl:order-2 xl:gap-6 ${wingTransition} ${isDormant ? centerColumnDormantClasses : centerColumnActiveClasses}`}
-            >
-              {/* Ambient Logo Glow Projector */}
-              <div
-                className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-12 h-[380px] w-[380px] rounded-full blur-[120px] opacity-10 mix-blend-screen"
-                style={{ background: 'rgba(var(--atmosphere-glow-color), 0.15)' }}
-                aria-hidden
-              />
-              <div className={`shrink-0 flex flex-col ${digestWrapperClass}`}>
-                <BriefingDigest
-                  insights={synthesisInsights}
-                  briefingText={briefing.briefing}
-                  status={briefing.status}
-                  activated={activated}
-                  isLoading={briefing.status === 'loading'}
-                  onSpeakBriefing={handleSpeakBriefing}
-                  speakDisabled={isSpeaking}
-                  showSpeakAction={voiceMode !== 'off'}
-                  speechError={voiceDelivery.error}
-                  deliveryLabel={
-                    voiceDelivery.lastManualEngine
-                      ? `Last manual delivery: ${voiceDelivery.lastManualEngine}`
-                      : null
-                  }
-                  synthesisLabel={
-                    briefing.synthesisProvider
-                      ? [briefing.synthesisProvider, briefing.synthesisModelId]
-                          .filter(Boolean)
-                          .join(' / ')
-                      : null
-                  }
-                  fallbackReason={briefing.synthesisFallbackReason}
-                  attentionTier={attentionTiers.insights}
-                  attentionStaggerMs={attentionStagger.insights}
-                  className="w-full h-full min-h-0"
-                />
-              </div>
-
-              <div className={`${logoShellClass} ${largeLogoWrapperClass}`}>
-                <div className="relative flex flex-col items-center">
-                  <div
-                    className={`filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)] ${isDormant ? 'scale-115 xl:scale-125' : 'scale-100'}`}
-                  >
-                    <ApexLogo
-                      step={activeStep}
-                      status={logoStatus}
-                      isSpeaking={isSpeaking}
-                      reminderPulseCount={reminderPulseCount}
-                      isCortexQuerying={isCortexQuerying}
-                      isTelemetryCollecting={isTelemetryCollecting}
-                      outerShellActivity={outerShellActivity}
-                      className={logoSizeClass}
-                    />
-                  </div>
-                  <div
-                    className={`flex flex-col items-center whitespace-nowrap transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                      isDormant ? 'mt-7 xl:mt-9' : 'mt-2'
-                    }`}
-                  >
-                    <VoiceSignalGlyph
-                      step={activeStep}
-                      status={logoStatus}
-                      isSpeaking={isSpeaking}
-                      activeTtsEngine={resolvedTtsEngine}
-                      systemLoadThrottled={resolvedSystemThrottled}
-                      isCortexQuerying={isCortexQuerying}
-                      isLocalModelLoading={isLocalModelLoading}
-                      loadingDisplayName={loadingDisplayName}
-                      isTelemetryCollecting={isTelemetryCollecting}
-                    />
-                  </div>
-                </div>
-              </div>
-              <div className="flex w-full min-w-0 max-w-full flex-col items-center">
-                <HomeCommandRail
-                  activated={activated}
-                  agentQueriesEnabled={Boolean(agentQueriesEnabled)}
-                  selectedModelId={selectedModel}
-                  onModelChange={handleHomeModelChange}
-                  modelCatalog={fullModelCatalog}
-                  isCortexQuerying={isCortexQuerying}
-                  onAgentSubmit={handleHomeSubmit}
-                  toolCatalog={toolCatalogState.catalog}
-                  selectedToolNames={toolCatalogState.selectedToolNames}
-                  activeToolProfileId={toolCatalogState.activeToolProfileId}
-                  selectionReady={toolCatalogState.selectionReady}
-                  submissionPending={submissionPending}
-                  onToolSelectionChange={toolCatalogState.setSelectedToolNames}
-                  onToolProfileChange={toolCatalogState.applyToolProfile}
-                  toolPreflight={toolPreflightState.estimate}
-                  toolPreflightLoading={toolPreflightState.isLoading}
-                  toolCatalogError={toolCatalogState.error}
-                  toolPreflightError={toolPreflightState.error}
-                  toolProfileFeedback={toolProfileFeedback}
-                  toolProfileError={toolProfileError}
-                  draftPrompt={draftPrompt}
-                  onDraftChange={setDraftPrompt}
-                  onSaveToolProfile={saveToolProfile}
-                  onDuplicateToolProfile={duplicateToolProfile}
-                  onRenameToolProfile={renameToolProfile}
-                  onDeleteToolProfile={deleteToolProfile}
-                  onRestoreToolProfile={restoreToolProfile}
-                  onSetDefaultToolProfile={setDefaultToolProfile}
-                  onStartApex={() => void handleStartApex()}
-                  onStartWithBriefing={() => void handleStartWithBriefing()}
-                  startDisabled={preflight.isChecking}
-                  dailySessionsCount={dailySessions.sessions.length}
-                  dailyBusy={dailyControlsBusy}
-                  hasActiveDailySession={dailySessions.hasActiveSession}
-                  canGenerateDaily={canGenerateDaily}
-                  onGenerateDaily={() => void handleGenerateBriefing()}
-                  onOpenDailySessions={handleOpenDailySessions}
-                  activeLocalModel={activeLocalModel}
-                  loadingLocalModel={loadingLocalModel}
-                  localLifecycleBusy={localLifecycleBusy}
-                  onUnloadLocalModel={unloadLocalModel}
-                />
-                {dailyPanelOpen ? <DailyBriefingPanel
-                  sessions={dailySessions.sessions}
-                  selectedSessionId={dailySessions.selectedSessionId}
-                  session={dailySessions.activeSession}
-                  evidenceById={dailySessions.evidenceById}
-                  evidenceLoadingIds={dailySessions.evidenceLoadingIds}
-                  evidenceErrors={dailySessions.evidenceErrors}
-                  isLoadingSessions={dailySessions.isLoadingSessions}
-                  isLoadingSession={dailySessions.isLoadingSession}
-                  isGenerating={dailySessions.isGenerating}
-                  hasActiveSession={dailySessions.hasActiveSession}
-                  conversationReady={dailyConversationReady === dailySessions.activeSession?.conversation_id && assistantConversationId === dailySessions.activeSession?.conversation_id}
-                  canGenerateDaily={canGenerateDaily}
-                  canFollowUp={Boolean(agentQueriesEnabled) && !demoModeActive}
-                  error={dailySessions.error}
-                  onGenerateDaily={() => void handleGenerateBriefing()}
-                  onOpenSession={(sessionId) => void handleOpenDailySession(sessionId)}
-                  onOpenConversation={(conversationId) => void openDailyConversation(conversationId)}
-                  onLoadEvidence={dailySessions.loadEvidence}
-                  onCancel={handleCancelDailySession}
-                  onMarkPresented={dailySessions.markPresented}
-                  onClose={() => setDailyPanelOpen(false)}
-                /> : null}
-              </div>
-            </div>
-
-            {/* COLUMN 3: RIGHT WING */}
-            <div
-              className={`hud-wing-column order-3 flex min-w-0 flex-col ${wingGapClass} ${wingHeightClass} xl:min-h-0 xl:flex xl:flex-col ${wingTransition} ${isDormant ? rightWingDormantClasses : rightWingActiveClasses}`}
-            >
-              <TelemetryCard
-                title="Inbox"
-                icon={Mail}
-                ledState={emailLedState}
-                onRefresh={() => handleRefreshConnector('email')}
-                refreshDisabled={isRefreshingAll}
-                statusMessage={emailStatusMessage}
-                compactValue={inboxCompactValue}
-                attentionTier={attentionTiers.inbox}
-                attentionStaggerMs={attentionStagger.inbox}
-                className={rightTelemetryPanelClass}
-              >
-                {emailRefreshing && !hasSnapshot ? (
-                  <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
-                    Loading inbox…
-                  </p>
-                ) : (
-                  <>
-                    {emailInfo.count > 0 && (
-                      <p className="mb-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-accent)]">
-                        {emailInfo.count} Primary Messages
-                      </p>
-                    )}
-                    {emailInfo.items.length > 0 ? (
-                      <ScrollFadeContainer as="ul" className="min-h-0 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
-                        {emailInfo.items.map((item, index) => (
-                          <li
-                            key={`${item.subject}-${item.time}-${index}`}
-                            className="flex items-start justify-between gap-3"
-                          >
-                            <span className="flex min-w-0 items-start gap-2">
-                              <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
-                              <span className="break-words text-sm text-zinc-200">
-                                {item.subject}
-                              </span>
-                            </span>
-                            <span className="shrink-0 font-mono text-xs text-zinc-500">
-                              {item.time}
-                            </span>
-                          </li>
-                        ))}
-                      </ScrollFadeContainer>
-                    ) : hasSnapshot ? (
-                      <p className="text-sm text-[color:var(--hud-muted-text)]">
-                        No unread emails.
-                      </p>
-                    ) : (
-                      <p className="text-sm text-[color:var(--hud-muted-text)]">
-                        Inbox unavailable.
-                      </p>
-                    )}
-                  </>
-                )}
-              </TelemetryCard>
-
-              <TelemetryCard
-                title="News Wire"
-                icon={Newspaper}
-                ledState={newsLedState}
-                onRefresh={() => handleRefreshConnector('news')}
-                refreshDisabled={isRefreshingAll}
-                statusMessage={newsStatusMessage}
-                compactValue={newsCompactValue}
-                attentionTier={attentionTiers.news}
-                attentionStaggerMs={attentionStagger.news}
-                className={rightTelemetryPanelClass}
-              >
-                {newsRefreshing && !hasSnapshot ? (
-                  <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">
-                    Loading news…
-                  </p>
-                ) : newsItems.length > 0 ? (
-                  <ScrollFadeContainer as="ul" className="min-h-0 overflow-y-auto pr-1 scrollbar-thin">
-                    {newsItems.map((item, index) => (
-                      <li
-                        key={`${item.topic}-${index}`}
-                        className={
-                          index < newsItems.length - 1
-                            ? 'border-b border-zinc-800/60 py-3 first:pt-0'
-                            : 'py-3 first:pt-0'
-                        }
-                      >
-                        <p className="flex items-center gap-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--hud-accent)]">
-                          <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
-                          [{item.topic}]
-                        </p>
-                        <p className="mt-0.5 line-clamp-2 text-sm leading-relaxed text-zinc-200">
-                          {item.headline}
-                        </p>
-                      </li>
-                    ))}
-                  </ScrollFadeContainer>
-                ) : hasSnapshot ? (
-                  <p className="text-sm text-[color:var(--hud-muted-text)]">
-                    No news headlines available.
-                  </p>
-                ) : (
-                  <p className="text-sm text-[color:var(--hud-muted-text)]">
-                    News unavailable.
-                  </p>
-                )}
-              </TelemetryCard>
-
-              <TelemetryCard
-                title="Reminders"
-                icon={CheckSquare}
-                ledState={resolveModuleLedState(
-                  remindersModule,
-                  remindersRefreshing,
-                )}
-                onRefresh={handleRefreshReminders}
-                refreshDisabled={isRefreshingAll || isReminderRefreshPending}
-                statusMessage={remindersStatusMessage}
-                compactValue={remindersCompactValue}
-                attentionTier={attentionTiers.reminders}
-                attentionStaggerMs={attentionStagger.reminders}
-                className={rightTelemetryPanelClass}
-                role="region"
-                aria-label="Active reminders"
-                data-slot="reminders-card"
-                headerAction={(
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsCompletedRemindersOpen(true)}
-                      aria-label="Completed reminders"
-                      title="Completed reminders"
-                      className="inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-[color:var(--hud-text)] transition-colors hover:border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
-                    >
-                      <Clock className="size-3.5 text-[color:var(--hud-accent)]" strokeWidth={2} aria-hidden />
-                    </button>
-                    <ReminderQuickAdd onSave={handleReminderSave} />
-                  </div>
-                )}
-              >
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                  {activeReminders.length === 0 ? (
-                    <div className="rounded-md border border-white/[0.06] bg-zinc-950/20 px-3 py-2">
-                      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
-                        No pending reminders
-                      </p>
-                    </div>
-                  ) : (
-                    <ScrollFadeContainer as="ul" className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1 scrollbar-thin">
-                      {activeReminders.map((reminder, index) => (
-                        <ReminderListRow
-                          key={reminder.id}
-                          reminder={reminder}
-                          index={index}
-                          onMarkRead={handleMarkReminderRead}
-                          onEdit={(id) => setReminderTaskDialog({ id, mode: 'edit' })}
-                          onDelete={(id) => setReminderTaskDialog({ id, mode: 'delete' })}
-                        />
-                      ))}
-                    </ScrollFadeContainer>
-                  )}
-                  {reminderSourceState && reminderSourceState !== 'live' ? (
-                    <p className="mt-2 font-mono text-[9px] uppercase tracking-wide text-amber-200">
-                      Reminder source: {reminderSourceState}
-                    </p>
-                  ) : null}
-                  {reminderActionError ? (
-                    <p className="mt-2 text-xs leading-relaxed text-red-200" role="alert">
-                      {reminderActionError}
-                    </p>
-                  ) : null}
-                  {activeReminders.some((item) => item.source === 'local') ? (
-                    <button
-                      type="button"
-                      onClick={() => setIsReminderReviewOpen(true)}
-                      className="mt-2 self-start font-mono text-[10px] uppercase tracking-wide text-[#9AC2FF] hover:text-white"
-                    >
-                      Review local reminders
-                    </button>
-                  ) : null}
-                </div>
-              </TelemetryCard>
-
-            </div>
-        </div>
-
-          </>
+          <HomeWorkspace
+            view={homeView.view}
+            briefingPhase={briefingPhase}
+            identity={homeIdentity}
+            telemetry={homeTelemetry}
+            standbyActions={{
+              onStartOverview: handleStartOverview,
+              onStartBriefing: () => void startBriefing('daily', true),
+              disabled: preflight.isChecking,
+              briefingDisabled: !canGenerateDaily || dailySessions.hasActiveSession,
+            }}
+            briefingControls={{
+              profiles: dailySessions.profiles,
+              profileId: homeView.profileId,
+              onProfileChange: homeView.setProfileId,
+              selectedModelId: selectedModel,
+              modelCatalog: fullModelCatalog,
+              onModelChange: handleHomeModelChange,
+              canGenerate: canGenerateDaily,
+              busy: dailyControlsBusy,
+              hasActiveSession: dailySessions.hasActiveSession,
+              isGenerating: dailySessions.isGenerating,
+              onGenerate: (profileId) => void startBriefing(profileId),
+              onCancel: handleCancelDailySession,
+              sessions: dailySessions.sessions,
+              selectedSessionId: dailySessions.selectedSessionId,
+              isLoadingSessions: dailySessions.isLoadingSessions,
+              onOpenSession: (sessionId) => void handleOpenDailySession(sessionId),
+              activeSession: dailySessions.activeSession,
+              error: dailySessions.error,
+              activeLocalModel,
+              loadingLocalModel,
+              localLifecycleBusy,
+              onUnloadLocalModel: unloadLocalModel,
+            }}
+            briefingConversation={{
+              ready: dailyConversationReady === dailySessions.activeSession?.conversation_id && assistantConversationId === dailySessions.activeSession?.conversation_id,
+              canFollowUp: Boolean(agentQueriesEnabled) && !demoModeActive,
+              session: dailySessions.activeSession,
+              isLoadingSession: dailySessions.isLoadingSession,
+              evidence: briefingEvidence,
+              onMarkPresented: dailySessions.markPresented,
+              onOpenConversation: (conversationId) => void openDailyConversation(conversationId),
+            }}
+            onSelectView={selectHomeView}
+            onReturnToStandby={homeView.returnToStandby}
+          />
         ) : workspace === 'cortex' ? (
           <CortexWorkspace
             activeAgent={activeAgent}
