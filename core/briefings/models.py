@@ -25,7 +25,8 @@ EvidenceTrust = Literal["observed", "accepted", "pending", "untrusted", "unknown
 EvidenceIdentityKind = Literal["provider", "content", "masked", "fixture", "unknown"]
 EvidenceRevisionKind = Literal["provider", "content", "none"]
 CoverageStatus = Literal["complete", "partial", "unavailable", "disabled", "failed"]
-BriefingStage = Literal["preparing", "collecting", "selecting", "synthesizing", "persisting"]
+BriefingStage = Literal["preparing", "collecting", "selecting", "investigating", "synthesizing", "persisting"]
+BriefingStageState = Literal["started", "completed", "failed", "cancelled"]
 SpeechDeliveryStatus = Literal["not_requested", "ready", "unavailable"]
 
 MAX_ARTIFACT_BYTES = 64 * 1024
@@ -33,6 +34,7 @@ MAX_EVIDENCE_BYTES = 256 * 1024
 MAX_PROMPT_BYTES = 128 * 1024
 MAX_OUTPUT_TOKENS = 8192
 NORMALIZATION_VERSION = 1
+MAX_EVIDENCE_COUNT = 50
 
 OpaqueSourceId = Annotated[str, StringConstraints(min_length=1, max_length=512)]
 
@@ -77,7 +79,7 @@ BUILTIN_BRIEFING_PROFILES: dict[BriefingProfileId, BuiltinBriefingProfile] = {
     ),
 }
 
-AVAILABLE_BRIEFING_PROFILES: frozenset[BriefingProfileId] = frozenset({"daily", "catch_up"})
+AVAILABLE_BRIEFING_PROFILES: frozenset[BriefingProfileId] = frozenset({"daily", "catch_up", "deep"})
 UNAVAILABLE_BRIEFING_PROFILE_REASON = "This briefing profile is not available in this release."
 
 
@@ -94,17 +96,24 @@ class BriefingProfileSummary(BaseModel):
     unavailable_reason: str | None = None
 
 
-def briefing_profile_catalog() -> list[BriefingProfileSummary]:
+def briefing_profile_catalog(*, demo_mode: bool = False) -> list[BriefingProfileSummary]:
     """Return built-in profiles in stable definition order with availability."""
+    available_profiles = (
+        AVAILABLE_BRIEFING_PROFILES - {"deep"} if demo_mode else AVAILABLE_BRIEFING_PROFILES
+    )
     return [
         BriefingProfileSummary(
             id=profile.id,
             label=profile.label,
             purpose=profile.purpose,
             investigation_required=profile.investigation_required,
-            available=profile.id in AVAILABLE_BRIEFING_PROFILES,
+            available=profile.id in available_profiles,
             unavailable_reason=(
-                None if profile.id in AVAILABLE_BRIEFING_PROFILES else UNAVAILABLE_BRIEFING_PROFILE_REASON
+                None if profile.id in available_profiles else (
+                    "Deep briefings are unavailable in demo mode."
+                    if demo_mode and profile.id == "deep"
+                    else UNAVAILABLE_BRIEFING_PROFILE_REASON
+                )
             ),
         )
         for profile in BUILTIN_BRIEFING_PROFILES.values()
@@ -275,6 +284,37 @@ class BriefingComparison(BaseModel):
     no_material_changes: bool = False
 
 
+class BriefingInvestigationMetadata(BaseModel):
+    """Bounded, durable account of Deep's optional read-only investigation."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: Literal["completed", "limited", "no_read_needed"]
+    offered_tool_names: list[str] = Field(default_factory=list, max_length=8)
+    used_tool_names: list[str] = Field(default_factory=list, max_length=4)
+    result_count: int = Field(default=0, ge=0, le=6)
+    turns_used: int = Field(default=0, ge=0, le=3)
+    tool_calls_used: int = Field(default=0, ge=0, le=4)
+    time_budget_seconds: int = Field(default=0, ge=0, le=180)
+    limitations: list[str] = Field(default_factory=list, max_length=6)
+
+    @field_validator("limitations")
+    @classmethod
+    def _bound_investigation_limitations(cls, value: list[str]) -> list[str]:
+        if any(not item.strip() or len(item) > 240 for item in value):
+            raise ValueError("Each investigation limitation must contain 1 to 240 characters.")
+        return value
+
+
+class BriefingStageProgress(BaseModel):
+    """Current process-local stage exposed while a saved session is running."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    stage: BriefingStage
+    state: BriefingStageState
+
+
 class BriefingSessionHistory(BaseModel):
     """Frozen admission selection and completed comparison metadata."""
 
@@ -358,6 +398,7 @@ class CanonicalBriefingArtifact(BaseModel):
     coverage: list[BriefingCoverage]
     limitations: list[str]
     comparison: BriefingComparison | None = None
+    investigation: BriefingInvestigationMetadata | None = None
 
 
 class BriefingSessionRecord(BaseModel):
@@ -413,6 +454,7 @@ class BriefingSessionDetail(BaseModel):
     created_at: datetime
     presented_at: datetime | None = None
     speech_status: SpeechDeliveryStatus = "not_requested"
+    active_stage: BriefingStageProgress | None = None
 
 
 def build_canonical_artifact(
@@ -422,6 +464,7 @@ def build_canonical_artifact(
     evidence: list[BriefingEvidence],
     coverage: list[BriefingCoverage],
     comparison: BriefingComparison | None = None,
+    investigation: BriefingInvestigationMetadata | None = None,
     created_at: datetime | None = None,
 ) -> CanonicalBriefingArtifact:
     """Validate model references, assign host-owned IDs, and enforce snapshot limits."""
@@ -453,6 +496,7 @@ def build_canonical_artifact(
         coverage=coverage,
         limitations=list(draft.limitations),
         comparison=comparison,
+        investigation=investigation,
     )
     validate_snapshot_size(artifact, evidence)
     return artifact
@@ -490,6 +534,8 @@ def validate_snapshot_size(
     artifact: CanonicalBriefingArtifact,
     evidence: list[BriefingEvidence],
 ) -> None:
+    if len(evidence) > MAX_EVIDENCE_COUNT:
+        raise ValueError(f"Evidence snapshot exceeds {MAX_EVIDENCE_COUNT} records.")
     artifact_size = len(artifact.model_dump_json().encode("utf-8"))
     evidence_size = len(json.dumps(
         [item.model_dump(mode="json") for item in evidence],

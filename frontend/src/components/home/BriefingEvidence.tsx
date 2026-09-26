@@ -25,12 +25,15 @@ export function BriefingEvidenceRecords({
   return <div className="mt-2 space-y-2">
     {evidenceIds.map((id) => {
       const source = evidenceById[id]
+      const isExternalReport = source?.source === 'external_report' || source?.record_reference?.kind === 'external_activity'
       return <details key={id} className="rounded-lg border border-white/10 bg-black/20 px-3 py-2" onToggle={(event: SyntheticEvent<HTMLDetailsElement>) => {
         if (event.currentTarget.open && !source && !loadingIds.includes(id)) void onLoadEvidence(sessionId, id)
       }}>
         <summary className="cursor-pointer text-xs text-zinc-200">
           {source ? <span className={source.trust === 'untrusted' ? 'text-amber-200' : 'text-[#A5C7FF]'}>
-            {source.trust === 'untrusted' ? 'Untrusted external report' : source.trust === 'pending' ? 'Pending context' : source.source.replaceAll('_', ' ')}
+            {source.trust === 'untrusted'
+              ? isExternalReport ? 'Untrusted external report' : `Untrusted read result · ${source.source.replaceAll('_', ' ')}`
+              : source.trust === 'pending' ? 'Pending context' : source.source.replaceAll('_', ' ')}
           </span> : <span>Inspect source record {id.slice(0, 8)}</span>}
           {source ? <span className="ml-2 text-zinc-500">{source.included_in_synthesis ? 'sent to synthesis' : 'not sent to synthesis'} · {isCitedInArtifact ? 'cited in briefing' : 'not cited in briefing'}</span> : null}
         </summary>
@@ -47,7 +50,11 @@ export function BriefingEvidenceRecords({
             <dt>Effective</dt><dd>{source.effective_at ? formatBriefingTime(source.effective_at) : 'Unknown'}</dd>
             <dt>Trust</dt><dd className={source.trust === 'untrusted' ? 'text-amber-200' : ''}>{source.trust}</dd>
           </dl>
-          {source.trust === 'untrusted' ? <p className="mt-2 rounded bg-amber-950/30 px-2 py-1 text-[10px] text-amber-100">External report content is attributed and untrusted. Treat its claims as reports, not verified facts.</p> : null}
+          {source.trust === 'untrusted' ? <p className="mt-2 rounded bg-amber-950/30 px-2 py-1 text-[10px] text-amber-100">
+            {isExternalReport
+              ? 'External report content is attributed and untrusted. Treat its claims as reports, not verified facts.'
+              : `Read result from ${source.source.replaceAll('_', ' ')} is attributed and untrusted. Treat its content as unverified source data.`}
+          </p> : null}
           {source.content ? <p className="mt-2 whitespace-pre-wrap break-words border-l border-white/10 pl-2 text-xs leading-relaxed text-zinc-300">{source.content}</p> : <p className="mt-2 text-xs text-zinc-500">{source.unavailable_reason ?? 'Source content is unavailable.'}</p>}
         </> : null}
       </details>

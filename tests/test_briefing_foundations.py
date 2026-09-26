@@ -8,7 +8,7 @@ import tempfile
 import threading
 import unittest
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 from hashlib import sha256
 from pathlib import Path
@@ -17,6 +17,9 @@ from uuid import uuid4
 from unittest.mock import MagicMock, patch
 
 from core.api.routers.cortex import _submit_run
+from core.agent.capabilities import CapabilityDescriptor
+from core.agent.providers.contract import ProviderTurnResult
+from core.agent.types import AgentMessage, ToolCall, ToolSelectionDiagnostics
 from core.briefings.history import compare_history
 from core.briefings.models import (
     BUILTIN_BRIEFING_PROFILES,
@@ -26,13 +29,14 @@ from core.briefings.models import (
     BriefingEvidence,
     BriefingGenerationConfiguration,
     BriefingGenerationRequest,
+    BriefingItem,
     BriefingItemDraft,
     BriefingModelConfiguration,
     BriefingSectionDraft,
     build_canonical_artifact,
     render_artifact_text,
 )
-from core.briefings.daily import generate_daily_briefing
+from core.briefings.daily import generate_briefing_generation
 from core.briefings.context import saved_daily_followup_context
 from core.briefings.service import BriefingGenerationOutput, BriefingHistoryContext, BriefingService, BriefingSessionQueries
 from core.briefings.store import BriefingSessionConflictError, BriefingSessionStore
@@ -45,6 +49,7 @@ from core.runs.models import RunCompletionEvidence, RunLimitSnapshot
 from core.runs.service import RunService
 from core.runs.store import RunStore
 from core.settings.store import RuntimeSettingsStore
+from core.telemetry.models import TelemetryModuleEntry, TelemetrySnapshot
 
 
 class BriefingSessionSchemaMigrationTests(unittest.TestCase):
@@ -316,6 +321,169 @@ class BriefingSessionLifecycleTests(unittest.TestCase):
         self.assertEqual(agent_message.response_metadata["briefing_session_id"], str(saved.id))
         self.assertTrue(run.evidence.answer_persisted)
 
+    def test_deep_generator_persists_cited_investigator_result_and_limits(self) -> None:
+        request = self._request().model_copy(update={"profile_id": "deep"})
+        configuration = BriefingGenerationConfiguration(
+            profile=BUILTIN_BRIEFING_PROFILES["deep"],
+            model=BriefingModelConfiguration(
+                model_id=request.model_id,
+                provider="openrouter",
+                runtime="cloud",
+                reasoning="high",
+                context_window=16_384,
+                max_elapsed_seconds=60,
+                max_retries=1,
+                max_model_turns=6,
+                max_tool_calls=8,
+                output_token_limit=512,
+            ),
+            origin=request.origin,
+        )
+        service = BriefingService(
+            store=self.session_store,
+            conversations=self.conversations,
+            runs=self.run_service,
+            coordinator=self.coordinator,
+            partition_getter=lambda: "production",
+            resolve_configuration=lambda _request: configuration,
+            execute_generation=generate_briefing_generation,
+        )
+        captured_at = datetime.now(timezone.utc).replace(microsecond=0)
+        snapshot = TelemetrySnapshot(modules={
+            "reminders": TelemetryModuleEntry(
+                name="reminders",
+                status="healthy",
+                freshness="live",
+                observed_at=captured_at.isoformat(),
+                data={
+                    "list_id": "personal-tasks",
+                    "count": 1,
+                    "records": [{
+                        "id": "task-1",
+                        "note": "Prepare the beta roadmap review",
+                        "due": (captured_at + timedelta(days=1)).isoformat(),
+                        "status": "incomplete",
+                    }],
+                },
+            ),
+        })
+        descriptor = CapabilityDescriptor(
+            name="get_active_reminders",
+            title="Get active reminders",
+            description="Read active reminders.",
+            input_schema={"type": "object", "properties": {}},
+            origin="native",
+            risk="read",
+            expose_to_agent=True,
+            expose_to_mcp_server=False,
+            expose_to_client_display=True,
+        )
+        catalog = SimpleNamespace(groups=[SimpleNamespace(tools=[SimpleNamespace(
+            name="get_active_reminders",
+            available=True,
+            allowed_for_agent=True,
+            risk="read",
+            apex_family="schedule",
+        )])])
+        selection = SimpleNamespace(
+            descriptors=(descriptor,),
+            diagnostics=ToolSelectionDiagnostics(),
+        )
+
+        class InvestigatorProvider:
+            def __init__(self) -> None:
+                self.turns = 0
+
+            def generate_turn(self, _messages, tools, _profile, **_kwargs):
+                self.turns += 1
+                if self.turns == 1:
+                    if not tools:
+                        raise AssertionError("Deep did not offer the selected read capability.")
+                    message = AgentMessage(role="agent", tool_calls=[ToolCall(
+                        id="deep-read-1",
+                        name="get_active_reminders",
+                        arguments={},
+                    )])
+                else:
+                    message = AgentMessage(role="agent", content="The captured reminder result is relevant.")
+                return ProviderTurnResult(message=message)
+
+        provider = InvestigatorProvider()
+
+        def synthesize_from_captured_evidence(*, prompt, **_kwargs):
+            evidence_json = prompt.split("\nEvidence:\n", 1)[1]
+            evidence_rows = json.loads(evidence_json)
+            read_row = next(
+                row for row in evidence_rows
+                if row["source"] == "get_active_reminders"
+            )
+            return ProviderTurnResult(message=AgentMessage(
+                role="agent",
+                content=json.dumps({
+                    "sections": [{
+                        "title": "Investigation",
+                        "items": [{
+                            "category": "analysis",
+                            "title": "Reminder check",
+                            "body": "The bounded read result contains a due reminder.",
+                            "evidence_ids": [read_row["id"]],
+                        }],
+                    }],
+                    "limitations": [],
+                }),
+            ))
+
+        settings = SimpleNamespace(get_snapshot=lambda: object())
+        with (
+            patch("core.briefings.daily.get_settings_store", return_value=settings),
+            patch("core.briefings.daily.ContextPolicy.from_settings", return_value=SimpleNamespace(permits_retrieval=False)),
+            patch("core.briefings.daily.is_dev_mode", return_value=False),
+            patch("core.briefings.daily_inputs.is_dev_mode", return_value=False),
+            patch("core.briefings.daily._collect_snapshot", return_value=(snapshot, None)),
+            patch("core.briefings.daily._personal_inputs", return_value=([], [])),
+            patch("core.briefings.daily.get_visible_model_profile", return_value=SimpleNamespace(maximum_context_window=16_384)),
+            patch("core.briefings.daily.execute_single_call", side_effect=synthesize_from_captured_evidence),
+            patch("core.briefings.investigation.build_tool_catalog", return_value=catalog),
+            patch("core.briefings.investigation.resolve_selected_tools", return_value=selection),
+            patch("core.briefings.investigation._recheck_read_permission"),
+            patch("core.briefings.investigation.invoke_read_only_capability", return_value={
+                "task": "Prepare the beta roadmap review",
+                "due": "tomorrow",
+                "details": "bounded read payload " * 200,
+            }) as invoke_read,
+            patch("core.briefings.investigation.get_visible_model_profile", return_value=SimpleNamespace(credential_env=None)),
+            patch("core.briefings.investigation.create_provider", return_value=provider),
+        ):
+            started = service.start(request)
+            assert started.future is not None
+            run = started.future.result(timeout=5)
+
+        saved = self.session_store.get(started.session.id, "production")
+        self.assertEqual(run.status, "completed")
+        self.assertEqual(saved.run_status, "completed")
+        self.assertIsNotNone(saved.artifact)
+        assert saved.artifact is not None
+        investigation = saved.artifact.investigation
+        self.assertIsNotNone(investigation)
+        assert investigation is not None
+        self.assertEqual(investigation.status, "limited")
+        self.assertEqual(investigation.used_tool_names, ["get_active_reminders"])
+        self.assertEqual(investigation.result_count, 1)
+        self.assertTrue(any("truncated" in item for item in investigation.limitations))
+        read_evidence = next(item for item in saved.evidence if item.source == "get_active_reminders")
+        analysis_item = next(
+            item
+            for section in saved.artifact.sections
+            for item in section.items
+            if item.category == "analysis"
+        )
+        self.assertIn(read_evidence.id, analysis_item.evidence_ids)
+        self.assertIn("due reminder", analysis_item.body)
+        self.assertIn("get_active_reminders", saved.artifact.investigation.offered_tool_names)
+        self.assertTrue(any("truncated" in item for item in saved.artifact.limitations))
+        self.assertEqual(invoke_read.call_count, 1)
+        self.assertEqual(provider.turns, 2)
+
     def test_daily_followup_uses_cited_snapshot_with_original_trust_and_partition(self) -> None:
         observed = BriefingEvidence(
             source="calendar", source_id="event-1", trust="observed",
@@ -378,6 +546,43 @@ class BriefingSessionLifecycleTests(unittest.TestCase):
         self.assertFalse(saved_daily_followup_context(
             saved, prompt="planning", policy=ContextPolicy("apex", "sandbox", True)
         ).enabled)
+
+    def test_deep_followup_includes_only_cited_untrusted_reads_when_policy_permits(self) -> None:
+        started = self._service(lambda *_args: self._output()).start(self._request())
+        assert started.future is not None
+        started.future.result(timeout=3)
+        saved = self.session_store.get(started.session.id, "production")
+        deep_evidence = BriefingEvidence(
+            source="get_active_reminders", source_id="deep-read-1", trust="untrusted",
+            content="A captured read result says the task is due tomorrow.",
+        )
+        section = saved.artifact.sections[0]
+        cited_item = BriefingItem(
+            id=uuid4(), category="analysis", title="Reminder check",
+            body="The task is due tomorrow.", evidence_ids=[deep_evidence.id],
+        )
+        artifact = saved.artifact.model_copy(update={
+            "sections": [section.model_copy(update={"items": [*section.items, cited_item]})],
+        })
+        deep_record = saved.model_copy(update={
+            "request": saved.request.model_copy(update={"profile_id": "deep"}),
+            "artifact": artifact,
+            "evidence": [*saved.evidence, deep_evidence],
+        })
+
+        disabled = saved_daily_followup_context(
+            deep_record, prompt="What did the reminder read find?",
+            policy=ContextPolicy("apex", "production", False),
+        )
+        enabled = saved_daily_followup_context(
+            deep_record, prompt="What did the reminder read find?",
+            policy=ContextPolicy("apex", "production", True),
+        )
+
+        self.assertNotIn("task is due tomorrow", disabled.rendered)
+        self.assertIn("task is due tomorrow", enabled.rendered)
+        self.assertIn('"trust":"untrusted"', enabled.rendered)
+        self.assertEqual(enabled.references[0].status, "untrusted")
 
     def test_daily_followup_passes_saved_evidence_to_selected_model(self) -> None:
         started = self._service(lambda *_args: self._output()).start(self._request())
@@ -477,7 +682,7 @@ class BriefingSessionLifecycleTests(unittest.TestCase):
             coordinator=self.coordinator,
             partition_getter=lambda: "production",
             resolve_configuration=lambda _request: configuration,
-            execute_generation=generate_daily_briefing,
+            execute_generation=generate_briefing_generation,
         )
 
         started = service.start(request)

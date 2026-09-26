@@ -397,7 +397,13 @@ class CapabilityRegistry:
                 return False
             return entry.descriptor.expose_to_client_display
 
-    def invoke(self, name: str, arguments: Mapping[str, Any] | None = None) -> Any:
+    def invoke(
+        self,
+        name: str,
+        arguments: Mapping[str, Any] | None = None,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> Any:
         with self._lock:
             entry = self._entries.get(name)
         if entry is None:
@@ -407,12 +413,71 @@ class CapabilityRegistry:
             )
 
         validated = self.validate_arguments(name, arguments)
+        timeout = entry.descriptor.timeout_seconds
+        if timeout_seconds is not None:
+            if timeout_seconds <= 0:
+                raise CapabilityError(
+                    CapabilityErrorCategory.TIMEOUT,
+                    "Capability invocation timed out.",
+                )
+            timeout = min(timeout, timeout_seconds)
         result = _run_handler(
             entry.handler,
             validated,
-            entry.descriptor.timeout_seconds,
+            timeout,
         )
         return _bound_output(result, entry.descriptor.max_output_chars)
+
+    def invoke_read_only(
+        self,
+        name: str,
+        arguments: Mapping[str, Any] | None = None,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> Any:
+        """Invoke one captured, currently exposed read descriptor and handler."""
+        with self._lock:
+            entry = self._entries.get(name)
+            if entry is None:
+                raise CapabilityError(
+                    CapabilityErrorCategory.UNAVAILABLE,
+                    f"Capability '{name}' is not registered.",
+                )
+            descriptor = entry.descriptor.model_copy(deep=True)
+            if (
+                descriptor.risk != "read"
+                or not descriptor.expose_to_agent
+                or not descriptor.expose_to_client_display
+            ):
+                raise CapabilityError(
+                    CapabilityErrorCategory.UNAVAILABLE,
+                    "This capability is no longer permitted as a read-only tool.",
+                )
+
+        validated = _validate_and_coerce_arguments(
+            name,
+            descriptor.input_schema,
+            arguments or {},
+        )
+        try:
+            entry.validator.validate(validated)
+        except ValidationError as exc:
+            path = ".".join(str(part) for part in exc.absolute_path)
+            location = f" at '{path}'" if path else ""
+            raise CapabilityError(
+                CapabilityErrorCategory.INVALID_INPUT,
+                f"Invalid arguments for capability '{name}'{location}.",
+            ) from exc
+        timeout = descriptor.timeout_seconds
+        if timeout_seconds is not None:
+            if timeout_seconds <= 0:
+                raise CapabilityError(
+                    CapabilityErrorCategory.TIMEOUT,
+                    "Capability invocation timed out.",
+                )
+            timeout = min(timeout, timeout_seconds)
+        result = _run_handler(entry.handler, validated, timeout)
+        return _bound_output(result, descriptor.max_output_chars)
 
     def validate_arguments(
         self,
@@ -508,9 +573,29 @@ def is_client_display_enabled(name: str) -> bool:
     return _REGISTRY.is_client_display_enabled(name)
 
 
-def invoke_capability(name: str, arguments: Mapping[str, Any] | None = None) -> Any:
+def invoke_capability(
+    name: str,
+    arguments: Mapping[str, Any] | None = None,
+    *,
+    timeout_seconds: float | None = None,
+) -> Any:
     _ensure_native_capabilities_loaded()
-    return _REGISTRY.invoke(name, arguments)
+    return _REGISTRY.invoke(name, arguments, timeout_seconds=timeout_seconds)
+
+
+def invoke_read_only_capability(
+    name: str,
+    arguments: Mapping[str, Any] | None = None,
+    *,
+    timeout_seconds: float | None = None,
+) -> Any:
+    """Atomically verify the live capability remains exposed and read-only."""
+    _ensure_native_capabilities_loaded()
+    return _REGISTRY.invoke_read_only(
+        name,
+        arguments,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def validate_capability_arguments(

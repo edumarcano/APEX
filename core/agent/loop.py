@@ -99,6 +99,7 @@ class AgentProvider(Protocol[P]):
         execution_control: ExecutionControl | None = None,
         stream_observer: ProviderStreamObserver | None = None,
         output_schema: dict[str, Any] | None = None,
+        output_token_limit: int | None = None,
     ) -> ProviderTurnResult:
         ...
 
@@ -203,6 +204,7 @@ def run_agent_loop(
     stream_observer: ProviderStreamObserver | None = None,
     activity_observer: Callable[[str, dict[str, Any]], None] | None = None,
     output_schema: dict[str, Any] | None = None,
+    output_token_limit: int | None = None,
 ) -> AgentQueryResponse:
     history: list[AgentMessage] = list(request.history)
     history.append(AgentMessage(role="user", content=request.prompt))
@@ -361,15 +363,27 @@ def run_agent_loop(
                 provider=profile.provider,
                 turn=_turn + 1,
             ) as provider_span_ctx:
-                turn_result = provider.generate_turn(
-                    history,
-                    turn_tools,
-                    profile,
-                    system_instruction_override=turn_instruction,
-                    execution_control=execution_control,
-                    stream_observer=observe_stream,
-                    output_schema=output_schema if is_final_turn else None,
-                )
+                if output_token_limit is None:
+                    turn_result = provider.generate_turn(
+                        history,
+                        turn_tools,
+                        profile,
+                        system_instruction_override=turn_instruction,
+                        execution_control=execution_control,
+                        stream_observer=observe_stream,
+                        output_schema=output_schema if is_final_turn else None,
+                    )
+                else:
+                    turn_result = provider.generate_turn(
+                        history,
+                        turn_tools,
+                        profile,
+                        system_instruction_override=turn_instruction,
+                        execution_control=execution_control,
+                        stream_observer=observe_stream,
+                        output_schema=output_schema if is_final_turn else None,
+                        output_token_limit=output_token_limit,
+                    )
                 provider_span_ctx.record_result(turn_result)
             if execution_control is not None:
                 execution_control.after_model_turn(turn_result)

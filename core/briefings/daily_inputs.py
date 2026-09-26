@@ -1,4 +1,4 @@
-"""Source-specific normalization and bounded evidence selection for Daily."""
+"""Shared source normalization and bounded evidence selection for briefings."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ from core.knowledge import get_knowledge_service
 from core.retrieval import get_retrieval_service
 from core.telemetry.models import TelemetryModuleEntry, TelemetrySnapshot
 
-CORE_DAILY_SOURCES = ("reminders", "calendar", "email", "weather")
+CORE_BRIEFING_SOURCES = ("reminders", "calendar", "email", "weather")
 SOURCE_SCOPES = {
     "reminders": "Pending reminders in the selected list",
     "calendar": "Selected calendar events in the configured 14-day window",
@@ -65,7 +65,7 @@ def _telemetry_inputs(
         status, reason = _coverage_status(entry)
         if snapshot is None:
             status, reason = "failed", "telemetry_snapshot_unavailable"
-        elif refresh_problem and source in CORE_DAILY_SOURCES and status not in {"disabled", "failed"}:
+        elif refresh_problem and source in CORE_BRIEFING_SOURCES and status not in {"disabled", "failed"}:
             status, reason = "partial", refresh_problem
         data = entry.data if entry is not None else {}
         truncated = _module_truncated(source, data)

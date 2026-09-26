@@ -45,7 +45,7 @@ from core.agent.providers.llama_cpp_supervisor import get_llama_cpp_server_super
 from core import database, speaker
 from core.conversations import ConversationService, ConversationStore, set_conversation_service
 from core.runs import CortexRunCoordinator, RunService, RunStore, set_run_coordinator, set_run_service
-from core.briefings.daily import generate_daily_briefing
+from core.briefings.daily import generate_briefing_generation
 from core.briefings.runtime import resolve_briefing_configuration
 from core.briefings.service import (
     BriefingService,
@@ -182,6 +182,7 @@ async def _app_lifespan(_app: FastAPI):
             BriefingSessionQueries(
                 briefing_session_store,
                 partition_getter=conversation_service.partition,
+                coordinator=run_coordinator,
             )
         )
         retrieval_store = RetrievalStore(
@@ -290,7 +291,7 @@ async def _app_lifespan(_app: FastAPI):
                 coordinator=run_coordinator,
                 partition_getter=conversation_service.partition,
                 resolve_configuration=resolve_briefing_configuration,
-                execute_generation=generate_daily_briefing,
+                execute_generation=generate_briefing_generation,
             )
         )
         if not DEMO_MODE:

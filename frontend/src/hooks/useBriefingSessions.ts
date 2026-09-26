@@ -97,7 +97,7 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
         return [...admitted, ...listed]
       })
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Saved Daily sessions are unavailable.')
+      setError(cause instanceof Error ? cause.message : 'Saved briefing sessions are unavailable.')
     } finally {
       setIsLoadingSessions(false)
     }
@@ -133,7 +133,7 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
       }
       return detail
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'Daily session could not be loaded.'
+      const message = cause instanceof Error ? cause.message : 'Briefing session could not be loaded.'
       if (loadSequence.current === sequence) setError(message)
       throw cause
     } finally {
@@ -167,7 +167,7 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
 
   const generate = useCallback(async (profileId: BriefingProfileId, options: BriefingGenerationOptions): Promise<BriefingSessionSummary> => {
     if (generatingRef.current || sessions.some((session) => ACTIVE_STATUSES.has(session.run_status))) {
-      throw new Error('A Daily briefing is already running.')
+      throw new Error('A briefing is already running.')
     }
     generatingRef.current = true
     setIsGenerating(true)
@@ -196,7 +196,7 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
       void refreshSessions()
       return summary
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'Daily briefing could not be started.'
+      const message = cause instanceof Error ? cause.message : 'Briefing could not be started.'
       setError(message)
       throw cause
     } finally {

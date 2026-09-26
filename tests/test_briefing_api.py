@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 from core.api.routers import briefings as briefing_routes
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.types import AgentMessage
-from core.briefings.daily import generate_daily_briefing
+from core.briefings.daily import generate_briefing_generation
 from core.briefings.execution import InvalidBriefingModelOutputError
 from core.briefings.models import (
     AVAILABLE_BRIEFING_PROFILES,
@@ -304,6 +304,15 @@ class BriefingSessionApiTests(unittest.TestCase):
                 self.assertTrue(entry["unavailable_reason"])
         self.assertTrue(next(e for e in catalog if e["id"] == "daily")["available"])
 
+    def test_profile_catalog_marks_deep_unavailable_in_demo_mode(self) -> None:
+        with patch("core.api.routers.briefings.DEMO_MODE", True):
+            response = self.client.get("/api/v1/briefing-profiles")
+
+        self.assertEqual(response.status_code, 200)
+        deep = next(entry for entry in response.json() if entry["id"] == "deep")
+        self.assertFalse(deep["available"])
+        self.assertIn("unavailable in demo mode", deep["unavailable_reason"])
+
     def test_generation_and_catalog_share_profile_availability(self) -> None:
         unavailable = sorted(set(BUILTIN_BRIEFING_PROFILES) - AVAILABLE_BRIEFING_PROFILES)
         service = self._service(lambda *_args: self._output())
@@ -412,7 +421,7 @@ class BriefingSessionApiTests(unittest.TestCase):
                 message=AgentMessage(role="agent", content=json.dumps(output))
             )
 
-        service = self._service(generate_daily_briefing)
+        service = self._service(generate_briefing_generation)
         with self._patched_daily_generation(model_call) as evidence:
             started = service.start(self._request())
             assert started.future is not None
@@ -447,7 +456,7 @@ class BriefingSessionApiTests(unittest.TestCase):
                 )
             )
 
-        service = self._service(generate_daily_briefing)
+        service = self._service(generate_briefing_generation)
         with self.assertLogs("core.briefings.daily", level="WARNING") as captured:
             with self._patched_daily_generation(
                 model_call, evidence_content=evidence_content
@@ -477,7 +486,7 @@ class BriefingSessionApiTests(unittest.TestCase):
         def reject_provider_output(**_kwargs):
             raise InvalidBriefingModelOutputError("empty")
 
-        service = self._service(generate_daily_briefing)
+        service = self._service(generate_briefing_generation)
         with self.assertLogs("core.briefings.daily", level="WARNING") as captured:
             with self._patched_daily_generation(reject_provider_output):
                 started = service.start(self._request())

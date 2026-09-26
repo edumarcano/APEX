@@ -142,6 +142,7 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
   const profile = profiles.find((item) => item.id === props.profileId) ?? profiles[0]
   const session = props.activeSession && props.activeSession.id === props.selectedSessionId ? props.activeSession : null
   const runningSession = session && RUNNING_STATUSES.has(session.run_status) ? session : null
+  const deepStage = runningSession?.configuration.profile.id === 'deep' ? runningSession.active_stage : null
   const failureCopy = session ? sessionFailureCopy(session) : null
   const generateDisabled = !props.canGenerate || props.busy || props.hasActiveSession || !profile.available
   return <section className="flex w-full min-w-0 flex-col gap-3" aria-label="Briefing controls">
@@ -155,6 +156,7 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
         presentation="rail"
       />
     </div>
+    {profile.id === 'deep' && profile.available ? <p className="text-[11px] text-zinc-400">Deep can take longer and use more model time while checking a small, read-only set of relevant sources; it may finish without an extra read.</p> : null}
     <div className="flex flex-wrap items-center gap-2">
       <button
         type="button"
@@ -183,7 +185,15 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
       {props.speechControl}
     </div>
     {!profile.available && profile.unavailable_reason ? <p className="text-[11px] text-zinc-500">{profile.unavailable_reason}</p> : null}
-    {runningSession ? <p className="animate-pulse font-mono text-[10px] uppercase tracking-wider text-[#A5C7FF] motion-reduce:animate-none" role="status">Preparing {runningSession.configuration.profile.label} from the available snapshot…</p> : null}
+    {runningSession ? <p className="animate-pulse font-mono text-[10px] uppercase tracking-wider text-[#A5C7FF] motion-reduce:animate-none" role="status">
+      {runningSession.configuration.profile.id === 'deep'
+        ? deepStage?.stage === 'investigating'
+          ? 'Deep is checking relevant read sources…'
+          : deepStage?.stage === 'synthesizing'
+            ? 'Deep is preparing its evidence-backed briefing…'
+            : 'Deep is collecting the briefing snapshot…'
+        : `Preparing ${runningSession.configuration.profile.label} from the available snapshot…`}
+    </p> : null}
     {props.error ? <p className="rounded-md border border-red-500/20 bg-red-950/20 px-2 py-1.5 text-xs text-red-200" role="alert">{props.error}</p> : null}
     {failureCopy ? <p className="rounded-md border border-amber-400/20 bg-amber-950/15 px-2 py-1.5 text-xs text-amber-100" role="alert">{failureCopy}</p> : null}
     {session?.artifact ? <BriefingCoverage artifact={session.artifact} /> : null}

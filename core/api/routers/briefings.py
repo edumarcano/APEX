@@ -58,7 +58,7 @@ _LOGGER = logging.getLogger(__name__)
 )
 def list_briefing_profiles() -> list[BriefingProfileSummary]:
     """Return the static built-in profile catalog; model eligibility is separate."""
-    return briefing_models.briefing_profile_catalog()
+    return briefing_models.briefing_profile_catalog(demo_mode=DEMO_MODE)
 
 
 @router.post(

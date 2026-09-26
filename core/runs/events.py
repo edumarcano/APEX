@@ -222,7 +222,7 @@ def _safe_payload(event_type: RunEventType, payload: dict[str, Any]) -> dict[str
         if isinstance(stage, dict):
             stage_value = stage.get("stage")
             state_value = stage.get("state")
-            if stage_value in {"preparing", "collecting", "selecting", "synthesizing", "persisting"} and state_value in {"started", "completed", "failed", "cancelled"}:
+            if stage_value in {"preparing", "collecting", "selecting", "investigating", "synthesizing", "persisting"} and state_value in {"started", "completed", "failed", "cancelled"}:
                 safe_stage = {"stage": stage_value, "state": state_value}
         return {
             "run": run if isinstance(run, dict) else {},
@@ -240,7 +240,7 @@ def _safe_payload(event_type: RunEventType, payload: dict[str, Any]) -> dict[str
     if event_type == "response.reset":
         return {}
     if event_type == "briefing.stage":
-        stages = {"preparing", "collecting", "selecting", "synthesizing", "persisting"}
+        stages = {"preparing", "collecting", "selecting", "investigating", "synthesizing", "persisting"}
         states = {"started", "completed", "failed", "cancelled"}
         stage = payload.get("stage")
         state = payload.get("state")

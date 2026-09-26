@@ -78,6 +78,48 @@ describe('BriefingArtifactMessage', () => {
     expect(screen.getByText(/DEMO fixture\. No model was run/)).toBeInTheDocument()
   })
 
+  it('discloses a limited Deep investigation and its omission reason', () => {
+    const session = completedDemoSession()
+    session.configuration.profile = { id: 'deep', label: 'Deep', purpose: 'An evidence-backed investigation.', definition_version: 1 }
+    session.configuration.execution_kind = 'model'
+    session.configuration.model.model_id = 'openrouter/test-model'
+    session.artifact!.investigation = {
+      status: 'limited', offered_tool_names: ['get_active_reminders'], used_tool_names: ['get_active_reminders'],
+      result_count: 1, turns_used: 2, tool_calls_used: 1, time_budget_seconds: 90,
+      limitations: ['One read result was truncated before saving.'],
+    }
+    renderMessage(session)
+
+    expect(screen.getByRole('status')).toHaveTextContent('Deep investigation was limited after 1 untrusted read result.')
+    expect(screen.getByRole('status')).toHaveTextContent('One read result was truncated before saving.')
+  })
+
+  it('labels completed Deep read results as untrusted', () => {
+    const session = completedDemoSession()
+    session.configuration.profile = { id: 'deep', label: 'Deep', purpose: 'An evidence-backed investigation.', definition_version: 1 }
+    session.configuration.execution_kind = 'model'
+    session.artifact!.investigation = {
+      status: 'completed', offered_tool_names: ['get_active_reminders'], used_tool_names: ['get_active_reminders'],
+      result_count: 1, turns_used: 2, tool_calls_used: 1, time_budget_seconds: 90, limitations: [],
+    }
+    renderMessage(session)
+
+    expect(screen.getByRole('status')).toHaveTextContent('Deep added 1 untrusted bounded read result.')
+  })
+
+  it('shows when Deep decided no additional read was needed', () => {
+    const session = completedDemoSession()
+    session.configuration.profile = { id: 'deep', label: 'Deep', purpose: 'An evidence-backed investigation.', definition_version: 1 }
+    session.configuration.execution_kind = 'model'
+    session.artifact!.investigation = {
+      status: 'no_read_needed', offered_tool_names: ['get_active_reminders'], used_tool_names: [],
+      result_count: 0, turns_used: 1, tool_calls_used: 0, time_budget_seconds: 90, limitations: [],
+    }
+    renderMessage(session)
+
+    expect(screen.getByRole('status')).toHaveTextContent('Deep used the saved snapshot; no additional read was needed.')
+  })
+
   it('shows the Catch Up comparison period before its sections and source details', async () => {
     const session = completedDemoSession()
     session.configuration.profile = { id: 'catch_up', label: 'Catch Up', purpose: 'Changes since you last checked.', definition_version: 1 }
@@ -182,6 +224,30 @@ describe('BriefingArtifactMessage', () => {
     expect(screen.getByText('sent to synthesis · cited in briefing')).toBeInTheDocument()
     await userEvent.click(screen.getByText(/Other captured evidence \(1\)/))
     expect(screen.getByText('sent to synthesis · not cited in briefing')).toBeInTheDocument()
+  })
+
+  it('attributes untrusted Deep read evidence without calling it an external report', async () => {
+    const session = completedDemoSession()
+    session.configuration.profile = { id: 'deep', label: 'Deep', purpose: 'An evidence-backed investigation.', definition_version: 1 }
+    session.evidence_ids = ['tool-evidence']
+    const toolEvidence = {
+      id: 'tool-evidence', source: 'get_active_reminders', source_id: 'read-1',
+      identity_kind: 'provider' as const, revision: null, revision_kind: 'none' as const,
+      observed_at: '2026-09-25T13:00:00Z', effective_at: null, trust: 'untrusted' as const,
+      content: 'A bounded reminder result.', record_reference: null,
+      included_in_synthesis: true, available: true, unavailable_reason: null,
+    }
+    render(<BriefingArtifactMessage
+      session={session}
+      isLoadingSession={false}
+      evidence={{ evidenceById: { 'tool-evidence': toolEvidence }, loadingIds: [], errors: {}, onLoadEvidence: vi.fn(async () => {}) }}
+      onMarkPresented={vi.fn(async () => {})}
+    />)
+
+    await userEvent.click(screen.getByText('Evidence (1)'))
+    expect(screen.getByText('Untrusted read result · get active reminders')).toBeInTheDocument()
+    expect(screen.getByText(/Read result from get active reminders is attributed and untrusted/)).toBeInTheDocument()
+    expect(screen.queryByText('Untrusted external report')).not.toBeInTheDocument()
   })
 
   it('includes coverage and limitations with the artifact', () => {

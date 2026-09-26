@@ -315,11 +315,11 @@ Returns live availability and metadata for fixed briefing-generation targets in 
 
 ### GET `/api/v1/briefing-profiles`
 
-Returns the built-in briefing profiles in a stable order. Each entry includes `id`, `label`, `purpose`, `investigation_required`, `available`, and `unavailable_reason`. `available` reports whether `POST /api/v1/briefing-sessions` accepts the profile in this release; unavailable profiles include a short reason. The catalog is static and does not report model eligibility.
+Returns the built-in briefing profiles in a stable order. Each entry includes `id`, `label`, `purpose`, `investigation_required`, `available`, and `unavailable_reason`. `available` reports release and mode eligibility for `POST /api/v1/briefing-sessions`; unavailable profiles include a short reason. Deep is unavailable in demo mode. Model-specific capability and context checks may still reject a Deep run before session creation.
 
 ### POST `/api/v1/briefing-sessions`
 
-Admits an asynchronous Daily or Catch Up generation using the explicit model from the selected Apex Agent catalog entry. The server captures the active production or sandbox partition, applies the current run limits, and creates a saved session linked to a Cortex conversation. It does not fall back to another model. Demo mode uses a deterministic fixture and does not contact a model provider. Catch Up uses the current source inventory and the presented source history selected when the run is admitted; it calls no model when the deterministic comparison finds no material changes.
+Admits an asynchronous Daily, Catch Up, or Deep generation using the explicit model from the selected Apex Agent catalog entry. The server captures the active production or sandbox partition, applies the current run limits, and creates a saved session linked to a Cortex conversation. It does not fall back to another model. Demo mode uses deterministic Daily and Catch Up fixtures without contacting a model provider; Deep is unavailable in demo mode. Catch Up uses the current source inventory and the presented source history selected when the run is admitted; it calls no model when the deterministic comparison finds no material changes.
 
 ```json
 {
@@ -338,6 +338,8 @@ Admits an asynchronous Daily or Catch Up generation using the explicit model fro
 - `429` — the run coordinator has no free execution slot.
 - `503` — briefing generation is unavailable or shutting down.
 
+Deep first gathers the shared current and relevant history evidence, then makes a bounded investigation with up to eight eligible read capabilities selected for the evidence and source coverage. Its investigation prompt includes selected current evidence and paired historical evidence, with each row's role, capture time, trust, and content, so it can frame reads against observed changes. The selected set is independent of the saved runtime tool profile and still intersects current Agent policy, connector availability, partition, sandbox, and MCP allowlist/risk checks. Deep requires capacity for at least two investigation turns, one tool call, and two synthesis turns; otherwise admission returns `422` before creating a session. Investigation is limited to four tool calls, 180 seconds or half of the remaining run time (whichever is smaller), at most six saved read-result evidence records, and at most 1,024 generated tokens per investigation turn (or the lower configured output limit). The model may decide no additional read is needed. Write, destructive, hosted, and unbounded tools are not offered. Read-result evidence keeps an untrusted source label and capture time; raw investigation transcripts are not saved. The completed artifact's optional `investigation` field reports whether investigation completed, was limited, or needed no read, along with bounded counts and limitations. The total saved evidence remains capped at 50 records.
+
 ### Catch Up comparison history
 
 The admission transaction freezes up to 100 newest presented, completed sessions from the active partition. Reading a session does not make it a checkpoint; the client records presentation through `POST /api/v1/briefing-sessions/{session_id}/presented`. Catch Up compares each source independently with history from the same normalized source scope. The newest complete, untruncated presented inventory is the membership checkpoint: a newer partial or capped snapshot does not replace it. Catch Up does not infer new items from incomplete-list membership. For bounded unread email and news, it can still identify a genuinely new message or article when a stable provider ID is available and its received/published timestamp falls after the prior source observation and no later than the current observation. Unmatched items without that timestamp evidence remain not comparable. A source with changed settings or a different normalization version has no compatible baseline.
@@ -354,11 +356,11 @@ Returns up to 100 newest session summaries from the active production or sandbox
 
 ### GET `/api/v1/briefing-sessions/{session_id}`
 
-Returns session identity, captured model/profile configuration, run status, a safe `run_error_code` when the run has a classified error, evidence IDs, and the canonical artifact after successful completion. The artifact includes source comparison outcome and per-source checkpoint times when history comparison applies. `invalid_model_output` means the model response failed host validation after one repair attempt. Failed, cancelled, interrupted, and still-running sessions return metadata without an artifact. Reading a session does not mark it presented. A session in another partition or an unknown session returns `404`.
+Returns session identity, captured model/profile configuration, run status, a safe `run_error_code` when the run has a classified error, evidence IDs, and the canonical artifact after successful completion. While the run is active, `active_stage` may report the current briefing stage, including `investigating`. The artifact includes source comparison outcome and per-source checkpoint times when history comparison applies. Deep artifacts may include bounded investigation status and limitations in `investigation`; older artifacts omit this field. `invalid_model_output` means the model response failed host validation after one repair attempt. Failed, cancelled, interrupted, and still-running sessions return metadata without an artifact. Reading a session does not mark it presented. A session in another partition or an unknown session returns `404`.
 
 ### GET `/api/v1/briefing-sessions/{session_id}/evidence/{evidence_id}`
 
-Returns one immutable evidence snapshot or unavailable-source entry captured with the completed artifact. The Home evidence inspector loads these records on demand. The conversation retains the opening artifact in its normal history. Follow-up turns may include up to 500 estimated tokens from evidence cited by that completed Daily or Catch Up artifact, within the selected model's existing retrieved-context budget. Saved personal context, pending reviews, external reports, and action evidence are included only when personal-context retrieval is enabled for that runtime. The excerpts retain their trust, comparison role, and captured-time labels; they are not fresh reads or approvals. Evidence reads are partition-scoped and have no presentation side effect. A missing session/evidence entry returns `404`; evidence for a session that has not completed returns `409`.
+Returns one immutable evidence snapshot or unavailable-source entry captured with the completed artifact. The Home evidence inspector loads these records on demand. The conversation retains the opening artifact in its normal history. Follow-up turns may include up to 500 estimated tokens from evidence cited by that completed briefing artifact, within the selected model's existing retrieved-context budget. Saved personal context, pending reviews, external reports, action evidence, and untrusted Deep read results are included only when personal-context retrieval is enabled for that runtime. The excerpts retain their trust, comparison role, and captured-time labels; they are not fresh reads or approvals. Evidence reads are partition-scoped and have no presentation side effect. A missing session/evidence entry returns `404`; evidence for a session that has not completed returns `409`.
 
 ### POST `/api/v1/briefing-sessions/{session_id}/presented`
 
@@ -696,12 +698,17 @@ Each event uses the following JSON envelope:
 }
 ```
 
-The closed event types are `run.snapshot`, `run.status`, `model.started`,
+The closed event types are `run.snapshot`, `run.status`, `briefing.stage`, `model.started`,
 `model.completed`, `response.delta`, `response.reset`, `response.completed`,
 `tool.started`, `tool.completed`, `action.proposed`, `usage.updated`,
 `runtime.updated`, and `run.completed`. Response text is provisional until
 `response.completed`; `response.reset` tells a client to discard provisional
 text after a late tool call.
+
+`briefing.stage` carries a bounded `{ "stage": "investigating", "state": "started" }`
+payload for briefing progress. Valid stages include `preparing`, `collecting`,
+`selecting`, `investigating`, `synthesizing`, and `persisting`; state is
+`started`, `completed`, `failed`, or `cancelled`.
 
 The stream replays events after the supplied cursor. If that cursor is older
 than the run's bounded replay buffer, APEX sends a fresh `run.snapshot`
