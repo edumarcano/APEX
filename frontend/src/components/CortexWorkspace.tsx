@@ -35,6 +35,7 @@ import { ModelSelector } from './ModelSelector'
 import { ApexAssistantThread, ApexConversationRail, type ApexAssistantComposerProps, type ApexAssistantRunConfig } from './ApexAssistantRuntime'
 import { useContextInspector } from '../hooks/useContextInspector'
 import { useCortexRuns } from '../hooks/useCortexRuns'
+import { useCompactLayout } from '../hooks/useCompactLayout'
 
 const INSPECTOR_TABS = ['controls', 'context', 'actions', 'activity'] as const
 
@@ -353,23 +354,6 @@ export function AssistantResponseDisplay({
   </>
 }
 
-function useCompactCortexLayout(): boolean {
-  const [compact, setCompact] = useState(() => (
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia('(max-width: 1279px), (max-height: 820px)').matches
-      : false
-  ))
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return
-    const query = window.matchMedia('(max-width: 1279px), (max-height: 820px)')
-    const update = (): void => setCompact(query.matches)
-    update()
-    query.addEventListener?.('change', update)
-    return () => query.removeEventListener?.('change', update)
-  }, [])
-  return compact
-}
-
 function formatCountdown(seconds: number | null): string {
   if (seconds === null) return '--:--'
   const safe = Math.max(0, Math.floor(seconds))
@@ -484,7 +468,7 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
     actionEffectRef.current = action.action_id
     rememberVerifiedRecord(recordId)
   }, [rememberVerifiedRecord, props.actions.detail])
-  const compactLayout = useCompactCortexLayout()
+  const compactLayout = useCompactLayout()
   const isQuerying = props.isQuerying
   const interactionDisabled = isQuerying || Boolean(props.submissionPending) || Boolean(props.conversationHydrating)
   const activeAgent = props.cortexAgent?.key === props.activeAgent ? props.cortexAgent : null
