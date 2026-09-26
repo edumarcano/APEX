@@ -62,6 +62,7 @@ export const API_ENDPOINTS = {
   actionApprove: (actionId: string) => `${API_BASE}/api/v1/actions/${encodeURIComponent(actionId)}/approve`,
   actionReject: (actionId: string) => `${API_BASE}/api/v1/actions/${encodeURIComponent(actionId)}/reject`,
   actionVerify: (actionId: string) => `${API_BASE}/api/v1/actions/${encodeURIComponent(actionId)}/verify`,
+  briefingProfiles: `${API_BASE}/api/v1/briefing-profiles`,
   briefingSessions: (params?: { limit?: number; offset?: number }) => {
     const query = new URLSearchParams()
     if (params?.limit) query.set('limit', String(params.limit))

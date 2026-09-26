@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { API_ENDPOINTS } from '../lib/api'
-import type { BriefingEvidence, BriefingSessionDetail, BriefingSessionSummary } from '../types/briefings'
+import type { BriefingEvidence, BriefingProfileSummary, BriefingSessionDetail, BriefingSessionSummary } from '../types/briefings'
 import { useBriefingSessions } from './useBriefingSessions'
 
 const sessionId = '00000000-0000-4000-8000-000000000001'
@@ -123,10 +123,10 @@ describe('useBriefingSessions', () => {
     const options = { modelId: 'demo/daily-fixture' }
 
     await act(async () => {
-      await expect(result.current.generateDaily(options)).rejects.toThrow('Network connection lost')
+      await expect(result.current.generate('daily', options)).rejects.toThrow('Network connection lost')
     })
     await act(async () => {
-      await expect(result.current.generateDaily(options)).resolves.toMatchObject({ id: sessionId })
+      await expect(result.current.generate('daily', options)).resolves.toMatchObject({ id: sessionId })
     })
 
     expect(requestKeys).toHaveLength(2)
@@ -153,7 +153,7 @@ describe('useBriefingSessions', () => {
     await act(async () => { await result.current.openSession(sessionId) })
     expect(result.current.activeSession?.id).toBe(sessionId)
 
-    await act(async () => { await result.current.generateDaily({ modelId: 'demo/daily-fixture' }) })
+    await act(async () => { await result.current.generate('daily', { modelId: 'demo/daily-fixture' }) })
     expect(result.current.selectedSessionId).toBe(newId)
     expect(result.current.activeSession).toBeNull()
     expect(result.current.hasActiveSession).toBe(true)
@@ -161,5 +161,42 @@ describe('useBriefingSessions', () => {
     releaseDetail(response({ ...detail('running'), id: newId }))
     await waitFor(() => expect(result.current.activeSession?.id).toBe(newId))
     unmount()
+  })
+
+  it('exposes the profile catalog and sends the chosen profile when generating', async () => {
+    const profiles: BriefingProfileSummary[] = [
+      { id: 'daily', label: 'Daily', purpose: 'Current view.', investigation_required: false, available: true, unavailable_reason: null },
+      { id: 'catch_up', label: 'Catch Up', purpose: 'Changes.', investigation_required: false, available: true, unavailable_reason: null },
+    ]
+    const sentProfiles: string[] = []
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url === API_ENDPOINTS.briefingProfiles) return response(profiles)
+      if (url === API_ENDPOINTS.briefingSessions({ limit: 50 })) return response([])
+      if (url === API_ENDPOINTS.briefingSessions() && init?.method === 'POST') {
+        sentProfiles.push((JSON.parse(String(init.body)) as { profile_id: string }).profile_id)
+        return response({ ...summary, profile_id: 'catch_up' }, 202)
+      }
+      if (url === API_ENDPOINTS.briefingSession(sessionId)) return response(detail())
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const { result } = renderHook(() => useBriefingSessions())
+    await waitFor(() => expect(result.current.profiles).toEqual(profiles))
+
+    await act(async () => { await result.current.generate('catch_up', { modelId: 'demo/daily-fixture' }) })
+    expect(sentProfiles).toEqual(['catch_up'])
+  })
+
+  it('keeps sessions usable when the profile catalog cannot load', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url === API_ENDPOINTS.briefingProfiles) return response({ detail: 'down' }, 503)
+      if (url === API_ENDPOINTS.briefingSessions({ limit: 50 })) return response([summary])
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const { result } = renderHook(() => useBriefingSessions())
+    await waitFor(() => expect(result.current.sessions).toHaveLength(1))
+    expect(result.current.profiles).toEqual([])
+    expect(result.current.error).toBeNull()
   })
 })

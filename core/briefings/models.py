@@ -76,6 +76,39 @@ BUILTIN_BRIEFING_PROFILES: dict[BriefingProfileId, BuiltinBriefingProfile] = {
     ),
 }
 
+AVAILABLE_BRIEFING_PROFILES: frozenset[BriefingProfileId] = frozenset({"daily"})
+UNAVAILABLE_BRIEFING_PROFILE_REASON = "This briefing profile is not available in this release."
+
+
+class BriefingProfileSummary(BaseModel):
+    """Public catalog entry for a built-in profile and whether it can generate."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: BriefingProfileId
+    label: str
+    purpose: str
+    investigation_required: bool
+    available: bool
+    unavailable_reason: str | None = None
+
+
+def briefing_profile_catalog() -> list[BriefingProfileSummary]:
+    """Return built-in profiles in stable definition order with availability."""
+    return [
+        BriefingProfileSummary(
+            id=profile.id,
+            label=profile.label,
+            purpose=profile.purpose,
+            investigation_required=profile.investigation_required,
+            available=profile.id in AVAILABLE_BRIEFING_PROFILES,
+            unavailable_reason=(
+                None if profile.id in AVAILABLE_BRIEFING_PROFILES else UNAVAILABLE_BRIEFING_PROFILE_REASON
+            ),
+        )
+        for profile in BUILTIN_BRIEFING_PROFILES.values()
+    ]
+
 
 class BriefingGenerationRequest(BaseModel):
     """Internal generation request; partition, limits, and identity stay server-owned."""

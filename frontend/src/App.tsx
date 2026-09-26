@@ -304,7 +304,7 @@ export default function App(): ReactElement {
   const {
     openSession: openDailySession,
     refreshSessions: refreshDailySessions,
-    generateDaily,
+    generate: generateBriefing,
     cancelSession: cancelDailySession,
     sessions: savedDailySessions,
     selectedSessionId: selectedDailySessionId,
@@ -809,7 +809,7 @@ export default function App(): ReactElement {
     setDailyPanelOpen(true)
     setDailyConversationReady(null)
     try {
-      const summary = await generateDaily({
+      const summary = await generateBriefing('daily', {
         modelId: selectedModel,
         reasoning: homeSelectedEntry?.runtime === 'cloud' ? cloudEffort : null,
         contextWindow: homeSelectedEntry?.runtime === 'local' ? localContextWindow : null,
@@ -825,7 +825,7 @@ export default function App(): ReactElement {
     } catch {
       // The sessions hook retains the admission or generation failure for the Home panel.
     }
-  }, [agentQueriesEnabled, activate, cloudEffort, generateDaily, hasActiveDailySession, demoModeActive, homeSelectedEntry, localContextWindow, localReasoningMode, openDailyConversation, preflight, selectedModel])
+  }, [agentQueriesEnabled, activate, cloudEffort, generateBriefing, hasActiveDailySession, demoModeActive, homeSelectedEntry, localContextWindow, localReasoningMode, openDailyConversation, preflight, selectedModel])
 
   const handleStartWithBriefing = useCallback(async (): Promise<void> => {
     await startDailyBriefing(true)
