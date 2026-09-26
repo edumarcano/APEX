@@ -136,14 +136,6 @@
     min-height: max-content;
     overflow: visible;
   }
-
-  .hud-wing-column,
-  .hud-center-column {
-    flex: 0 0 auto !important;
-    height: auto !important;
-    max-width: none !important;
-    min-height: 0;
-  }
 }
 
 @media (max-height: 820px) {
@@ -164,22 +156,6 @@
     overflow: visible;
   }
 
-  .hud-digest-wrapper {
-    max-height: 13.5rem !important;
-    margin-bottom: 0.75rem !important;
-  }
-
-  .hud-logo-shell {
-    padding-top: 0.5rem !important;
-    padding-bottom: 0.5rem !important;
-  }
-
-  .hud-logo-wrapper {
-    height: 12rem !important;
-    flex: 0 0 auto !important;
-    justify-content: center;
-  }
-
   .hud-logo-mark {
     height: 10rem !important;
   }
@@ -196,14 +172,6 @@
 
   .hud-header {
     gap: 0.75rem;
-  }
-
-  .hud-digest-wrapper {
-    max-height: 12rem !important;
-  }
-
-  .hud-logo-wrapper {
-    height: 10rem !important;
   }
 
   .hud-logo-mark {

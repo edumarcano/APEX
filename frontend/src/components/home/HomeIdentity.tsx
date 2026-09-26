@@ -22,7 +22,7 @@ export function HomeIdentityMark({
     ? 'hud-logo-mark h-48 w-auto sm:h-56 xl:h-64'
     : size === 'large'
       ? 'hud-logo-mark h-40 w-auto sm:h-48 xl:h-56'
-      : 'hud-logo-mark h-16 w-auto sm:h-20'
+      : 'h-16 w-auto sm:h-20'
   return <div className="relative flex flex-col items-center" data-slot="home-identity">
     <div className={`${LOGO_GLOW_CLASS} ${size === 'hero' ? 'scale-115 xl:scale-125' : ''}`}>
       <ApexLogo {...identity.logoProps} className={logoClass} />
