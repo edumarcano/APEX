@@ -1,5 +1,3 @@
-name = "luna-explorer"
-description = "Use for focused codebase exploration, dependency tracing, implementation-path discovery, and repository reconciliation when the parent needs concise evidence without carrying the full exploration context."
 model = "gpt-6-luna"
 model_reasoning_effort = "max"
 sandbox_mode = "read-only"
