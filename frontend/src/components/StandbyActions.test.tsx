@@ -5,42 +5,32 @@ import { describe, expect, it, vi } from 'vitest'
 import { StandbyActions } from './StandbyActions'
 
 describe('StandbyActions', () => {
-  it('renders title-case action labels and responds to clicks', async () => {
-    const onStartApex = vi.fn()
-    const onStartWithBriefing = vi.fn()
+  it('routes the Overview and Briefing actions to their own handlers', async () => {
+    const onStartOverview = vi.fn()
+    const onStartBriefing = vi.fn()
     const user = userEvent.setup()
 
-    render(
-      <StandbyActions
-        onStartApex={onStartApex}
-        onStartWithBriefing={onStartWithBriefing}
-        disabled={false}
-      />,
-    )
+    render(<StandbyActions onStartOverview={onStartOverview} onStartBriefing={onStartBriefing} />)
 
-    const startBtn = screen.getByRole('button', { name: 'Start APEX' })
-    const briefingBtn = screen.getByRole('button', { name: 'Start APEX with Daily briefing' })
+    await user.click(screen.getByRole('button', { name: 'Start Overview' }))
+    expect(onStartOverview).toHaveBeenCalledTimes(1)
+    expect(onStartBriefing).not.toHaveBeenCalled()
 
-    expect(startBtn).toHaveTextContent('Start APEX')
-    expect(briefingBtn).toHaveTextContent('Start with Daily')
-
-    await user.click(startBtn)
-    expect(onStartApex).toHaveBeenCalledTimes(1)
-
-    await user.click(briefingBtn)
-    expect(onStartWithBriefing).toHaveBeenCalledTimes(1)
+    await user.click(screen.getByRole('button', { name: 'Start Briefing with Daily' }))
+    expect(onStartBriefing).toHaveBeenCalledTimes(1)
   })
 
-  it('disables both actions when disabled prop is true', () => {
-    render(
-      <StandbyActions
-        onStartApex={vi.fn()}
-        onStartWithBriefing={vi.fn()}
-        disabled
-      />,
-    )
+  it('keeps Overview available when only briefing generation is unavailable', () => {
+    render(<StandbyActions onStartOverview={vi.fn()} onStartBriefing={vi.fn()} briefingDisabled />)
 
-    expect(screen.getByRole('button', { name: 'Start APEX' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Start APEX with Daily briefing' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Start Overview' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Start Briefing with Daily' })).toBeDisabled()
+  })
+
+  it('disables both actions while activation is blocked', () => {
+    render(<StandbyActions onStartOverview={vi.fn()} onStartBriefing={vi.fn()} disabled />)
+
+    expect(screen.getByRole('button', { name: 'Start Overview' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Start Briefing with Daily' })).toBeDisabled()
   })
 })

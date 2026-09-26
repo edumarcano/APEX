@@ -13,6 +13,7 @@ import {
 import type { ReactElement, ReactNode } from 'react'
 
 import type { ActiveReminder, ToolOutputItem } from '../types/telemetry'
+import { parseActionProposalToolOutput, type ActionProposalToolOutput } from '../lib/toolOutputs'
 
 interface WeatherCurrentConditions {
   temp_f: number
@@ -196,36 +197,6 @@ const MCP_PROVIDER_LABELS: Record<string, string> = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-interface ActionProposalToolOutput {
-  action_id: string
-  status: 'proposed'
-  version: number
-  risk: 'write' | 'destructive'
-  summary: string
-  target: string
-}
-
-function parseActionProposalToolOutput(value: unknown): ActionProposalToolOutput | null {
-  if (!isRecord(value)) return null
-  if (
-    typeof value.action_id !== 'string' ||
-    value.status !== 'proposed' ||
-    typeof value.version !== 'number' ||
-    !Number.isInteger(value.version) ||
-    (value.risk !== 'write' && value.risk !== 'destructive') ||
-    typeof value.summary !== 'string' ||
-    typeof value.target !== 'string'
-  ) return null
-  return {
-    action_id: value.action_id,
-    status: value.status,
-    version: value.version,
-    risk: value.risk,
-    summary: value.summary,
-    target: value.target,
-  }
 }
 
 function formatToolLabel(name: string): string {

@@ -425,6 +425,8 @@ export type TelemetryCardProps = {
   refreshActions?: RefreshAction[]
   /** Optional action rendered beside the card title and refresh control. */
   headerAction?: ReactNode
+  /** Renders the header action on its own row beneath the title for narrow surfaces. */
+  headerActionBelow?: boolean
   /** Explicit typed module state or failure reason shown with the card content. */
   statusMessage?: string | null
   /** When true, renders a single condensed summary row instead of the full card body (e.g. while the console tray is open). */
@@ -435,6 +437,8 @@ export type TelemetryCardProps = {
   attentionTier?: AttentionTier
   /** Curtain unlock delay in ms for staggered reveals within a shared step. */
   attentionStaggerMs?: number
+  /** `section` drops the glass card chrome for use inside a shared panel. */
+  chrome?: 'card' | 'section'
 } & Omit<ComponentPropsWithoutRef<'section'>, 'title' | 'children'>
 
 export function TelemetryCard({
@@ -454,11 +458,13 @@ export function TelemetryCard({
   refreshDisabled = false,
   refreshActions,
   headerAction,
+  headerActionBelow = false,
   statusMessage,
   isCompact = false,
   compactValue,
   attentionTier = 'dormant',
   attentionStaggerMs = 0,
+  chrome = 'card',
   className,
   ...sectionProps
 }: TelemetryCardProps): ReactElement {
@@ -481,12 +487,17 @@ export function TelemetryCard({
       ? ({ '--attention-stagger': `${attentionStaggerMs}ms` } as CSSProperties)
       : undefined
 
+  const bareSection = chrome === 'section'
   const sectionClassName = [
-    'hud-corner-brackets hud-interactive-shell relative flex overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hud-glass transition-all duration-700 ease-in-out',
-    isCompact
+    bareSection
+      ? 'relative flex'
+      : 'hud-corner-brackets hud-interactive-shell relative flex overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hud-glass transition-all duration-700 ease-in-out',
+    bareSection && !isCompact
+      ? 'min-h-0 flex-col py-3'
+      : isCompact
       ? 'h-auto min-h-[3.75rem] shrink-0 flex-none flex-row items-center px-4 py-3'
       : 'h-full min-h-0 flex-col p-[var(--hud-panel-pad)]',
-    attentionShellClass(attentionTier),
+    bareSection ? '' : attentionShellClass(attentionTier),
     className,
   ]
     .filter(Boolean)
@@ -530,9 +541,12 @@ export function TelemetryCard({
       {...sectionProps}
       className={sectionClassName}
       aria-labelledby={showHeader ? headingId : undefined}
+      data-chrome={chrome}
     >
-      <span className="hud-corner-bl" aria-hidden />
-      <span className="hud-corner-br" aria-hidden />
+      {bareSection ? null : <>
+        <span className="hud-corner-bl" aria-hidden />
+        <span className="hud-corner-br" aria-hidden />
+      </>}
 
       {isCompact ? (
         <div className="hud-inner-lift relative z-10 flex min-w-0 flex-1 items-center gap-3">
@@ -597,7 +611,7 @@ export function TelemetryCard({
               {title}
             </h2>
             <div className="flex min-w-0 flex-1 items-center justify-end">
-              {headerAction}
+              {headerActionBelow ? null : headerAction}
             </div>
             <RefreshControls actions={resolvedRefreshActions} />
             {ledState !== 'none' ? (
@@ -609,6 +623,7 @@ export function TelemetryCard({
               />
             ) : null}
           </div>
+          {headerActionBelow && headerAction ? <div className="mt-1.5 flex min-w-0">{headerAction}</div> : null}
           <div className="hud-header-divider mt-2" aria-hidden />
         </header>
       ) : null}

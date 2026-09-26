@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useEffect, useState, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -28,7 +28,9 @@ const appMocks = vi.hoisted(() => ({
   deleteReminderTask: vi.fn(),
   reopenReminderTask: vi.fn(),
   activate: vi.fn(),
+  deactivate: vi.fn(),
   activated: true,
+  noModels: false,
   settingsPanelApplied: null as unknown,
   marketSymbols: null as string[] | null,
   marketEnabled: false,
@@ -65,7 +67,6 @@ vi.mock('./components/ApexLogo', () => ({
   ),
 }))
 vi.mock('./components/CelestialBackground', () => ({ CelestialBackground: () => null }))
-vi.mock('./components/BriefingDigest', () => ({ BriefingDigest: () => null }))
 vi.mock('./components/CalendarEventList', () => ({ CalendarEventList: () => null }))
 vi.mock('./components/FootballFixtureList', () => ({ FootballFixtureList: () => null }))
 vi.mock('./components/MarketTickerCard', () => ({
@@ -117,27 +118,6 @@ vi.mock('./components/SettingsPanel', () => ({
     return null
   },
 }))
-vi.mock('./components/HomeCommandRail', async () => {
-  const { StandbyActions } = await vi.importActual<typeof import('./components/StandbyActions')>('./components/StandbyActions')
-  return {
-    HomeCommandRail: ({
-      onStartApex,
-      onStartWithBriefing,
-      onRefreshAllAndGenerate,
-      startDisabled,
-    }: {
-      onStartApex: () => void
-      onStartWithBriefing: () => void
-      onRefreshAllAndGenerate: () => void
-      startDisabled?: boolean
-    }) => (
-      <div>
-        <StandbyActions onStartApex={onStartApex} onStartWithBriefing={onStartWithBriefing} disabled={startDisabled} />
-        <button type="button" onClick={onRefreshAllAndGenerate}>Refresh All &amp; Generate Briefing</button>
-      </div>
-    ),
-  }
-})
 vi.mock('./components/SystemDiagnostics', () => ({
   SystemDiagnostics: ({ workspaceNavigation }: { workspaceNavigation?: ReactNode }) => (
     <>{workspaceNavigation}</>
@@ -261,9 +241,27 @@ vi.mock('./hooks/useApexData', () => ({
     applyBootSettings: appMocks.applyBootSettings,
   }),
 }))
-vi.mock('./hooks/useAppActivation', () => ({
-  useAppActivation: () => ({ activated: appMocks.activated, activate: appMocks.activate }),
-}))
+vi.mock('./hooks/useAppActivation', async () => {
+  const { useState } = await import('react')
+  return {
+    useAppActivation: () => {
+      const [, setRevision] = useState(0)
+      return {
+        activated: appMocks.activated,
+        activate: () => {
+          appMocks.activate()
+          appMocks.activated = true
+          setRevision((revision) => revision + 1)
+        },
+        deactivate: () => {
+          appMocks.deactivate()
+          appMocks.activated = false
+          setRevision((revision) => revision + 1)
+        },
+      }
+    },
+  }
+})
 vi.mock('./hooks/useBriefingPipeline', () => ({
   useBriefingPipeline: () => ({
     briefing: '',
@@ -304,7 +302,7 @@ vi.mock('./hooks/useCortex', () => ({
         hosted_capabilities: [],
       }],
     },
-    modelCatalog: [{
+    modelCatalog: appMocks.noModels ? [] : [{
       model_id: 'deepseek/deepseek-v4-flash-0731',
       display_name: 'DeepSeek V4 Flash',
       provider: 'openrouter',
@@ -493,6 +491,11 @@ function applySavedSettings(response: SettingsResponse, previousSettings: Runtim
   return (appMocks.settingsPanelApplied as (saved: SettingsResponse, previous: RuntimeSettings) => Promise<void>)(response, previousSettings)
 }
 
+async function selectWorkspace(user: ReturnType<typeof userEvent.setup>, name: string): Promise<void> {
+  await user.click(screen.getByRole('button', { name: 'Workspace' }))
+  await user.click(within(screen.getByRole('menu', { name: 'Workspace' })).getByRole('menuitemradio', { name }))
+}
+
 describe('App catalog-affecting settings', () => {
   afterEach(() => {
     appMocks.initialAgent = 'apex'
@@ -537,7 +540,7 @@ describe('App catalog-affecting settings', () => {
 
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: 'Cortex' }))
+    await selectWorkspace(user, 'Cortex')
     await waitFor(() => expect(catalogRequests).toContain('deepseek/deepseek-v4-flash-0731'))
     await waitFor(() => expect(screen.getByTestId('active-agent')).toHaveTextContent('apex'))
     expect(screen.getByTestId('provider-hosted-tools')).toHaveTextContent('')
@@ -562,27 +565,40 @@ describe('App catalog-affecting settings', () => {
     const homeContract = appMocks.toolPreflight.mock.lastCall?.[0] as { effort: string | null }
     expect(homeContract.effort).toBeNull()
 
-    await user.click(screen.getByRole('button', { name: 'Inbox' }))
+    await selectWorkspace(user, 'Inbox')
     await waitFor(() => expect(appMocks.toolPreflight.mock.lastCall?.[0]).toMatchObject({
       effort: homeContract.effort,
       enabled: false,
     }))
   })
 
-  it('orders Inbox before Home and Cortex with the gold active treatment', async () => {
+  it('switches peer workspaces from a single header menu without a Standby peer', async () => {
     const user = userEvent.setup()
     render(<App />)
 
-    const workspaceNavigation = screen.getByRole('navigation', { name: 'Workspace' })
-    expect(Array.from(workspaceNavigation.querySelectorAll('button')).map((button) => button.textContent)).toEqual([
-      'Inbox', 'Home', 'Cortex',
-    ])
+    const chip = screen.getByRole('button', { name: 'Workspace' })
+    expect(chip).toHaveTextContent('Overview')
+    expect(chip).toHaveAttribute('aria-haspopup', 'menu')
+    expect(chip).toHaveAttribute('aria-expanded', 'false')
 
-    const inboxButton = screen.getByRole('button', { name: 'Inbox' })
-    expect(inboxButton).toHaveClass('text-zinc-500', 'hover:text-zinc-200')
-    expect(inboxButton).not.toHaveClass('hover:text-[#FBBF24]')
-    await user.click(inboxButton)
-    expect(inboxButton).toHaveClass('bg-[#FBBF24]/15', 'text-[#FFF3B0]')
+    await user.click(chip)
+    const menu = screen.getByRole('menu', { name: 'Workspace' })
+    expect(within(menu).getAllByRole('menuitemradio').map((item) => item.textContent)).toEqual([
+      'Inbox', 'Overview', 'Briefing', 'Cortex',
+    ])
+    expect(within(menu).getByRole('menuitemradio', { name: 'Overview' })).toHaveAttribute('aria-checked', 'true')
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(chip).toHaveFocus()
+
+    await user.click(chip)
+    await user.click(document.body)
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+
+    await selectWorkspace(user, 'Inbox')
+    expect(chip).toHaveTextContent('Inbox')
+    expect(chip).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('region', { name: 'Overview' })).not.toBeInTheDocument()
   })
 
   it('refreshes the current catalog after toggling sandbox mode', async () => {
@@ -613,7 +629,7 @@ describe('App catalog-affecting settings', () => {
 
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: 'Cortex' }))
+    await selectWorkspace(user, 'Cortex')
     await waitFor(() => expect(catalogRequests).toContain('deepseek/deepseek-v4-flash-0731'))
 
     await user.click(screen.getByRole('checkbox', { name: 'Sandbox mode' }))
@@ -675,7 +691,7 @@ describe('App catalog-affecting settings', () => {
 
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: 'Cortex' }))
+    await selectWorkspace(user, 'Cortex')
     await waitFor(() => expect(actionsRequested).toBeGreaterThan(0))
     await waitFor(() => {
       expect(screen.getByTestId('actions-pending-count')).toHaveTextContent('1')
@@ -889,7 +905,7 @@ describe('App contextual voice cues', () => {
     })
 
     render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Start APEX' }))
+    await user.click(screen.getByRole('button', { name: 'Start Overview' }))
 
     await waitFor(() => {
       expect(events).toEqual(['refresh', 'cue:activation_loading'])
@@ -908,7 +924,7 @@ describe('App contextual voice cues', () => {
     })
 
     render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Start APEX' }))
+    await user.click(screen.getByRole('button', { name: 'Start Overview' }))
 
     await waitFor(() => expect(events).toEqual(['refresh', 'cue:activation_ready']))
     expect(appMocks.loadLatest).toHaveBeenCalledOnce()
@@ -940,7 +956,7 @@ describe('App contextual voice cues', () => {
     })
 
     render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Start APEX' }))
+    await user.click(screen.getByRole('button', { name: 'Start Overview' }))
 
     await waitFor(() => expect(events).toEqual(['refresh', 'cue:activation_ready']))
     expect(appMocks.loadLatest).toHaveBeenCalledOnce()
@@ -957,7 +973,7 @@ describe('App contextual voice cues', () => {
     })
 
     const firstRender = render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Start APEX' }))
+    await user.click(screen.getByRole('button', { name: 'Start Overview' }))
     await waitFor(() => {
       expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_refresh_failed'])
     })
@@ -972,7 +988,7 @@ describe('App contextual voice cues', () => {
     })
     const secondUser = userEvent.setup()
     render(<App />)
-    await secondUser.click(screen.getByRole('button', { name: 'Start APEX' }))
+    await secondUser.click(screen.getByRole('button', { name: 'Start Overview' }))
     await waitFor(() => expect(events).toEqual(['cue:activation_loading']))
   })
 
@@ -987,7 +1003,7 @@ describe('App contextual voice cues', () => {
     })
 
     render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Start APEX' }))
+    await user.click(screen.getByRole('button', { name: 'Start Overview' }))
 
     await waitFor(() => {
       expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_no_fresh_telemetry'])
@@ -996,7 +1012,99 @@ describe('App contextual voice cues', () => {
 
 })
 
-describe('App Daily session flow', () => {
+describe('App Home states', () => {
+  afterEach(() => {
+    appMocks.activated = true
+    appMocks.noModels = false
+    appMocks.weatherSnapshot = null
+    appMocks.deactivate.mockClear()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  function stubHomeFetch(posts: string[]): void {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(String(input))
+      if (init?.method === 'POST') posts.push(url.pathname)
+      if (url.pathname.endsWith('/briefing-sessions')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (url.pathname.endsWith('/cortex/conversations')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
+      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+  }
+
+  it('offers Overview and Briefing from Standby without a command panel or composer', () => {
+    appMocks.activated = false
+    stubHomeFetch([])
+    render(<App />)
+
+    expect(screen.getByRole('button', { name: 'Start Overview' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Start Briefing with Daily' })).toBeEnabled()
+    expect(screen.queryByRole('region', { name: 'Home command rail' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+
+  it('shows telemetry in Overview without a model, composer, or briefing controls', () => {
+    appMocks.noModels = true
+    appMocks.weatherSnapshot = {
+      modules: { weather: { status: 'healthy', data: { temp_f: 72 }, display_text: 'Current temperature is 72 degrees.' } },
+    }
+    stubHomeFetch([])
+    render(<App />)
+
+    expect(screen.getByRole('region', { name: 'Overview' })).toBeInTheDocument()
+    expect(screen.getByTestId('weather-compact-value')).not.toBeEmptyDOMElement()
+    expect(screen.getByRole('button', { name: 'Refresh Reminders' })).toBeInTheDocument()
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Briefing controls' })).not.toBeInTheDocument()
+  })
+
+  it('switches between Overview and Briefing from the header menu without generating', async () => {
+    const user = userEvent.setup()
+    const posts: string[] = []
+    stubHomeFetch(posts)
+    render(<App />)
+
+    await selectWorkspace(user, 'Briefing')
+    expect(screen.getByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Standby' })).not.toBeInTheDocument()
+
+    await selectWorkspace(user, 'Overview')
+    expect(screen.getByRole('region', { name: 'Overview' })).toBeInTheDocument()
+    expect(posts.filter((path) => path.endsWith('/briefing-sessions'))).toHaveLength(0)
+  })
+
+  it('activates into the chosen Home peer from Standby without generating a briefing', async () => {
+    appMocks.activated = false
+    appMocks.activate.mockClear()
+    const user = userEvent.setup()
+    const posts: string[] = []
+    stubHomeFetch(posts)
+    render(<App />)
+
+    expect(screen.getByRole('region', { name: 'Standby' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Workspace' })).toHaveTextContent('Overview')
+
+    await selectWorkspace(user, 'Briefing')
+    await waitFor(() => expect(appMocks.activate).toHaveBeenCalledTimes(1))
+    expect(await screen.findByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Workspace' })).toHaveTextContent('Briefing')
+    expect(posts.filter((path) => path.endsWith('/briefing-sessions'))).toHaveLength(0)
+  })
+
+  it('starts Overview from the Standby floating action', async () => {
+    appMocks.activated = false
+    const user = userEvent.setup()
+    stubHomeFetch([])
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Start Overview' }))
+    expect(await screen.findByRole('region', { name: 'Overview' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Standby' })).not.toBeInTheDocument()
+  })
+})
+
+describe('App briefing session flow', () => {
   afterEach(() => {
     appMocks.activated = true
     appMocks.demoModeActive = false
@@ -1005,7 +1113,7 @@ describe('App Daily session flow', () => {
     vi.unstubAllGlobals()
   })
 
-  it('starts Daily from Standby, keeps a background run alive, and reopens its saved artifact and conversation', async () => {
+  it('generates from Standby, opens the saved artifact as the conversation opening, and preserves the draft across views', async () => {
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
     const user = userEvent.setup()
     const sessionId = '00000000-0000-4000-8000-000000000071'
@@ -1053,8 +1161,8 @@ describe('App Daily session flow', () => {
     let runStatus: 'running' | 'completed' = 'running'
     let presentedAt: string | null = null
     let admissionBody: Record<string, unknown> | null = null
+    let admissions = 0
     let detailReads = 0
-    let conversationReads = 0
     let presentationWrites = 0
     let cancellationWrites = 0
     class VisibleIntersectionObserver {
@@ -1084,6 +1192,7 @@ describe('App Daily session flow', () => {
       const url = new URL(String(input))
       const path = url.pathname
       if (path.endsWith('/briefing-sessions') && init?.method === 'POST') {
+        admissions += 1
         admissionBody = JSON.parse(String(init.body)) as Record<string, unknown>
         return new Response(JSON.stringify(sessionSummary), { status: 202, headers: { 'Content-Type': 'application/json' } })
       }
@@ -1104,12 +1213,11 @@ describe('App Daily session flow', () => {
         return new Response(JSON.stringify({ status: 'cancelling' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
       if (path.endsWith(`/cortex/conversations/${conversationId}`)) {
-        conversationReads += 1
         const messages = runStatus === 'completed' ? [
           { id: userMessageId, parent_message_id: null, role: 'user', content: 'Prepare a Daily briefing.', status: 'completed', agent: null, created_at: '2026-09-25T13:00:00Z', updated_at: '2026-09-25T13:00:00Z' },
-          { id: assistantMessageId, parent_message_id: userMessageId, role: 'agent', content: 'Saved Daily opening artifact for the morning meeting.', status: 'completed', agent: 'apex', created_at: '2026-09-25T13:01:00Z', updated_at: '2026-09-25T13:01:00Z' },
+          { id: assistantMessageId, parent_message_id: userMessageId, role: 'agent', content: 'Saved Daily opening artifact for the morning meeting.', status: 'completed', agent: 'apex', response_metadata: { briefing_session_id: sessionId }, created_at: '2026-09-25T13:01:00Z', updated_at: '2026-09-25T13:01:00Z' },
         ] : []
-        const conversation = {
+        return new Response(JSON.stringify({
           id: conversationId,
           title: 'Daily briefing',
           archived_at: null,
@@ -1119,11 +1227,7 @@ describe('App Daily session flow', () => {
           updated_at: '2026-09-25T13:01:00Z',
           active_leaf_message_id: runStatus === 'completed' ? assistantMessageId : null,
           messages,
-        }
-        return new Response(JSON.stringify(conversation), { status: 200, headers: { 'Content-Type': 'application/json' } })
-      }
-      if (path.endsWith('/cortex/conversations') && url.searchParams.get('archived') === 'true') {
-        return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
       if (path.endsWith('/cortex/conversations')) {
         return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -1135,36 +1239,44 @@ describe('App Daily session flow', () => {
     }))
 
     render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Start APEX with Daily briefing' }))
+    await user.click(screen.getByRole('button', { name: 'Start Briefing with Daily' }))
 
     await waitFor(() => expect(admissionBody).not.toBeNull())
     expect(appMocks.requestOperation).toHaveBeenCalledWith('generate_briefing_session', expect.objectContaining({
       model_id: 'deepseek/deepseek-v4-flash-0731',
       involves_cloud: true,
     }))
-    expect(admissionBody).toMatchObject({
-      profile_id: 'daily',
-      model_id: 'deepseek/deepseek-v4-flash-0731',
-    })
-    await waitFor(() => expect(detailReads).toBeGreaterThan(0))
-
-    await user.click(screen.getByRole('button', { name: 'Cortex' }))
-    expect(presentationWrites).toBe(0)
-    expect(cancellationWrites).toBe(0)
-    runStatus = 'completed'
-    await user.click(screen.getByRole('button', { name: 'Home' }))
-
-    const savedSessions = await screen.findByRole('navigation', { name: 'Saved Daily sessions' })
-    const savedSessionButton = savedSessions.querySelector('button')
-    if (!savedSessionButton) throw new Error('The generated Daily session was not listed.')
-    await user.click(savedSessionButton)
-
-    await waitFor(() => expect(screen.getByText('Morning travel')).toBeInTheDocument())
-    await waitFor(() => expect(screen.getByText('Saved Daily opening artifact for the morning meeting.')).toBeInTheDocument())
-    await waitFor(() => expect(presentationWrites).toBe(1))
-    expect(detailReads).toBeGreaterThan(1)
-    expect(conversationReads).toBeGreaterThan(1)
-    expect(cancellationWrites).toBe(0)
+    expect(admissionBody).toMatchObject({ profile_id: 'daily', model_id: 'deepseek/deepseek-v4-flash-0731' })
     expect(appMocks.activate).toHaveBeenCalled()
+    await waitFor(() => expect(detailReads).toBeGreaterThan(0))
+    expect(screen.getByRole('region', { name: 'Briefing' })).toHaveAttribute('data-layout', 'identity')
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+
+    await selectWorkspace(user, 'Cortex')
+    expect(presentationWrites).toBe(0)
+    runStatus = 'completed'
+    await selectWorkspace(user, 'Briefing')
+
+    const savedSessions = await screen.findByRole('navigation', { name: 'Saved briefing sessions' })
+    await user.click(within(savedSessions).getAllByRole('button')[0])
+
+    const artifact = await screen.findByTestId('briefing-artifact')
+    expect(within(artifact).getByText('Morning travel')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Briefing' })).toHaveAttribute('data-layout', 'workspace')
+    await waitFor(() => expect(presentationWrites).toBe(1))
+    expect(admissions).toBe(1)
+
+    const composer = await screen.findByRole('textbox')
+    await user.type(composer, 'What about traffic?')
+    await selectWorkspace(user, 'Inbox')
+    await selectWorkspace(user, 'Overview')
+    expect(screen.queryByTestId('briefing-artifact')).not.toBeInTheDocument()
+    await selectWorkspace(user, 'Briefing')
+
+    expect(await screen.findByTestId('briefing-artifact')).toBeInTheDocument()
+    expect(screen.getByRole('textbox')).toHaveValue('What about traffic?')
+    expect(admissions).toBe(1)
+    expect(presentationWrites).toBe(1)
+    expect(cancellationWrites).toBe(0)
   })
 })

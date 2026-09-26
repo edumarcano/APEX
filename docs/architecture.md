@@ -1,10 +1,10 @@
 # Architecture
 
-APEX is a local-first personal intelligence HUD. FastAPI serves the backend, React provides Home, Cortex, and Inbox, SQLite owns durable application state, and optional providers and connectors stay behind explicit capability and privacy boundaries.
+APEX is a local-first personal intelligence HUD. FastAPI serves the backend, React provides the Inbox, Overview, Briefing, and Cortex workspaces through a header menu, SQLite owns durable application state, and optional providers and connectors stay behind explicit capability and privacy boundaries.
 
 ## Core model
 
-- **Home** presents the saved Daily briefing, telemetry, reminders, and quick interaction.
+- **Home** covers the Overview (telemetry and reminders) and Briefing (profile controls, the saved briefing thread, and a single telemetry panel) workspaces. Standby covers both until activation and is not a navigation peer.
 - **Cortex** is the control surface for conversations, model settings, tool selection, context, and approval-gated actions.
 - **Inbox** is the dedicated list-and-detail workspace for immutable, untrusted reports with caller-claimed source labels.
 - **Apex Agent** is the single native personal operations assistant. It understands APEX briefings, trusted context, connected services, and APEX tools.

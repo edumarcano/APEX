@@ -3,29 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { CloudSun } from 'lucide-react'
 
-import { StandbyActions } from './StandbyActions'
 import { PreflightDialog } from './PreflightDialog'
-import { BriefingDigest } from './BriefingDigest'
 import { TelemetryCard } from './TelemetryCard'
-
-describe('StandbyActions', () => {
-  it('exposes both activation actions', async () => {
-    const onStartApex = vi.fn()
-    const onStartWithBriefing = vi.fn()
-    const user = userEvent.setup()
-    render(
-      <StandbyActions
-        onStartApex={onStartApex}
-        onStartWithBriefing={onStartWithBriefing}
-      />,
-    )
-
-    await user.click(screen.getByRole('button', { name: 'Start APEX' }))
-    await user.click(screen.getByRole('button', { name: 'Start APEX with Daily briefing' }))
-    expect(onStartApex).toHaveBeenCalledTimes(1)
-    expect(onStartWithBriefing).toHaveBeenCalledTimes(1)
-  })
-})
 
 describe('PreflightDialog', () => {
   it('offers continue once, continue for session, and cancel for warnings', async () => {
@@ -205,84 +184,5 @@ describe('TelemetryCard refresh and module state', () => {
     await user.click(trigger)
     await user.click(screen.getByRole('button', { name: 'Outside' }))
     expect(screen.queryByRole('menu')).toBeNull()
-  })
-})
-
-describe('BriefingDigest briefing actions', () => {
-  it('keeps generation controls out of the content area', () => {
-    render(
-      <BriefingDigest
-        insights={[]}
-        briefingText=""
-        status="idle"
-        isLoading={false}
-        activated
-      />,
-    )
-
-    expect(screen.queryByRole('button', { name: /synthesize briefing/i })).not.toBeInTheDocument()
-    expect(screen.queryByLabelText(/briefing mode/i)).not.toBeInTheDocument()
-  })
-
-  it('shows replay only on the Briefing tab and exposes voice failures there', async () => {
-    const user = userEvent.setup()
-    render(
-      <BriefingDigest
-        insights={['Ready']}
-        briefingText="Current briefing."
-        status="success"
-        isLoading={false}
-        activated
-        onSpeakBriefing={() => undefined}
-        showSpeakAction
-        speakDisabled
-        speechError="Speech delivery failed."
-      />,
-    )
-
-    expect(screen.queryByRole('button', { name: /speak briefing/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: 'Briefing' }))
-
-    expect(screen.getByRole('button', { name: /speak briefing/i })).toBeDisabled()
-    expect(screen.getByRole('status')).toHaveTextContent('Speech delivery failed.')
-  })
-
-  it('shows the last manual-delivery engine on the Briefing tab', async () => {
-    const user = userEvent.setup()
-    render(
-      <BriefingDigest
-        insights={['Ready']}
-        briefingText="Current briefing."
-        status="success"
-        isLoading={false}
-        activated
-        deliveryLabel="Last manual delivery: pyttsx3"
-      />,
-    )
-
-    expect(screen.queryByText('Last manual delivery: pyttsx3')).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Briefing' }))
-    expect(screen.getByRole('status')).toHaveTextContent('Last manual delivery: pyttsx3')
-  })
-
-  it('renders empty transcript guidance referencing briefing controls below and keeps history button visible', async () => {
-    const user = userEvent.setup()
-    render(
-      <BriefingDigest
-        insights={[]}
-        briefingText=""
-        status="idle"
-        isLoading={false}
-        activated={false}
-      />,
-    )
-
-    expect(screen.getByRole('button', { name: 'Briefing history' })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Briefing' }))
-    expect(
-      screen.getByText('No briefing transcript yet. Use the briefing controls below.'),
-    ).toBeInTheDocument()
   })
 })
