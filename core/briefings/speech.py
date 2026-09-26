@@ -286,6 +286,52 @@ def _recover_validated_speech_script(
     return None
 
 
+def _recover_structurally_invalid_speech_script(
+    raw: str,
+    artifact: CanonicalBriefingArtifact,
+) -> BriefingSpeechScript | None:
+    """Keep only bounded, individually grounded highlights from a JSON response."""
+    fenced = re.fullmatch(r"\s*```(?:json)?\s*\n(.*?)\n```\s*", raw, re.I | re.S)
+    if fenced is not None:
+        raw = fenced.group(1)
+    try:
+        payload = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(payload, dict) or not isinstance(payload.get("highlights"), list):
+        return None
+
+    selected: list[BriefingSpeechHighlight] = []
+    selected_ids: set[UUID] = set()
+    script_chars = 0
+    for value in payload["highlights"]:
+        try:
+            highlight = BriefingSpeechHighlight.model_validate(value)
+        except ValidationError:
+            continue
+        if (
+            highlight.item_id in selected_ids
+            or script_chars + len(highlight.text) > MAX_SCRIPT_CHARS
+        ):
+            continue
+        try:
+            validate_speech_script(
+                BriefingSpeechScript(highlights=[highlight]), artifact
+            )
+        except BriefingSpeechValidationError:
+            continue
+        selected.append(highlight)
+        selected_ids.add(highlight.item_id)
+        script_chars += len(highlight.text)
+        if len(selected) >= MAX_HIGHLIGHTS:
+            break
+    if not selected:
+        return None
+    recovered = BriefingSpeechScript(highlights=selected)
+    validate_speech_script(recovered, artifact)
+    return recovered
+
+
 def _exact_source_highlight(item: BriefingItem) -> BriefingSpeechHighlight | None:
     """Build one bounded reading from a model-selected canonical item."""
     text = (
@@ -355,6 +401,8 @@ def _speech_prompt(
         "Use only that artifact. Do not use tools, look up sources, retrieve context, or add facts, "
         "conclusions, urgency, reassurance, or recommendations. Return one JSON object with a "
         "highlights array; each entry has item_id copied from a canonical item and a short text segment. "
+        "Select 1 to 8 distinct items. Keep each text under 600 characters and all text "
+        "together under 2400 characters. Return only the JSON object, without Markdown fences. "
         "You may omit low-priority items and reorder or condense selected items. "
         "Preserve every number and date exactly as written; do not spell out numbers "
         "or reformat dates. Preserve uncertainty, external-report attribution, "
@@ -454,6 +502,7 @@ def _generate_speech_script(
     feedback = ""
     last_error = "script_invalid"
     last_parsed: BriefingSpeechScript | None = None
+    last_schema_output = ""
     for attempt in range(2):
         raw = ""
         last_parsed = None
@@ -491,6 +540,7 @@ def _generate_speech_script(
             last_error = feedback
         except ValidationError:
             previous = raw[:MAX_SPEECH_OUTPUT_BYTES // 2]
+            last_schema_output = raw
             feedback = "Return JSON matching the required highlights schema."
             last_error = "script_schema_invalid"
         except Exception as exc:  # noqa: BLE001
@@ -506,6 +556,14 @@ def _generate_speech_script(
             last_parsed,
             artifact,
             failure_reason=last_error,
+        )
+        control.check_cancelled()
+        if recovered is not None:
+            return recovered
+    if last_error == "script_schema_invalid" and last_schema_output:
+        control.check_cancelled()
+        recovered = _recover_structurally_invalid_speech_script(
+            last_schema_output, artifact
         )
         control.check_cancelled()
         if recovered is not None:

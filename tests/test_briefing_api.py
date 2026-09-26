@@ -42,6 +42,8 @@ from core.briefings.speech import (
     BriefingSpeechService,
     BriefingSpeechUnavailableError,
     BriefingSpeechValidationError,
+    MAX_HIGHLIGHTS,
+    MAX_SCRIPT_CHARS,
     _generate_speech_script,
     canonical_artifact_sha256,
     validate_speech_script,
@@ -1141,6 +1143,59 @@ class BriefingSessionApiTests(unittest.TestCase):
             )],
         )
         self.assertNotIn("[1]", script.highlights[0].text)
+        validate_speech_script(script, artifact)
+
+    def test_speech_generation_salvages_bounded_grounded_items_from_overfull_json(
+        self,
+    ) -> None:
+        record = self._completed_session()
+        artifact = self._artifact_with_items([
+            ("observation", f"Planning item {index}", "The planning note remains open. " * 11)
+            for index in range(MAX_HIGHLIGHTS + 4)
+        ])
+        items = artifact.sections[0].items
+        output = json.dumps({"highlights": [
+            {
+                "item_id": str(item.id),
+                "text": (
+                    f"{item.title}. {item.body}"
+                    if index else "Planning item 999. The planning note remains open."
+                ),
+            }
+            for index, item in enumerate(items)
+        ]})
+
+        provider = self._repeating_speech_provider(output)
+        script = self._generate_speech_with_provider(
+            artifact, record.configuration, provider
+        )
+
+        self.assertEqual(provider.generate_turn.call_count, 2)
+        self.assertNotIn(items[0].id, [item.item_id for item in script.highlights])
+        self.assertGreater(len(script.highlights), 0)
+        self.assertLessEqual(len(script.highlights), MAX_HIGHLIGHTS)
+        self.assertLessEqual(sum(len(item.text) for item in script.highlights), MAX_SCRIPT_CHARS)
+        validate_speech_script(script, artifact)
+
+    def test_speech_generation_salvages_fenced_json_but_not_unsafe_highlights(
+        self,
+    ) -> None:
+        record = self._completed_session()
+        artifact = self._artifact_with_items([
+            ("observation", "Schedule", "The review is on Tuesday, June 8."),
+            ("observation", "Planning notes", "Review the notes before the meeting."),
+        ])
+        unsafe, safe = artifact.sections[0].items
+        output = "```json\n" + json.dumps({"highlights": [
+            {"item_id": str(unsafe.id), "text": "The review is on Monday, June 8."},
+            {"item_id": str(safe.id), "text": f"{safe.title}. {safe.body}"},
+        ]}) + "\n```"
+
+        script = self._generate_speech_with_provider(
+            artifact, record.configuration, self._repeating_speech_provider(output)
+        )
+
+        self.assertEqual([item.item_id for item in script.highlights], [safe.id])
         validate_speech_script(script, artifact)
 
     def test_speech_generation_leaves_url_source_unavailable_after_numeric_drift(
