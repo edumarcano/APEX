@@ -32,27 +32,21 @@ function detail(run_status: BriefingSessionDetail['run_status'], withArtifact: b
 }
 
 describe('useHomeView', () => {
-  it('is Standby until activated, then shows the selected view', () => {
+  it('is Standby until activated, then shows the chosen destination', () => {
     const deactivate = vi.fn()
-    const { result, rerender } = renderHook(({ activated }) => useHomeView({ activated, deactivate }), { initialProps: { activated: false } })
+    const { result, rerender } = renderHook((props: { activated: boolean; destination: 'overview' | 'briefing' }) => useHomeView({ ...props, deactivate }), { initialProps: { activated: false, destination: 'briefing' } })
     expect(result.current.view).toBe('standby')
 
-    act(() => result.current.selectView('briefing'))
-    expect(result.current.view).toBe('standby')
-
-    rerender({ activated: true })
+    rerender({ activated: true, destination: 'briefing' })
     expect(result.current.view).toBe('briefing')
-    act(() => result.current.selectView('overview'))
+    rerender({ activated: true, destination: 'overview' })
     expect(result.current.view).toBe('overview')
   })
 
-  it('returns to Standby only through deactivation and keeps the chosen view and profile', () => {
+  it('returns to Standby only through deactivation and keeps the profile', () => {
     const deactivate = vi.fn()
-    const { result, rerender } = renderHook(({ activated }) => useHomeView({ activated, deactivate }), { initialProps: { activated: true } })
-    act(() => {
-      result.current.selectView('briefing')
-      result.current.setProfileId('catch_up')
-    })
+    const { result, rerender } = renderHook((props: { activated: boolean }) => useHomeView({ ...props, destination: 'briefing', deactivate }), { initialProps: { activated: true } })
+    act(() => result.current.setProfileId('catch_up'))
 
     act(() => result.current.returnToStandby())
     expect(deactivate).toHaveBeenCalledTimes(1)

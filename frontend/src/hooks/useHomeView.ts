@@ -29,33 +29,29 @@ export function resolveBriefingLayoutPhase({
 export type UseHomeViewOptions = {
   activated: boolean
   deactivate: () => void
+  /** The Home peer workspace chosen in the header menu. */
+  destination: HomeActiveView
 }
 
 export type UseHomeViewResult = {
   view: HomeView
-  /** The view Home returns to once activated. */
-  activeView: HomeActiveView
   profileId: BriefingProfileId
-  selectView: (view: HomeActiveView) => void
   returnToStandby: () => void
   setProfileId: (profileId: BriefingProfileId) => void
 }
 
 /**
- * Owns in-memory Home navigation. Transitions only change presentation: they
+ * Resolves the Home presentation and owns the selected briefing profile.
+ * Standby covers the chosen Home destination until activation; transitions
  * never generate, speak, or collect, and returning to Standby keeps cached
  * telemetry and briefing sessions.
  */
-export function useHomeView({ activated, deactivate }: UseHomeViewOptions): UseHomeViewResult {
-  const [activeView, setActiveView] = useState<HomeActiveView>('overview')
+export function useHomeView({ activated, deactivate, destination }: UseHomeViewOptions): UseHomeViewResult {
   const [profileId, setProfileId] = useState<BriefingProfileId>('daily')
-  const selectView = useCallback((view: HomeActiveView): void => setActiveView(view), [])
   const returnToStandby = useCallback((): void => deactivate(), [deactivate])
   return {
-    view: activated ? activeView : 'standby',
-    activeView,
+    view: activated ? destination : 'standby',
     profileId,
-    selectView,
     returnToStandby,
     setProfileId,
   }

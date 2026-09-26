@@ -128,6 +128,7 @@ export function WeatherTelemetry({ data, variant, className }: DomainProps): Rea
     attentionTier={data.attentionTiers.weather}
     attentionStaggerMs={data.attentionStagger.weather}
     className={layoutClass(variant, className)}
+    chrome={variant === 'section' ? 'section' : 'card'}
   >
     {weather.info.temperatureF == null ? (
       <p className="line-clamp-2 break-words text-[13px] leading-relaxed text-[color:var(--hud-text)]">{weather.body}</p>
@@ -152,6 +153,7 @@ export function EventsTelemetry({ data, variant, className }: DomainProps): Reac
     attentionTier={data.attentionTiers.events}
     attentionStaggerMs={data.attentionStagger.events}
     className={layoutClass(variant, className)}
+    chrome={variant === 'section' ? 'section' : 'card'}
   >
     {events.calendarRefreshing && !data.hasSnapshot ? (
       <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">Loading schedule…</p>
@@ -172,6 +174,7 @@ export function MarketTelemetry({ data, variant, className }: DomainProps): Reac
     attentionTier={data.attentionTiers.market}
     attentionStaggerMs={data.attentionStagger.market}
     className={`w-full ${layoutClass(variant, className)}`}
+    chrome={variant === 'section' ? 'section' : 'card'}
   />
 }
 
@@ -188,6 +191,7 @@ export function InboxTelemetry({ data, variant, className }: DomainProps): React
     attentionTier={data.attentionTiers.inbox}
     attentionStaggerMs={data.attentionStagger.inbox}
     className={layoutClass(variant, className)}
+    chrome={variant === 'section' ? 'section' : 'card'}
   >
     {inbox.refreshing && !data.hasSnapshot ? (
       <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">Loading inbox…</p>
@@ -231,6 +235,7 @@ export function NewsTelemetry({ data, variant, className }: DomainProps): ReactE
     attentionTier={data.attentionTiers.news}
     attentionStaggerMs={data.attentionStagger.news}
     className={layoutClass(variant, className)}
+    chrome={variant === 'section' ? 'section' : 'card'}
   >
     {news.refreshing && !data.hasSnapshot ? (
       <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">Loading news…</p>
@@ -267,6 +272,7 @@ export function RemindersTelemetry({ data, variant, className }: DomainProps): R
     attentionTier={data.attentionTiers.reminders}
     attentionStaggerMs={data.attentionStagger.reminders}
     className={layoutClass(variant, className)}
+    chrome={variant === 'section' ? 'section' : 'card'}
     role="region"
     aria-label="Active reminders"
     data-slot="reminders-card"

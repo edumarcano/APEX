@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { BriefingSessionDetail } from '../../types/briefings'
@@ -73,5 +74,23 @@ describe('BriefingArtifactMessage', () => {
 
     expect(screen.getByText('Calendar was slow.')).toBeInTheDocument()
     expect(screen.getByText('Email was not read.')).toBeInTheDocument()
+  })
+
+  it('keeps unreferenced evidence behind a closed disclosure that loads on open', async () => {
+    const session = completedDemoSession()
+    session.evidence_ids = ['evidence-1', 'evidence-2']
+    const onLoadEvidence = vi.fn(async () => {})
+    render(<BriefingArtifactMessage
+      session={session}
+      isLoadingSession={false}
+      evidence={{ evidenceById: {}, loadingIds: [], errors: {}, onLoadEvidence }}
+      onMarkPresented={vi.fn(async () => {})}
+    />)
+
+    const summary = screen.getByText(/Other captured evidence \(1\)/)
+    const disclosure = summary.closest('details')
+    expect(disclosure).not.toHaveAttribute('open')
+    await userEvent.click(summary)
+    expect(disclosure).toHaveAttribute('open')
   })
 })

@@ -91,10 +91,11 @@ Reuse these established primitives instead of creating competing panel chrome.
 ### Briefing and voice controls
 
 - Keep briefing controls in the Briefing profile panel: profile selector, Apex Agent model selector, Generate and Cancel, saved sessions, source coverage, and the resident local-model unload control. The panel reserves a slot for future speech controls.
-- Navigating between Home states never generates or speaks a briefing. Only the explicit Generate action or the Standby Briefing action starts a session.
+- Navigating between workspaces never generates or speaks a briefing. Only the explicit Generate action or the Standby Briefing action starts a session.
 - Render a completed artifact as the opening message in the Home thread. Its heading marks the briefing as presented only after it has been visible.
 - Summarize routine tool results compactly in the Home thread. Errors, action approvals, and trust labels always render in full.
-- Share telemetry domain components between Overview cards and the Briefing telemetry rail rather than maintaining separate renderings.
+- Share telemetry domain components between Overview cards and the Briefing telemetry rail rather than maintaining separate renderings. The rail is one bordered glass scroll panel; each domain renders as an internal section (heading, status LED, refresh controls, body) separated by hairlines, without its own card chrome.
+- Collapse the artifact's other captured evidence into a closed disclosure that shows its count, matching the per-item Evidence disclosures.
 - Present generation failures as red text with an accessible status role, and keep detailed local-model lifecycle information in Cortex.
 
 ## Attention and Disclosure
@@ -149,7 +150,7 @@ Use uppercase text and wide tracking primarily for short operational labels. Avo
 - Preserve intentional internal scrolling for panels, trays, and telemetry streams.
 - Use fixed pixel values when appropriate for borders, icons, focus rings, minimum interaction targets, deliberate maximum widths, and other bounded primitives.
 - Avoid arbitrary fixed structural dimensions that prevent content from adapting.
-- Home has three in-memory states: Standby, Overview, and Briefing. Standby centers the hero logo with floating Overview and Briefing actions. Overview arranges telemetry in a two, two, three card grid with a compact identity card and view switcher. Briefing starts as two columns (identity or generation progress beside the briefing controls) and becomes three columns (controls, thread, telemetry rail) once a completed artifact is shown. Below the compact breakpoint, Briefing stacks the thread and exposes controls and telemetry through toggles.
+- The header workspace chip opens a menu of four peer workspaces: Inbox, Overview, Briefing, and Cortex. The closed chip shows the current peer in that peer's accent. Standby is not a peer. It covers Overview and Briefing until APEX is activated, and the chip keeps showing the Home destination (Overview by default). Choosing Overview or Briefing from Standby runs the activation preflight without generating a briefing. Standby centers the hero logo with floating Overview and Briefing actions. Overview arranges telemetry in a six-column grid around a central identity card: Weather and Events, then News, identity, and Reminders, then Market and Inbox. Below the compact breakpoint, the identity card comes first and cards stack. Briefing starts as two columns (identity or generation progress beside the briefing controls) and becomes three columns (controls, thread, telemetry rail) once a completed artifact is shown. Below the compact breakpoint, Briefing stacks the thread and exposes controls and telemetry through toggles.
 - Home layout transitions use a short enter animation that is disabled under `prefers-reduced-motion`.
 
 ## Domain-Specific Color

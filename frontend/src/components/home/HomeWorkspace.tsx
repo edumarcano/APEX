@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react'
 
-import type { BriefingLayoutPhase, HomeActiveView, HomeView } from '../../hooks/useHomeView'
+import type { BriefingLayoutPhase, HomeView } from '../../hooks/useHomeView'
 import { HomeBriefing, type HomeBriefingConversation } from './HomeBriefing'
 import type { BriefingProfilePanelProps } from './BriefingProfilePanel'
 import type { HomeIdentityProps } from './HomeIdentity'
@@ -16,8 +16,6 @@ export type HomeWorkspaceProps = {
   standbyActions: HomeStandbyProps['actions']
   briefingControls: BriefingProfilePanelProps
   briefingConversation: HomeBriefingConversation
-  onSelectView: (view: HomeActiveView) => void
-  onReturnToStandby: () => void
 }
 
 /** Composes the Standby, Overview, and Briefing Home states. */
@@ -29,8 +27,6 @@ export function HomeWorkspace(props: HomeWorkspaceProps): ReactElement {
       <HomeOverview
         identity={props.identity}
         telemetry={props.telemetry}
-        onSelectView={props.onSelectView}
-        onReturnToStandby={props.onReturnToStandby}
       />
     ) : (
       <HomeBriefing
@@ -39,8 +35,6 @@ export function HomeWorkspace(props: HomeWorkspaceProps): ReactElement {
         telemetry={props.telemetry}
         controls={props.briefingControls}
         conversation={props.briefingConversation}
-        onSelectView={props.onSelectView}
-        onReturnToStandby={props.onReturnToStandby}
       />
     )}
   </div>

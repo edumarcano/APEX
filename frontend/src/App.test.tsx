@@ -491,6 +491,11 @@ function applySavedSettings(response: SettingsResponse, previousSettings: Runtim
   return (appMocks.settingsPanelApplied as (saved: SettingsResponse, previous: RuntimeSettings) => Promise<void>)(response, previousSettings)
 }
 
+async function selectWorkspace(user: ReturnType<typeof userEvent.setup>, name: string): Promise<void> {
+  await user.click(screen.getByRole('button', { name: 'Workspace' }))
+  await user.click(within(screen.getByRole('menu', { name: 'Workspace' })).getByRole('menuitemradio', { name }))
+}
+
 describe('App catalog-affecting settings', () => {
   afterEach(() => {
     appMocks.initialAgent = 'apex'
@@ -535,7 +540,7 @@ describe('App catalog-affecting settings', () => {
 
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: 'Cortex' }))
+    await selectWorkspace(user, 'Cortex')
     await waitFor(() => expect(catalogRequests).toContain('deepseek/deepseek-v4-flash-0731'))
     await waitFor(() => expect(screen.getByTestId('active-agent')).toHaveTextContent('apex'))
     expect(screen.getByTestId('provider-hosted-tools')).toHaveTextContent('')
@@ -560,27 +565,40 @@ describe('App catalog-affecting settings', () => {
     const homeContract = appMocks.toolPreflight.mock.lastCall?.[0] as { effort: string | null }
     expect(homeContract.effort).toBeNull()
 
-    await user.click(screen.getByRole('button', { name: 'Inbox' }))
+    await selectWorkspace(user, 'Inbox')
     await waitFor(() => expect(appMocks.toolPreflight.mock.lastCall?.[0]).toMatchObject({
       effort: homeContract.effort,
       enabled: false,
     }))
   })
 
-  it('orders Inbox before Home and Cortex with the gold active treatment', async () => {
+  it('switches peer workspaces from a single header menu without a Standby peer', async () => {
     const user = userEvent.setup()
     render(<App />)
 
-    const workspaceNavigation = screen.getByRole('navigation', { name: 'Workspace' })
-    expect(Array.from(workspaceNavigation.querySelectorAll('button')).map((button) => button.textContent)).toEqual([
-      'Inbox', 'Home', 'Cortex',
-    ])
+    const chip = screen.getByRole('button', { name: 'Workspace' })
+    expect(chip).toHaveTextContent('Overview')
+    expect(chip).toHaveAttribute('aria-haspopup', 'menu')
+    expect(chip).toHaveAttribute('aria-expanded', 'false')
 
-    const inboxButton = screen.getByRole('button', { name: 'Inbox' })
-    expect(inboxButton).toHaveClass('text-zinc-500', 'hover:text-zinc-200')
-    expect(inboxButton).not.toHaveClass('hover:text-[#FBBF24]')
-    await user.click(inboxButton)
-    expect(inboxButton).toHaveClass('bg-[#FBBF24]/15', 'text-[#FFF3B0]')
+    await user.click(chip)
+    const menu = screen.getByRole('menu', { name: 'Workspace' })
+    expect(within(menu).getAllByRole('menuitemradio').map((item) => item.textContent)).toEqual([
+      'Inbox', 'Overview', 'Briefing', 'Cortex',
+    ])
+    expect(within(menu).getByRole('menuitemradio', { name: 'Overview' })).toHaveAttribute('aria-checked', 'true')
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(chip).toHaveFocus()
+
+    await user.click(chip)
+    await user.click(document.body)
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+
+    await selectWorkspace(user, 'Inbox')
+    expect(chip).toHaveTextContent('Inbox')
+    expect(chip).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('region', { name: 'Overview' })).not.toBeInTheDocument()
   })
 
   it('refreshes the current catalog after toggling sandbox mode', async () => {
@@ -611,7 +629,7 @@ describe('App catalog-affecting settings', () => {
 
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: 'Cortex' }))
+    await selectWorkspace(user, 'Cortex')
     await waitFor(() => expect(catalogRequests).toContain('deepseek/deepseek-v4-flash-0731'))
 
     await user.click(screen.getByRole('checkbox', { name: 'Sandbox mode' }))
@@ -673,7 +691,7 @@ describe('App catalog-affecting settings', () => {
 
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: 'Cortex' }))
+    await selectWorkspace(user, 'Cortex')
     await waitFor(() => expect(actionsRequested).toBeGreaterThan(0))
     await waitFor(() => {
       expect(screen.getByTestId('actions-pending-count')).toHaveTextContent('1')
@@ -1040,20 +1058,49 @@ describe('App Home states', () => {
     expect(screen.queryByRole('region', { name: 'Briefing controls' })).not.toBeInTheDocument()
   })
 
-  it('switches between Overview, Briefing, and Standby without generating', async () => {
+  it('switches between Overview and Briefing from the header menu without generating', async () => {
     const user = userEvent.setup()
     const posts: string[] = []
     stubHomeFetch(posts)
     render(<App />)
 
-    await user.click(within(screen.getByRole('navigation', { name: 'Home view' })).getByRole('button', { name: 'Briefing' }))
+    await selectWorkspace(user, 'Briefing')
     expect(screen.getByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Standby' })).not.toBeInTheDocument()
 
-    await user.click(within(screen.getByRole('navigation', { name: 'Home view' })).getByRole('button', { name: 'Standby' }))
-    expect(appMocks.deactivate).toHaveBeenCalledTimes(1)
-    expect(screen.getByRole('button', { name: 'Start Overview' })).toBeInTheDocument()
+    await selectWorkspace(user, 'Overview')
+    expect(screen.getByRole('region', { name: 'Overview' })).toBeInTheDocument()
     expect(posts.filter((path) => path.endsWith('/briefing-sessions'))).toHaveLength(0)
+  })
+
+  it('activates into the chosen Home peer from Standby without generating a briefing', async () => {
+    appMocks.activated = false
+    appMocks.activate.mockClear()
+    const user = userEvent.setup()
+    const posts: string[] = []
+    stubHomeFetch(posts)
+    render(<App />)
+
+    expect(screen.getByRole('region', { name: 'Standby' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Workspace' })).toHaveTextContent('Overview')
+
+    await selectWorkspace(user, 'Briefing')
+    await waitFor(() => expect(appMocks.activate).toHaveBeenCalledTimes(1))
+    expect(await screen.findByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Workspace' })).toHaveTextContent('Briefing')
+    expect(posts.filter((path) => path.endsWith('/briefing-sessions'))).toHaveLength(0)
+  })
+
+  it('starts Overview from the Standby floating action', async () => {
+    appMocks.activated = false
+    const user = userEvent.setup()
+    stubHomeFetch([])
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Start Overview' }))
+    expect(await screen.findByRole('region', { name: 'Overview' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Standby' })).not.toBeInTheDocument()
   })
 })
 
@@ -1205,10 +1252,10 @@ describe('App briefing session flow', () => {
     expect(screen.getByRole('region', { name: 'Briefing' })).toHaveAttribute('data-layout', 'identity')
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Cortex' }))
+    await selectWorkspace(user, 'Cortex')
     expect(presentationWrites).toBe(0)
     runStatus = 'completed'
-    await user.click(screen.getByRole('button', { name: 'Home' }))
+    await selectWorkspace(user, 'Briefing')
 
     const savedSessions = await screen.findByRole('navigation', { name: 'Saved briefing sessions' })
     await user.click(within(savedSessions).getAllByRole('button')[0])
@@ -1221,10 +1268,10 @@ describe('App briefing session flow', () => {
 
     const composer = await screen.findByRole('textbox')
     await user.type(composer, 'What about traffic?')
-    const homeView = screen.getByRole('navigation', { name: 'Home view' })
-    await user.click(within(homeView).getByRole('button', { name: 'Overview' }))
+    await selectWorkspace(user, 'Inbox')
+    await selectWorkspace(user, 'Overview')
     expect(screen.queryByTestId('briefing-artifact')).not.toBeInTheDocument()
-    await user.click(within(screen.getByRole('navigation', { name: 'Home view' })).getByRole('button', { name: 'Briefing' }))
+    await selectWorkspace(user, 'Briefing')
 
     expect(await screen.findByTestId('briefing-artifact')).toBeInTheDocument()
     expect(screen.getByRole('textbox')).toHaveValue('What about traffic?')

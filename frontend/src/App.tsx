@@ -20,6 +20,7 @@ import { CompletedRemindersDialog } from './components/CompletedRemindersDialog'
 import SettingsPanel from './components/SettingsPanel'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { HomeWorkspace } from './components/home/HomeWorkspace'
+import { WorkspaceMenu, type WorkspacePeer } from './components/WorkspaceMenu'
 import type { HomeIdentityProps } from './components/home/HomeIdentity'
 import type { HomeTelemetryData } from './components/home/HomeTelemetry'
 import { useApexData } from './hooks/useApexData'
@@ -29,7 +30,7 @@ import { useActivityInbox } from './hooks/useActivityInbox'
 import { useAppActivation } from './hooks/useAppActivation'
 import { useBriefingPipeline } from './hooks/useBriefingPipeline'
 import { useBriefingSessions } from './hooks/useBriefingSessions'
-import { resolveBriefingLayoutPhase, useHomeView } from './hooks/useHomeView'
+import { resolveBriefingLayoutPhase, useHomeView, type HomeActiveView } from './hooks/useHomeView'
 import { useMarketData } from './hooks/useMarketData'
 import { useMcpStatus } from './hooks/useMcpStatus'
 import { usePreflight } from './hooks/usePreflight'
@@ -188,13 +189,15 @@ export default function App(): ReactElement {
   const [activeAgent] = useState<AgentKey>('apex')
   const [cloudEffort, setCloudEffort] = useState<CloudEffort>('medium')
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
-  const [workspace, setWorkspace] = useState<'home' | 'cortex' | 'inbox'>('home')
+  const [workspace, setWorkspace] = useState<WorkspacePeer>('overview')
   const [dailyConversationReady, setDailyConversationReady] = useState<string | null>(null)
   const completedDailyHistoryRef = useRef(new Set<string>())
   const dailyOpenSequenceRef = useRef(0)
   const dailyOpeningSessionsRef = useRef(new Map<string, number>())
-  const [lastAssistantWorkspace, setLastAssistantWorkspace] = useState<'home' | 'cortex'>('home')
-  const navigateWorkspace = useCallback((nextWorkspace: 'home' | 'cortex' | 'inbox'): void => {
+  const [lastAssistantWorkspace, setLastAssistantWorkspace] = useState<Exclude<WorkspacePeer, 'inbox'>>('overview')
+  const [homeDestination, setHomeDestination] = useState<HomeActiveView>('overview')
+  const navigateWorkspace = useCallback((nextWorkspace: WorkspacePeer): void => {
+    if (nextWorkspace === 'overview' || nextWorkspace === 'briefing') setHomeDestination(nextWorkspace)
     if (nextWorkspace !== 'inbox') setLastAssistantWorkspace(nextWorkspace)
     setWorkspace(nextWorkspace)
   }, [])
@@ -272,9 +275,9 @@ export default function App(): ReactElement {
     workspace === 'cortex' && !demoModeActive,
   )
   const { activated, activate, deactivate } = useAppActivation()
-  const homeView = useHomeView({ activated, deactivate })
-  const { selectView: selectHomeView } = homeView
-  const homeBriefingOpen = workspace === 'home' && homeView.view === 'briefing'
+  const homeView = useHomeView({ activated, deactivate, destination: homeDestination })
+  const selectHomeView = navigateWorkspace
+  const homeBriefingOpen = workspace === 'briefing' && homeView.view === 'briefing'
   const preflight = usePreflight()
   const telemetry = useTelemetrySnapshot()
   const [marketSymbols, setMarketSymbols] = useState<readonly string[] | null>(null)
@@ -344,7 +347,7 @@ export default function App(): ReactElement {
   )
 
   const assistantWorkspace = workspace === 'inbox' ? lastAssistantWorkspace : workspace
-  const usesHomeAssistantContract = assistantWorkspace === 'home'
+  const usesHomeAssistantContract = assistantWorkspace !== 'cortex'
   const effectiveWorkspaceAgent = usesHomeAssistantContract ? homeOverrides.agent : activeAgent
   const effectiveWorkspaceModel = usesHomeAssistantContract ? homeOverrides.modelId : selectedModel
   const effectiveWorkspaceRuntime = (usesHomeAssistantContract ? homeSelectedEntry : fullModelCatalog.find(
@@ -781,6 +784,15 @@ export default function App(): ReactElement {
     selectHomeView('overview')
     void handleStartApex()
   }, [handleStartApex, selectHomeView])
+
+  const handleSelectWorkspace = useCallback((peer: WorkspacePeer): void => {
+    if ((peer === 'overview' || peer === 'briefing') && !activated) {
+      selectHomeView(peer)
+      void handleStartApex()
+      return
+    }
+    navigateWorkspace(peer)
+  }, [activated, handleStartApex, navigateWorkspace, selectHomeView])
 
   useEffect(() => {
     const handleGlobalEnter = (event: KeyboardEvent): void => {
@@ -1435,11 +1447,7 @@ export default function App(): ReactElement {
             devModeActive={devModeActive}
             onOpenSettings={() => setIsSettingsOpen(true)}
             settingsButtonRef={settingsButtonRef}
-            workspaceNavigation={<nav className="flex items-center justify-center gap-1" aria-label="Workspace">
-            <button type="button" onClick={() => navigateWorkspace('inbox')} aria-pressed={workspace === 'inbox'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'inbox' ? 'bg-[#FBBF24]/15 text-[#FFF3B0]' : 'text-zinc-500 hover:text-zinc-200'}`}>Inbox</button>
-            <button type="button" onClick={() => navigateWorkspace('home')} aria-pressed={workspace === 'home'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'home' ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'text-zinc-500 hover:text-zinc-200'}`}>Home</button>
-            <button type="button" onClick={() => navigateWorkspace('cortex')} aria-pressed={workspace === 'cortex'} className={`rounded-md px-2.5 py-1.5 font-orbitron text-[10px] uppercase tracking-[0.14em] ${workspace === 'cortex' ? 'bg-[#7E22CE]/25 text-[#D8B4FE]' : 'text-zinc-500 hover:text-zinc-200'}`}>Cortex</button>
-          </nav>}
+            workspaceNavigation={<WorkspaceMenu current={workspace} onSelect={handleSelectWorkspace} />}
           />
         </header>
 
@@ -1477,7 +1485,7 @@ export default function App(): ReactElement {
           onRunningChange={handleAssistantRunningChange}
           onResponseChange={handleAssistantResponseChange}
         >
-        {workspace === 'home' ? (
+        {workspace === 'overview' || workspace === 'briefing' ? (
           <HomeWorkspace
             view={homeView.view}
             briefingPhase={briefingPhase}
@@ -1522,8 +1530,6 @@ export default function App(): ReactElement {
               onMarkPresented: dailySessions.markPresented,
               onOpenConversation: (conversationId) => void openDailyConversation(conversationId),
             }}
-            onSelectView={selectHomeView}
-            onReturnToStandby={homeView.returnToStandby}
           />
         ) : workspace === 'cortex' ? (
           <CortexWorkspace

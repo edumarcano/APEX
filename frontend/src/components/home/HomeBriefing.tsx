@@ -3,7 +3,7 @@ import remarkGfm from 'remark-gfm'
 import { useCallback, useState, type ReactElement, type ReactNode } from 'react'
 
 import { useCompactLayout } from '../../hooks/useCompactLayout'
-import type { BriefingLayoutPhase, HomeActiveView } from '../../hooks/useHomeView'
+import type { BriefingLayoutPhase } from '../../hooks/useHomeView'
 import { parseAgentQueryResponse } from '../../lib/cortexResponse'
 import type { BriefingSessionDetail } from '../../types/briefings'
 import { ApexAssistantThread } from '../ApexAssistantRuntime'
@@ -11,7 +11,7 @@ import { BriefingArtifactMessage } from './BriefingArtifactMessage'
 import type { BriefingEvidenceState } from './BriefingEvidence'
 import { BriefingProfilePanel, type BriefingProfilePanelProps } from './BriefingProfilePanel'
 import { CompactToolResults } from './CompactToolResults'
-import { HomeIdentityMark, HomeViewSwitcher, type HomeIdentityProps } from './HomeIdentity'
+import { HomeIdentityMark, type HomeIdentityProps } from './HomeIdentity'
 import type { HomeTelemetryData } from './HomeTelemetry'
 import { HomeTelemetryRail } from './HomeTelemetryRail'
 
@@ -31,8 +31,6 @@ export type HomeBriefingProps = {
   telemetry: HomeTelemetryData
   controls: BriefingProfilePanelProps
   conversation: HomeBriefingConversation
-  onSelectView: (view: HomeActiveView) => void
-  onReturnToStandby: () => void
 }
 
 function HomeAgentMessage({ text, metadata }: { text: string; metadata: Record<string, unknown> }): ReactElement {
@@ -68,7 +66,6 @@ export function HomeBriefing(props: HomeBriefingProps): ReactElement {
   const compact = useCompactLayout()
   const [compactPanel, setCompactPanel] = useState<'controls' | 'telemetry' | null>(null)
   const workspace = props.phase === 'workspace'
-  const switcher = <HomeViewSwitcher view="briefing" onSelectView={props.onSelectView} onReturnToStandby={props.onReturnToStandby} />
   const controls = <BriefingProfilePanel {...props.controls} />
 
   if (compact) {
@@ -76,8 +73,7 @@ export function HomeBriefing(props: HomeBriefingProps): ReactElement {
     const showControls = !workspace || compactPanel === 'controls'
     return <section aria-label="Briefing" data-layout={workspace ? 'workspace' : 'identity'} className="flex w-full min-w-0 flex-col gap-3">
       <header className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-zinc-950/50 p-2.5 backdrop-blur-md">
-        <HomeIdentityMark identity={props.identity} size="compact" />
-        <div className="mr-auto">{switcher}</div>
+        <div className="mr-auto"><HomeIdentityMark identity={props.identity} size="compact" /></div>
         {workspace ? <button type="button" aria-expanded={compactPanel === 'controls'} aria-controls="home-briefing-controls" onClick={() => togglePanel('controls')} className="rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300">Controls</button> : null}
         <button type="button" aria-expanded={compactPanel === 'telemetry'} aria-controls="home-briefing-telemetry" onClick={() => togglePanel('telemetry')} className="rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300">Telemetry</button>
       </header>
@@ -91,7 +87,6 @@ export function HomeBriefing(props: HomeBriefingProps): ReactElement {
     return <section aria-label="Briefing" data-layout="identity" className="hud-home-layout-enter grid h-full min-h-0 w-full flex-1 grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)] gap-6">
       <div className="flex min-h-0 flex-col items-center justify-center gap-5 overflow-y-auto">
         <HomeIdentityMark identity={props.identity} size="large" />
-        {switcher}
         <div className="w-full max-w-[40rem] rounded-xl border border-white/10 bg-zinc-950/55 p-3 backdrop-blur-md">{controls}</div>
       </div>
       <HomeTelemetryRail data={props.telemetry} />
@@ -101,7 +96,6 @@ export function HomeBriefing(props: HomeBriefingProps): ReactElement {
   return <section aria-label="Briefing" data-layout="workspace" className="hud-home-layout-enter grid h-full min-h-0 w-full flex-1 grid-cols-[16rem_minmax(0,1fr)_22rem] gap-4">
     <aside className="flex min-h-0 flex-col items-center gap-4 overflow-y-auto rounded-xl border border-white/10 bg-zinc-950/45 p-3 scrollbar-thin" aria-label="Briefing identity and controls">
       <HomeIdentityMark identity={props.identity} size="compact" />
-      {switcher}
       {controls}
     </aside>
     <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-zinc-950/45">

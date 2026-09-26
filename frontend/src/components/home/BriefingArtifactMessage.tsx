@@ -48,10 +48,10 @@ export function BriefingArtifactMessage({ session, isLoadingSession, evidence, o
         </details>
       </article>)}
     </section>)}
-    {otherEvidenceIds.length > 0 ? <section className="border-t border-white/10 pt-3">
-      <h3 className="font-mono text-[9px] uppercase tracking-wider text-zinc-500">Other captured evidence</h3>
+    {otherEvidenceIds.length > 0 ? <details className="border-t border-white/10 pt-3">
+      <summary className="cursor-pointer font-mono text-[9px] uppercase tracking-wider text-zinc-500">Other captured evidence ({otherEvidenceIds.length})</summary>
       <BriefingEvidenceRecords evidenceIds={otherEvidenceIds} state={evidenceState} />
-    </section> : null}
+    </details> : null}
     <BriefingCoverage artifact={artifact} />
   </article>
 }
