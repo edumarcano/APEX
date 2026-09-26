@@ -1,0 +1,14 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+[agents]
+enabled = true
+default_subagent_model = "gpt-6-luna"
+default_subagent_reasoning_effort = "max"
+
+[agents.luna-explorer]
+description = "Use for focused codebase exploration, dependency tracing, implementation-path discovery, and repository reconciliation when the parent needs concise evidence without carrying the full exploration context."
+config_file = "agents/luna-explorer.toml"
+
+[agents.luna-implementer]
+description = "Use for substantial implementation of an approved or reconciled plan, including multi-file coding, tests, debugging, and validation while the parent retains architecture and final review."
+config_file = "agents/luna-implementer.toml"
