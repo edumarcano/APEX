@@ -27,7 +27,9 @@ EvidenceRevisionKind = Literal["provider", "content", "none"]
 CoverageStatus = Literal["complete", "partial", "unavailable", "disabled", "failed"]
 BriefingStage = Literal["preparing", "collecting", "selecting", "investigating", "synthesizing", "persisting"]
 BriefingStageState = Literal["started", "completed", "failed", "cancelled"]
-SpeechDeliveryStatus = Literal["not_requested", "ready", "unavailable"]
+SpeechDeliveryStatus = Literal[
+    "not_requested", "preparing", "ready", "unavailable", "cancelled"
+]
 
 MAX_ARTIFACT_BYTES = 64 * 1024
 MAX_EVIDENCE_BYTES = 256 * 1024

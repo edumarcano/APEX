@@ -29,6 +29,10 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | GET | `/api/v1/briefing-sessions/{session_id}` | Saved briefing-session detail and completed artifact |
 | GET | `/api/v1/briefing-sessions/{session_id}/evidence/{evidence_id}` | Evidence captured by a completed session |
 | POST | `/api/v1/briefing-sessions/{session_id}/presented` | Idempotently acknowledge the first presentation |
+| GET | `/api/v1/briefing-sessions/{session_id}/speech` | Speech-preparation status and canonical-artifact binding |
+| POST | `/api/v1/briefing-sessions/{session_id}/speech/prepare` | Prepare optional grounded speech and cache local audio |
+| POST | `/api/v1/briefing-sessions/{session_id}/speech/play` | Play previously cached briefing audio |
+| POST | `/api/v1/briefing-sessions/{session_id}/speech/stop` | Stop only this session's preparation or playback |
 | GET | `/api/v1/reminders` | Active reminders |
 | GET | `/api/v1/reminders/task` | Exact selected-list task detail (`id=todo:…`) |
 | GET | `/api/v1/reminders/completed` | Live bounded completed reminders |
@@ -365,6 +369,22 @@ Returns one immutable evidence snapshot or unavailable-source entry captured wit
 ### POST `/api/v1/briefing-sessions/{session_id}/presented`
 
 Records the first time the client presents a completed briefing and returns the session detail. Repeated acknowledgments preserve the original timestamp. The server rejects a session that is pending or did not complete with `409`; a session outside the active partition returns `404`. Clients should call this only after the artifact has actually been shown.
+
+### GET `/api/v1/briefing-sessions/{session_id}/speech`
+
+Returns the speech status, a SHA-256 binding to the exact persisted canonical artifact, and the engine and voice gender used for cached audio when available. Audio and the spoken script are not returned by this endpoint. Persisted status is `not_requested`, `preparing`, `ready`, `unavailable`, or `cancelled`; an active playback may report `playing` or `stopping`. Demo Daily and Catch Up sessions use a deterministic script from their saved fixture artifact and the configured `DEMO_TTS` engine; they do not call a model. A session outside the active partition returns `404`; unsupported fixture sessions return `403`.
+
+### POST `/api/v1/briefing-sessions/{session_id}/speech/prepare`
+
+Prepares short spoken highlights from the completed session's persisted artifact and synthesizes ordered, separately playable audio chunks. For model-backed sessions the script call uses only the session's selected Apex Agent model, with no tools, retrieval, or other conversation context; the script is validated against the artifact's item IDs, numbers, dates, uncertainty, report attribution, review status, and suggestion/completion distinctions. Demo Daily and Catch Up instead use a deterministic script from the exact saved fixture artifact and the configured `DEMO_TTS` engine, with no provider call. Work is admitted asynchronously and returns `202`; a matching ready cache returns `200`. Calling Prepare after the selected voice engine or gender changes replaces the cached derivative. `?force=true` explicitly rebuilds the speech derivative with the current voice settings, without regenerating the briefing. Google TTS may receive the script text; Kokoro and pyttsx3 keep synthesis local. The response contains `session_id`, `artifact_sha256`, `status`, `error_code`, `engine`, and `voice_gender`.
+
+### POST `/api/v1/briefing-sessions/{session_id}/speech/play`
+
+Plays only previously prepared audio and returns `202` when playback is queued. Replay uses the exact ordered chunks in local SQLite and does not call a model or TTS engine again. Playback shares the speaker lock with voice cues and the legacy transcript API, so it will not overlap them. Audio bytes are never sent to the browser.
+
+### POST `/api/v1/briefing-sessions/{session_id}/speech/stop`
+
+Cancels this session's preparation or playback and returns the current status. Stop does not cancel unrelated voice cues or legacy speech. Preparing or playing requires voice mode to be enabled (`403` otherwise); an incomplete session or play request without a ready cache returns `409`, a busy single-worker queue returns `429`, and unavailable speech/runtime services return `503`.
 
 ## Reminders
 

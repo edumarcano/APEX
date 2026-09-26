@@ -448,15 +448,31 @@ class BriefingSessionQueries:
         ]
 
     def get(self, session_id: UUID) -> BriefingSessionDetail:
-        record = self.store.get(session_id, self._partition_getter())
-        return self._detail(record, self._active_stage(record.run_id))
+        partition = self._partition_getter()
+        record = self.store.get(session_id, partition)
+        speech_status = (
+            self.store.get_speech_status(session_id, partition)["status"]
+            if record.run_status == "completed" and record.artifact is not None
+            else "not_requested"
+        )
+        return self._detail(
+            record,
+            self._active_stage(record.run_id),
+            speech_status=speech_status,
+        )
 
     def evidence(self, session_id: UUID, evidence_id: UUID) -> BriefingEvidence:
         return self.store.evidence(session_id, self._partition_getter(), evidence_id)
 
     def mark_presented(self, session_id: UUID) -> BriefingSessionDetail:
-        record = self.store.mark_presented(session_id, self._partition_getter())
-        return self._detail(record, self._active_stage(record.run_id))
+        partition = self._partition_getter()
+        record = self.store.mark_presented(session_id, partition)
+        speech_status = self.store.get_speech_status(session_id, partition)["status"]
+        return self._detail(
+            record,
+            self._active_stage(record.run_id),
+            speech_status=speech_status,
+        )
 
     def _active_stage(self, run_id: UUID) -> BriefingStageProgress | None:
         if self._coordinator is None:
@@ -476,6 +492,8 @@ class BriefingSessionQueries:
     def _detail(
         record: BriefingSessionRecord,
         active_stage: BriefingStageProgress | None = None,
+        *,
+        speech_status: str = "not_requested",
     ) -> BriefingSessionDetail:
         completed = record.run_status == "completed" and record.artifact is not None
         return BriefingSessionDetail(
@@ -491,5 +509,6 @@ class BriefingSessionQueries:
             evidence_ids=[item.id for item in record.evidence] if completed else [],
             created_at=record.created_at,
             presented_at=record.presented_at,
+            speech_status=speech_status,  # type: ignore[arg-type]
             active_stage=active_stage,
         )

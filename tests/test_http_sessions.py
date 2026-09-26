@@ -183,6 +183,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         coordinator: mock.Mock,
         expected_error: str,
         task_drain: mock.AsyncMock | None = None,
+        speech_service: mock.Mock | None = None,
     ) -> None:
         from core.api.app import app
         from core.mcp.models import McpRuntimeConfig
@@ -193,6 +194,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         retrieval_store = mock.Mock()
         knowledge_store = mock.Mock()
         activity_store = mock.Mock()
+        speech_service = speech_service or mock.Mock()
         registry = mock.Mock()
         tracing = mock.Mock()
         manager = mock.Mock()
@@ -220,6 +222,12 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
                 mock.patch(
                     "core.api.app.BriefingSessionStore",
                     return_value=briefing_session_store,
+                )
+            )
+            stack.enter_context(
+                mock.patch(
+                    "core.api.app.BriefingSpeechService",
+                    return_value=speech_service,
                 )
             )
             stack.enter_context(
@@ -281,6 +289,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         conversation_store.close.assert_not_called()
         run_store.close.assert_not_called()
         briefing_session_store.close.assert_not_called()
+        speech_service.close.assert_not_called()
         retrieval_store.close.assert_not_called()
         knowledge_store.close.assert_not_called()
         activity_store.close.assert_not_called()
@@ -305,14 +314,27 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         self.assertIn("activity-mailbox-poller", {task.get_name() for task in drained_tasks})
 
     def test_lifespan_keeps_dependencies_open_when_run_drain_errors(self) -> None:
+        call_order: list[str] = []
+
+        def fail_run_drain(*_args, **_kwargs):
+            call_order.append("run_drain")
+            raise RuntimeError("drain failed")
+
+        speech_service = mock.Mock()
+        speech_service.request_shutdown.side_effect = lambda: call_order.append(
+            "speech_cancel"
+        )
         coordinator = mock.Mock()
-        coordinator.close.side_effect = RuntimeError("drain failed")
+        coordinator.close.side_effect = fail_run_drain
         self._assert_lifespan_preserves_dependencies_on_drain_failure(
             coordinator=coordinator,
             expected_error="Cortex run shutdown drain failed",
+            speech_service=speech_service,
         )
 
         coordinator.close.assert_called_once()
+        self.assertEqual(call_order, ["speech_cancel", "run_drain"])
+        speech_service.request_shutdown.assert_called_once()
 
     def test_lifespan_registers_action_handlers_before_recovery_and_publication(self) -> None:
         from core.api.app import app
