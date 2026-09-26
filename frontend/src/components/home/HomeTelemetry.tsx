@@ -89,7 +89,7 @@ type DomainProps = {
 }
 
 function layoutClass(variant: HomeTelemetryVariant, className?: string): string {
-  return [variant === 'card' ? 'min-h-0 h-full' : 'h-auto! max-h-96 flex-none', className].filter(Boolean).join(' ')
+  return [variant === 'card' ? 'min-h-0 h-full' : 'h-auto! flex-none', className].filter(Boolean).join(' ')
 }
 
 export function WeatherTelemetry({ data, variant, className }: DomainProps): ReactElement {

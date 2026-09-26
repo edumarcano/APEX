@@ -86,4 +86,17 @@ describe('HomeTelemetryRail', () => {
     expect(within(rail).getByRole('button', { name: 'Refresh Weather' })).toBeDisabled()
     expect(within(rail).getByRole('button', { name: 'Choose Events module to refresh' })).toBeDisabled()
   })
+
+  it('lets sections grow with their content so the shared panel is the only height limit', () => {
+    const base = telemetry()
+    const items = Array.from({ length: 40 }, (_, index) => ({ summary: `Event ${index}`, start: 'Fri, 9:00 AM', end: null, allDay: false }))
+    render(<HomeTelemetryRail data={{ ...base, events: { ...base.events, calendar: { windowDays: 7, items, totalCount: items.length } } }} />)
+
+    const rail = screen.getByRole('complementary', { name: 'Current telemetry' })
+    expect(within(rail).getByText('Event 39')).toBeInTheDocument()
+    for (const section of domainSections(rail)) {
+      expect(section).not.toHaveClass('max-h-96')
+      expect(section).not.toHaveClass('overflow-hidden')
+    }
+  })
 })

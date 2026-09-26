@@ -490,7 +490,7 @@ export function TelemetryCard({
   const bareSection = chrome === 'section'
   const sectionClassName = [
     bareSection
-      ? 'relative flex overflow-hidden'
+      ? 'relative flex'
       : 'hud-corner-brackets hud-interactive-shell relative flex overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hud-glass transition-all duration-700 ease-in-out',
     bareSection && !isCompact
       ? 'min-h-0 flex-col py-3'
