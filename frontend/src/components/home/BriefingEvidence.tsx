@@ -14,9 +14,11 @@ export type BriefingEvidenceState = {
 export function BriefingEvidenceRecords({
   evidenceIds,
   state,
+  isCitedInArtifact = true,
 }: {
   evidenceIds: string[]
   state: BriefingEvidenceState
+  isCitedInArtifact?: boolean
 }): ReactElement {
   const { sessionId, evidenceById, loadingIds, errors, onLoadEvidence } = state
   if (evidenceIds.length === 0) return <p className="mt-2 text-xs text-zinc-500">No source records were captured for this item.</p>
@@ -30,7 +32,7 @@ export function BriefingEvidenceRecords({
           {source ? <span className={source.trust === 'untrusted' ? 'text-amber-200' : 'text-[#A5C7FF]'}>
             {source.trust === 'untrusted' ? 'Untrusted external report' : source.trust === 'pending' ? 'Pending context' : source.source.replaceAll('_', ' ')}
           </span> : <span>Inspect source record {id.slice(0, 8)}</span>}
-          {source ? <span className="ml-2 text-zinc-500">{source.included_in_synthesis ? 'used in synthesis' : 'not used in synthesis'}</span> : null}
+          {source ? <span className="ml-2 text-zinc-500">{source.included_in_synthesis ? 'sent to synthesis' : 'not sent to synthesis'} · {isCitedInArtifact ? 'cited in briefing' : 'not cited in briefing'}</span> : null}
         </summary>
         {loadingIds.includes(id) ? <p className="mt-2 text-xs text-zinc-500" role="status">Loading saved evidence…</p> : null}
         {errors[id] ? <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-red-200" role="alert"><span>{errors[id]}</span><button type="button" onClick={() => void onLoadEvidence(sessionId, id)} className="text-[#A5C7FF] hover:text-white">Retry</button></div> : null}
@@ -39,6 +41,8 @@ export function BriefingEvidenceRecords({
             <dt>Source ID</dt><dd className="break-all text-zinc-300">{source.source_id}</dd>
             <dt>Identity</dt><dd>{source.identity_kind}</dd>
             <dt>Revision</dt><dd className="break-all">{source.revision ?? 'Unavailable'}{source.revision_kind !== 'none' ? ' (' + source.revision_kind + ')' : ''}</dd>
+            {source.comparison_role ? <><dt>Snapshot role</dt><dd>{source.comparison_role}{source.change_kind ? ` · ${source.change_kind.replaceAll('_', ' ')}` : ''}</dd></> : null}
+            {source.comparison_pair_id ? <><dt>Comparison pair</dt><dd className="break-all">{source.comparison_pair_id}</dd></> : null}
             <dt>Observed</dt><dd>{source.observed_at ? formatBriefingTime(source.observed_at) : 'Unknown'}</dd>
             <dt>Effective</dt><dd>{source.effective_at ? formatBriefingTime(source.effective_at) : 'Unknown'}</dd>
             <dt>Trust</dt><dd className={source.trust === 'untrusted' ? 'text-amber-200' : ''}>{source.trust}</dd>
@@ -62,11 +66,25 @@ export function BriefingItemTrustLabels({ item }: { item: BriefingArtifactItem }
   </>
 }
 
-export function BriefingCoverage({ artifact }: { artifact: BriefingArtifact }): ReactElement | null {
-  if (artifact.coverage.length === 0 && artifact.limitations.length === 0) return null
+export function BriefingCoverage({
+  artifact,
+  showComparisonSummary = true,
+}: { artifact: BriefingArtifact; showComparisonSummary?: boolean }): ReactElement | null {
+  if (artifact.coverage.length === 0 && artifact.limitations.length === 0 && !artifact.comparison) return null
   return <details className="border-t border-white/10 pt-3">
     <summary className="cursor-pointer font-mono text-[9px] uppercase tracking-wider text-zinc-400">Source coverage and limits ({artifact.coverage.length})</summary>
     <div className="mt-2 space-y-2">
+      {artifact.comparison ? <section aria-label="Source comparison" className="rounded border border-blue-400/15 bg-blue-950/15 px-2 py-2 text-[10px]">
+        {showComparisonSummary ? <p className="font-medium text-blue-100">{artifact.comparison.summary}</p> : null}
+        <ul className="mt-1 space-y-1 text-zinc-400">
+          {artifact.comparison.sources.map((source) => <li key={source.source}>
+            <span className="capitalize text-zinc-200">{source.source.replaceAll('_', ' ')}</span> · {source.status}
+            {source.baseline_snapshot_at ? ` · baseline ${formatBriefingTime(source.baseline_snapshot_at)}` : ''}
+            {source.current_snapshot_at ? ` · current ${formatBriefingTime(source.current_snapshot_at)}` : ''}
+            {source.reason ? ` · ${source.reason.replaceAll('_', ' ')}` : ''}
+          </li>)}
+        </ul>
+      </section> : null}
       {artifact.coverage.map((coverage) => <div key={coverage.source + coverage.scope} className="rounded border border-white/5 px-2 py-1.5 text-[10px]">
         <p className="font-medium capitalize text-zinc-200">{coverage.source.replaceAll('_', ' ')} · {coverage.scope}</p>
         <p className="mt-0.5 capitalize text-zinc-400">{coverage.status}{coverage.truncated ? ' · truncated' : ''}{coverage.observed_at ? ' · observed ' + formatBriefingTime(coverage.observed_at) : ''}</p>

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from uuid import uuid4
@@ -16,7 +16,9 @@ from core.briefings.daily import (
     _REPAIR_PROMPT_RESERVE_BYTES,
     _build_repair_prompt,
     _build_prompt,
+    _catch_up_candidates,
     _fit_evidence_to_context,
+    _mark_comparison_synthesis_limited,
     generate_daily_briefing,
 )
 from core.briefings.daily_inputs import (
@@ -27,18 +29,23 @@ from core.briefings.daily_inputs import (
 )
 from core.briefings.models import (
     BUILTIN_BRIEFING_PROFILES,
+    BriefingComparison,
+    BriefingComparisonSource,
     BriefingCoverage,
     BriefingDraft,
     BriefingEvidence,
     BriefingGenerationConfiguration,
     BriefingGenerationRequest,
+    BriefingHistorySelection,
     BriefingItemDraft,
     BriefingModelConfiguration,
+    BriefingSessionRecord,
     BriefingSectionDraft,
     ExistingRecordReference,
     build_canonical_artifact,
     render_artifact_text,
 )
+from core.briefings.service import BriefingHistoryContext
 from core.telemetry.models import TelemetryModuleEntry, TelemetrySnapshot
 
 
@@ -91,6 +98,267 @@ def _model_configuration() -> BriefingGenerationConfiguration:
 
 
 class DailyInputTests(unittest.TestCase):
+    def test_catch_up_no_change_uses_deterministic_generation_without_duplicate_summary(self) -> None:
+        current_at = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(seconds=1)
+        baseline_at = current_at - timedelta(hours=1)
+        due_at = (current_at + timedelta(days=7)).isoformat()
+
+        def snapshot_at(observed_at: datetime) -> TelemetrySnapshot:
+            return TelemetrySnapshot(modules={
+                "reminders": TelemetryModuleEntry(
+                    name="reminders", status="healthy", freshness="live",
+                    observed_at=observed_at.isoformat(),
+                    data={
+                        "list_id": "personal-tasks",
+                        "count": 1,
+                        "records": [{
+                            "id": "task-1", "note": "Prepare the beta roadmap review",
+                            "due": due_at, "status": "incomplete",
+                        }],
+                    },
+                ),
+            })
+
+        baseline_snapshot = snapshot_at(baseline_at)
+        baseline_coverage, baseline_evidence = _telemetry_inputs(
+            baseline_snapshot, None, False, now=baseline_at
+        )
+        reminder_coverage = next(
+            item for item in baseline_coverage if item.source == "reminders"
+        )
+        baseline_id = uuid4()
+        baseline_request = BriefingGenerationRequest(
+            idempotency_key=uuid4(),
+            profile_id="daily",
+            model_id=_model_configuration().model.model_id,
+            reasoning="high",
+        )
+        baseline_configuration = _model_configuration()
+        baseline_artifact = build_canonical_artifact(
+            session_id=baseline_id,
+            draft=BriefingDraft(sections=[]),
+            evidence=baseline_evidence,
+            coverage=[reminder_coverage],
+            created_at=baseline_at,
+        )
+        baseline_session = BriefingSessionRecord(
+            id=baseline_id,
+            partition="production",
+            idempotency_key=baseline_request.idempotency_key,
+            conversation_id=uuid4(),
+            opening_message_id=uuid4(),
+            run_id=uuid4(),
+            request=baseline_request,
+            configuration=baseline_configuration,
+            created_at=baseline_at,
+            presented_at=baseline_at,
+            artifact=baseline_artifact,
+            evidence=baseline_evidence,
+            run_status="completed",
+        )
+        catch_up_request = BriefingGenerationRequest(
+            idempotency_key=uuid4(),
+            profile_id="catch_up",
+            model_id=baseline_configuration.model.model_id,
+            reasoning="high",
+        )
+        catch_up_configuration = baseline_configuration.model_copy(update={
+            "profile": BUILTIN_BRIEFING_PROFILES["catch_up"],
+        })
+        current_snapshot = snapshot_at(current_at)
+        telemetry = Mock()
+        telemetry.refresh.return_value = current_snapshot
+        telemetry.latest.return_value = current_snapshot
+        settings = SimpleNamespace(get_snapshot=lambda: object())
+        history = BriefingHistoryContext(
+            selection=BriefingHistorySelection(
+                captured_at=current_at, session_ids=[baseline_id]
+            ),
+            sessions=(baseline_session,),
+        )
+
+        with (
+            patch("core.briefings.daily.get_telemetry_service", return_value=telemetry),
+            patch("core.briefings.daily.get_settings_store", return_value=settings),
+            patch(
+                "core.briefings.daily.ContextPolicy.from_settings",
+                return_value=SimpleNamespace(permits_retrieval=False),
+            ),
+            patch("core.briefings.daily.is_dev_mode", return_value=False),
+            patch("core.briefings.daily_inputs.is_dev_mode", return_value=False),
+            patch("core.briefings.daily.execute_single_call") as execute_single_call,
+        ):
+            output = generate_daily_briefing(
+                uuid4(), catch_up_request, catch_up_configuration, _Control(), history
+            )
+
+        self.assertEqual(output.draft.sections, [])
+        self.assertIsNotNone(output.comparison)
+        assert output.comparison is not None
+        self.assertEqual(output.comparison.outcome, "limited")
+        self.assertTrue(output.comparison.no_material_changes)
+        self.assertIn("No material changes were found in comparable data", output.comparison.summary)
+        self.assertEqual(
+            [item.change_kind for item in output.evidence if item.source == "reminders"],
+            ["unchanged"],
+        )
+        self.assertNotIn(output.comparison.summary, output.draft.limitations)
+        self.assertTrue(any("was disabled" in item for item in output.draft.limitations))
+        execute_single_call.assert_not_called()
+
+    def test_catch_up_includes_labeled_first_snapshot_when_other_sources_are_unchanged(self) -> None:
+        unchanged = BriefingEvidence(
+            source="reminders", source_id="task-1", change_kind="unchanged",
+            content="An unchanged reminder.", included_in_synthesis=False,
+        )
+        initial = BriefingEvidence(
+            source="weather", source_id="weather:current", change_kind="not_comparable",
+            content="Current conditions for a newly configured location.",
+            included_in_synthesis=False,
+        )
+        comparison = BriefingComparison(
+            outcome="limited", summary="No material changes were found in comparable data; some sources are limited.",
+            sources=[
+                BriefingComparisonSource(source="reminders", status="compared"),
+                BriefingComparisonSource(source="weather", status="initial"),
+            ],
+            material_change_count=0, no_material_changes=True,
+        )
+
+        selected, updated = _catch_up_candidates([unchanged, initial], comparison)
+
+        self.assertEqual([item.source for item in selected], ["weather"])
+        self.assertEqual(updated.outcome, "limited")
+        self.assertIn("no material changes were found in comparable sources", updated.summary.casefold())
+        self.assertIn("first-snapshot information is included for: weather", updated.summary.casefold())
+        self.assertNotEqual(selected[0].change_kind, "new")
+
+    def test_reminder_and_calendar_instants_normalize_equivalent_offsets(self) -> None:
+        def collect(due: str, start: str, end: str, original_start: str):
+            snapshot = TelemetrySnapshot(modules={
+                "reminders": TelemetryModuleEntry(
+                    name="reminders", status="healthy", freshness="live",
+                    observed_at="2026-09-24T10:00:00Z",
+                    data={"list_id": "list-1", "records": [{
+                        "id": "task-1", "note": "Prepare the review", "due": due,
+                    }]},
+                ),
+                "calendar": TelemetryModuleEntry(
+                    name="calendar", status="healthy", freshness="live",
+                    observed_at="2026-09-24T10:00:00Z",
+                    data={
+                        "selected_calendar_ids": ["primary"],
+                        "events": [
+                            {
+                                "calendar_id": "primary", "recurring_event_id": "series-1",
+                                "event_id": "instance-1", "original_start": original_start,
+                                "summary": "Planning review", "start": start, "end": end,
+                                "time_zone": "America/New_York",
+                            },
+                            {
+                                "calendar_id": "primary", "event_id": "all-day-1",
+                                "summary": "Planning day", "start": "2026-09-26",
+                                "end": "2026-09-27", "all_day": True,
+                                "time_zone": "America/New_York",
+                            },
+                        ],
+                    },
+                ),
+            })
+            return _telemetry_inputs(snapshot, None, False)[1]
+
+        first = collect(
+            "2026-09-25T15:00:00Z", "2026-09-26T09:00:00-04:00",
+            "2026-09-26T10:00:00-04:00", "2026-09-26T09:00:00-04:00",
+        )
+        second = collect(
+            "2026-09-25T11:00:00-04:00", "2026-09-26T13:00:00Z",
+            "2026-09-26T14:00:00Z", "2026-09-26T13:00:00Z",
+        )
+
+        first_by_identity = {(item.source, item.source_id): item for item in first}
+        second_by_identity = {(item.source, item.source_id): item for item in second}
+        self.assertEqual(first_by_identity.keys(), second_by_identity.keys())
+        for identity in first_by_identity:
+            self.assertEqual(
+                first_by_identity[identity].semantic_fingerprint,
+                second_by_identity[identity].semantic_fingerprint,
+            )
+        self.assertTrue(any(item.all_day for item in first))
+
+    def test_weather_forecast_normalization_limit_marks_coverage_partial(self) -> None:
+        snapshot = TelemetrySnapshot(modules={
+            "weather": TelemetryModuleEntry(
+                name="weather", status="healthy", freshness="live",
+                observed_at="2026-09-24T10:00:00Z",
+                data={
+                    "location": "Example",
+                    "timezone": "America/New_York",
+                    "current": {"condition": "Clear", "temp_f": 72},
+                    "daily": [
+                        {"date": f"2026-09-2{day}", "condition": "Clear"}
+                        for day in range(5, 9)
+                    ],
+                },
+            ),
+        })
+
+        coverage, _evidence = _telemetry_inputs(snapshot, None, False)
+
+        weather = next(item for item in coverage if item.source == "weather")
+        self.assertEqual(weather.status, "partial")
+        self.assertTrue(weather.truncated)
+        self.assertEqual(weather.reason, "source_limit_reached")
+
+    def test_stable_news_article_id_survives_normalization(self) -> None:
+        snapshot = TelemetrySnapshot(modules={
+            "news": TelemetryModuleEntry(
+                name="news", status="healthy", freshness="live",
+                observed_at="2026-09-25T13:00:00Z",
+                data={
+                    "topics": ["roadmap"],
+                    "headlines": [{
+                        "article_id": "a" * 64,
+                        "headline": "Roadmap milestone published",
+                        "topic": "roadmap", "source": "Example News",
+                        "published_at": "2026-09-25T12:00:00Z",
+                        "synopsis": "A new milestone was reported.",
+                    }],
+                },
+            ),
+        })
+
+        _coverage, evidence = _telemetry_inputs(snapshot, None, False)
+        article = next(item for item in evidence if item.source == "news")
+
+        self.assertEqual(article.identity_kind, "provider")
+        self.assertEqual(article.source_id, "news:" + "a" * 64)
+        self.assertEqual(article.effective_at, datetime(2026, 9, 25, 12, tzinfo=timezone.utc))
+
+    def test_external_report_disposition_does_not_change_its_content_fingerprint(self) -> None:
+        content = ActivityReportContent(
+            submission_key="roadmap-1", title="Roadmap implementation report",
+            task_status="completed", outcome="The timeline was updated.",
+            subjects=["roadmap planning"],
+        )
+        report_id = uuid4()
+
+        def fingerprint(disposition: str) -> str:
+            report = ActivityReport(
+                id=report_id, partition="production", client_id="codex",
+                client_display_name="Codex", principal="local",
+                received_at="2026-09-25T13:00:00Z", disposition=disposition,
+                content=content,
+            )
+            service = SimpleNamespace(list=lambda **_kwargs: [report])
+            with patch("core.briefings.daily_inputs.get_activity_service", return_value=service):
+                _coverage, evidence = _external_inputs(
+                    prompt="roadmap planning", observed=[], partition="production",
+                )
+            return evidence[0].semantic_fingerprint or ""
+
+        self.assertEqual(fingerprint("new"), fingerprint("reviewed"))
+
     def test_malformed_cached_source_count_does_not_abort_daily_inputs(self) -> None:
         snapshot = TelemetrySnapshot(modules={
             "email": TelemetryModuleEntry(
@@ -235,7 +503,7 @@ class DailyInputTests(unittest.TestCase):
             self.assertTrue(coverage_by_source[source].truncated)
             self.assertEqual(coverage_by_source[source].reason, "source_limit_reached")
 
-    def test_context_budget_marks_evidence_dropped_from_model_prompt(self) -> None:
+    def test_context_budget_marks_synthesis_omissions_without_changing_observed_coverage(self) -> None:
         configuration = _model_configuration()
         configuration = configuration.model_copy(
             update={
@@ -252,7 +520,9 @@ class DailyInputTests(unittest.TestCase):
             BriefingCoverage(source="calendar", scope="selected events", status="complete"),
             BriefingCoverage(source="weather", scope="current weather", status="complete"),
         ]
-        one_record_size = len(_build_prompt([evidence[0]], coverage).encode("utf-8"))
+        one_record_size = len(
+            _build_prompt([evidence[0]], coverage, synthesis_limits={"weather"}).encode("utf-8")
+        )
         schema_size = len(
             json.dumps(BriefingDraft.model_json_schema(), separators=(",", ":")).encode("utf-8")
         )
@@ -266,6 +536,7 @@ class DailyInputTests(unittest.TestCase):
             - available
         )
 
+        synthesis_limits: set[str] = set()
         with (
             patch("core.briefings.daily.get_visible_model_profile", return_value=SimpleNamespace(maximum_context_window=20_000)),
             patch(
@@ -278,14 +549,75 @@ class DailyInputTests(unittest.TestCase):
                 coverage,
                 configuration,
                 BriefingDraft.model_json_schema(),
+                synthesis_limits=synthesis_limits,
                 reserve_bytes=_REPAIR_PROMPT_RESERVE_BYTES,
             )
 
         self.assertEqual(len(evidence), 1)
-        weather_coverage = next(item for item in coverage if item.source == "weather")
-        self.assertEqual(weather_coverage.status, "partial")
-        self.assertTrue(weather_coverage.truncated)
-        self.assertEqual(weather_coverage.reason, "model_context_window_limit")
+        self.assertEqual(synthesis_limits, {"weather"})
+        self.assertTrue(all(item.status == "complete" and not item.truncated for item in coverage))
+
+    def test_context_budget_includes_final_synthesis_limited_comparison_summary(self) -> None:
+        base_configuration = _model_configuration()
+        configuration = base_configuration.model_copy(update={
+            "model": base_configuration.model.model_copy(
+                update={"context_window": 20_000, "output_token_limit": 512}
+            ),
+        })
+        evidence = [
+            BriefingEvidence(source="calendar", source_id="event-1", content="A" * 500),
+            BriefingEvidence(source="weather", source_id="current", content="B" * 500),
+        ]
+        coverage = [
+            BriefingCoverage(source="calendar", scope="selected events", status="complete"),
+            BriefingCoverage(source="weather", scope="current weather", status="complete"),
+        ]
+        comparison = BriefingComparison(
+            outcome="compared", summary="Found 1 changed item.", material_change_count=1,
+        )
+        limits = {"weather"}
+        final_comparison = _mark_comparison_synthesis_limited(comparison, limits)
+        available = len(_build_prompt(
+            [evidence[0]], coverage, comparison=final_comparison, synthesis_limits=limits,
+        ).encode("utf-8"))
+        unmarked_size = len(_build_prompt(
+            [evidence[0]], coverage, comparison=comparison, synthesis_limits=limits,
+        ).encode("utf-8"))
+        self.assertGreater(available, unmarked_size)
+        schema_size = len(
+            json.dumps(BriefingDraft.model_json_schema(), separators=(",", ":")).encode("utf-8")
+        )
+        system_bytes = (
+            configuration.model.context_window
+            - schema_size
+            - configuration.model.output_token_limit
+            - 512
+            - _REPAIR_PROMPT_RESERVE_BYTES
+            - available
+        )
+
+        synthesis_limits: set[str] = set()
+        with (
+            patch("core.briefings.daily.get_visible_model_profile", return_value=SimpleNamespace(maximum_context_window=20_000)),
+            patch(
+                "core.agent.catalog.build_concrete_agent",
+                return_value=SimpleNamespace(system_instruction="x" * system_bytes),
+            ),
+        ):
+            _fit_evidence_to_context(
+                evidence, coverage, configuration, BriefingDraft.model_json_schema(),
+                comparison=comparison, synthesis_limits=synthesis_limits,
+                reserve_bytes=_REPAIR_PROMPT_RESERVE_BYTES,
+            )
+
+        final_comparison = _mark_comparison_synthesis_limited(comparison, synthesis_limits)
+        final_prompt = _build_prompt(
+            evidence, coverage, comparison=final_comparison, synthesis_limits=synthesis_limits,
+        )
+        self.assertEqual(synthesis_limits, {"weather"})
+        self.assertEqual(len(evidence), 1)
+        self.assertLessEqual(len(final_prompt.encode("utf-8")), available)
+        self.assertIn("Synthesis evidence was limited", final_prompt)
 
     def test_context_budget_fails_when_one_useful_record_cannot_fit(self) -> None:
         configuration = _model_configuration()
@@ -332,65 +664,7 @@ class DailyInputTests(unittest.TestCase):
                     reserve_bytes=_REPAIR_PROMPT_RESERVE_BYTES,
                 )
 
-    def test_context_budget_rechecks_prompt_after_coverage_expands(self) -> None:
-        configuration = _model_configuration()
-        configuration = configuration.model_copy(
-            update={
-                "model": configuration.model.model_copy(
-                    update={"context_window": 20_000, "output_token_limit": 512}
-                )
-            }
-        )
-        original = BriefingEvidence(source="calendar", source_id="event-1", content="A" * 300)
-        clipped = original.model_copy(update={"content": "A" * 150})
-        coverage = [
-            BriefingCoverage(source="calendar", scope="selected events", status="complete")
-        ]
-        expanded_coverage = [
-            coverage[0].model_copy(
-                update={
-                    "status": "partial",
-                    "truncated": True,
-                    "reason": "model_context_window_limit",
-                }
-            )
-        ]
-        base_prompt_size = len(_build_prompt([clipped], coverage).encode("utf-8"))
-        expanded_prompt_size = len(
-            _build_prompt([clipped], expanded_coverage).encode("utf-8")
-        )
-        self.assertGreater(expanded_prompt_size, base_prompt_size)
-        minimum = original.model_copy(update={"content": "A" * 128})
-        available = len(_build_prompt([minimum], expanded_coverage).encode("utf-8")) - 1
-        schema_size = len(
-            json.dumps(BriefingDraft.model_json_schema(), separators=(",", ":")).encode("utf-8")
-        )
-        system_bytes = (
-            configuration.model.context_window
-            - schema_size
-            - configuration.model.output_token_limit
-            - 512
-            - _REPAIR_PROMPT_RESERVE_BYTES
-            - available
-        )
-
-        with (
-            patch("core.briefings.daily.get_visible_model_profile", return_value=SimpleNamespace(maximum_context_window=20_000)),
-            patch(
-                "core.agent.catalog.build_concrete_agent",
-                return_value=SimpleNamespace(system_instruction="x" * system_bytes),
-            ),
-        ):
-            with self.assertRaisesRegex(RuntimeError, "too little room for useful briefing evidence"):
-                _fit_evidence_to_context(
-                    [original],
-                    coverage,
-                    configuration,
-                    BriefingDraft.model_json_schema(),
-                    reserve_bytes=_REPAIR_PROMPT_RESERVE_BYTES,
-                )
-
-    def test_context_budget_rechecks_final_prompt_after_omission_changes_coverage(self) -> None:
+    def test_context_budget_rechecks_final_prompt_after_synthesis_evidence_changes(self) -> None:
         configuration = _model_configuration()
         configuration = configuration.model_copy(
             update={
@@ -406,19 +680,11 @@ class DailyInputTests(unittest.TestCase):
             BriefingCoverage(source="calendar", scope="selected events", status="complete"),
             BriefingCoverage(source="weather", scope="current conditions", status="complete"),
         ]
-        fully_limited_coverage = [
-            item.model_copy(
-                update={
-                    "status": "partial",
-                    "truncated": True,
-                    "reason": "model_context_window_limit",
-                }
-            )
-            for item in coverage
-        ]
         minimum_record = retained.model_copy(update={"content": "A" * 128})
         available = len(
-            _build_prompt([minimum_record], fully_limited_coverage).encode("utf-8")
+            _build_prompt(
+                [minimum_record], coverage, synthesis_limits={"calendar", "weather"}
+            ).encode("utf-8")
         )
         self.assertGreaterEqual(available, 256)
         self.assertGreater(
@@ -436,6 +702,7 @@ class DailyInputTests(unittest.TestCase):
             - available
         )
 
+        synthesis_limits: set[str] = set()
         with (
             patch("core.briefings.daily.get_visible_model_profile", return_value=SimpleNamespace(maximum_context_window=20_000)),
             patch(
@@ -448,15 +715,17 @@ class DailyInputTests(unittest.TestCase):
                 coverage,
                 configuration,
                 BriefingDraft.model_json_schema(),
+                synthesis_limits=synthesis_limits,
                 reserve_bytes=_REPAIR_PROMPT_RESERVE_BYTES,
             )
 
         self.assertEqual(len(evidence), 1)
         self.assertLessEqual(
-            len(_build_prompt(evidence, coverage).encode("utf-8")), available
+            len(_build_prompt(evidence, coverage, synthesis_limits=synthesis_limits).encode("utf-8")), available
         )
         self.assertLess(len(evidence[0].content or ""), len(retained.content or ""))
-        self.assertTrue(all(item.truncated for item in coverage))
+        self.assertEqual(synthesis_limits, {"calendar", "weather"})
+        self.assertTrue(all(item.status == "complete" and not item.truncated for item in coverage))
 
     def test_repair_prompt_bounds_and_escapes_previous_model_response(self) -> None:
         base_prompt = _build_prompt([], [])
@@ -561,7 +830,8 @@ class DailyInputTests(unittest.TestCase):
         self.assertTrue(all(item.trust == "untrusted" for item in evidence))
         self.assertTrue(all(item.record_reference is not None for item in evidence))
         self.assertTrue(all("Untrusted external report" in (item.content or "") for item in evidence))
-        self.assertEqual(coverage[0].status, "complete")
+        self.assertEqual(coverage[0].status, "partial")
+        self.assertTrue(coverage[0].truncated)
 
     def test_saved_conversation_text_retains_pending_and_untrusted_labels(self) -> None:
         report_ref = ExistingRecordReference(kind="external_activity", id="report-1")

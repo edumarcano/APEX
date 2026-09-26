@@ -139,6 +139,7 @@ def _calendar_data(
     successful_calendar_count: int = 1,
     failed_calendar_count: int = 0,
     source_truncated: bool = False,
+    selected_calendar_ids: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     if now.tzinfo is None:
         raise ValueError("Calendar window boundary must be timezone-aware.")
@@ -184,6 +185,7 @@ def _calendar_data(
 
     return {
         "window_days": _CALENDAR_WINDOW_DAYS,
+        "selected_calendar_ids": list(selected_calendar_ids),
         "events": events,
         "total_count": total_count,
         "truncated": truncated,
@@ -201,7 +203,7 @@ def collect_calendar(*, now: datetime | None = None, settings: CalendarSettings 
         return ConnectorResult(
             name="calendar", status="unavailable", freshness="none", reason_code="no_calendars_selected", observed_at=observed_at,
             display_text="Calendar Telemetry: No calendars selected.",
-            data={"window_days": _CALENDAR_WINDOW_DAYS, "events": [], "total_count": 0, "truncated": False, "selected_calendar_count": 0, "successful_calendar_count": 0, "failed_calendar_count": 0},
+            data={"window_days": _CALENDAR_WINDOW_DAYS, "selected_calendar_ids": [], "events": [], "total_count": 0, "truncated": False, "selected_calendar_count": 0, "successful_calendar_count": 0, "failed_calendar_count": 0},
         )
     try:
         calendar_service = google_auth.get_service("calendar", "v3")
@@ -218,6 +220,7 @@ def collect_calendar(*, now: datetime | None = None, settings: CalendarSettings 
             successful_calendar_count=fetched.successful_calendar_count,
             failed_calendar_count=fetched.failed_calendar_count,
             source_truncated=bool(getattr(fetched, "truncated", False)),
+            selected_calendar_ids=calendar_settings.selected_calendar_ids,
         )
         events = data["events"]
 
@@ -256,6 +259,7 @@ def collect_calendar(*, now: datetime | None = None, settings: CalendarSettings 
             display_text="ERROR: Check connection",
             data={
                 "window_days": _CALENDAR_WINDOW_DAYS,
+                "selected_calendar_ids": list(calendar_settings.selected_calendar_ids),
                 "events": [],
                 "total_count": 0,
                 "truncated": False,
@@ -294,6 +298,7 @@ def collect_reminders() -> ConnectorResult:
                 "count": len(notes),
                 "notes": notes,
                 "records": view.items,
+                "list_id": view.list_id,
                 "source_state": view.source_state,
                 "pending_sync_count": view.pending_sync_count,
             },
@@ -307,5 +312,5 @@ def collect_reminders() -> ConnectorResult:
             reason_code="database_error",
             observed_at=observed_at,
             display_text="ERROR: Reminders unavailable",
-            data={"count": 0, "notes": [], "records": []},
+            data={"count": 0, "notes": [], "records": [], "list_id": ""},
         )

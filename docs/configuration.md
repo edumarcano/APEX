@@ -115,7 +115,7 @@ Only one local generation may run at a time. APEX checks runtime reachability, i
 
 ## Briefing modes
 
-The Home Daily action uses the selected Apex Agent model and its supported controls. It does not silently substitute another model, and a model context window that cannot fit a useful Daily prompt is rejected before generation. DEMO mode uses a deterministic fixture without running a model. The `briefing.default_mode` setting remains for the legacy `/api/v1/trigger` and `/api/v1/briefings/generate` compatibility routes.
+The Home Daily and Catch Up actions use the selected Apex Agent model and its supported controls. They do not silently substitute another model, and a model context window that cannot fit a useful briefing prompt is rejected before generation. Catch Up uses only source history from completed briefings that were presented; incomplete source snapshots limit membership claims. When its comparable sources have no material changes, it records a no-change result without running a model. DEMO mode uses deterministic fixtures without running a model. The `briefing.default_mode` setting remains for the legacy `/api/v1/trigger` and `/api/v1/briefings/generate` compatibility routes.
 
 Those legacy routes retain fixed behavior. Focused uses OpenRouter DeepSeek V4 Flash with High reasoning; Flash uses Gemma E2B through llama.cpp at 16K with reasoning disabled; Structured is deterministic. Their fallback order is Focused, Flash, then Structured.
 

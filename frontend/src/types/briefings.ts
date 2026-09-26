@@ -29,6 +29,15 @@ export type BriefingEvidence = {
   identity_kind: 'provider' | 'content' | 'masked' | 'fixture' | 'unknown'
   revision: string | null
   revision_kind: 'provider' | 'content' | 'none'
+  semantic_fingerprint?: string | null
+  normalization_version?: number | null
+  comparison_role?: 'current' | 'historical'
+  change_kind?: 'new' | 'changed' | 'time_sensitive' | 'unchanged' | 'not_comparable' | null
+  comparison_pair_id?: string | null
+  previously_included?: boolean
+  all_day?: boolean
+  time_zone?: string | null
+  effective_until?: string | null
   observed_at: string | null
   effective_at: string | null
   trust: 'observed' | 'accepted' | 'pending' | 'untrusted' | 'unknown'
@@ -48,6 +57,23 @@ export type BriefingArtifactItem = {
   record_references: Array<{ kind: string; id: string }>
 }
 
+export type BriefingComparisonSource = {
+  source: string
+  status: 'compared' | 'limited' | 'initial' | 'unavailable' | 'disabled'
+  baseline_session_id: string | null
+  baseline_snapshot_at: string | null
+  current_snapshot_at: string | null
+  reason: string | null
+}
+
+export type BriefingComparison = {
+  outcome: 'initial' | 'compared' | 'limited' | 'no_change'
+  summary: string
+  sources: BriefingComparisonSource[]
+  material_change_count: number
+  no_material_changes: boolean
+}
+
 export type BriefingArtifact = {
   schema_version: 1
   session_id: string
@@ -60,6 +86,8 @@ export type BriefingArtifact = {
   coverage: Array<{
     source: string
     scope: string
+    scope_key?: string | null
+    normalization_version?: number | null
     status: 'complete' | 'partial' | 'unavailable' | 'disabled' | 'failed'
     observed_at: string | null
     window_start: string | null
@@ -69,6 +97,7 @@ export type BriefingArtifact = {
     reason: string | null
   }>
   limitations: string[]
+  comparison?: BriefingComparison | null
 }
 
 export type BriefingSessionDetail = {

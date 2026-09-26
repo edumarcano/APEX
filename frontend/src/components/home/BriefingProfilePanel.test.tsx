@@ -9,7 +9,7 @@ import { BriefingProfilePanel } from './BriefingProfilePanel'
 
 const profiles: BriefingProfileSummary[] = [
   { id: 'daily', label: 'Daily', purpose: 'Current information.', investigation_required: false, available: true, unavailable_reason: null },
-  { id: 'catch_up', label: 'Catch Up', purpose: 'What changed.', investigation_required: false, available: false, unavailable_reason: 'Catch Up is not available yet.' },
+  { id: 'catch_up', label: 'Catch Up', purpose: 'What changed since a briefing was presented.', investigation_required: false, available: true, unavailable_reason: null },
 ]
 
 const catalog: ModelCatalogEntry[] = [
@@ -86,7 +86,7 @@ function failedSession(): BriefingSessionDetail {
 }
 
 describe('BriefingProfilePanel', () => {
-  it('disables unavailable profiles and explains why', async () => {
+  it('enables Catch Up while keeping Deep unavailable', async () => {
     const user = userEvent.setup()
     render(<BriefingProfilePanel {...baseProps()} />)
 
@@ -94,8 +94,31 @@ describe('BriefingProfilePanel', () => {
 
     expect(screen.getByRole('radio', { name: /Daily/ })).toBeEnabled()
     const catchUp = screen.getByRole('radio', { name: /Catch Up/ })
-    expect(catchUp).toBeDisabled()
-    expect(catchUp).toHaveTextContent('Catch Up is not available yet.')
+    expect(catchUp).toBeEnabled()
+    expect(catchUp).toHaveTextContent('What changed since a briefing was presented.')
+  })
+
+  it('generates Catch Up with the selected model only when Generate is pressed', async () => {
+    const user = userEvent.setup()
+    const onGenerate = vi.fn()
+    const onProfileChange = vi.fn()
+    function Harness(): ReactElement {
+      const [profileId, setProfileId] = useState<BriefingProfileId>('daily')
+      return <BriefingProfilePanel {...baseProps({
+        profileId,
+        onProfileChange: (next) => { onProfileChange(next); setProfileId(next) },
+        onGenerate,
+      })} />
+    }
+    render(<Harness />)
+
+    await user.click(screen.getByRole('button', { name: /Briefing profile/ }))
+    await user.click(screen.getByRole('radio', { name: /Catch Up/ }))
+    expect(onProfileChange).toHaveBeenCalledWith('catch_up')
+    expect(onGenerate).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Generate Catch Up' }))
+    expect(onGenerate).toHaveBeenCalledWith('catch_up')
   })
 
   it('generates the selected profile only when Generate is pressed', async () => {

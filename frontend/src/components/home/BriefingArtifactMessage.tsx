@@ -2,7 +2,7 @@ import type { ReactElement } from 'react'
 
 import { useBriefingPresentation } from '../../hooks/useBriefingPresentation'
 import { formatBriefingTime } from '../../lib/briefingFormat'
-import type { BriefingSessionDetail } from '../../types/briefings'
+import type { BriefingComparison, BriefingSessionDetail } from '../../types/briefings'
 import {
   BriefingCoverage,
   BriefingEvidenceRecords,
@@ -26,6 +26,7 @@ export function BriefingArtifactMessage({ session, isLoadingSession, evidence, o
   const referencedEvidenceIds = new Set(artifact.sections.flatMap((section) => section.items.flatMap((item) => item.evidence_ids)))
   const otherEvidenceIds = session.evidence_ids.filter((id) => !referencedEvidenceIds.has(id))
   const isDemo = session.configuration.execution_kind === 'demo'
+  const isCatchUp = session.configuration.profile.id === 'catch_up'
   return <article data-testid="briefing-artifact" className="space-y-4" aria-label={`${session.configuration.profile.label} briefing`}>
     <header ref={presentationRef}>
       <p className="font-orbitron text-[11px] uppercase tracking-[0.15em] text-[#A5C7FF]">{session.configuration.profile.label} briefing</p>
@@ -33,8 +34,9 @@ export function BriefingArtifactMessage({ session, isLoadingSession, evidence, o
         {formatBriefingTime(artifact.created_at)} · {isDemo ? 'Deterministic demo fixture' : session.configuration.model.model_id}
       </p>
       {isDemo ? <p className="mt-2 rounded-md border border-blue-400/15 bg-blue-950/20 px-2 py-1.5 text-[10px] text-blue-100">DEMO fixture. No model was run and no live personal sources were read.</p> : null}
-      {artifact.sections.length === 0 ? <p className="mt-2 text-sm text-zinc-300">No briefing items were produced.</p> : null}
+      {artifact.sections.length === 0 && !(isCatchUp && artifact.comparison) ? <p className="mt-2 text-sm text-zinc-300">{artifact.comparison?.summary ?? 'No briefing items were produced.'}</p> : null}
     </header>
+    {isCatchUp && artifact.comparison ? <CatchUpComparisonBanner comparison={artifact.comparison} /> : null}
     {artifact.sections.map((section) => <section key={section.id} className="space-y-2">
       <h3 className="font-orbitron text-[10px] uppercase tracking-wider text-[#A5C7FF]">{section.title}</h3>
       {section.items.map((item) => <article key={item.id} className="rounded-lg border border-white/10 bg-white/[0.025] p-2.5">
@@ -44,14 +46,37 @@ export function BriefingArtifactMessage({ session, isLoadingSession, evidence, o
         <BriefingItemTrustLabels item={item} />
         <details className="mt-2 border-t border-white/5 pt-2">
           <summary className="cursor-pointer font-mono text-[9px] uppercase tracking-wider text-zinc-400">Evidence ({item.evidence_ids.length})</summary>
-          <BriefingEvidenceRecords evidenceIds={item.evidence_ids} state={evidenceState} />
+          <BriefingEvidenceRecords evidenceIds={item.evidence_ids} state={evidenceState} isCitedInArtifact />
         </details>
       </article>)}
     </section>)}
     {otherEvidenceIds.length > 0 ? <details className="border-t border-white/10 pt-3">
       <summary className="cursor-pointer font-mono text-[9px] uppercase tracking-wider text-zinc-500">Other captured evidence ({otherEvidenceIds.length})</summary>
-      <BriefingEvidenceRecords evidenceIds={otherEvidenceIds} state={evidenceState} />
+      <BriefingEvidenceRecords evidenceIds={otherEvidenceIds} state={evidenceState} isCitedInArtifact={false} />
     </details> : null}
-    <BriefingCoverage artifact={artifact} />
+    <BriefingCoverage artifact={artifact} showComparisonSummary={!isCatchUp} />
   </article>
+}
+
+function CatchUpComparisonBanner({ comparison }: { comparison: BriefingComparison }): ReactElement {
+  const compareTimes = (left: string, right: string) => {
+    const elapsed = Date.parse(left) - Date.parse(right)
+    return Number.isFinite(elapsed) ? elapsed : left.localeCompare(right)
+  }
+  const baselineTimes = comparison.sources.flatMap((source) => source.baseline_snapshot_at ? [source.baseline_snapshot_at] : []).sort(compareTimes)
+  const currentTimes = comparison.sources.flatMap((source) => source.current_snapshot_at ? [source.current_snapshot_at] : []).sort(compareTimes)
+  const firstBaseline = baselineTimes[0]
+  const lastCurrent = currentTimes.at(-1)
+
+  return <section aria-label="Catch Up comparison" className="rounded-lg border border-blue-400/20 bg-blue-950/20 px-3 py-2.5">
+    <p className="text-xs font-medium text-blue-100">{comparison.summary}</p>
+    <p className="mt-1 font-mono text-[10px] text-blue-100/75">
+      {firstBaseline
+        ? `Across sources: baseline ${formatBriefingTime(firstBaseline)} → current ${lastCurrent ? formatBriefingTime(lastCurrent) : 'snapshot unavailable'}`
+        : comparison.outcome === 'initial'
+          ? `First source checkpoint${lastCurrent ? ` · current snapshot ${formatBriefingTime(lastCurrent)}` : ''}`
+          : `Baseline timestamp unavailable${lastCurrent ? ` · current snapshot ${formatBriefingTime(lastCurrent)}` : ''}`}
+    </p>
+    <p className="mt-1 text-[9px] text-zinc-500">Expand source coverage below for per-source details.</p>
+  </section>
 }

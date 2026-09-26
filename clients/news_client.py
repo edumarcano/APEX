@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import logging
+import hashlib
 import os
 import time
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 from dotenv import load_dotenv
@@ -70,13 +72,28 @@ def collect_news() -> ConnectorResult:
                     seen_headlines.add(normalized)
                     source = article.get("source")
                     source_name = source.get("name") if isinstance(source, dict) else None
-                    headlines.append({
+                    item = {
                         "topic": topic,
                         "headline": headline,
                         "source": str(source_name or "")[:120],
                         "published_at": str(article.get("publishedAt") or "")[:64],
                         "synopsis": str(article.get("description") or "")[:360],
-                    })
+                    }
+                    article_url = article.get("url")
+                    if isinstance(article_url, str) and article_url.strip():
+                        try:
+                            parsed_url = urlsplit(article_url.strip())
+                        except ValueError:
+                            parsed_url = None
+                        if parsed_url is not None and parsed_url.scheme.casefold() in {"http", "https"} and parsed_url.netloc:
+                            stable_url = urlunsplit((
+                                parsed_url.scheme.casefold(), parsed_url.netloc.casefold(),
+                                parsed_url.path, parsed_url.query, "",
+                            ))
+                            item["article_id"] = hashlib.sha256(
+                                stable_url.encode("utf-8")
+                            ).hexdigest()
+                    headlines.append(item)
                 formatted_headlines.extend(
                     f"[{item['topic']}] {item['headline']}"
                     for item in headlines
@@ -97,7 +114,7 @@ def collect_news() -> ConnectorResult:
             invalid_payloads += 1
 
     display = "[NEWS TELEMETRY]\n" + " | ".join(formatted_headlines)
-    data: dict[str, Any] = {"headlines": headlines, "topic_count": len(topics)}
+    data: dict[str, Any] = {"headlines": headlines, "topics": topics, "topic_count": len(topics)}
 
     if successes == 0:
         status = "unavailable"

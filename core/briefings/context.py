@@ -1,4 +1,4 @@
-"""Bounded, trust-labeled saved evidence for Daily conversation follow-up."""
+"""Bounded, trust-labeled saved evidence for briefing conversation follow-up."""
 
 from __future__ import annotations
 
@@ -17,14 +17,14 @@ _PERSONAL_SOURCES = {"accepted_context", "pending_review", "external_report", "a
 _WORD = re.compile(r"[a-z0-9]{4,}")
 
 
-def saved_daily_followup_context(
+def saved_briefing_followup_context(
     record: BriefingSessionRecord | None, *, prompt: str, policy: ContextPolicy
 ) -> ContextBundle:
-    """Select only evidence cited by a completed Daily artifact in this partition."""
+    """Select only evidence cited by a completed Daily or Catch Up artifact in this partition."""
     if (
         record is None
         or record.partition != policy.partition
-        or record.request.profile_id != "daily"
+        or record.request.profile_id not in {"daily", "catch_up"}
         or record.run_status != "completed"
         or record.artifact is None
     ):
@@ -58,7 +58,10 @@ def saved_daily_followup_context(
                     "source": evidence.source,
                     "trust": evidence.trust,
                     "snapshot_at": record.artifact.created_at.isoformat(),
-                    "observed_at": evidence.observed_at.isoformat() if evidence.observed_at else None,
+                    "captured_at": evidence.observed_at.isoformat() if evidence.observed_at else None,
+                    "comparison_role": evidence.comparison_role,
+                    "change_kind": evidence.change_kind,
+                    "comparison_pair_id": str(evidence.comparison_pair_id) if evidence.comparison_pair_id else None,
                     "effective_at": evidence.effective_at.isoformat() if evidence.effective_at else None,
                     "content_excerpt": excerpt,
                     "excerpt_truncated": clipped,
@@ -66,7 +69,8 @@ def saved_daily_followup_context(
                 serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
                 # Source text and model-written titles must not close the context boundary.
                 serialized = serialized.replace("<", "\\u003c").replace(">", "\\u003e")
-                text = f"Saved Daily evidence (historical snapshot, not a fresh read): {serialized}"
+                history_label = "prior comparison snapshot" if evidence.comparison_role == "historical" else "saved source snapshot"
+                text = f"Saved briefing evidence ({history_label}, not a fresh read): {serialized}"
                 reference = ContextReference(
                     namespace="briefing_session",
                     source_type=evidence.source,
@@ -94,3 +98,7 @@ def combine_context_bundles(first: ContextBundle, second: ContextBundle) -> Cont
         estimated_tokens=first.estimated_tokens + second.estimated_tokens,
         truncated=first.truncated or second.truncated,
     )
+
+
+# Retained for callers outside the shared briefing router during migration.
+saved_daily_followup_context = saved_briefing_followup_context

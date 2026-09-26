@@ -32,6 +32,7 @@ MAX_ARTIFACT_BYTES = 64 * 1024
 MAX_EVIDENCE_BYTES = 256 * 1024
 MAX_PROMPT_BYTES = 128 * 1024
 MAX_OUTPUT_TOKENS = 8192
+NORMALIZATION_VERSION = 1
 
 OpaqueSourceId = Annotated[str, StringConstraints(min_length=1, max_length=512)]
 
@@ -76,7 +77,7 @@ BUILTIN_BRIEFING_PROFILES: dict[BriefingProfileId, BuiltinBriefingProfile] = {
     ),
 }
 
-AVAILABLE_BRIEFING_PROFILES: frozenset[BriefingProfileId] = frozenset({"daily"})
+AVAILABLE_BRIEFING_PROFILES: frozenset[BriefingProfileId] = frozenset({"daily", "catch_up"})
 UNAVAILABLE_BRIEFING_PROFILE_REASON = "This briefing profile is not available in this release."
 
 
@@ -184,8 +185,20 @@ class BriefingEvidence(BaseModel):
     identity_kind: EvidenceIdentityKind = "provider"
     revision: str | None = Field(default=None, max_length=512)
     revision_kind: EvidenceRevisionKind = "none"
+    semantic_fingerprint: str | None = Field(default=None, min_length=64, max_length=64)
+    comparison_state: dict[str, str | float | int | bool | None] | None = Field(
+        default=None, max_length=32,
+    )
+    normalization_version: int | None = Field(default=None, ge=1)
+    comparison_role: Literal["current", "historical"] = "current"
+    change_kind: Literal["new", "changed", "time_sensitive", "unchanged", "not_comparable"] | None = None
+    comparison_pair_id: UUID | None = None
+    previously_included: bool = False
+    all_day: bool = False
+    time_zone: str | None = Field(default=None, max_length=128)
     observed_at: datetime | None = None
     effective_at: datetime | None = None
+    effective_until: datetime | None = None
     trust: EvidenceTrust = "unknown"
     content: str | None = Field(default=None, max_length=16_000)
     record_reference: ExistingRecordReference | None = None
@@ -208,6 +221,8 @@ class BriefingCoverage(BaseModel):
 
     source: Annotated[str, StringConstraints(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_]*$")]
     scope: str = Field(min_length=1, max_length=256)
+    scope_key: str | None = Field(default=None, max_length=512)
+    normalization_version: int | None = Field(default=None, ge=1)
     status: CoverageStatus
     observed_at: datetime | None = None
     window_start: datetime | None = None
@@ -223,6 +238,51 @@ class BriefingCoverage(BaseModel):
         if self.status in {"unavailable", "disabled", "failed"} and not self.reason:
             raise ValueError("Unavailable coverage must include a reason.")
         return self
+
+
+class BriefingHistorySelection(BaseModel):
+    """Presented sessions frozen as history candidates when a run is admitted."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[1] = 1
+    captured_at: datetime
+    session_ids: list[UUID] = Field(default_factory=list, max_length=100)
+
+
+class BriefingComparisonSource(BaseModel):
+    """Source-specific baseline and comparison coverage shown to the operator."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    source: Annotated[str, StringConstraints(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_]*$")]
+    status: Literal["compared", "limited", "initial", "unavailable", "disabled"]
+    baseline_session_id: UUID | None = None
+    baseline_snapshot_at: datetime | None = None
+    current_snapshot_at: datetime | None = None
+    reason: str | None = Field(default=None, max_length=240)
+
+
+class BriefingComparison(BaseModel):
+    """Host-owned summary of the source checkpoints used by synthesis."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    outcome: Literal["initial", "compared", "limited", "no_change"]
+    summary: str = Field(min_length=1, max_length=400)
+    sources: list[BriefingComparisonSource] = Field(default_factory=list, max_length=24)
+    material_change_count: int = Field(default=0, ge=0)
+    no_material_changes: bool = False
+
+
+class BriefingSessionHistory(BaseModel):
+    """Frozen admission selection and completed comparison metadata."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[1] = 1
+    selection: BriefingHistorySelection
+    comparison: BriefingComparison | None = None
 
 
 class BriefingItemDraft(BaseModel):
@@ -297,6 +357,7 @@ class CanonicalBriefingArtifact(BaseModel):
     sections: list[BriefingSection]
     coverage: list[BriefingCoverage]
     limitations: list[str]
+    comparison: BriefingComparison | None = None
 
 
 class BriefingSessionRecord(BaseModel):
@@ -314,6 +375,7 @@ class BriefingSessionRecord(BaseModel):
     configuration: BriefingGenerationConfiguration
     created_at: datetime
     presented_at: datetime | None = None
+    history: BriefingSessionHistory | None = None
     artifact: CanonicalBriefingArtifact | None = None
     evidence: list[BriefingEvidence] = Field(default_factory=list)
     run_status: Literal[
@@ -347,7 +409,7 @@ class BriefingSessionDetail(BaseModel):
     configuration: BriefingGenerationConfiguration
     artifact: CanonicalBriefingArtifact | None = None
     evidence_count: int = Field(ge=0)
-    evidence_ids: list[UUID] = Field(default_factory=list, max_length=32)
+    evidence_ids: list[UUID] = Field(default_factory=list, max_length=50)
     created_at: datetime
     presented_at: datetime | None = None
     speech_status: SpeechDeliveryStatus = "not_requested"
@@ -359,6 +421,7 @@ def build_canonical_artifact(
     draft: BriefingDraft,
     evidence: list[BriefingEvidence],
     coverage: list[BriefingCoverage],
+    comparison: BriefingComparison | None = None,
     created_at: datetime | None = None,
 ) -> CanonicalBriefingArtifact:
     """Validate model references, assign host-owned IDs, and enforce snapshot limits."""
@@ -389,6 +452,7 @@ def build_canonical_artifact(
         sections=sections,
         coverage=coverage,
         limitations=list(draft.limitations),
+        comparison=comparison,
     )
     validate_snapshot_size(artifact, evidence)
     return artifact
@@ -454,6 +518,8 @@ def render_artifact_text(artifact: CanonicalBriefingArtifact) -> str:
             items.append(f"- **[{'; '.join(labels)}] {item.title}** {item.body}")
         if items:
             blocks.append(f"## {section.title}\n" + "\n".join(items))
+    if artifact.comparison is not None:
+        blocks.insert(0, artifact.comparison.summary)
     if artifact.limitations:
         blocks.append("## Coverage limits\n" + "\n".join(f"- {value}" for value in artifact.limitations))
     return "\n\n".join(blocks) or "No briefing items were produced."

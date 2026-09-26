@@ -11,9 +11,11 @@ from pydantic import BaseModel, ConfigDict
 
 from core.briefings.models import (
     BUILTIN_BRIEFING_PROFILES,
+    BriefingComparison,
     BriefingCoverage,
     BriefingDraft,
     BriefingEvidence,
+    BriefingHistorySelection,
     BriefingGenerationConfiguration,
     BriefingGenerationRequest,
     BriefingSessionDetail,
@@ -43,6 +45,15 @@ from core.runs.models import (
 from core.runs.service import RunService
 
 
+class BriefingHistoryContext(BaseModel):
+    """The immutable history selection and its still-readable session snapshots."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
+
+    selection: BriefingHistorySelection
+    sessions: tuple[BriefingSessionRecord, ...] = ()
+
+
 class BriefingGenerationOutput(BaseModel):
     """Untrusted synthesis draft and its host-collected source snapshots."""
 
@@ -51,6 +62,7 @@ class BriefingGenerationOutput(BaseModel):
     draft: BriefingDraft
     evidence: list[BriefingEvidence]
     coverage: list[BriefingCoverage]
+    comparison: BriefingComparison | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +82,7 @@ ConfigurationResolver = Callable[
     [BriefingGenerationRequest], BriefingGenerationConfiguration
 ]
 GenerationExecutor = Callable[
-    [UUID, BriefingGenerationRequest, BriefingGenerationConfiguration, RunExecutionControl],
+    [UUID, BriefingGenerationRequest, BriefingGenerationConfiguration, RunExecutionControl, BriefingHistoryContext],
     BriefingGenerationOutput,
 ]
 
@@ -130,6 +142,7 @@ class BriefingService:
             conversation_id=conversation_id,
             agent_message_id=opening_message_id,
         )
+        history_selection: BriefingHistorySelection | None = None
         try:
             with self.store.transaction() as connection:
                 # BEGIN IMMEDIATE serializes the idempotency recheck with insert.
@@ -168,12 +181,16 @@ class BriefingService:
                         raise BriefingSessionConflictError(
                             "A run already exists for the briefing opening message."
                         )
+                    history_selection = self.store.capture_history_selection(
+                        connection, partition
+                    )
                     self.store.insert_pending(
                         connection,
                         session_id=session_id,
                         partition=partition,
                         request=request,
                         configuration=configuration,
+                        history_selection=history_selection,
                         conversation_id=conversation_id,
                         opening_message_id=opening_message_id,
                         run_id=run_id,
@@ -193,8 +210,26 @@ class BriefingService:
 
         def execute(control: RunExecutionControl) -> BriefingExecutionResult:
             active_control[0] = control
+            if history_selection is None:
+                raise BriefingSessionConflictError(
+                    "Admitted briefing has no frozen history selection."
+                )
+            selected_history, history_records = self.store.history_candidates(
+                session_id, partition
+            )
+            if selected_history != history_selection:
+                raise BriefingSessionConflictError(
+                    "Admitted briefing history selection changed during execution."
+                )
             generated = self._execute_generation(
-                session_id, request, configuration, control
+                session_id,
+                request,
+                configuration,
+                control,
+                BriefingHistoryContext(
+                    selection=selected_history,
+                    sessions=tuple(history_records),
+                ),
             )
             control.publish_activity(
                 "briefing.stage", {"stage": "persisting", "state": "started"}
@@ -204,6 +239,7 @@ class BriefingService:
                 draft=generated.draft,
                 evidence=generated.evidence,
                 coverage=generated.coverage,
+                comparison=generated.comparison,
             )
             return BriefingExecutionResult(
                 artifact=artifact,
@@ -315,7 +351,7 @@ class BriefingService:
         if configuration.execution_kind == "model" and configuration.model.model_id != request.model_id:
             raise ValueError("Resolved briefing model does not match the explicit request.")
         if configuration.execution_kind == "demo" and (
-            request.profile_id != "daily"
+            request.profile_id not in {"daily", "catch_up"}
             or configuration.model.provider != "demo"
             or configuration.model.runtime != "demo"
         ):
@@ -327,6 +363,7 @@ class BriefingService:
 __all__ = [
     "BriefingExecutionResult",
     "BriefingGenerationOutput",
+    "BriefingHistoryContext",
     "BriefingSessionQueries",
     "BriefingService",
     "BriefingStartResult",

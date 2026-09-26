@@ -216,6 +216,17 @@ class MultipleGoogleCalendarsTests(unittest.TestCase):
             result = collect_calendar(settings=settings, now=datetime.now(timezone.utc))
         self.assertEqual((result.status, result.reason_code), ("unavailable", "connection_error"))
 
+    def test_calendar_fetch_exception_preserves_selected_scope(self) -> None:
+        settings = CalendarSettings(selected_calendar_ids=("primary", "team"))
+        with mock.patch(
+            "core.connectors.collect.google_auth.get_service",
+            side_effect=RuntimeError("provider unavailable"),
+        ):
+            result = collect_calendar(settings=settings, now=datetime.now(timezone.utc))
+
+        self.assertEqual((result.status, result.reason_code), ("unavailable", "connection_error"))
+        self.assertEqual(result.data["selected_calendar_ids"], ["primary", "team"])
+
     def test_telemetry_passes_selected_calendar_settings_to_collection(self) -> None:
         selected = CalendarSettings(selected_calendar_ids=("primary", "team"))
         calendar_result = mock.Mock(name="calendar")
