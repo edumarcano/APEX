@@ -70,10 +70,12 @@ export function BriefingSpeechControl(props: BriefingSpeechControlProps): ReactE
           : props.error && !props.speech
             ? props.refresh
             : null
-  return <section aria-label="Spoken highlights" className="flex w-full min-w-0 flex-wrap items-center gap-2 rounded-lg border border-cyan-300/15 bg-zinc-950/35 px-2.5 py-2">
-    <div className="flex min-w-0 flex-1 items-center gap-2">
-      <Volume2 className={`size-3.5 shrink-0 ${props.speech?.status === 'playing' ? 'text-cyan-200' : 'text-zinc-400'}`} aria-hidden />
-      <div className="min-w-0">
+  const showRecreateAudio = props.speech?.status === 'ready' && props.pendingAction === null
+  const showControls = Boolean(label && buttonAction) || showRecreateAudio
+  return <section aria-label="Spoken highlights" className="flex w-full min-w-0 flex-col gap-2 rounded-lg border border-cyan-300/15 bg-zinc-950/35 px-2.5 py-2">
+    <div className="flex w-full min-w-0 items-start gap-2">
+      <Volume2 className={`mt-0.5 size-3.5 shrink-0 ${props.speech?.status === 'playing' ? 'text-cyan-200' : 'text-zinc-400'}`} aria-hidden />
+      <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
         <p className="font-orbitron text-[9px] uppercase tracking-[0.13em] text-zinc-300">Spoken highlights</p>
         <p className={`text-[10px] ${props.speech?.status === 'unavailable' || playbackFailed ? 'text-red-200' : 'text-zinc-400'}`} role={playbackFailed ? 'alert' : 'status'}>
           {props.pendingAction === 'prepare' ? 'Preparing spoken highlights…' : statusText(props)}
@@ -82,20 +84,22 @@ export function BriefingSpeechControl(props: BriefingSpeechControlProps): ReactE
         {(props.speech?.status === 'ready' || props.speech?.status === 'playing') && props.speech.engine ? <p className="truncate font-mono text-[9px] text-zinc-500">Voice engine · {engineLabel(props.speech.engine)}</p> : null}
       </div>
     </div>
-    {label && buttonAction ? <button
-      type="button"
-      onClick={() => { void buttonAction() }}
-      disabled={disabled}
-      className="hud-command-surface inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-md border border-cyan-300/20 bg-cyan-950/20 px-2.5 py-1.5 font-orbitron text-[9px] uppercase tracking-[0.1em] text-cyan-100 hover:border-cyan-200/50 hover:bg-cyan-950/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A5F3FC] disabled:cursor-not-allowed disabled:opacity-45"
-    >
-      {props.pendingAction ? <LoaderCircle className="size-3 animate-spin motion-reduce:animate-none" aria-hidden /> : isStop ? <Square className="size-3" aria-hidden /> : props.speech?.status === 'ready' ? <Play className="size-3" aria-hidden /> : props.error && !props.speech ? <RotateCw className="size-3" aria-hidden /> : <Volume2 className="size-3" aria-hidden />}
-      {label}
-    </button> : null}
-    {props.speech?.status === 'ready' && props.pendingAction === null ? <button
-      type="button"
-      onClick={() => { void props.recreateAudio() }}
-      disabled={props.isLoading || props.voiceMode === 'off'}
-      className="min-h-9 shrink-0 rounded-md border border-white/10 px-2.5 py-1.5 font-orbitron text-[9px] uppercase tracking-[0.1em] text-zinc-300 hover:border-cyan-200/40 hover:text-cyan-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A5F3FC] disabled:cursor-not-allowed disabled:opacity-45"
-    >Recreate audio</button> : null}
+    {showControls ? <div role="group" aria-label="Spoken highlights controls" className="flex w-full min-w-0 flex-wrap items-center gap-2">
+      {label && buttonAction ? <button
+        type="button"
+        onClick={() => { void buttonAction() }}
+        disabled={disabled}
+        className="hud-command-surface inline-flex min-h-9 max-w-full shrink-0 items-center gap-1.5 rounded-md border border-cyan-300/20 bg-cyan-950/20 px-2.5 py-1.5 font-orbitron text-[9px] uppercase tracking-[0.1em] text-cyan-100 hover:border-cyan-200/50 hover:bg-cyan-950/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A5F3FC] disabled:cursor-not-allowed disabled:opacity-45"
+      >
+        {props.pendingAction ? <LoaderCircle className="size-3 animate-spin motion-reduce:animate-none" aria-hidden /> : isStop ? <Square className="size-3" aria-hidden /> : props.speech?.status === 'ready' ? <Play className="size-3" aria-hidden /> : props.error && !props.speech ? <RotateCw className="size-3" aria-hidden /> : <Volume2 className="size-3" aria-hidden />}
+        {label}
+      </button> : null}
+      {showRecreateAudio ? <button
+        type="button"
+        onClick={() => { void props.recreateAudio() }}
+        disabled={props.isLoading || props.voiceMode === 'off'}
+        className="min-h-9 max-w-full shrink-0 rounded-md border border-white/10 px-2.5 py-1.5 font-orbitron text-[9px] uppercase tracking-[0.1em] text-zinc-300 hover:border-cyan-200/40 hover:text-cyan-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A5F3FC] disabled:cursor-not-allowed disabled:opacity-45"
+      >Recreate audio</button> : null}
+    </div> : null}
   </section>
 }

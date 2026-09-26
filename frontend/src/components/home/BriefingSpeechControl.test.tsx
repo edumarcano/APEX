@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -64,6 +64,27 @@ describe('BriefingSpeechControl', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('Spoken highlights are unavailable (tts_unavailable).')
     await user.click(screen.getByRole('button', { name: 'Retry preparation' }))
+    expect(prepare).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps retry controls separate from long unavailable copy', async () => {
+    const user = userEvent.setup()
+    const prepare = vi.fn(async () => undefined)
+    const error = `Audio preparation failed: ${'provider_script_invalid_'.repeat(12)}`
+    const errorCode = `script_invalid_${'provider_detail_'.repeat(8)}`
+    render(<BriefingSpeechControl {...props({ speech: speech('unavailable', errorCode), error, prepare })} />)
+
+    const region = screen.getByRole('region', { name: 'Spoken highlights' })
+    const controls = within(region).getByRole('group', { name: 'Spoken highlights controls' })
+    const status = within(region).getByRole('status')
+    const alert = within(region).getByRole('alert')
+    const retry = within(controls).getByRole('button', { name: 'Retry preparation' })
+
+    expect(status).toHaveTextContent(errorCode)
+    expect(alert).toHaveTextContent(error)
+    expect(controls).not.toContainElement(status)
+    expect(controls).not.toContainElement(alert)
+    await user.click(retry)
     expect(prepare).toHaveBeenCalledTimes(1)
   })
 
