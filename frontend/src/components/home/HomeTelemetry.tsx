@@ -94,6 +94,20 @@ function layoutClass(variant: HomeTelemetryVariant, className?: string): string 
 
 export function WeatherTelemetry({ data, variant, className }: DomainProps): ReactElement {
   const { weather } = data
+  const attribution = (
+    <span
+      className={`${variant === 'card' ? 'justify-end' : ''} flex min-w-0 flex-wrap items-center gap-x-1 text-[9px] leading-tight text-[color:var(--hud-muted-text)]`}
+      aria-label="Weather by Open-Meteo. Location by GeoNames. Licensed under CC BY 4.0. Adapted by APEX."
+    >
+      <span>Weather by</span>
+      <a href="https://open-meteo.com/" target="_blank" rel="noreferrer" className="hover:text-[color:var(--hud-text)]">Open-Meteo</a>
+      <span>· Location by</span>
+      <a href="https://www.geonames.org/" target="_blank" rel="noreferrer" className="hover:text-[color:var(--hud-text)]">GeoNames</a>
+      <span>·</span>
+      <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer" className="hover:text-[color:var(--hud-text)]">CC BY 4.0</a>
+      <span>· adapted by APEX</span>
+    </span>
+  )
   return <TelemetryCard
     title="Weather"
     icon={CloudSun}
@@ -109,20 +123,8 @@ export function WeatherTelemetry({ data, variant, className }: DomainProps): Rea
     refreshDisabled={data.isRefreshingAll}
     statusMessage={weather.statusMessage}
     compactValue={weather.body}
-    headerAction={weather.showAttribution ? (
-      <span
-        className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-x-1 text-[9px] leading-tight text-[color:var(--hud-muted-text)]"
-        aria-label="Weather by Open-Meteo. Location by GeoNames. Licensed under CC BY 4.0. Adapted by APEX."
-      >
-        <span>Weather by</span>
-        <a href="https://open-meteo.com/" target="_blank" rel="noreferrer" className="hover:text-[color:var(--hud-text)]">Open-Meteo</a>
-        <span>· Location by</span>
-        <a href="https://www.geonames.org/" target="_blank" rel="noreferrer" className="hover:text-[color:var(--hud-text)]">GeoNames</a>
-        <span>·</span>
-        <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer" className="hover:text-[color:var(--hud-text)]">CC BY 4.0</a>
-        <span>· adapted by APEX</span>
-      </span>
-    ) : undefined}
+    headerAction={weather.showAttribution ? attribution : undefined}
+    headerActionBelow={variant === 'section'}
     attentionTier={data.attentionTiers.weather}
     attentionStaggerMs={data.attentionStagger.weather}
     className={layoutClass(variant, className)}
@@ -155,8 +157,8 @@ export function EventsTelemetry({ data, variant, className }: DomainProps): Reac
       <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">Loading schedule…</p>
     ) : (
       <>
-        <CalendarEventList telemetry={events.calendar} hasSnapshot={data.hasSnapshot} />
-        <FootballFixtureList telemetry={events.football} module={events.footballModule} hasSnapshot={data.hasSnapshot} />
+        <CalendarEventList telemetry={events.calendar} hasSnapshot={data.hasSnapshot} stacked={variant === 'section'} />
+        <FootballFixtureList telemetry={events.football} module={events.footballModule} hasSnapshot={data.hasSnapshot} stacked={variant === 'section'} />
       </>
     )}
   </TelemetryCard>

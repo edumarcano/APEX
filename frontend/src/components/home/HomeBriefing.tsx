@@ -98,7 +98,7 @@ export function HomeBriefing(props: HomeBriefingProps): ReactElement {
     </section>
   }
 
-  return <section aria-label="Briefing" data-layout="workspace" className="hud-home-layout-enter grid h-full min-h-0 w-full flex-1 grid-cols-[16rem_minmax(0,1fr)_20rem] gap-4">
+  return <section aria-label="Briefing" data-layout="workspace" className="hud-home-layout-enter grid h-full min-h-0 w-full flex-1 grid-cols-[16rem_minmax(0,1fr)_22rem] gap-4">
     <aside className="flex min-h-0 flex-col items-center gap-4 overflow-y-auto rounded-xl border border-white/10 bg-zinc-950/45 p-3 scrollbar-thin" aria-label="Briefing identity and controls">
       <HomeIdentityMark identity={props.identity} size="compact" />
       {switcher}

@@ -425,6 +425,8 @@ export type TelemetryCardProps = {
   refreshActions?: RefreshAction[]
   /** Optional action rendered beside the card title and refresh control. */
   headerAction?: ReactNode
+  /** Renders the header action on its own row beneath the title for narrow surfaces. */
+  headerActionBelow?: boolean
   /** Explicit typed module state or failure reason shown with the card content. */
   statusMessage?: string | null
   /** When true, renders a single condensed summary row instead of the full card body (e.g. while the console tray is open). */
@@ -454,6 +456,7 @@ export function TelemetryCard({
   refreshDisabled = false,
   refreshActions,
   headerAction,
+  headerActionBelow = false,
   statusMessage,
   isCompact = false,
   compactValue,
@@ -597,7 +600,7 @@ export function TelemetryCard({
               {title}
             </h2>
             <div className="flex min-w-0 flex-1 items-center justify-end">
-              {headerAction}
+              {headerActionBelow ? null : headerAction}
             </div>
             <RefreshControls actions={resolvedRefreshActions} />
             {ledState !== 'none' ? (
@@ -609,6 +612,7 @@ export function TelemetryCard({
               />
             ) : null}
           </div>
+          {headerActionBelow && headerAction ? <div className="mt-1.5 flex min-w-0">{headerAction}</div> : null}
           <div className="hud-header-divider mt-2" aria-hidden />
         </header>
       ) : null}

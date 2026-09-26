@@ -7,9 +7,11 @@ interface FootballFixtureListProps {
   telemetry: FootballTelemetry
   module: TelemetryModuleEntry | undefined
   hasSnapshot: boolean
+  /** Places each kickoff time below its fixture for narrow rails. */
+  stacked?: boolean
 }
 
-export function FootballFixtureList({ telemetry, module, hasSnapshot }: FootballFixtureListProps): ReactElement | null {
+export function FootballFixtureList({ telemetry, module, hasSnapshot, stacked = false }: FootballFixtureListProps): ReactElement | null {
   if (!module || module.status === 'disabled') return null
   if (module.status === 'unavailable') return null
   const attribution = <p className="mt-3 border-t border-white/[0.08] pt-2 text-[10px] text-[color:var(--hud-muted-text)]">Football data provided by the <a href="https://www.football-data.org/" target="_blank" rel="noreferrer" className="text-[#7EB3FF] hover:underline">Football-Data.org API</a>.</p>
@@ -30,7 +32,7 @@ export function FootballFixtureList({ telemetry, module, hasSnapshot }: Football
       </p>
       <ul className="space-y-2">
         {telemetry.fixtures.slice(0, 3).map((fixture, index) => (
-          <li key={fixture.fixtureId} className="flex items-start justify-between gap-3">
+          <li key={fixture.fixtureId} className={stacked ? 'flex flex-col gap-0.5' : 'flex items-start justify-between gap-3'}>
             <span className="flex min-w-0 items-start gap-2">
               <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
               <span className="min-w-0 break-words text-sm text-zinc-200">
@@ -38,7 +40,7 @@ export function FootballFixtureList({ telemetry, module, hasSnapshot }: Football
                 <span className="block text-xs text-[color:var(--hud-muted-text)]">{fixture.competition}</span>
               </span>
             </span>
-            <span className="shrink-0 font-mono text-xs text-zinc-500">{fixture.kickoff}</span>
+            <span className={`${stacked ? 'pl-7' : 'shrink-0'} font-mono text-xs text-zinc-500`}>{fixture.kickoff}</span>
           </li>
         ))}
       </ul>
