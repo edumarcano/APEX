@@ -500,7 +500,7 @@ def _synthesize(
     now: datetime,
     synthesis_limits: set[str] | None = None,
 ) -> tuple[BriefingDraft, list[BriefingEvidence], BriefingComparison]:
-    output_schema = BriefingDraft.model_json_schema()
+    output_schema = _synthesis_output_schema()
     usable_evidence = list(synthesis_evidence)
     synthesis_limits = set(synthesis_limits or ())
     prompt_limit_bytes = _fit_evidence_to_context(
@@ -517,6 +517,7 @@ def _synthesize(
     previous_response = ""
     repair_feedback = ""
     failure_stage = "draft_validation"
+    attempt_failures: list[tuple[str, tuple[str, ...]]] = []
     for attempt in range(2):
         control.check_cancelled()
         prompt = base_prompt
@@ -538,11 +539,14 @@ def _synthesize(
             )
             raw = result.message.content or ""
             failure_stage = "draft_validation"
+            validation_phase = "draft_json"
             try:
                 parsed = BriefingDraft.model_validate_json(raw)
+                validation_phase = "empty_result"
                 if not any(section.items for section in parsed.sections) and usable_evidence:
                     if not any(len(limit.strip()) >= 16 for limit in parsed.limitations):
                         raise ValueError("An empty briefing with usable evidence needs an explicit limitation.")
+                validation_phase = "canonical_artifact"
                 parsed = _attach_canonical_references(parsed, usable_evidence)
                 # Canonical construction is the authoritative trust/reference validation.
                 from core.briefings.models import build_canonical_artifact
@@ -561,26 +565,52 @@ def _synthesize(
                     comparison,
                 )
             except Exception as exc:
+                attempt_failures.append(_validation_failure_diagnostic(exc, validation_phase))
                 repair_feedback = _validation_feedback(exc)
                 previous_response = raw
         except Exception as exc:
             if not isinstance(exc, InvalidBriefingModelOutputError):
                 raise
             failure_stage = "provider_output"
+            attempt_failures.append((f"provider_output_{exc.reason}", ()))
             repair_feedback = exc.repair_feedback
             previous_response = ""
         if attempt:
             run_id = getattr(control.handle, "run_id", None) or "unknown"
+            first_failure = _format_failure_diagnostic(
+                attempt_failures[0] if attempt_failures else ("unknown", ())
+            )
+            repair_failure = _format_failure_diagnostic(
+                attempt_failures[-1] if attempt_failures else ("unknown", ())
+            )
             _LOGGER.warning(
-                "Briefing synthesis output remained invalid after one repair attempt: run_id=%s stage=%s",
+                "Briefing synthesis output remained invalid after one repair attempt: "
+                "run_id=%s stage=%s first_failure=%s repair_failure=%s",
                 run_id,
                 failure_stage,
+                first_failure,
+                repair_failure,
             )
             raise RunExecutionError(
                 stop_reason="provider_error",
                 error_code="invalid_model_output",
             ) from None
     raise BriefingExecutionError("The selected model could not produce a valid briefing.")
+
+
+def _synthesis_output_schema() -> dict[str, Any]:
+    """Return only fields the model is allowed to author in a briefing draft."""
+    schema = BriefingDraft.model_json_schema()
+    definitions = schema.get("$defs")
+    if isinstance(definitions, dict):
+        item_definition = definitions.get("BriefingItemDraft")
+        if isinstance(item_definition, dict):
+            properties = item_definition.get("properties")
+            if isinstance(properties, dict):
+                properties.pop("record_references", None)
+        # Record references are attached from canonical evidence after parsing.
+        definitions.pop("ExistingRecordReference", None)
+    return schema
 
 
 def _fit_evidence_to_context(
@@ -947,3 +977,68 @@ def _validation_feedback(error: Exception) -> str:
     if "trust" in text or "category" in text:
         return "Use the required category for each evidence trust level."
     return "The response did not match the required JSON fields or host validation rules."
+
+
+def _validation_failure_diagnostic(
+    error: Exception, phase: str
+) -> tuple[str, tuple[str, ...]]:
+    issue_types = _safe_validation_issue_types(error)
+    if phase == "draft_json":
+        if "json_invalid" in issue_types:
+            return "malformed_json", issue_types
+        return "draft_schema_invalid", issue_types
+    if phase == "empty_result":
+        return "empty_result_missing_limitation", issue_types
+
+    message = str(error).casefold()
+    if "evidence ids must be unique" in message:
+        return "duplicate_evidence_ids", issue_types
+    if "may reference only supplied evidence" in message:
+        return "unknown_evidence_ids", issue_types
+    if "must reference supporting evidence" in message:
+        return "unsupported_evidence_reference", issue_types
+    if "unavailable evidence cannot support" in message:
+        return "unavailable_evidence_reference", issue_types
+    if "preserve the evidence trust category" in message:
+        return "trust_category_mismatch", issue_types
+    if "record references must be carried" in message:
+        return "record_reference_mismatch", issue_types
+    if issue_types:
+        return "canonical_artifact_invalid", issue_types
+    return "canonical_artifact_rejected", issue_types
+
+
+def _safe_validation_issue_types(error: Exception) -> tuple[str, ...]:
+    errors_method = getattr(error, "errors", None)
+    if not callable(errors_method):
+        return ()
+    try:
+        errors = errors_method(include_input=False, include_url=False)
+    except TypeError:
+        errors = errors_method()
+    except Exception:
+        return ()
+    if not isinstance(errors, list):
+        return ()
+    issue_types: list[str] = []
+    for item in errors[:8]:
+        if not isinstance(item, dict):
+            continue
+        issue_type = item.get("type")
+        if not isinstance(issue_type, str):
+            continue
+        safe_type = "".join(
+            character
+            for character in issue_type
+            if character.isalnum() or character in "_.-"
+        )[:64]
+        if safe_type and safe_type not in issue_types:
+            issue_types.append(safe_type)
+    return tuple(issue_types[:4])
+
+
+def _format_failure_diagnostic(diagnostic: tuple[str, tuple[str, ...]]) -> str:
+    reason, issue_types = diagnostic
+    if not issue_types:
+        return reason
+    return f"{reason}[{','.join(issue_types)}]"
