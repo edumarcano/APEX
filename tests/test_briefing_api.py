@@ -11,12 +11,13 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid4
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi import FastAPI, Response
 from fastapi.testclient import TestClient
 
 from core.api.routers import briefings as briefing_routes
+from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.types import AgentMessage
 from core.briefings.daily import generate_briefing_generation
@@ -818,6 +819,116 @@ class BriefingSessionApiTests(unittest.TestCase):
         self.assertEqual(build_agent.call_args.kwargs["google_search_enabled"], False)
         self.assertEqual(build_agent.call_args.kwargs["google_maps_enabled"], False)
 
+    def test_speech_generation_handles_deep_gemini_artifact_with_exact_numbers(
+        self,
+    ) -> None:
+        record = self._completed_session()
+        evidence = [
+            BriefingEvidence(
+                source="calendar",
+                source_id="speech-number-heavy",
+                trust="observed",
+                content=(
+                    "The route includes 6 stops, 24 miles, and leaves at 07:45 am "
+                    "on Tuesday, June 8."
+                ),
+            ),
+            BriefingEvidence(
+                source="reminders",
+                source_id="speech-simple-item",
+                trust="observed",
+                content="Review the planning notes before the meeting.",
+            ),
+        ]
+        artifact = build_canonical_artifact(
+            session_id=record.id,
+            draft=BriefingDraft(sections=[BriefingSectionDraft(
+                title="Today",
+                items=[
+                    BriefingItemDraft(
+                        category="observation",
+                        title="Transit update",
+                        body=evidence[0].content,
+                        evidence_ids=[evidence[0].id],
+                    ),
+                    BriefingItemDraft(
+                        category="observation",
+                        title="Planning notes",
+                        body=evidence[1].content,
+                        evidence_ids=[evidence[1].id],
+                    ),
+                ],
+            )]),
+            evidence=evidence,
+            coverage=[BriefingCoverage(
+                source="calendar", scope="today", status="complete"
+            )],
+            created_at=datetime.now(timezone.utc),
+        )
+        output = json.dumps({
+            "highlights": [
+                {
+                    "item_id": str(item.id),
+                    "text": f"{item.title}. {item.body}",
+                }
+                for section in artifact.sections
+                for item in section.items
+            ]
+        })
+        client = MagicMock()
+        part = SimpleNamespace(text=output, function_call=None)
+        candidate = SimpleNamespace(content=SimpleNamespace(parts=[part]))
+        chunk = SimpleNamespace(candidates=[candidate], usage_metadata=None)
+        client.models.generate_content_stream.return_value = [chunk]
+        configuration = record.configuration.model_copy(update={
+            "profile": BUILTIN_BRIEFING_PROFILES["deep"],
+            "model": record.configuration.model.model_copy(update={
+                "model_id": "gemini-3.7-flash",
+                "provider": "gemini",
+                "runtime": "cloud",
+                "reasoning": "low",
+                "output_token_limit": 4096,
+            }),
+        })
+        with (
+            patch(
+                "core.briefings.execution.get_visible_model_profile",
+                return_value=SimpleNamespace(
+                    provider="gemini", runtime="cloud", credential_env=None
+                ),
+            ),
+            patch("core.briefings.execution.model_has_credentials", return_value=True),
+            patch(
+                "core.briefings.execution.build_concrete_agent",
+                return_value=SimpleNamespace(
+                    api_model="gemini-3.7-flash",
+                    thinking_level="low",
+                    system_instruction="Selected Gemini profile.",
+                    hosted_tools=[],
+                ),
+            ),
+            patch(
+                "core.agent.providers.gemini.genai.Client",
+                return_value=client,
+            ),
+        ):
+            script = _generate_speech_script(
+                artifact,
+                configuration,
+                threading.Event(),
+                provider_factory=lambda _profile, _key: GeminiProvider("test-key"),
+            )
+
+        self.assertEqual(
+            [highlight.text for highlight in script.highlights],
+            [f"{item.title}. {item.body}" for item in artifact.sections[0].items],
+        )
+        request = client.models.generate_content_stream.call_args.kwargs
+        self.assertEqual(request["model"], "gemini-3.7-flash")
+        self.assertEqual(request["config"].max_output_tokens, 2048)
+        self.assertEqual(request["config"].response_mime_type, "application/json")
+        self.assertIsNone(request["config"].tools)
+
     def test_speech_generation_repairs_invalid_script_once_with_safe_feedback(self) -> None:
         record = self._completed_session()
         assert record.artifact is not None
@@ -886,10 +997,13 @@ class BriefingSessionApiTests(unittest.TestCase):
         )
 
         invalid_provider = SequenceProvider(["not json", "still not json"])
-        with self.assertRaises(BriefingSpeechUnavailableError) as failure:
-            generate(invalid_provider)
+        with self.assertLogs("core.briefings.speech", level="WARNING") as captured_logs:
+            with self.assertRaises(BriefingSpeechUnavailableError) as failure:
+                generate(invalid_provider)
         self.assertEqual(str(failure.exception), "script_invalid")
         self.assertEqual(len(invalid_provider.calls), 2)
+        self.assertIn("reason=script_schema_invalid", captured_logs.output[0])
+        self.assertNotIn("still not json", "\n".join(captured_logs.output))
 
     def test_speech_storage_binds_ordered_chunks_to_exact_artifact_and_request(self) -> None:
         record = self._completed_session()
