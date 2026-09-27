@@ -417,7 +417,7 @@ APEX should become exceptionally good at understanding, protecting, connecting, 
 
 It keeps accepted personal context and the evidence behind it. Conversations, connected-service records, outside reports, and model interpretations remain distinguishable, and important changes retain their history.
 
-Outside tools should normally be used through their native interfaces. They can submit useful results through the External Activity Inbox without giving APEX responsibility for their sessions, task execution, or controls.
+Outside tools should normally be used through their native interfaces. They can submit useful results through the Reports workspace without giving APEX responsibility for their sessions, task execution, or controls.
 
 Trusted context can also travel in the other direction. APEX can maintain a selected, readable copy in a local folder, which the operator may sync through Google Drive, open in Obsidian, or use with an AI application. This does not require exposing the APEX backend to the internet.
 
@@ -584,7 +584,7 @@ Before integration begins, Tyto should provide:
 
 # Unscheduled Possibilities
 
-These ideas are not requirements for stable v2.0.0. They should be scheduled only when an actual use case needs more than the existing local services, Inbox, context vault, or briefing system provides.
+These ideas are not requirements for stable v2.0.0. They should be scheduled only when an actual use case needs more than the existing local services, Reports, context vault, or briefing system provides.
 
 * **Live remote context access:** An authenticated MCP or API service may be considered if outside applications genuinely need fresh, interactive retrieval that exported files cannot provide. The existing local submission gateway should not be exposed publicly as a shortcut.
 * **Edits from Obsidian or other note tools:** Changes to exported notes may eventually become proposals for APEX review. They should not silently overwrite accepted personal context.

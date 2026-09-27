@@ -6,14 +6,14 @@ import { DEFAULT_WEATHER_INFO } from '../../lib/weatherTelemetry'
 import type { HudTelemetryData } from './HudTelemetry'
 import { HudTelemetryRail } from './HudTelemetryRail'
 
-const surfaces = { weather: 0, events: 0, market: 0, inbox: 0, news: 0, reminders: 0 }
+const surfaces = { weather: 0, events: 0, market: 0, email: 0, news: 0, reminders: 0 }
 
 function telemetry(overrides: Partial<HudTelemetryData> = {}): HudTelemetryData {
   return {
     hasSnapshot: true,
     isRefreshingAll: false,
     onRefreshConnector: vi.fn(),
-    attentionTiers: { weather: 'complete', events: 'complete', market: 'complete', inbox: 'complete', news: 'complete', reminders: 'complete' },
+    attentionTiers: { weather: 'complete', events: 'complete', market: 'complete', email: 'complete', news: 'complete', reminders: 'complete' },
     attentionStagger: surfaces,
     weather: { info: { ...DEFAULT_WEATHER_INFO, temperatureF: 72, condition: 'clear_day' }, body: 'Clear', ledState: 'live', statusMessage: null, showAttribution: true },
     events: {
@@ -29,7 +29,7 @@ function telemetry(overrides: Partial<HudTelemetryData> = {}): HudTelemetryData 
       footballRefreshing: false,
     },
     market: { data: null, isLoading: false, enabled: true },
-    inbox: { ledState: 'live', statusMessage: null, compactValue: null, count: 0, items: [], refreshing: false },
+    email: { ledState: 'live', statusMessage: null, compactValue: null, count: 0, items: [], refreshing: false },
     news: { ledState: 'live', statusMessage: null, compactValue: null, items: [], refreshing: false },
     reminders: {
       ledState: 'live',
@@ -55,7 +55,7 @@ function domainSections(rail: HTMLElement): Array<HTMLElement | null> {
   return [
     within(rail).getByRole('heading', { name: 'Weather' }),
     within(rail).getByRole('heading', { name: 'Events' }),
-    within(rail).getByRole('heading', { name: 'Inbox' }),
+    within(rail).getByRole('heading', { name: 'Email' }),
     within(rail).getByRole('heading', { name: 'News Wire' }),
     within(rail).getByRole('heading', { name: 'Reminders' }),
     within(rail).getByRole('region', { name: 'Market ticker' }),
@@ -79,7 +79,7 @@ describe('HudTelemetryRail', () => {
     const { rerender } = render(<HudTelemetryRail data={data} />)
     const rail = screen.getByRole('complementary', { name: 'Current telemetry' })
 
-    await userEvent.click(within(rail).getByRole('button', { name: 'Refresh Inbox' }))
+    await userEvent.click(within(rail).getByRole('button', { name: 'Refresh Email' }))
     expect(data.onRefreshConnector).toHaveBeenCalledWith('email')
 
     rerender(<HudTelemetryRail data={{ ...data, isRefreshingAll: true }} />)

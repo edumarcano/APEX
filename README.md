@@ -12,7 +12,7 @@ APEX started as a small, fun experiment: could I build something that gave me a 
 
 Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, sourced personal context, outside activity reports, and Apex Agent work into one place. It turns those signals into Overview telemetry, concise briefings, and Agent queries while keeping the local machine, not a hosted account, at the center of the system.
 
-APEX has four peer workspaces in the header: Inbox holds reports from outside tools, Overview shows the telemetry grid after Collect Telemetry, Briefing runs saved sessions and setup, and Cortex is where you interact directly with Apex Agent and review personal context. Telemetry means structured status collected from connected services; a briefing is a saved, structured session built from that evidence; and an Agent query is a request sent to the selected model through Apex Agent.
+APEX has four peer workspaces in the header: Reports holds reports from outside tools, Overview shows the telemetry grid after Collect Telemetry, Briefing runs saved sessions and setup, and Cortex is where you interact directly with Apex Agent and review personal context. Telemetry means structured status collected from connected services; a briefing is a saved, structured session built from that evidence; and an Agent query is a request sent to the selected model through Apex Agent.
 
 <p align="center">
   <img
@@ -30,7 +30,7 @@ APEX has four peer workspaces in the header: Inbox holds reports from outside to
 
 ### Builds live Overview telemetry
 
-APEX collects enabled weather, calendar, inbox, news, sports, reminder, and market signals into typed telemetry. Each connector reports its own freshness and health, so missing data is visible rather than hidden inside generated prose.
+APEX collects enabled weather, calendar, email, news, sports, reminder, and market signals into typed telemetry. Each connector reports its own freshness and health, so missing data is visible rather than hidden inside generated prose.
 
 ### Produces interactive briefings
 
@@ -60,9 +60,9 @@ After a Microsoft To Do list is selected, its incomplete tasks become the Overvi
 
 The Context vault can publish selected current records as linked Markdown notes in separate scopes. APEX keeps the canonical records; the generated notes can be opened in Obsidian or synced through Google Drive for other tools to read. Export starts disabled. Cortex asks you to preview a scope before enabling export; the API and CLI can enable it directly, so preview their selections first. See the [Context vault guide](docs/context-vault.md) for setup, sharing, and cleanup.
 
-### Reviews outside work in Inbox
+### Reviews outside work in Reports
 
-Local tools can submit completed-work reports through the APEX CLI, JSON or Markdown import, an optional loopback-only HTTP and MCP gateway, or a configured local-folder mailbox. Inbox shows the immutable reports and lets the operator mark them new, reviewed, or dismissed. A selected finding can be proposed as personal context, but it stays outside trusted retrieval until its linked review is accepted. See [Configuration](docs/configuration.md#external-activity-intake) for intake options and [Privacy](docs/privacy.md#external-activity-reports) for the trust boundary.
+Local tools can submit completed-work reports through the APEX CLI, JSON or Markdown import, an optional loopback-only HTTP and MCP gateway, or a configured local report folder. Reports shows the immutable reports and lets the operator mark them new, reviewed, or dismissed. A selected finding can be proposed as personal context, but it stays outside trusted retrieval until its linked review is accepted. See [Configuration](docs/configuration.md#external-activity-intake) for intake options and [Privacy](docs/privacy.md#external-activity-reports) for the trust boundary.
 
 ### Keeps runtime control visible
 

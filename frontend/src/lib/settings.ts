@@ -294,9 +294,9 @@ function parseMicrosoftTodoSettings(value: unknown): RuntimeSettings['microsoft_
   return { reminder_list_id: value.reminder_list_id }
 }
 
-function parseActivityMailboxSettings(
+function parseActivityReportFolderSettings(
   value: unknown,
-): RuntimeSettings['activity_mailbox'] | null {
+): RuntimeSettings['activity_report_folder'] | null {
   if (value === undefined) {
     return { enabled: false, folder_path: '' }
   }
@@ -487,14 +487,14 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   const tool_profiles = parseToolProfiles(value.tool_profiles)
   const llama_cpp = parseLlamaCppSettings(value.llama_cpp)
   const microsoft_todo = parseMicrosoftTodoSettings(value.microsoft_todo)
-  const activity_mailbox = parseActivityMailboxSettings(value.activity_mailbox)
+  const activity_report_folder = parseActivityReportFolderSettings(value.activity_report_folder)
   if (
     !features ||
     !modules ||
     !mcp ||
     !llama_cpp ||
     !microsoft_todo ||
-    !activity_mailbox ||
+    !activity_report_folder ||
     !calendar ||
     !context_vault ||
     !isRecord(value.ask_apex) ||
@@ -555,7 +555,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     mcp,
     llama_cpp,
     microsoft_todo,
-    activity_mailbox,
+    activity_report_folder,
   }
 }
 
@@ -621,7 +621,7 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
     },
     llama_cpp: { ...settings.llama_cpp },
     microsoft_todo: { ...settings.microsoft_todo },
-    activity_mailbox: { ...settings.activity_mailbox },
+    activity_report_folder: { ...settings.activity_report_folder },
   }
 }
 
@@ -795,9 +795,9 @@ export function diffSettingsPatch(
     patch.microsoft_todo = microsoftTodo
   }
 
-  const activityMailbox = diffSection(baseline.activity_mailbox, draft.activity_mailbox)
-  if (activityMailbox) {
-    patch.activity_mailbox = activityMailbox
+  const activityReportFolder = diffSection(baseline.activity_report_folder, draft.activity_report_folder)
+  if (activityReportFolder) {
+    patch.activity_report_folder = activityReportFolder
   }
 
   return patch
@@ -818,7 +818,7 @@ export function isSettingsPatchEmpty(patch: SettingsPatch): boolean {
     patch.mcp === undefined &&
     patch.llama_cpp === undefined &&
     patch.microsoft_todo === undefined &&
-    patch.activity_mailbox === undefined
+    patch.activity_report_folder === undefined
   )
 }
 

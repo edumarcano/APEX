@@ -24,12 +24,12 @@ export interface MicrosoftTodoSettings {
   reminder_list_id: string
 }
 
-export interface ActivityMailboxSettings {
+export interface ActivityReportFolderSettings {
   enabled: boolean
   folder_path: string
 }
 
-export type ActivityMailboxState =
+export type ActivityReportFolderState =
   | 'disabled'
   | 'demo_mode'
   | 'not_configured'
@@ -37,9 +37,9 @@ export type ActivityMailboxState =
   | 'ready'
   | 'scan_error'
 
-export interface ActivityMailboxStatusResponse {
+export interface ActivityReportFolderStatusResponse {
   enabled: boolean
-  state: ActivityMailboxState
+  state: ActivityReportFolderState
   folder_available: boolean | null
   last_scan_at: string | null
   last_imported_count: number
@@ -167,7 +167,7 @@ export interface RuntimeSettings {
   mcp: McpSettings
   llama_cpp: LlamaCppSettings
   microsoft_todo: MicrosoftTodoSettings
-  activity_mailbox: ActivityMailboxSettings
+  activity_report_folder: ActivityReportFolderSettings
 }
 
 export interface FeaturesPatch {
@@ -268,7 +268,7 @@ export interface MicrosoftTodoPatch {
   reminder_list_id?: string
 }
 
-export interface ActivityMailboxPatch {
+export interface ActivityReportFolderPatch {
   enabled?: boolean
   folder_path?: string
 }
@@ -307,7 +307,7 @@ export interface SettingsPatch {
   mcp?: McpPatch
   llama_cpp?: LlamaCppPatch
   microsoft_todo?: MicrosoftTodoPatch
-  activity_mailbox?: ActivityMailboxPatch
+  activity_report_folder?: ActivityReportFolderPatch
 }
 
 export interface SettingsResponse {

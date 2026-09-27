@@ -1,4 +1,4 @@
-"""Focused coverage for the optional local activity-folder mailbox."""
+"""Focused coverage for the optional local activity report folder."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import core.activity.mailbox as mailbox_module
+import core.activity.report_folder as report_folder_module
 from core.activity import ActivityReportContent, ActivityService, ActivityStore
 from core.activity.models import ActivitySubmissionRequest
-from core.activity.mailbox import ActivityMailbox, run_activity_mailbox_poller
+from core.activity.report_folder import ActivityReportFolder, run_activity_report_folder_poller
 from core.settings.models import SettingsPatch
 from core.settings.store import RuntimeSettingsStore
 
@@ -33,12 +33,12 @@ def submission(content: ActivityReportContent, *, client_id: str = "codex") -> s
     return json.dumps({"client_id": client_id, "report": content.model_dump(mode="json")})
 
 
-class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
+class ActivityReportFolderTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory(prefix="apex_activity_mailbox_")
+        self.temporary = tempfile.TemporaryDirectory(prefix="apex_activity_report_folder_")
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        self.folder = self.root / "mailbox"
+        self.folder = self.root / "report-folder"
         self.folder.mkdir()
         self.settings_store = RuntimeSettingsStore(
             config_path=self.root / "config.json",
@@ -55,50 +55,50 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
     def _new_activity_service(self) -> ActivityService:
         return ActivityService(self.store)
 
-    def _mailbox(self, *, partition: str = "production") -> ActivityMailbox:
-        return ActivityMailbox(
+    def _report_folder(self, *, partition: str = "production") -> ActivityReportFolder:
+        return ActivityReportFolder(
             self.service,
-            settings_getter=lambda: self.settings_store.get_snapshot().activity_mailbox,
+            settings_getter=lambda: self.settings_store.get_snapshot().activity_report_folder,
             partition_getter=lambda: partition,
         )
 
     def _configure(self, *, enabled: bool = True, folder: Path | None = None) -> None:
         self.settings_store.apply_patch(SettingsPatch.model_validate({
-            "activity_mailbox": {
+            "activity_report_folder": {
                 "enabled": enabled,
                 "folder_path": str(folder or self.folder),
             },
         }))
 
-    async def test_mailbox_is_disabled_by_default(self) -> None:
-        mailbox = self._mailbox()
-        self.assertFalse(self.settings_store.get_snapshot().activity_mailbox.enabled)
-        result = await mailbox.scan_now()
+    async def test_report_folder_is_disabled_by_default(self) -> None:
+        report_folder = self._report_folder()
+        self.assertFalse(self.settings_store.get_snapshot().activity_report_folder.enabled)
+        result = await report_folder.scan_now()
         self.assertEqual(result.state, "disabled")
         self.assertEqual(self.service.list(partition="production"), [])
 
     async def test_live_settings_changes_choose_new_folder_without_restart(self) -> None:
-        second_folder = self.root / "second-mailbox"
+        second_folder = self.root / "second-report-folder"
         second_folder.mkdir()
         self._configure(folder=self.folder)
-        mailbox = self._mailbox()
+        report_folder = self._report_folder()
         (self.folder / "first.json").write_text(submission(report(key="first")), encoding="utf-8")
-        first_scan = await mailbox.scan_now()
+        first_scan = await report_folder.scan_now()
         self.assertEqual(first_scan.last_imported_count, 1)
 
         self._configure(folder=second_folder)
         (second_folder / "second.json").write_text(submission(report(key="second")), encoding="utf-8")
-        second_scan = await mailbox.scan_now()
+        second_scan = await report_folder.scan_now()
         self.assertEqual(second_scan.last_imported_count, 1)
         self.assertEqual({item.content.submission_key for item in self.service.list(partition="production")}, {"first", "second"})
 
         self._configure(enabled=False, folder=second_folder)
-        disabled = await mailbox.scan_now()
+        disabled = await report_folder.scan_now()
         self.assertEqual(disabled.state, "disabled")
 
     async def test_settings_changed_during_file_read_prevent_submission_and_stale_status(self) -> None:
         self._configure()
-        mailbox = self._mailbox()
+        report_folder = self._report_folder()
         (self.folder / "report-1.json").write_text(submission(report()), encoding="utf-8")
         missing = self.root / "not-synced-yet"
 
@@ -106,21 +106,21 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
             self._configure(folder=missing)
             return ActivitySubmissionRequest(client_id="codex", report=report())
 
-        with mock.patch.object(mailbox, "_read_completed_report", side_effect=change_folder_before_return):
-            result = await mailbox.scan_now()
+        with mock.patch.object(report_folder, "_read_completed_report", side_effect=change_folder_before_return):
+            result = await report_folder.scan_now()
 
         self.assertEqual(result.state, "folder_unavailable")
         self.assertEqual(self.service.list(partition="production"), [])
-        current = mailbox.status()
+        current = report_folder.status()
         self.assertEqual(current.state, "folder_unavailable")
         self.assertIsNone(current.last_error)
 
     async def test_missing_folder_remains_saved_and_poller_keeps_running(self) -> None:
         missing = self.root / "not-synced-yet"
         self._configure(folder=missing)
-        mailbox = self._mailbox()
+        report_folder = self._report_folder()
         completed = threading.Event()
-        original_scan = mailbox._scan_sync
+        original_scan = report_folder._scan_sync
 
         def scan_and_signal(settings=None, partition=None):
             result = original_scan(settings, partition)
@@ -128,23 +128,23 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
             return result
 
         stop = asyncio.Event()
-        with mock.patch.object(mailbox, "_scan_sync", side_effect=scan_and_signal):
-            poller = asyncio.create_task(run_activity_mailbox_poller(mailbox, stop, interval_seconds=60))
+        with mock.patch.object(report_folder, "_scan_sync", side_effect=scan_and_signal):
+            poller = asyncio.create_task(run_activity_report_folder_poller(report_folder, stop, interval_seconds=60))
             self.assertTrue(await asyncio.wait_for(asyncio.to_thread(completed.wait, 3), timeout=4))
-            self.assertEqual(mailbox.status().state, "folder_unavailable")
-            self.assertEqual(self.settings_store.get_snapshot().activity_mailbox.folder_path, str(missing))
+            self.assertEqual(report_folder.status().state, "folder_unavailable")
+            self.assertEqual(self.settings_store.get_snapshot().activity_report_folder.folder_path, str(missing))
             stop.set()
             await asyncio.wait_for(poller, timeout=2)
 
     async def test_periodic_and_manual_scan_share_one_in_progress_scan(self) -> None:
         self._configure()
-        mailbox = self._mailbox()
+        report_folder = self._report_folder()
         (self.folder / "report-1.json").write_text(submission(report()), encoding="utf-8")
         entered = threading.Event()
         release = threading.Event()
         finished = threading.Event()
         calls = 0
-        original_scan = mailbox._scan_sync
+        original_scan = report_folder._scan_sync
 
         def blocked_scan(settings=None, partition=None):
             nonlocal calls
@@ -158,10 +158,10 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
                 finished.set()
 
         stop = asyncio.Event()
-        with mock.patch.object(mailbox, "_scan_sync", side_effect=blocked_scan):
-            poller = asyncio.create_task(run_activity_mailbox_poller(mailbox, stop, interval_seconds=60))
+        with mock.patch.object(report_folder, "_scan_sync", side_effect=blocked_scan):
+            poller = asyncio.create_task(run_activity_report_folder_poller(report_folder, stop, interval_seconds=60))
             self.assertTrue(await asyncio.wait_for(asyncio.to_thread(entered.wait, 3), timeout=4))
-            manual = asyncio.create_task(mailbox.scan_now())
+            manual = asyncio.create_task(report_folder.scan_now())
             release.set()
             manual_result = await manual
             self.assertTrue(await asyncio.wait_for(asyncio.to_thread(finished.wait, 3), timeout=4))
@@ -171,18 +171,18 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.wait_for(poller, timeout=2)
 
     async def test_manual_scan_follows_settings_change_during_an_active_scan(self) -> None:
-        second_folder = self.root / "second-mailbox"
+        second_folder = self.root / "second-report-folder"
         second_folder.mkdir()
         self._configure(folder=self.folder)
         (self.folder / "first.json").write_text(submission(report(key="first")), encoding="utf-8")
         (second_folder / "second.json").write_text(submission(report(key="second")), encoding="utf-8")
-        mailbox = self._mailbox()
-        original_scan = mailbox._scan_sync
+        report_folder = self._report_folder()
+        original_scan = report_folder._scan_sync
         first_scan_entered = threading.Event()
         release_first_scan = threading.Event()
         scan_paths: list[str] = []
         manual_request_read_new_settings = threading.Event()
-        original_settings_getter = mailbox._settings_getter
+        original_settings_getter = report_folder._settings_getter
 
         def observe_settings():
             settings = original_settings_getter()
@@ -199,12 +199,12 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
                     raise TimeoutError("first scan was not released")
             return original_scan(settings, partition)
 
-        mailbox._settings_getter = observe_settings
-        with mock.patch.object(mailbox, "_scan_sync", side_effect=controlled_scan):
-            first = asyncio.create_task(mailbox.scan_now())
+        report_folder._settings_getter = observe_settings
+        with mock.patch.object(report_folder, "_scan_sync", side_effect=controlled_scan):
+            first = asyncio.create_task(report_folder.scan_now())
             self.assertTrue(await asyncio.wait_for(asyncio.to_thread(first_scan_entered.wait, 3), timeout=4))
             self._configure(folder=second_folder)
-            manual = asyncio.create_task(mailbox.scan_now())
+            manual = asyncio.create_task(report_folder.scan_now())
             self.assertTrue(await asyncio.wait_for(
                 asyncio.to_thread(manual_request_read_new_settings.wait, 3), timeout=4,
             ))
@@ -223,20 +223,20 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
         self._configure()
         (self.folder / "report-1.json").write_text(submission(report()), encoding="utf-8")
         partition = ["production"]
-        mailbox = ActivityMailbox(
+        report_folder = ActivityReportFolder(
             self.service,
-            settings_getter=lambda: self.settings_store.get_snapshot().activity_mailbox,
+            settings_getter=lambda: self.settings_store.get_snapshot().activity_report_folder,
             partition_getter=lambda: partition[0],
         )
-        original_read = mailbox._read_completed_report
+        original_read = report_folder._read_completed_report
 
         def switch_partition_after_read(entry):
             content = original_read(entry)
             partition[0] = "sandbox"
             return content
 
-        with mock.patch.object(mailbox, "_read_completed_report", side_effect=switch_partition_after_read):
-            retried = await mailbox.scan_now()
+        with mock.patch.object(report_folder, "_read_completed_report", side_effect=switch_partition_after_read):
+            retried = await report_folder.scan_now()
 
         self.assertEqual(retried.last_imported_count, 1)
         self.assertEqual(self.service.list(partition="production"), [])
@@ -247,18 +247,18 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_unexpected_scan_failure_builds_readiness_status_off_event_loop(self) -> None:
         self._configure()
-        mailbox = self._mailbox()
+        report_folder = self._report_folder()
         event_loop_thread = threading.get_ident()
         readiness_threads: list[int] = []
-        original_status = mailbox._base_status
+        original_status = report_folder._base_status
 
         def record_readiness_thread(settings):
             readiness_threads.append(threading.get_ident())
             return original_status(settings)
 
-        with mock.patch.object(mailbox, "_scan_sync", side_effect=RuntimeError("scan failed")), \
-             mock.patch.object(mailbox, "_base_status", side_effect=record_readiness_thread):
-            result = await mailbox.scan_now()
+        with mock.patch.object(report_folder, "_scan_sync", side_effect=RuntimeError("scan failed")), \
+             mock.patch.object(report_folder, "_base_status", side_effect=record_readiness_thread):
+            result = await report_folder.scan_now()
 
         self.assertEqual(result.state, "scan_error")
         self.assertEqual(len(readiness_threads), 1)
@@ -272,7 +272,7 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
         before = source.stat()
         bytes_before = source.read_bytes()
 
-        first = await self._mailbox().scan_now()
+        first = await self._report_folder().scan_now()
         self.assertEqual(first.last_imported_count, 1, first)
         imported = self.service.list(partition="production")
         self.assertEqual(len(imported), 1)
@@ -284,18 +284,18 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
         self.store = ActivityStore(self.store_path)
         self.store.initialize()
         self.service = self._new_activity_service()
-        restarted = await self._mailbox().scan_now()
+        restarted = await self._report_folder().scan_now()
         self.assertEqual(restarted.last_imported_count, 0)
         self.assertEqual(len(self.service.list(partition="production")), 1)
 
         source.write_text(submission(report(outcome="Changed")), encoding="utf-8")
-        conflicted = await self._mailbox().scan_now()
+        conflicted = await self._report_folder().scan_now()
         self.assertEqual(conflicted.state, "scan_error")
         self.assertIn("key conflict", conflicted.last_error or "")
         self.assertEqual(len(self.service.list(partition="production")), 1)
 
         source.write_text(submission(content), encoding="utf-8")
-        recovered = await self._mailbox().scan_now()
+        recovered = await self._report_folder().scan_now()
         self.assertEqual(recovered.state, "ready")
         self.assertIsNone(recovered.last_error)
         self.assertEqual(recovered.last_imported_count, 0)
@@ -309,7 +309,7 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
             submission(report(key="second-key")), encoding="utf-8",
         )
 
-        result = await self._mailbox().scan_now()
+        result = await self._report_folder().scan_now()
 
         self.assertEqual(result.last_imported_count, 2)
         self.assertEqual(result.state, "ready")
@@ -324,8 +324,8 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
         (self.folder / "first completed report.json").write_text(serialized, encoding="utf-8")
         (self.folder / "copy from sync.JSON").write_text(serialized, encoding="utf-8")
 
-        first = await self._mailbox().scan_now()
-        second = await self._mailbox().scan_now()
+        first = await self._report_folder().scan_now()
+        second = await self._report_folder().scan_now()
 
         self.assertEqual(first.last_imported_count, 1)
         self.assertEqual(first.state, "ready")
@@ -347,10 +347,10 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
             submission(report(key="already-good")), encoding="utf-8",
         )
 
-        failed = await self._mailbox().scan_now()
+        failed = await self._report_folder().scan_now()
         self.assertEqual(failed.state, "scan_error")
         self.assertEqual(failed.last_imported_count, 1)
-        self.assertIn("4 mailbox file(s) failed", failed.last_error or "")
+        self.assertIn("4 report folder file(s) failed", failed.last_error or "")
         self.assertIn("invalid JSON", failed.last_error or "")
         self.assertIn("invalid report fields", failed.last_error or "")
         self.assertIn("oversized", failed.last_error or "")
@@ -361,7 +361,7 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
         invalid.write_text(submission(report(key="valid-after-retry")), encoding="utf-8")
         oversized.write_text(submission(report(key="size-recovered")), encoding="utf-8")
         directory.rmdir()
-        retried = await self._mailbox().scan_now()
+        retried = await self._report_folder().scan_now()
         self.assertEqual(retried.state, "ready")
         self.assertIsNone(retried.last_error)
         self.assertEqual(retried.last_imported_count, 3)
@@ -376,10 +376,10 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
         for filename in filenames:
             (self.folder / filename).write_text("{", encoding="utf-8")
 
-        result = await self._mailbox().scan_now()
+        result = await self._report_folder().scan_now()
 
         self.assertEqual(result.state, "scan_error")
-        self.assertIn("6 mailbox file(s) failed", result.last_error or "")
+        self.assertIn("6 report folder file(s) failed", result.last_error or "")
         self.assertEqual((result.last_error or "").count("(invalid JSON)"), 3)
         self.assertIn("...", result.last_error or "")
         self.assertIn("and 3 more", result.last_error or "")
@@ -391,7 +391,7 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
         filename = "résumé — 東京.json"
         (self.folder / filename).write_text("{", encoding="utf-8")
 
-        result = await self._mailbox().scan_now()
+        result = await self._report_folder().scan_now()
 
         self.assertEqual(result.state, "scan_error")
         self.assertIn(filename, result.last_error or "")
@@ -409,7 +409,7 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
             encoding="utf-8",
         )
 
-        result = await self._mailbox().scan_now()
+        result = await self._report_folder().scan_now()
 
         self.assertEqual(result.state, "scan_error")
         self.assertEqual(result.last_imported_count, 2)
@@ -426,10 +426,10 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
         first.write_text(submission(report(key="first")), encoding="utf-8")
         (self.folder / "second.json").write_text(submission(report(key="second")), encoding="utf-8")
         with mock.patch.object(self.service, "submit", side_effect=RuntimeError("private internal detail")) as submit:
-            result = await self._mailbox().scan_now()
+            result = await self._report_folder().scan_now()
 
         self.assertEqual(result.state, "scan_error")
-        self.assertEqual(result.last_error, "The mailbox scan failed; APEX will retry.")
+        self.assertEqual(result.last_error, "The report folder scan failed; APEX will retry.")
         self.assertNotIn(first.name, result.last_error or "")
         self.assertNotIn("private internal detail", result.last_error or "")
         submit.assert_called_once()
@@ -441,7 +441,7 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
         (self.folder / "c-unreadable.json").write_text(submission(report(key="unreadable")), encoding="utf-8")
         (self.folder / "d-good.JSON").write_text(submission(report(key="good")), encoding="utf-8")
         original_open = os.open
-        original_same_version = mailbox_module._same_file_version
+        original_same_version = report_folder_module._same_file_version
         changing_stat = (self.folder / "a-changing.json").stat()
         changing_identity = (
             changing_stat.st_dev, changing_stat.st_ino,
@@ -466,9 +466,9 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
                 raise PermissionError("sensitive operating system detail")
             return original_open(path, flags, *args, **kwargs)
 
-        with mock.patch("core.activity.mailbox._same_file_version", side_effect=simulate_change), \
-             mock.patch("core.activity.mailbox.os.open", side_effect=controlled_open):
-            result = await self._mailbox().scan_now()
+        with mock.patch("core.activity.report_folder._same_file_version", side_effect=simulate_change), \
+             mock.patch("core.activity.report_folder.os.open", side_effect=controlled_open):
+            result = await self._report_folder().scan_now()
 
         self.assertEqual(result.state, "scan_error")
         self.assertEqual(result.last_imported_count, 1, result)
@@ -480,7 +480,7 @@ class ActivityMailboxTests(unittest.IsolatedAsyncioTestCase):
     async def test_bare_report_objects_are_rejected_with_per_file_diagnostics(self) -> None:
         self._configure()
         (self.folder / "report-1.json").write_text(report().model_dump_json(), encoding="utf-8")
-        result = await self._mailbox().scan_now()
+        result = await self._report_folder().scan_now()
         self.assertEqual(result.state, "scan_error")
         self.assertEqual(result.last_imported_count, 0)
         self.assertIn("invalid report fields", result.last_error or "")

@@ -57,7 +57,7 @@ Do not expand `useApexData` into another global store. Use the focused owner for
 | `useSystemDiagnostics` | Independent host diagnostics polling |
 | `useContextInspector` | Personal-context records and detail, retrieval status, entity lookup, direct saves, reconciliation proposals, and durable review decisions |
 | `useContextVault` | Vault settings, selection preview, export status, refresh, and managed-copy removal |
-| `useActivityInbox` | Bounded external report list/detail, filters, dispositions, context proposals, and linked-review refresh |
+| `useActivityReports` | Bounded external report list/detail, filters, dispositions, context proposals, and linked-review refresh |
 
 `App.tsx` coordinates these owners but should not duplicate their internal state machines.
 

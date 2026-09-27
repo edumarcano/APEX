@@ -46,7 +46,7 @@ def canonical_content(content: ActivityReportContent) -> tuple[str, str]:
 
 
 class ActivityStore:
-    """Owns report receipts and reversible inbox dispositions only."""
+    """Owns report receipts and reversible report dispositions only."""
 
     def __init__(self, db_path: Path | str | None, *, connection: sqlite3.Connection | None = None, lock: threading.RLock | None = None) -> None:
         self._db_path = str(db_path) if db_path is not None else None
@@ -195,7 +195,7 @@ class ActivityStore:
     def set_disposition(
         self, report_id: UUID, *, partition: str, disposition: str,
     ) -> ActivityReport:
-        """Change only the operator's reversible inbox state for one receipt."""
+        """Change only the operator's reversible report disposition for one receipt."""
         if partition not in _PARTITIONS:
             raise ActivityStoreError("partition_invalid")
         if disposition not in _DISPOSITIONS:

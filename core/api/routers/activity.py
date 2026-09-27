@@ -19,12 +19,12 @@ from core.activity import (
 from core.activity.models import ACTIVITY_CLIENT_ID_PATTERN
 from core.activity.boundary import read_bounded_activity_body, require_local_submission_headers
 from core.activity.review import ActivityContextReviewError, ActivityContextReviewService
-from core.activity.mailbox import MailboxStatus, get_activity_mailbox
+from core.activity.report_folder import ReportFolderStatus, get_activity_report_folder
 from core.api.models import (
     ActivityContextProposalRequest,
     ActivityContextReviewLinkResponse,
     ActivityDispositionRequest,
-    ActivityMailboxStatusResponse,
+    ActivityReportFolderStatusResponse,
     ActivityReportResponse,
     ActivitySubmissionResponse,
     ContextReviewResponse,
@@ -56,8 +56,8 @@ def _response(report) -> ActivityReportResponse:
     )
 
 
-def _mailbox_response(result: MailboxStatus) -> ActivityMailboxStatusResponse:
-    return ActivityMailboxStatusResponse(
+def _report_folder_response(result: ReportFolderStatus) -> ActivityReportFolderStatusResponse:
+    return ActivityReportFolderStatusResponse(
         enabled=result.enabled,
         state=result.state,
         folder_available=result.folder_available,
@@ -84,29 +84,29 @@ def _error(error: Exception) -> HTTPException:
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Context record was not found.")
     if isinstance(error, KnowledgeConflictError):
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Context changed or cannot be reconciled.")
-    return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Activity inbox is unavailable.")
+    return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Activity reports are unavailable.")
 
 
 @router.get(
-    "/api/v1/activity/mailbox/status",
-    response_model=ActivityMailboxStatusResponse,
+    "/api/v1/activity/report-folder/status",
+    response_model=ActivityReportFolderStatusResponse,
 )
-def get_activity_mailbox_status() -> ActivityMailboxStatusResponse:
+def get_activity_report_folder_status() -> ActivityReportFolderStatusResponse:
     """Return local folder readiness without exposing a scan path."""
     try:
-        return _mailbox_response(get_activity_mailbox().status())
+        return _report_folder_response(get_activity_report_folder().status())
     except Exception as exc:
         raise _error(exc) from exc
 
 
 @router.post(
-    "/api/v1/activity/mailbox/scan",
-    response_model=ActivityMailboxStatusResponse,
+    "/api/v1/activity/report-folder/scan",
+    response_model=ActivityReportFolderStatusResponse,
 )
-async def scan_activity_mailbox() -> ActivityMailboxStatusResponse:
-    """Scan only the operator-configured mailbox folder and wait for completion."""
+async def scan_activity_report_folder() -> ActivityReportFolderStatusResponse:
+    """Scan only the operator-configured report folder and wait for completion."""
     try:
-        return _mailbox_response(await get_activity_mailbox().scan_now())
+        return _report_folder_response(await get_activity_report_folder().scan_now())
     except Exception as exc:
         raise _error(exc) from exc
 

@@ -1,4 +1,4 @@
-"""Immutable external activity inbox storage and local service boundary."""
+"""Immutable external activity report storage and local service boundary."""
 
 from core.activity.models import (
     ActivityDisposition,

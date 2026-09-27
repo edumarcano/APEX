@@ -10,7 +10,7 @@ export type AttentionSurfaceId =
   | 'news'
   | 'events'
   | 'market'
-  | 'inbox'
+  | 'email'
   | 'insights'
 
 type SurfaceSchedule = {
@@ -26,7 +26,7 @@ type SurfaceSchedule = {
  * Reveal order by data source latency:
  * 1. Reminders (local DB) — gate
  * 2. Weather + News (public APIs) — unlock during collection
- * 3. Events + Market + Inbox (heavier / auth’d APIs) — active through collection
+ * 3. Events + Market + Email (heavier / auth’d APIs) — active through collection
  * 4. Insights (AI synthesis) — synthesis → delivery
  */
 const SURFACE_SCHEDULE: Record<AttentionSurfaceId, SurfaceSchedule> = {
@@ -35,7 +35,7 @@ const SURFACE_SCHEDULE: Record<AttentionSurfaceId, SurfaceSchedule> = {
   news: { activeAt: 2, completeAt: 2, staggerMs: 120 },
   events: { activeAt: 2, completeAt: 3, staggerMs: 280 },
   market: { activeAt: 2, completeAt: 3, staggerMs: 360 },
-  inbox: { activeAt: 2, completeAt: 3, staggerMs: 440 },
+  email: { activeAt: 2, completeAt: 3, staggerMs: 440 },
   insights: { activeAt: 3, completeAt: 4, staggerMs: 0 },
 }
 

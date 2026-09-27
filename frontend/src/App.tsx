@@ -11,7 +11,7 @@ import {
 import { type ApexLogoProps } from './components/ApexLogo'
 import { CelestialBackground } from './components/CelestialBackground'
 import { CortexWorkspace } from './components/CortexWorkspace'
-import { ActivityInboxWorkspace } from './components/ActivityInboxWorkspace'
+import { ActivityReportsWorkspace } from './components/ActivityReportsWorkspace'
 import { ApexAssistantRuntime, type ApexAssistantRunConfig, type ApexAssistantRuntimeHandle } from './components/ApexAssistantRuntime'
 import { PreflightDialog } from './components/PreflightDialog'
 import { ReminderReviewDialog } from './components/ReminderReviewDialog'
@@ -28,7 +28,7 @@ import type { HudTelemetryData } from './components/overview/HudTelemetry'
 import { useApexData } from './hooks/useApexData'
 import { useCortex } from './hooks/useCortex'
 import { useActions } from './hooks/useActions'
-import { useActivityInbox } from './hooks/useActivityInbox'
+import { useActivityReports } from './hooks/useActivityReports'
 import { useAppActivation } from './hooks/useAppActivation'
 import { useBriefingSpeech } from './hooks/useBriefingSpeech'
 import { useBriefingSessions } from './hooks/useBriefingSessions'
@@ -198,11 +198,11 @@ export default function App(): ReactElement {
   const dailyOpenSequenceRef = useRef(0)
   const dailyOpeningSessionsRef = useRef(new Map<string, number>())
   const briefingOperationRef = useRef(false)
-  const [lastAssistantWorkspace, setLastAssistantWorkspace] = useState<Exclude<WorkspacePeer, 'inbox'>>('overview')
+  const [lastAssistantWorkspace, setLastAssistantWorkspace] = useState<Exclude<WorkspacePeer, 'reports'>>('overview')
   const [hudDestination, setHudDestination] = useState<WorkspaceHudDestination>('overview')
   const navigateWorkspace = useCallback((nextWorkspace: WorkspacePeer): void => {
     if (nextWorkspace === 'overview' || nextWorkspace === 'briefing') setHudDestination(nextWorkspace)
-    if (nextWorkspace !== 'inbox') setLastAssistantWorkspace(nextWorkspace)
+    if (nextWorkspace !== 'reports') setLastAssistantWorkspace(nextWorkspace)
     setWorkspace(nextWorkspace)
   }, [])
   const [linkedReviewId, setLinkedReviewId] = useState<string | null>(null)
@@ -271,8 +271,8 @@ export default function App(): ReactElement {
     applyBootSettings,
   } = apexData
   const activityPartition = sandboxMode ? 'sandbox' : 'production'
-  const activityInbox = useActivityInbox(
-    workspace === 'inbox' && !demoModeActive,
+  const activityReports = useActivityReports(
+    workspace === 'reports' && !demoModeActive,
     activityPartition,
   )
   const actions = useActions(
@@ -354,7 +354,7 @@ export default function App(): ReactElement {
     [cloudEffort, sharedAgentModelEntry, localContextWindow, localReasoningMode],
   )
 
-  const assistantWorkspace = workspace === 'inbox' ? lastAssistantWorkspace : workspace
+  const assistantWorkspace = workspace === 'reports' ? lastAssistantWorkspace : workspace
   const usesSharedAgentTurn = assistantWorkspace !== 'cortex'
   const effectiveWorkspaceAgent = usesSharedAgentTurn ? agentTurnOverrides.agent : activeAgent
   const effectiveWorkspaceModel = usesSharedAgentTurn ? agentTurnOverrides.modelId : selectedModel
@@ -380,7 +380,7 @@ export default function App(): ReactElement {
     conversationId: assistantConversationId,
     snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
     enabled: Boolean(
-      workspace !== 'inbox' &&
+      workspace !== 'reports' &&
       agentQueriesEnabled &&
       !toolCatalogState.isLoading &&
       toolCatalogState.selectionReady &&
@@ -1063,7 +1063,7 @@ export default function App(): ReactElement {
       news: resolveTelemetryAttentionTier('news', options),
       events: resolveTelemetryAttentionTier('events', options),
       market: resolveTelemetryAttentionTier('market', options),
-      inbox: resolveTelemetryAttentionTier('inbox', options),
+      email: resolveTelemetryAttentionTier('email', options),
       insights: resolveTelemetryAttentionTier('insights', options),
     }
   }, [activated, isRefreshingAll, hasSnapshot, briefingStatus, activeStep])
@@ -1075,7 +1075,7 @@ export default function App(): ReactElement {
       news: resolveAttentionStaggerMs('news'),
       events: resolveAttentionStaggerMs('events'),
       market: resolveAttentionStaggerMs('market'),
-      inbox: resolveAttentionStaggerMs('inbox'),
+      email: resolveAttentionStaggerMs('email'),
       insights: resolveAttentionStaggerMs('insights'),
     }),
     [],
@@ -1192,7 +1192,7 @@ export default function App(): ReactElement {
         footballInfo.fixtures.length > 0 ? `${footballInfo.fixtures.length} football` : null,
       ].filter((value): value is string => value !== null).join(' · ') || 'No events'
     : null
-  const inboxCompactValue = hasSnapshot ? `${emailInfo.count} unread` : null
+  const emailCompactValue = hasSnapshot ? `${emailInfo.count} unread` : null
   const newsCompactValue = hasSnapshot ? `${newsItems.length} headlines` : null
   const remindersCompactValue = `${pendingReminderCount} pending`
   const runAssistantPreflight = useCallback(async (config: ApexAssistantRunConfig): Promise<boolean> => {
@@ -1443,7 +1443,7 @@ export default function App(): ReactElement {
       const response = await fetch(API_ENDPOINTS.cortexContextReview(review.id))
       if (!response.ok) return 'This linked review is no longer available in the current partition.'
     } catch {
-      return 'This linked review could not be reached. Refresh the Inbox and try again.'
+      return 'This linked review could not be reached. Refresh Reports and try again.'
     }
     setLinkedReviewId(review.id)
     navigateWorkspace('cortex')
@@ -1553,10 +1553,10 @@ export default function App(): ReactElement {
       footballRefreshing,
     },
     market: { data: marketData, isLoading: isMarketLoading, enabled: marketEnabled },
-    inbox: {
+    email: {
       ledState: emailLedState,
       statusMessage: emailStatusMessage,
-      compactValue: inboxCompactValue,
+      compactValue: emailCompactValue,
       count: emailInfo.count,
       items: emailInfo.items,
       refreshing: emailRefreshing,
@@ -1787,8 +1787,8 @@ export default function App(): ReactElement {
             linkedReviewId={linkedReviewId}
           />
         ) : (
-          <ActivityInboxWorkspace
-            inbox={activityInbox}
+          <ActivityReportsWorkspace
+            reports={activityReports}
             demoModeActive={demoModeActive}
             sandboxMode={sandboxMode}
             onOpenReview={handleOpenActivityReview}

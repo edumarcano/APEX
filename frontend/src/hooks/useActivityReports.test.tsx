@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ContextReview } from '../types/context'
-import { useActivityInbox } from './useActivityInbox'
+import { useActivityReports } from './useActivityReports'
 
 const REPORT = {
   id: 'report-1', partition: 'production', client_id: 'codex', client_display_name: 'Codex', principal: 'operator',
@@ -27,7 +27,7 @@ function response(body: unknown, status = 200): Response {
   return { ok: status >= 200 && status < 300, status, json: vi.fn().mockResolvedValue(body) } as unknown as Response
 }
 
-describe('useActivityInbox', () => {
+describe('useActivityReports', () => {
   beforeEach(() => vi.stubGlobal('fetch', vi.fn()))
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
@@ -51,7 +51,7 @@ describe('useActivityInbox', () => {
       throw new Error(`Unexpected activity request ${target}`)
     })
 
-    const { result } = renderHook(() => useActivityInbox(true, 'production'))
+    const { result } = renderHook(() => useActivityReports(true, 'production'))
     await waitFor(() => expect(result.current.detail?.id).toBe('report-1'))
     expect(result.current.sources).toEqual([{ id: 'codex', label: 'codex' }])
 
@@ -82,7 +82,7 @@ describe('useActivityInbox', () => {
       throw new Error(`Unexpected activity request ${target}`)
     })
 
-    const { result } = renderHook(() => useActivityInbox(true, 'production'))
+    const { result } = renderHook(() => useActivityReports(true, 'production'))
     await waitFor(() => expect(result.current.detail?.id).toBe(REPORT.id))
 
     let dispositionPromise: Promise<boolean> | undefined
@@ -122,7 +122,7 @@ describe('useActivityInbox', () => {
       throw new Error(`Unexpected activity request ${target}`)
     })
 
-    const { result } = renderHook(() => useActivityInbox(true, 'production'))
+    const { result } = renderHook(() => useActivityReports(true, 'production'))
     await waitFor(() => expect(result.current.detail?.id).toBe(REPORT.id))
 
     let proposalPromise: Promise<ContextReview | null> | undefined
@@ -150,7 +150,7 @@ describe('useActivityInbox', () => {
     let resolveStaleList: ((value: Response) => void) | undefined
     vi.mocked(fetch).mockImplementation((input) => {
       const target = String(input)
-      if (target.endsWith('/activity/mailbox/scan')) return Promise.resolve(response({
+      if (target.endsWith('/activity/report-folder/scan')) return Promise.resolve(response({
         enabled: false, state: 'disabled', folder_available: null,
         last_scan_at: null,
         last_imported_count: 0, last_error: null,
@@ -168,7 +168,7 @@ describe('useActivityInbox', () => {
 
     const initialProps: { partition: 'production' | 'sandbox' } = { partition: 'production' }
     const { result, rerender } = renderHook(
-      ({ partition }: { partition: 'production' | 'sandbox' }) => useActivityInbox(true, partition),
+      ({ partition }: { partition: 'production' | 'sandbox' }) => useActivityReports(true, partition),
       { initialProps },
     )
     await waitFor(() => expect(result.current.detail?.id).toBe(REPORT.id))
@@ -191,16 +191,16 @@ describe('useActivityInbox', () => {
     expect(result.current.isLoading).toBe(false)
   })
 
-  it('waits for the mailbox scan before reloading Inbox and keeps reports visible on scan failure', async () => {
+  it('waits for the report folder scan before reloading Reports and keeps reports visible on scan failure', async () => {
     const order: string[] = []
     vi.mocked(fetch).mockImplementation(async (input) => {
       const target = String(input)
-      if (target.endsWith('/activity/mailbox/scan')) {
+      if (target.endsWith('/activity/report-folder/scan')) {
         order.push('scan')
         return response({
           enabled: true, state: 'folder_unavailable', folder_available: false,
           last_scan_at: '2026-09-22T12:00:00Z',
-          last_imported_count: 0, last_error: 'The mailbox folder is unavailable; APEX will retry.',
+          last_imported_count: 0, last_error: 'The report folder is unavailable; APEX will retry.',
         })
       }
       if (target.endsWith('/context-reviews')) return response([])
@@ -212,7 +212,7 @@ describe('useActivityInbox', () => {
       throw new Error(`Unexpected activity request ${target}`)
     })
 
-    const { result } = renderHook(() => useActivityInbox(true, 'production'))
+    const { result } = renderHook(() => useActivityReports(true, 'production'))
     await waitFor(() => expect(result.current.detail?.id).toBe(REPORT.id))
     order.length = 0
 
@@ -221,7 +221,7 @@ describe('useActivityInbox', () => {
     expect(order[0]).toBe('scan')
     expect(order).toContain('list')
     expect(result.current.reports).toEqual([REPORT])
-    expect(result.current.error).toBe('The mailbox folder is unavailable; APEX will retry.')
+    expect(result.current.error).toBe('The report folder is unavailable; APEX will retry.')
   })
 
   it('does not surface a scan error from the previous partition after Refresh completes', async () => {
@@ -235,7 +235,7 @@ describe('useActivityInbox', () => {
     let resolveScan: ((value: Response) => void) | undefined
     vi.mocked(fetch).mockImplementation((input) => {
       const target = String(input)
-      if (target.endsWith('/activity/mailbox/scan')) {
+      if (target.endsWith('/activity/report-folder/scan')) {
         return new Promise((resolve) => { resolveScan = resolve })
       }
       if (target.endsWith('/context-reviews')) return Promise.resolve(response([]))
@@ -249,7 +249,7 @@ describe('useActivityInbox', () => {
 
     let refreshPromise: Promise<void> | undefined
     const { result, rerender } = renderHook(
-      ({ partition }: { partition: 'production' | 'sandbox' }) => useActivityInbox(true, partition),
+      ({ partition }: { partition: 'production' | 'sandbox' }) => useActivityReports(true, partition),
       { initialProps: { partition: 'production' } },
     )
     await waitFor(() => expect(result.current.detail?.id).toBe(REPORT.id))
@@ -267,7 +267,7 @@ describe('useActivityInbox', () => {
         folder_available: false,
         last_scan_at: '2026-09-22T12:00:00Z',
         last_imported_count: 0,
-        last_error: 'Old partition mailbox error.',
+        last_error: 'Old partition report folder error.',
       }))
       await refreshPromise
     })

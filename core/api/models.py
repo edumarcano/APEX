@@ -26,8 +26,8 @@ class ActivityReportResponse(BaseModel):
     report: ActivityReportContent
 
 
-class ActivityMailboxStatusResponse(BaseModel):
-    """Local mailbox readiness and result of its latest completed scan."""
+class ActivityReportFolderStatusResponse(BaseModel):
+    """Local report folder readiness and result of its latest completed scan."""
 
     enabled: bool
     state: Literal[

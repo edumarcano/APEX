@@ -575,7 +575,7 @@ describe('App catalog-affecting settings', () => {
     })
   })
 
-  it('uses the shared cloud reasoning effort for Briefing follow-ups and disables preflight in Inbox', async () => {
+  it('uses the shared cloud reasoning effort for Briefing follow-ups and disables preflight in Reports', async () => {
     const user = userEvent.setup()
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(catalogFor('apex')), { status: 200 }))))
     appMocks.toolPreflight.mockClear()
@@ -592,7 +592,7 @@ describe('App catalog-affecting settings', () => {
       localReasoningMode: null,
     }))
 
-    await selectWorkspace(user, 'Inbox')
+    await selectWorkspace(user, 'Reports')
     await waitFor(() => expect(appMocks.toolPreflight.mock.lastCall?.[0]).toMatchObject({
       effort: 'high',
       enabled: false,
@@ -635,12 +635,12 @@ describe('App catalog-affecting settings', () => {
 
     const nav = screen.getByRole('navigation', { name: 'Workspace' })
     const tabs = within(nav).getAllByRole('button')
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['Inbox', 'Overview', 'Briefing', 'Cortex'])
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Reports', 'Overview', 'Briefing', 'Cortex'])
     expect(within(nav).getByRole('button', { name: 'Overview' })).toHaveAttribute('aria-current', 'page')
     expect(within(nav).getByRole('button', { name: 'Briefing' })).not.toHaveAttribute('aria-current')
 
-    await selectWorkspace(user, 'Inbox')
-    expect(within(nav).getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-current', 'page')
+    await selectWorkspace(user, 'Reports')
+    expect(within(nav).getByRole('button', { name: 'Reports' })).toHaveAttribute('aria-current', 'page')
     expect(screen.queryByRole('region', { name: 'Overview' })).not.toBeInTheDocument()
 
     await selectWorkspace(user, 'Briefing')
@@ -1442,7 +1442,7 @@ describe('App briefing session flow', () => {
 
     const composer = await screen.findByRole('textbox')
     await user.type(composer, 'What about traffic?')
-    await selectWorkspace(user, 'Inbox')
+    await selectWorkspace(user, 'Reports')
     await selectWorkspace(user, 'Overview')
     expect(screen.queryByTestId('briefing-artifact')).not.toBeInTheDocument()
     await selectWorkspace(user, 'Briefing')

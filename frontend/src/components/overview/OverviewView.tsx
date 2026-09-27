@@ -4,7 +4,7 @@ import { useCompactLayout } from '../../hooks/useCompactLayout'
 import { HudIdentityMark, type HudIdentityProps } from './HudIdentity'
 import {
   EventsTelemetry,
-  InboxTelemetry,
+  EmailTelemetry,
   MarketTelemetry,
   NewsTelemetry,
   RemindersTelemetry,
@@ -39,6 +39,6 @@ export function OverviewView({ identity, telemetry }: OverviewViewProps): ReactE
     </div>
     <RemindersTelemetry data={telemetry} variant="card" className={narrow} />
     <MarketTelemetry data={telemetry} variant="card" className={wide} />
-    <InboxTelemetry data={telemetry} variant="card" className={wide} />
+    <EmailTelemetry data={telemetry} variant="card" className={wide} />
   </section>
 }

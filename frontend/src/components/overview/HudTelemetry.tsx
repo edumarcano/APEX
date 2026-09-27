@@ -14,7 +14,7 @@ import { ScrollFadeContainer } from '../ScrollFadeContainer'
 import { TelemetryCard } from '../TelemetryCard'
 
 type LedState = ReturnType<typeof resolveModuleLedState>
-type Surface = 'weather' | 'events' | 'market' | 'inbox' | 'news' | 'reminders'
+type Surface = 'weather' | 'events' | 'market' | 'email' | 'news' | 'reminders'
 
 /** App-derived telemetry view model shared by Overview cards and the Briefing rail. */
 export type HudTelemetryData = {
@@ -47,7 +47,7 @@ export type HudTelemetryData = {
     isLoading: boolean
     enabled: boolean
   }
-  inbox: {
+  email: {
     ledState: LedState
     statusMessage: string | null
     compactValue: string | null
@@ -178,31 +178,31 @@ export function MarketTelemetry({ data, variant, className }: DomainProps): Reac
   />
 }
 
-export function InboxTelemetry({ data, variant, className }: DomainProps): ReactElement {
-  const { inbox } = data
+export function EmailTelemetry({ data, variant, className }: DomainProps): ReactElement {
+  const { email } = data
   return <TelemetryCard
-    title="Inbox"
+    title="Email"
     icon={Mail}
-    ledState={inbox.ledState}
+    ledState={email.ledState}
     onRefresh={() => data.onRefreshConnector('email')}
     refreshDisabled={data.isRefreshingAll}
-    statusMessage={inbox.statusMessage}
-    compactValue={inbox.compactValue}
-    attentionTier={data.attentionTiers.inbox}
-    attentionStaggerMs={data.attentionStagger.inbox}
+    statusMessage={email.statusMessage}
+    compactValue={email.compactValue}
+    attentionTier={data.attentionTiers.email}
+    attentionStaggerMs={data.attentionStagger.email}
     className={layoutClass(variant, className)}
     chrome={variant === 'section' ? 'section' : 'card'}
   >
-    {inbox.refreshing && !data.hasSnapshot ? (
-      <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">Loading inbox…</p>
+    {email.refreshing && !data.hasSnapshot ? (
+      <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">Loading email…</p>
     ) : (
       <>
-        {inbox.count > 0 && (
-          <p className="mb-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-accent)]">{inbox.count} Primary Messages</p>
+        {email.count > 0 && (
+          <p className="mb-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-accent)]">{email.count} Primary Messages</p>
         )}
-        {inbox.items.length > 0 ? (
+        {email.items.length > 0 ? (
           <ScrollFadeContainer as="ul" className="min-h-0 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
-            {inbox.items.map((item, index) => (
+            {email.items.map((item, index) => (
               <li key={`${item.subject}-${item.time}-${index}`} className="flex items-start justify-between gap-3">
                 <span className="flex min-w-0 items-start gap-2">
                   <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
@@ -215,7 +215,7 @@ export function InboxTelemetry({ data, variant, className }: DomainProps): React
         ) : data.hasSnapshot ? (
           <p className="text-sm text-[color:var(--hud-muted-text)]">No unread emails.</p>
         ) : (
-          <p className="text-sm text-[color:var(--hud-muted-text)]">Inbox unavailable.</p>
+          <p className="text-sm text-[color:var(--hud-muted-text)]">Email unavailable.</p>
         )}
       </>
     )}

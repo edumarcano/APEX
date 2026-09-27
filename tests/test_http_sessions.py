@@ -311,7 +311,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         task_drain.assert_awaited_once()
         drained_tasks = task_drain.await_args.args[0]
         self.assertEqual(len(drained_tasks), 2)
-        self.assertIn("activity-mailbox-poller", {task.get_name() for task in drained_tasks})
+        self.assertIn("activity-report-folder-poller", {task.get_name() for task in drained_tasks})
 
     def test_lifespan_keeps_dependencies_open_when_run_drain_errors(self) -> None:
         call_order: list[str] = []

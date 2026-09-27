@@ -1,9 +1,9 @@
 import type { ReactElement } from 'react'
 
-export type WorkspacePeer = 'inbox' | 'overview' | 'briefing' | 'cortex'
+export type WorkspacePeer = 'reports' | 'overview' | 'briefing' | 'cortex'
 
 const PEERS: Array<{ id: WorkspacePeer; label: string; activeClass: string }> = [
-  { id: 'inbox', label: 'Inbox', activeClass: 'bg-[#FBBF24]/15 text-[#FFF3B0]' },
+  { id: 'reports', label: 'Reports', activeClass: 'bg-[#22D3EE]/15 text-[#A5F3FC]' },
   { id: 'overview', label: 'Overview', activeClass: 'bg-[#0F4DB8]/20 text-[#A5C7FF]' },
   { id: 'briefing', label: 'Briefing', activeClass: 'bg-[#FBBF24]/15 text-[#FFF3B0]' },
   { id: 'cortex', label: 'Cortex', activeClass: 'bg-[#7E22CE]/25 text-[#D8B4FE]' },

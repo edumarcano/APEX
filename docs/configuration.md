@@ -59,20 +59,20 @@ APEX keeps unavailable saved IDs so they can be removed deliberately. It reads s
 
 Local activity intake accepts caller-declared source IDs. Use a nonempty lowercase ID matching `^[a-z][a-z0-9_-]{0,63}$`, such as `codex` or `grok-bot`. The ID is stored as source attribution; it does not identify or authenticate the software that submitted the report. The server assigns the local `operator` principal and the current production or development sandbox partition.
 
-### Optional local-folder mailbox
+### Optional local report folder
 
-The main APEX backend can poll one operator-selected folder for completed report files. The mailbox is disabled by default. Its enabled flag and absolute folder path are machine-local Runtime Settings stored in the gitignored `config.local.json`; keep credentials in `.env`. A legacy `activity_mailbox.client_id` value is ignored at startup and removed on the next settings save.
+The main APEX backend can poll one operator-selected folder for completed report files. The report folder is disabled by default. Its enabled flag and absolute folder path are machine-local Runtime Settings stored in the gitignored `config.local.json`; keep credentials in `.env`.
 
 ```json
 {
-  "activity_mailbox": {
+  "activity_report_folder": {
     "enabled": true,
-    "folder_path": "/absolute/path/to/activity-mailbox"
+    "folder_path": "/absolute/path/to/activity-report-folder"
   }
 }
 ```
 
-On Windows, use an absolute path such as `C:\\Users\\<you>\\AppData\\Local\\APEX\\activity-mailbox`. Create the folder in a private local or synced location and grant access only to the operator and the sync tool. APEX scans it at startup and about every 60 seconds; Inbox **Refresh** requests an immediate scan. A missing folder remains configured and is retried. Runtime setting changes take effect without restarting APEX.
+On Windows, use an absolute path such as `C:\\Users\\<you>\\AppData\\Local\\APEX\\activity-report-folder`. Create the folder in a private local or synced location and grant access only to the operator and the sync tool. APEX scans it at startup and about every 60 seconds; Reports **Refresh** requests an immediate scan. A missing folder remains configured and is retried. Runtime setting changes take effect without restarting APEX.
 
 Place only completed, top-level `.json` files in the folder; the extension is case-insensitive, and the filename does not need to match the report's `submission_key`. Each file must contain a version-one submission envelope and be at most 256 KiB. For example:
 
@@ -89,9 +89,9 @@ Place only completed, top-level `.json` files in the folder; the extension is ca
 }
 ```
 
-The `report` object uses the same version-one fields described in [the API activity contract](api.md#external-activity-inbox); a bare report object is invalid here. Write to a temporary filename and rename it to a `.json` filename only after the file is complete. APEX leaves source files in place; identical reports reuse the original receipt, while changed content with the same source ID and key follows the normal conflict behavior.
+The `report` object uses the same version-one fields described in [the API activity contract](api.md#external-activity-reports); a bare report object is invalid here. Write to a temporary filename and rename it to a `.json` filename only after the file is complete. APEX leaves source files in place; identical reports reuse the original receipt, while changed content with the same source ID and key follows the normal conflict behavior.
 
-The envelope's `client_id` is the source label claimed by the file producer; the `report` cannot choose a partition or principal. Mailbox reports enter the same untrusted Inbox as CLI, JSON/MCP gateway, and API submissions. The mailbox uses no provider API and adds no remote endpoint.
+The envelope's `client_id` is the source label claimed by the file producer; the `report` cannot choose a partition or principal. Report-folder intake enters the same untrusted Reports workspace as CLI, JSON/MCP gateway, and API submissions. The report folder uses no provider API and adds no remote endpoint.
 
 ## External activity gateway
 

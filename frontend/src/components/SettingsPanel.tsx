@@ -24,7 +24,7 @@ import {
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useLlamaCppStatus } from '../hooks/useLlamaCppStatus'
 import { useMcpStatus, type McpStatusState } from '../hooks/useMcpStatus'
-import { useActivityMailboxStatus } from '../hooks/useActivityMailboxStatus'
+import { useActivityReportFolderStatus } from '../hooks/useActivityReportFolderStatus'
 import { useMicrosoftTodoStatus } from '../hooks/useMicrosoftTodoStatus'
 import { useSettingsEditor } from '../hooks/useSettingsEditor'
 import {
@@ -186,8 +186,10 @@ export default function SettingsPanel({
   const polledMcpRuntime = useMcpStatus(open && sharedMcpRuntime === undefined)
   const mcpRuntime = sharedMcpRuntime ?? polledMcpRuntime
   const llamaCppRuntime = useLlamaCppStatus(open)
-  const activityMailboxRuntime = useActivityMailboxStatus(open)
-  const refreshActivityMailboxStatus = activityMailboxRuntime.refresh
+  const activityReportFolderRuntime = useActivityReportFolderStatus(open)
+  const refreshActivityReportFolderStatus = activityReportFolderRuntime.refresh
+  const reportFolderStatus = activityReportFolderRuntime.status
+  const reportFolderAvailability = activityReportFolderRuntime.unavailable
 
   const microsoftTodoRuntime = useMicrosoftTodoStatus(open)
   useFocusTrap(open, dialogRef, restoreFocusRef)
@@ -212,22 +214,21 @@ export default function SettingsPanel({
   const mcpTiming = resolveEffectiveTiming('mcp', timingRuntime)
   const llamaCppTiming = resolveEffectiveTiming('llama_cpp', timingRuntime)
 
-  const mailboxStatus = activityMailboxRuntime.status
-  const mailboxAvailability = activityMailboxRuntime.unavailable
-    ? 'Mailbox status is unavailable.'
-    : !mailboxStatus
-      ? 'Checking mailbox status…'
-      : mailboxStatus.last_error ?? (mailboxStatus.state === 'disabled'
+  const reportFolderStatusMessage = reportFolderAvailability
+    ? 'Report folder status is unavailable.'
+    : !reportFolderStatus
+      ? 'Checking report folder status…'
+      : reportFolderStatus.last_error ?? (reportFolderStatus.state === 'disabled'
         ? 'Disabled. APEX will not read this folder.'
-        : mailboxStatus.state === 'demo_mode'
+        : reportFolderStatus.state === 'demo_mode'
             ? 'Unavailable in demo mode.'
-          : mailboxStatus.state === 'not_configured'
+          : reportFolderStatus.state === 'not_configured'
             ? 'Choose an absolute folder path.'
-            : mailboxStatus.state === 'folder_unavailable'
+            : reportFolderStatus.state === 'folder_unavailable'
               ? 'Folder unavailable. APEX will retry when it scans again.'
-              : mailboxStatus.state === 'scan_error'
+              : reportFolderStatus.state === 'scan_error'
                 ? 'Some files could not be imported; APEX will retry.'
-                : `Ready. Latest scan imported ${mailboxStatus.last_imported_count} report${mailboxStatus.last_imported_count === 1 ? '' : 's'}.`)
+                : `Ready. Latest scan imported ${reportFolderStatus.last_imported_count} report${reportFolderStatus.last_imported_count === 1 ? '' : 's'}.`)
 
   const requestClose = useCallback(() => {
     if (isDirty || saving) {
@@ -264,10 +265,10 @@ export default function SettingsPanel({
     void save().then((saved) => {
       if (saved) {
         void mcpRuntime.refresh()
-        void refreshActivityMailboxStatus()
+        void refreshActivityReportFolderStatus()
       }
     })
-  }, [save, mcpRuntime, refreshActivityMailboxStatus])
+  }, [save, mcpRuntime, refreshActivityReportFolderStatus])
 
   const providerRows = useMemo(() => {
     const cloud = modelCatalog.filter((model) => model.runtime === 'cloud')
@@ -668,41 +669,41 @@ export default function SettingsPanel({
                 }
               />
 
-              <section className="space-y-2.5" aria-labelledby={`${titleId}-activity-mailbox`}>
-                <SectionHeading id={`${titleId}-activity-mailbox`} title="Local activity mailbox" />
+              <section className="space-y-2.5" aria-labelledby={`${titleId}-activity-report-folder`}>
+                <SectionHeading id={`${titleId}-activity-report-folder`} title="Local report folder" />
                 <div className="space-y-2">
                   <SettingsToggle
-                    id="settings-activity-mailbox-enabled"
-                    label="Enable mailbox"
-                    checked={draft.activity_mailbox.enabled}
+                    id="settings-activity-report-folder-enabled"
+                    label="Enable report folder"
+                    checked={draft.activity_report_folder.enabled}
                     timing="Active"
                     onChange={(next) =>
                       setDraft((prev) => ({
                         ...prev,
-                        activity_mailbox: { ...prev.activity_mailbox, enabled: next },
+                        activity_report_folder: { ...prev.activity_report_folder, enabled: next },
                       }))
                     }
                   />
                   <div>
-                    <label htmlFor="settings-activity-mailbox-folder" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                    <label htmlFor="settings-activity-report-folder-path" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">
                       Absolute folder path
                     </label>
                     <input
-                      id="settings-activity-mailbox-folder"
+                      id="settings-activity-report-folder-path"
                       type="text"
                       autoComplete="off"
                       spellCheck={false}
-                      value={draft.activity_mailbox.folder_path}
-                      placeholder="C:\\Users\\you\\Drive\\APEX Inbox"
+                      value={draft.activity_report_folder.folder_path}
+                      placeholder="C:\\Users\\you\\AppData\\Local\\APEX\\activity-report-folder"
                       onChange={(event) => setDraft((prev) => ({
                         ...prev,
-                        activity_mailbox: { ...prev.activity_mailbox, folder_path: event.target.value },
+                        activity_report_folder: { ...prev.activity_report_folder, folder_path: event.target.value },
                       }))}
                       className="hud-command-surface mt-1.5 w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-1.5 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
                     />
                   </div>
                   <div className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-1">
-                    <StatusRow label="Mailbox" value={mailboxAvailability} tone={mailboxStatus?.state === 'ready' ? 'ok' : mailboxStatus?.state === 'disabled' ? 'neutral' : 'warn'} />
+                    <StatusRow label="Report folder" value={reportFolderStatusMessage} tone={reportFolderStatus?.state === 'ready' ? 'ok' : reportFolderStatus?.state === 'disabled' ? 'neutral' : 'warn'} />
                   </div>
                   <p className="text-[11px] leading-relaxed text-zinc-500">
                     APEX polls this folder every minute and leaves files untouched. Place each completed version-one {`{"client_id":"source-id","report":{...}}`} envelope in a top-level .json file. The source ID is claimed attribution, not authentication.

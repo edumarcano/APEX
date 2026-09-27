@@ -6,7 +6,7 @@ This document defines the product names used in APEX. Runtime behavior belongs i
 
 ```text
 APEX
-├── Inbox
+├── Reports
 │   └── External activity reports
 ├── Overview
 │   └── Telemetry, reminders, and connector health
@@ -19,10 +19,10 @@ APEX
     └── Cortex Engine
 ```
 
-- **APEX** is the complete local-first product: Inbox, Overview, Briefing, Cortex, telemetry, briefings, voice, connectors, settings, and persistence.
+- **APEX** is the complete local-first product: Reports, Overview, Briefing, Cortex, telemetry, briefings, voice, connectors, settings, and persistence.
 - **Overview** is the telemetry-first workspace for reminders, connector health, and the activated telemetry grid.
 - **Briefing** is the workspace for profile controls, saved briefing sessions, linked conversations, and briefing-local telemetry.
-- **Inbox** is the workspace for untrusted external activity reports, their reversible dispositions, and links to existing context reviews.
+- **Reports** is the workspace for untrusted external activity reports, their reversible dispositions, and links to existing context reviews.
 - **Cortex** is the detailed workspace for conversations, model settings, tools, context, action review, and local-model lifecycle.
 - **Cortex Engine** is the backend execution boundary for bounded Agent turns, context assembly, tools, providers, and local runtime coordination.
 - **Apex Agent** is APEX's single built-in personal operations assistant, with a compact Overview and Briefing prompt and a full Cortex workspace.
