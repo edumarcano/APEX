@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -20,6 +20,21 @@ describe('SystemDiagnostics', () => {
     renderDiagnostics()
 
     expect(screen.getByRole('button', { name: /Connectors · Not checked/i })).toBeVisible()
+  })
+
+  it('collapses CPU and RAM into a system pill and shows disk only when expanded', () => {
+    renderDiagnostics({
+      diagnostics: { ...DEFAULT_SYSTEM_DIAGNOSTICS, cpu: 42, ram: 55, disk: 71 },
+    })
+
+    expect(screen.getByRole('button', { name: /System CPU 42%, RAM 55%/i })).toBeVisible()
+    expect(screen.queryByRole('button', { name: /DISK/i })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /System CPU/i }))
+    const inspector = screen.getByRole('dialog', { name: 'System metrics' })
+    expect(inspector).toBeVisible()
+    expect(within(inspector).getByText('Disk')).toBeVisible()
+    expect(within(inspector).getByText('71%')).toBeVisible()
   })
 
   it('keeps workspace controls grouped with the stable Apex identity pill', () => {
