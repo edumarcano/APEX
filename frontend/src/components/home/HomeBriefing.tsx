@@ -66,7 +66,7 @@ export function HomeBriefing(props: HomeBriefingProps): ReactElement {
   const compact = useCompactLayout()
   const [compactPanel, setCompactPanel] = useState<'controls' | 'telemetry' | null>(null)
   const workspace = props.phase === 'workspace'
-  const controls = <BriefingProfilePanel {...props.controls} />
+  const controls = <BriefingProfilePanel {...props.controls} actionLayout={workspace ? 'column' : 'row'} />
 
   if (compact) {
     const togglePanel = (panel: 'controls' | 'telemetry'): void => setCompactPanel((current) => current === panel ? null : panel)

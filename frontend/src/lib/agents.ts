@@ -38,6 +38,16 @@ export function providerDisplayName(provider: string | null | undefined): string
   return provider || 'Provider'
 }
 
+export function formatAgentPricing(entry: ModelCatalogEntry | null | undefined): string {
+  if (!entry?.pricing) {
+    if (entry?.runtime === 'local') return 'Local · No provider charge'
+    return 'Standard pricing'
+  }
+  const { billing_basis, input_per_million, output_per_million } = entry.pricing
+  if (billing_basis === 'local') return 'Local · No provider charge'
+  return `$${input_per_million.toFixed(2)}/M in · $${output_per_million.toFixed(2)}/M out`
+}
+
 export function runtimeDisplayName(runtime: LocalRuntime): string {
   return runtime === 'ollama' ? 'Ollama' : 'llama.cpp'
 }

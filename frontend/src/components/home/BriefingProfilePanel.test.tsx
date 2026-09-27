@@ -14,8 +14,8 @@ const profiles: BriefingProfileSummary[] = [
 ]
 
 const catalog: ModelCatalogEntry[] = [
-  { model_id: 'cloud-a', display_name: 'Cloud A', provider: 'openrouter', runtime: 'cloud', stability: 'stable', reasoning_options: ['low', 'high'], default_reasoning: 'high', hosted_capabilities: [], status: 'available' },
-  { model_id: 'cloud-b', display_name: 'Cloud B', provider: 'openai', runtime: 'cloud', stability: 'stable', reasoning_options: ['none', 'low'], default_reasoning: 'low', hosted_capabilities: [], status: 'verified' },
+  { model_id: 'cloud-a', display_name: 'Cloud A', provider: 'openrouter', runtime: 'cloud', stability: 'preview', reasoning_options: ['low', 'high'], default_reasoning: 'high', hosted_capabilities: [], status: 'available', pricing: { currency: 'USD', pricing_version: 'test', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 1.2, cached_input_per_million: null, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null } },
+  { model_id: 'cloud-b', display_name: 'Cloud B', provider: 'openai', runtime: 'cloud', stability: 'experimental', dev_only: true, reasoning_options: ['none', 'low'], default_reasoning: 'low', hosted_capabilities: [], status: 'verified', pricing: { currency: 'USD', pricing_version: 'test', billing_basis: 'standard', input_per_million: 0.75, output_per_million: 3.75, cached_input_per_million: null, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null } },
   { model_id: 'local-a', display_name: 'Local A', provider: 'llama_cpp', runtime: 'local', stability: 'stable', reasoning_modes: ['none', 'focused'], default_reasoning_mode: 'none', context_options: [16384, 32768], hosted_capabilities: [], status: 'available' },
 ]
 
@@ -110,10 +110,24 @@ describe('BriefingProfilePanel', () => {
     expect(within(cards).getByRole('button', { name: /Daily/ })).toHaveTextContent('Current information.')
     expect(within(cards).getByRole('button', { name: /Catch Up/ })).toHaveTextContent('What changed since a briefing was presented.')
     expect(within(cards).getByRole('button', { name: /Deep/ })).toHaveTextContent('evidence-backed investigation')
-    const modelSelect = screen.getByLabelText('Apex Agent model')
-    expect(within(modelSelect).getByRole('group', { name: 'Cloud' })).toBeInTheDocument()
-    expect(within(modelSelect).getByRole('group', { name: 'Local' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Cloud reasoning effort')).toHaveValue('high')
+    const agentTrigger = within(dialog).getByRole('button', { name: /Cloud A/ })
+    expect(agentTrigger).toHaveTextContent('OpenRouter')
+    expect(agentTrigger).toHaveTextContent('$0.20/M in · $1.20/M out')
+    expect(agentTrigger).toHaveTextContent('Preview')
+    expect(agentTrigger).toHaveTextContent('High')
+    await user.click(agentTrigger)
+    const agentOptions = within(dialog).getByRole('group', { name: 'Apex Agent options' })
+    await user.click(within(agentOptions).getByRole('button', { name: /^Model/ }))
+    const modelChoices = within(dialog).getByRole('group', { name: 'Apex Agent model choices' })
+    const cloudModels = within(modelChoices).getByRole('group', { name: 'Cloud models' })
+    expect(within(cloudModels).getByRole('button', { name: /Cloud A/ })).toHaveTextContent('Preview')
+    expect(within(cloudModels).getByRole('button', { name: /Cloud B/ })).toHaveTextContent('Experimental')
+    expect(within(cloudModels).getByRole('button', { name: /Cloud B/ })).toHaveTextContent('Dev mode')
+    expect(within(modelChoices).getByRole('group', { name: 'Local models' })).toBeInTheDocument()
+    await user.click(within(agentOptions).getByRole('button', { name: /^Effort/ }))
+    const effortChoices = within(dialog).getByRole('group', { name: 'Reasoning effort choices' })
+    expect(within(effortChoices).getByRole('button', { name: 'High' })).toHaveAttribute('aria-pressed', 'true')
+    await user.click(within(effortChoices).getByRole('button', { name: 'Low' }))
     await user.click(within(cards).getByRole('button', { name: /Catch Up/ }))
     expect(onProfileChange).not.toHaveBeenCalled()
     expect(onGenerate).not.toHaveBeenCalled()
@@ -122,7 +136,7 @@ describe('BriefingProfilePanel', () => {
     await waitFor(() => expect(onGenerate).toHaveBeenCalledWith({
       profileId: 'catch_up',
       modelId: 'cloud-a',
-      cloudEffort: 'high',
+      cloudEffort: 'low',
       localReasoningMode: null,
     }))
     expect(onProfileChange).toHaveBeenCalledWith('catch_up')
@@ -158,8 +172,20 @@ describe('BriefingProfilePanel', () => {
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
     const cards = within(screen.getByRole('dialog')).getByRole('group', { name: 'Briefing profile' })
     await user.click(within(cards).getByRole('button', { name: /Catch Up/ }))
-    await user.selectOptions(screen.getByLabelText('Apex Agent model'), 'cloud-b')
-    expect(screen.getByLabelText('Cloud reasoning effort')).toHaveValue('')
+    const agentTrigger = screen.getByRole('button', { name: /Cloud A/ })
+    await user.click(agentTrigger)
+    const agentOptions = screen.getByRole('group', { name: 'Apex Agent options' })
+    await user.click(within(agentOptions).getByRole('button', { name: /^Model/ }))
+    const modelChoices = screen.getByRole('group', { name: 'Apex Agent model choices' })
+    await user.click(within(modelChoices).getByRole('button', { name: /Cloud B/ }))
+    expect(agentTrigger).toHaveTextContent('Choose effort')
+    expect(agentTrigger).toHaveTextContent('Experimental')
+    expect(agentTrigger).toHaveTextContent('Dev mode')
+    await user.click(within(agentOptions).getByRole('button', { name: /^Effort/ }))
+    const effortChoices = screen.getByRole('group', { name: 'Reasoning effort choices' })
+    expect(within(effortChoices).getByRole('button', { name: 'Low' })).toHaveAttribute('aria-pressed', 'false')
+    await user.click(within(effortChoices).getByRole('button', { name: 'Low' }))
+    await user.click(agentTrigger)
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(onGenerate).not.toHaveBeenCalled()
@@ -167,8 +193,7 @@ describe('BriefingProfilePanel', () => {
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
     const reopenedCards = within(screen.getByRole('dialog')).getByRole('group', { name: 'Briefing profile' })
     expect(within(reopenedCards).getByRole('button', { name: /Daily/ })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByLabelText('Apex Agent model')).toHaveValue('cloud-a')
-    expect(screen.getByLabelText('Cloud reasoning effort')).toHaveValue('high')
+    expect(screen.getByRole('button', { name: /Cloud A/ })).toHaveTextContent('High')
   })
 
   it('reopens a failed submission with the same draft and an actionable error', async () => {
@@ -179,13 +204,16 @@ describe('BriefingProfilePanel', () => {
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
     const initialCards = within(screen.getByRole('dialog')).getByRole('group', { name: 'Briefing profile' })
     await user.click(within(initialCards).getByRole('button', { name: /Catch Up/ }))
-    await user.selectOptions(screen.getByLabelText('Cloud reasoning effort'), 'low')
+    await user.click(screen.getByRole('button', { name: /Cloud A/ }))
+    const agentOptions = screen.getByRole('group', { name: 'Apex Agent options' })
+    await user.click(within(agentOptions).getByRole('button', { name: /^Effort/ }))
+    await user.click(within(screen.getByRole('group', { name: 'Reasoning effort choices' })).getByRole('button', { name: 'Low' }))
     await user.click(screen.getByRole('button', { name: 'Generate Catch Up' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Set up your briefing' })
     const reopenedCards = within(dialog).getByRole('group', { name: 'Briefing profile' })
     expect(within(reopenedCards).getByRole('button', { name: /Catch Up/ })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByLabelText('Cloud reasoning effort')).toHaveValue('low')
+    expect(screen.getByRole('button', { name: /Cloud A/ })).toHaveTextContent('Low')
     expect(screen.getByRole('alert')).toHaveTextContent('Briefing settings could not be saved.')
     expect(onGenerate).toHaveBeenCalledTimes(1)
   })
@@ -211,6 +239,27 @@ describe('BriefingProfilePanel', () => {
     fireEvent.mouseDown(backdrop)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(opener).toHaveFocus()
+  })
+
+  it('closes the Agent submenu, Agent menu, and setup dialog one Escape press at a time', async () => {
+    const user = userEvent.setup()
+    render(<BriefingProfilePanel {...baseProps()} />)
+    await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
+    const dialog = screen.getByRole('dialog')
+    const agentTrigger = within(dialog).getByRole('button', { name: /Cloud A/ })
+    await user.click(agentTrigger)
+    const agentOptions = within(dialog).getByRole('group', { name: 'Apex Agent options' })
+    const modelOption = within(agentOptions).getByRole('button', { name: /^Model/ })
+    await user.click(modelOption)
+
+    await user.keyboard('{Escape}')
+    expect(modelOption).toHaveFocus()
+    expect(screen.getByRole('group', { name: 'Apex Agent options' })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    expect(agentTrigger).toHaveFocus()
+    expect(screen.queryByRole('group', { name: 'Apex Agent options' })).not.toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('keeps setup available during an active run while disabling Generate and Repeat', async () => {
@@ -332,10 +381,16 @@ describe('BriefingProfilePanel', () => {
     })} />)
 
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
-    const localSelect = screen.getByLabelText('Local reasoning mode')
-    expect(localSelect).toHaveValue('none')
-    await user.selectOptions(localSelect, 'focused')
+    const agentTrigger = screen.getByRole('button', { name: /Local A/ })
+    expect(agentTrigger).toHaveTextContent('None')
+    await user.click(agentTrigger)
+    const agentOptions = screen.getByRole('group', { name: 'Apex Agent options' })
+    await user.click(within(agentOptions).getByRole('button', { name: /^Effort/ }))
+    const effortChoices = screen.getByRole('group', { name: 'Reasoning effort choices' })
+    expect(within(effortChoices).getByRole('button', { name: 'None' })).toHaveAttribute('aria-pressed', 'true')
+    await user.click(within(effortChoices).getByRole('button', { name: 'Focused' }))
     expect(onGenerate).not.toHaveBeenCalled()
+    expect(agentTrigger).toHaveTextContent('Focused')
     await user.click(screen.getByRole('button', { name: 'Generate Daily' }))
     await waitFor(() => expect(onGenerate).toHaveBeenCalledWith({
       profileId: 'daily', modelId: 'local-a', cloudEffort: null, localReasoningMode: 'focused',

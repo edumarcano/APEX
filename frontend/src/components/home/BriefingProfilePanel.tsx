@@ -1,9 +1,9 @@
-import { Check, X } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
+import { Check, ChevronDown, X } from 'lucide-react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 import { formatBriefingTime } from '../../lib/briefingFormat'
-import { formatReasoningLabel, providerDisplayName } from '../../lib/agents'
+import { formatAgentPricing, formatReasoningLabel, providerDisplayName } from '../../lib/agents'
 import type {
   BriefingProfileId,
   BriefingProfileSummary,
@@ -12,6 +12,8 @@ import type {
 } from '../../types/briefings'
 import type { CloudEffort, LocalReasoningMode, ModelCatalogEntry } from '../../types/telemetry'
 import { LocalModelControl } from '../LocalModelControl'
+import { ModelMark } from '../ModelMark'
+import { StabilityBadge } from '../StabilityBadge'
 import { BriefingCoverage } from './BriefingEvidence'
 
 const FALLBACK_PROFILES: BriefingProfileSummary[] = [
@@ -31,6 +33,7 @@ export type BriefingSetupDraft = {
 }
 
 export type BriefingProfilePanelProps = {
+  actionLayout?: 'row' | 'column'
   profiles: BriefingProfileSummary[]
   profileId: BriefingProfileId
   onProfileChange: (profileId: BriefingProfileId) => void
@@ -82,6 +85,22 @@ function modelIsAvailable(model: ModelCatalogEntry): boolean {
 
 function supportedLocalModes(model: ModelCatalogEntry): LocalReasoningMode[] {
   return model.reasoning_modes ?? (model.default_reasoning_mode ? [model.default_reasoning_mode] : [])
+}
+
+function reasoningSummary(model: ModelCatalogEntry | undefined, draft: BriefingSetupDraft): string {
+  if (model?.runtime === 'cloud') {
+    const options = model.reasoning_options ?? []
+    if (options.length === 0) return 'Not configurable'
+    if (draft.cloudEffort && options.includes(draft.cloudEffort)) return formatReasoningLabel(draft.cloudEffort)
+    return 'Choose effort'
+  }
+  if (model?.runtime === 'local') {
+    const modes = supportedLocalModes(model)
+    if (modes.length === 0) return 'Unavailable'
+    if (draft.localReasoningMode && modes.includes(draft.localReasoningMode)) return formatReasoningLabel(draft.localReasoningMode)
+    return 'Choose effort'
+  }
+  return 'Choose model'
 }
 
 function initialDraft(props: BriefingProfilePanelProps): BriefingSetupDraft {
@@ -182,6 +201,8 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
   const failureCopy = session ? sessionFailureCopy(session) : null
   const [setupOpen, setSetupOpen] = useState(() => props.autoOpenSetup)
   const [draft, setDraft] = useState<BriefingSetupDraft>(() => initialDraft(props))
+  const [agentMenuOpen, setAgentMenuOpen] = useState(false)
+  const [agentSubmenu, setAgentSubmenu] = useState<'model' | 'effort' | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isRepeating, setIsRepeating] = useState(false)
   const [setupError, setSetupError] = useState<string | null>(null)
@@ -192,10 +213,21 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
+  const agentDropdownTriggerRef = useRef<HTMLButtonElement>(null)
+  const modelOptionTriggerRef = useRef<HTMLButtonElement>(null)
+  const effortOptionTriggerRef = useRef<HTMLButtonElement>(null)
+  const agentMenuStateRef = useRef<{ open: boolean; submenu: 'model' | 'effort' | null }>({ open: false, submenu: null })
+  const agentMenuId = useId()
   const { autoOpenSetup, onAutoOpenSetupConsumed } = props
+
+  useLayoutEffect(() => {
+    agentMenuStateRef.current = { open: agentMenuOpen, submenu: agentSubmenu }
+  }, [agentMenuOpen, agentSubmenu])
 
   const openSetup = (): void => {
     setDraft(initialDraft(props))
+    setAgentMenuOpen(false)
+    setAgentSubmenu(null)
     setSetupError(null)
     setRepeatError(null)
     setSetupOpen(true)
@@ -215,7 +247,20 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
         event.preventDefault()
+        const menuState = agentMenuStateRef.current
+        if (menuState.submenu) {
+          setAgentSubmenu(null)
+          ;(menuState.submenu === 'model' ? modelOptionTriggerRef.current : effortOptionTriggerRef.current)?.focus()
+          return
+        }
+        if (menuState.open) {
+          setAgentMenuOpen(false)
+          agentDropdownTriggerRef.current?.focus()
+          return
+        }
         setSetupOpen(false)
+        setAgentMenuOpen(false)
+        setAgentSubmenu(null)
         setSetupError(null)
         return
       }
@@ -254,6 +299,11 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
   const profile = profiles.find((item) => item.id === draft.profileId) ?? activeProfile
   const cloudModels = props.modelCatalog.filter((entry) => entry.runtime === 'cloud')
   const localModels = props.modelCatalog.filter((entry) => entry.runtime === 'local')
+  const reasoningOptions = selectedModel?.runtime === 'cloud'
+    ? selectedModel.reasoning_options ?? []
+    : selectedModel?.runtime === 'local' ? supportedLocalModes(selectedModel) : []
+  const selectedReasoning = reasoningSummary(selectedModel, draft)
+  const selectedProvider = selectedModel ? providerDisplayName(selectedModel.provider) : null
   const profileError = modelSelectionError(profile, selectedModel, draft, props)
   const generateDisabled = Boolean(profileError) || props.busy || props.hasActiveSession || isSubmitting || isRepeating
   const repeatReason = repeatUnavailableReason(props.latestSession, props.latestError, props.isLoadingLatestSession, props)
@@ -268,6 +318,8 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
 
   const closeSetup = (): void => {
     setSetupOpen(false)
+    setAgentMenuOpen(false)
+    setAgentSubmenu(null)
     setSetupError(null)
   }
 
@@ -276,6 +328,8 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
     submitGuardRef.current = true
     setIsSubmitting(true)
     setSetupError(null)
+    setAgentMenuOpen(false)
+    setAgentSubmenu(null)
     setSetupOpen(false)
     try {
       await props.onGenerate(draft)
@@ -319,7 +373,7 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
   }
 
   return <section className="flex w-full min-w-0 flex-col gap-3" aria-label="Briefing controls">
-    <div className="flex flex-wrap items-start gap-2">
+    <div className={props.actionLayout === 'column' ? 'grid w-full grid-cols-1 gap-2' : 'grid w-full min-w-0 grid-cols-2 gap-2'}>
       <button
         ref={setupOpenerRef}
         type="button"
@@ -327,7 +381,7 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
         disabled={isSubmitting || isRepeating}
         aria-haspopup="dialog"
         aria-expanded={setupOpen}
-        className="hud-command-surface inline-flex min-h-10 items-center justify-center rounded-lg border border-[#1F6FE5]/50 bg-[#0F4DB8]/20 px-3.5 py-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.14em] text-[#DCEAFF] hover:bg-[#0F4DB8]/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] disabled:cursor-not-allowed disabled:opacity-45"
+        className="hud-command-surface inline-flex min-h-10 w-full min-w-0 items-center justify-center rounded-lg border border-[#1F6FE5]/50 bg-[#0F4DB8]/20 px-2 py-2 text-center font-orbitron text-[9px] font-semibold uppercase leading-snug tracking-[0.12em] text-[#DCEAFF] hover:bg-[#0F4DB8]/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] disabled:cursor-not-allowed disabled:opacity-45"
       >
         Set up briefing
       </button>
@@ -336,7 +390,7 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
         onClick={() => void repeatLast()}
         disabled={repeatDisabled}
         aria-describedby="briefing-repeat-status"
-        className="inline-flex min-h-10 min-w-0 flex-1 items-center justify-center rounded-lg border border-amber-400/25 bg-amber-950/20 px-3 py-2 text-left font-orbitron text-[9px] font-semibold uppercase tracking-[0.12em] text-amber-200 hover:border-amber-400/40 hover:bg-amber-400/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200 disabled:cursor-not-allowed disabled:opacity-45"
+        className="inline-flex min-h-10 w-full min-w-0 items-center justify-center rounded-lg border border-amber-400/25 bg-amber-950/20 px-2 py-2 text-center font-orbitron text-[9px] font-semibold uppercase leading-snug tracking-[0.12em] text-amber-200 hover:border-amber-400/40 hover:bg-amber-400/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200 disabled:cursor-not-allowed disabled:opacity-45"
       >
         {isRepeating ? 'Repeating…' : 'Repeat last briefing'}
       </button>
@@ -368,7 +422,7 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
             <div className="min-w-0 flex-1">
               <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#6EA8FF]">Briefing configuration</p>
               <h2 id="briefing-setup-title" className="mt-1 font-orbitron text-sm font-semibold uppercase tracking-[0.12em] text-zinc-100 sm:text-base">Set up your briefing</h2>
-              <p id="briefing-setup-description" className="mt-2 max-w-2xl text-xs leading-relaxed text-zinc-400">Choose a briefing profile and an Apex Agent model. These choices are saved when you generate.</p>
+              <p id="briefing-setup-description" className="mt-2 max-w-2xl text-xs leading-relaxed text-zinc-400">Choose a briefing profile and configure Apex Agent. These choices are saved when you generate.</p>
             </div>
             <button
               ref={closeButtonRef}
@@ -390,7 +444,11 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
                   type="button"
                   aria-pressed={draft.profileId === item.id}
                   disabled={!item.available || isSubmitting}
-                  onClick={() => setDraft((current) => ({ ...current, profileId: item.id }))}
+                  onClick={() => {
+                    setDraft((current) => ({ ...current, profileId: item.id }))
+                    setAgentMenuOpen(false)
+                    setAgentSubmenu(null)
+                  }}
                   className={`flex min-h-28 flex-col items-start rounded-xl border p-3 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7EB3FF] disabled:cursor-not-allowed disabled:opacity-45 ${draft.profileId === item.id ? 'border-[#6EA8FF]/60 bg-[#0F4DB8]/20 shadow-[inset_0_0_18px_rgba(31,111,229,0.12)]' : 'border-white/10 bg-black/20 hover:border-white/20 hover:bg-white/[0.04]'}`}
                 >
                   <span className="flex w-full items-center gap-2 font-orbitron text-[10px] uppercase tracking-[0.14em] text-zinc-100">
@@ -405,60 +463,140 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
               </div>
             </fieldset>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="min-w-0">
+              <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300">Apex Agent</p>
               <div className="min-w-0">
-                <label htmlFor="briefing-setup-model" className="mb-2 block font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300">Apex Agent model</label>
-                <select
-                  id="briefing-setup-model"
-                  value={selectedModel ? draft.modelId : ''}
-                  onChange={(event) => updateDraftModel(event.target.value)}
+                <button
+                  ref={agentDropdownTriggerRef}
+                  type="button"
+                  aria-expanded={agentMenuOpen}
+                  aria-controls={agentMenuOpen ? agentMenuId : undefined}
+                  onClick={() => {
+                    setAgentMenuOpen((open) => !open)
+                    setAgentSubmenu(null)
+                  }}
                   disabled={isSubmitting}
-                  className="min-h-11 w-full rounded-lg border border-white/10 bg-zinc-950/90 px-3 py-2 font-mono text-xs text-zinc-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7EB3FF] disabled:opacity-50"
+                  className="flex min-h-14 w-full min-w-0 items-center gap-3 rounded-xl border border-white/10 bg-zinc-950/70 px-3 py-2.5 text-left hover:border-[#7EB3FF]/40 hover:bg-white/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7EB3FF] disabled:opacity-50"
                 >
-                  <option value="" disabled>{props.demoModeActive && props.modelCatalog.length === 0 ? 'Demo uses saved fixtures' : 'Select a model'}</option>
-                  {cloudModels.length > 0 ? <optgroup label="Cloud">
-                    {cloudModels.map((model) => <option key={model.model_id} value={model.model_id} disabled={!modelIsAvailable(model)}>
-                      {model.display_name}{modelIsAvailable(model) ? '' : ' · unavailable'}
-                    </option>)}
-                  </optgroup> : null}
-                  {localModels.length > 0 ? <optgroup label="Local">
-                    {localModels.map((model) => <option key={model.model_id} value={model.model_id} disabled={!modelIsAvailable(model)}>
-                      {model.display_name}{modelIsAvailable(model) ? '' : ' · unavailable'}
-                    </option>)}
-                  </optgroup> : null}
-                </select>
-                {selectedModel ? <p className="mt-1.5 text-[10px] text-zinc-500">{providerDisplayName(selectedModel.provider)} · {selectedModel.runtime === 'cloud' ? 'Cloud model' : 'Runs on this device'}</p> : null}
-              </div>
+                  <ModelMark modelId={selectedModel?.model_id ?? draft.modelId} provider={selectedModel?.provider} size={21} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className="truncate font-orbitron text-xs font-semibold text-zinc-100">{selectedModel?.display_name ?? 'Choose a model'}</span>
+                      {selectedProvider ? <span className="font-mono text-[9px] text-zinc-500">{selectedProvider}</span> : null}
+                    </span>
+                    <span className="mt-1 block truncate font-mono text-[10px] text-zinc-400">{selectedModel ? formatAgentPricing(selectedModel) : props.demoModeActive ? 'Demo uses saved fixtures' : 'Select a model'}</span>
+                  </span>
+                  {selectedModel ? <StabilityBadge stability={selectedModel.stability} /> : null}
+                  {selectedModel?.dev_only ? <span className="rounded border border-purple-400/30 bg-purple-500/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-purple-200">Dev mode</span> : null}
+                  <span className="shrink-0 border-l border-white/10 pl-3 text-right">
+                    <span className="block font-mono text-[8px] uppercase tracking-wider text-zinc-500">Effort</span>
+                    <span className="block font-mono text-[10px] text-[#DCEAFF]">{selectedReasoning}</span>
+                  </span>
+                  <ChevronDown className={`size-4 shrink-0 text-zinc-400 transition-transform ${agentMenuOpen ? 'rotate-180 text-[#7EB3FF]' : ''}`} aria-hidden />
+                </button>
 
-              {selectedModel?.runtime === 'cloud' ? (
-                <div className="min-w-0">
-                  <label htmlFor="briefing-setup-cloud-effort" className="mb-2 block font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300">Cloud reasoning effort</label>
-                  {selectedModel.reasoning_options && selectedModel.reasoning_options.length > 0 ? <select
-                    id="briefing-setup-cloud-effort"
-                    value={draft.cloudEffort ?? ''}
-                    onChange={(event) => setDraft((current) => ({ ...current, cloudEffort: event.target.value as CloudEffort || null }))}
-                    disabled={isSubmitting}
-                    className="min-h-11 w-full rounded-lg border border-white/10 bg-zinc-950/90 px-3 py-2 font-mono text-xs text-zinc-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7EB3FF] disabled:opacity-50"
-                  >
-                    <option value="" disabled>Select a supported effort</option>
-                    {selectedModel.reasoning_options.map((effort) => <option key={effort} value={effort}>{formatReasoningLabel(effort)}</option>)}
-                  </select> : <p className="flex min-h-11 items-center rounded-lg border border-white/10 bg-black/20 px-3 text-xs text-zinc-400">This model has no configurable reasoning effort.</p>}
-                </div>
-              ) : selectedModel?.runtime === 'local' ? (
-                <div className="min-w-0">
-                  <label htmlFor="briefing-setup-local-reasoning" className="mb-2 block font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300">Local reasoning mode</label>
-                  {supportedLocalModes(selectedModel).length > 0 ? <select
-                    id="briefing-setup-local-reasoning"
-                    value={draft.localReasoningMode ?? ''}
-                    onChange={(event) => setDraft((current) => ({ ...current, localReasoningMode: (event.target.value as LocalReasoningMode) || null }))}
-                    disabled={isSubmitting}
-                    className="min-h-11 w-full rounded-lg border border-white/10 bg-zinc-950/90 px-3 py-2 font-mono text-xs text-zinc-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7EB3FF] disabled:opacity-50"
-                  >
-                    <option value="" disabled>Select a supported mode</option>
-                    {supportedLocalModes(selectedModel).map((mode) => <option key={mode} value={mode}>{formatReasoningLabel(mode)}</option>)}
-                  </select> : <p className="flex min-h-11 items-center rounded-lg border border-white/10 bg-black/20 px-3 text-xs text-amber-100">This model has no reported reasoning modes.</p>}
-                </div>
-              ) : <div className="flex min-h-11 items-center text-xs text-zinc-500">Choose a model to see its reasoning controls.</div>}
+                {agentMenuOpen ? <div
+                  id={agentMenuId}
+                  className="mt-2 grid min-w-0 grid-cols-[minmax(6.75rem,0.72fr)_minmax(0,1.28fr)] overflow-hidden rounded-xl border border-white/15 bg-zinc-950/95 shadow-xl"
+                  data-slot="briefing-agent-menu"
+                >
+                  <div role="group" aria-label="Apex Agent options" className="space-y-1 p-2">
+                    <button
+                      ref={modelOptionTriggerRef}
+                      type="button"
+                      aria-expanded={agentSubmenu === 'model'}
+                      aria-controls={agentSubmenu === 'model' ? `${agentMenuId}-models` : undefined}
+                      onClick={() => setAgentSubmenu((current) => current === 'model' ? null : 'model')}
+                      disabled={isSubmitting}
+                      className={`flex min-h-12 w-full items-center justify-between gap-1 rounded-lg border px-2 py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7EB3FF] disabled:opacity-50 ${agentSubmenu === 'model' ? 'border-[#6EA8FF]/40 bg-[#0F4DB8]/15 text-white' : 'border-transparent text-zinc-300 hover:border-white/10 hover:bg-white/[0.04]'}`}
+                    >
+                      <span className="min-w-0">
+                        <span className="block font-orbitron text-[9px] uppercase tracking-wider">Model</span>
+                        <span className="mt-0.5 block truncate font-mono text-[9px] text-zinc-500">{selectedModel?.display_name ?? 'Select one'}</span>
+                      </span>
+                      <ChevronDown className="size-3.5 shrink-0 -rotate-90" aria-hidden />
+                    </button>
+                    <button
+                      ref={effortOptionTriggerRef}
+                      type="button"
+                      aria-expanded={agentSubmenu === 'effort'}
+                      aria-controls={agentSubmenu === 'effort' ? `${agentMenuId}-effort` : undefined}
+                      onClick={() => setAgentSubmenu((current) => current === 'effort' ? null : 'effort')}
+                      disabled={isSubmitting}
+                      className={`flex min-h-12 w-full items-center justify-between gap-1 rounded-lg border px-2 py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7EB3FF] disabled:opacity-50 ${agentSubmenu === 'effort' ? 'border-[#6EA8FF]/40 bg-[#0F4DB8]/15 text-white' : 'border-transparent text-zinc-300 hover:border-white/10 hover:bg-white/[0.04]'}`}
+                    >
+                      <span className="min-w-0">
+                        <span className="block font-orbitron text-[9px] uppercase tracking-wider">Effort</span>
+                        <span className="mt-0.5 block truncate font-mono text-[9px] text-zinc-500">{selectedReasoning}</span>
+                      </span>
+                      <ChevronDown className="size-3.5 shrink-0 -rotate-90" aria-hidden />
+                    </button>
+                  </div>
+
+                  <div className="min-h-32 min-w-0 max-h-[min(48vh,24rem)] overflow-y-auto border-l border-white/10 bg-black/20 p-2 scrollbar-thin">
+                    {agentSubmenu === 'model' ? <div id={`${agentMenuId}-models`} role="group" aria-label="Apex Agent model choices" className="space-y-3">
+                      {([['Cloud models', cloudModels], ['Local models', localModels]] as const).map(([label, models]) => models.length > 0 ? <section key={label} role="group" aria-label={label} className="space-y-1.5">
+                        <p className="px-1 font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-500">{label}</p>
+                        {models.map((model) => {
+                          const available = modelIsAvailable(model)
+                          const provider = providerDisplayName(model.provider)
+                          return <button
+                            key={model.model_id}
+                            type="button"
+                            aria-pressed={model.model_id === draft.modelId}
+                            disabled={!available || isSubmitting}
+                            onClick={() => {
+                              updateDraftModel(model.model_id)
+                              setAgentSubmenu(null)
+                            }}
+                            className={`w-full min-w-0 rounded-lg border p-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7EB3FF] disabled:cursor-not-allowed disabled:opacity-45 ${model.model_id === draft.modelId ? 'border-[#7EB3FF]/45 bg-[#0F4DB8]/15' : 'border-white/5 bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.04]'}`}
+                          >
+                            <span className="flex min-w-0 items-start gap-1.5">
+                              <ModelMark modelId={model.model_id} provider={model.provider} size={16} />
+                              <span className="min-w-0 flex-1">
+                                <span className="flex flex-wrap items-center gap-1">
+                                  <span className="font-orbitron text-[10px] font-semibold text-zinc-100">{model.display_name}</span>
+                                  <StabilityBadge stability={model.stability} />
+                                  {model.dev_only ? <span className="rounded border border-purple-400/30 bg-purple-500/10 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-purple-200">Dev mode</span> : null}
+                                </span>
+                                <span className="mt-0.5 block font-mono text-[9px] text-zinc-500">{provider}{available ? '' : ' · Unavailable'}</span>
+                              </span>
+                              {model.model_id === draft.modelId ? <Check className="size-3.5 shrink-0 text-[#39FF88]" aria-hidden /> : null}
+                            </span>
+                            <span className="mt-1.5 block font-mono text-[9px] leading-relaxed text-zinc-400">{formatAgentPricing(model)}</span>
+                          </button>
+                        })}
+                      </section> : null)}
+                      {props.modelCatalog.length === 0 ? <p className="px-1 py-2 text-[10px] leading-relaxed text-zinc-500">{props.demoModeActive ? 'Demo uses saved fixtures.' : 'No cloud or local models are available.'}</p> : null}
+                    </div> : agentSubmenu === 'effort' ? <div id={`${agentMenuId}-effort`} role="group" aria-label="Reasoning effort choices" className="space-y-1">
+                      <p className="mb-2 px-1 font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-500">{selectedModel?.runtime === 'local' ? 'Local reasoning mode' : 'Reasoning effort'}</p>
+                      {reasoningOptions.length > 0 ? reasoningOptions.map((option) => {
+                        const isSelected = selectedModel?.runtime === 'cloud'
+                          ? draft.cloudEffort === option
+                          : draft.localReasoningMode === option
+                        return <button
+                          key={option}
+                          type="button"
+                          aria-pressed={isSelected}
+                          disabled={isSubmitting}
+                          onClick={() => {
+                            if (selectedModel?.runtime === 'cloud') {
+                              setDraft((current) => ({ ...current, cloudEffort: option as CloudEffort }))
+                            } else if (selectedModel?.runtime === 'local') {
+                              setDraft((current) => ({ ...current, localReasoningMode: option as LocalReasoningMode }))
+                            }
+                            setAgentSubmenu(null)
+                          }}
+                          className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-left font-mono text-[10px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7EB3FF] disabled:opacity-50 ${isSelected ? 'border-[#7EB3FF]/45 bg-[#0F4DB8]/15 text-[#DCEAFF]' : 'border-white/5 text-zinc-300 hover:border-white/15 hover:bg-white/[0.04]'}`}
+                        >
+                          {formatReasoningLabel(option)}
+                          {isSelected ? <Check className="size-3.5 text-[#39FF88]" aria-hidden /> : null}
+                        </button>
+                      }) : <p className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-[10px] leading-relaxed text-zinc-400">{selectedModel?.runtime === 'cloud' ? 'This model has no configurable reasoning effort.' : selectedModel?.runtime === 'local' ? 'This model has no reported reasoning modes.' : 'Choose a model to see its reasoning options.'}</p>}
+                    </div> : <p className="flex min-h-32 items-center justify-center px-2 text-center text-[10px] leading-relaxed text-zinc-500">Choose Model or Effort to configure Apex Agent.</p>}
+                  </div>
+                </div> : null}
+              </div>
             </div>
             {props.demoModeActive ? <p className="rounded-lg border border-amber-400/15 bg-amber-950/15 px-3 py-2 text-[11px] leading-relaxed text-amber-100/80">DEMO_MODE generates from saved fixtures. Model choices are not sent to a provider.</p> : null}
             {profileError ? <p className="text-[11px] leading-relaxed text-amber-100/80" role="status">{profileError}</p> : null}

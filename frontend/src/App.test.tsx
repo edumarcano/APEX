@@ -505,6 +505,15 @@ async function selectWorkspace(user: ReturnType<typeof userEvent.setup>, name: s
   await user.click(within(screen.getByRole('menu', { name: 'Workspace' })).getByRole('menuitemradio', { name }))
 }
 
+async function selectBriefingEffort(user: ReturnType<typeof userEvent.setup>, effort: string): Promise<void> {
+  const dialog = screen.getByRole('dialog', { name: 'Set up your briefing' })
+  await user.click(within(dialog).getByRole('button', { name: /DeepSeek V4 Flash/ }))
+  const agentOptions = within(dialog).getByRole('group', { name: 'Apex Agent options' })
+  await user.click(within(agentOptions).getByRole('button', { name: /^Effort/ }))
+  const effortChoices = within(dialog).getByRole('group', { name: 'Reasoning effort choices' })
+  await user.click(within(effortChoices).getByRole('button', { name: effort }))
+}
+
 describe('App catalog-affecting settings', () => {
   afterEach(() => {
     appMocks.initialAgent = 'apex'
@@ -1388,7 +1397,7 @@ describe('App briefing session flow', () => {
     const setup = await screen.findByRole('dialog', { name: 'Set up your briefing' })
     expect(admissions).toBe(0)
     expect(settingsPatchBody).toBeNull()
-    await user.selectOptions(screen.getByLabelText('Cloud reasoning effort'), 'high')
+    await selectBriefingEffort(user, 'High')
     await user.click(within(setup).getByRole('button', { name: 'Generate Daily' }))
 
     await waitFor(() => expect(admissionBody).not.toBeNull())
@@ -1472,12 +1481,12 @@ describe('App briefing setup failure ordering', () => {
     render(<App />)
     await selectWorkspace(user, 'Briefing')
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
-    await user.selectOptions(screen.getByLabelText('Cloud reasoning effort'), 'high')
+    await selectBriefingEffort(user, 'High')
     await user.click(screen.getByRole('button', { name: 'Generate Daily' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Set up your briefing' })
     expect(screen.getByRole('alert')).toHaveTextContent('settings denied')
-    expect(screen.getByLabelText('Cloud reasoning effort')).toHaveValue('high')
+    expect(screen.getByRole('button', { name: /DeepSeek V4 Flash/ })).toHaveTextContent('High')
     expect(patches).toBe(1)
     expect(posts).toBe(0)
     expect(dialog).toBeInTheDocument()
@@ -1502,7 +1511,7 @@ describe('App briefing setup failure ordering', () => {
     render(<App />)
     await selectWorkspace(user, 'Briefing')
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
-    await user.selectOptions(screen.getByLabelText('Cloud reasoning effort'), 'high')
+    await selectBriefingEffort(user, 'High')
     await user.click(screen.getByRole('button', { name: 'Generate Daily' }))
 
     await screen.findByRole('alert')
@@ -1511,7 +1520,7 @@ describe('App briefing setup failure ordering', () => {
     expect(patches).toBe(1)
     await user.click(screen.getByRole('button', { name: 'Close' }))
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
-    expect(screen.getByLabelText('Cloud reasoning effort')).toHaveValue('high')
+    expect(screen.getByRole('button', { name: /DeepSeek V4 Flash/ })).toHaveTextContent('High')
     expect(patches).toBe(1)
   })
 })
