@@ -163,7 +163,6 @@ ALL_MODEL_PROFILES: dict[str, ModelProfile] = {
 
 DEFAULT_APEX_MODEL = "deepseek/deepseek-v4-flash-0731"
 DEFAULT_CLOUD_MODEL = DEFAULT_APEX_MODEL
-FOCUSED_BRIEFING_MODEL = "deepseek/deepseek-v4-flash-0731"
 DEFAULT_LOCAL_MODEL = "gemma-4-E2B-Q4_K_M.gguf"
 DEFAULT_LOCAL_RUNTIME: LocalRuntime = "llama_cpp"
 

@@ -350,17 +350,6 @@ class AgentQueryRequest(BaseModel):
         default=None,
         description="Optional turn-specific reasoning mode override for local models.",
     )
-    briefing_id: Optional[int] = Field(
-        default=None,
-        ge=1,
-        description=(
-            "Optional briefing history row ID. When present, that briefing's "
-            "prose and insights are injected as HUD context. Absent IDs inject "
-            "no briefing context."
-        ),
-    )
-
-
 class AgentQueryResponse(BaseModel):
     answer: str = Field(description="The final synthesized response from the agent.")
     agent_used: Dict[str, Any] = Field(

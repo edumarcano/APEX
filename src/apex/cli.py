@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,8 @@ API_ROOT = "http://127.0.0.1:8000"
 _CONNECT_TIMEOUT_SECONDS = 3.0
 _DEFAULT_READ_TIMEOUT_SECONDS = 30.0
 _LONG_READ_TIMEOUT_SECONDS = 600.0
+_BRIEFING_POLL_INTERVAL_SECONDS = 0.5
+_BRIEFING_POLL_TIMEOUT_SECONDS = 600.0
 _CONTEXT_KINDS = (
     "idea",
     "preference",
@@ -298,10 +301,12 @@ def build_parser() -> argparse.ArgumentParser:
     briefing = commands.add_parser("briefing", help="Refresh and generate a briefing.")
     _add_json_option(briefing)
     briefing.add_argument(
-        "--mode",
-        choices=("flash", "focused", "structured"),
-        help="Briefing mode override.",
+        "--profile",
+        choices=("daily", "catch-up", "deep"),
+        default="daily",
+        help="Briefing profile (default: daily).",
     )
+    briefing.add_argument("--model", help="Model ID. Defaults to the saved Apex Agent selection.")
     briefing.set_defaults(handler=_briefing)
 
     actions = commands.add_parser("actions", help="Inspect or resolve action proposals.")
@@ -409,7 +414,14 @@ def _add_activity_metadata_arguments(parser: argparse.ArgumentParser, *, include
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    briefing_index = arguments.index("briefing") if "briefing" in arguments else -1
+    if briefing_index >= 0 and any(
+        argument == "--mode" or argument.startswith("--mode=")
+        for argument in arguments[briefing_index + 1 :]
+    ):
+        parser.error("briefing --mode was retired; use --profile daily|catch-up|deep")
+    args = parser.parse_args(arguments)
     json_mode = bool(getattr(args, "json_mode", False))
     client = ApiClient()
     try:
@@ -876,17 +888,58 @@ def _cli_conversation_title(prompt: str) -> str:
 
 
 def _briefing(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
-    payload: dict[str, object] = {}
-    if args.mode is not None:
-        payload["mode"] = args.mode
-    result = client.request(
-        "POST", "/api/v1/trigger", payload=payload, long_running=True
+    model_id = args.model
+    if model_id is None:
+        settings_response = _require_mapping(
+            client.request("GET", "/api/v1/settings"), "runtime settings"
+        )
+        settings = settings_response.get("settings")
+        ask_apex = settings.get("ask_apex") if isinstance(settings, dict) else None
+        selected_model = ask_apex.get("selected_model") if isinstance(ask_apex, dict) else None
+        if not isinstance(selected_model, str) or not selected_model.strip():
+            raise CliError(
+                "invalid_response",
+                "APEX settings did not include the saved Apex Agent model selection.",
+            )
+        model_id = selected_model.strip()
+
+    profile_id = {"daily": "daily", "catch-up": "catch_up", "deep": "deep"}[args.profile]
+    created = _require_mapping(
+        client.request(
+            "POST",
+            "/api/v1/briefing-sessions",
+            payload={
+                "idempotency_key": str(uuid.uuid4()),
+                "profile_id": profile_id,
+                "model_id": model_id,
+                "origin": "cli",
+            },
+        ),
+        "briefing session",
     )
-    response = _require_mapping(result, "briefing response")
-    if not isinstance(response.get("briefing"), str):
-        raise CliError("invalid_response", "APEX briefing response did not include briefing text.")
-    _emit(result, json_mode, _render_briefing)
-    return 0
+    session_id = created.get("id")
+    if not isinstance(session_id, str) or not session_id.strip():
+        raise CliError("invalid_response", "APEX did not return a briefing session ID.")
+
+    deadline = time.monotonic() + _BRIEFING_POLL_TIMEOUT_SECONDS
+    while True:
+        detail = _require_mapping(
+            client.request(
+                "GET",
+                f"/api/v1/briefing-sessions/{quote(session_id, safe='')}",
+            ),
+            "briefing session detail",
+        )
+        run_status = detail.get("run_status")
+        if run_status in {"completed", "failed", "cancelled", "interrupted"}:
+            _emit(detail, json_mode, _render_briefing_session)
+            return 0 if run_status == "completed" and isinstance(detail.get("artifact"), dict) else 1
+        if time.monotonic() >= deadline:
+            raise CliError(
+                "briefing_timeout",
+                "APEX briefing generation did not finish within 10 minutes.",
+            )
+        time.sleep(_BRIEFING_POLL_INTERVAL_SECONDS)
 
 
 def _actions_list(_args: argparse.Namespace, client: ApiClient, json_mode: bool) -> int:
@@ -1422,11 +1475,53 @@ def _render_context_vault_settings(payload: object) -> None:
     print(f"Context vault exports are {enabled} across {count} scope(s).")
 
 
-def _render_briefing(payload: object) -> None:
-    if isinstance(payload, dict) and isinstance(payload.get("briefing"), str):
-        print(payload["briefing"])
+def _render_briefing_session(payload: object) -> None:
+    if not isinstance(payload, dict):
+        print("APEX returned an unexpected briefing session.")
         return
-    print("APEX returned an unexpected briefing response.")
+    configuration = payload.get("configuration")
+    configuration = configuration if isinstance(configuration, dict) else {}
+    profile = configuration.get("profile")
+    profile = profile if isinstance(profile, dict) else {}
+    model = configuration.get("model")
+    model = model if isinstance(model, dict) else {}
+    print(f"Briefing: {profile.get('label', profile.get('id', 'Unknown profile'))}")
+    print(f"Model: {model.get('model_id', 'unknown')}")
+    print(f"Status: {payload.get('run_status', 'unknown')}")
+    print(f"Presented: {'yes' if payload.get('presented_at') else 'no'}")
+
+    artifact = payload.get("artifact")
+    if not isinstance(artifact, dict):
+        error = payload.get("run_error_code")
+        if isinstance(error, str) and error:
+            print(f"Details: {error}")
+        return
+    sections = artifact.get("sections")
+    if isinstance(sections, list):
+        for section in sections:
+            if not isinstance(section, dict):
+                continue
+            title = section.get("title")
+            if isinstance(title, str) and title:
+                print(f"\n{title}")
+            items = section.get("items")
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                item_title = item.get("title")
+                body = item.get("body")
+                if isinstance(item_title, str) and item_title:
+                    print(f"- {item_title}")
+                if isinstance(body, str) and body:
+                    print(f"  {body}")
+    limitations = artifact.get("limitations")
+    if isinstance(limitations, list) and limitations:
+        print("\nLimitations")
+        for limitation in limitations:
+            if isinstance(limitation, str):
+                print(f"- {limitation}")
 
 
 def _render_actions_list(payload: object) -> None:

@@ -9,7 +9,7 @@
 ## Current Focus
 
 **Current Phase:** [Phase V: APEX 2.0 Beta](#phase-v-apex-20-beta)
-**Next Milestone:** [v2.0.0-beta.6 - Cortex: Adaptive Briefings & Attention](#v200-beta6---cortex-adaptive-briefings--attention)
+**Next Milestone:** [v2.0.0 - APEX 2.0 Stable](#v200---apex-20-stable)
 **Current Direction:** [APEX 2.0 Direction](#apex-20-direction)
 
 ### Navigation
@@ -478,24 +478,14 @@ Publish selected trusted personal context as linked Markdown notes for Obsidian 
 
 ## v2.0.0-beta.6 - Cortex: Adaptive Briefings & Attention
 
-**Status:** Planned
+**Status:** Complete
 
 **Objective:**
-Rebuild APEX briefings as a first-class, interactive information system and redesign Home around the three states of Standby, Overview, and Briefing.
+Rebuilt Home briefings around one bounded, saved-session engine using the selected Apex Agent model. Daily, Catch Up, and Deep are built-in profiles; completed sessions retain canonical artifacts and evidence and continue in linked Cortex conversations. Catch Up compares presented source history, while Deep can use bounded read-only investigation. Optional speech is prepared from the saved artifact, and Home now presents Standby, Overview, and Briefing as three states of one workspace.
 
-Briefing generation should use the Apex Agent model catalog as its single model source and run through one shared, bounded execution graph. Built-in briefing profiles should configure that graph rather than own separate model or Agent logic. Beta.6 should initially focus on three differentiated profiles: Daily Briefing for orientation, Catch Up for meaningful changes since the operator last checked, and Deep Briefing for broader reasoning and optional tool-assisted investigation.
+Final integration removed the previous Flash, Focused, and Structured pipeline, its routes and UI controls, old status ownership, and their model/preference defaults. No old settings are mapped. The upgrade drops only the legacy SQLite `briefings` table transactionally, preserving `briefing_sessions` and unrelated data while permanently retiring old history. The CLI and Apex Agent briefing-history tool use the saved-session contract.
 
-Each run should produce a persistent, canonical structured briefing rather than a paragraph plus shallow insights. Visual presentation, follow-up conversation, and optional speech delivery should all consume that same artifact. Briefings should preserve source and trust boundaries, distinguish accepted context from external reports or model interpretations, and retain enough history to avoid repeatedly presenting unchanged information as new.
-
-Briefing sessions should continue naturally into Apex Agent conversation so the operator can ask follow-up questions, inspect evidence, request deeper explanation, use approved tools, and move into verified actions without introducing a second Agent runtime.
-
-Speech delivery should be redesigned around a dedicated adaptation step that turns the canonical briefing into content written specifically for listening. It may condense and reorder existing briefing content, but it must not independently investigate or introduce new claims. Existing short APEX voice cues should remain useful, while full transcript-style narration should no longer define the briefing experience.
-
-Home should become one workspace with three specialized states. Standby preserves the current identity-first presentation with simplified entry actions. Overview becomes a telemetry-first dashboard with an uneven, content-driven grid and no chat surface. Briefing becomes a center-weighted three-column workspace where the interactive briefing is primary, controls and system identity live in the left rail, and raw telemetry remains available in a unified right-side evidence rail.
-
-The milestone should replace the legacy hardcoded briefing-model paths and static briefing presentation without turning APEX into a general workflow, scheduling, or graph-authoring platform. Custom briefing profiles, scoped Focus briefings, a user-editable graph, and a full scheduling system are deferred. Briefing execution should remain separable from the Home UI so prepared generation can be added later, and a simple CLI or API entry point may be included only if it falls out naturally from the new architecture.
-
-This is the final feature beta before v2.0.0. Its purpose is to settle the briefing architecture, built-in profiles, interactive session model, speech delivery, briefing history behavior, and the Home experience that presents them.
+Custom profiles, a scheduler, user-editable execution graphs, and a stable release are outside this milestone. The stable release remains the next roadmap milestone.
 
 ---
 
@@ -508,7 +498,7 @@ Consolidate the six beta milestones into a stable APEX 2.0 release without addin
 
 The release should settle the contracts for personal context and evidence, review decisions, Apex Agent runs, verified actions, external activity, generated context vaults, briefing configuration, and persistent attention.
 
-Migration work should preserve useful operator data, including conversations, accepted context, source history, reviews, actions, run summaries, reports, and existing briefing history. Remaining obsolete settings and compatibility code should be removed where they are no longer needed.
+Migration work should preserve useful operator data, including conversations, accepted context, source history, reviews, actions, run summaries, reports, and new briefing sessions. The retired legacy `briefings` table is deliberately dropped during the beta.6 cutover, and its records are not migrated. Old briefing profile and model settings are also not mapped into the current configuration.
 
 Vault testing should cover export selection, retractions, obsolete generated files, broken links, regeneration, and protection of handwritten notes. Documentation should clearly distinguish local APEX records from copies shared through cloud storage or other applications.
 
@@ -630,4 +620,4 @@ Models, note applications, sync providers, and outside AI products should remain
 APEX is currently in **Phase V: APEX 2.0 Beta**.
 
 **Next milestone:**
-[v2.0.0-beta.6 - Cortex: Adaptive Briefings & Attention](#v200-beta6---cortex-adaptive-briefings--attention)
+[v2.0.0 - APEX 2.0 Stable](#v200---apex-20-stable)

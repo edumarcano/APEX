@@ -11,7 +11,6 @@ export type { McpProviderId } from '../lib/mcpProviders'
 
 export type VoiceGender = 'male' | 'female'
 export type VoiceMode = 'off' | 'manual' | 'automatic'
-export type BriefingMode = 'flash' | 'focused' | 'structured'
 
 export interface LlamaCppSettings {
   enabled: boolean
@@ -138,10 +137,6 @@ export interface ToolProfilesSettings {
   default_profile_by_agent?: Record<string, string>
 }
 
-export interface BriefingSettings {
-  default_mode: BriefingMode
-}
-
 export interface VoiceSettings {
   engine: TtsEngine
   gender: VoiceGender
@@ -168,7 +163,6 @@ export interface RuntimeSettings {
   context_vault: ContextVaultSettings
   ask_apex: AgentSettings
   tool_profiles?: ToolProfilesSettings
-  briefing: BriefingSettings
   voice: VoiceSettings
   mcp: McpSettings
   llama_cpp: LlamaCppSettings
@@ -247,10 +241,6 @@ export interface ToolProfilesPatch {
   default_profile_by_agent?: Record<string, string>
 }
 
-export interface BriefingPatch {
-  default_mode?: BriefingMode
-}
-
 export interface VoicePatch {
   engine?: TtsEngine
   gender?: VoiceGender
@@ -313,7 +303,6 @@ export interface SettingsPatch {
   context_vault?: ContextVaultPatch
   ask_apex?: AgentSettingsPatch
   tool_profiles?: ToolProfilesPatch
-  briefing?: BriefingPatch
   voice?: VoicePatch
   mcp?: McpPatch
   llama_cpp?: LlamaCppPatch
@@ -345,7 +334,6 @@ export type SettingsTimingFieldGroup =
   | 'football'
   | 'modules'
   | 'agent_queries'
-  | 'briefing'
   | 'voice'
   | 'mcp'
   | 'llama_cpp'
@@ -375,7 +363,7 @@ export interface McpStatusResponse {
 
 export interface SettingsTimingRuntime {
   briefingActive: boolean
-  pipelineStep: number | null
+  briefingStep: number | null
   isSpeaking: boolean
   isCortexQuerying: boolean
 }

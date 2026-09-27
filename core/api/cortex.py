@@ -7,7 +7,7 @@ from typing import Any, Callable, Literal, Mapping
 
 from fastapi import HTTPException, status
 
-from core import config, database
+from core import config
 from core.agent.loop import ExecutionControl, build_agent_failure_details, run_agent_loop
 from core.agent.providers.contract import ProviderStreamObserver
 from core.agent.capabilities import CapabilityDescriptor
@@ -51,7 +51,6 @@ from core.agent.model_catalog import (
 )
 from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
 from core.agent.providers.ollama_models import OLLAMA_RUNTIME_CONFIGS
-from core.agent.sandbox_context import get_masked_briefing
 from core.agent.loop import is_local_profile
 from core.agent.providers.cloud_verification import (
     cloud_status,
@@ -102,7 +101,7 @@ from core.api.models import (
 from core.config import DEMO_MODE, is_dev_mode
 from core.settings import get_settings_store
 from core.context import ContextBundle, ContextPolicy
-from core.synthesis.formatting import sanitize_fact
+from core.sanitization import sanitize_fact
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -683,11 +682,6 @@ def _prepare_agent_payload(
         }
     )
     if _is_sandbox_agent_query(agent_key, execution_partition=execution_partition):
-        if prepared.briefing_id is not None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Sandbox mode cannot attach saved briefing history.",
-            )
         if prepared.history_partition != "sandbox":
             prepared = prepared.model_copy(update={"history": []})
     elif prepared.history_partition != "production":
@@ -702,54 +696,11 @@ def _build_hud_context(
     execution_partition: Literal["production", "sandbox"] | None = None,
 ) -> str:
     """
-    Build optional HUD context from explicit identifiers only.
+    Build optional current telemetry context from its explicit snapshot ID.
 
-    Absent identifiers inject nothing. A mismatched snapshot ID is omitted
-    rather than inventing stale prose. An unknown briefing ID is omitted.
+    A mismatched snapshot ID is omitted rather than inventing stale prose.
     """
     sections: list[str] = []
-
-    if _is_sandbox_agent_query(
-        agent_key, execution_partition=execution_partition
-    ):
-        if payload.snapshot_id is None:
-            return ""
-        masked = get_masked_briefing(payload.snapshot_id)
-        if masked is None:
-            return ""
-        insight_text = ", ".join(
-            sanitize_fact(item, 160)
-            for item in masked.insights[:5]
-            if sanitize_fact(item, 160)
-        )
-        sections.append(
-            "CURRENT MASKED DEV BRIEFING:\n"
-            f'- Briefing Prose: "{sanitize_fact(masked.briefing, 800)}"\n'
-            f"- Active Summary Insights: {insight_text if insight_text else 'None'}"
-        )
-
-    if (
-        not _is_sandbox_agent_query(
-            agent_key, execution_partition=execution_partition
-        )
-        and payload.briefing_id is not None
-    ):
-        record = database.fetch_briefing_by_id(payload.briefing_id)
-        if record is not None:
-            insights_list = record["digest"].get("insights", [])
-            if not isinstance(insights_list, list):
-                insights_list = []
-            insight_text = ", ".join(
-                sanitize_fact(item, 160)
-                for item in insights_list[:5]
-                if isinstance(item, str) and sanitize_fact(item, 160)
-            )
-            sections.append(
-                "CURRENT HUD BRIEFING:\n"
-                f'- Briefing Prose: "{sanitize_fact(record["briefing"], 800)}"\n'
-                f"- Active Summary Insights: "
-                f"{insight_text if insight_text else 'None'}"
-            )
 
     if (
         not _is_sandbox_agent_query(
@@ -1141,7 +1092,6 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
         "history": history,
         "history_partition": history_partition,
         "snapshot_id": payload.snapshot_id,
-        "briefing_id": payload.briefing_id,
     }
     if (
         "selected_tool_names" in payload.model_fields_set

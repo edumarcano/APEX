@@ -20,14 +20,14 @@ import { API_ENDPOINTS } from '../lib/api'
 const DEFAULT_PROPS: ComponentProps<typeof SettingsPanel> = {
   open: true,
   onClose: vi.fn(),
-  status: 'idle',
-  pipelineStep: null,
+  briefingRunning: false,
+  briefingStep: null,
   isSpeaking: false,
   isCortexQuerying: false,
   modelCatalog: [],
   cortexAgentHydrated: false,
   failedConnectors: [],
-  hasBriefingEvidence: true,
+  hasTelemetryEvidence: true,
   onApplied: vi.fn(),
 }
 
@@ -230,7 +230,7 @@ describe('SettingsPanel', () => {
       .getByText('Weather')
       .parentElement
     expect(weatherStatusRow).not.toBeNull()
-    expect(within(weatherStatusRow as HTMLElement).getByText('Clear last briefing')).toBeVisible()
+    expect(within(weatherStatusRow as HTMLElement).getByText('Clear last refresh')).toBeVisible()
     expect(within(weatherStatusRow as HTMLElement).queryByText('Disabled')).not.toBeInTheDocument()
   })
 

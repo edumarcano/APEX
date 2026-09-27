@@ -46,18 +46,18 @@ Then launch APEX:
 uv run python launcher.py
 ```
 
-Demo mode uses static telemetry and deterministic Agent responses, skips live connectors, and does not write briefing history. It is the safest way to inspect the complete interface without disclosing personal data or configuring provider credentials.
+Demo mode uses static telemetry, deterministic Agent responses, and fixed Daily and Catch Up briefing fixtures in an in-memory database. It skips live connectors and provider calls, and its sessions reset when the demo process stops. It is the safest way to inspect the complete interface without disclosing personal data or configuring provider credentials.
 
 <p align="center">
   <img
     src="assets/apex-standby.png"
-    alt="APEX standby screen with Start APEX, Start with Briefing, and the briefing mode selector"
+    alt="APEX standby screen with actions to activate Home or begin a Daily briefing"
     width="900"
   >
 </p>
 
 <p align="center">
-  <em>APEX opens in standby and waits for the operator to start Home or begin with a briefing.</em>
+  <em>APEX opens in standby and waits for the operator to start Home or begin a Daily briefing.</em>
 </p>
 
 ## Run the full local system
@@ -167,12 +167,12 @@ uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model ge
 
 - Standby does not automatically collect telemetry or run a briefing.
 - **Start APEX** activates Home and refreshes its data.
-- **Start with Briefing** activates Home, refreshes telemetry, and generates a briefing with the selected mode.
+- **Start with Briefing** activates Home, refreshes telemetry, and starts a Daily session with the selected Apex Agent model. Choose Catch Up or Deep from the Briefing workspace.
 - Agent queries become available after activation when they are enabled in Settings.
 - Personal-context retrieval is off by default for both cloud and local models. The Cortex Context inspector remains available for adding, inspecting, correcting, retracting, and reviewing local records.
 - Context vault export is off by default. See the [Context vault guide](context-vault.md) when you want to share selected records as local Markdown notes.
 - Runtime Settings writes machine-local overrides to `config.local.json`.
-- `apex_memory.db` stores normal-mode briefing history, Cortex conversations and run records, external activity reports, personal-context sources and history, retrieval indexes, context reviews, the Microsoft To Do reminder cache and offline queue, and durable action history. Demo briefings are not persisted.
+- `apex_memory.db` stores briefing sessions and artifacts, Cortex conversations and run records, external activity reports, personal-context sources and history, retrieval indexes, context reviews, the Microsoft To Do reminder cache and offline queue, and durable action history. On the next database initialization, APEX drops the retired `briefings` table and permanently deletes its rows while preserving briefing sessions and unrelated records. Demo sessions use fixed non-personal fixtures and skip live providers.
 
 ## Troubleshooting
 

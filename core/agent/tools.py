@@ -410,12 +410,7 @@ def _unavailable_reminder_envelope() -> dict[str, Any]:
 
 
 def get_briefing_history(limit: int = 5) -> dict[str, Any]:
-    """Retrieve recent APEX briefing digests for episodic memory queries.
-
-    Fetches structured historical briefing records from the SQLite ledger,
-    allowing the agent to perform temporal comparative analysis across past
-    runs. Only essential metadata fields are returned to preserve the model's
-    token context window.
+    """Retrieve concise completed briefing sessions for episodic memory.
 
     Args:
         limit: Maximum number of historical briefing records to retrieve.
@@ -423,34 +418,82 @@ def get_briefing_history(limit: int = 5) -> dict[str, Any]:
             clamped. Defaults to 5.
 
     Returns:
-        dict: On success with records, ``{"limit_requested": limit,
-            "briefings": [<records>]}`` where each record contains ``id``,
-            ``timestamp``, ``briefing``, and ``insights`` (list). When no
-            records exist, ``{"message": "No briefings have been recorded in
-            the system ledger yet."}``. On failure, returns the stable message
-            ``{"error": "Briefing history unavailable."}``.
+        dict: On success with completed canonical sessions, returns their
+            profile, model, creation and presentation times, concise sections,
+            and recorded limitations. Failed and incomplete runs are omitted.
     """
     limit = max(1, min(5, limit))
     try:
-        from core import database
+        from core.briefings.service import get_briefing_session_queries
+        from core.sanitization import sanitize_fact
 
-        rows = database.fetch_briefing_history(limit=limit)
-        if not rows:
+        records = get_briefing_session_queries().completed_history(limit=limit)
+        if not records:
             return {
-                "message": (
-                    "No briefings have been recorded in the system ledger yet."
-                )
+                "message": "No completed briefing sessions have been recorded yet."
             }
 
         briefings: list[dict[str, Any]] = []
-        for record in rows:
-            digest = record.get("digest", {})
+        for record in records:
+            artifact = record.artifact
+            if artifact is None:
+                continue
+            sections: list[dict[str, Any]] = []
+            item_count = 0
+            for section in artifact.sections:
+                items: list[dict[str, str]] = []
+                for item in section.items:
+                    if item_count >= 2:
+                        break
+                    title = sanitize_fact(item.title, 96)
+                    body = sanitize_fact(item.body, 180)
+                    if not title and not body:
+                        continue
+                    items.append(
+                        {
+                            "category": item.category,
+                            "title": title,
+                            "body": body,
+                        }
+                    )
+                    item_count += 1
+                if items:
+                    sections.append(
+                        {"title": sanitize_fact(section.title, 80), "items": items}
+                    )
+                if item_count >= 2:
+                    break
+
+            limitations = [
+                sanitize_fact(item, 120)
+                for item in artifact.limitations
+                if sanitize_fact(item, 120)
+            ]
+            limitations.extend(
+                f"{item.source}: {item.status} coverage"
+                + (f" ({sanitize_fact(item.reason, 100)})" if item.reason else "")
+                for item in artifact.coverage
+                if item.status != "complete"
+            )
             briefings.append(
                 {
-                    "id": record["id"],
-                    "timestamp": record["timestamp"],
-                    "briefing": record["briefing"],
-                    "insights": digest.get("insights", []),
+                    "id": str(record.id),
+                    "profile": {
+                        "id": record.request.profile_id,
+                        "label": record.configuration.profile.label,
+                    },
+                    "model_id": record.configuration.model.model_id,
+                    "created_at": record.created_at.isoformat(),
+                    "presented_at": (
+                        record.presented_at.isoformat()
+                        if record.presented_at is not None
+                        else None
+                    ),
+                    "presentation_status": (
+                        "presented" if record.presented_at is not None else "not_presented"
+                    ),
+                    "sections": sections,
+                    "limitations": limitations[:4],
                 }
             )
         return {"limit_requested": limit, "briefings": briefings}

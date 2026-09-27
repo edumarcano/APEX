@@ -166,7 +166,7 @@ class BriefingGenerationConfiguration(BaseModel):
 
 
 class BriefingSessionGenerateRequest(BaseModel):
-    """HUD-facing generation request; origin and execution limits stay server-owned."""
+    """Generation request with a constrained caller origin and server-owned limits."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -176,6 +176,7 @@ class BriefingSessionGenerateRequest(BaseModel):
     reasoning: str | None = Field(default=None, min_length=1, max_length=32)
     context_window: int | None = Field(default=None, ge=1)
     local_reasoning_mode: Literal["none", "focused"] | None = None
+    origin: BriefingOrigin = "hud"
 
 
 class ExistingRecordReference(BaseModel):

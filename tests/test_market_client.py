@@ -8,7 +8,6 @@ from unittest import mock
 
 from clients import market_client
 from core.api.models import MarketResponse
-from core.api.briefing import _build_synthesis_input
 from core.connectors.models import ConnectorResult
 from core.settings.models import ModulesSettings
 from core.telemetry.collector import collect_connector_results
@@ -331,7 +330,7 @@ class MarketClientTests(unittest.TestCase):
         self.assertEqual(collected["status"], "disabled")
         self.assertEqual(demo_result.status, "disabled")
 
-    def test_market_contributes_to_snapshot_health_but_not_briefing_facts(self) -> None:
+    def test_market_contributes_to_snapshot_health(self) -> None:
         market = ConnectorResult(
             name="market", status="unavailable", freshness="none", reason_code="not_configured",
             observed_at=market_client._iso_utc(), data={"collection_revision": 0},
@@ -339,9 +338,6 @@ class MarketClientTests(unittest.TestCase):
         snapshot = build_snapshot_from_results({"market": market})
         self.assertIn("market", snapshot.failed_connectors)
         self.assertIn("market", [entry.name for entry in snapshot.connector_health])
-        facts = _build_synthesis_input(results=snapshot.results_map(), failed_connectors=snapshot.failed_connectors)
-        self.assertNotIn("market", facts.failed_connectors)
-        self.assertNotIn("market", [entry.name for entry in facts.connector_health])
 
     def test_targeted_collection_and_failed_refresh_do_not_restore_removed_symbols(self) -> None:
         healthy = ConnectorResult(name="market", status="healthy", freshness="live", observed_at=market_client._iso_utc(), data={"tickers": [{"symbol": "OLD"}]})

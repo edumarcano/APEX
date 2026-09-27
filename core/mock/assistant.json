@@ -189,7 +189,7 @@
     },
     {
       "keywords": ["briefings", "briefing history", "compare", "changes"],
-      "answer": "Briefing history review complete. Across the three most recent runs, conditions moved from light rain at 61\u00b0F to partly cloudy at 68\u00b0F and then clear skies at 72\u00b0F. Unread email volume peaked at three in the middle run, while connector health improved from 78% to 100% in the latest record. The current demo snapshot is the most stable of the sequence.",
+      "answer": "Briefing history contains three completed sessions. The latest was a presented Daily session on June 8, using the demo briefing model, and recorded clear skies at 72°F with two unread messages. The June 7 Catch Up session noted three unread emails and partial news coverage; the earlier Daily session recorded light rain. The history includes each session's profile, model, presentation state, canonical sections, and limitations.",
       "tool_trace": [
         {
           "name": "get_briefing_history",
@@ -206,31 +206,82 @@
             "limit_requested": 5,
             "briefings": [
               {
-                "id": 3,
-                "timestamp": "2026-06-08T08:15:00",
-                "briefing": "APEX simulation controls are operational. Atmospheric sensors report seventy-two degrees with clear skies. Inbox has two unread primary messages, and the next calendar item, Demo Presentation, begins at three PM.",
-                "insights": [
-                  "Clear conditions returned.",
-                  "Connector sync health was nominal."
-                ]
+                "id": "5a5dcd39-04f1-4a2a-9fc4-50ef6ef36003",
+                "profile": { "id": "daily", "label": "Daily" },
+                "model_id": "demo/daily-fixture",
+                "created_at": "2026-06-08T08:15:00-04:00",
+                "presented_at": "2026-06-08T08:16:00-04:00",
+                "presentation_status": "presented",
+                "sections": [
+                  {
+                    "title": "Today",
+                    "items": [
+                      {
+                        "category": "observation",
+                        "title": "Clear weather",
+                        "body": "Simulation City is clear at 72°F, with a high of 78°F."
+                      },
+                      {
+                        "category": "observation",
+                        "title": "Inbox",
+                        "body": "Two unread primary messages are available."
+                      }
+                    ]
+                  }
+                ],
+                "limitations": []
               },
               {
-                "id": 2,
-                "timestamp": "2026-06-07T07:30:00",
-                "briefing": "Morning briefing. Overnight precipitation cleared; current conditions are partly cloudy at sixty-eight degrees. Three unread emails require attention, including a budget review thread. Sprint qualifying for the Monaco Grand Prix is scheduled this afternoon.",
-                "insights": [
-                  "News connector reported a partial failure.",
-                  "Unread email volume increased."
-                ]
+                "id": "5a5dcd39-04f1-4a2a-9fc4-50ef6ef36002",
+                "profile": { "id": "catch_up", "label": "Catch Up" },
+                "model_id": "demo/daily-fixture",
+                "created_at": "2026-06-07T07:30:00-04:00",
+                "presented_at": null,
+                "presentation_status": "not_presented",
+                "sections": [
+                  {
+                    "title": "Since the last presentation",
+                    "items": [
+                      {
+                        "category": "observation",
+                        "title": "Unread email increased",
+                        "body": "Three unread emails include a budget review thread."
+                      },
+                      {
+                        "category": "observation",
+                        "title": "Weather changed",
+                        "body": "Conditions are partly cloudy at 68°F."
+                      }
+                    ]
+                  }
+                ],
+                "limitations": ["news: partial coverage"]
               },
               {
-                "id": 1,
-                "timestamp": "2026-06-06T06:45:00",
-                "briefing": "System status nominal. Light rain expected through mid-morning with temperatures near sixty-one degrees. Calendar is clear until afternoon stand-up. One reminder pending: submit quarterly metrics before end of day.",
-                "insights": [
-                  "Email and calendar connectors were unavailable.",
-                  "Light rain was expected through mid-morning."
-                ]
+                "id": "5a5dcd39-04f1-4a2a-9fc4-50ef6ef36001",
+                "profile": { "id": "daily", "label": "Daily" },
+                "model_id": "demo/daily-fixture",
+                "created_at": "2026-06-06T06:45:00-04:00",
+                "presented_at": null,
+                "presentation_status": "not_presented",
+                "sections": [
+                  {
+                    "title": "Today",
+                    "items": [
+                      {
+                        "category": "observation",
+                        "title": "Morning weather",
+                        "body": "Light rain is expected through mid-morning near 61°F."
+                      },
+                      {
+                        "category": "observation",
+                        "title": "Calendar",
+                        "body": "The calendar is clear until the afternoon stand-up."
+                      }
+                    ]
+                  }
+                ],
+                "limitations": ["email: unavailable coverage", "calendar: unavailable coverage"]
               }
             ]
           }

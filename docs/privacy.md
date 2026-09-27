@@ -1,6 +1,6 @@
 # Privacy
 
-APEX is local-first: durable settings, conversation history, retrieval data, context sources and history, review proposals, action evidence, external activity reports, the Cortex run ledger, and briefing history remain on the local machine unless a selected operation requires an enabled connector or model provider. APEX does not encrypt its local SQLite databases.
+APEX is local-first: durable settings, conversation history, retrieval data, context sources and history, review proposals, action evidence, external activity reports, the Cortex run ledger, and new briefing sessions and speech artifacts remain on the local machine unless a selected operation requires an enabled connector or model provider. APEX does not encrypt its local SQLite databases.
 
 ## Interactive models
 
@@ -20,7 +20,7 @@ The [Context vault guide](context-vault.md) explains how to select, share, and r
 
 ## External activity reports
 
-External activity reports, including their structured findings and imported Markdown, are retained in local SQLite and may contain private content. They do not enter retrieval or model prompts automatically. When the operator explicitly generates a Daily briefing, APEX can select up to three relevant, non-dismissed reports from the newest 50 candidates and send bounded excerpts to the selected model as explicitly untrusted evidence. The excerpts identify the content as an external report; this does not promote it to accepted context. The optional mailbox leaves the original files in the operator-selected folder; if that folder is synced, its sync tool controls any external copies.
+External activity reports, including their structured findings and imported Markdown, are retained in local SQLite and may contain private content. They do not enter retrieval or model prompts automatically. APEX may select up to three relevant, non-dismissed reports from the newest 50 candidates for a Daily or Deep briefing and send bounded excerpts to the selected model as explicitly untrusted evidence. The excerpts identify the content as an external report; this does not promote it to accepted context. The optional mailbox leaves the original files in the operator-selected folder; if that folder is synced, its sync tool controls any external copies.
 
 When the operator accepts a context review linked to a report, the resulting normalized claim enters personal-context retrieval with its external source provenance. If retrieval is enabled for a model runtime, selected claims can then enter model prompts, including cloud requests. Normal retrieval does not include the full report or original source evidence.
 
@@ -32,11 +32,13 @@ Catch Up compares current evidence against source checkpoints from completed ses
 
 Grounded speech is an optional derivative prepared only after a completed artifact is saved and shown only after the user selects Prepare or Play. Its separate, bounded script call receives that artifact alone through the model selected for the original session; it has no tools, retrieval, conversation history, or telemetry. The validated script and each ordered audio chunk are stored in the active local SQLite database with the artifact hash, selected/resolved TTS engine, and voice gender. Google Cloud TTS receives the selected spoken text when it synthesizes audio; Kokoro and pyttsx3 remain local. Replaying uses the stored chunks without contacting a model or TTS engine. Audio is not streamed to the browser, and these controls do not speak automatically.
 
-The legacy Focused, Flash, and Structured routes retain their fixed behavior: Focused uses OpenRouter DeepSeek V4 Flash, Flash uses the configured local Gemma route, and Structured calls no model.
+Daily, Catch Up, and Deep briefings use the model selected in Apex Agent settings. Cloud providers receive only the bounded evidence used for the selected profile; a local model keeps its prompts on the configured local inference endpoint. APEX does not silently fall back to another model. Catch Up can return a deterministic no-change artifact without a model call. Deep may send bounded read-only tool definitions and selected evidence to the chosen model and, when needed, return bounded results from enabled local connectors or allowed MCP services.
 
-Automatic voice delivery may speak short activation and briefing cues containing the saved user designation, briefing mode, and collection health. With Google Cloud TTS selected, that cue text may be sent to Google; local speech engines keep it on the machine. Manual and off voice modes do not speak contextual cues.
+The old Flash, Focused, and Structured routes and their SQLite `briefings` table have been retired. The next database initialization drops that table transactionally, permanently deleting its rows while preserving `briefing_sessions` and unrelated data. APEX does not migrate old briefing mode or model preferences; an old `briefing` section in local configuration is ignored.
 
-Calendar reads are limited to the calendars selected in Runtime Settings. Briefing and Agent calendar context can include selected event metadata, such as titles, times, and locations. When cloud briefing or model requests use that context, it is sent to the configured provider. Calendar labels are included by default; turn off **Show calendar names with events** in Runtime Settings to suppress labels from event attribution and model-visible calendar context. This does not remove the selected event metadata itself.
+Automatic voice delivery speaks short activation and telemetry-refresh cues. It does not announce a briefing mode or start briefing speech automatically. Optional saved-session speech is prepared and played explicitly from the saved artifact. With Google Cloud TTS selected, cue and prepared speech text may be sent to Google; local speech engines keep it on the machine. Manual and off voice modes do not speak contextual cues.
+
+Calendar reads are limited to the calendars selected in Runtime Settings. Briefing and Agent calendar context can include selected event metadata, such as titles, times, and locations. When a cloud briefing or Agent request uses that context, it is sent to the configured provider. Calendar labels are included by default; turn off **Show calendar names with events** in Runtime Settings to suppress labels from event attribution and model-visible calendar context. This does not remove the selected event metadata itself.
 
 ## Tools and actions
 

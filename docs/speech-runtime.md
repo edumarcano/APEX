@@ -33,9 +33,9 @@ Kokoro stays local. If Kokoro is unavailable or fails during preparation, synthe
 
 ## Contextual cues
 
-In automatic voice mode, APEX may speak short cues during **Start APEX**, **Start with Briefing**, **Generate Briefing**, and **Refresh All & Generate Briefing**. They can acknowledge activation, name the requested briefing mode, report whether the latest collection was complete, partial, or unavailable, and announce a Structured fallback. The wording uses the local time of day and optional saved user designation. Manual and off modes skip these cues.
+In automatic voice mode, APEX may speak short cues during activation and telemetry refresh. The supported cues acknowledge activation, report refresh failure, or say that no fresh telemetry is available. They use the local time of day and optional saved user designation. They do not announce a briefing profile or fallback. Manual and off modes skip these cues.
 
-Cue requests share the speech lock and configured engine fallback with other speech. They are best effort: a busy or failed cue does not fail activation, telemetry refresh, or briefing generation. See the [voice cue API](api.md#post-apiv1voicecue) for the request and response contract.
+Cue requests share the speech lock and configured engine fallback with other speech. They are best effort: a busy or failed cue does not fail activation or telemetry refresh. See the [voice cue API](api.md#post-apiv1voicecue) for the request and response contract.
 
 ## Long-text delivery
 
@@ -49,7 +49,7 @@ Briefing speech is an optional derivative of one completed, persisted canonical 
 
 Preparation runs on one speech worker, separate from the two Cortex run workers; it can run alongside those workers. The speech worker does not queue additional sessions, uses the shared local-model admission lock, and fails fast if local inference is already occupied. It synthesizes short text chunks with the selected engine and stores each chunk independently in SQLite with its audio type and duration; separate WAV chunks are never concatenated. pyttsx3 exports WAV through a time-limited child process. The stored cache records the requested/resolved engine and voice gender, so Play continues to use the prepared voice even if Runtime Settings later change. A new Prepare request rebuilds the cache after an engine or gender change; `?force=true` explicitly rebuilds it with the current voice settings.
 
-Play sends the ordered cached chunks through the shared `core.speaker` lock, so cues, legacy transcript speech, and saved briefing playback cannot overlap. Playback has a deadline derived from the bounded stored chunk durations; cancellation remains responsive while the mixer is active. Play never regenerates audio and never streams bytes to the browser. Stop cancels the active session job without stopping unrelated speech. Preparation and cached chunks have bounded counts, byte sizes, durations, provider retries, and elapsed time. Application shutdown cancels speech before draining Cortex runs and keeps SQLite and the speaker open until the speech worker has drained.
+Play sends the ordered cached chunks through the shared `core.speaker` lock, so cues, generic `/api/v1/voice/speak` delivery, and saved briefing playback cannot overlap. Playback has a deadline derived from the bounded stored chunk durations; cancellation remains responsive while the mixer is active. Play never regenerates audio and never streams bytes to the browser. Stop cancels the active session job without stopping unrelated speech. Preparation and cached chunks have bounded counts, byte sizes, durations, provider retries, and elapsed time. Application shutdown cancels speech before draining Cortex runs and keeps SQLite and the speaker open until the speech worker has drained.
 
 ## Kokoro resource checks
 
@@ -67,4 +67,4 @@ Startup readiness tracks audio mixer initialization and the selected optional en
 
 An unavailable optional speech engine does not make the whole API unavailable. `/api/v1/health/ready` continues to represent the core application rather than every optional speech provider.
 
-The speaker also owns cancellation during shutdown. It stops active mixer playback, attempts to stop pyttsx3, prevents queued chunks from continuing, and ignores late synthesis results. The session-scoped briefing Stop route only cancels its own preparation or cached playback; the legacy global cancellation behavior remains available to existing voice callers.
+The speaker also owns cancellation during shutdown. It stops active mixer playback, attempts to stop pyttsx3, prevents queued chunks from continuing, and ignores late synthesis results. The session-scoped briefing Stop route cancels only that session's preparation or cached playback; shutdown remains the application-wide cancellation boundary.

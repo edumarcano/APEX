@@ -32,14 +32,14 @@ Use established CSS properties, shared utilities, and semantic classes before in
 
 Color meaning depends on the state system in which it appears. Do not assume one color has a single meaning across every component.
 
-### Pipeline and activity
+### Session and activity
 
 | State | Visual family |
 | --- | --- |
 | Standby | Muted blue shell with dormant bronze core |
-| Processing or collecting | Emerald |
-| Synthesizing or Agent working | Purple |
-| Delivering or ready output | Gold |
+| Telemetry refresh, or a briefing in preparation/collection | Emerald |
+| Briefing selection, investigation, synthesis, or Agent working | Purple |
+| Briefing artifact persistence or prepared output | Gold |
 | Local model loading or loaded | Rust |
 | Speaking | Cyan waveform within the current stage treatment |
 | Failure | Red |
@@ -55,7 +55,7 @@ Color meaning depends on the state system in which it appears. Do not assume one
 
 Pair state color with text, icons, shape, motion, or an accessible label. Never rely on color alone.
 
-On Home and in the compact Cortex header, the shared logo keeps the outer blue shell and core independent: collection uses the blue outer wave with an emerald core, synthesis uses a fully lit blue shell while the core pulses purple, and local-model loading replaces the outer wave with a rust-metal wave over blue segments. Once the local model is resident, its nebula, center halo, and logo-wrapper glow remain rust while the shell returns to its normal blue behavior.
+On Home and in the compact Cortex header, the shared logo keeps the outer blue shell and core independent. Session collection uses the blue outer wave with an emerald core; selection, investigation, and synthesis use a fully lit blue shell while the core pulses purple. Telemetry refresh progress comes from the telemetry refresh state. Local-model loading and residency come from the model catalog and use a rust-metal wave over blue segments; an active local briefing session also identifies the selected model while its generation is running. Playing speech uses a cyan waveform. The logo returns to its ordinary activated state when no operation is active.
 
 ## Material System
 
@@ -107,11 +107,11 @@ dormant -> pending -> active -> complete
 ```
 
 - **Dormant:** Preserve settled glass and readable standby content.
-- **Pending:** Reduce saturation and brightness while keeping the shell visible; mask body content when the pipeline has not unlocked it.
+- **Pending:** Reduce saturation and brightness while keeping the shell visible; show a local loading or unavailable state when that resource has not arrived.
 - **Active:** Apply blue catch-light and reveal the body as the surface becomes relevant.
 - **Complete:** Return to settled glass while preserving completed content.
 
-Use staggered curtain reveals to communicate pipeline order. Keep the shell spatially stable while content changes; do not move or resize the overall layout just to show attention.
+Use staggered transitions when a workspace opens to guide attention. Telemetry, briefing generation, Cortex, and speech can progress independently; keep the shell spatially stable as their own status changes.
 
 ## Atmospheric Layering
 
@@ -150,7 +150,7 @@ Use uppercase text and wide tracking primarily for short operational labels. Avo
 - Preserve intentional internal scrolling for panels, trays, and telemetry streams.
 - Use fixed pixel values when appropriate for borders, icons, focus rings, minimum interaction targets, deliberate maximum widths, and other bounded primitives.
 - Avoid arbitrary fixed structural dimensions that prevent content from adapting.
-- The header workspace chip opens a menu of four peer workspaces: Inbox, Overview, Briefing, and Cortex. The closed chip shows the current peer in that peer's accent. Standby is not a peer. It covers Overview and Briefing until APEX is activated, and the chip keeps showing the Home destination (Overview by default). Choosing Overview or Briefing from Standby runs the activation preflight without generating a briefing. Standby centers the hero logo with floating Overview and Briefing actions. Overview arranges telemetry in a six-column grid around a central identity card: Weather and Events, then News, identity, and Reminders, then Market and Inbox. Below the compact breakpoint, the identity card comes first and cards stack. Briefing starts as two columns (identity or generation progress beside the briefing controls) and becomes three columns (controls, thread, telemetry rail) once a completed artifact is shown. Below the compact breakpoint, Briefing stacks the thread and exposes controls and telemetry through toggles.
+- The header workspace chip opens a menu of four peer workspaces: Inbox, Overview, Briefing, and Cortex. The closed chip shows the current peer in that peer's accent. Standby is not a peer. It covers Overview and Briefing until APEX is activated, and the chip keeps showing the Home destination (Overview by default). Choosing Overview or Briefing from Standby runs the activation preflight without generating a briefing. Standby centers the hero logo with floating Overview and Briefing actions. Overview arranges telemetry in a six-column grid around a central identity card: Weather and Events, then News, identity, and Reminders, then Market and Inbox. Below the compact breakpoint, the identity card comes first and cards stack. Briefing shows profile and selected-model controls, the current or saved session with its linked conversation, and the telemetry rail in three columns. Before an artifact exists, the conversation area shows the session state; after completion, it renders the canonical artifact and supports follow-up. Below the compact breakpoint, Briefing stacks the conversation and exposes controls and telemetry through toggles.
 - Home layout transitions use a short enter animation that is disabled under `prefers-reduced-motion`.
 
 ## Domain-Specific Color

@@ -82,7 +82,6 @@ export type ApexAssistantRunConfig = {
   selectedToolNames: string[]
   toolProfileId: string | null
   snapshotId: string | null
-  briefingId?: number | null
 }
 
 export type ApexAssistantComposerProps = {
@@ -725,7 +724,6 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
               selected_tool_names: current.selectedToolNames,
               tool_profile_id: current.toolProfileId,
               snapshot_id: current.snapshotId,
-              briefing_id: current.briefingId ?? undefined,
             }),
           })
 

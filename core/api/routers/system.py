@@ -10,9 +10,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, status
 
 from core import config, database, scanner
-from core.api.models import PipelineStatusSnapshot
-from core.api.state import global_pipeline_state
-from core.config import DEMO_MODE, DEV_AI_SYNTHESIS, is_dev_mode
+from core.config import DEMO_MODE, is_dev_mode
 from core.agent.catalog import resolve_agent_display_name, resolve_model_selection
 from core.settings import (
     SETTINGS_SCHEMA_VERSION,
@@ -85,27 +83,12 @@ def get_global_config() -> dict[str, Any]:
     """Expose global system configurations to the frontend HUD on boot."""
     snapshot = get_settings_store().get_snapshot()
     runtime, model_id, effort = resolve_model_selection(snapshot.ask_apex)
-    effective_briefing_mode = (
-        "structured"
-        if DEMO_MODE
-        else DEV_AI_SYNTHESIS
-        if is_dev_mode()
-        else snapshot.briefing.default_mode
-    )
-    briefing_runtime = {
-        "flash": ("local", "gemma-4-E2B-Q4_K_M.gguf"),
-        "focused": ("cloud", "deepseek/deepseek-v4-flash-0731"),
-        "structured": ("raw", None),
-    }[effective_briefing_mode]
     return {
         "ask_apex_enabled": snapshot.ask_apex.enabled,
         "market_enabled": snapshot.features.market,
         "max_recent_conversation_messages": config.MAX_RECENT_CONVERSATION_MESSAGES,
         "dev_mode_active": is_dev_mode(),
         "demo_mode_active": DEMO_MODE,
-        "synthesis_strategy": "demo" if DEMO_MODE else briefing_runtime[0],
-        "synthesis_model_id": briefing_runtime[1],
-        "briefing_default_mode": snapshot.briefing.default_mode,
         "voice_mode": snapshot.voice.mode,
         "cortex_initial_selection": {
             "runtime": runtime,
@@ -295,20 +278,6 @@ def get_llama_cpp_server_status() -> LlamaCppServerStatusResponse:
     Never includes executable paths, preset paths, PIDs, or raw process output.
     """
     return get_llama_cpp_server_supervisor().status_snapshot()
-
-
-@router.get("/api/v1/status", response_model=PipelineStatusSnapshot)
-def get_pipeline_diagnostic_status() -> PipelineStatusSnapshot:
-    """
-    Diagnostic snapshot keyed off global_pipeline_state for the user and probes.
-    """
-    snapshot = global_pipeline_state.get_state()
-    if snapshot is None:
-        raise HTTPException(
-            status_code=404,
-            detail="No active pipeline run. System is OFFLINE.",
-        )
-    return PipelineStatusSnapshot(**snapshot)
 
 
 @router.get("/api/v1/diagnostics")

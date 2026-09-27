@@ -30,8 +30,8 @@ ROUTE_HEADING_PATTERN = re.compile(
     re.IGNORECASE,
 )
 SCHEMA_VERSION_PATTERN = re.compile(r'"schema_version"\s*:\s*(\d+)')
-API_CONTRACT_VERSION_PATTERN = re.compile(
-    r"\bcontract\s+version\s+(?:is\s+)?`?(\d+)`?", re.IGNORECASE
+API_SETTINGS_SCHEMA_VERSION_PATTERN = re.compile(
+    r"\bsettings\s+schema\s+version\s+(?:is\s+)?`?(\d+)`?", re.IGNORECASE
 )
 RELEASE_HEADING_PATTERN = re.compile(r"^##\s+v(\d+\.\d+\.\d+)\b", re.MULTILINE)
 
@@ -246,27 +246,27 @@ def check_schema_versions(
     return issues
 
 
-def check_api_contract_version(
+def check_api_settings_schema_version(
     api_path: Path,
     expected_version: int,
     contents: Mapping[Path, str] | None = None,
 ) -> list[DocumentationIssue]:
-    """Keep the human-readable API contract version aligned with settings."""
+    """Keep prose references to the API's settings schema aligned with settings."""
     text = contents.get(api_path, "") if contents is not None else api_path.read_text(
         encoding="utf-8"
     )
     matches = [
         (line_number, match)
         for line_number, line in lines_outside_fences(text)
-        for match in API_CONTRACT_VERSION_PATTERN.finditer(line)
+        for match in API_SETTINGS_SCHEMA_VERSION_PATTERN.finditer(line)
     ]
     if not matches:
         return [
             DocumentationIssue(
                 api_path,
                 1,
-                "contract version",
-                f"API contract version statement should be {expected_version}",
+                "settings schema version",
+                f"API settings schema version statement should be {expected_version}",
             )
         ]
 
@@ -279,7 +279,7 @@ def check_api_contract_version(
                     api_path,
                     line_number,
                     str(found),
-                    f"API contract version should be {expected_version}",
+                    f"API settings schema version should be {expected_version}",
                 )
             )
     return issues
@@ -460,47 +460,13 @@ def check_frontend_owner_names(
 
 
 
-PROVIDER_DISPLAY_NAMES: dict[str, str] = {
-    "openai": "OpenAI",
-    "openrouter": "OpenRouter",
-    "gemini": "Google",
-    "ollama": "Ollama",
-    "llama_cpp": "llama.cpp",
-}
-
-
-def check_default_briefing_provider(
+def check_briefing_profiles(
     root: Path,
     *,
     readme_text: str | None = None,
 ) -> list[DocumentationIssue]:
-    """Keep README briefing paths aligned with the current synthesis contract."""
-    import json
-
-    from core.agent.model_catalog import (
-        DEFAULT_LOCAL_MODEL,
-        FOCUSED_BRIEFING_MODEL,
-        get_model_profile,
-    )
-    from core.synthesis.models import VALID_BRIEFING_MODES
-
-    def provider_for_mode(mode: str) -> str:
-        model_id = {
-            "focused": FOCUSED_BRIEFING_MODEL,
-            "flash": DEFAULT_LOCAL_MODEL,
-        }.get(mode)
-        profile = get_model_profile(model_id) if model_id is not None else None
-        if profile is None:
-            raise ValueError(f"Fixed briefing route selects an unknown {mode} model: {model_id!r}")
-        return profile.provider
-
-    config = json.loads((root / "config.json").read_text(encoding="utf-8"))
-    default_mode = config.get("briefing", {}).get("default_mode", "flash")
-    if default_mode in {"focused", "flash"}:
-        provider = provider_for_mode(default_mode)
-        expected = PROVIDER_DISPLAY_NAMES[provider]
-    else:
-        expected = "Structured"
+    """Keep the README diagram aligned with the active briefing profile catalog."""
+    from core.briefings.models import BUILTIN_BRIEFING_PROFILES
 
     readme_path = root / "README.md"
     readme = (
@@ -518,63 +484,20 @@ def check_default_briefing_provider(
                 readme_path,
                 1,
                 "briefing diagram",
-                "briefing diagram is missing its synthesis path label",
+        "briefing diagram is missing its profile label",
             )
         )
     else:
         diagram_label = diagram.group(1)
         diagram_line = readme.count("\n", 0, diagram.start()) + 1
-        if expected not in diagram_label:
-            issues.append(
-                DocumentationIssue(
-                    readme_path,
-                    diagram_line,
-                    expected,
-                    "briefing diagram omits the configured default provider",
-                )
-            )
-
-        expected_paths = {
-            "Structured"
-            if mode == "structured"
-            else PROVIDER_DISPLAY_NAMES[provider_for_mode(mode)]
-            for mode in VALID_BRIEFING_MODES
-        }
-        for provider in sorted(expected_paths):
-            if provider not in diagram_label:
+        for profile in BUILTIN_BRIEFING_PROFILES.values():
+            if profile.label not in diagram_label:
                 issues.append(
                     DocumentationIssue(
                         readme_path,
                         diagram_line,
-                        provider,
-                        "briefing diagram omits a supported synthesis path",
-                    )
-                )
-        if re.search(r"\bollama\b", diagram_label, re.IGNORECASE):
-            issues.append(
-                DocumentationIssue(
-                    readme_path,
-                    diagram_line,
-                    "Ollama",
-                    "obsolete Ollama briefing provider is documented",
-                )
-            )
-
-    briefing_section_match = re.search(
-        r"(?ms)^###\s+Produces briefings on user-defined terms\s*$.*?(?=^###\s|\Z)",
-        readme,
-    )
-    if briefing_section_match is not None:
-        section = briefing_section_match.group(0)
-        section_start_line = readme.count("\n", 0, briefing_section_match.start()) + 1
-        for line_number, line in enumerate(section.splitlines(), start=1):
-            if re.search(r"\bollama\b", line, re.IGNORECASE):
-                issues.append(
-                    DocumentationIssue(
-                        readme_path,
-                        section_start_line + line_number - 1,
-                        "Ollama",
-                        "obsolete Ollama briefing provider is documented",
+                        profile.label,
+                        "briefing diagram omits a built-in profile",
                     )
                 )
     return issues
@@ -621,12 +544,12 @@ def run(root: Path = ROOT) -> list[DocumentationIssue]:
     issues.extend(check_links(paths, root))
     issues.extend(check_routes(api_path, public_openapi_routes()))
     issues.extend(check_schema_versions(contract_paths, SETTINGS_SCHEMA_VERSION))
-    issues.extend(check_api_contract_version(api_path, SETTINGS_SCHEMA_VERSION))
+    issues.extend(check_api_settings_schema_version(api_path, SETTINGS_SCHEMA_VERSION))
     issues.extend(check_agent_profiles(contract_paths, current_agent_profiles()))
     issues.extend(check_cors_example(root))
     issues.extend(check_release_version(root))
     issues.extend(check_frontend_owner_names(root))
-    issues.extend(check_default_briefing_provider(root))
+    issues.extend(check_briefing_profiles(root))
     return issues
 
 

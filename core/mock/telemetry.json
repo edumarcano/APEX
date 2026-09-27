@@ -4,10 +4,6 @@
     "scenario": "weekday_ops",
     "location_label": "Simulation City"
   },
-  "insights": [
-    "Demo sandbox environment synchronized.",
-    "Operations telemetry is simulated and privacy-safe."
-  ],
   "modules": {
     "weather": {
       "status": "healthy",

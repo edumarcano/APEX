@@ -71,7 +71,6 @@ class ConversationTurnRequest(BaseModel):
     context_window: int | None = Field(default=None, ge=1)
     local_reasoning_mode: LocalReasoningMode | None = None
     snapshot_id: str | None = None
-    briefing_id: int | None = Field(default=None, ge=1)
 
     @field_validator("prompt")
     @classmethod

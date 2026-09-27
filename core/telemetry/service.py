@@ -177,10 +177,6 @@ class TelemetryService:
             self._store.mark_forced_refresh()
         return snapshot
 
-    def collect_for_briefing(self) -> TelemetrySnapshot:
-        """Force-collect all enabled connectors for the legacy trigger pipeline."""
-        return self.refresh(force=True)
-
     def seed_demo_snapshot(self) -> TelemetrySnapshot:
         """Install the static DEMO_MODE snapshot without external connector calls."""
         snapshot = _demo_snapshot()

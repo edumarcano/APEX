@@ -7,7 +7,7 @@ This document defines the product names used in APEX. Runtime behavior belongs i
 ```text
 APEX
 ├── Home
-│   ├── Briefing modes: Focused, Flash, Structured
+│   ├── Briefing profiles: Daily, Catch Up, Deep
 │   └── Apex Agent (compact prompt)
 ├── Inbox
 │   └── External activity reports
@@ -33,15 +33,11 @@ The Agent identity, safety policy, and APEX-specific instructions stay consisten
 
 The Home and Cortex surfaces use the same singular **Apex Agent** identity. Selecting a model never selects a different Agent. A local display name may replace the visible name and the assistant’s self-name in prompts; it is not a second Agent.
 
-## Briefing modes
+## Briefing profiles
 
-**Focused**, **Flash**, and **Structured** are briefing modes, not Agent identities.
+**Daily**, **Catch Up**, and **Deep** are profiles for the single briefing-session engine. Daily provides orientation, Catch Up compares source evidence with the last presented complete session, and Deep adds bounded read-only investigation when needed. Each profile uses the selected Apex Agent model and never silently substitutes another model. Sessions retain the selected model, canonical artifact, evidence, and a linked Cortex conversation.
 
-- **Focused** uses the fixed OpenRouter DeepSeek V4 Flash route with High reasoning.
-- **Flash** uses the fixed local Gemma E2B llama.cpp route at 16K with reasoning disabled.
-- **Structured** renders normalized facts without a model.
-
-The interactive model selection does not change these routes. Historical briefing records can retain older runtime metadata as evidence of how they were produced.
+Legacy briefing rows and their runtime metadata are permanently dropped during the schema upgrade. Saved sessions use the current Daily, Catch Up, and Deep profiles; retired Flash, Focused, and Structured preferences are ignored rather than migrated.
 
 ## APEX and the logo
 
@@ -63,4 +59,4 @@ The logo combines those ideas. Its outer shape forms an A and suggests a layered
 - Use **Apex Agent** for the native assistant.
 - Use **Cortex workspace** for the user interface and **Cortex Engine** for backend execution.
 - Use model, provider, and runtime names directly; do not turn them into Agent identities.
-- Use **Focused**, **Flash**, and **Structured** only for briefing modes.
+- Use **Daily**, **Catch Up**, and **Deep** only for briefing profiles.

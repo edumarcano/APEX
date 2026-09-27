@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from unittest import mock
 
 from clients import market_client
-from core.api.demo import build_demo_briefing, load_mock_telemetry
 from core.mock.demo_fixture import load_demo_bundle, resolve_relative_time
 from core.settings.models import FeaturesSettings, MarketSettings, RuntimeSettingsSnapshot
 from core.telemetry.service import get_telemetry_service, reset_telemetry_service_for_tests
@@ -48,18 +47,13 @@ class DemoFixtureNormalizationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.anchor = datetime(2026, 8, 8, 12, 0, tzinfo=timezone.utc)
 
-    def test_bundle_derives_coherent_legacy_and_structured_data(self) -> None:
+    def test_bundle_derives_structured_connector_data(self) -> None:
         bundle = load_demo_bundle(now=self.anchor)
 
-        self.assertEqual(bundle.telemetry.weather, bundle.modules["weather"].display_text)
-        self.assertEqual(bundle.telemetry.sports, bundle.modules["f1"].display_text)
-        self.assertEqual(bundle.digest.unread_emails_count, 3)
-        self.assertEqual(bundle.digest.upcoming_events_count, 3)
-        self.assertEqual(bundle.digest.reminders_pending_count, 3)
-        self.assertEqual(bundle.digest.weather_archetype, "clear_day")
-        self.assertEqual(bundle.digest.failed_connectors, [])
-        self.assertGreater(bundle.digest.sync_health_score or 0.0, 90.0)
-        self.assertLess(bundle.digest.sync_health_score or 100.0, 100.0)
+        self.assertIn("72", bundle.modules["weather"].display_text)
+        self.assertEqual(bundle.modules["email"].data["count"], 3)
+        self.assertEqual(bundle.modules["calendar"].data["total_count"], 3)
+        self.assertEqual(bundle.modules["reminders"].data["count"], 3)
         self.assertTrue(
             bundle.modules["f1"].data["f1_map"]["raceDateTimeEST"].startswith("Sunday,")
         )
@@ -89,9 +83,6 @@ class DemoFixtureNormalizationTests(unittest.TestCase):
         self.assertEqual(len(football["fixtures"]), 1)
         self.assertEqual(football["fixtures"][0]["team"], "Barcelona")
 
-        for entry in bundle.digest.connector_health:
-            self.assertIsNotNone(entry.observed_at)
-
     def test_calendar_events_resolve_into_the_future(self) -> None:
         bundle = load_demo_bundle(now=self.anchor)
         events = bundle.modules["calendar"].data["events"]
@@ -102,25 +93,6 @@ class DemoFixtureNormalizationTests(unittest.TestCase):
             if start.tzinfo is None:
                 start = start.replace(tzinfo=timezone.utc)
             self.assertGreaterEqual(start, self.anchor)
-
-    def test_briefing_reflects_fixture_facts(self) -> None:
-        telemetry, _digest = load_mock_telemetry()
-        with mock.patch(
-            "core.api.demo.load_demo_bundle_or_raise",
-            return_value=load_demo_bundle(now=self.anchor),
-        ):
-            briefing = build_demo_briefing(telemetry)
-        self.assertIn("72 degrees", briefing)
-        self.assertIn("3 unread primary messages", briefing)
-        self.assertIn("Product review", briefing)
-        self.assertIn("3 reminders remain pending", briefing)
-        self.assertIn(
-            "Next calendar item is Product review, scheduled for today at 4:00 PM UTC.",
-            briefing,
-        )
-        self.assertNotIn("Greetings", briefing)
-        self.assertNotIn("Chief", briefing)
-        self.assertNotIn("Your ", briefing)
 
 
 class DemoSnapshotIntegrationTests(unittest.TestCase):

@@ -1,6 +1,6 @@
 # APEX API
 
-This is the behavioral reference for APEX's loopback HTTP API at `http://127.0.0.1:8000`. It explains workflows, ownership, and meaningful errors. FastAPI's generated [`/docs`](http://127.0.0.1:8000/docs) and [`/openapi.json`](http://127.0.0.1:8000/openapi.json) are the canonical exhaustive request and response schemas. The current documented contract version is `23`.
+This is the behavioral reference for APEX's loopback HTTP API at `http://127.0.0.1:8000`. It explains workflows, ownership, and meaningful errors. FastAPI's generated [`/docs`](http://127.0.0.1:8000/docs) and [`/openapi.json`](http://127.0.0.1:8000/openapi.json) are the canonical exhaustive request and response schemas. The current documented settings schema version is `24`.
 
 The API has no authentication and is intentionally bound to loopback. `APEX_ALLOWED_ORIGINS` controls browser CORS policy; it does not authorize non-browser clients or make remote binding safe. See [Configuration](configuration.md) and [Privacy](privacy.md).
 
@@ -17,12 +17,7 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | GET | `/api/v1/settings` | Resolved runtime settings |
 | PATCH | `/api/v1/settings` | Persist runtime-setting changes |
 | GET | `/api/v1/google-calendar/calendars` | Readable Google Calendar choices for Runtime Settings |
-| GET | `/api/v1/status` | Active full-run pipeline state |
 | GET | `/api/v1/diagnostics` | Host resource diagnostics |
-| POST | `/api/v1/trigger` | Full refresh-and-briefing compatibility flow |
-| POST | `/api/v1/briefings/generate` | Brief from the current snapshot |
-| GET | `/api/v1/briefings/history` | Recent briefing ledger |
-| GET | `/api/v1/briefings/targets` | Briefing synthesis target metadata |
 | GET | `/api/v1/briefing-profiles` | Built-in briefing profiles and whether each can generate |
 | POST | `/api/v1/briefing-sessions` | Admit an asynchronous generation for an available profile |
 | GET | `/api/v1/briefing-sessions` | Saved briefing-session summaries for the active partition |
@@ -134,15 +129,15 @@ Optional external services are deliberately excluded.
 
 ### GET `/api/v1/config`
 
-Returns boot-time HUD values such as Agent query enablement, the effective model selection, briefing and voice defaults, market enablement, message limits, runtime modes, and initial synthesis hints. `cortex_initial_selection` identifies Apex Agent and the saved model/runtime selection.
+Returns boot-time HUD values such as Agent query enablement, the effective model selection, voice defaults, market enablement, message limits, runtime modes, and `cortex_initial_selection` for Apex Agent and the saved model/runtime selection.
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current contract version is `23`.
+Returns the resolved settings envelope. The current settings schema version is `24`.
 
 ```json
 {
-  "schema_version": 23,
+  "schema_version": 24,
   "settings": {
     "user_designation": "",
     "agent_display_name": "",
@@ -170,7 +165,6 @@ Returns the resolved settings envelope. The current contract version is `23`.
       }
     },
     "tool_profiles": { "custom_profiles": [], "default_profile_by_runtime": {} },
-    "briefing": { "default_mode": "flash" },
     "voice": { "engine": "google", "gender": "female", "mode": "automatic" },
     "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } },
     "llama_cpp": { "enabled": false, "managed": false, "host": "http://127.0.0.1:8080", "executable_path": "", "preset_path": "" },
@@ -187,17 +181,16 @@ Returns the resolved settings envelope. The current contract version is `23`.
 
 `football.teams`, `market.symbols`, `calendar`, `context_vault`, `tool_profiles`, and `microsoft_todo.reminder_list_id` are returned in the resolved settings snapshot. Apex Agent settings persist the selected model and independent cloud/local controls; the model catalog derives provider or local runtime. The selected provider/runtime remains in execution metadata and historical records. The optional Microsoft To Do list ID is opaque, bounded to 512 characters, and is never selected or cleared automatically. OpenAPI contains the complete shape. Tool profiles persist through the same settings store, but the dedicated `/api/v1/cortex/tool-profiles` routes are the canonical mutation workflow for built-in/custom profiles and per-runtime defaults.
 
-`settings.briefing.default_mode` remains a persisted compatibility field for the legacy briefing routes. Home starts Daily sessions directly and does not change this setting.
+Briefing profile selection is per session and does not add a Runtime Settings field. The selected model comes from `settings.ask_apex.selected_model`.
 
 ### PATCH `/api/v1/settings`
 
-Accepts a strict partial patch for the optional user designation, optional agent display name, connectors, sports modules, followed football teams, market symbols, Google Calendar selection and label display, Context vault enablement and scopes, Agent query settings, tool profiles, briefing, voice, llama.cpp enablement, loopback host, optional managed-server paths, tracked MCP enablement, and local activity mailbox settings. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
+Accepts a strict partial patch for the optional user designation, optional agent display name, connectors, sports modules, followed football teams, market symbols, Google Calendar selection and label display, Context vault enablement and scopes, Agent query settings, tool profiles, voice, llama.cpp enablement, loopback host, optional managed-server paths, tracked MCP enablement, and local activity mailbox settings. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
 
 ```json
 {
   "user_designation": "Chief",
   "agent_display_name": "Nova",
-  "briefing": { "default_mode": "structured" },
   "voice": { "mode": "manual" },
   "context_vault": { "enabled": true, "scopes": [] },
   "mcp": { "servers": { "github": { "enabled": true } } }
@@ -220,12 +213,6 @@ Returns up to 250 sanitized calendars that APEX can read for event details, incl
 
 Returns sanitized llama.cpp server ownership for Runtime Settings: `enabled`, `managed`, `ownership` (`none` | `external` | `apex`), `state` (`disabled` | `external_connected` | `managed_running` | `starting` | `managed_stopped` | `startup_failed`), and an optional sanitized `last_error`. Never includes executable paths, preset paths, PIDs, or raw process output.
 
-### GET `/api/v1/status`
-
-Returns the active full-run compatibility pipeline snapshot: `run_id`, step, label, UTC timestamp, speech state, active TTS engine, load-throttling state, and optional synthesis phase/provider/Agent.
-
-Returns `404` when no full trigger or delivery is active. Independent telemetry refresh, Cortex queries, and snapshot-based briefing generation expose their state through their own responses and frontend owners.
-
 ### GET `/api/v1/diagnostics`
 
 Returns current CPU, memory, disk, and network diagnostics for the HUD. This poll is independent of telemetry and briefing state.
@@ -242,7 +229,7 @@ Returns `404` before the first successful snapshot or after a process restart.
 
 Refreshes all enabled connectors or a selected subset.
 
-Market participates in this lifecycle and in Sync Health. Each symbol can make at most one Alpha Vantage request per UTC calendar day. Successful results remain fresh cached data for that day even when the latest trading close is older, such as on weekends. Failed symbols wait until a later UTC date according to their failure backoff. Market remains excluded from briefing synthesis.
+Market participates in this lifecycle and in Sync Health. Each symbol can make at most one Alpha Vantage request per UTC calendar day. Successful results remain fresh cached data for that day even when the latest trading close is older, such as on weekends. Failed symbols wait until a later UTC date according to their failure backoff. Briefing profiles can use the bounded Market snapshot.
 
 Calendar reads every selected calendar independently and merges successful results in start-time order. If one selected calendar fails, the snapshot keeps events from the others and reports `degraded` with `partial_failure`; no selected calendars reports `unavailable` with `no_calendars_selected`. The calendar data includes selected, successful, and failed counts plus a truncation flag.
 
@@ -264,8 +251,8 @@ Evaluates warnings and non-overridable blockers for one intended operation witho
 
 ```json
 {
-  "operation": "activate_with_briefing",
-  "briefing_mode": "flash",
+  "operation": "generate_briefing_session",
+  "model_id": "deepseek/deepseek-v4-flash-0731",
   "connectors": ["weather", "calendar"],
   "force": false,
   "acknowledged_warnings": []
@@ -276,50 +263,13 @@ Warnings can cover configured-network mismatch, battery use, rapid refresh, and 
 
 Calling an operation endpoint directly skips advisory acknowledgement; operation-specific hard failures still apply.
 
-## Briefings
+## Briefing sessions
 
-### POST `/api/v1/trigger`
-
-Runs the full compatibility workflow: force-refresh telemetry, generate with an optional requested mode or configured default, persist normal-mode briefing history, and apply automatic voice-delivery rules.
-
-```json
-{ "mode": "flash" }
-```
-
-The body is optional. Valid modes are `focused`, `flash`, and `structured`. The `flash` briefing mode always uses the fixed `gemma-4-E2B-Q4_K_M.gguf` llama.cpp profile with no reasoning; interactive model settings do not affect it.
-
-- `200` — transcript, compatibility telemetry strings, typed digest, and runtime metadata.
-- `409` — another full trigger owns execution.
-- `503` — a required operation-specific dependency cannot run and no applicable fallback completes the request.
-
-Runtime metadata includes `run_id`, requested mode, resolved synthesis provider/Agent/model, ordered fallback steps, token usage, provider timing, estimated provider cost, TTS resolution, `snapshot_id`, and whether automatic speech started.
-
-### POST `/api/v1/briefings/generate`
-
-Generates from the current telemetry snapshot without calling connectors.
-
-```json
-{ "snapshot_id": "current-snapshot-uuid", "mode": "structured", "cue_context": "existing_snapshot" }
-```
-
-`cue_context` is optional and defaults to `existing_snapshot`. Use `after_refresh` when the HUD collected telemetry immediately before generation so the server can announce collection health.
-
-- `200` — the same `BriefingResponse` envelope used by the full trigger.
-- `409` — the snapshot is missing, stale, or no longer process-current.
-
-Normal-mode generation persists the result. Demo mode uses static behavior and does not write normal-mode briefing history.
-
-### GET `/api/v1/briefings/history`
-
-Returns up to 50 newest briefing records with transcript, digest, runtime metadata, and digest-quality status. Malformed legacy records are classified rather than allowed to break the whole ledger response. Demo mode returns a static mock ledger.
-
-### GET `/api/v1/briefings/targets`
-
-Returns live availability and metadata for fixed briefing-generation targets in this order: `flash` (local Gemma), `focused` (OpenRouter DeepSeek V4 Flash), and `structured` (deterministic, no model). Removed Agent-named identifiers are rejected.
+Briefings use the saved-session API. Each session records its built-in profile, selected Apex Agent model, active partition, canonical artifact, evidence, presentation state, and linked Cortex conversation. Session creation is asynchronous; callers read its detail until it reaches a terminal state. There are no legacy trigger, transcript-history, or fixed-target routes.
 
 ### GET `/api/v1/briefing-profiles`
 
-Returns the built-in briefing profiles in a stable order. Each entry includes `id`, `label`, `purpose`, `investigation_required`, `available`, and `unavailable_reason`. `available` reports release and mode eligibility for `POST /api/v1/briefing-sessions`; unavailable profiles include a short reason. Deep is unavailable in demo mode. Model-specific capability and context checks may still reject a Deep run before session creation.
+Returns the built-in briefing profiles in a stable order. Each entry includes `id`, `label`, `purpose`, `investigation_required`, `available`, and `unavailable_reason`. `available` reports whether the profile is enabled in this runtime; unavailable profiles include a short reason. Deep is unavailable in demo mode. Model-specific capability and context checks may still reject a Deep run before session creation.
 
 ### POST `/api/v1/briefing-sessions`
 
@@ -331,11 +281,12 @@ Admits an asynchronous Daily, Catch Up, or Deep generation using the explicit mo
   "profile_id": "daily",
   "model_id": "deepseek/deepseek-v4-flash-0731",
   "reasoning": "high",
-  "context_window": 16384
+  "context_window": 16384,
+  "origin": "hud"
 }
 ```
 
-`local_reasoning_mode` may be supplied for a compatible local model. The server owns the conversation origin and execution limits. A successful new admission returns `202` with a session ID, conversation ID, run ID, and current run status. Replaying the same idempotency key and request returns the existing session with `200`.
+`local_reasoning_mode` may be supplied for a compatible local model. `origin` is constrained to `hud` or `cli` and records caller provenance; HUD is the default. The server owns execution limits and creates the linked conversation. A successful new admission returns `202` with a session ID, conversation ID, run ID, and current run status. Replaying the same idempotency key and request returns the existing session with `200`.
 
 - `409` — the idempotency key conflicts with a different request.
 - `422` — the profile is not available, the model or requested controls are unavailable, or its context window cannot fit a useful briefing prompt.
@@ -357,6 +308,8 @@ Source inventories are bounded: reminders include at most 8 items in the selecte
 ### GET `/api/v1/briefing-sessions`
 
 Returns up to 100 newest session summaries from the active production or sandbox partition. `limit` defaults to 25 and accepts 1–100; `offset` defaults to 0. Summaries include run status and the first-presentation timestamp. Listing does not change presentation state. The detail endpoint is addressable by session ID when a caller already knows it, even if it is outside the current summary page.
+
+The read-only Apex Agent tool `get_briefing_history` uses the same active-partition boundary. Its `limit` is clamped to 1–5; one joined query filters for completed sessions with canonical artifacts before applying the bound. Each result includes the session ID, profile, selected model, creation and presentation times, presentation status, up to two concise canonical items, and up to four recorded limitations. Failed and incomplete sessions are omitted. The tool does not fetch full evidence or speech data.
 
 ### GET `/api/v1/briefing-sessions/{session_id}`
 
@@ -380,7 +333,7 @@ Prepares short spoken highlights from the completed session's persisted artifact
 
 ### POST `/api/v1/briefing-sessions/{session_id}/speech/play`
 
-Plays only previously prepared audio and returns `202` when playback is queued. Replay uses the exact ordered chunks in local SQLite and does not call a model or TTS engine again. Playback shares the speaker lock with voice cues and the legacy transcript API, so it will not overlap them. Audio bytes are never sent to the browser.
+Plays only previously prepared audio and returns `202` when playback is queued. Replay uses the exact ordered chunks in local SQLite and does not call a model or TTS engine again. Playback shares the speaker lock with voice cues and the generic `/api/v1/voice/speak` endpoint, so it will not overlap them. Audio bytes are never sent to the browser.
 
 ### POST `/api/v1/briefing-sessions/{session_id}/speech/stop`
 
@@ -498,7 +451,7 @@ policy when `DEV_MODE` and `ask_apex.sandbox_mode` are active.
 
 ### POST `/api/v1/cortex/tool-preflight`
 
-Accepts an Agent, optional model override, optional context window, optional local reasoning mode, selected stable names, optional profile, prompt, optional conversation ID, and explicit snapshot/briefing attachment IDs. The backend reconstructs
+Accepts an Agent, optional model override, optional context window, optional local reasoning mode, selected stable names, optional profile, prompt, optional conversation ID, and an optional current telemetry snapshot ID. The backend reconstructs
 the bounded active branch when a conversation ID is present. It returns estimates for
 system instructions, conversation history, HUD context, reserved retrieved context, selected schemas,
 prompt, total, configured context, reserved response capacity, and remaining
@@ -631,7 +584,6 @@ APEX owns Cortex conversation history in `apex_memory.db`. Conversations contain
   "user_message_id": "6dce6f5e-9f1e-4b2f-9930-0ca2668bd248",
   "agent_message_id": "d0b972df-2af6-42d3-9371-0433ccf9bd0a",
   "snapshot_id": "optional-current-snapshot-id",
-  "briefing_id": 42,
   "selected_tool_names": [],
   "tool_profile_id": null
 }
@@ -639,7 +591,7 @@ APEX owns Cortex conversation history in `apex_memory.db`. Conversations contain
 
 `model_id`, `context_window`, and `local_reasoning_mode` are optional per-turn overrides. When supplied, the turn uses those values instead of saved model preferences. The Home workspace sends these fields for every query: cloud models receive the lowest supported reasoning effort, and local models receive `context_window: 16384` with reasoning disabled. These overrides are ephemeral and never written back to settings.
 
-`snapshot_id` and `briefing_id` are optional explicit context. When absent, APEX injects no HUD context. Unknown briefing IDs and stale snapshot IDs are omitted rather than replaced with the latest data. The server derives `sandbox` only when both `DEV_MODE` and the saved sandbox setting are active; clients cannot select or cross partitions. Sandbox turns reject saved `briefing_id` attachments and accept only the process-current masked development briefing identified by its matching `snapshot_id`.
+`snapshot_id` is optional explicit current telemetry context; when absent, APEX injects no HUD telemetry. A stale snapshot ID is omitted rather than replaced with the latest data. A briefing session owns its linked Cortex conversation and canonical opening artifact; callers continue that session by using the returned conversation ID, not by attaching a legacy briefing ID. The server derives `sandbox` only when both `DEV_MODE` and the saved sandbox setting are active; clients cannot select or cross partitions. Snapshot context is included only when its ID matches the process-current telemetry snapshot.
 
 The effective exposure is `selected tools ∩ Apex Agent policy ∩ runtime availability ∩ persistent MCP allowlists`. An explicit empty `selected_tool_names` list means `No APEX Tools`; omitted selection preserves runtime defaults of All APEX Tools for cloud and No APEX Tools for local. Invalid, unauthorized, disconnected, risk-rejected, or unavailable selected names are returned as structured per-tool failures. Cloud models can receive approved APEX capabilities and optional provider-hosted grounding where supported. `effort` is accepted only for models with reasoning levels. Responses contain Apex Agent and resolved model metadata, tool trace, usage, timing, and cost evidence.
 
@@ -906,15 +858,17 @@ Successful response after playback completes:
 - `409` — speech is already active.
 - `503` — no configured fallback completed delivery.
 
-The endpoint does not generate or persist a briefing. Voice mode determines whether the HUD offers manual delivery or starts it automatically after generation.
+The endpoint does not generate or persist a briefing. It speaks only the text supplied in the request. Session briefing speech uses the separate Prepare and Play routes and is never automatic.
 
 ### POST `/api/v1/voice/cue`
 
-Formats and speaks one fixed contextual cue using the local daypart, optional saved user designation, and briefing mode. The request contains a `cue` key and requires `mode` for briefing cues.
+Formats and speaks one fixed activation or telemetry-refresh cue using the local daypart and optional saved user designation. The request contains a `cue` key.
 
 ```json
-{ "cue": "briefing_refresh", "mode": "focused" }
+{ "cue": "activation_ready" }
 ```
+
+Supported cue names are `activation_ready`, `activation_loading`, `activation_refresh_failed`, `activation_no_fresh_telemetry`, and `telemetry_refresh_failed`.
 
 Automatic voice mode speaks the cue and returns its resolved engine. Manual and off modes return `{ "status": "skipped", "resolved_engine": null }`. The endpoint shares the speech lock with `/api/v1/voice/speak`; a busy speaker returns `409`, and failed delivery returns `503`.
 
@@ -928,4 +882,4 @@ Automatic voice mode speaks the cue and returns its resolved engine. Manual and 
 - `429` indicates non-blocking local-inference contention or saturated Cortex run capacity.
 - `503` indicates a required local/provider dependency could not perform the selected operation.
 
-Compatibility fields and aliases remain documented where clients can still use them. New integrations should prefer canonical routes and the generated OpenAPI contract.
+Compatibility fields and aliases remain documented where clients can still use them. The retired full-run briefing routes, legacy briefing history and target routes, and `/api/v1/status` are absent. New integrations should prefer canonical routes and the generated OpenAPI contract.

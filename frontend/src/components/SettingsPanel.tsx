@@ -33,7 +33,6 @@ import {
 } from '../lib/settings'
 import type {
   ModelCatalogEntry,
-  SystemState,
   TtsEngine,
 } from '../types/telemetry'
 import type {
@@ -85,14 +84,14 @@ interface SettingsPanelProps {
   open: boolean
   onClose: () => void
   restoreFocusRef?: RefObject<HTMLElement | null>
-  status: SystemState
-  pipelineStep: number | null
+  briefingRunning: boolean
+  briefingStep: number | null
   isSpeaking: boolean
   isCortexQuerying: boolean
   modelCatalog: ModelCatalogEntry[]
   cortexAgentHydrated: boolean
   failedConnectors: string[]
-  hasBriefingEvidence: boolean
+  hasTelemetryEvidence: boolean
   onApplied: (response: SettingsResponse, previousSettings: RuntimeSettings) => void
   mcpRuntime?: McpStatusState
 }
@@ -102,7 +101,7 @@ function resolveConnectorStatus(
   connectorKey: string,
   enabled: boolean,
   failedConnectors: string[],
-  hasBriefingEvidence: boolean,
+  hasTelemetryEvidence: boolean,
 ): { value: string; tone: 'neutral' | 'ok' | 'warn' | 'error' } {
   if (!enabled) {
     return { value: 'Disabled', tone: 'neutral' }
@@ -110,7 +109,7 @@ function resolveConnectorStatus(
   if (connectorKey === 'market') {
     return { value: 'Enabled', tone: 'ok' }
   }
-  if (!hasBriefingEvidence) {
+  if (!hasTelemetryEvidence) {
     return { value: 'Not yet checked', tone: 'neutral' }
   }
 
@@ -121,9 +120,9 @@ function resolveConnectorStatus(
       : [connectorKey]
 
   if (aliases.some((alias) => failedSet.has(alias))) {
-    return { value: 'Failed last briefing', tone: 'error' }
+    return { value: 'Failed last refresh', tone: 'error' }
   }
-  return { value: 'Clear last briefing', tone: 'ok' }
+  return { value: 'Clear last refresh', tone: 'ok' }
 }
 
 function describeLlamaCppServerStatus(runtime: {
@@ -159,14 +158,14 @@ export default function SettingsPanel({
   open,
   onClose,
   restoreFocusRef,
-  status,
-  pipelineStep,
+  briefingRunning,
+  briefingStep,
   isSpeaking,
   isCortexQuerying,
   modelCatalog,
   cortexAgentHydrated,
   failedConnectors,
-  hasBriefingEvidence,
+  hasTelemetryEvidence,
   onApplied,
   mcpRuntime: sharedMcpRuntime,
 }: SettingsPanelProps): ReactElement | null {
@@ -196,12 +195,12 @@ export default function SettingsPanel({
   const timingRuntime = useMemo(
     () =>
       buildSettingsTimingRuntime({
-        status,
-        pipelineStep,
+        briefingRunning,
+        briefingStep,
         isSpeaking,
         isCortexQuerying,
       }),
-    [status, pipelineStep, isSpeaking, isCortexQuerying],
+    [briefingRunning, briefingStep, isSpeaking, isCortexQuerying],
   )
 
   const featuresTiming = resolveEffectiveTiming('features', timingRuntime)
@@ -780,7 +779,7 @@ export default function SettingsPanel({
                       control.key,
                       baseline?.features[control.key] ?? false,
                       failedConnectors,
-                      hasBriefingEvidence,
+                      hasTelemetryEvidence,
                     )
                     return (
                       <StatusRow

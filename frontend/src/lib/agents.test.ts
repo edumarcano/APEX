@@ -6,12 +6,11 @@ import {
   formatReasoningLabel,
   isAgentKey,
   providerDisplayName,
-  resolveBriefingModeAvailability,
   resolveHomeQueryOverrides,
   resolveLowestReasoningEffort,
   usesSandboxHistory,
 } from './agents'
-import type { BriefingTargetStatus, ModelCatalogEntry } from '../types/telemetry'
+import type { ModelCatalogEntry } from '../types/telemetry'
 
 describe('agents helpers', () => {
   it('exposes only the singular Apex Agent key', () => {
@@ -51,34 +50,6 @@ describe('agents helpers', () => {
     expect(usesSandboxHistory(false, true)).toBe(false)
     expect(usesSandboxHistory(true, false)).toBe(false)
     expect(usesSandboxHistory(true, true)).toBe(true)
-  })
-
-  it('uses briefing targets as the sole source of model-mode availability', () => {
-    const focused: BriefingTargetStatus = {
-      mode: 'focused',
-      label: 'Focused',
-      description: 'Cloud briefing',
-      model_id: 'gpt-5.6-luna',
-      model_display_name: 'GPT-5.6 Luna',
-      provider: 'openai',
-      runtime: 'cloud',
-      status: 'configured',
-      reason: 'Credentials configured',
-      pricing: null,
-    }
-
-    expect(resolveBriefingModeAvailability('structured')).toEqual({
-      status: 'available',
-      reason: null,
-    })
-    expect(resolveBriefingModeAvailability('focused', [focused])).toEqual({
-      status: 'configured',
-      reason: 'Credentials configured',
-    })
-    expect(resolveBriefingModeAvailability('flash', [focused])).toEqual({
-      status: 'unknown',
-      reason: 'Mode status unavailable',
-    })
   })
 
   it('resolves lowest reasoning effort preference correctly', () => {

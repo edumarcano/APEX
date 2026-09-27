@@ -4,12 +4,16 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
-import type { AgentKey, TelemetrySnapshot, ToolCatalog } from './types/telemetry'
+import type { AgentKey, ModelCatalogEntry, TelemetrySnapshot, ToolCatalog } from './types/telemetry'
 import type { RuntimeSettings, SettingsResponse } from './types/settings'
 import { BASE_SETTINGS, buildSettingsResponse } from './test/settingsFixtures'
 
 const appMocks = vi.hoisted(() => ({
   initialAgent: 'apex' as AgentKey,
+  initialModelId: 'deepseek/deepseek-v4-flash-0731',
+  initialModelRuntime: 'cloud' as 'cloud' | 'local',
+  localBriefingModel: null as ModelCatalogEntry | null,
+  cortexLifecycleBusy: false,
   devModeActive: false,
   demoModeActive: false,
   refreshAgentsStatus: vi.fn().mockResolvedValue(undefined),
@@ -47,9 +51,6 @@ const appMocks = vi.hoisted(() => ({
   }),
   refreshConnector: vi.fn().mockResolvedValue(undefined),
   loadLatest: vi.fn().mockResolvedValue(null),
-  triggerSynthesis: vi.fn().mockResolvedValue(undefined),
-  generateFromSnapshot: vi.fn().mockResolvedValue(undefined),
-  speak: vi.fn(),
   weatherSnapshot: null as {
     modules: {
       weather: {
@@ -111,7 +112,11 @@ vi.mock('./components/TelemetryCard', () => ({
     </>
   ) : null,
 }))
-vi.mock('./components/VoiceSignalGlyph', () => ({ VoiceSignalGlyph: () => null }))
+vi.mock('./components/VoiceSignalGlyph', () => ({
+  VoiceSignalGlyph: ({ isLocalModelLoading, loadingDisplayName }: { isLocalModelLoading: boolean; loadingDisplayName?: string | null }) => (
+    isLocalModelLoading ? <output data-testid="local-model-loading-label">{loadingDisplayName}</output> : null
+  ),
+}))
 vi.mock('./components/SettingsPanel', () => ({
   default: ({ onApplied }: { onApplied: unknown }) => {
     appMocks.settingsPanelApplied = onApplied
@@ -128,6 +133,7 @@ vi.mock('./components/CortexWorkspace', () => ({
     activeAgent,
     devModeActive,
     sandboxMode,
+    lifecycleBusy,
     onLocalContextWindowChange,
     onHostedToolChange,
     onSandboxModeChange,
@@ -137,12 +143,14 @@ vi.mock('./components/CortexWorkspace', () => ({
     activeAgent: AgentKey
     devModeActive: boolean
     sandboxMode: boolean
+    lifecycleBusy: boolean
     onLocalContextWindowChange: (contextWindow: number) => Promise<boolean>
     onHostedToolChange: (tool: 'google_search' | 'google_maps', enabled: boolean) => void
     onSandboxModeChange: (enabled: boolean) => void
     toolCatalog: ToolCatalog | null
     actions?: { pendingCount: number }
   }) => {
+    appMocks.cortexLifecycleBusy = lifecycleBusy
     const authoritativeContextWindow = toolCatalog?.context_window ?? null
     const [selectedContextWindow, setSelectedContextWindow] = useState(authoritativeContextWindow)
     const [pendingTarget, setPendingTarget] = useState<number | null>(null)
@@ -184,6 +192,7 @@ vi.mock('./components/CortexWorkspace', () => ({
         <output data-testid="actions-pending-count">
           {actions?.pendingCount ?? 0}
         </output>
+        <output data-testid="cortex-lifecycle-busy">{String(lifecycleBusy)}</output>
         {toolCatalog?.context_window !== null ? (
           <select
             aria-label="Context window"
@@ -223,12 +232,11 @@ vi.mock('./hooks/useApexData', () => ({
     marketEnabled: appMocks.marketEnabled,
     defaultAgent: 'apex' as AgentKey,
     agentInitialSelection: {
-      runtime: 'cloud',
+      runtime: appMocks.initialModelRuntime,
       agent: 'apex' as AgentKey,
-      modelId: 'deepseek/deepseek-v4-flash-0731',
+      modelId: appMocks.initialModelId,
       effort: 'low',
     },
-    briefingDefaultMode: 'flash',
     voiceMode: 'automatic',
     markReminderAsRead: appMocks.markReminderAsRead,
     getReminderTask: appMocks.getReminderTask,
@@ -262,24 +270,6 @@ vi.mock('./hooks/useAppActivation', async () => {
     },
   }
 })
-vi.mock('./hooks/useBriefingPipeline', () => ({
-  useBriefingPipeline: () => ({
-    briefing: '',
-    status: 'idle',
-    isSpeaking: false,
-    pipelineState: null,
-    active_tts_engine: 'google',
-    system_load_throttled: false,
-    failedConnectors: [],
-    connectorHealth: [],
-    synthesisProvider: null,
-    synthesisAgent: null,
-    synthesisFallbackReason: null,
-    insights: [],
-    triggerSynthesis: appMocks.triggerSynthesis,
-    generateFromSnapshot: appMocks.generateFromSnapshot,
-  }),
-}))
 vi.mock('./hooks/useCortex', () => ({
   useCortex: () => ({
     cortexHistory: [],
@@ -302,14 +292,17 @@ vi.mock('./hooks/useCortex', () => ({
         hosted_capabilities: [],
       }],
     },
-    modelCatalog: appMocks.noModels ? [] : [{
-      model_id: 'deepseek/deepseek-v4-flash-0731',
-      display_name: 'DeepSeek V4 Flash',
-      provider: 'openrouter',
-      runtime: 'cloud',
-      stability: 'stable',
-      hosted_capabilities: [],
-    }],
+    modelCatalog: appMocks.noModels ? [] : [
+      {
+        model_id: 'deepseek/deepseek-v4-flash-0731',
+        display_name: 'DeepSeek V4 Flash',
+        provider: 'openrouter',
+        runtime: 'cloud',
+        stability: 'stable',
+        hosted_capabilities: [],
+      },
+      ...(appMocks.localBriefingModel ? [appMocks.localBriefingModel] : []),
+    ],
     cortexAgentHydrated: true,
     queryAgent: appMocks.queryAgent,
     isLocalModelActionPending: false,
@@ -362,14 +355,6 @@ vi.mock('./hooks/useToolPreflight', () => ({
       error: null,
     }
   },
-}))
-vi.mock('./hooks/useVoiceDelivery', () => ({
-  useVoiceDelivery: () => ({
-    isSpeaking: false,
-    lastManualEngine: null,
-    error: null,
-    speak: appMocks.speak,
-  }),
 }))
 
 interface Deferred<T> {
@@ -455,7 +440,6 @@ function settingsResponse(
         custom_profiles: [],
         default_profile_by_runtime: {},
       },
-      briefing: { default_mode: 'flash' },
       voice: { engine: 'google', gender: 'female', mode: 'automatic' },
       mcp: {
         enabled: false,
@@ -835,8 +819,6 @@ describe('App contextual voice cues', () => {
       snapshot: null,
       error: 'refresh failed',
     })
-    appMocks.generateFromSnapshot.mockReset().mockResolvedValue(undefined)
-    appMocks.triggerSynthesis.mockReset().mockResolvedValue(undefined)
     appMocks.loadLatest.mockReset().mockResolvedValue(null)
     appMocks.requestOperation.mockReset().mockResolvedValue('proceed')
     vi.restoreAllMocks()
@@ -849,22 +831,6 @@ describe('App contextual voice cues', () => {
       if (url.pathname.endsWith('/voice/cue')) {
         const body = JSON.parse(String(init?.body)) as { cue: string }
         events.push(`cue:${body.cue}`)
-      }
-      if (url.pathname.endsWith('/briefings/targets')) {
-        return Promise.resolve(new Response(JSON.stringify([
-          {
-            mode: 'flash',
-            label: 'Flash',
-            description: 'Flash briefing',
-            model_id: 'gemma-4-E2B-Q4_K_M.gguf',
-            model_display_name: 'Gemma 4 E2B',
-            provider: 'llama.cpp',
-            runtime: 'local',
-            status: 'available',
-            reason: null,
-            pricing: null,
-          },
-        ]), { status: 200, headers: { 'Content-Type': 'application/json' } }))
       }
       return Promise.resolve(new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }))
     }))
@@ -1101,6 +1067,58 @@ describe('App Home states', () => {
     await user.click(screen.getByRole('button', { name: 'Start Overview' }))
     expect(await screen.findByRole('region', { name: 'Overview' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Standby' })).not.toBeInTheDocument()
+  })
+})
+
+describe('App active local briefing lifecycle', () => {
+  afterEach(() => {
+    appMocks.initialModelId = 'deepseek/deepseek-v4-flash-0731'
+    appMocks.initialModelRuntime = 'cloud'
+    appMocks.localBriefingModel = null
+    appMocks.cortexLifecycleBusy = false
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('keeps local loading identity and lifecycle controls busy for an active unselected session', async () => {
+    appMocks.initialModelId = 'qwen3:1.7b'
+    appMocks.initialModelRuntime = 'local'
+    appMocks.localBriefingModel = {
+      model_id: 'qwen3:1.7b',
+      display_name: 'Qwen 3 1.7B',
+      provider: 'ollama',
+      runtime: 'local',
+      stability: 'stable',
+      hosted_capabilities: [],
+    }
+    const activeSummary = {
+      id: '00000000-0000-4000-8000-000000000081',
+      profile_id: 'daily',
+      model_id: 'qwen3:1.7b',
+      conversation_id: '00000000-0000-4000-8000-000000000082',
+      run_id: '00000000-0000-4000-8000-000000000083',
+      run_status: 'running',
+      created_at: '2026-09-26T10:00:00Z',
+      presented_at: null,
+    }
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(String(input))
+      if (url.pathname.endsWith('/briefing-profiles')) {
+        return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (url.pathname.endsWith('/briefing-sessions')) {
+        return new Response(JSON.stringify([activeSummary]), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+
+    const user = userEvent.setup()
+    render(<App />)
+    expect(await screen.findByTestId('local-model-loading-label')).toHaveTextContent('Qwen 3 1.7B')
+
+    await selectWorkspace(user, 'Cortex')
+    expect(screen.getByTestId('cortex-lifecycle-busy')).toHaveTextContent('true')
+    expect(appMocks.cortexLifecycleBusy).toBe(true)
   })
 })
 

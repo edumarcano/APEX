@@ -42,12 +42,12 @@ Do not expand `useApexData` into another global store. Use the focused owner for
 
 | Hook | Owns |
 |---|---|
-| `useApexData` | Boot configuration, reminders, and compatibility trigger state |
+| `useApexData` | Boot settings and reminder data and actions |
 | `useAppActivation` | Standby/activated browser session |
 | `usePreflight` | Warning and blocker interaction |
 | `useTelemetrySnapshot` | Process-current telemetry snapshot and refresh |
-| `useBriefingPipeline` | Briefing generation, status polling, digest, and transcript |
-| `useVoiceDelivery` | Manual and automatic speech requests |
+| `useBriefingSessions` | Briefing profiles, generation, session status, selected session and evidence, and presentation state |
+| `useBriefingSpeech` | Speech status and explicit preparation, playback, and stop actions for the selected completed session |
 | `useCortex` | Browser-held conversation, Agent/catalog status, explicit tool-selection diagnostics, tool traces and outputs |
 | `useCortexRuns` | Recent Cortex runs, active-run polling, selection, activity detail inspection, and cooperative cancellation |
 | `useActions` | Cortex-visible action list, expanded audit detail, bounded polling, and versioned action controls |

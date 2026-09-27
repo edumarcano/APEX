@@ -87,7 +87,6 @@ describe('useApexData reminder completion', () => {
       await Promise.resolve()
     })
     expect(result.current.activeReminders).toEqual([])
-    expect(result.current.data?.reminders).toBe('No pending reminders.')
 
     resolveCompletion(response({}))
     await act(async () => {
@@ -134,7 +133,5 @@ describe('useApexData reminder completion', () => {
     })
 
     expect(result.current.activeReminders).toEqual([REMINDER])
-    expect(result.current.data?.activeReminders).toEqual([REMINDER])
-    expect(result.current.data?.reminders).toBe(`Pending Reminders: ${REMINDER.note}`)
   })
 })

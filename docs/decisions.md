@@ -2,7 +2,7 @@
 
 This is the reasoning record behind APEX. The architecture reference explains how the current system works; this document explains why its boundaries were drawn and which trade-offs were accepted for a single-user, local-first project.
 
-Each entry leads with the decision, then the motivation and consequence. These are current decisions unless an entry explicitly describes historical hardware work or a compatibility path.
+Each entry leads with the decision, then the motivation and consequence. Entries marked **Superseded** preserve the earlier reasoning as history; the status note points to the current behavior.
 
 ## Configuration
 
@@ -26,11 +26,13 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ### Use SQLite for local durable state
 
-**Decision.** SQLite stores APEX's local durable state, including conversation and run history, briefing history, personal context and retrieval indexes, review proposals, the reminder cache and outbox, and the action ledger. Microsoft To Do remains authoritative for synced reminders.
+**Decision.** SQLite stores APEX's local durable state, including conversation and run history, briefing sessions and speech artifacts, personal context and retrieval indexes, review proposals, the reminder cache and outbox, and the action ledger. Microsoft To Do remains authoritative for synced reminders.
 
 **Why.** This data needs identity, ordering, transactions, or reliable recovery that would be awkward to maintain in JSON or flat files. SQLite provides those properties without adding another service.
 
 **Trade-off.** The database is not encrypted by APEX and requires schema compatibility and transaction discipline.
+
+The beta.6 cutover transactionally drops only the retired legacy `briefings` table. Its rows are permanently removed, with no migration into session history; `briefing_sessions` and unrelated database records are preserved.
 
 ### Keep context evidence separate from current claims
 
@@ -40,7 +42,9 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 **Trade-off.** Context changes require more schema and lifecycle handling, and old evidence remains in the unencrypted local database after a correction or retraction. Prompt assembly therefore sends bounded current claims and provenance labels rather than full evidence or history.
 
-### Keep full trigger execution synchronous
+### Keep full trigger execution synchronous (superseded)
+
+**Status: Superseded by the beta.6 saved-session engine.** The blocking `/api/v1/trigger` route and active pipeline status endpoint have been removed.
 
 **Decision.** `POST /api/v1/trigger` remains one blocking full-run request while status observation uses a separate polling endpoint.
 
@@ -48,7 +52,9 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 **Trade-off.** The HTTP request stays open through collection and synthesis. The independent snapshot and briefing endpoints are preferable when the caller does not need the whole orchestration path.
 
-### Separate runtime paths without removing the full pipeline
+### Separate runtime paths without removing the full pipeline (superseded)
+
+**Status: Superseded by the beta.6 route retirement.** Activation, telemetry refresh, briefing sessions, Agent requests, and speech have separate owners; the old full trigger is no longer supported.
 
 **Decision.** Activation, telemetry collection, briefing generation, Agent requests, and voice delivery have separate APIs and frontend owners. The full trigger remains supported.
 
@@ -62,7 +68,7 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 **Why.** Snapshot state is temporary and tied to refreshes. Persisting every connector observation would add migrations, cleanup, and stale-record ambiguity without improving anything in a single-process session.
 
-**Trade-off.** Restarting FastAPI invalidates the snapshot, so snapshot-based briefing generation must reject missing or stale identifiers and require a refresh.
+**Trade-off.** Restarting FastAPI invalidates an explicit HUD snapshot reference. Briefing sessions instead persist the evidence captured during generation and remain readable after restart.
 
 ### Make operational preflight advisory before it is blocking
 
@@ -72,7 +78,9 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 **Trade-off.** The user makes the final call on advisory risk. Missing credentials, unavailable models, inference contention, failed resource gates, invalid input, and broken local configuration or database state remain non-overridable.
 
-### Source speaker state and reset the pipeline from the backend
+### Source speaker state and reset the pipeline from the backend (superseded)
+
+**Status: Superseded by session-scoped speech and current Home state.** The old global status poll and full-run pipeline reset have been removed. Home derives briefing progress from the active session and speech state from the saved session's speech endpoint.
 
 **Decision.** The HUD reads speaking state from the API instead of inferring completion from a frontend timer, and `_speak_and_cleanup` owns the final pipeline reset after audio playback.
 
@@ -122,7 +130,9 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 ## AI and speech
 
-### Synthesize from typed facts instead of display prose
+### Synthesize from typed facts instead of display prose (superseded)
+
+**Status: Superseded by the canonical briefing-session evidence and artifact contract.** The old Flash/Focused projections and Structured renderer were retired with their engine. Current profiles share one bounded session flow and selected-model contract.
 
 **Decision.** Connectors turn their data into one normalized, bounded `BriefingFacts` snapshot. Flash and Focused use explicit factual projections, while Structured consumes the complete facts directly; all model input is marked as untrusted data.
 
@@ -130,7 +140,9 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 **Trade-off.** Every new fact that should reach synthesis has to be added deliberately. That extra work is preferable to silently sending more data to a model.
 
-### Keep deterministic synthesis as the final fallback
+### Keep deterministic synthesis as the final fallback (superseded)
+
+**Status: Superseded by explicit model selection.** A failed or unavailable selected model does not silently switch to a separate briefing route. Catch Up may return a deterministic no-change artifact when comparable source history shows no material change; that is part of its profile behavior, not a provider fallback.
 
 **Decision.** Every briefing mode ends in Structured when its selected model path cannot produce valid output.
 
@@ -146,7 +158,9 @@ Each entry leads with the decision, then the motivation and consequence. These a
 
 **Trade-off.** One local operation can reject another rather than queue behind it. Briefing prompts and Agent context remain separate even though they share model lifecycle management.
 
-### Expose explicit briefing modes
+### Expose explicit briefing modes (superseded)
+
+**Status: Superseded by Daily, Catch Up, and Deep briefing profiles.** Profiles share the selected Apex Agent model. Old Flash, Focused, and Structured preferences are ignored rather than mapped, and `--mode` is retired from the CLI.
 
 **Decision.** The HUD offers canonical `flash`, `focused`, and `structured` modes rather than exposing Agent identities as mode identifiers. Flash is the default; legacy identifiers are intentionally rejected without migration.
 

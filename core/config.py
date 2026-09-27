@@ -45,7 +45,6 @@ __all__ = [
     "CUSTOM_BROWSER_PATH",
     "DEMO_MODE",
     "DEMO_TTS",
-    "DEV_AI_SYNTHESIS",
     "DEV_TTS_PLAYBACK",
     "ENV_PATH",
     "FEATURE_CALENDAR",
@@ -53,10 +52,6 @@ __all__ = [
     "FEATURE_NEWS",
     "FEATURE_SPORTS",
     "FEATURE_WEATHER",
-    "FLASH_SYNTHESIS_PROMPT",
-    "FOCUSED_SYNTHESIS_PROMPT",
-    "LOCAL_PRIMARY_GRACE_SECONDS",
-    "LOCAL_FALLBACK_GRACE_SECONDS",
     "PRIMARY_TTS",
     "PROJECT_ROOT",
     "VOICE_GENDER",
@@ -75,9 +70,7 @@ load_dotenv(dotenv_path=ENV_PATH)
 
 _TRUTHY_ENV_VALUES: Final[frozenset[str]] = frozenset({"1", "true", "yes", "on"})
 _FALSY_ENV_VALUES: Final[frozenset[str]] = frozenset({"0", "false", "no", "off"})
-_VALID_DEV_AI_SYNTHESIS: Final[frozenset[str]] = frozenset({"flash", "focused", "structured"})
 _VALID_DEV_TTS_PLAYBACK: Final[frozenset[str]] = frozenset({"pyttsx3", "google", "kokoro"})
-DevAiSynthesisMode = Literal["flash", "focused", "structured"]
 DevTtsPlaybackMode = Literal["pyttsx3", "google", "kokoro"]
 
 
@@ -127,27 +120,6 @@ def is_dev_mode() -> bool:
     return _parse_env_bool(os.getenv("DEV_MODE"), key="DEV_MODE", default=False)
 
 
-def _parse_dev_ai_synthesis(raw: str | None) -> DevAiSynthesisMode:
-    """
-    Normalize ``DEV_AI_SYNTHESIS`` for development-mode briefing routing.
-
-    Defaults to ``structured`` when unset. Malformed values log a warning and
-    fall back to ``structured``.
-    """
-    if raw is None:
-        return "structured"
-
-    normalized = raw.strip().lower().strip("'\"")
-    if normalized in _VALID_DEV_AI_SYNTHESIS:
-        return cast(DevAiSynthesisMode, normalized)
-
-    _LOGGER.warning(
-        "Invalid DEV_AI_SYNTHESIS=%r; using default structured.",
-        raw,
-    )
-    return "structured"
-
-
 def _parse_dev_tts_playback(raw: str | None) -> DevTtsPlaybackMode:
     """
     Normalize ``DEV_TTS_PLAYBACK`` for development-mode TTS routing.
@@ -168,10 +140,6 @@ def _parse_dev_tts_playback(raw: str | None) -> DevTtsPlaybackMode:
     )
     return "pyttsx3"
 
-
-DEV_AI_SYNTHESIS: Final[DevAiSynthesisMode] = _parse_dev_ai_synthesis(
-    os.getenv("DEV_AI_SYNTHESIS", "structured"),
-)
 
 DEV_TTS_PLAYBACK: Final[DevTtsPlaybackMode] = _parse_dev_tts_playback(
     os.getenv("DEV_TTS_PLAYBACK"),
@@ -213,14 +181,6 @@ except (OSError, json.JSONDecodeError) as exc:
     _LOGGER.warning("Unable to load config from %s: %s", CONFIG_PATH, exc)
     _CONFIG_DATA = {}
 
-_synthesis_cfg = _CONFIG_DATA.get("synthesis", {})
-if not isinstance(_synthesis_cfg, dict):
-    _LOGGER.warning(
-        'Config key "synthesis" must be a JSON object; the required prompt is unavailable.'
-    )
-    _synthesis_cfg = {}
-
-
 def _valid_prompt(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
@@ -234,38 +194,6 @@ def _required_prompt(value: object, *, key: str) -> str:
         )
     return prompt
 
-
-FLASH_SYNTHESIS_PROMPT: Final[str] = _required_prompt(
-    _synthesis_cfg.get("flash_system_prompt"),
-    key="synthesis.flash_system_prompt",
-)
-FOCUSED_SYNTHESIS_PROMPT: Final[str] = _required_prompt(
-    _synthesis_cfg.get("focused_system_prompt"),
-    key="synthesis.focused_system_prompt",
-)
-
-
-def _parse_grace_seconds(value: object, *, key: str) -> int:
-    if isinstance(value, bool):
-        value = None
-    try:
-        parsed = int(value) if value is not None else 5
-    except (TypeError, ValueError):
-        parsed = 5
-    if 0 <= parsed <= 30:
-        return parsed
-    _LOGGER.warning("Config key %s must be between 0 and 30; using 5.", key)
-    return 5
-
-
-LOCAL_PRIMARY_GRACE_SECONDS: Final[int] = _parse_grace_seconds(
-    _synthesis_cfg.get("local_primary_grace_seconds"),
-    key="synthesis.local_primary_grace_seconds",
-)
-LOCAL_FALLBACK_GRACE_SECONDS: Final[int] = _parse_grace_seconds(
-    _synthesis_cfg.get("local_fallback_grace_seconds"),
-    key="synthesis.local_fallback_grace_seconds",
-)
 
 AGENT_SYSTEM_PROMPT: Final[str] = _required_prompt(
     _CONFIG_DATA.get("agent_system_prompt"),

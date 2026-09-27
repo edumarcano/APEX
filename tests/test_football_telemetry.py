@@ -178,18 +178,3 @@ class FootballCollectionTests(unittest.TestCase):
                     result = sports_client.collect_football()
                 self.assertEqual(result.status, "unavailable")
                 self.assertEqual(result.reason_code, "malformed_payload")
-
-
-class FootballSynthesisTests(unittest.TestCase):
-    def test_selects_earliest_fixture_within_seven_days(self) -> None:
-        from core.api.briefing import _build_synthesis_input
-
-        now = datetime.now(timezone.utc)
-        fixtures = [
-            {"team": "Later", "opponent": "B", "home_or_away": "away", "competition": "Cup", "kickoff_at": (now + timedelta(days=8)).isoformat()},
-            {"team": "Soon", "opponent": "C", "home_or_away": "home", "competition": "League", "kickoff_at": (now + timedelta(days=1)).isoformat()},
-        ]
-        result = ConnectorResult(name="football", status="healthy", freshness="live", reason_code="ok", display_text="", data={"fixtures": fixtures})
-        source = _build_synthesis_input(results={"football": result}, failed_connectors=[])
-        self.assertIsNotNone(source.football_next_fixture)
-        self.assertEqual(source.football_next_fixture.team, "Soon")

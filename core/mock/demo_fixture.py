@@ -10,9 +10,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from core.api.models import DigestPayload, TelemetryPayload
-from core.connectors.models import CONNECTOR_NAMES, ConnectorHealthEntry, utc_now_iso
-from core.connectors.scoring import compute_sync_health
+from core.connectors.models import CONNECTOR_NAMES, utc_now_iso
 from core.telemetry.models import TelemetryModuleEntry
 
 _FIXTURE_PATH = Path(__file__).resolve().parent / "telemetry.json"
@@ -37,8 +35,6 @@ class DemoFixtureError(ValueError):
 class DemoBundle:
     """Normalized DEMO_MODE telemetry derived from a single fixture."""
 
-    telemetry: TelemetryPayload
-    digest: DigestPayload
     modules: dict[str, TelemetryModuleEntry]
     collected_at: str
 
@@ -624,37 +620,6 @@ def _build_module(
     raise DemoFixtureError(f"Unsupported demo module: {name!r}")
 
 
-def _derive_insights(
-    *,
-    weather_data: dict[str, Any],
-    email_data: dict[str, Any],
-    calendar_data: dict[str, Any],
-    f1_data: dict[str, Any],
-    reminders_data: dict[str, Any],
-    fixture_insights: list[str],
-) -> list[str]:
-    insights = list(fixture_insights)
-    events = calendar_data.get("events") if isinstance(calendar_data.get("events"), list) else []
-    if events and len(insights) < 3:
-        first = events[0]
-        if isinstance(first, dict):
-            summary = str(first.get("summary", "Upcoming event"))
-            insights.append(f"Calendar: {summary} is next on the schedule.")
-    f1_map = f1_data.get("f1_map") if isinstance(f1_data.get("f1_map"), dict) else {}
-    if f1_map.get("relativeWeek") == "This week" and len(insights) < 3:
-        race_name = str(f1_map.get("raceName", "Grand Prix"))
-        insights.append(f"Sports: {race_name} is scheduled this week.")
-    if reminders_data.get("count", 0) and len(insights) < 3:
-        insights.append("Reminders: Pending follow-ups require attention.")
-    if email_data.get("count", 0) and len(insights) < 3:
-        insights.append("Email: Unread primary messages are waiting.")
-    if weather_data.get("temp_f") is not None and len(insights) < 3:
-        insights.append(
-            f"Weather: {weather_data['temp_f']}°F with {weather_data.get('condition', 'current conditions')}."
-        )
-    return insights[:3]
-
-
 def load_demo_bundle(*, now: datetime | None = None) -> DemoBundle:
     """Load and normalize the single-source DEMO_MODE fixture."""
     payload = _load_raw_fixture()
@@ -671,67 +636,7 @@ def load_demo_bundle(*, now: datetime | None = None) -> DemoBundle:
         modules[name] = _build_module(name, shell, now=now_utc)
         structured[name] = dict(modules[name].data)
 
-    report = compute_sync_health(
-        {
-            name: (
-                None
-                if entry.status == "disabled"
-                else entry.to_connector_result()
-            )
-            for name, entry in modules.items()
-        }
-    )
-    connector_health = [
-        ConnectorHealthEntry(
-            name=entry.name,
-            status=entry.status,
-            freshness=entry.freshness,
-            reason_code=entry.reason_code,
-            observed_at=entry.observed_at,
-        )
-        for entry in modules.values()
-        if entry.status != "disabled" and entry.name != "market"
-    ]
-
-    fixture_insights = payload.get("insights")
-    insights: list[str] = []
-    if isinstance(fixture_insights, list):
-        insights = [str(item).strip() for item in fixture_insights if str(item).strip()]
-
-    digest = DigestPayload(
-        weather_archetype=str(structured["weather"].get("archetype") or "clear_day"),
-        unread_emails_count=int(structured["email"].get("count", 0) or 0),
-        upcoming_events_count=int(structured["calendar"].get("total_count", 0) or 0),
-        f1_sprint_active=bool(
-            isinstance(structured["f1"].get("f1_map"), dict)
-            and structured["f1"]["f1_map"].get("sprintScheduled")
-        ),
-        reminders_pending_count=int(structured["reminders"].get("count", 0) or 0),
-        sync_health_score=report.sync_health_score,
-        connector_health=connector_health,
-        confidence_score=report.sync_health_score,
-        failed_connectors=[name for name in report.failed_connectors if name != "market"],
-        insights=_derive_insights(
-            weather_data=structured["weather"],
-            email_data=structured["email"],
-            calendar_data=structured["calendar"],
-            f1_data=structured["f1"],
-            reminders_data=structured["reminders"],
-            fixture_insights=insights,
-        ),
-    )
-
-    telemetry = TelemetryPayload(
-        weather=modules["weather"].display_text,
-        sports=modules["f1"].display_text,
-        news=modules["news"].display_text,
-        email=modules["email"].display_text,
-        calendar=modules["calendar"].display_text,
-        reminders=modules["reminders"].display_text,
-    )
     return DemoBundle(
-        telemetry=telemetry,
-        digest=digest,
         modules=modules,
         collected_at=collected_at,
     )

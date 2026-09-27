@@ -2,29 +2,10 @@
 
 from __future__ import annotations
 
-import logging
-import sqlite3
-from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
-from core import database
-from core.api.briefing import (
-    build_briefing_target_statuses,
-    generate_briefing,
-    trigger_briefing,
-)
-from core.api.demo import mock_briefing_history
-from core.api.models import (
-    BriefingGenerateRequest,
-    BriefingHistoryRecord,
-    BriefingResponse,
-    BriefingTargetStatus,
-    BriefingTriggerRequest,
-    classify_digest_payload,
-    parse_runtime_metadata,
-)
 from core.config import DEMO_MODE
 from core.briefings import models as briefing_models
 from core.briefings.models import (
@@ -55,7 +36,6 @@ from core.runs.coordinator import (
 )
 
 router = APIRouter(tags=["briefings"])
-_LOGGER = logging.getLogger(__name__)
 
 
 @router.get(
@@ -86,10 +66,7 @@ def generate_briefing_session(
         )
     try:
         result = get_briefing_service().start(
-            BriefingGenerationRequest(
-                **body.model_dump(),
-                origin="hud",
-            )
+            BriefingGenerationRequest(**body.model_dump())
         )
     except BriefingModelConfigurationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
@@ -130,93 +107,6 @@ def generate_briefing_session(
         created_at=record.created_at,
         presented_at=record.presented_at,
     )
-
-
-@router.post(
-    "/api/v1/trigger",
-    response_model=BriefingResponse,
-    operation_id="trigger_briefing_api_v1_trigger_post",
-    summary="Trigger Briefing",
-)
-def trigger_briefing_endpoint(
-    body: BriefingTriggerRequest | None = None,
-) -> BriefingResponse:
-    """
-    HTTP entry point for a full APEX run.
-
-    Force-refreshes telemetry, then synthesizes with an optional requested mode
-    or the configured default. When ``DEMO_MODE`` is active, serves static mock
-    telemetry through a staged simulation loop.
-    """
-    return trigger_briefing(mode=body.mode if body is not None else None)
-
-
-@router.post(
-    "/api/v1/briefings/generate",
-    response_model=BriefingResponse,
-    summary="Generate Briefing",
-)
-def generate_briefing_endpoint(body: BriefingGenerateRequest) -> BriefingResponse:
-    """
-    Synthesize a briefing from an existing telemetry snapshot.
-
-    Requires a process-current ``snapshot_id`` and selected briefing mode.
-    Performs no connector calls. Returns ``409`` when the snapshot is missing
-    or no longer current.
-    """
-    return generate_briefing(
-        snapshot_id=body.snapshot_id,
-        mode=body.mode,
-        cue_context=body.cue_context,
-    )
-
-
-def _history_record_from_row(row: dict[str, Any]) -> dict[str, Any]:
-    """Build a history API record with digest quality classification."""
-    digest, digest_status = classify_digest_payload(
-        row.get("digest"),
-        digest_parse_error=row.get("digest_parse_error"),
-    )
-    return {
-        "id": row["id"],
-        "timestamp": row["timestamp"],
-        "briefing": row["briefing"],
-        "digest": digest,
-        "metadata": parse_runtime_metadata(row.get("metadata")),
-        "digest_status": digest_status,
-    }
-
-
-@router.get("/api/v1/briefings/history", response_model=list[BriefingHistoryRecord])
-def get_briefing_history() -> list[dict[str, Any]]:
-    """
-    Return recent briefing ledger entries for HUD history panels.
-
-    When ``DEMO_MODE`` is active, serves a static mock ledger without querying SQLite.
-    """
-    if DEMO_MODE:
-        return [_history_record_from_row(row) for row in mock_briefing_history()]
-
-    try:
-        rows = database.fetch_briefing_history(limit=50)
-    except sqlite3.Error:
-        _LOGGER.exception("Briefing history unavailable")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Briefing history unavailable.",
-        ) from None
-
-    return [_history_record_from_row(row) for row in rows]
-
-
-@router.get(
-    "/api/v1/briefings/targets",
-    response_model=list[BriefingTargetStatus],
-    summary="Get Briefing Targets",
-)
-def get_briefing_targets() -> list[BriefingTargetStatus]:
-    """Return live availability and metadata for fixed briefing synthesis targets."""
-    return build_briefing_target_statuses()
 
 
 @router.get(

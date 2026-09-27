@@ -1,27 +1,6 @@
 export type TtsEngine = 'google' | 'kokoro' | 'pyttsx3'
 export type LocalReasoningMode = 'none' | 'focused'
 
-export interface PipelineState {
-  step: number
-  label: string
-  timestamp: string
-  is_speaking: boolean
-  active_tts_engine: TtsEngine
-  system_load_throttled: boolean
-  synthesis?: SynthesisLiveState | null
-}
-
-export type SynthesisProvider = 'gemini' | 'ollama' | 'llama_cpp' | 'openai' | 'openrouter' | 'raw' | 'demo'
-export type SynthesisStrategy = 'cloud' | 'local' | 'raw' | 'demo'
-
-export interface SynthesisLiveState {
-  phase: 'idle' | 'loading' | 'ready' | 'generating' | 'fallback' | 'complete'
-  provider: SynthesisProvider | null
-  model_id: string | null
-  loading: boolean
-  fallback_reason: string | null
-}
-
 export interface SystemDiagnostics {
   cpu: number | null
   cpu_freq: number | null
@@ -325,26 +304,9 @@ export interface TelemetryRefreshRequest {
   force?: boolean
 }
 
-export type BriefingMode = 'flash' | 'focused' | 'structured'
-
-export interface BriefingTargetStatus {
-  mode: BriefingMode
-  label: string
-  description: string
-  model_id: string | null
-  model_display_name: string | null
-  provider: string | null
-  runtime: 'cloud' | 'local' | 'none'
-  status: AgentAvailabilityStatus
-  reason: string | null
-  pricing: AgentPricingMetadata | null
-}
-
 export type PreflightOperation =
   | 'activate'
-  | 'activate_with_briefing'
   | 'refresh_telemetry'
-  | 'generate_briefing'
   | 'generate_briefing_session'
   | 'cortex_query'
 
@@ -380,7 +342,6 @@ export interface PreflightBlocker {
 export interface PreflightRequest {
   operation: PreflightOperation
   connectors?: string[] | null
-  briefing_mode?: BriefingMode | null
   model_id?: string | null
   force?: boolean
   involves_cloud?: boolean
@@ -393,32 +354,6 @@ export interface PreflightResponse {
   warnings: PreflightWarning[]
   blockers: PreflightBlocker[]
   can_proceed: boolean
-}
-
-export interface TelemetryPayload {
-  weather: string
-  /** Integer °F for VTE primary readout; null when unavailable. */
-  temperatureF: number | null
-  /** Condition or summary text excluding the primary temperature numeral. */
-  weatherDetail: string
-  /** Parsed micro-climate archetype for per-condition Weather card icons. */
-  weatherCondition?: WeatherConditionArchetype | null
-  briefing: string
-  sports: string
-  news: string
-  email: string
-  calendar: string
-  reminders: string
-  activeReminders: ActiveReminder[]
-  reminderSourceState?: 'live' | 'stale' | 'unavailable'
-  diagnostics?: SystemDiagnostics | null
-  confidenceScore: number
-  failedConnectors: string[]
-  connectorHealth: ConnectorHealthEntry[]
-  digest?: DigestPayload
-  defaultAgent?: AgentKey
-  agentQueriesEnabled?: boolean
-  tool_outputs?: ToolOutputItem[]
 }
 
 export type SystemState = 'idle' | 'loading' | 'success' | 'error'
@@ -462,29 +397,13 @@ export interface MarketResponse {
 }
 
 export interface ApexDataState {
-  data: TelemetryPayload | null
-  status: SystemState
-  error: string | null
-  pipelineState: PipelineState | null
-  isPipelinePolling: boolean
-  isSpeaking: boolean
   activeReminders: ActiveReminder[]
   reminderSourceState?: 'live' | 'stale' | 'unavailable'
   demoModeActive: boolean
   devModeActive: boolean
-  confidenceScore: number
-  failedConnectors: string[]
-  connectorHealth: ConnectorHealthEntry[]
-  active_tts_engine: TtsEngine
-  system_load_throttled: boolean
   defaultAgent?: AgentKey
   agentInitialSelection?: AgentInitialSelection
-  briefingDefaultMode?: BriefingMode
   voiceMode?: 'off' | 'manual' | 'automatic'
   agentQueriesEnabled?: boolean
   marketEnabled: boolean
-  synthesisStrategy: SynthesisStrategy
-  synthesisProvider: SynthesisProvider | null
-  synthesisModelId: string | null
-  synthesisFallbackReason: string | null
 }

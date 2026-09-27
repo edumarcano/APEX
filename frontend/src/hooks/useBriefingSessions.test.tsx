@@ -72,7 +72,10 @@ const evidence: BriefingEvidence = {
   unavailable_reason: null,
 }
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
 
 describe('useBriefingSessions', () => {
   it('loads the saved artifact independently and fetches one evidence record only when requested', async () => {
@@ -100,6 +103,77 @@ describe('useBriefingSessions', () => {
     expect(result.current.evidenceById[evidenceId]?.content).toBe('Clear, 72F.')
     expect(evidenceReads).toBe(1)
     expect(requested.filter((url) => url.includes('/evidence/'))).toHaveLength(1)
+  })
+
+  it('continues polling an active session after the operator selects an older completed session', async () => {
+    vi.useFakeTimers()
+    const olderId = '00000000-0000-4000-8000-000000000006'
+    const activeId = '00000000-0000-4000-8000-000000000007'
+    const olderSummary = {
+      ...summary,
+      id: olderId,
+      conversation_id: '00000000-0000-4000-8000-000000000008',
+      run_id: '00000000-0000-4000-8000-000000000009',
+    }
+    const activeSummary = {
+      ...summary,
+      id: activeId,
+      conversation_id: '00000000-0000-4000-8000-000000000010',
+      run_id: '00000000-0000-4000-8000-000000000011',
+      run_status: 'running' as const,
+    }
+    const olderDetail = {
+      ...detail(),
+      id: olderId,
+      conversation_id: olderSummary.conversation_id,
+      run_id: olderSummary.run_id,
+    }
+    let activeReads = 0
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url === API_ENDPOINTS.briefingSessions({ limit: 50 })) return response([activeSummary, olderSummary])
+      if (url === API_ENDPOINTS.briefingProfiles) return response([])
+      if (url === API_ENDPOINTS.briefingSession(olderId)) return response(olderDetail)
+      if (url === API_ENDPOINTS.briefingSession(activeId)) {
+        activeReads += 1
+        const status = activeReads >= 2 ? 'completed' : 'running'
+        return response({
+          ...detail(status),
+          id: activeId,
+          conversation_id: activeSummary.conversation_id,
+          run_id: activeSummary.run_id,
+          configuration: {
+            ...detail(status).configuration,
+            model: { ...detail(status).configuration.model, model_id: activeSummary.model_id },
+          },
+        })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const { result } = renderHook(() => useBriefingSessions())
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(result.current.hasActiveSession).toBe(true)
+
+    await act(async () => { await result.current.openSession(olderId) })
+    expect(result.current.selectedSessionId).toBe(olderId)
+    expect(result.current.activeSession?.id).toBe(olderId)
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(900) })
+    expect(activeReads).toBe(1)
+    expect(result.current.hasActiveSession).toBe(true)
+    expect(result.current.selectedSessionId).toBe(olderId)
+    expect(result.current.activeSession?.id).toBe(olderId)
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(900) })
+    expect(activeReads).toBe(2)
+    expect(result.current.sessions.find((session) => session.id === activeId)?.run_status).toBe('completed')
+    expect(result.current.hasActiveSession).toBe(false)
+    expect(result.current.selectedSessionId).toBe(olderId)
+    expect(result.current.activeSession?.id).toBe(olderId)
   })
 
   it('retains an idempotency key after an ambiguous admission failure for an explicit retry', async () => {

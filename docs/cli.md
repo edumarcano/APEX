@@ -12,7 +12,8 @@ uv run apex models
 uv run apex ask "What needs my attention?"
 uv run apex ask "Review my plan" --model deepseek/deepseek-v4-flash-0731 --effort high --profile daily_planning
 uv run apex briefing
-uv run apex briefing --mode structured
+uv run apex briefing --profile catch-up
+uv run apex briefing --profile deep --model gemini-3.7-flash
 uv run apex context status
 uv run apex context prepare
 uv run apex context list
@@ -107,7 +108,7 @@ returned status has a sanitized error.
 Disabling exports retains generated files. Commands accept `--json` for
 machine-readable output, including failure status.
 
-`briefing` uses the normal full refresh-and-generate route. Omitting `--mode` uses the saved Flash default; supported overrides are `flash`, `focused`, and `structured`. These are breaking identifiers: the former Agent-named values are rejected.
+`briefing` creates a `cli`-origin session through `POST /api/v1/briefing-sessions`, then polls that session detail until it completes, fails, is cancelled, or is interrupted. It does not refresh connectors separately, mark the artifact as presented, or prepare or play speech. The default profile is `daily`; `--profile` accepts `daily`, `catch-up`, or `deep`. If `--model` is omitted, the CLI reads `ask_apex.selected_model` from saved Runtime Settings. Use `--json` for the complete terminal session detail; human output shows profile, model, status, canonical sections, and limitations. `--mode` is retired and returns a parser error directing callers to `--profile`.
 
 For Context vault setup and sharing, see the [Context vault guide](context-vault.md).
 

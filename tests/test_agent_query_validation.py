@@ -104,7 +104,6 @@ class SandboxPolicyTests(unittest.TestCase):
             captured.update(
                 {
                     "snapshot_id": payload.snapshot_id,
-                    "briefing_id": payload.briefing_id,
                     "history": list(payload.history),
                     "disable_tools": kwargs.get("disable_tools"),
                     "disable_hud_context": kwargs.get("disable_hud_context"),
@@ -154,7 +153,6 @@ class SandboxPolicyTests(unittest.TestCase):
             )
 
         self.assertEqual(captured["snapshot_id"], "snap-1")
-        self.assertIsNone(captured["briefing_id"])
         self.assertEqual(captured.get("history"), [])
         self.assertFalse(captured["disable_tools"])
         self.assertFalse(captured["disable_hud_context"])

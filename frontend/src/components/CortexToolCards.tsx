@@ -87,11 +87,26 @@ interface CalendarEventsPayload {
   error?: string
 }
 
+interface BriefingHistoryItem {
+  category: string
+  title: string
+  body: string
+}
+
+interface BriefingHistorySection {
+  title: string
+  items: BriefingHistoryItem[]
+}
+
 interface BriefingHistoryEntry {
-  id: number
-  timestamp: string
-  briefing: string
-  insights: string[]
+  id: string
+  profile: { id: string; label: string }
+  model_id: string
+  created_at: string
+  presented_at: string | null
+  presentation_status: 'presented' | 'not_presented'
+  sections: BriefingHistorySection[]
+  limitations: string[]
 }
 
 interface BriefingHistoryPayload {
@@ -651,34 +666,61 @@ function parseBriefingHistoryPayload(output: unknown): BriefingHistoryPayload | 
     return { message: output.message }
   }
 
-  const briefings = Array.isArray(output.briefings)
-    ? output.briefings
-        .map((entry): BriefingHistoryEntry | null => {
-          if (!isRecord(entry)) {
-            return null
-          }
-          const id =
-            typeof entry.id === 'number' && Number.isFinite(entry.id)
-              ? entry.id
-              : null
-          const timestamp =
-            typeof entry.timestamp === 'string' ? entry.timestamp : null
-          const briefing =
-            typeof entry.briefing === 'string' ? entry.briefing : null
-          const insights = Array.isArray(entry.insights)
-            ? entry.insights.filter(
-                (insight): insight is string => typeof insight === 'string',
-              )
-            : []
-
-          if (id === null || !timestamp || !briefing) {
-            return null
-          }
-
-          return { id, timestamp, briefing, insights }
-        })
-        .filter((entry): entry is BriefingHistoryEntry => entry !== null)
-    : []
+  if (!Array.isArray(output.briefings)) {
+    return null
+  }
+  const parsedBriefings = output.briefings.map((entry): BriefingHistoryEntry | null => {
+    if (!isRecord(entry) || !isRecord(entry.profile) || !Array.isArray(entry.sections)) {
+      return null
+    }
+    if (
+      typeof entry.id !== 'string' ||
+      typeof entry.profile.id !== 'string' ||
+      typeof entry.profile.label !== 'string' ||
+      typeof entry.model_id !== 'string' ||
+      typeof entry.created_at !== 'string' ||
+      (entry.presented_at !== null && typeof entry.presented_at !== 'string') ||
+      (entry.presentation_status !== 'presented' && entry.presentation_status !== 'not_presented')
+    ) {
+      return null
+    }
+    const sections = entry.sections.map((section): BriefingHistorySection | null => {
+      if (!isRecord(section) || typeof section.title !== 'string' || !Array.isArray(section.items)) {
+        return null
+      }
+      const items = section.items.map((item): BriefingHistoryItem | null => {
+        if (
+          !isRecord(item) ||
+          typeof item.category !== 'string' ||
+          typeof item.title !== 'string' ||
+          typeof item.body !== 'string'
+        ) {
+          return null
+        }
+        return { category: item.category, title: item.title, body: item.body }
+      })
+      if (items.some((item) => item === null)) return null
+      return { title: section.title, items: items as BriefingHistoryItem[] }
+    })
+    if (sections.some((section) => section === null)) return null
+    const limitations = Array.isArray(entry.limitations)
+      ? entry.limitations.filter((item): item is string => typeof item === 'string')
+      : []
+    return {
+      id: entry.id,
+      profile: { id: entry.profile.id, label: entry.profile.label },
+      model_id: entry.model_id,
+      created_at: entry.created_at,
+      presented_at: entry.presented_at,
+      presentation_status: entry.presentation_status,
+      sections: sections as BriefingHistorySection[],
+      limitations,
+    }
+  })
+  if (parsedBriefings.some((entry) => entry === null)) {
+    return null
+  }
+  const briefings = parsedBriefings as BriefingHistoryEntry[]
 
   return {
     limit_requested:
@@ -1390,20 +1432,43 @@ function BriefingHistoryCard({
               key={entry.id}
               className="space-y-1.5 rounded-lg border border-white/5 bg-white/[0.02] px-2.5 py-2"
             >
-              <p className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">
-                {formatEventStart(entry.timestamp)}
+              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                <p className="text-xs font-semibold text-zinc-200">
+                  {entry.profile.label} · {entry.presentation_status === 'presented' ? 'Presented' : 'Not presented'}
+                </p>
+                <p className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+                  {formatEventStart(entry.created_at)}
+                </p>
+              </div>
+              <p className="font-mono text-[10px] text-zinc-500">
+                Model · {truncateText(entry.model_id, 120)}
               </p>
-              <p className="text-sm leading-relaxed text-zinc-200">
-                {truncateText(entry.briefing, 180)}
+              <p className="font-mono text-[10px] text-zinc-500">
+                {entry.presented_at
+                  ? `Presented · ${formatEventStart(entry.presented_at)}`
+                  : 'No presentation recorded'}
               </p>
-              {entry.insights.length > 0 ? (
-                <ul className="space-y-1 border-t border-white/5 pt-1.5">
-                  {entry.insights.slice(0, 3).map((insight, index) => (
-                    <li
-                      key={`${entry.id}-insight-${index}`}
-                      className="text-xs text-[#FBBF24]/90"
-                    >
-                      {truncateText(insight, 120)}
+              {entry.sections.map((section, sectionIndex) => (
+                <section key={`${entry.id}-section-${sectionIndex}`} className="space-y-1 border-t border-white/5 pt-1.5">
+                  <h4 className="text-[10px] font-semibold uppercase tracking-wider text-[#FBBF24]/90">
+                    {truncateText(section.title, 80)}
+                  </h4>
+                  <ul className="space-y-1">
+                    {section.items.map((item, itemIndex) => (
+                      <li key={`${entry.id}-item-${sectionIndex}-${itemIndex}`} className="text-xs leading-relaxed text-zinc-300">
+                        <span className="mr-1 font-mono text-[9px] uppercase text-zinc-500">{item.category}</span>
+                        <strong className="font-medium text-zinc-200">{truncateText(item.title, 96)}</strong>
+                        {item.body ? <p className="mt-0.5 text-zinc-400">{truncateText(item.body, 180)}</p> : null}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+              {entry.limitations.length > 0 ? (
+                <ul className="space-y-1 border-t border-white/5 pt-1.5" aria-label="Briefing limitations">
+                  {entry.limitations.map((limitation, index) => (
+                    <li key={`${entry.id}-limitation-${index}`} className="text-xs text-amber-200/80">
+                      {truncateText(limitation, 120)}
                     </li>
                   ))}
                 </ul>

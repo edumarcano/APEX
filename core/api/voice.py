@@ -18,7 +18,6 @@ def speak_cue(payload: VoiceCueRequest) -> VoiceCueResponse:
 
     text = format_voice_cue(
         payload.cue,
-        mode=payload.mode,
         user_designation=settings.user_designation,
     )
     try:

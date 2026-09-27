@@ -29,7 +29,6 @@ import { useCortex } from './hooks/useCortex'
 import { useActions } from './hooks/useActions'
 import { useActivityInbox } from './hooks/useActivityInbox'
 import { useAppActivation } from './hooks/useAppActivation'
-import { useBriefingPipeline } from './hooks/useBriefingPipeline'
 import { useBriefingSpeech } from './hooks/useBriefingSpeech'
 import { useBriefingSessions } from './hooks/useBriefingSessions'
 import { resolveBriefingLayoutPhase, useHomeView, type HomeActiveView } from './hooks/useHomeView'
@@ -40,10 +39,10 @@ import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
 import { useTelemetrySnapshot } from './hooks/useTelemetrySnapshot'
 import { useToolCatalog } from './hooks/useToolCatalog'
 import { useToolPreflight } from './hooks/useToolPreflight'
-import { useVoiceDelivery } from './hooks/useVoiceDelivery'
 import { API_ENDPOINTS } from './lib/api'
 import { requestVoiceCue } from './lib/voiceCues'
 import { resolveAttentionStaggerMs, resolveTelemetryAttentionTier } from './lib/attentionTier'
+import { resolveActiveBriefingActivity, resolveBriefingVisualState } from './lib/briefingVisualState'
 import { resolveCalendarTelemetry } from './lib/calendarTelemetry'
 import { resolveFootballTelemetry } from './lib/footballTelemetry'
 import {
@@ -291,7 +290,6 @@ export default function App(): ReactElement {
     marketRevision,
     marketSymbols,
   )
-  const briefing = useBriefingPipeline()
   const dailySessions = useBriefingSessions()
   const currentSelectedSession = dailySessions.activeSession
   const selectedCompletedBriefing = currentSelectedSession && currentSelectedSession.id === dailySessions.selectedSessionId &&
@@ -305,12 +303,6 @@ export default function App(): ReactElement {
     cancelSession: cancelDailySession,
     hasActiveSession: hasActiveDailySession,
   } = dailySessions
-  const voiceDelivery = useVoiceDelivery(
-    briefing.briefing,
-    briefing.status,
-    briefing.isSpeaking,
-  )
-
   const {
     cortexAgent,
     modelCatalog: fullModelCatalog,
@@ -591,26 +583,33 @@ export default function App(): ReactElement {
     return () => controller.abort()
   }, [])
 
-  const {
-    pipelineState,
-    isSpeaking: isPipelineSpeaking,
-    active_tts_engine,
-    system_load_throttled,
-  } = briefing
-  const isSpeaking = isPipelineSpeaking || voiceDelivery.isSpeaking || briefingSpeech.speech?.status === 'playing'
-  const resolvedTtsEngine = briefingSpeech.speech?.status === 'playing' && briefingSpeech.speech.engine
-    ? briefingSpeech.speech.engine
-    : pipelineState?.active_tts_engine ?? active_tts_engine
-  const resolvedSystemThrottled =
-    pipelineState?.system_load_throttled ?? system_load_throttled
-  const liveSynthesis = pipelineState?.synthesis
+  const selectedBriefingVisual = resolveBriefingVisualState(currentSelectedSession)
+  const activeBriefingActivity = useMemo(
+    () => resolveActiveBriefingActivity({
+      sessions: dailySessions.sessions,
+      selectedSessionId: dailySessions.selectedSessionId,
+      selectedSession: currentSelectedSession,
+      modelCatalog: fullModelCatalog,
+    }),
+    [currentSelectedSession, dailySessions.selectedSessionId, dailySessions.sessions, fullModelCatalog],
+  )
+  const activeBriefingDetail = activeBriefingActivity.session &&
+    dailySessions.selectedSessionId === activeBriefingActivity.session.id &&
+    currentSelectedSession?.id === activeBriefingActivity.session.id
+    ? currentSelectedSession
+    : null
+  const activeBriefingVisual = resolveBriefingVisualState(activeBriefingDetail)
+  const briefingStatus = activeBriefingActivity.isRunning ? 'loading' : selectedBriefingVisual.status
+  const activeStep = activeBriefingActivity.isRunning ? activeBriefingVisual.step : selectedBriefingVisual.step
+  const isSpeaking = briefingSpeech.speech?.status === 'playing'
+  const resolvedTtsEngine = briefingSpeech.speech?.engine ?? 'google'
+  const resolvedSystemThrottled = false
   const localLifecycleBusy =
-    activeQueryAgent === 'apex' && homeSelectedEntry?.runtime === 'local' ||
-    liveSynthesis?.phase === 'loading' ||
-    liveSynthesis?.phase === 'generating'
+    (activeQueryAgent === 'apex' && homeSelectedEntry?.runtime === 'local') ||
+    activeBriefingActivity.isLocalModelRunning ||
+    (dailySessions.isGenerating && homeSelectedEntry?.runtime === 'local')
 
-  const activeStep = pipelineState?.step ?? null
-  const isBriefingRunning = briefing.status === 'loading'
+  const isBriefingRunning = briefingStatus === 'loading'
   const isRefreshingAll = telemetry.isRefreshingAll
   const isTelemetryCollecting =
     isRefreshingAll || telemetry.refreshingConnectors.size > 0
@@ -634,24 +633,21 @@ export default function App(): ReactElement {
       ) ?? null,
     [fullModelCatalog],
   )
-  const isLocalModelLoading =
-    loadingLocalModel !== null ||
-    (liveSynthesis?.loading === true &&
-      (liveSynthesis.provider === 'llama_cpp' ||
-        liveSynthesis.model_id !== null))
+  const isLocalModelLoading = loadingLocalModel !== null ||
+    activeBriefingActivity.isLocalModelRunning ||
+    (dailySessions.isGenerating && homeSelectedEntry?.runtime === 'local')
   const isLocalModelLoaded = activeLocalModel !== null
   const loadingDisplayName = useMemo(() => {
-    if (liveSynthesis?.model_id) {
-      return (
-        fullModelCatalog.find((entry) => entry.model_id === liveSynthesis.model_id)?.display_name ??
-        liveSynthesis.model_id
-      )
+    if (activeBriefingActivity.isLocalModelRunning) {
+      return activeBriefingActivity.displayName
     }
-    const localEntry = homeSelectedEntry?.runtime === 'local'
+    const localEntry = dailySessions.isGenerating && homeSelectedEntry?.runtime === 'local'
       ? homeSelectedEntry
-      : fullModelCatalog.find((entry) => entry.model_id === selectedModel && entry.runtime === 'local')
+      : homeSelectedEntry?.runtime === 'local'
+        ? homeSelectedEntry
+        : fullModelCatalog.find((entry) => entry.model_id === selectedModel && entry.runtime === 'local')
     return localEntry?.display_name ?? null
-  }, [fullModelCatalog, homeSelectedEntry, liveSynthesis, selectedModel])
+  }, [activeBriefingActivity, dailySessions.isGenerating, fullModelCatalog, homeSelectedEntry, selectedModel])
   const outerShellActivity = resolveOuterShellActivity({
     activeStep,
     isBriefingRunning,
@@ -662,7 +658,7 @@ export default function App(): ReactElement {
   const visualColors = useMemo(
     () =>
       resolveLogoVisualColors({
-        briefingStatus: briefing.status,
+        briefingStatus,
         activeStep,
         activated,
         isBriefingRunning,
@@ -673,7 +669,7 @@ export default function App(): ReactElement {
         isTelemetryCollecting,
       }),
     [
-      briefing.status,
+      briefingStatus,
       activeStep,
       activated,
       isBriefingRunning,
@@ -874,8 +870,8 @@ export default function App(): ReactElement {
       activated,
       isRefreshing: isRefreshingAll,
       hasSnapshot,
-      briefingStatus: briefing.status,
-      briefingStep: briefing.pipelineState?.step ?? null,
+      briefingStatus,
+      briefingStep: activeStep,
     }
     return {
       reminders: resolveTelemetryAttentionTier('reminders', options),
@@ -886,7 +882,7 @@ export default function App(): ReactElement {
       inbox: resolveTelemetryAttentionTier('inbox', options),
       insights: resolveTelemetryAttentionTier('insights', options),
     }
-  }, [activated, isRefreshingAll, hasSnapshot, briefing.status, briefing.pipelineState?.step])
+  }, [activated, isRefreshingAll, hasSnapshot, briefingStatus, activeStep])
 
   const attentionStagger = useMemo(
     () => ({
@@ -985,8 +981,8 @@ export default function App(): ReactElement {
   const logoStatus =
     !activated
       ? 'idle'
-      : briefing.status === 'loading' || briefing.status === 'error' || briefing.status === 'success'
-        ? briefing.status
+      : briefingStatus !== 'idle'
+        ? briefingStatus
         : isRefreshingAll
           ? 'loading'
           : 'success'
@@ -1448,8 +1444,8 @@ export default function App(): ReactElement {
           <SystemDiagnostics
             diagnostics={diagnostics}
             diagnosticsStatus={diagnosticsStatus}
-            failedConnectors={telemetry.snapshot?.failed_connectors ?? briefing.failedConnectors}
-            connectorHealth={telemetry.snapshot?.connector_health ?? briefing.connectorHealth}
+            failedConnectors={telemetry.snapshot?.failed_connectors ?? []}
+            connectorHealth={telemetry.snapshot?.connector_health ?? []}
             isCheckingConnectors={isRefreshingAll}
             refreshingConnectors={telemetry.refreshingConnectors}
             onRefreshConnectors={handleRefreshAll}
@@ -1465,14 +1461,14 @@ export default function App(): ReactElement {
           open={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
           restoreFocusRef={settingsButtonRef}
-          status={briefing.status}
-          pipelineStep={activeStep}
+          briefingRunning={isBriefingRunning}
+          briefingStep={activeStep}
           isSpeaking={isSpeaking}
           isCortexQuerying={isCortexQuerying}
           modelCatalog={fullModelCatalog}
           cortexAgentHydrated={cortexAgentHydrated}
-          failedConnectors={briefing.failedConnectors}
-          hasBriefingEvidence={briefing.status === 'success' || briefing.status === 'error'}
+          failedConnectors={telemetry.snapshot?.failed_connectors ?? []}
+          hasTelemetryEvidence={hasSnapshot}
           onApplied={handleSettingsPanelApplied}
           mcpRuntime={mcpRuntime}
         />

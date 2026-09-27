@@ -198,7 +198,7 @@ describe('usePreflight', () => {
 
     let second = ''
     await act(async () => {
-      second = await result.current.requestOperation('activate_with_briefing')
+      second = await result.current.requestOperation('generate_briefing_session')
     })
     expect(second).toBe('blocked')
     expect(fetch).toHaveBeenCalledTimes(1)
