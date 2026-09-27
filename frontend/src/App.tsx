@@ -21,6 +21,7 @@ import SettingsPanel from './components/SettingsPanel'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { HomeWorkspace } from './components/home/HomeWorkspace'
 import { BriefingSpeechControl } from './components/home/BriefingSpeechControl'
+import type { BriefingSetupDraft } from './components/home/BriefingProfilePanel'
 import { WorkspaceMenu, type WorkspacePeer } from './components/WorkspaceMenu'
 import type { HomeIdentityProps } from './components/home/HomeIdentity'
 import type { HomeTelemetryData } from './components/home/HomeTelemetry'
@@ -60,9 +61,9 @@ import type {
   CloudEffort,
   HostedTool,
   LocalReasoningMode,
+  ModelCatalogEntry,
   TelemetrySnapshot,
 } from './types/telemetry'
-import type { BriefingProfileId } from './types/briefings'
 import type { ContextReview } from './types/context'
 import type {
   CloudHostedToolsSettings,
@@ -192,9 +193,11 @@ export default function App(): ReactElement {
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
   const [workspace, setWorkspace] = useState<WorkspacePeer>('overview')
   const [dailyConversationReady, setDailyConversationReady] = useState<string | null>(null)
+  const [briefingSetupAutoOpen, setBriefingSetupAutoOpen] = useState(false)
   const completedDailyHistoryRef = useRef(new Set<string>())
   const dailyOpenSequenceRef = useRef(0)
   const dailyOpeningSessionsRef = useRef(new Map<string, number>())
+  const briefingOperationRef = useRef(false)
   const [lastAssistantWorkspace, setLastAssistantWorkspace] = useState<Exclude<WorkspacePeer, 'inbox'>>('overview')
   const [homeDestination, setHomeDestination] = useState<HomeActiveView>('overview')
   const navigateWorkspace = useCallback((nextWorkspace: WorkspacePeer): void => {
@@ -302,6 +305,7 @@ export default function App(): ReactElement {
     generate: generateBriefing,
     cancelSession: cancelDailySession,
     hasActiveSession: hasActiveDailySession,
+    refreshLatestSession: refreshLatestBriefingSession,
   } = dailySessions
   const {
     cortexAgent,
@@ -342,8 +346,12 @@ export default function App(): ReactElement {
     [fullModelCatalog, selectedModel],
   )
   const homeOverrides = useMemo(
-    () => resolveHomeQueryOverrides(homeSelectedEntry),
-    [homeSelectedEntry],
+    () => resolveHomeQueryOverrides(homeSelectedEntry, {
+      effort: cloudEffort,
+      contextWindow: localContextWindow,
+      localReasoningMode,
+    }),
+    [cloudEffort, homeSelectedEntry, localContextWindow, localReasoningMode],
   )
 
   const assistantWorkspace = workspace === 'inbox' ? lastAssistantWorkspace : workspace
@@ -359,6 +367,7 @@ export default function App(): ReactElement {
     effectiveWorkspaceRuntime,
     mcpAvailabilityVersion,
   )
+  const refreshToolCatalog = toolCatalogState.refreshCatalog
   const toolPreflightState = useToolPreflight({
     agent: effectiveWorkspaceAgent,
     modelId: usesHomeAssistantContract ? homeOverrides.modelId : selectedModel,
@@ -546,6 +555,103 @@ export default function App(): ReactElement {
     [activated, handleSettingsApplied, refreshAgentsStatus, telemetry, toolCatalogState],
   )
 
+  const saveBriefingModelSettings = useCallback(async (
+    draft: BriefingSetupDraft,
+    model: ModelCatalogEntry,
+  ): Promise<{
+    modelId: string
+    reasoning?: string
+    contextWindow?: number
+    localReasoningMode?: LocalReasoningMode
+  }> => {
+    const modelReasoningOptions = model.runtime === 'cloud' ? model.reasoning_options ?? [] : []
+    const modelReasoningModes = model.runtime === 'local'
+      ? model.reasoning_modes ?? (model.default_reasoning_mode ? [model.default_reasoning_mode] : [])
+      : []
+    let agentSettings: Record<string, unknown>
+    if (model.runtime === 'cloud') {
+      if (modelReasoningOptions.length > 0 && (!draft.cloudEffort || !modelReasoningOptions.includes(draft.cloudEffort))) {
+        throw new Error('Choose a reasoning effort supported by this cloud model.')
+      }
+      agentSettings = {
+        selected_model: model.model_id,
+        cloud: {
+          last_model: model.model_id,
+          ...(modelReasoningOptions.length > 0 ? { effort: draft.cloudEffort } : {}),
+        },
+      }
+    } else {
+      if (!draft.localReasoningMode || !modelReasoningModes.includes(draft.localReasoningMode)) {
+        throw new Error('Choose a reasoning mode supported by this local model.')
+      }
+      agentSettings = {
+        selected_model: model.model_id,
+        local: {
+          last_model: model.model_id,
+          reasoning_mode: draft.localReasoningMode,
+        },
+      }
+    }
+
+    const payload = devModeActive ? filterAgentSettingsForDevMode(agentSettings) : agentSettings
+    let response: Response
+    try {
+      response = await fetch(API_ENDPOINTS.settings, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ask_apex: payload }),
+      })
+    } catch {
+      throw new Error('Briefing settings could not be saved. Check the API connection and try again.')
+    }
+    const responseBody: unknown = await response.json().catch(() => null)
+    const detail = responseBody && typeof responseBody === 'object' && 'detail' in responseBody
+      ? (responseBody as { detail?: unknown }).detail
+      : null
+    if (!response.ok) {
+      const message = typeof detail === 'string'
+        ? detail
+        : detail && typeof detail === 'object' && 'message' in detail && typeof (detail as { message?: unknown }).message === 'string'
+          ? (detail as { message: string }).message
+          : 'Briefing settings could not be saved.'
+      throw new Error(message)
+    }
+    const settings = responseBody && typeof responseBody === 'object'
+      ? (responseBody as { settings?: SettingsResponse['settings'] }).settings
+      : undefined
+    const resolved = settings?.ask_apex
+    if (!settings || !resolved?.cloud || !resolved.local) {
+      throw new Error('Briefing settings were saved without a usable Apex Agent configuration response.')
+    }
+
+    handleSettingsApplied({ settings } as SettingsResponse)
+    void Promise.allSettled([refreshAgentsStatus(), refreshToolCatalog()])
+
+    if (resolved.selected_model !== model.model_id) {
+      throw new Error('The saved model changed while the briefing was being prepared. Review the selected model and try again.')
+    }
+    if (model.runtime === 'cloud') {
+      if (modelReasoningOptions.length > 0 && (!modelReasoningOptions.includes(resolved.cloud.effort) || resolved.cloud.effort !== draft.cloudEffort)) {
+        throw new Error('The saved cloud reasoning effort changed while the briefing was being prepared. Review the selection and try again.')
+      }
+      return {
+        modelId: resolved.selected_model,
+        ...(modelReasoningOptions.length > 0 ? { reasoning: resolved.cloud.effort } : {}),
+      }
+    }
+    if (!modelReasoningModes.includes(resolved.local.reasoning_mode) || resolved.local.reasoning_mode !== draft.localReasoningMode) {
+      throw new Error('The saved local reasoning mode changed while the briefing was being prepared. Review the selection and try again.')
+    }
+    const contextWindow = model.provider === 'llama_cpp' && model.context_options?.includes(resolved.local.context_window)
+      ? resolved.local.context_window
+      : undefined
+    return {
+      modelId: resolved.selected_model,
+      contextWindow,
+      localReasoningMode: resolved.local.reasoning_mode,
+    }
+  }, [devModeActive, handleSettingsApplied, refreshAgentsStatus, refreshToolCatalog])
+
   // Cortex remembers both production runtime choices. This is deliberately
   // separate from DEV_MODE's session-only sandbox override.
   useEffect(() => {
@@ -699,13 +805,14 @@ export default function App(): ReactElement {
     }
   }, [])
 
-  const handleStartApex = useCallback(async (): Promise<void> => {
+  const handleStartApex = useCallback(async (onActivated?: () => void): Promise<boolean> => {
     const resolution = await preflight.requestOperation('activate')
     if (resolution !== 'proceed') {
-      return
+      return false
     }
 
     activate()
+    onActivated?.()
     const localSnapshotIsReady = telemetry.snapshot !== null && hasFreshUsableTelemetry(telemetry.snapshot)
     const initialSnapshot = voiceMode === 'automatic' && !localSnapshotIsReady
       ? await telemetry.loadLatest()
@@ -729,6 +836,7 @@ export default function App(): ReactElement {
         }
       }
     }
+    return true
   }, [preflight, activate, telemetry, voiceMode])
 
   const openDailyConversation = useCallback(async (conversationId: string, completedSessionId?: string, expectedSequence?: number): Promise<boolean> => {
@@ -756,35 +864,111 @@ export default function App(): ReactElement {
     }
   }, [openDailySession, openDailyConversation, selectHomeView])
 
-  const startBriefing = useCallback(async (profileId: BriefingProfileId, activateHome = false): Promise<void> => {
-    if (hasActiveDailySession || (!agentQueriesEnabled && !demoModeActive)) return
+  const performBriefingGeneration = useCallback(async (draft: BriefingSetupDraft): Promise<void> => {
+    if (hasActiveDailySession) throw new Error('A briefing is already running.')
+    if (!agentQueriesEnabled && !demoModeActive) throw new Error('Briefings are disabled in Apex Agent settings.')
     const sequence = ++dailyOpenSequenceRef.current
+    const model = fullModelCatalog.find((entry) => entry.model_id === draft.modelId)
+    if (!demoModeActive && (!model || model.credentials_configured === false || model.status === 'disabled' || !['available', 'configured', 'verified', 'unknown', undefined].includes(model.status))) {
+      throw new Error('The selected Apex Agent model is not currently available.')
+    }
+    const selectedProfile = dailySessions.profiles.find((entry) => entry.id === draft.profileId)
+    if (selectedProfile && !selectedProfile.available) {
+      throw new Error(selectedProfile.unavailable_reason ?? `${selectedProfile.label} is unavailable.`)
+    }
+    if (demoModeActive && draft.profileId === 'deep') throw new Error('Deep is unavailable in DEMO_MODE.')
+
+    const requestModelId = demoModeActive ? 'demo/daily-fixture' : draft.modelId
     const resolution = await preflight.requestOperation('generate_briefing_session', {
-      model_id: selectedModel,
-      involves_cloud: homeSelectedEntry?.runtime === 'cloud',
+      model_id: requestModelId,
+      involves_cloud: !demoModeActive && model?.runtime === 'cloud',
     })
-    if (resolution !== 'proceed' || sequence !== dailyOpenSequenceRef.current) return
-    if (activateHome) activate()
+    if (resolution !== 'proceed' || sequence !== dailyOpenSequenceRef.current) {
+      throw new Error(resolution === 'blocked'
+        ? 'Preflight blocked this briefing. Review the blocker, then try again.'
+        : 'Briefing setup was kept open because preflight was cancelled.')
+    }
+
+    let generationOptions: { modelId: string; reasoning?: string; contextWindow?: number; localReasoningMode?: LocalReasoningMode }
+    if (demoModeActive) {
+      generationOptions = { modelId: 'demo/daily-fixture' }
+    } else {
+      if (!model) throw new Error('The selected Apex Agent model is no longer available.')
+      generationOptions = await saveBriefingModelSettings(draft, model)
+    }
+
     selectHomeView('briefing')
     setDailyConversationReady(null)
-    try {
-      const summary = await generateBriefing(profileId, {
-        modelId: selectedModel,
-        reasoning: homeSelectedEntry?.runtime === 'cloud' ? cloudEffort : null,
-        contextWindow: homeSelectedEntry?.runtime === 'local' ? localContextWindow : null,
-        localReasoningMode: homeSelectedEntry?.runtime === 'local' ? localReasoningMode : null,
-      })
-      if (sequence !== dailyOpenSequenceRef.current) return
-      dailyOpeningSessionsRef.current.set(summary.id, sequence)
-      try {
-        await openDailyConversation(summary.conversation_id, summary.run_status === 'completed' ? summary.id : undefined, sequence)
-      } finally {
+    const summary = await generateBriefing(draft.profileId, generationOptions)
+    homeView.setProfileId(draft.profileId)
+    dailyOpeningSessionsRef.current.set(summary.id, sequence)
+    void openDailyConversation(summary.conversation_id, summary.run_status === 'completed' ? summary.id : undefined, sequence)
+      .catch(() => false)
+      .finally(() => {
         if (dailyOpeningSessionsRef.current.get(summary.id) === sequence) dailyOpeningSessionsRef.current.delete(summary.id)
-      }
-    } catch {
-      // The sessions hook retains the admission or generation failure for the Home panel.
+      })
+  }, [
+    agentQueriesEnabled,
+    dailySessions.profiles,
+    demoModeActive,
+    fullModelCatalog,
+    generateBriefing,
+    hasActiveDailySession,
+    homeView,
+    openDailyConversation,
+    preflight,
+    saveBriefingModelSettings,
+    selectHomeView,
+  ])
+
+  const startBriefing = useCallback(async (draft: BriefingSetupDraft): Promise<void> => {
+    if (briefingOperationRef.current) throw new Error('A briefing is already being prepared.')
+    briefingOperationRef.current = true
+    try {
+      await performBriefingGeneration(draft)
+    } finally {
+      briefingOperationRef.current = false
     }
-  }, [agentQueriesEnabled, activate, cloudEffort, generateBriefing, hasActiveDailySession, demoModeActive, homeSelectedEntry, localContextWindow, localReasoningMode, openDailyConversation, preflight, selectHomeView, selectedModel])
+  }, [performBriefingGeneration])
+
+  const repeatLastBriefing = useCallback(async (): Promise<void> => {
+    if (hasActiveDailySession) throw new Error('A briefing is already running.')
+    const latest = await refreshLatestBriefingSession()
+    if (!latest) throw new Error('No saved briefing history is available to repeat.')
+    const profileId = latest.configuration.profile.id
+    if (demoModeActive) {
+      if (latest.configuration.execution_kind !== 'demo') throw new Error('Model-backed sessions cannot be repeated in DEMO_MODE.')
+      if (profileId === 'deep') throw new Error('Deep is unavailable in DEMO_MODE.')
+      await startBriefing({
+        profileId,
+        modelId: 'demo/daily-fixture',
+        cloudEffort: null,
+        localReasoningMode: null,
+      })
+      return
+    }
+    if (latest.configuration.execution_kind !== 'model') throw new Error('This saved fixture is available only in DEMO_MODE.')
+    if (!agentQueriesEnabled) throw new Error('Briefings are disabled in Apex Agent settings.')
+    const savedModel = latest.configuration.model
+    const model = fullModelCatalog.find((entry) => entry.model_id === savedModel.model_id)
+    if (!model || model.credentials_configured === false || model.status === 'disabled' || !['available', 'configured', 'verified', 'unknown', undefined].includes(model.status) || model.runtime !== savedModel.runtime) {
+      throw new Error('The model used by this briefing is not currently available.')
+    }
+    if (model.runtime === 'cloud') {
+      const options = model.reasoning_options ?? []
+      if ((savedModel.reasoning === null && options.length > 0) || (savedModel.reasoning !== null && !options.includes(savedModel.reasoning as CloudEffort))) {
+        throw new Error('The saved cloud reasoning effort is no longer supported by this model.')
+      }
+      if (savedModel.local_reasoning_mode !== null) throw new Error('The saved model configuration does not match the current cloud model.')
+      await startBriefing({ profileId, modelId: model.model_id, cloudEffort: savedModel.reasoning as CloudEffort | null, localReasoningMode: null })
+      return
+    }
+    const modes = model.reasoning_modes ?? (model.default_reasoning_mode ? [model.default_reasoning_mode] : [])
+    if (!savedModel.local_reasoning_mode || !modes.includes(savedModel.local_reasoning_mode as LocalReasoningMode) || savedModel.reasoning !== null) {
+      throw new Error('The saved local reasoning mode is no longer supported by this model.')
+    }
+    await startBriefing({ profileId, modelId: model.model_id, cloudEffort: null, localReasoningMode: savedModel.local_reasoning_mode as LocalReasoningMode })
+  }, [agentQueriesEnabled, demoModeActive, fullModelCatalog, hasActiveDailySession, refreshLatestBriefingSession, startBriefing])
 
   const handleStartOverview = useCallback((): void => {
     selectHomeView('overview')
@@ -1026,7 +1210,6 @@ export default function App(): ReactElement {
     }
   }, [preflight, selectedModel])
 
-  const refreshToolCatalog = toolCatalogState.refreshCatalog
   const persistAgentSettings = useCallback(
     async (
       agentSettings: Record<string, unknown>,
@@ -1069,19 +1252,6 @@ export default function App(): ReactElement {
       refreshToolCatalog,
     ],
   )
-
-  const handleHomeModelChange = useCallback((modelId: string): void => {
-    const model = fullModelCatalog.find((entry) => entry.model_id === modelId)
-    if (!model) return
-    setSelectedModel(modelId)
-    if (model.runtime === 'cloud') {
-      void persistAgentSettings({ selected_model: modelId, cloud: { last_model: modelId } }, { refreshToolCatalog: true })
-    } else {
-      void persistAgentSettings({ selected_model: modelId, local: { last_model: modelId } }, { refreshToolCatalog: true })
-    }
-    window.localStorage.removeItem('apex_home_selected_model_id')
-  }, [fullModelCatalog, persistAgentSettings])
-
 
   const mutateToolProfile = useCallback(
     async (
@@ -1499,28 +1669,38 @@ export default function App(): ReactElement {
             telemetry={homeTelemetry}
             standbyActions={{
               onStartOverview: handleStartOverview,
-              onStartBriefing: () => void startBriefing('daily', true),
+              onStartBriefing: () => void handleStartApex(() => {
+                selectHomeView('briefing')
+                setBriefingSetupAutoOpen(true)
+              }),
               disabled: preflight.isChecking,
-              briefingDisabled: !canGenerateDaily || dailySessions.hasActiveSession,
             }}
             briefingControls={{
               profiles: dailySessions.profiles,
               profileId: homeView.profileId,
               onProfileChange: homeView.setProfileId,
               selectedModelId: selectedModel,
+              cloudEffort,
+              localReasoningMode,
               modelCatalog: fullModelCatalog,
-              onModelChange: handleHomeModelChange,
               canGenerate: canGenerateDaily,
               busy: dailyControlsBusy,
               hasActiveSession: dailySessions.hasActiveSession,
               isGenerating: dailySessions.isGenerating,
-              onGenerate: (profileId) => void startBriefing(profileId),
+              onGenerate: startBriefing,
+              onRepeat: repeatLastBriefing,
+              autoOpenSetup: briefingSetupAutoOpen,
+              onAutoOpenSetupConsumed: () => setBriefingSetupAutoOpen(false),
+              demoModeActive,
               onCancel: handleCancelDailySession,
               sessions: dailySessions.sessions,
               selectedSessionId: dailySessions.selectedSessionId,
               isLoadingSessions: dailySessions.isLoadingSessions,
               onOpenSession: (sessionId) => void handleOpenDailySession(sessionId),
               activeSession: dailySessions.activeSession,
+              latestSession: dailySessions.latestSession,
+              latestError: dailySessions.latestError,
+              isLoadingLatestSession: dailySessions.isLoadingLatestSession,
               error: dailySessions.error,
               activeLocalModel,
               loadingLocalModel,

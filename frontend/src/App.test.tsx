@@ -289,6 +289,8 @@ vi.mock('./hooks/useCortex', () => ({
         provider: 'openrouter',
         runtime: 'cloud',
         stability: 'stable',
+        reasoning_options: ['low', 'medium', 'high'],
+        default_reasoning: 'low',
         hosted_capabilities: [],
       }],
     },
@@ -299,6 +301,8 @@ vi.mock('./hooks/useCortex', () => ({
         provider: 'openrouter',
         runtime: 'cloud',
         stability: 'stable',
+        reasoning_options: ['low', 'medium', 'high'],
+        default_reasoning: 'low',
         hosted_capabilities: [],
       },
       ...(appMocks.localBriefingModel ? [appMocks.localBriefingModel] : []),
@@ -468,6 +472,27 @@ function settingsResponse(
   })
 }
 
+function briefingSettingsResponse(
+  patchBody: unknown,
+  adjust?: (settings: RuntimeSettings) => void,
+): Response {
+  const patch = (patchBody as { ask_apex?: Record<string, unknown> }).ask_apex ?? {}
+  const settings = structuredClone(BASE_SETTINGS)
+  const selectedModel = patch.selected_model
+  if (typeof selectedModel === 'string') settings.ask_apex.selected_model = selectedModel
+  if (patch.cloud && typeof patch.cloud === 'object') {
+    Object.assign(settings.ask_apex.cloud, patch.cloud)
+  }
+  if (patch.local && typeof patch.local === 'object') {
+    Object.assign(settings.ask_apex.local, patch.local)
+  }
+  adjust?.(settings)
+  return new Response(JSON.stringify(buildSettingsResponse(settings)), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
 function applySavedSettings(response: SettingsResponse, previousSettings: RuntimeSettings): Promise<void> {
   if (typeof appMocks.settingsPanelApplied !== 'function') {
     throw new Error('SettingsPanel has not supplied an onApplied callback.')
@@ -483,6 +508,9 @@ async function selectWorkspace(user: ReturnType<typeof userEvent.setup>, name: s
 describe('App catalog-affecting settings', () => {
   afterEach(() => {
     appMocks.initialAgent = 'apex'
+    appMocks.initialModelId = 'deepseek/deepseek-v4-flash-0731'
+    appMocks.initialModelRuntime = 'cloud'
+    appMocks.localBriefingModel = null
     appMocks.devModeActive = false
     appMocks.marketEnabled = false
     appMocks.activated = true
@@ -540,19 +568,57 @@ describe('App catalog-affecting settings', () => {
     })
   })
 
-  it('preserves the Home assistant contract and disables preflight in Inbox', async () => {
+  it('uses the shared cloud reasoning effort for Home follow-ups and disables preflight in Inbox', async () => {
     const user = userEvent.setup()
-    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))))
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(catalogFor('apex')), { status: 200 }))))
     appMocks.toolPreflight.mockClear()
 
     render(<App />)
-    const homeContract = appMocks.toolPreflight.mock.lastCall?.[0] as { effort: string | null }
-    expect(homeContract.effort).toBeNull()
+    const baseline = structuredClone(BASE_SETTINGS)
+    const withHighCloudEffort = structuredClone(BASE_SETTINGS)
+    withHighCloudEffort.ask_apex.cloud.effort = 'high'
+    await applySavedSettings(buildSettingsResponse(withHighCloudEffort), baseline)
+    await waitFor(() => expect(appMocks.toolPreflight.mock.lastCall?.[0]).toMatchObject({
+      modelId: 'deepseek/deepseek-v4-flash-0731',
+      effort: 'high',
+      contextWindow: null,
+      localReasoningMode: null,
+    }))
 
     await selectWorkspace(user, 'Inbox')
     await waitFor(() => expect(appMocks.toolPreflight.mock.lastCall?.[0]).toMatchObject({
-      effort: homeContract.effort,
+      effort: 'high',
       enabled: false,
+    }))
+  })
+
+  it('uses the shared local context window and reasoning mode for Home follow-ups', async () => {
+    appMocks.localBriefingModel = {
+      model_id: 'qwen3:1.7b',
+      display_name: 'Qwen 3 1.7B',
+      provider: 'ollama',
+      runtime: 'local',
+      stability: 'stable',
+      reasoning_modes: ['none', 'focused'],
+      context_options: [16384, 32768],
+      hosted_capabilities: [],
+    }
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(catalogFor('apex')), { status: 200 }))))
+    appMocks.toolPreflight.mockClear()
+
+    render(<App />)
+    const localSettings = structuredClone(BASE_SETTINGS)
+    localSettings.ask_apex.selected_model = 'qwen3:1.7b'
+    localSettings.ask_apex.local.last_model = 'qwen3:1.7b'
+    localSettings.ask_apex.local.context_window = 32768
+    localSettings.ask_apex.local.reasoning_mode = 'focused'
+    await applySavedSettings(buildSettingsResponse(localSettings), structuredClone(BASE_SETTINGS))
+
+    await waitFor(() => expect(appMocks.toolPreflight.mock.lastCall?.[0]).toMatchObject({
+      modelId: 'qwen3:1.7b',
+      effort: null,
+      contextWindow: 32768,
+      localReasoningMode: 'focused',
     }))
   })
 
@@ -1004,7 +1070,7 @@ describe('App Home states', () => {
     render(<App />)
 
     expect(screen.getByRole('button', { name: 'Start Overview' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Start Briefing with Daily' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Open Briefing setup' })).toBeEnabled()
     expect(screen.queryByRole('region', { name: 'Home command rail' })).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   })
@@ -1055,6 +1121,26 @@ describe('App Home states', () => {
     await waitFor(() => expect(appMocks.activate).toHaveBeenCalledTimes(1))
     expect(await screen.findByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Workspace' })).toHaveTextContent('Briefing')
+    expect(screen.queryByRole('dialog', { name: 'Set up your briefing' })).not.toBeInTheDocument()
+    expect(posts.filter((path) => path.endsWith('/briefing-sessions'))).toHaveLength(0)
+  })
+
+  it('activates Standby Briefing into setup without an automatic admission, even without a model', async () => {
+    appMocks.activated = false
+    appMocks.noModels = true
+    appMocks.activate.mockClear()
+    const user = userEvent.setup()
+    const posts: string[] = []
+    stubHomeFetch(posts)
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Open Briefing setup' }))
+
+    expect(await screen.findByRole('dialog', { name: 'Set up your briefing' })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
+    expect(appMocks.requestOperation).toHaveBeenCalledWith('activate')
+    expect(appMocks.activate).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: 'Generate Daily' })).toBeDisabled()
     expect(posts.filter((path) => path.endsWith('/briefing-sessions'))).toHaveLength(0)
   })
 
@@ -1131,7 +1217,7 @@ describe('App briefing session flow', () => {
     vi.unstubAllGlobals()
   })
 
-  it('generates from Standby, opens the saved artifact as the conversation opening, and preserves the draft across views', async () => {
+  it('opens setup from Standby, saves selected model settings before admission, and preserves the conversation draft', async () => {
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
     const user = userEvent.setup()
     const sessionId = '00000000-0000-4000-8000-000000000071'
@@ -1156,7 +1242,7 @@ describe('App briefing session flow', () => {
       run_status: runStatus,
       configuration: {
         profile: { id: 'daily', label: 'Daily', purpose: 'A concise view of current information.', definition_version: 2 },
-        model: { model_id: sessionSummary.model_id, provider: 'openrouter', runtime: 'cloud', reasoning: 'low', context_window: 16384, local_reasoning_mode: null },
+        model: { model_id: sessionSummary.model_id, provider: 'openrouter', runtime: 'cloud', reasoning: 'high', context_window: 16384, local_reasoning_mode: null },
         origin: 'hud',
         execution_kind: 'model',
       },
@@ -1179,6 +1265,8 @@ describe('App briefing session flow', () => {
     let runStatus: 'running' | 'completed' = 'running'
     let presentedAt: string | null = null
     let admissionBody: Record<string, unknown> | null = null
+    let settingsPatchBody: Record<string, unknown> | null = null
+    const eventOrder: string[] = []
     let admissions = 0
     let detailReads = 0
     let presentationWrites = 0
@@ -1216,13 +1304,22 @@ describe('App briefing session flow', () => {
     vi.stubGlobal('IntersectionObserver', VisibleIntersectionObserver as unknown as typeof IntersectionObserver)
     appMocks.activated = false
     appMocks.activate.mockClear()
-    appMocks.requestOperation.mockClear().mockResolvedValue('proceed')
+    appMocks.requestOperation.mockClear().mockImplementation(async (operation) => {
+      eventOrder.push(`preflight:${operation}`)
+      return 'proceed'
+    })
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(String(input))
       const path = url.pathname
+      if (path.endsWith('/settings') && init?.method === 'PATCH') {
+        settingsPatchBody = JSON.parse(String(init.body)) as Record<string, unknown>
+        eventOrder.push('settings-patch')
+        return briefingSettingsResponse(settingsPatchBody)
+      }
       if (path.endsWith('/briefing-sessions') && init?.method === 'POST') {
         admissions += 1
         admissionBody = JSON.parse(String(init.body)) as Record<string, unknown>
+        eventOrder.push('session-post')
         return new Response(JSON.stringify(sessionSummary), { status: 202, headers: { 'Content-Type': 'application/json' } })
       }
       if (path.endsWith('/briefing-sessions') && init?.method !== 'POST') {
@@ -1287,14 +1384,25 @@ describe('App briefing session flow', () => {
     }))
 
     render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Start Briefing with Daily' }))
+    await user.click(screen.getByRole('button', { name: 'Open Briefing setup' }))
+    const setup = await screen.findByRole('dialog', { name: 'Set up your briefing' })
+    expect(admissions).toBe(0)
+    expect(settingsPatchBody).toBeNull()
+    await user.selectOptions(screen.getByLabelText('Cloud reasoning effort'), 'high')
+    await user.click(within(setup).getByRole('button', { name: 'Generate Daily' }))
 
     await waitFor(() => expect(admissionBody).not.toBeNull())
     expect(appMocks.requestOperation).toHaveBeenCalledWith('generate_briefing_session', expect.objectContaining({
       model_id: 'deepseek/deepseek-v4-flash-0731',
       involves_cloud: true,
     }))
-    expect(admissionBody).toMatchObject({ profile_id: 'daily', model_id: 'deepseek/deepseek-v4-flash-0731' })
+    expect(settingsPatchBody).toEqual({ ask_apex: {
+      selected_model: 'deepseek/deepseek-v4-flash-0731',
+      cloud: { last_model: 'deepseek/deepseek-v4-flash-0731', effort: 'high' },
+    } })
+    expect(admissionBody).toMatchObject({ profile_id: 'daily', model_id: 'deepseek/deepseek-v4-flash-0731', reasoning: 'high' })
+    expect(eventOrder.indexOf('preflight:generate_briefing_session')).toBeLessThan(eventOrder.indexOf('settings-patch'))
+    expect(eventOrder.indexOf('settings-patch')).toBeLessThan(eventOrder.indexOf('session-post'))
     expect(appMocks.activate).toHaveBeenCalled()
     await waitFor(() => expect(detailReads).toBeGreaterThan(0))
     expect(screen.getByRole('region', { name: 'Briefing' })).toHaveAttribute('data-layout', 'identity')
@@ -1333,4 +1441,312 @@ describe('App briefing session flow', () => {
     expect(presentationWrites).toBe(1)
     expect(cancellationWrites).toBe(0)
   }, 10000)
+})
+
+describe('App briefing setup failure ordering', () => {
+  afterEach(() => {
+    appMocks.activated = true
+    appMocks.demoModeActive = false
+    appMocks.noModels = false
+    appMocks.localBriefingModel = null
+    appMocks.requestOperation.mockReset().mockResolvedValue('proceed')
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('does not admit a session when saving briefing settings fails and keeps the draft open', async () => {
+    let posts = 0
+    let patches = 0
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(String(input))
+      if (url.pathname.endsWith('/settings') && init?.method === 'PATCH') {
+        patches += 1
+        return new Response(JSON.stringify({ detail: 'settings denied' }), { status: 503, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (url.pathname.endsWith('/briefing-sessions') && init?.method === 'POST') {
+        posts += 1
+      }
+      return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+    const user = userEvent.setup()
+    render(<App />)
+    await selectWorkspace(user, 'Briefing')
+    await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
+    await user.selectOptions(screen.getByLabelText('Cloud reasoning effort'), 'high')
+    await user.click(screen.getByRole('button', { name: 'Generate Daily' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Set up your briefing' })
+    expect(screen.getByRole('alert')).toHaveTextContent('settings denied')
+    expect(screen.getByLabelText('Cloud reasoning effort')).toHaveValue('high')
+    expect(patches).toBe(1)
+    expect(posts).toBe(0)
+    expect(dialog).toBeInTheDocument()
+  })
+
+  it('keeps saved settings after session admission fails and reopens the draft with the error', async () => {
+    let posts = 0
+    let patches = 0
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(String(input))
+      if (url.pathname.endsWith('/settings') && init?.method === 'PATCH') {
+        patches += 1
+        return briefingSettingsResponse(JSON.parse(String(init.body)))
+      }
+      if (url.pathname.endsWith('/briefing-sessions') && init?.method === 'POST') {
+        posts += 1
+        return new Response(JSON.stringify({ detail: 'admission denied' }), { status: 503, headers: { 'Content-Type': 'application/json' } })
+      }
+      return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+    const user = userEvent.setup()
+    render(<App />)
+    await selectWorkspace(user, 'Briefing')
+    await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
+    await user.selectOptions(screen.getByLabelText('Cloud reasoning effort'), 'high')
+    await user.click(screen.getByRole('button', { name: 'Generate Daily' }))
+
+    await screen.findByRole('alert')
+    expect(screen.getByRole('alert')).toHaveTextContent('admission denied')
+    expect(posts).toBe(1)
+    expect(patches).toBe(1)
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+    await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
+    expect(screen.getByLabelText('Cloud reasoning effort')).toHaveValue('high')
+    expect(patches).toBe(1)
+  })
+})
+
+describe('App Repeat last briefing', () => {
+  afterEach(() => {
+    appMocks.activated = true
+    appMocks.demoModeActive = false
+    appMocks.noModels = false
+    appMocks.localBriefingModel = null
+    appMocks.requestOperation.mockReset().mockResolvedValue('proceed')
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('repeats the newest failed CLI session using its saved profile and reasoning, regardless of displayed selection', async () => {
+    const olderId = '00000000-0000-4000-8000-000000000101'
+    const latestId = '00000000-0000-4000-8000-000000000102'
+    const newId = '00000000-0000-4000-8000-000000000103'
+    const conversationId = '00000000-0000-4000-8000-000000000104'
+    const olderConversationId = '00000000-0000-4000-8000-000000000105'
+    const newConversationId = '00000000-0000-4000-8000-000000000106'
+    const makeSummary = (id: string, profileId: string, runStatus: string, createdAt: string) => ({
+      id,
+      profile_id: profileId,
+      model_id: 'deepseek/deepseek-v4-flash-0731',
+      conversation_id: id === olderId ? olderConversationId : id === newId ? newConversationId : conversationId,
+      run_id: `run-${id.slice(-3)}`,
+      run_status: runStatus,
+      created_at: createdAt,
+      presented_at: null,
+    })
+    const olderSummary = makeSummary(olderId, 'daily', 'completed', '2026-09-25T10:00:00Z')
+    const latestSummary = makeSummary(latestId, 'catch_up', 'failed', '2026-09-26T10:00:00Z')
+    const newSummary = makeSummary(newId, 'catch_up', 'running', '2026-09-27T10:00:00Z')
+    const makeDetail = (summary: typeof latestSummary, runStatus: string) => ({
+      id: summary.id,
+      conversation_id: summary.conversation_id,
+      opening_message_id: '00000000-0000-4000-8000-000000000105',
+      run_id: summary.run_id,
+      run_status: runStatus,
+      run_error_code: runStatus === 'failed' ? 'provider_error' : null,
+      configuration: {
+        profile: {
+          id: summary.profile_id,
+          label: summary.profile_id === 'catch_up' ? 'Catch Up' : 'Daily',
+          purpose: 'A saved briefing profile.',
+          definition_version: 2,
+        },
+        model: {
+          model_id: summary.model_id,
+          provider: 'openrouter',
+          runtime: 'cloud',
+          reasoning: 'high',
+          context_window: null,
+          local_reasoning_mode: null,
+        },
+        origin: summary.id === latestId ? 'cli' : 'hud',
+        execution_kind: 'model',
+      },
+      artifact: null,
+      evidence_count: 0,
+      evidence_ids: [],
+      created_at: summary.created_at,
+      presented_at: null,
+      speech_status: 'not_requested',
+    })
+    const profiles = [
+      { id: 'daily', label: 'Daily', purpose: 'Current information.', investigation_required: false, available: true, unavailable_reason: null },
+      { id: 'catch_up', label: 'Catch Up', purpose: 'What changed.', investigation_required: false, available: true, unavailable_reason: null },
+      { id: 'deep', label: 'Deep', purpose: 'Investigate.', investigation_required: true, available: true, unavailable_reason: null },
+    ]
+    let admissionBody: Record<string, unknown> | null = null
+    let settingsPatchBody: Record<string, unknown> | null = null
+    const conversationSummary = (id: string) => ({
+      id,
+      title: 'Briefing conversation',
+      archived_at: null,
+      agent: 'apex',
+      selected_tool_names: [],
+      tool_profile_id: null,
+      updated_at: '2026-09-27T10:00:00Z',
+    })
+    const conversationDetail = (id: string) => ({
+      ...conversationSummary(id),
+      active_leaf_message_id: null,
+      messages: [],
+    })
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(String(input))
+      const path = url.pathname
+      if (path.endsWith('/briefing-profiles')) return new Response(JSON.stringify(profiles), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (path.endsWith('/briefing-sessions') && init?.method === 'POST') {
+        admissionBody = JSON.parse(String(init.body)) as Record<string, unknown>
+        return new Response(JSON.stringify(newSummary), { status: 202, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith('/briefing-sessions')) {
+        const list = url.searchParams.get('limit') === '1' ? [latestSummary] : admissionBody ? [newSummary, latestSummary, olderSummary] : [latestSummary, olderSummary]
+        return new Response(JSON.stringify(list), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith('/settings') && init?.method === 'PATCH') {
+        settingsPatchBody = JSON.parse(String(init.body)) as Record<string, unknown>
+        return briefingSettingsResponse(settingsPatchBody)
+      }
+      if (path.endsWith(`/briefing-sessions/${latestId}`)) return new Response(JSON.stringify(makeDetail(latestSummary, 'failed')), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (path.endsWith(`/briefing-sessions/${olderId}`)) return new Response(JSON.stringify(makeDetail(olderSummary, 'completed')), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (path.endsWith(`/briefing-sessions/${newId}`)) return new Response(JSON.stringify(makeDetail(newSummary, 'running')), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (path.endsWith('/cortex/conversations')) {
+        const ids = admissionBody ? [conversationId, olderConversationId, newConversationId] : [conversationId, olderConversationId]
+        return new Response(JSON.stringify(ids.map(conversationSummary)), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith(`/cortex/conversations/${conversationId}`)) return new Response(JSON.stringify(conversationDetail(conversationId)), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (path.endsWith(`/cortex/conversations/${olderConversationId}`)) return new Response(JSON.stringify(conversationDetail(olderConversationId)), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (path.endsWith(`/cortex/conversations/${newConversationId}`)) return new Response(JSON.stringify(conversationDetail(newConversationId)), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (path.endsWith('/cortex/tool-catalog')) return new Response(JSON.stringify(catalogFor('apex')), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+
+    const user = userEvent.setup()
+    render(<App />)
+    await selectWorkspace(user, 'Briefing')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Repeat last briefing' })).toBeEnabled())
+    expect(screen.getByText(/Catch Up · DeepSeek V4 Flash · failed/)).toBeInTheDocument()
+    const savedSessions = await screen.findByRole('navigation', { name: 'Saved briefing sessions' })
+    await user.click(within(savedSessions).getByRole('button', { name: /Daily/ }))
+    expect(screen.getByText(/Catch Up · DeepSeek V4 Flash · failed/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Repeat last briefing' }))
+
+    await waitFor(() => expect(admissionBody).not.toBeNull())
+    expect(settingsPatchBody).toEqual({ ask_apex: {
+      selected_model: 'deepseek/deepseek-v4-flash-0731',
+      cloud: { last_model: 'deepseek/deepseek-v4-flash-0731', effort: 'high' },
+    } })
+    expect(admissionBody).toMatchObject({
+      profile_id: 'catch_up',
+      model_id: 'deepseek/deepseek-v4-flash-0731',
+      reasoning: 'high',
+    })
+    expect(appMocks.requestOperation).toHaveBeenCalledWith('generate_briefing_session', expect.objectContaining({
+      model_id: 'deepseek/deepseek-v4-flash-0731',
+      involves_cloud: true,
+    }))
+  })
+
+  it('repeats a saved DEMO fixture profile without persisting its fixture model', async () => {
+    appMocks.demoModeActive = true
+    const fixtureId = '00000000-0000-4000-8000-000000000111'
+    const newId = '00000000-0000-4000-8000-000000000112'
+    const conversationId = '00000000-0000-4000-8000-000000000113'
+    const newConversationId = '00000000-0000-4000-8000-000000000115'
+    const fixtureSummary = {
+      id: fixtureId,
+      profile_id: 'catch_up',
+      model_id: 'demo/daily-fixture',
+      conversation_id: conversationId,
+      run_id: 'fixture-run',
+      run_status: 'failed',
+      created_at: '2026-09-26T10:00:00Z',
+      presented_at: null,
+    }
+    const newSummary = { ...fixtureSummary, id: newId, conversation_id: newConversationId, run_id: 'new-run', run_status: 'running', created_at: '2026-09-27T10:00:00Z' }
+    const fixtureDetail = {
+      id: fixtureId,
+      conversation_id: conversationId,
+      opening_message_id: '00000000-0000-4000-8000-000000000114',
+      run_id: 'fixture-run',
+      run_status: 'failed',
+      run_error_code: 'fixture_unavailable',
+      configuration: {
+        profile: { id: 'catch_up', label: 'Catch Up', purpose: 'Changes.', definition_version: 2 },
+        model: { model_id: 'demo/daily-fixture', provider: 'demo', runtime: 'demo', reasoning: null, context_window: null, local_reasoning_mode: null },
+        origin: 'hud',
+        execution_kind: 'demo',
+      },
+      artifact: null,
+      evidence_count: 0,
+      evidence_ids: [],
+      created_at: fixtureSummary.created_at,
+      presented_at: null,
+      speech_status: 'not_requested',
+    }
+    const newDetail = { ...fixtureDetail, id: newId, conversation_id: newConversationId, run_id: 'new-run', run_status: 'running', run_error_code: null, created_at: newSummary.created_at }
+    let postBody: Record<string, unknown> | null = null
+    let patches = 0
+    const conversationSummary = (id: string) => ({
+      id,
+      title: 'Demo briefing conversation',
+      archived_at: null,
+      agent: 'apex',
+      selected_tool_names: [],
+      tool_profile_id: null,
+      updated_at: '2026-09-27T10:00:00Z',
+    })
+    const conversationDetail = (id: string) => ({ ...conversationSummary(id), active_leaf_message_id: null, messages: [] })
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(String(input))
+      const path = url.pathname
+      if (path.endsWith('/briefing-profiles')) return new Response(JSON.stringify([
+        { id: 'daily', label: 'Daily', purpose: 'Current.', investigation_required: false, available: true, unavailable_reason: null },
+        { id: 'catch_up', label: 'Catch Up', purpose: 'Changes.', investigation_required: false, available: true, unavailable_reason: null },
+        { id: 'deep', label: 'Deep', purpose: 'Investigate.', investigation_required: true, available: true, unavailable_reason: null },
+      ]), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (path.endsWith('/settings') && init?.method === 'PATCH') patches += 1
+      if (path.endsWith('/briefing-sessions') && init?.method === 'POST') {
+        postBody = JSON.parse(String(init.body)) as Record<string, unknown>
+        return new Response(JSON.stringify(newSummary), { status: 202, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith('/briefing-sessions')) {
+        return new Response(JSON.stringify(postBody ? [newSummary, fixtureSummary] : [fixtureSummary]), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith(`/briefing-sessions/${fixtureId}`)) return new Response(JSON.stringify(fixtureDetail), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (path.endsWith(`/briefing-sessions/${newId}`)) return new Response(JSON.stringify(newDetail), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (path.endsWith('/cortex/conversations')) {
+        const ids = postBody ? [conversationId, newConversationId] : [conversationId]
+        return new Response(JSON.stringify(ids.map(conversationSummary)), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith(`/cortex/conversations/${conversationId}`)) return new Response(JSON.stringify(conversationDetail(conversationId)), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (path.endsWith(`/cortex/conversations/${newConversationId}`)) return new Response(JSON.stringify(conversationDetail(newConversationId)), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (path.endsWith('/cortex/tool-catalog')) return new Response(JSON.stringify(catalogFor('apex')), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+
+    const user = userEvent.setup()
+    render(<App />)
+    await selectWorkspace(user, 'Briefing')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Repeat last briefing' })).toBeEnabled())
+    await user.click(screen.getByRole('button', { name: 'Repeat last briefing' }))
+
+    await waitFor(() => expect(postBody).not.toBeNull())
+    expect(postBody).toMatchObject({ profile_id: 'catch_up', model_id: 'demo/daily-fixture' })
+    expect(postBody).not.toHaveProperty('reasoning')
+    expect(patches).toBe(0)
+    expect(appMocks.requestOperation).toHaveBeenCalledWith('generate_briefing_session', expect.objectContaining({
+      model_id: 'demo/daily-fixture',
+      involves_cloud: false,
+    }))
+  })
 })

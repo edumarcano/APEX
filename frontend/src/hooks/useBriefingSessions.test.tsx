@@ -105,6 +105,69 @@ describe('useBriefingSessions', () => {
     expect(requested.filter((url) => url.includes('/evidence/'))).toHaveLength(1)
   })
 
+  it('loads the newest saved detail for Repeat without changing the displayed session selection', async () => {
+    const newestId = '00000000-0000-4000-8000-000000000099'
+    const newestSummary: BriefingSessionSummary = {
+      ...summary,
+      id: newestId,
+      profile_id: 'catch_up',
+      model_id: 'openai/o4-mini',
+      run_status: 'failed',
+    }
+    const newestDetail: BriefingSessionDetail = {
+      ...detail('failed'),
+      id: newestId,
+      run_status: 'failed',
+      run_error_code: 'provider_error',
+      configuration: {
+        profile: { id: 'catch_up', label: 'Catch Up', purpose: 'Changes since the last briefing.', definition_version: 2 },
+        model: { model_id: 'openai/o4-mini', provider: 'openai', runtime: 'cloud', reasoning: 'high', context_window: null, local_reasoning_mode: null },
+        origin: 'cli',
+        execution_kind: 'model',
+      },
+      artifact: null,
+      evidence_count: 0,
+      evidence_ids: [],
+      created_at: '2026-09-26T13:00:00Z',
+    }
+    const requested: string[] = []
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      requested.push(url)
+      if (url === API_ENDPOINTS.briefingProfiles) return response([])
+      if (url === API_ENDPOINTS.briefingSessions({ limit: 50 })) return response([summary])
+      if (url === API_ENDPOINTS.briefingSessions({ limit: 1 })) return response([newestSummary])
+      if (url === API_ENDPOINTS.briefingSession(sessionId)) return response(detail())
+      if (url === API_ENDPOINTS.briefingSession(newestId)) return response(newestDetail)
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const { result } = renderHook(() => useBriefingSessions())
+    await waitFor(() => expect(result.current.isLoadingSessions).toBe(false))
+    await act(async () => { await result.current.openSession(sessionId) })
+
+    await act(async () => { await result.current.refreshLatestSession() })
+
+    expect(result.current.latestSession).toMatchObject({ id: newestId, run_status: 'failed', configuration: { origin: 'cli' } })
+    expect(result.current.selectedSessionId).toBe(sessionId)
+    expect(result.current.activeSession?.id).toBe(sessionId)
+    expect(requested).toContain(API_ENDPOINTS.briefingSessions({ limit: 1 }))
+  })
+
+  it('reports a failed latest-history check instead of leaving Repeat in a loading state', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url === API_ENDPOINTS.briefingSessions({ limit: 50 })) return response({ detail: 'history unavailable' }, 503)
+      if (url === API_ENDPOINTS.briefingProfiles) return response([])
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const { result } = renderHook(() => useBriefingSessions())
+
+    await waitFor(() => expect(result.current.isLoadingSessions).toBe(false))
+
+    expect(result.current.isLoadingLatestSession).toBe(false)
+    expect(result.current.latestError).toBe('history unavailable')
+  })
+
   it('continues polling an active session after the operator selects an older completed session', async () => {
     vi.useFakeTimers()
     const olderId = '00000000-0000-4000-8000-000000000006'
@@ -136,7 +199,7 @@ describe('useBriefingSessions', () => {
       if (url === API_ENDPOINTS.briefingSession(olderId)) return response(olderDetail)
       if (url === API_ENDPOINTS.briefingSession(activeId)) {
         activeReads += 1
-        const status = activeReads >= 2 ? 'completed' : 'running'
+        const status = activeReads >= 3 ? 'completed' : 'running'
         return response({
           ...detail(status),
           id: activeId,
@@ -157,19 +220,20 @@ describe('useBriefingSessions', () => {
       await Promise.resolve()
     })
     expect(result.current.hasActiveSession).toBe(true)
+    expect(activeReads).toBe(1)
 
     await act(async () => { await result.current.openSession(olderId) })
     expect(result.current.selectedSessionId).toBe(olderId)
     expect(result.current.activeSession?.id).toBe(olderId)
 
     await act(async () => { await vi.advanceTimersByTimeAsync(900) })
-    expect(activeReads).toBe(1)
+    expect(activeReads).toBe(2)
     expect(result.current.hasActiveSession).toBe(true)
     expect(result.current.selectedSessionId).toBe(olderId)
     expect(result.current.activeSession?.id).toBe(olderId)
 
     await act(async () => { await vi.advanceTimersByTimeAsync(900) })
-    expect(activeReads).toBe(2)
+    expect(activeReads).toBe(3)
     expect(result.current.sessions.find((session) => session.id === activeId)?.run_status).toBe('completed')
     expect(result.current.hasActiveSession).toBe(false)
     expect(result.current.selectedSessionId).toBe(olderId)

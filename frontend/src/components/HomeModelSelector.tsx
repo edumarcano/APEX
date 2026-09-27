@@ -25,7 +25,6 @@ import type {
 import {
   formatReasoningLabel,
   providerDisplayName,
-  resolveLowestReasoningEffort,
   runtimeDisplayName,
 } from '../lib/agents'
 
@@ -256,10 +255,11 @@ export function HomeModelSelector({
                       const provider = providerDisplayName(entry.provider)
                       const isUnauthorized = entry.credentials_configured === false
                       const isModelDisabled = isUnauthorized || entry.status === 'disabled'
-                      const lowestEffort = resolveLowestReasoningEffort(entry.reasoning_options)
-                      const reasoningLabel = lowestEffort && lowestEffort !== 'none'
-                        ? `${formatReasoningLabel(lowestEffort)} reasoning`
-                        : 'Reasoning off'
+                      const reasoningLabel = entry.reasoning_options && entry.reasoning_options.length > 1
+                        ? 'Reasoning configurable'
+                        : entry.reasoning_options?.[0]
+                          ? `${formatReasoningLabel(entry.reasoning_options[0])} reasoning only`
+                          : 'Standard inference'
                       return (
                         <li key={entry.model_id} role="presentation" className="group/model-option relative">
                           <button

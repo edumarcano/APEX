@@ -5,8 +5,6 @@ interface StandbyActionsProps {
   onStartOverview: () => void
   onStartBriefing: () => void
   disabled?: boolean
-  briefingDisabled?: boolean
-  briefingLabel?: string
 }
 
 const ACTION_CLASS = 'group hud-command-surface inline-flex items-center gap-1.5 rounded-lg border px-4 py-2.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.14em] backdrop-blur-md transition-[border-color,background-color,box-shadow,color] duration-300 motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 sm:text-[11px]'
@@ -16,10 +14,7 @@ export function StandbyActions({
   onStartOverview,
   onStartBriefing,
   disabled = false,
-  briefingDisabled = false,
-  briefingLabel = 'Daily',
 }: StandbyActionsProps): ReactElement {
-  const isBriefingInteractive = !disabled && !briefingDisabled
   return (
     <div className="inline-flex items-center gap-2.5" data-slot="standby-actions">
       <button
@@ -38,10 +33,10 @@ export function StandbyActions({
       <button
         type="button"
         onClick={onStartBriefing}
-        disabled={!isBriefingInteractive}
-        aria-label={`Start Briefing with ${briefingLabel}`}
-        title={briefingDisabled && !disabled ? 'Briefings require an available model and no active briefing run.' : undefined}
-        className={`${ACTION_CLASS} focus-visible:outline-[#F59E0B] ${!isBriefingInteractive
+        disabled={disabled}
+        aria-label="Open Briefing setup"
+        title="Activate APEX and choose a briefing to generate."
+        className={`${ACTION_CLASS} focus-visible:outline-[#F59E0B] ${disabled
           ? DISABLED_CLASS
           : 'border-amber-400/25 bg-amber-950/20 text-amber-200 shadow-[inset_0_1px_0_rgba(251,191,36,0.1)] hover:border-amber-400/40 hover:bg-amber-400/15 hover:text-amber-100 hover:shadow-[0_0_12px_rgba(251,191,36,0.18)]'}`}
       >

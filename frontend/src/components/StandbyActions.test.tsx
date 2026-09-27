@@ -16,21 +16,21 @@ describe('StandbyActions', () => {
     expect(onStartOverview).toHaveBeenCalledTimes(1)
     expect(onStartBriefing).not.toHaveBeenCalled()
 
-    await user.click(screen.getByRole('button', { name: 'Start Briefing with Daily' }))
+    await user.click(screen.getByRole('button', { name: 'Open Briefing setup' }))
     expect(onStartBriefing).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps Overview available when only briefing generation is unavailable', () => {
-    render(<StandbyActions onStartOverview={vi.fn()} onStartBriefing={vi.fn()} briefingDisabled />)
+  it('keeps both navigation actions available when no briefing model is ready', () => {
+    render(<StandbyActions onStartOverview={vi.fn()} onStartBriefing={vi.fn()} />)
 
     expect(screen.getByRole('button', { name: 'Start Overview' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Start Briefing with Daily' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Open Briefing setup' })).toBeEnabled()
   })
 
   it('disables both actions while activation is blocked', () => {
     render(<StandbyActions onStartOverview={vi.fn()} onStartBriefing={vi.fn()} disabled />)
 
     expect(screen.getByRole('button', { name: 'Start Overview' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Start Briefing with Daily' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Open Briefing setup' })).toBeDisabled()
   })
 })
