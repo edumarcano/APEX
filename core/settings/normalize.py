@@ -224,9 +224,9 @@ def normalize_layer(
             if microsoft_todo is not None:
                 normalized["microsoft_todo"] = microsoft_todo
         elif key == "activity_report_folder":
-            mailbox = _normalize_activity_report_folder(value, layer_name, issues)
-            if mailbox is not None:
-                normalized["activity_report_folder"] = mailbox
+            report_folder = _normalize_activity_report_folder(value, layer_name, issues)
+            if report_folder is not None:
+                normalized["activity_report_folder"] = report_folder
 
     return normalized
 

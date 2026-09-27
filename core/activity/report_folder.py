@@ -179,7 +179,7 @@ class ActivityReportFolder:
         return True
 
     def status(self) -> ReportFolderStatus:
-        """Return live folder/client readiness and the matching latest scan result."""
+        """Return live report-folder readiness and the matching latest scan result."""
         settings = self._settings_getter()
         base = self._base_status(settings)
         key = self._settings_key(settings)
