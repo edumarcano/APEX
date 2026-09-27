@@ -62,7 +62,7 @@ describe('agents helpers', () => {
     expect(resolveLowestReasoningEffort([])).toBeNull()
   })
 
-  it('resolves home query overrides for cloud and local models', () => {
+  it('uses shared cloud and local reasoning preferences for Home queries', () => {
     const cloudEntry: ModelCatalogEntry = {
       model_id: 'deepseek/deepseek-v4-flash-0731',
       display_name: 'DeepSeek V4 Flash',
@@ -73,10 +73,11 @@ describe('agents helpers', () => {
       default_reasoning: 'high',
       hosted_capabilities: [],
     }
-    expect(resolveHomeQueryOverrides(cloudEntry)).toEqual({
+    const preferences = { effort: 'high' as const, contextWindow: 32768, localReasoningMode: 'focused' as const }
+    expect(resolveHomeQueryOverrides(cloudEntry, preferences)).toEqual({
       agent: 'apex',
       modelId: 'deepseek/deepseek-v4-flash-0731',
-      effort: 'none',
+      effort: 'high',
       contextWindow: null,
       localReasoningMode: null,
     })
@@ -92,12 +93,12 @@ describe('agents helpers', () => {
       maximum_context_window: 131072,
       hosted_capabilities: [],
     }
-    expect(resolveHomeQueryOverrides(localEntry)).toEqual({
+    expect(resolveHomeQueryOverrides(localEntry, preferences)).toEqual({
       agent: 'apex',
       modelId: 'gemma-4-E2B-Q4_K_M.gguf',
       effort: null,
-      contextWindow: 16384,
-      localReasoningMode: 'none',
+      contextWindow: 32768,
+      localReasoningMode: 'focused',
     })
   })
 })

@@ -3,6 +3,7 @@ import type {
   AgentStability,
   CloudEffort,
   HostedTool,
+  LocalReasoningMode,
   LocalRuntime,
   ModelCatalogEntry,
 } from '../types/telemetry'
@@ -35,6 +36,16 @@ export function providerDisplayName(provider: string | null | undefined): string
     return 'Google'
   }
   return provider || 'Provider'
+}
+
+export function formatAgentPricing(entry: ModelCatalogEntry | null | undefined): string {
+  if (!entry?.pricing) {
+    if (entry?.runtime === 'local') return 'Local · No provider charge'
+    return 'Standard pricing'
+  }
+  const { billing_basis, input_per_million, output_per_million } = entry.pricing
+  if (billing_basis === 'local') return 'Local · No provider charge'
+  return `$${input_per_million.toFixed(2)}/M in · $${output_per_million.toFixed(2)}/M out`
 }
 
 export function runtimeDisplayName(runtime: LocalRuntime): string {
@@ -144,29 +155,34 @@ export interface HomeQueryOverrides {
   modelId: string
   effort: CloudEffort | null
   contextWindow: number | null
-  localReasoningMode: 'none' | null
+  localReasoningMode: LocalReasoningMode | null
+}
+
+export interface HomeQueryPreferences {
+  effort: CloudEffort
+  contextWindow: number
+  localReasoningMode: LocalReasoningMode
 }
 
 export function resolveHomeQueryOverrides(
   modelEntry: ModelCatalogEntry | null | undefined,
+  preferences: HomeQueryPreferences,
 ): HomeQueryOverrides {
   if (!modelEntry || modelEntry.runtime === 'local') {
     const modelId = modelEntry?.model_id ?? 'gemma-4-E2B-Q4_K_M.gguf'
-    const contextWindow = modelEntry?.provider === 'ollama' ? 4096 : 16384
     return {
       agent: 'apex',
       modelId,
       effort: null,
-      contextWindow,
-      localReasoningMode: 'none',
+      contextWindow: preferences.contextWindow,
+      localReasoningMode: preferences.localReasoningMode,
     }
   }
 
-  const effort = resolveLowestReasoningEffort(modelEntry.reasoning_options)
   return {
     agent: 'apex',
     modelId: modelEntry.model_id,
-    effort,
+    effort: preferences.effort,
     contextWindow: null,
     localReasoningMode: null,
   }

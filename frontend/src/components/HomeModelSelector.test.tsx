@@ -18,7 +18,7 @@ describe('HomeModelSelector', () => {
     await user.click(screen.getByRole('button', { name: 'Model: DeepSeek V4 Flash' }))
     const listbox = screen.getByRole('listbox', { name: /select model/i })
     expect(within(listbox).getByText('DeepSeek V4 Flash')).toBeInTheDocument()
-    expect(within(listbox).getByText(/OpenRouter · Reasoning off/i)).toBeInTheDocument()
+    expect(within(listbox).getByText(/OpenRouter · Reasoning configurable/i)).toBeInTheDocument()
   })
 
   it('groups selectable models by cloud and local runtime', async () => {

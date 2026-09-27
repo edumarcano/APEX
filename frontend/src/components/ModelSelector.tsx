@@ -9,6 +9,7 @@ import {
 
 import type { AgentAvailabilityStatus, ModelCatalogEntry } from '../types/telemetry'
 import {
+  formatAgentPricing,
   formatContextWindowLabel,
   providerDisplayName,
   runtimeDisplayName,
@@ -63,16 +64,6 @@ function statusDotClass(status: AgentAvailabilityStatus): string {
     return 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.7)]'
   }
   return 'bg-[#DC2626] shadow-[0_0_6px_rgba(220,38,38,0.8)]'
-}
-
-function formatPricing(entry: ModelCatalogEntry | null | undefined): string {
-  if (!entry?.pricing) {
-    if (entry?.runtime === 'local') return 'Local · No provider charge'
-    return 'Standard pricing'
-  }
-  const { billing_basis, input_per_million, output_per_million } = entry.pricing
-  if (billing_basis === 'local') return 'Local · No provider charge'
-  return `$${input_per_million.toFixed(2)}/M in · $${output_per_million.toFixed(2)}/M out`
 }
 
 function capabilityTags(entry: ModelCatalogEntry): string[] {
@@ -257,7 +248,7 @@ export function ModelSelector({
         {/* Pricing line & Capabilities */}
         <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-t border-white/10 pt-2 font-mono text-[10px]">
           <span className="text-zinc-400">
-            {formatPricing(selectedModel)}
+            {formatAgentPricing(selectedModel)}
           </span>
           {canVerify ? (
             <button
@@ -368,7 +359,7 @@ export function ModelSelector({
                   </div>
 
                   <div className="mt-2 flex items-center justify-between font-mono text-[10px] text-zinc-400">
-                    <span>{formatPricing(model)}</span>
+                    <span>{formatAgentPricing(model)}</span>
                   </div>
 
                   {caps.length > 0 ? (

@@ -21,11 +21,14 @@ type HookState = {
   profiles: BriefingProfileSummary[]
   selectedSessionId: string | null
   activeSession: BriefingSessionDetail | null
+  latestSession: BriefingSessionDetail | null
+  latestError: string | null
   evidenceById: Record<string, BriefingEvidence>
   evidenceLoadingIds: string[]
   evidenceErrors: Record<string, string>
   isLoadingSessions: boolean
   isLoadingSession: boolean
+  isLoadingLatestSession: boolean
   isGenerating: boolean
   error: string | null
 }
@@ -87,6 +90,7 @@ function isSameSummary(
 export type UseBriefingSessionsResult = HookState & {
   hasActiveSession: boolean
   refreshSessions: () => Promise<void>
+  refreshLatestSession: () => Promise<BriefingSessionDetail | null>
   generate: (profileId: BriefingProfileId, options: BriefingGenerationOptions) => Promise<BriefingSessionSummary>
   openSession: (sessionId: string) => Promise<BriefingSessionDetail>
   loadEvidence: (sessionId: string, evidenceId: string) => Promise<void>
@@ -99,14 +103,18 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
   const [profiles, setProfiles] = useState<BriefingProfileSummary[]>([])
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [activeSession, setActiveSession] = useState<BriefingSessionDetail | null>(null)
+  const [latestSession, setLatestSession] = useState<BriefingSessionDetail | null>(null)
+  const [latestError, setLatestError] = useState<string | null>(null)
   const [evidenceById, setEvidenceById] = useState<Record<string, BriefingEvidence>>({})
   const [evidenceLoadingIds, setEvidenceLoadingIds] = useState<string[]>([])
   const [evidenceErrors, setEvidenceErrors] = useState<Record<string, string>>({})
   const [isLoadingSessions, setIsLoadingSessions] = useState(false)
   const [isLoadingSession, setIsLoadingSession] = useState(false)
+  const [isLoadingLatestSession, setIsLoadingLatestSession] = useState(true)
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const loadSequence = useRef(0)
+  const latestLoadSequence = useRef(0)
   const generatingRef = useRef(false)
   const selectedSessionRef = useRef<string | null>(null)
   const evidenceLoadedRef = useRef(new Set<string>())
@@ -114,22 +122,62 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
   const idempotencyRef = useRef<{ fingerprint: string; key: string } | null>(null)
   selectedSessionRef.current = selectedSessionId
 
+  const refreshLatestSession = useCallback(async (
+    summary?: BriefingSessionSummary | null,
+  ): Promise<BriefingSessionDetail | null> => {
+    const sequence = ++latestLoadSequence.current
+    setIsLoadingLatestSession(true)
+    try {
+      let newest = summary
+      if (newest === undefined) {
+        const results = await requestJson<BriefingSessionSummary[]>(API_ENDPOINTS.briefingSessions({ limit: 1 }))
+        newest = Array.isArray(results) ? results[0] ?? null : null
+      }
+      if (!newest) {
+        if (latestLoadSequence.current === sequence) {
+          setLatestSession(null)
+          setLatestError(null)
+        }
+        return null
+      }
+      const detail = await requestJson<BriefingSessionDetail>(API_ENDPOINTS.briefingSession(newest.id))
+      if (latestLoadSequence.current === sequence) {
+        setLatestSession(detail)
+        setLatestError(null)
+      }
+      return detail
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'The latest briefing could not be loaded.'
+      if (latestLoadSequence.current === sequence) setLatestError(message)
+      throw cause
+    } finally {
+      if (latestLoadSequence.current === sequence) setIsLoadingLatestSession(false)
+    }
+  }, [])
+
   const refreshSessions = useCallback(async (): Promise<void> => {
+    const latestSequenceAtStart = latestLoadSequence.current
     setIsLoadingSessions(true)
     try {
       const next = await requestJson<BriefingSessionSummary[]>(API_ENDPOINTS.briefingSessions({ limit: 50 }))
+      const listed = Array.isArray(next) ? next : []
       setSessions((current) => {
-        const listed = Array.isArray(next) ? next : []
         const listedIds = new Set(listed.map((session) => session.id))
         const admitted = current.filter((session) => ACTIVE_STATUSES.has(session.run_status) && !listedIds.has(session.id))
         return [...admitted, ...listed]
       })
+      await refreshLatestSession(listed[0] ?? null).catch(() => null)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Saved briefing sessions are unavailable.')
+      const message = cause instanceof Error ? cause.message : 'Saved briefing sessions are unavailable.'
+      setError(message)
+      if (latestLoadSequence.current === latestSequenceAtStart) {
+        setLatestError(message)
+        setIsLoadingLatestSession(false)
+      }
     } finally {
       setIsLoadingSessions(false)
     }
-  }, [])
+  }, [refreshLatestSession])
 
   const openSession = useCallback(async (sessionId: string): Promise<BriefingSessionDetail> => {
     const sequence = ++loadSequence.current
@@ -306,15 +354,19 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
     profiles,
     selectedSessionId,
     activeSession,
+    latestSession,
+    latestError,
     evidenceById,
     evidenceLoadingIds,
     evidenceErrors,
     isLoadingSessions,
     isLoadingSession,
+    isLoadingLatestSession,
     isGenerating,
     error,
     hasActiveSession: isGenerating || sessions.some((session) => ACTIVE_STATUSES.has(session.run_status)),
     refreshSessions,
+    refreshLatestSession,
     generate,
     openSession,
     loadEvidence,

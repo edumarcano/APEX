@@ -293,6 +293,8 @@ Admits an asynchronous Daily, Catch Up, or Deep generation using the explicit mo
 - `429` — the run coordinator has no free execution slot.
 - `503` — briefing generation is unavailable or shutting down.
 
+The Briefing setup UI uses the existing preflight, settings, and session routes. For a model-backed Generate action it first preflights the draft model, then saves `selected_model` and that runtime's `last_model` plus supported reasoning value with one settings `PATCH`, then admits the session with the resolved settings. A cancelled or blocked preflight and a failed settings save do not send the session `POST`. Demo runs keep using the saved fixture and do not persist its fixture model as the Apex Agent selection.
+
 Deep first gathers the shared current and relevant history evidence, then makes a bounded investigation with up to eight eligible read capabilities selected for the evidence and source coverage. Its investigation prompt includes selected current evidence and paired historical evidence, with each row's role, capture time, trust, and content, so it can frame reads against observed changes. The selected set is independent of the saved runtime tool profile and still intersects current Agent policy, connector availability, partition, sandbox, and MCP allowlist/risk checks. Deep requires capacity for at least two investigation turns, one tool call, and two synthesis turns; otherwise admission returns `422` before creating a session. Investigation is limited to four tool calls, 180 seconds or half of the remaining run time (whichever is smaller), at most six saved read-result evidence records, and at most 1,024 generated tokens per investigation turn (or the lower configured output limit). The model may decide no additional read is needed. Write, destructive, hosted, and unbounded tools are not offered. Read-result evidence keeps an untrusted source label and capture time; raw investigation transcripts are not saved. The completed artifact's optional `investigation` field reports whether investigation completed, was limited, or needed no read, along with bounded counts and limitations. The total saved evidence remains capped at 50 records.
 
 ### Catch Up comparison history
@@ -308,6 +310,8 @@ Source inventories are bounded: reminders include at most 8 items in the selecte
 ### GET `/api/v1/briefing-sessions`
 
 Returns up to 100 newest session summaries from the active production or sandbox partition. `limit` defaults to 25 and accepts 1–100; `offset` defaults to 0. Summaries include run status and the first-presentation timestamp. Listing does not change presentation state. The detail endpoint is addressable by session ID when a caller already knows it, even if it is outside the current summary page.
+
+The Briefing UI's Repeat action reads the newest summary with `limit=1`, then loads its detail without changing the displayed selection. It repeats that saved profile, model, and reasoning configuration through a new session `POST`; the server gathers a fresh context snapshot, and the client does not replay the old evidence or context. Failed and CLI-origin sessions remain eligible when their saved configuration is currently supported.
 
 The read-only Apex Agent tool `get_briefing_history` uses the same active-partition boundary. Its `limit` is clamped to 1–5; one joined query filters for completed sessions with canonical artifacts before applying the bound. Each result includes the session ID, profile, selected model, creation and presentation times, presentation status, up to two concise canonical items, and up to four recorded limitations. Failed and incomplete sessions are omitted. The tool does not fetch full evidence or speech data.
 
@@ -589,7 +593,7 @@ APEX owns Cortex conversation history in `apex_memory.db`. Conversations contain
 }
 ```
 
-`model_id`, `context_window`, and `local_reasoning_mode` are optional per-turn overrides. When supplied, the turn uses those values instead of saved model preferences. The Home workspace sends these fields for every query: cloud models receive the lowest supported reasoning effort, and local models receive `context_window: 16384` with reasoning disabled. These overrides are ephemeral and never written back to settings.
+`model_id`, `context_window`, and `local_reasoning_mode` are optional per-turn overrides. When supplied, the turn uses those values instead of saved model preferences. Home follow-ups and their tool preflight use the shared Apex Agent selection: the saved cloud reasoning effort, or the saved local context window and reasoning mode. These per-turn values are ephemeral and are not written back by a follow-up.
 
 `snapshot_id` is optional explicit current telemetry context; when absent, APEX injects no HUD telemetry. A stale snapshot ID is omitted rather than replaced with the latest data. A briefing session owns its linked Cortex conversation and canonical opening artifact; callers continue that session by using the returned conversation ID, not by attaching a legacy briefing ID. The server derives `sandbox` only when both `DEV_MODE` and the saved sandbox setting are active; clients cannot select or cross partitions. Snapshot context is included only when its ID matches the process-current telemetry snapshot.
 
