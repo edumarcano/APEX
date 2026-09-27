@@ -22,7 +22,7 @@ import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { HomeWorkspace } from './components/home/HomeWorkspace'
 import { BriefingSpeechControl } from './components/home/BriefingSpeechControl'
 import type { BriefingSetupDraft } from './components/home/BriefingProfilePanel'
-import { WorkspaceMenu, type WorkspacePeer } from './components/WorkspaceMenu'
+import { WorkspaceTabs, type WorkspacePeer } from './components/WorkspaceTabs'
 import type { HomeIdentityProps } from './components/home/HomeIdentity'
 import type { HomeTelemetryData } from './components/home/HomeTelemetry'
 import { useApexData } from './hooks/useApexData'
@@ -970,19 +970,14 @@ export default function App(): ReactElement {
     await startBriefing({ profileId, modelId: model.model_id, cloudEffort: null, localReasoningMode: savedModel.local_reasoning_mode as LocalReasoningMode })
   }, [agentQueriesEnabled, demoModeActive, fullModelCatalog, hasActiveDailySession, refreshLatestBriefingSession, startBriefing])
 
-  const handleStartOverview = useCallback((): void => {
+  const handleCollectTelemetry = useCallback((): void => {
     selectHomeView('overview')
     void handleStartApex()
   }, [handleStartApex, selectHomeView])
 
   const handleSelectWorkspace = useCallback((peer: WorkspacePeer): void => {
-    if ((peer === 'overview' || peer === 'briefing') && !activated) {
-      selectHomeView(peer)
-      void handleStartApex()
-      return
-    }
     navigateWorkspace(peer)
-  }, [activated, handleStartApex, navigateWorkspace, selectHomeView])
+  }, [navigateWorkspace])
 
   useEffect(() => {
     const handleGlobalEnter = (event: KeyboardEvent): void => {
@@ -1009,14 +1004,14 @@ export default function App(): ReactElement {
         return
       }
 
-      handleStartOverview()
+      handleCollectTelemetry()
     }
 
     window.addEventListener('keydown', handleGlobalEnter)
     return () => {
       window.removeEventListener('keydown', handleGlobalEnter)
     }
-  }, [activated, handleStartOverview, preflight.dialogOpen, preflight.isChecking])
+  }, [activated, handleCollectTelemetry, preflight.dialogOpen, preflight.isChecking])
 
   const dailyControlsBusy = preflight.isChecking || preflight.dialogOpen || dailySessions.isGenerating
   const canGenerateDaily = Boolean(agentQueriesEnabled || demoModeActive)
@@ -1623,7 +1618,7 @@ export default function App(): ReactElement {
             devModeActive={devModeActive}
             onOpenSettings={() => setIsSettingsOpen(true)}
             settingsButtonRef={settingsButtonRef}
-            workspaceNavigation={<WorkspaceMenu current={workspace} onSelect={handleSelectWorkspace} />}
+            workspaceNavigation={<WorkspaceTabs current={workspace} onSelect={handleSelectWorkspace} />}
           />
         </header>
 
@@ -1668,11 +1663,7 @@ export default function App(): ReactElement {
             identity={homeIdentity}
             telemetry={homeTelemetry}
             standbyActions={{
-              onStartOverview: handleStartOverview,
-              onStartBriefing: () => void handleStartApex(() => {
-                selectHomeView('briefing')
-                setBriefingSetupAutoOpen(true)
-              }),
+              onCollectTelemetry: handleCollectTelemetry,
               disabled: preflight.isChecking,
             }}
             briefingControls={{

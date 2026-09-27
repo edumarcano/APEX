@@ -49,8 +49,10 @@ export type UseHomeViewResult = {
 export function useHomeView({ activated, deactivate, destination }: UseHomeViewOptions): UseHomeViewResult {
   const [profileId, setProfileId] = useState<BriefingProfileId>('daily')
   const returnToStandby = useCallback((): void => deactivate(), [deactivate])
+  const view: HomeView =
+    !activated && destination === 'overview' ? 'standby' : destination
   return {
-    view: activated ? destination : 'standby',
+    view,
     profileId,
     returnToStandby,
     setProfileId,

@@ -1,9 +1,8 @@
-import { LayoutGrid, Sparkles } from 'lucide-react'
+import { Radio } from 'lucide-react'
 import type { ReactElement } from 'react'
 
 interface StandbyActionsProps {
-  onStartOverview: () => void
-  onStartBriefing: () => void
+  onCollectTelemetry: () => void
   disabled?: boolean
 }
 
@@ -11,37 +10,23 @@ const ACTION_CLASS = 'group hud-command-surface inline-flex items-center gap-1.5
 const DISABLED_CLASS = 'cursor-not-allowed border-white/5 bg-transparent text-zinc-600 opacity-40'
 
 export function StandbyActions({
-  onStartOverview,
-  onStartBriefing,
+  onCollectTelemetry,
   disabled = false,
 }: StandbyActionsProps): ReactElement {
   return (
     <div className="inline-flex items-center gap-2.5" data-slot="standby-actions">
       <button
         type="button"
-        onClick={onStartOverview}
+        onClick={onCollectTelemetry}
         disabled={disabled}
-        aria-label="Start Overview"
+        aria-label="Collect Telemetry"
         title="Collect current telemetry without running a model."
-        className={`${ACTION_CLASS} focus-visible:outline-[#1F6FE5] ${disabled
+        className={`${ACTION_CLASS} focus-visible:outline-[#10B981] ${disabled
           ? DISABLED_CLASS
-          : 'border-[#0F4DB8]/60 bg-[#0F4DB8]/20 text-blue-100 shadow-[inset_0_1px_0_rgba(110,168,255,0.15)] hover:border-[#6EA8FF]/80 hover:bg-[#0F4DB8]/35 hover:text-white hover:shadow-[0_0_12px_rgba(15,77,184,0.35)]'}`}
+          : 'border-[#047857]/60 bg-[#047857]/25 text-[#6EE7B7] shadow-[inset_0_1px_0_rgba(110,231,183,0.15)] hover:border-[#10B981]/80 hover:bg-[#047857]/40 hover:text-[#6EE7B7] hover:shadow-[0_0_12px_rgba(16,185,129,0.35)]'}`}
       >
-        <LayoutGrid className="size-3.5 shrink-0 text-[#6EA8FF]" aria-hidden />
-        <span className="whitespace-nowrap">Overview</span>
-      </button>
-      <button
-        type="button"
-        onClick={onStartBriefing}
-        disabled={disabled}
-        aria-label="Open Briefing setup"
-        title="Activate APEX and choose a briefing to generate."
-        className={`${ACTION_CLASS} focus-visible:outline-[#F59E0B] ${disabled
-          ? DISABLED_CLASS
-          : 'border-amber-400/25 bg-amber-950/20 text-amber-200 shadow-[inset_0_1px_0_rgba(251,191,36,0.1)] hover:border-amber-400/40 hover:bg-amber-400/15 hover:text-amber-100 hover:shadow-[0_0_12px_rgba(251,191,36,0.18)]'}`}
-      >
-        <Sparkles className="size-3.5 shrink-0 text-amber-300" aria-hidden />
-        <span className="whitespace-nowrap">Briefing</span>
+        <Radio className="size-3.5 shrink-0 text-[#10B981]" aria-hidden />
+        <span className="whitespace-nowrap">Collect Telemetry</span>
       </button>
     </div>
   )

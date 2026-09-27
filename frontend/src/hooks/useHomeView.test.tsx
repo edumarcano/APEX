@@ -32,9 +32,12 @@ function detail(run_status: BriefingSessionDetail['run_status'], withArtifact: b
 }
 
 describe('useHomeView', () => {
-  it('is Standby until activated, then shows the chosen destination', () => {
+  it('shows Standby only for Overview until activation; Briefing renders without activation', () => {
     const deactivate = vi.fn()
     const { result, rerender } = renderHook((props: { activated: boolean; destination: 'overview' | 'briefing' }) => useHomeView({ ...props, deactivate }), { initialProps: { activated: false, destination: 'briefing' } })
+    expect(result.current.view).toBe('briefing')
+
+    rerender({ activated: false, destination: 'overview' })
     expect(result.current.view).toBe('standby')
 
     rerender({ activated: true, destination: 'briefing' })
@@ -50,7 +53,7 @@ describe('useHomeView', () => {
 
     act(() => result.current.returnToStandby())
     expect(deactivate).toHaveBeenCalledTimes(1)
-    rerender({ activated: false })
+    rerender({ activated: false, destination: 'overview' })
     expect(result.current.view).toBe('standby')
 
     rerender({ activated: true })
