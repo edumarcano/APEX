@@ -6,7 +6,7 @@ import {
   formatReasoningLabel,
   isAgentKey,
   providerDisplayName,
-  resolveHomeQueryOverrides,
+  resolveAgentTurnOverrides,
   resolveLowestReasoningEffort,
   usesSandboxHistory,
 } from './agents'
@@ -62,7 +62,7 @@ describe('agents helpers', () => {
     expect(resolveLowestReasoningEffort([])).toBeNull()
   })
 
-  it('uses shared cloud and local reasoning preferences for Home queries', () => {
+  it('uses shared cloud and local reasoning preferences for shared Agent turns', () => {
     const cloudEntry: ModelCatalogEntry = {
       model_id: 'deepseek/deepseek-v4-flash-0731',
       display_name: 'DeepSeek V4 Flash',
@@ -74,7 +74,7 @@ describe('agents helpers', () => {
       hosted_capabilities: [],
     }
     const preferences = { effort: 'high' as const, contextWindow: 32768, localReasoningMode: 'focused' as const }
-    expect(resolveHomeQueryOverrides(cloudEntry, preferences)).toEqual({
+    expect(resolveAgentTurnOverrides(cloudEntry, preferences)).toEqual({
       agent: 'apex',
       modelId: 'deepseek/deepseek-v4-flash-0731',
       effort: 'high',
@@ -93,7 +93,7 @@ describe('agents helpers', () => {
       maximum_context_window: 131072,
       hosted_capabilities: [],
     }
-    expect(resolveHomeQueryOverrides(localEntry, preferences)).toEqual({
+    expect(resolveAgentTurnOverrides(localEntry, preferences)).toEqual({
       agent: 'apex',
       modelId: 'gemma-4-E2B-Q4_K_M.gguf',
       effort: null,

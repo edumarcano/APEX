@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { BriefingSessionDetail, BriefingSessionSummary } from '../types/briefings'
-import { resolveBriefingLayoutPhase, useHomeView } from './useHomeView'
+import { resolveBriefingLayoutPhase, useWorkspaceView } from './useWorkspaceView'
 
 function summary(run_status: BriefingSessionSummary['run_status']): BriefingSessionSummary {
   return { id: 's1', profile_id: 'daily', model_id: 'm', conversation_id: 'c1', run_id: 'r1', run_status, created_at: '2026-09-25T13:00:00Z', presented_at: null }
@@ -31,10 +31,13 @@ function detail(run_status: BriefingSessionDetail['run_status'], withArtifact: b
   }
 }
 
-describe('useHomeView', () => {
-  it('is Standby until activated, then shows the chosen destination', () => {
+describe('useWorkspaceView', () => {
+  it('shows Standby only for Overview until activation; Briefing renders without activation', () => {
     const deactivate = vi.fn()
-    const { result, rerender } = renderHook((props: { activated: boolean; destination: 'overview' | 'briefing' }) => useHomeView({ ...props, deactivate }), { initialProps: { activated: false, destination: 'briefing' } })
+    const { result, rerender } = renderHook((props: { activated: boolean; destination: 'overview' | 'briefing' }) => useWorkspaceView({ ...props, deactivate }), { initialProps: { activated: false, destination: 'briefing' } })
+    expect(result.current.view).toBe('briefing')
+
+    rerender({ activated: false, destination: 'overview' })
     expect(result.current.view).toBe('standby')
 
     rerender({ activated: true, destination: 'briefing' })
@@ -45,15 +48,15 @@ describe('useHomeView', () => {
 
   it('returns to Standby only through deactivation and keeps the profile', () => {
     const deactivate = vi.fn()
-    const { result, rerender } = renderHook((props: { activated: boolean }) => useHomeView({ ...props, destination: 'briefing', deactivate }), { initialProps: { activated: true } })
+    const { result, rerender } = renderHook((props: { activated: boolean; destination: 'overview' | 'briefing' }) => useWorkspaceView({ ...props, deactivate }), { initialProps: { activated: true, destination: 'briefing' } })
     act(() => result.current.setProfileId('catch_up'))
 
     act(() => result.current.returnToStandby())
     expect(deactivate).toHaveBeenCalledTimes(1)
-    rerender({ activated: false })
+    rerender({ activated: false, destination: 'overview' })
     expect(result.current.view).toBe('standby')
 
-    rerender({ activated: true })
+    rerender({ activated: true, destination: 'briefing' })
     expect(result.current.view).toBe('briefing')
     expect(result.current.profileId).toBe('catch_up')
   })

@@ -9,7 +9,7 @@ function toolLabel(name: string): string {
 }
 
 /**
- * Home presentation of the same tool outputs Cortex renders as cards. Routine
+ * Briefing presentation of the same tool outputs Cortex renders as cards. Routine
  * results collapse into chips that expand into the Cortex card; failures,
  * pending approvals, and trust-labelled results always render in full.
  */

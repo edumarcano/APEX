@@ -51,13 +51,13 @@ Demo mode uses static telemetry, deterministic Agent responses, and fixed Daily 
 <p align="center">
   <img
     src="assets/apex-standby.png"
-    alt="APEX standby screen with actions to activate Home or begin a Daily briefing"
+    alt="APEX Overview standby screen with Collect Telemetry"
     width="900"
   >
 </p>
 
 <p align="center">
-  <em>APEX opens in standby and waits for the operator to start Home or begin a Daily briefing.</em>
+  <em>APEX opens on Overview Standby and waits for Collect Telemetry or a switch to Briefing.</em>
 </p>
 
 ## Run the full local system
@@ -165,9 +165,9 @@ uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model ge
 
 ## First-run expectations
 
-- Standby does not automatically collect telemetry or run a briefing.
-- **Start APEX** activates Home and refreshes its data.
-- **Start with Briefing** activates Home, refreshes telemetry, and starts a Daily session with the selected Apex Agent model. Choose Catch Up or Deep from the Briefing workspace.
+- Overview Standby does not automatically collect telemetry or run a briefing.
+- **Collect Telemetry** activates APEX, refreshes telemetry, and opens the Overview grid without running a model.
+- Open the **Briefing** tab to set up or generate a session with the shared Apex Agent model. Choose Catch Up or Deep from Briefing controls.
 - Agent queries become available after activation when they are enabled in Settings.
 - Personal-context retrieval is off by default for both cloud and local models. The Cortex Context inspector remains available for adding, inspecting, correcting, retracting, and reviewing local records.
 - Context vault export is off by default. See the [Context vault guide](context-vault.md) when you want to share selected records as local Markdown notes.

@@ -501,8 +501,8 @@ function applySavedSettings(response: SettingsResponse, previousSettings: Runtim
 }
 
 async function selectWorkspace(user: ReturnType<typeof userEvent.setup>, name: string): Promise<void> {
-  await user.click(screen.getByRole('button', { name: 'Workspace' }))
-  await user.click(within(screen.getByRole('menu', { name: 'Workspace' })).getByRole('menuitemradio', { name }))
+  const nav = screen.getByRole('navigation', { name: 'Workspace' })
+  await user.click(within(nav).getByRole('button', { name }))
 }
 
 async function selectBriefingEffort(user: ReturnType<typeof userEvent.setup>, effort: string): Promise<void> {
@@ -575,7 +575,7 @@ describe('App catalog-affecting settings', () => {
     })
   })
 
-  it('uses the shared cloud reasoning effort for Home follow-ups and disables preflight in Inbox', async () => {
+  it('uses the shared cloud reasoning effort for Briefing follow-ups and disables preflight in Inbox', async () => {
     const user = userEvent.setup()
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(catalogFor('apex')), { status: 200 }))))
     appMocks.toolPreflight.mockClear()
@@ -599,7 +599,7 @@ describe('App catalog-affecting settings', () => {
     }))
   })
 
-  it('uses the shared local context window and reasoning mode for Home follow-ups', async () => {
+  it('uses the shared local context window and reasoning mode for Briefing follow-ups', async () => {
     appMocks.localBriefingModel = {
       model_id: 'qwen3:1.7b',
       display_name: 'Qwen 3 1.7B',
@@ -629,33 +629,22 @@ describe('App catalog-affecting settings', () => {
     }))
   })
 
-  it('switches peer workspaces from a single header menu without a Standby peer', async () => {
+  it('switches peer workspaces from visible header tabs without a Standby peer', async () => {
     const user = userEvent.setup()
     render(<App />)
 
-    const chip = screen.getByRole('button', { name: 'Workspace' })
-    expect(chip).toHaveTextContent('Overview')
-    expect(chip).toHaveAttribute('aria-haspopup', 'menu')
-    expect(chip).toHaveAttribute('aria-expanded', 'false')
-
-    await user.click(chip)
-    const menu = screen.getByRole('menu', { name: 'Workspace' })
-    expect(within(menu).getAllByRole('menuitemradio').map((item) => item.textContent)).toEqual([
-      'Inbox', 'Overview', 'Briefing', 'Cortex',
-    ])
-    expect(within(menu).getByRole('menuitemradio', { name: 'Overview' })).toHaveAttribute('aria-checked', 'true')
-    await user.keyboard('{Escape}')
-    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
-    expect(chip).toHaveFocus()
-
-    await user.click(chip)
-    await user.click(document.body)
-    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'Workspace' })
+    const tabs = within(nav).getAllByRole('button')
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Inbox', 'Overview', 'Briefing', 'Cortex'])
+    expect(within(nav).getByRole('button', { name: 'Overview' })).toHaveAttribute('aria-current', 'page')
+    expect(within(nav).getByRole('button', { name: 'Briefing' })).not.toHaveAttribute('aria-current')
 
     await selectWorkspace(user, 'Inbox')
-    expect(chip).toHaveTextContent('Inbox')
-    expect(chip).toHaveAttribute('aria-expanded', 'false')
+    expect(within(nav).getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-current', 'page')
     expect(screen.queryByRole('region', { name: 'Overview' })).not.toBeInTheDocument()
+
+    await selectWorkspace(user, 'Briefing')
+    expect(within(nav).getByRole('button', { name: 'Briefing' })).toHaveAttribute('aria-current', 'page')
   })
 
   it('refreshes the current catalog after toggling sandbox mode', async () => {
@@ -944,7 +933,7 @@ describe('App contextual voice cues', () => {
     })
 
     render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Start Overview' }))
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
 
     await waitFor(() => {
       expect(events).toEqual(['refresh', 'cue:activation_loading'])
@@ -963,7 +952,7 @@ describe('App contextual voice cues', () => {
     })
 
     render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Start Overview' }))
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
 
     await waitFor(() => expect(events).toEqual(['refresh', 'cue:activation_ready']))
     expect(appMocks.loadLatest).toHaveBeenCalledOnce()
@@ -995,7 +984,7 @@ describe('App contextual voice cues', () => {
     })
 
     render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Start Overview' }))
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
 
     await waitFor(() => expect(events).toEqual(['refresh', 'cue:activation_ready']))
     expect(appMocks.loadLatest).toHaveBeenCalledOnce()
@@ -1012,7 +1001,7 @@ describe('App contextual voice cues', () => {
     })
 
     const firstRender = render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Start Overview' }))
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
     await waitFor(() => {
       expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_refresh_failed'])
     })
@@ -1027,7 +1016,7 @@ describe('App contextual voice cues', () => {
     })
     const secondUser = userEvent.setup()
     render(<App />)
-    await secondUser.click(screen.getByRole('button', { name: 'Start Overview' }))
+    await secondUser.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
     await waitFor(() => expect(events).toEqual(['cue:activation_loading']))
   })
 
@@ -1042,7 +1031,7 @@ describe('App contextual voice cues', () => {
     })
 
     render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Start Overview' }))
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
 
     await waitFor(() => {
       expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_no_fresh_telemetry'])
@@ -1051,7 +1040,7 @@ describe('App contextual voice cues', () => {
 
 })
 
-describe('App Home states', () => {
+describe('App Overview and Briefing states', () => {
   afterEach(() => {
     appMocks.activated = true
     appMocks.noModels = false
@@ -1071,14 +1060,14 @@ describe('App Home states', () => {
     }))
   }
 
-  it('offers Overview and Briefing from Standby without a command panel or composer', () => {
+  it('offers Collect Telemetry from Standby without a command panel or composer', () => {
     appMocks.activated = false
     stubHomeFetch([])
     render(<App />)
 
-    expect(screen.getByRole('button', { name: 'Start Overview' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Open Briefing setup' })).toBeEnabled()
-    expect(screen.queryByRole('region', { name: 'Home command rail' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Collect Telemetry' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Open Briefing setup' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Agent command rail' })).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   })
 
@@ -1113,7 +1102,7 @@ describe('App Home states', () => {
     expect(posts.filter((path) => path.endsWith('/briefing-sessions'))).toHaveLength(0)
   })
 
-  it('activates into the chosen Home peer from Standby without generating a briefing', async () => {
+  it('opens Briefing from Standby without activation or generating a briefing', async () => {
     appMocks.activated = false
     appMocks.activate.mockClear()
     const user = userEvent.setup()
@@ -1122,17 +1111,15 @@ describe('App Home states', () => {
     render(<App />)
 
     expect(screen.getByRole('region', { name: 'Standby' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Workspace' })).toHaveTextContent('Overview')
 
     await selectWorkspace(user, 'Briefing')
-    await waitFor(() => expect(appMocks.activate).toHaveBeenCalledTimes(1))
+    expect(appMocks.activate).not.toHaveBeenCalled()
     expect(await screen.findByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Workspace' })).toHaveTextContent('Briefing')
     expect(screen.queryByRole('dialog', { name: 'Set up your briefing' })).not.toBeInTheDocument()
     expect(posts.filter((path) => path.endsWith('/briefing-sessions'))).toHaveLength(0)
   })
 
-  it('activates Standby Briefing into setup without an automatic admission, even without a model', async () => {
+  it('opens Briefing setup from the Briefing tab without activation, even without a model', async () => {
     appMocks.activated = false
     appMocks.noModels = true
     appMocks.activate.mockClear()
@@ -1141,23 +1128,41 @@ describe('App Home states', () => {
     stubHomeFetch(posts)
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: 'Open Briefing setup' }))
+    await selectWorkspace(user, 'Briefing')
+    await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
 
     expect(await screen.findByRole('dialog', { name: 'Set up your briefing' })).toBeInTheDocument()
     expect(await screen.findByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
-    expect(appMocks.requestOperation).toHaveBeenCalledWith('activate')
-    expect(appMocks.activate).toHaveBeenCalledTimes(1)
+    expect(appMocks.requestOperation).not.toHaveBeenCalledWith('activate')
+    expect(appMocks.activate).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Generate Daily' })).toBeDisabled()
     expect(posts.filter((path) => path.endsWith('/briefing-sessions'))).toHaveLength(0)
   })
 
-  it('starts Overview from the Standby floating action', async () => {
+  it('does not collect telemetry from Enter while on inactive Briefing', async () => {
+    appMocks.activated = false
+    appMocks.activate.mockClear()
+    appMocks.requestOperation.mockClear()
+    const user = userEvent.setup()
+    stubHomeFetch([])
+    render(<App />)
+
+    await selectWorkspace(user, 'Briefing')
+    await user.keyboard('{Enter}')
+
+    expect(appMocks.activate).not.toHaveBeenCalled()
+    expect(appMocks.requestOperation).not.toHaveBeenCalledWith('activate')
+    expect(screen.queryByRole('region', { name: 'Overview' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
+  })
+
+  it('activates Overview from Collect Telemetry on Standby', async () => {
     appMocks.activated = false
     const user = userEvent.setup()
     stubHomeFetch([])
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: 'Start Overview' }))
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
     expect(await screen.findByRole('region', { name: 'Overview' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Standby' })).not.toBeInTheDocument()
   })
@@ -1391,7 +1396,8 @@ describe('App briefing session flow', () => {
     }))
 
     render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Open Briefing setup' }))
+    await selectWorkspace(user, 'Briefing')
+    await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
     const setup = await screen.findByRole('dialog', { name: 'Set up your briefing' })
     expect(admissions).toBe(0)
     expect(settingsPatchBody).toBeNull()
@@ -1410,7 +1416,6 @@ describe('App briefing session flow', () => {
     expect(admissionBody).toMatchObject({ profile_id: 'daily', model_id: 'deepseek/deepseek-v4-flash-0731', reasoning: 'high' })
     expect(eventOrder.indexOf('preflight:generate_briefing_session')).toBeLessThan(eventOrder.indexOf('settings-patch'))
     expect(eventOrder.indexOf('settings-patch')).toBeLessThan(eventOrder.indexOf('session-post'))
-    expect(appMocks.activate).toHaveBeenCalled()
     await waitFor(() => expect(detailReads).toBeGreaterThan(0))
     expect(screen.getByRole('region', { name: 'Briefing' })).toHaveAttribute('data-layout', 'identity')
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()

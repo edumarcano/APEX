@@ -222,39 +222,6 @@ function MetricBar({
   )
 }
 
-function MetricPill({
-  label,
-  value,
-  percentage,
-  unavailable,
-  icon: Icon,
-  className = '',
-}: {
-  label: string
-  value: string
-  percentage: number
-  unavailable: boolean
-  icon: LucideIcon
-  className?: string
-}): ReactElement {
-  return (
-    <div
-      className={`hud-interactive-shell hud-glass flex h-11 items-center gap-2 rounded-full px-3 font-mono text-xs text-zinc-300 ${className}`}
-    >
-      <span className="hud-inner-lift flex min-w-0 items-center gap-2">
-        <Icon className="size-3.5 shrink-0 text-zinc-500" aria-hidden />
-        <span className="shrink-0 text-[9px] uppercase tracking-[0.16em] text-zinc-500">
-          {label}
-        </span>
-        <span className="shrink-0 tabular-nums text-[10px] text-zinc-300">{value}</span>
-        <span className="w-10 shrink-0 sm:w-12">
-          <MetricBar percentage={percentage} unavailable={unavailable} />
-        </span>
-      </span>
-    </div>
-  )
-}
-
 function StatusPill({
   label,
   value,
@@ -314,8 +281,11 @@ export function SystemDiagnostics({
   const [isBrowserOnline, setIsBrowserOnline] = useState(navigator.onLine)
   const [isConnectorInspectorOpen, setIsConnectorInspectorOpen] = useState(false)
   const [isConnectorInspectorPinned, setIsConnectorInspectorPinned] = useState(false)
+  const [isSystemInspectorOpen, setIsSystemInspectorOpen] = useState(false)
+  const [isSystemInspectorPinned, setIsSystemInspectorPinned] = useState(false)
   const [liveTime, setLiveTime] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
+  const systemContainerRef = useRef<HTMLDivElement>(null)
 
   const connectorEntries = connectorHealth.length > 0
     ? connectorHealth
@@ -369,12 +339,17 @@ export function SystemDiagnostics({
   }, [])
 
   useEffect(() => {
-    if (!isConnectorInspectorPinned) return
+    if (!isConnectorInspectorPinned && !isSystemInspectorPinned) return
 
     const handleOutsideClick = (event: MouseEvent): void => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node
+      if (isConnectorInspectorPinned && containerRef.current && !containerRef.current.contains(target)) {
         setIsConnectorInspectorPinned(false)
         setIsConnectorInspectorOpen(false)
+      }
+      if (isSystemInspectorPinned && systemContainerRef.current && !systemContainerRef.current.contains(target)) {
+        setIsSystemInspectorPinned(false)
+        setIsSystemInspectorOpen(false)
       }
     }
 
@@ -382,12 +357,20 @@ export function SystemDiagnostics({
     return () => {
       window.removeEventListener('mousedown', handleOutsideClick)
     }
-  }, [isConnectorInspectorPinned])
+  }, [isConnectorInspectorPinned, isSystemInspectorPinned])
 
   const handleConnectorInspectorToggle = (): void => {
     setIsConnectorInspectorPinned((prev) => {
       const next = !prev
       setIsConnectorInspectorOpen(next)
+      return next
+    })
+  }
+
+  const handleSystemInspectorToggle = (): void => {
+    setIsSystemInspectorPinned((prev) => {
+      const next = !prev
+      setIsSystemInspectorOpen(next)
       return next
     })
   }
@@ -410,20 +393,89 @@ export function SystemDiagnostics({
     <div className="pointer-events-auto grid h-full w-full min-w-0 grid-cols-3 items-center gap-2 sm:gap-3">
       {/* Left flank — system and connector health */}
       <div className="flex min-w-0 items-center justify-self-start gap-2 sm:gap-2.5">
-        <MetricPill
-          label="CPU"
-          value={cpuText}
-          percentage={cpuPctClamped}
-          unavailable={cpuUnavailable}
-          icon={Cpu}
-        />
-        <MetricPill
-          label="RAM"
-          value={ramText}
-          percentage={ramPctClamped}
-          unavailable={ramUnavailable}
-          icon={MemoryStick}
-        />
+        <div
+          ref={systemContainerRef}
+          className="relative z-50"
+          onMouseEnter={() => setIsSystemInspectorOpen(true)}
+          onMouseLeave={() => {
+            if (!isSystemInspectorPinned) setIsSystemInspectorOpen(false)
+          }}
+        >
+          <button
+            type="button"
+            onClick={handleSystemInspectorToggle}
+            onFocus={() => setIsSystemInspectorOpen(true)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                setIsSystemInspectorPinned(false)
+                setIsSystemInspectorOpen(false)
+                event.currentTarget.blur()
+              }
+            }}
+            aria-expanded={isSystemInspectorOpen}
+            aria-controls="system-metrics-inspector"
+            className="hud-interactive-shell hud-glass flex h-11 min-w-0 items-center gap-2 rounded-full px-3 font-mono text-xs text-zinc-300 transition-colors hover:border-white/20 hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
+            aria-label={`System CPU ${cpuText}, RAM ${ramText}. View system metrics.`}
+          >
+            <Cpu className="size-3.5 shrink-0 text-zinc-500" aria-hidden />
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="shrink-0 text-[9px] uppercase tracking-[0.16em] text-zinc-500">CPU</span>
+              <span className="shrink-0 tabular-nums text-[10px] text-zinc-300">{cpuText}</span>
+              <span className="w-8 shrink-0 sm:w-10">
+                <MetricBar percentage={cpuPctClamped} unavailable={cpuUnavailable} />
+              </span>
+            </span>
+            <span className="h-4 w-px shrink-0 bg-white/10" aria-hidden />
+            <MemoryStick className="size-3.5 shrink-0 text-zinc-500" aria-hidden />
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="shrink-0 text-[9px] uppercase tracking-[0.16em] text-zinc-500">RAM</span>
+              <span className="shrink-0 tabular-nums text-[10px] text-zinc-300">{ramText}</span>
+              <span className="w-8 shrink-0 sm:w-10">
+                <MetricBar percentage={ramPctClamped} unavailable={ramUnavailable} />
+              </span>
+            </span>
+          </button>
+
+          <div
+            id="system-metrics-inspector"
+            role="dialog"
+            aria-label="System metrics"
+            aria-hidden={!isSystemInspectorOpen}
+            className={`hud-corner-brackets hud-glass hud-glass-solid absolute left-0 top-[calc(100%+0.5rem)] z-50 w-[min(16rem,calc(100vw-2rem))] origin-top rounded-2xl border border-white/10 p-3 shadow-2xl transition-all duration-200 ${isSystemInspectorOpen ? 'pointer-events-auto translate-y-0 opacity-100' : 'pointer-events-none -translate-y-1 opacity-0'}`}
+          >
+            <span className="hud-corner-bl" aria-hidden />
+            <span className="hud-corner-br" aria-hidden />
+            <div className="mb-2 border-b border-white/10 pb-2">
+              <span className="font-orbitron text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-200">System metrics</span>
+            </div>
+            <ul className="space-y-2" aria-label="System resource list">
+              <li className="flex items-center gap-2 rounded-lg bg-black/20 px-2.5 py-2 font-mono text-[10px] text-zinc-200">
+                <Cpu className="size-3.5 shrink-0 text-zinc-500" aria-hidden />
+                <span className="flex-1">CPU</span>
+                <span className="tabular-nums text-zinc-300">{cpuText}</span>
+                <span className="w-12">
+                  <MetricBar percentage={cpuPctClamped} unavailable={cpuUnavailable} />
+                </span>
+              </li>
+              <li className="flex items-center gap-2 rounded-lg bg-black/20 px-2.5 py-2 font-mono text-[10px] text-zinc-200">
+                <MemoryStick className="size-3.5 shrink-0 text-zinc-500" aria-hidden />
+                <span className="flex-1">RAM</span>
+                <span className="tabular-nums text-zinc-300">{ramText}</span>
+                <span className="w-12">
+                  <MetricBar percentage={ramPctClamped} unavailable={ramUnavailable} />
+                </span>
+              </li>
+              <li className="flex items-center gap-2 rounded-lg bg-black/20 px-2.5 py-2 font-mono text-[10px] text-zinc-200">
+                <HardDrive className="size-3.5 shrink-0 text-zinc-500" aria-hidden />
+                <span className="flex-1">Disk</span>
+                <span className="tabular-nums text-zinc-300">{diskText}</span>
+                <span className="w-12">
+                  <MetricBar percentage={diskPctClamped} unavailable={diskUnavailable} />
+                </span>
+              </li>
+            </ul>
+          </div>
+        </div>
         <div
           ref={containerRef}
           className="relative z-50"
@@ -533,16 +585,8 @@ export function SystemDiagnostics({
 
       </div>
 
-      {/* Right flank — disk / net / clock */}
+      {/* Right flank — net / clock */}
       <div className="flex min-w-0 items-center justify-self-end gap-2 sm:gap-2.5">
-        <MetricPill
-          label="DISK"
-          value={diskText}
-          percentage={diskPctClamped}
-          unavailable={diskUnavailable}
-          icon={HardDrive}
-          className="hidden md:flex"
-        />
         <StatusPill
           label="NET"
           value={isNetworkConnected ? 'Online' : 'Offline'}

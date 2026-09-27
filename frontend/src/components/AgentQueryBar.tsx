@@ -15,7 +15,7 @@ import type {
   ToolCatalog,
   ToolPreflightEstimate,
 } from '../types/telemetry'
-import { HomeModelSelector } from './HomeModelSelector'
+import { CompactModelSelector } from './CompactModelSelector'
 import { ToolsSelector } from './ToolsSelector'
 
 export function CortexQueryRim(): ReactElement {
@@ -92,7 +92,6 @@ export interface AgentQueryBarProps {
   selectionReady?: boolean
   draftPrompt?: string
   onDraftChange?: (value: string) => void
-  presentation?: 'home'
   error?: string | null
   selectedModelId?: string
   onModelChange?: (modelId: string) => void
@@ -178,7 +177,7 @@ export function AgentQueryBar({
         <ToolsSelector compact align="left" catalog={catalog} selectedToolNames={selectedToolNames} activeToolProfileId={activeToolProfileId} onSelectionChange={onToolSelectionChange ?? (() => undefined)} onProfileChange={onToolProfileChange ?? (() => undefined)} preflight={toolPreflight} preflightLoading={toolPreflightLoading} catalogError={toolCatalogError} preflightError={toolPreflightError} profileFeedback={toolProfileFeedback} profileError={toolProfileError} disabled={editorDisabled} onSaveProfile={onSaveToolProfile} onDuplicateProfile={onDuplicateToolProfile} onRenameProfile={onRenameToolProfile} onDeleteProfile={onDeleteToolProfile} onRestoreProfile={onRestoreToolProfile} onSetDefaultProfile={onSetDefaultToolProfile} />
         <input type="text" value={query} onChange={(event) => { draftRef.current = event.target.value; setLocalQuery(event.target.value); onDraftChange?.(event.target.value) }} onKeyDown={handleInputKeyDown} placeholder="Ask APEX" disabled={editorDisabled} className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-zinc-400 outline-none focus:ring-0 px-1" aria-label="Agent query" autoComplete="off" spellCheck={false} />
         {selectedModelId && onModelChange && modelCatalog ? (
-          <HomeModelSelector
+          <CompactModelSelector
             selectedModelId={selectedModelId}
             onModelChange={onModelChange}
             catalog={modelCatalog}

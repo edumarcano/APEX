@@ -321,7 +321,7 @@ Returns session identity, captured model/profile configuration, run status, a sa
 
 ### GET `/api/v1/briefing-sessions/{session_id}/evidence/{evidence_id}`
 
-Returns one immutable evidence snapshot or unavailable-source entry captured with the completed artifact. The Home evidence inspector loads these records on demand. The conversation retains the opening artifact in its normal history. Follow-up turns may include up to 500 estimated tokens from evidence cited by that completed briefing artifact, within the selected model's existing retrieved-context budget. Saved personal context, pending reviews, external reports, action evidence, and untrusted Deep read results are included only when personal-context retrieval is enabled for that runtime. The excerpts retain their trust, comparison role, and captured-time labels; they are not fresh reads or approvals. Evidence reads are partition-scoped and have no presentation side effect. A missing session/evidence entry returns `404`; evidence for a session that has not completed returns `409`.
+Returns one immutable evidence snapshot or unavailable-source entry captured with the completed artifact. The Briefing evidence inspector loads these records on demand. The conversation retains the opening artifact in its normal history. Follow-up turns may include up to 500 estimated tokens from evidence cited by that completed briefing artifact, within the selected model's existing retrieved-context budget. Saved personal context, pending reviews, external reports, action evidence, and untrusted Deep read results are included only when personal-context retrieval is enabled for that runtime. The excerpts retain their trust, comparison role, and captured-time labels; they are not fresh reads or approvals. Evidence reads are partition-scoped and have no presentation side effect. A missing session/evidence entry returns `404`; evidence for a session that has not completed returns `409`.
 
 ### POST `/api/v1/briefing-sessions/{session_id}/presented`
 
@@ -467,7 +467,7 @@ provider serializes the actual request, applies its template allowance and
 safety margin, trims complete older interactions, and is authoritative for
 whether the current interaction fits.
 
-`model_id`, `context_window`, and `local_reasoning_mode` are all optional. When supplied, the estimate uses those values instead of the Agent's saved Cortex presets. The Home workspace uses these fields to estimate token use against the selected model and its ephemeral overrides without touching saved Cortex settings.
+`model_id`, `context_window`, and `local_reasoning_mode` are all optional. When supplied, the estimate uses those values instead of the Agent's saved Cortex presets. Overview and Briefing use these fields to estimate token use against the selected model and its ephemeral overrides without touching saved Cortex settings.
 
 ### GET `/api/v1/cortex/tool-profiles`
 
@@ -593,7 +593,7 @@ APEX owns Cortex conversation history in `apex_memory.db`. Conversations contain
 }
 ```
 
-`model_id`, `context_window`, and `local_reasoning_mode` are optional per-turn overrides. When supplied, the turn uses those values instead of saved model preferences. Home follow-ups and their tool preflight use the shared Apex Agent selection: the saved cloud reasoning effort, or the saved local context window and reasoning mode. These per-turn values are ephemeral and are not written back by a follow-up.
+`model_id`, `context_window`, and `local_reasoning_mode` are optional per-turn overrides. When supplied, the turn uses those values instead of saved model preferences. Briefing follow-ups and their tool preflight use the shared Apex Agent selection: the saved cloud reasoning effort, or the saved local context window and reasoning mode. These per-turn values are ephemeral and are not written back by a follow-up.
 
 `snapshot_id` is optional explicit current telemetry context; when absent, APEX injects no HUD telemetry. A stale snapshot ID is omitted rather than replaced with the latest data. A briefing session owns its linked Cortex conversation and canonical opening artifact; callers continue that session by using the returned conversation ID, not by attaching a legacy briefing ID. The server derives `sandbox` only when both `DEV_MODE` and the saved sandbox setting are active; clients cannot select or cross partitions. Snapshot context is included only when its ID matches the process-current telemetry snapshot.
 

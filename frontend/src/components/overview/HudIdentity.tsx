@@ -3,18 +3,18 @@ import type { ReactElement } from 'react'
 import { ApexLogo, type ApexLogoProps } from '../ApexLogo'
 import { VoiceSignalGlyph, type VoiceSignalGlyphProps } from '../VoiceSignalGlyph'
 
-export type HomeIdentityProps = {
+export type HudIdentityProps = {
   logoProps: Omit<ApexLogoProps, 'className'>
   glyphProps: VoiceSignalGlyphProps
 }
 
 const LOGO_GLOW_CLASS = 'filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-[filter] duration-1000 motion-reduce:transition-none'
 
-export function HomeIdentityMark({
+export function HudIdentityMark({
   identity,
   size,
 }: {
-  identity: HomeIdentityProps
+  identity: HudIdentityProps
   size: 'hero' | 'large' | 'overview' | 'compact'
 }): ReactElement {
   const logoClass = size === 'hero'

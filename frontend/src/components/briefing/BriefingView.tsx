@@ -3,7 +3,7 @@ import remarkGfm from 'remark-gfm'
 import { useCallback, useState, type ReactElement, type ReactNode } from 'react'
 
 import { useCompactLayout } from '../../hooks/useCompactLayout'
-import type { BriefingLayoutPhase } from '../../hooks/useHomeView'
+import type { BriefingLayoutPhase } from '../../hooks/useWorkspaceView'
 import { parseAgentQueryResponse } from '../../lib/cortexResponse'
 import type { BriefingSessionDetail } from '../../types/briefings'
 import { ApexAssistantThread } from '../ApexAssistantRuntime'
@@ -11,11 +11,11 @@ import { BriefingArtifactMessage } from './BriefingArtifactMessage'
 import type { BriefingEvidenceState } from './BriefingEvidence'
 import { BriefingProfilePanel, type BriefingProfilePanelProps } from './BriefingProfilePanel'
 import { CompactToolResults } from './CompactToolResults'
-import { HomeIdentityMark, type HomeIdentityProps } from './HomeIdentity'
-import type { HomeTelemetryData } from './HomeTelemetry'
-import { HomeTelemetryRail } from './HomeTelemetryRail'
+import { HudIdentityMark, type HudIdentityProps } from '../overview/HudIdentity'
+import type { HudTelemetryData } from '../overview/HudTelemetry'
+import { HudTelemetryRail } from '../overview/HudTelemetryRail'
 
-export type HomeBriefingConversation = {
+export type BriefingViewConversation = {
   ready: boolean
   canFollowUp: boolean
   session: BriefingSessionDetail | null
@@ -25,15 +25,15 @@ export type HomeBriefingConversation = {
   onOpenConversation: (conversationId: string) => void
 }
 
-export type HomeBriefingProps = {
+export type BriefingViewProps = {
   phase: BriefingLayoutPhase
-  identity: HomeIdentityProps
-  telemetry: HomeTelemetryData
+  identity: HudIdentityProps
+  telemetry: HudTelemetryData
   controls: BriefingProfilePanelProps
-  conversation: HomeBriefingConversation
+  conversation: BriefingViewConversation
 }
 
-function HomeAgentMessage({ text, metadata }: { text: string; metadata: Record<string, unknown> }): ReactElement {
+function BriefingAgentMessage({ text, metadata }: { text: string; metadata: Record<string, unknown> }): ReactElement {
   const toolOutputs = parseAgentQueryResponse({ ...metadata, answer: text }).tool_outputs ?? []
   return <>
     <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
@@ -41,13 +41,13 @@ function HomeAgentMessage({ text, metadata }: { text: string; metadata: Record<s
   </>
 }
 
-function BriefingConversation({ conversation }: { conversation: HomeBriefingConversation }): ReactElement {
+function BriefingConversation({ conversation }: { conversation: BriefingViewConversation }): ReactElement {
   const { session, isLoadingSession, evidence, onMarkPresented } = conversation
   const renderAgent = useCallback((text: string, metadata: Record<string, unknown>): ReactNode => {
     if (session?.artifact && metadata.briefing_session_id === session.id) {
       return <BriefingArtifactMessage session={session} isLoadingSession={isLoadingSession} evidence={evidence} onMarkPresented={onMarkPresented} />
     }
-    return <HomeAgentMessage text={text} metadata={metadata} />
+    return <BriefingAgentMessage text={text} metadata={metadata} />
   }, [evidence, isLoadingSession, onMarkPresented, session])
   if (!session) return <div className="flex min-h-0 flex-1 items-center justify-center p-5 text-xs text-zinc-500">Open a saved briefing to continue its conversation.</div>
   return <section className="flex min-h-0 flex-1 flex-col" aria-label="Briefing conversation">
@@ -62,7 +62,7 @@ function BriefingConversation({ conversation }: { conversation: HomeBriefingConv
   </section>
 }
 
-export function HomeBriefing(props: HomeBriefingProps): ReactElement {
+export function BriefingView(props: BriefingViewProps): ReactElement {
   const compact = useCompactLayout()
   const [compactPanel, setCompactPanel] = useState<'controls' | 'telemetry' | null>(null)
   const workspace = props.phase === 'workspace'
@@ -73,12 +73,12 @@ export function HomeBriefing(props: HomeBriefingProps): ReactElement {
     const showControls = !workspace || compactPanel === 'controls'
     return <section aria-label="Briefing" data-layout={workspace ? 'workspace' : 'identity'} className="flex w-full min-w-0 flex-col gap-3">
       <header className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-zinc-950/50 p-2.5 backdrop-blur-md">
-        <div className="mr-auto"><HomeIdentityMark identity={props.identity} size="compact" /></div>
+        <div className="mr-auto"><HudIdentityMark identity={props.identity} size="compact" /></div>
         {workspace ? <button type="button" aria-expanded={compactPanel === 'controls'} aria-controls="home-briefing-controls" onClick={() => togglePanel('controls')} className="rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300">Controls</button> : null}
         <button type="button" aria-expanded={compactPanel === 'telemetry'} aria-controls="home-briefing-telemetry" onClick={() => togglePanel('telemetry')} className="rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300">Telemetry</button>
       </header>
       {showControls ? <div id="home-briefing-controls" className="rounded-xl border border-white/10 bg-zinc-950/60 p-3">{controls}</div> : null}
-      {compactPanel === 'telemetry' ? <HomeTelemetryRail id="home-briefing-telemetry" data={props.telemetry} className="max-h-[70vh]" /> : null}
+      {compactPanel === 'telemetry' ? <HudTelemetryRail id="home-briefing-telemetry" data={props.telemetry} className="max-h-[70vh]" /> : null}
       {workspace ? <div className="flex min-h-[32rem] flex-col rounded-xl border border-white/10 bg-zinc-950/45"><BriefingConversation conversation={props.conversation} /></div> : null}
     </section>
   }
@@ -86,21 +86,21 @@ export function HomeBriefing(props: HomeBriefingProps): ReactElement {
   if (!workspace) {
     return <section aria-label="Briefing" data-layout="identity" className="hud-home-layout-enter grid h-full min-h-0 w-full flex-1 grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)] gap-6">
       <div className="flex min-h-0 flex-col items-center justify-center gap-5 overflow-y-auto">
-        <HomeIdentityMark identity={props.identity} size="large" />
+        <HudIdentityMark identity={props.identity} size="large" />
         <div className="w-full max-w-[40rem] rounded-xl border border-white/10 bg-zinc-950/55 p-3 backdrop-blur-md">{controls}</div>
       </div>
-      <HomeTelemetryRail data={props.telemetry} />
+      <HudTelemetryRail data={props.telemetry} />
     </section>
   }
 
   return <section aria-label="Briefing" data-layout="workspace" className="hud-home-layout-enter grid h-full min-h-0 w-full flex-1 grid-cols-[16rem_minmax(0,1fr)_22rem] gap-4">
     <aside className="flex min-h-0 flex-col items-center gap-4 overflow-y-auto rounded-xl border border-white/10 bg-zinc-950/45 p-3 scrollbar-thin" aria-label="Briefing identity and controls">
-      <HomeIdentityMark identity={props.identity} size="compact" />
+      <HudIdentityMark identity={props.identity} size="compact" />
       {controls}
     </aside>
     <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-zinc-950/45">
       <BriefingConversation conversation={props.conversation} />
     </div>
-    <HomeTelemetryRail data={props.telemetry} />
+    <HudTelemetryRail data={props.telemetry} />
   </section>
 }

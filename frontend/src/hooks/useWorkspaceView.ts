@@ -2,8 +2,8 @@ import { useCallback, useState } from 'react'
 
 import type { BriefingProfileId, BriefingSessionDetail, BriefingSessionSummary } from '../types/briefings'
 
-export type HomeView = 'standby' | 'overview' | 'briefing'
-export type HomeActiveView = Exclude<HomeView, 'standby'>
+export type WorkspacePresentationView = 'standby' | 'overview' | 'briefing'
+export type WorkspaceHudDestination = Exclude<WorkspacePresentationView, 'standby'>
 export type BriefingLayoutPhase = 'identity' | 'generating' | 'workspace'
 
 const RUNNING_STATUSES = new Set(['queued', 'running', 'cancelling'])
@@ -26,31 +26,31 @@ export function resolveBriefingLayoutPhase({
   return 'identity'
 }
 
-export type UseHomeViewOptions = {
+export type UseWorkspaceViewOptions = {
   activated: boolean
   deactivate: () => void
-  /** The Home peer workspace chosen in the header menu. */
-  destination: HomeActiveView
+  /** Overview or Briefing peer chosen in the header tabs. */
+  destination: WorkspaceHudDestination
 }
 
-export type UseHomeViewResult = {
-  view: HomeView
+export type UseWorkspaceViewResult = {
+  view: WorkspacePresentationView
   profileId: BriefingProfileId
   returnToStandby: () => void
   setProfileId: (profileId: BriefingProfileId) => void
 }
 
 /**
- * Resolves the Home presentation and owns the selected briefing profile.
- * Standby covers the chosen Home destination until activation; transitions
- * never generate, speak, or collect, and returning to Standby keeps cached
- * telemetry and briefing sessions.
+ * Resolves Overview/Briefing presentation and owns the selected briefing profile.
+ * Standby is Overview-only until activation; Briefing renders without activation.
  */
-export function useHomeView({ activated, deactivate, destination }: UseHomeViewOptions): UseHomeViewResult {
+export function useWorkspaceView({ activated, deactivate, destination }: UseWorkspaceViewOptions): UseWorkspaceViewResult {
   const [profileId, setProfileId] = useState<BriefingProfileId>('daily')
   const returnToStandby = useCallback((): void => deactivate(), [deactivate])
+  const view: WorkspacePresentationView =
+    !activated && destination === 'overview' ? 'standby' : destination
   return {
-    view: activated ? destination : 'standby',
+    view,
     profileId,
     returnToStandby,
     setProfileId,
