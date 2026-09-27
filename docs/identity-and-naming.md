@@ -6,23 +6,26 @@ This document defines the product names used in APEX. Runtime behavior belongs i
 
 ```text
 APEX
-├── Home
-│   ├── Briefing profiles: Daily, Catch Up, Deep
-│   └── Apex Agent (compact prompt)
 ├── Inbox
 │   └── External activity reports
+├── Overview
+│   └── Telemetry, reminders, and connector health
+├── Briefing
+│   ├── Profiles: Daily, Catch Up, Deep
+│   └── Saved sessions and linked conversations
 └── Cortex
     ├── Cortex workspace
     ├── Apex Agent (full workspace)
     └── Cortex Engine
 ```
 
-- **APEX** is the complete local-first product: Home, Inbox, Cortex, telemetry, briefings, voice, connectors, settings, and persistence.
-- **Home** is the day-to-day workspace for telemetry, briefings, reminders, connector health, and a compact Apex Agent prompt.
+- **APEX** is the complete local-first product: Inbox, Overview, Briefing, Cortex, telemetry, briefings, voice, connectors, settings, and persistence.
+- **Overview** is the telemetry-first workspace for reminders, connector health, and the activated telemetry grid.
+- **Briefing** is the workspace for profile controls, saved briefing sessions, linked conversations, and briefing-local telemetry.
 - **Inbox** is the workspace for untrusted external activity reports, their reversible dispositions, and links to existing context reviews.
 - **Cortex** is the detailed workspace for conversations, model settings, tools, context, action review, and local-model lifecycle.
 - **Cortex Engine** is the backend execution boundary for bounded Agent turns, context assembly, tools, providers, and local runtime coordination.
-- **Apex Agent** is APEX's single built-in personal operations assistant, with a compact Home prompt and a full Cortex workspace.
+- **Apex Agent** is APEX's single built-in personal operations assistant, with a compact Overview and Briefing prompt and a full Cortex workspace.
 - A **model** is the selected execution model. Its catalog profile determines whether the turn uses a cloud provider or local runtime and which controls are available.
 
 ## Apex Agent
@@ -31,7 +34,7 @@ Apex Agent works with briefings, trusted personal context, connected services, a
 
 The Agent identity, safety policy, and APEX-specific instructions stay consistent. Selecting a model changes execution characteristics such as provider or runtime, reasoning choices, local context limits, hosted capabilities, availability, and price. It does not select a different Agent.
 
-The Home and Cortex surfaces use the same singular **Apex Agent** identity. Selecting a model never selects a different Agent. A local display name may replace the visible name and the assistant’s self-name in prompts; it is not a second Agent.
+Overview, Briefing, and Cortex use the same singular **Apex Agent** identity and shared model selection. Selecting a model never selects a different Agent. A local display name may replace the visible name and the assistant’s self-name in prompts; it is not a second Agent.
 
 ## Briefing profiles
 

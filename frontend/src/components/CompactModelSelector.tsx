@@ -31,7 +31,7 @@ import {
 import { ModelMark } from './ModelMark'
 import { StabilityBadge } from './StabilityBadge'
 
-export interface HomeModelSelectorProps {
+export interface CompactModelSelectorProps {
   selectedModelId: string
   onModelChange: (modelId: string) => void
   catalog: ModelCatalogEntry[]
@@ -71,7 +71,7 @@ function dropdownPosition(trigger: HTMLButtonElement): CSSProperties {
   }
 }
 
-export function HomeModelSelector({
+export function CompactModelSelector({
   selectedModelId,
   onModelChange,
   catalog,
@@ -79,7 +79,7 @@ export function HomeModelSelector({
   isQuerying = false,
   className = '',
   presentation = 'rail',
-}: HomeModelSelectorProps): ReactElement {
+}: CompactModelSelectorProps): ReactElement {
   const triggerRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([])
@@ -236,7 +236,7 @@ export function HomeModelSelector({
               Model Selection
             </p>
             <p className="mt-1 text-[10px] text-zinc-500">
-              Select an operational model for Home queries.
+              Select an operational model for Overview and Briefing queries.
             </p>
           </div>
 

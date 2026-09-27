@@ -70,7 +70,7 @@ describe('AgentQueryBar unified tool selection', () => {
     expect(container.querySelector('[data-slot="cortex-query-rim"]')).toBeInTheDocument()
   })
 
-  it('uses an icon-only tools trigger in Home', () => {
+  it('uses an icon-only tools trigger in Overview and Briefing', () => {
     renderBar(vi.fn())
 
     const selector = screen.getByRole('button', { name: /Tools:/ })

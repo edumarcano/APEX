@@ -3,12 +3,12 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { DEFAULT_WEATHER_INFO } from '../../lib/weatherTelemetry'
-import type { HomeTelemetryData } from './HomeTelemetry'
-import { HomeTelemetryRail } from './HomeTelemetryRail'
+import type { HudTelemetryData } from './HudTelemetry'
+import { HudTelemetryRail } from './HudTelemetryRail'
 
 const surfaces = { weather: 0, events: 0, market: 0, inbox: 0, news: 0, reminders: 0 }
 
-function telemetry(overrides: Partial<HomeTelemetryData> = {}): HomeTelemetryData {
+function telemetry(overrides: Partial<HudTelemetryData> = {}): HudTelemetryData {
   return {
     hasSnapshot: true,
     isRefreshingAll: false,
@@ -48,7 +48,7 @@ function telemetry(overrides: Partial<HomeTelemetryData> = {}): HomeTelemetryDat
       onReview: vi.fn(),
     },
     ...overrides,
-  } as HomeTelemetryData
+  } as HudTelemetryData
 }
 
 function domainSections(rail: HTMLElement): Array<HTMLElement | null> {
@@ -62,9 +62,9 @@ function domainSections(rail: HTMLElement): Array<HTMLElement | null> {
   ].map((element) => element.closest('section'))
 }
 
-describe('HomeTelemetryRail', () => {
+describe('HudTelemetryRail', () => {
   it('renders every domain as a section of one shared panel rather than separate cards', () => {
-    render(<HomeTelemetryRail data={telemetry()} />)
+    render(<HudTelemetryRail data={telemetry()} />)
 
     const rail = screen.getByRole('complementary', { name: 'Current telemetry' })
     const sections = domainSections(rail)
@@ -76,13 +76,13 @@ describe('HomeTelemetryRail', () => {
 
   it('keeps per-domain refresh actions and their disabled state inside the panel', async () => {
     const data = telemetry()
-    const { rerender } = render(<HomeTelemetryRail data={data} />)
+    const { rerender } = render(<HudTelemetryRail data={data} />)
     const rail = screen.getByRole('complementary', { name: 'Current telemetry' })
 
     await userEvent.click(within(rail).getByRole('button', { name: 'Refresh Inbox' }))
     expect(data.onRefreshConnector).toHaveBeenCalledWith('email')
 
-    rerender(<HomeTelemetryRail data={{ ...data, isRefreshingAll: true }} />)
+    rerender(<HudTelemetryRail data={{ ...data, isRefreshingAll: true }} />)
     expect(within(rail).getByRole('button', { name: 'Refresh Weather' })).toBeDisabled()
     expect(within(rail).getByRole('button', { name: 'Choose Events module to refresh' })).toBeDisabled()
   })
@@ -90,7 +90,7 @@ describe('HomeTelemetryRail', () => {
   it('lets sections grow with their content so the shared panel is the only height limit', () => {
     const base = telemetry()
     const items = Array.from({ length: 40 }, (_, index) => ({ summary: `Event ${index}`, start: 'Fri, 9:00 AM', end: null, allDay: false }))
-    render(<HomeTelemetryRail data={{ ...base, events: { ...base.events, calendar: { windowDays: 7, items, totalCount: items.length } } }} />)
+    render(<HudTelemetryRail data={{ ...base, events: { ...base.events, calendar: { windowDays: 7, items, totalCount: items.length } } }} />)
 
     const rail = screen.getByRole('complementary', { name: 'Current telemetry' })
     expect(within(rail).getByText('Event 39')).toBeInTheDocument()

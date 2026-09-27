@@ -1,10 +1,11 @@
 # Architecture
 
-APEX is a local-first personal intelligence HUD. FastAPI serves the backend, React provides the Inbox, Overview, Briefing, and Cortex workspaces through a header menu, SQLite owns durable application state, and optional providers and connectors stay behind explicit capability and privacy boundaries.
+APEX is a local-first personal intelligence HUD. FastAPI serves the backend, React provides the Inbox, Overview, Briefing, and Cortex workspaces through visible header tabs, SQLite owns durable application state, and optional providers and connectors stay behind explicit capability and privacy boundaries.
 
 ## Core model
 
-- **Home** covers the Overview (telemetry and reminders) and Briefing (profile controls, the saved briefing thread, and a single telemetry panel) workspaces. Standby covers both until activation and is not a navigation peer.
+- **Overview** shows the telemetry grid and reminders after activation. **Standby** is Overview-only before activation and is not a navigation peer.
+- **Briefing** covers profile controls, the saved briefing thread, and a single telemetry panel. It opens without activation; generation and setup stay Briefing-local.
 - **Cortex** is the control surface for conversations, model settings, tool selection, context, and approval-gated actions.
 - **Inbox** is the dedicated list-and-detail workspace for immutable, untrusted reports with caller-claimed source labels.
 - **Apex Agent** is the single native personal operations assistant. It understands APEX briefings, trusted context, connected services, and APEX tools.
@@ -15,7 +16,7 @@ The selected model determines cloud versus local execution, provider/runtime, mo
 ## Request flow
 
 ```text
-Home or Cortex
+Overview, Briefing, or Cortex
     -> selected model and effective controls
     -> Apex Agent policy and tool projection
     -> Cortex Engine bounded loop
@@ -96,7 +97,7 @@ The [Context vault guide](context-vault.md) covers selection, sharing, and clean
 
 ## Market telemetry
 
-Market is a telemetry connector for Home rather than a briefing fact source. Telemetry refreshes it in the normal sequential connector lifecycle and records its health in the shared snapshot. The Market client owns Alpha Vantage access, a versioned file-backed cache, and per-symbol daily request gates; the Market route only reads that cache. A symbol can make at most one request per UTC calendar day. Repeated failures back off for 1, 2, 4, then up to 8 days, while provider-wide transport, authentication, or rate failures defer remaining requests until the next UTC day. Daily OHLCV history stays in the Market display projection, while the telemetry snapshot carries only bounded symbol summaries and a collection revision. This keeps chart data out of briefing payloads and lets Home update the card only after collection.
+Market is a telemetry connector for Overview rather than a briefing fact source. Telemetry refreshes it in the normal sequential connector lifecycle and records its health in the shared snapshot. The Market client owns Alpha Vantage access, a versioned file-backed cache, and per-symbol daily request gates; the Market route only reads that cache. A symbol can make at most one request per UTC calendar day. Repeated failures back off for 1, 2, 4, then up to 8 days, while provider-wide transport, authentication, or rate failures defer remaining requests until the next UTC day. Daily OHLCV history stays in the Market display projection, while the telemetry snapshot carries only bounded symbol summaries and a collection revision. This keeps chart data out of briefing payloads and lets Overview update the card only after collection.
 
 ## Local runtime coordination
 
@@ -118,7 +119,7 @@ When configured, APEX exports failure-isolated distributed traces using OpenTele
 
 ## Briefing routes
 
-Home's Daily, Catch Up, and Deep actions create durable sessions and use the same bounded collection, history, synthesis, and artifact path with the explicitly selected Apex Agent model. Deep adds an `investigating` stage that offers up to eight evidence-selected read capabilities through the shared Agent loop, with current policy, partition, connector, and MCP checks enforced both at selection and invocation. Its bounded investigation prompt includes selected current evidence and paired historical records with their role, capture time, trust, and content. The stage is limited to four calls, at most 1,024 generated tokens per turn or the lower session output limit, and at most 180 seconds or half of remaining run time; run/model turn limits reserve at least two turns for synthesis, including one repair. Local investigation admission is released before synthesis admission, avoiding a nested local-model lease. A completed artifact records bounded investigation status and limitations; cancellation, global run limits, invalid synthesis, and persistence errors do not produce a completed artifact. The session owns a conversation whose rendered opening assistant message is linked to the artifact; the canonical artifact and evidence remain in briefing-session storage. Follow-up turns use the ordinary conversation history and context policy. A small, relevance-ranked slice of cited saved evidence is attached inside the existing untrusted retrieved-context boundary and budget; personal-context-derived snapshots follow the selected runtime's retrieval setting. The saved evidence inspector still reads the complete snapshots on demand. Briefings do not silently switch models when the selected model is unavailable or its context cannot fit a useful prompt. Deep is unavailable in demo mode.
+Briefing's Daily, Catch Up, and Deep actions create durable sessions and use the same bounded collection, history, synthesis, and artifact path with the explicitly selected Apex Agent model. Deep adds an `investigating` stage that offers up to eight evidence-selected read capabilities through the shared Agent loop, with current policy, partition, connector, and MCP checks enforced both at selection and invocation. Its bounded investigation prompt includes selected current evidence and paired historical records with their role, capture time, trust, and content. The stage is limited to four calls, at most 1,024 generated tokens per turn or the lower session output limit, and at most 180 seconds or half of remaining run time; run/model turn limits reserve at least two turns for synthesis, including one repair. Local investigation admission is released before synthesis admission, avoiding a nested local-model lease. A completed artifact records bounded investigation status and limitations; cancellation, global run limits, invalid synthesis, and persistence errors do not produce a completed artifact. The session owns a conversation whose rendered opening assistant message is linked to the artifact; the canonical artifact and evidence remain in briefing-session storage. Follow-up turns use the ordinary conversation history and context policy. A small, relevance-ranked slice of cited saved evidence is attached inside the existing untrusted retrieved-context boundary and budget; personal-context-derived snapshots follow the selected runtime's retrieval setting. The saved evidence inspector still reads the complete snapshots on demand. Briefings do not silently switch models when the selected model is unavailable or its context cannot fit a useful prompt. Deep is unavailable in demo mode.
 
 The canonical briefing API consists of `GET /api/v1/briefing-profiles` and the `/api/v1/briefing-sessions` routes. The CLI uses the same asynchronous session API and marks its constrained origin as `cli`; it does not call services or SQLite directly. The Agent's `get_briefing_history` tool queries at most five newest completed artifact-backed sessions from the active partition in one joined read and returns bounded canonical content, profile/model identity, timestamps, presentation status, and limitations. Failed or incomplete sessions are skipped before applying the limit. The old transcript-based pipeline, mode settings, routes, and status poll are retired.
 

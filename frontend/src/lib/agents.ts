@@ -150,7 +150,7 @@ export function resolveLowestReasoningEffort(
   return options[0] ?? null
 }
 
-export interface HomeQueryOverrides {
+export interface AgentTurnOverrides {
   agent: AgentKey
   modelId: string
   effort: CloudEffort | null
@@ -158,16 +158,16 @@ export interface HomeQueryOverrides {
   localReasoningMode: LocalReasoningMode | null
 }
 
-export interface HomeQueryPreferences {
+export interface AgentTurnPreferences {
   effort: CloudEffort
   contextWindow: number
   localReasoningMode: LocalReasoningMode
 }
 
-export function resolveHomeQueryOverrides(
+export function resolveAgentTurnOverrides(
   modelEntry: ModelCatalogEntry | null | undefined,
-  preferences: HomeQueryPreferences,
-): HomeQueryOverrides {
+  preferences: AgentTurnPreferences,
+): AgentTurnOverrides {
   if (!modelEntry || modelEntry.runtime === 'local') {
     const modelId = modelEntry?.model_id ?? 'gemma-4-E2B-Q4_K_M.gguf'
     return {

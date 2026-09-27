@@ -20,7 +20,7 @@ Current default model mapping is `apex` -> `deepseek/deepseek-v4-flash-0731`; `s
 
 Optional `user_designation` and `agent_display_name` are machine-local personalization fields stored only in `config.local.json`. An empty `agent_display_name` keeps the default visible name Apex Agent.
 
-Home and Cortex share this model selection. Home applies per-turn overrides: the lowest supported cloud effort, or a 16K local context with reasoning disabled. Those overrides never change saved Cortex preferences.
+Overview, Briefing, and Cortex share this model selection. Overview and Briefing apply per-turn overrides: the lowest supported cloud effort, or a 16K local context with reasoning disabled. Those overrides never change saved Cortex preferences.
 
 ## Context vault selection
 
@@ -40,7 +40,7 @@ The `apex context vault` CLI exposes status, preview, configuration, refresh, an
 
 ## Google Calendar selection
 
-When Calendar is enabled, Runtime Settings lists readable primary, secondary, subscribed, and hidden Google calendars. APEX reads only the selected IDs; a fresh configuration selects `primary`, but it may be unchecked and an empty selection remains empty. Calendar labels are shown with events by default in Home, briefings, and Agent tool results. Turning off `calendar.show_calendar_names` suppresses those event labels without changing the picker.
+When Calendar is enabled, Runtime Settings lists readable primary, secondary, subscribed, and hidden Google calendars. APEX reads only the selected IDs; a fresh configuration selects `primary`, but it may be unchecked and an empty selection remains empty. Calendar labels are shown with events by default in Overview, briefings, and Agent tool results. Turning off `calendar.show_calendar_names` suppresses those event labels without changing the picker.
 
 Calendar IDs and this display preference are local runtime settings:
 
@@ -115,7 +115,7 @@ Only one local generation may run at a time. APEX checks runtime reachability, i
 
 ## Briefing profiles
 
-Home and `apex briefing` use one saved-session engine with the selected Apex Agent model. The built-in profiles are Daily for orientation, Catch Up for source changes since the last presented complete session, and Deep for broader reasoning with a bounded read-only investigation. Daily is the CLI default; the HUD lets you choose a profile. Sessions retain the selected model and canonical artifact, and the HUD can continue them in the linked Cortex conversation. Briefings do not silently substitute a different model.
+Briefing and `apex briefing` use one saved-session engine with the selected Apex Agent model. The built-in profiles are Daily for orientation, Catch Up for source changes since the last presented complete session, and Deep for broader reasoning with a bounded read-only investigation. Daily is the CLI default; the HUD lets you choose a profile. Sessions retain the selected model and canonical artifact, and the HUD can continue them in the linked Cortex conversation. Briefings do not silently substitute a different model.
 
 Deep uses a curated read-only tool set selected for the session's evidence, subject to current Agent policy, partition, connector, and MCP permissions. It requires room for investigation and synthesis and is rejected before session creation when model/run limits cannot provide that capacity or no eligible read tool is available. Investigation is limited to eight offered tools, four calls, six saved result records, at most 1,024 generated tokens per turn (or the lower configured output limit), and at most 180 seconds or half of remaining run time; the model may decide not to call a tool. Demo mode provides deterministic Daily and Catch Up fixtures without provider calls; Deep is unavailable there. A model context window that cannot fit a useful briefing prompt is rejected before generation. Catch Up uses source history from completed sessions that were actually presented; incomplete source snapshots limit membership claims. When comparable sources show no material changes, it records a no-change result without running a model.
 

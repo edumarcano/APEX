@@ -222,39 +222,6 @@ function MetricBar({
   )
 }
 
-function MetricPill({
-  label,
-  value,
-  percentage,
-  unavailable,
-  icon: Icon,
-  className = '',
-}: {
-  label: string
-  value: string
-  percentage: number
-  unavailable: boolean
-  icon: LucideIcon
-  className?: string
-}): ReactElement {
-  return (
-    <div
-      className={`hud-interactive-shell hud-glass flex h-11 items-center gap-2 rounded-full px-3 font-mono text-xs text-zinc-300 ${className}`}
-    >
-      <span className="hud-inner-lift flex min-w-0 items-center gap-2">
-        <Icon className="size-3.5 shrink-0 text-zinc-500" aria-hidden />
-        <span className="shrink-0 text-[9px] uppercase tracking-[0.16em] text-zinc-500">
-          {label}
-        </span>
-        <span className="shrink-0 tabular-nums text-[10px] text-zinc-300">{value}</span>
-        <span className="w-10 shrink-0 sm:w-12">
-          <MetricBar percentage={percentage} unavailable={unavailable} />
-        </span>
-      </span>
-    </div>
-  )
-}
-
 function StatusPill({
   label,
   value,

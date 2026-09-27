@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 
 import { useCompactLayout } from '../../hooks/useCompactLayout'
-import { HomeIdentityMark, type HomeIdentityProps } from './HomeIdentity'
+import { HudIdentityMark, type HudIdentityProps } from './HudIdentity'
 import {
   EventsTelemetry,
   InboxTelemetry,
@@ -9,16 +9,16 @@ import {
   NewsTelemetry,
   RemindersTelemetry,
   WeatherTelemetry,
-  type HomeTelemetryData,
-} from './HomeTelemetry'
+  type HudTelemetryData,
+} from './HudTelemetry'
 
-export type HomeOverviewProps = {
-  identity: HomeIdentityProps
-  telemetry: HomeTelemetryData
+export type OverviewViewProps = {
+  identity: HudIdentityProps
+  telemetry: HudTelemetryData
 }
 
-/** Telemetry-first Home view. It never needs a model. */
-export function HomeOverview({ identity, telemetry }: HomeOverviewProps): ReactElement {
+/** Telemetry-first Overview peer. It never needs a model. */
+export function OverviewView({ identity, telemetry }: OverviewViewProps): ReactElement {
   const compact = useCompactLayout()
   const wide = compact ? '' : 'col-span-3'
   const narrow = compact ? '' : 'col-span-2'
@@ -35,7 +35,7 @@ export function HomeOverview({ identity, telemetry }: HomeOverviewProps): ReactE
       className={`hud-glass flex min-h-0 flex-col items-center justify-center gap-3 rounded-xl border border-white/10 bg-zinc-950/40 p-3 ${narrow} ${compact ? 'order-first md:col-span-2' : ''}`}
       data-slot="overview-identity-card"
     >
-      <HomeIdentityMark identity={identity} size="overview" />
+      <HudIdentityMark identity={identity} size="overview" />
     </div>
     <RemindersTelemetry data={telemetry} variant="card" className={narrow} />
     <MarketTelemetry data={telemetry} variant="card" className={wide} />

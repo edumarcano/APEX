@@ -575,7 +575,7 @@ describe('App catalog-affecting settings', () => {
     })
   })
 
-  it('uses the shared cloud reasoning effort for Home follow-ups and disables preflight in Inbox', async () => {
+  it('uses the shared cloud reasoning effort for Briefing follow-ups and disables preflight in Inbox', async () => {
     const user = userEvent.setup()
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(catalogFor('apex')), { status: 200 }))))
     appMocks.toolPreflight.mockClear()
@@ -599,7 +599,7 @@ describe('App catalog-affecting settings', () => {
     }))
   })
 
-  it('uses the shared local context window and reasoning mode for Home follow-ups', async () => {
+  it('uses the shared local context window and reasoning mode for Briefing follow-ups', async () => {
     appMocks.localBriefingModel = {
       model_id: 'qwen3:1.7b',
       display_name: 'Qwen 3 1.7B',
@@ -933,7 +933,7 @@ describe('App contextual voice cues', () => {
     })
 
     render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Start Overview' }))
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
 
     await waitFor(() => {
       expect(events).toEqual(['refresh', 'cue:activation_loading'])
@@ -952,7 +952,7 @@ describe('App contextual voice cues', () => {
     })
 
     render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Start Overview' }))
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
 
     await waitFor(() => expect(events).toEqual(['refresh', 'cue:activation_ready']))
     expect(appMocks.loadLatest).toHaveBeenCalledOnce()
@@ -984,7 +984,7 @@ describe('App contextual voice cues', () => {
     })
 
     render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Start Overview' }))
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
 
     await waitFor(() => expect(events).toEqual(['refresh', 'cue:activation_ready']))
     expect(appMocks.loadLatest).toHaveBeenCalledOnce()
@@ -1001,7 +1001,7 @@ describe('App contextual voice cues', () => {
     })
 
     const firstRender = render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Start Overview' }))
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
     await waitFor(() => {
       expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_refresh_failed'])
     })
@@ -1016,7 +1016,7 @@ describe('App contextual voice cues', () => {
     })
     const secondUser = userEvent.setup()
     render(<App />)
-    await secondUser.click(screen.getByRole('button', { name: 'Start Overview' }))
+    await secondUser.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
     await waitFor(() => expect(events).toEqual(['cue:activation_loading']))
   })
 
@@ -1031,7 +1031,7 @@ describe('App contextual voice cues', () => {
     })
 
     render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Start Overview' }))
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
 
     await waitFor(() => {
       expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_no_fresh_telemetry'])
@@ -1040,7 +1040,7 @@ describe('App contextual voice cues', () => {
 
 })
 
-describe('App Home states', () => {
+describe('App Overview and Briefing states', () => {
   afterEach(() => {
     appMocks.activated = true
     appMocks.noModels = false
@@ -1399,7 +1399,6 @@ describe('App briefing session flow', () => {
     expect(admissionBody).toMatchObject({ profile_id: 'daily', model_id: 'deepseek/deepseek-v4-flash-0731', reasoning: 'high' })
     expect(eventOrder.indexOf('preflight:generate_briefing_session')).toBeLessThan(eventOrder.indexOf('settings-patch'))
     expect(eventOrder.indexOf('settings-patch')).toBeLessThan(eventOrder.indexOf('session-post'))
-    expect(appMocks.activate).toHaveBeenCalled()
     await waitFor(() => expect(detailReads).toBeGreaterThan(0))
     expect(screen.getByRole('region', { name: 'Briefing' })).toHaveAttribute('data-layout', 'identity')
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()

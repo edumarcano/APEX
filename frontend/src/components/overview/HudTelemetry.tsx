@@ -17,7 +17,7 @@ type LedState = ReturnType<typeof resolveModuleLedState>
 type Surface = 'weather' | 'events' | 'market' | 'inbox' | 'news' | 'reminders'
 
 /** App-derived telemetry view model shared by Overview cards and the Briefing rail. */
-export type HomeTelemetryData = {
+export type HudTelemetryData = {
   hasSnapshot: boolean
   isRefreshingAll: boolean
   onRefreshConnector: (name: string) => void
@@ -80,15 +80,15 @@ export type HomeTelemetryData = {
   }
 }
 
-export type HomeTelemetryVariant = 'card' | 'section'
+export type HudTelemetryVariant = 'card' | 'section'
 
 type DomainProps = {
-  data: HomeTelemetryData
-  variant: HomeTelemetryVariant
+  data: HudTelemetryData
+  variant: HudTelemetryVariant
   className?: string
 }
 
-function layoutClass(variant: HomeTelemetryVariant, className?: string): string {
+function layoutClass(variant: HudTelemetryVariant, className?: string): string {
   return [variant === 'card' ? 'min-h-0 h-full' : 'h-auto! flex-none', className].filter(Boolean).join(' ')
 }
 

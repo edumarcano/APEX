@@ -80,7 +80,7 @@ The beta.6 cutover transactionally drops only the retired legacy `briefings` tab
 
 ### Source speaker state and reset the pipeline from the backend (superseded)
 
-**Status: Superseded by session-scoped speech and current Home state.** The old global status poll and full-run pipeline reset have been removed. Home derives briefing progress from the active session and speech state from the saved session's speech endpoint.
+**Status: Superseded by session-scoped speech and current Briefing state.** The old global status poll and full-run pipeline reset have been removed. Briefing derives progress from the active session and speech state from the saved session's speech endpoint.
 
 **Decision.** The HUD reads speaking state from the API instead of inferring completion from a frontend timer, and `_speak_and_cleanup` owns the final pipeline reset after audio playback.
 

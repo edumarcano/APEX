@@ -7,16 +7,16 @@ import {
   NewsTelemetry,
   RemindersTelemetry,
   WeatherTelemetry,
-  type HomeTelemetryData,
-} from './HomeTelemetry'
+  type HudTelemetryData,
+} from './HudTelemetry'
 
 /** Current telemetry beside a briefing; it is not the briefing's evidence snapshot. */
-export function HomeTelemetryRail({
+export function HudTelemetryRail({
   data,
   id,
   className = '',
 }: {
-  data: HomeTelemetryData
+  data: HudTelemetryData
   id?: string
   className?: string
 }): ReactElement {

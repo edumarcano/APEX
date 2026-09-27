@@ -19,12 +19,12 @@ import { ReminderTaskDialog } from './components/ReminderTaskDialog'
 import { CompletedRemindersDialog } from './components/CompletedRemindersDialog'
 import SettingsPanel from './components/SettingsPanel'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
-import { HomeWorkspace } from './components/home/HomeWorkspace'
-import { BriefingSpeechControl } from './components/home/BriefingSpeechControl'
-import type { BriefingSetupDraft } from './components/home/BriefingProfilePanel'
+import { HudWorkspace } from './components/HudWorkspace'
+import { BriefingSpeechControl } from './components/briefing/BriefingSpeechControl'
+import type { BriefingSetupDraft } from './components/briefing/BriefingProfilePanel'
 import { WorkspaceTabs, type WorkspacePeer } from './components/WorkspaceTabs'
-import type { HomeIdentityProps } from './components/home/HomeIdentity'
-import type { HomeTelemetryData } from './components/home/HomeTelemetry'
+import type { HudIdentityProps } from './components/overview/HudIdentity'
+import type { HudTelemetryData } from './components/overview/HudTelemetry'
 import { useApexData } from './hooks/useApexData'
 import { useCortex } from './hooks/useCortex'
 import { useActions } from './hooks/useActions'
@@ -32,7 +32,7 @@ import { useActivityInbox } from './hooks/useActivityInbox'
 import { useAppActivation } from './hooks/useAppActivation'
 import { useBriefingSpeech } from './hooks/useBriefingSpeech'
 import { useBriefingSessions } from './hooks/useBriefingSessions'
-import { resolveBriefingLayoutPhase, useHomeView, type HomeActiveView } from './hooks/useHomeView'
+import { resolveBriefingLayoutPhase, useWorkspaceView, type WorkspaceHudDestination } from './hooks/useWorkspaceView'
 import { useMarketData } from './hooks/useMarketData'
 import { useMcpStatus } from './hooks/useMcpStatus'
 import { usePreflight } from './hooks/usePreflight'
@@ -54,7 +54,7 @@ import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
 import { DEFAULT_WEATHER_INFO, resolveWeatherFromModule } from './lib/weatherTelemetry'
 import { filterAgentSettingsForDevMode } from './lib/settings'
 import {
-  resolveHomeQueryOverrides,
+  resolveAgentTurnOverrides,
 } from './lib/agents'
 import type {
   AgentKey,
@@ -199,9 +199,9 @@ export default function App(): ReactElement {
   const dailyOpeningSessionsRef = useRef(new Map<string, number>())
   const briefingOperationRef = useRef(false)
   const [lastAssistantWorkspace, setLastAssistantWorkspace] = useState<Exclude<WorkspacePeer, 'inbox'>>('overview')
-  const [homeDestination, setHomeDestination] = useState<HomeActiveView>('overview')
+  const [hudDestination, setHudDestination] = useState<WorkspaceHudDestination>('overview')
   const navigateWorkspace = useCallback((nextWorkspace: WorkspacePeer): void => {
-    if (nextWorkspace === 'overview' || nextWorkspace === 'briefing') setHomeDestination(nextWorkspace)
+    if (nextWorkspace === 'overview' || nextWorkspace === 'briefing') setHudDestination(nextWorkspace)
     if (nextWorkspace !== 'inbox') setLastAssistantWorkspace(nextWorkspace)
     setWorkspace(nextWorkspace)
   }, [])
@@ -279,9 +279,9 @@ export default function App(): ReactElement {
     workspace === 'cortex' && !demoModeActive,
   )
   const { activated, activate, deactivate } = useAppActivation()
-  const homeView = useHomeView({ activated, deactivate, destination: homeDestination })
-  const selectHomeView = navigateWorkspace
-  const homeBriefingOpen = workspace === 'briefing' && homeView.view === 'briefing'
+  const workspaceView = useWorkspaceView({ activated, deactivate, destination: hudDestination })
+  const selectHudPeer = navigateWorkspace
+  const briefingWorkspaceOpen = workspace === 'briefing' && workspaceView.view === 'briefing'
   const preflight = usePreflight()
   const telemetry = useTelemetrySnapshot()
   const [marketSymbols, setMarketSymbols] = useState<readonly string[] | null>(null)
@@ -341,24 +341,24 @@ export default function App(): ReactElement {
     })
   }, [mcpRuntime.status])
 
-  const homeSelectedEntry = useMemo(
+  const sharedAgentModelEntry = useMemo(
     () => fullModelCatalog.find((entry) => entry.model_id === selectedModel) ?? fullModelCatalog[0],
     [fullModelCatalog, selectedModel],
   )
-  const homeOverrides = useMemo(
-    () => resolveHomeQueryOverrides(homeSelectedEntry, {
+  const agentTurnOverrides = useMemo(
+    () => resolveAgentTurnOverrides(sharedAgentModelEntry, {
       effort: cloudEffort,
       contextWindow: localContextWindow,
       localReasoningMode,
     }),
-    [cloudEffort, homeSelectedEntry, localContextWindow, localReasoningMode],
+    [cloudEffort, sharedAgentModelEntry, localContextWindow, localReasoningMode],
   )
 
   const assistantWorkspace = workspace === 'inbox' ? lastAssistantWorkspace : workspace
-  const usesHomeAssistantContract = assistantWorkspace !== 'cortex'
-  const effectiveWorkspaceAgent = usesHomeAssistantContract ? homeOverrides.agent : activeAgent
-  const effectiveWorkspaceModel = usesHomeAssistantContract ? homeOverrides.modelId : selectedModel
-  const effectiveWorkspaceRuntime = (usesHomeAssistantContract ? homeSelectedEntry : fullModelCatalog.find(
+  const usesSharedAgentTurn = assistantWorkspace !== 'cortex'
+  const effectiveWorkspaceAgent = usesSharedAgentTurn ? agentTurnOverrides.agent : activeAgent
+  const effectiveWorkspaceModel = usesSharedAgentTurn ? agentTurnOverrides.modelId : selectedModel
+  const effectiveWorkspaceRuntime = (usesSharedAgentTurn ? sharedAgentModelEntry : fullModelCatalog.find(
     (entry) => entry.model_id === selectedModel,
   ))?.runtime ?? 'cloud'
   const toolCatalogState = useToolCatalog(
@@ -370,10 +370,10 @@ export default function App(): ReactElement {
   const refreshToolCatalog = toolCatalogState.refreshCatalog
   const toolPreflightState = useToolPreflight({
     agent: effectiveWorkspaceAgent,
-    modelId: usesHomeAssistantContract ? homeOverrides.modelId : selectedModel,
-    effort: usesHomeAssistantContract ? homeOverrides.effort : (homeSelectedEntry?.runtime === 'cloud' ? cloudEffort : null),
-    contextWindow: usesHomeAssistantContract ? homeOverrides.contextWindow : null,
-    localReasoningMode: usesHomeAssistantContract ? homeOverrides.localReasoningMode : null,
+    modelId: usesSharedAgentTurn ? agentTurnOverrides.modelId : selectedModel,
+    effort: usesSharedAgentTurn ? agentTurnOverrides.effort : (sharedAgentModelEntry?.runtime === 'cloud' ? cloudEffort : null),
+    contextWindow: usesSharedAgentTurn ? agentTurnOverrides.contextWindow : null,
+    localReasoningMode: usesSharedAgentTurn ? agentTurnOverrides.localReasoningMode : null,
     selectedToolNames: toolCatalogState.selectedToolNames,
     toolProfileId: toolCatalogState.activeToolProfileId,
     prompt: '',
@@ -711,9 +711,9 @@ export default function App(): ReactElement {
   const resolvedTtsEngine = briefingSpeech.speech?.engine ?? 'google'
   const resolvedSystemThrottled = false
   const localLifecycleBusy =
-    (activeQueryAgent === 'apex' && homeSelectedEntry?.runtime === 'local') ||
+    (activeQueryAgent === 'apex' && sharedAgentModelEntry?.runtime === 'local') ||
     activeBriefingActivity.isLocalModelRunning ||
-    (dailySessions.isGenerating && homeSelectedEntry?.runtime === 'local')
+    (dailySessions.isGenerating && sharedAgentModelEntry?.runtime === 'local')
 
   const isBriefingRunning = briefingStatus === 'loading'
   const isRefreshingAll = telemetry.isRefreshingAll
@@ -741,19 +741,19 @@ export default function App(): ReactElement {
   )
   const isLocalModelLoading = loadingLocalModel !== null ||
     activeBriefingActivity.isLocalModelRunning ||
-    (dailySessions.isGenerating && homeSelectedEntry?.runtime === 'local')
+    (dailySessions.isGenerating && sharedAgentModelEntry?.runtime === 'local')
   const isLocalModelLoaded = activeLocalModel !== null
   const loadingDisplayName = useMemo(() => {
     if (activeBriefingActivity.isLocalModelRunning) {
       return activeBriefingActivity.displayName
     }
-    const localEntry = dailySessions.isGenerating && homeSelectedEntry?.runtime === 'local'
-      ? homeSelectedEntry
-      : homeSelectedEntry?.runtime === 'local'
-        ? homeSelectedEntry
+    const localEntry = dailySessions.isGenerating && sharedAgentModelEntry?.runtime === 'local'
+      ? sharedAgentModelEntry
+      : sharedAgentModelEntry?.runtime === 'local'
+        ? sharedAgentModelEntry
         : fullModelCatalog.find((entry) => entry.model_id === selectedModel && entry.runtime === 'local')
     return localEntry?.display_name ?? null
-  }, [activeBriefingActivity, dailySessions.isGenerating, fullModelCatalog, homeSelectedEntry, selectedModel])
+  }, [activeBriefingActivity, dailySessions.isGenerating, fullModelCatalog, sharedAgentModelEntry, selectedModel])
   const outerShellActivity = resolveOuterShellActivity({
     activeStep,
     isBriefingRunning,
@@ -851,7 +851,7 @@ export default function App(): ReactElement {
   const handleOpenDailySession = useCallback(async (sessionId: string): Promise<void> => {
     const sequence = ++dailyOpenSequenceRef.current
     dailyOpeningSessionsRef.current.set(sessionId, sequence)
-    selectHomeView('briefing')
+    selectHudPeer('briefing')
     setDailyConversationReady(null)
     try {
       const session = await openDailySession(sessionId)
@@ -862,7 +862,7 @@ export default function App(): ReactElement {
     } finally {
       if (dailyOpeningSessionsRef.current.get(sessionId) === sequence) dailyOpeningSessionsRef.current.delete(sessionId)
     }
-  }, [openDailySession, openDailyConversation, selectHomeView])
+  }, [openDailySession, openDailyConversation, selectHudPeer])
 
   const performBriefingGeneration = useCallback(async (draft: BriefingSetupDraft): Promise<void> => {
     if (hasActiveDailySession) throw new Error('A briefing is already running.')
@@ -897,10 +897,10 @@ export default function App(): ReactElement {
       generationOptions = await saveBriefingModelSettings(draft, model)
     }
 
-    selectHomeView('briefing')
+    selectHudPeer('briefing')
     setDailyConversationReady(null)
     const summary = await generateBriefing(draft.profileId, generationOptions)
-    homeView.setProfileId(draft.profileId)
+    workspaceView.setProfileId(draft.profileId)
     dailyOpeningSessionsRef.current.set(summary.id, sequence)
     void openDailyConversation(summary.conversation_id, summary.run_status === 'completed' ? summary.id : undefined, sequence)
       .catch(() => false)
@@ -914,11 +914,11 @@ export default function App(): ReactElement {
     fullModelCatalog,
     generateBriefing,
     hasActiveDailySession,
-    homeView,
+    workspaceView,
     openDailyConversation,
     preflight,
     saveBriefingModelSettings,
-    selectHomeView,
+    selectHudPeer,
   ])
 
   const startBriefing = useCallback(async (draft: BriefingSetupDraft): Promise<void> => {
@@ -971,9 +971,9 @@ export default function App(): ReactElement {
   }, [agentQueriesEnabled, demoModeActive, fullModelCatalog, hasActiveDailySession, refreshLatestBriefingSession, startBriefing])
 
   const handleCollectTelemetry = useCallback((): void => {
-    selectHomeView('overview')
+    selectHudPeer('overview')
     void handleStartApex()
-  }, [handleStartApex, selectHomeView])
+  }, [handleStartApex, selectHudPeer])
 
   const handleSelectWorkspace = useCallback((peer: WorkspacePeer): void => {
     navigateWorkspace(peer)
@@ -1143,7 +1143,7 @@ export default function App(): ReactElement {
 
   useEffect(() => {
     const session = dailySessions.activeSession
-    if (!homeBriefingOpen || !session || dailySessions.selectedSessionId !== session.id || session.run_status !== 'completed' || !session.artifact) return
+    if (!briefingWorkspaceOpen || !session || dailySessions.selectedSessionId !== session.id || session.run_status !== 'completed' || !session.artifact) return
     if (completedDailyHistoryRef.current.has(session.id) && assistantConversationId === session.conversation_id) return
     if (dailyOpeningSessionsRef.current.has(session.id)) return
     const sequence = ++dailyOpenSequenceRef.current
@@ -1151,7 +1151,7 @@ export default function App(): ReactElement {
     void openDailyConversation(session.conversation_id, session.id, sequence).finally(() => {
       if (dailyOpeningSessionsRef.current.get(session.id) === sequence) dailyOpeningSessionsRef.current.delete(session.id)
     })
-  }, [assistantConversationId, homeBriefingOpen, dailySessions.activeSession, dailySessions.selectedSessionId, openDailyConversation])
+  }, [assistantConversationId, briefingWorkspaceOpen, dailySessions.activeSession, dailySessions.selectedSessionId, openDailyConversation])
 
   const handleCancelDailySession = useCallback((sessionId: string): void => {
     void cancelDailySession(sessionId).catch(() => undefined)
@@ -1508,7 +1508,7 @@ export default function App(): ReactElement {
     errors: dailySessions.evidenceErrors,
     onLoadEvidence: dailySessions.loadEvidence,
   }), [dailySessions.evidenceById, dailySessions.evidenceErrors, dailySessions.evidenceLoadingIds, dailySessions.loadEvidence])
-  const homeIdentity: HomeIdentityProps = {
+  const hudIdentity: HudIdentityProps = {
     logoProps: cortexLogoProps,
     glyphProps: {
       step: activeStep,
@@ -1522,7 +1522,7 @@ export default function App(): ReactElement {
       isTelemetryCollecting,
     },
   }
-  const homeTelemetry: HomeTelemetryData = {
+  const hudTelemetry: HudTelemetryData = {
     hasSnapshot,
     isRefreshingAll,
     onRefreshConnector: handleRefreshConnector,
@@ -1642,10 +1642,10 @@ export default function App(): ReactElement {
           key={`${demoModeActive ? 'demo' : devModeActive && sandboxMode ? 'sandbox' : 'production'}`}
           config={{
             agent: effectiveWorkspaceAgent,
-            effort: effectiveWorkspaceRuntime === 'cloud' ? (usesHomeAssistantContract ? homeOverrides.effort : cloudEffort) : null,
+            effort: effectiveWorkspaceRuntime === 'cloud' ? (usesSharedAgentTurn ? agentTurnOverrides.effort : cloudEffort) : null,
             modelId: effectiveWorkspaceModel,
-            contextWindow: effectiveWorkspaceRuntime === 'local' ? (usesHomeAssistantContract ? homeOverrides.contextWindow : localContextWindow) : null,
-            localReasoningMode: effectiveWorkspaceRuntime === 'local' ? (usesHomeAssistantContract ? homeOverrides.localReasoningMode : localReasoningMode) : null,
+            contextWindow: effectiveWorkspaceRuntime === 'local' ? (usesSharedAgentTurn ? agentTurnOverrides.contextWindow : localContextWindow) : null,
+            localReasoningMode: effectiveWorkspaceRuntime === 'local' ? (usesSharedAgentTurn ? agentTurnOverrides.localReasoningMode : localReasoningMode) : null,
             selectedToolNames: toolCatalogState.selectedToolNames,
             toolProfileId: toolCatalogState.activeToolProfileId,
             snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
@@ -1657,19 +1657,19 @@ export default function App(): ReactElement {
           onResponseChange={handleAssistantResponseChange}
         >
         {workspace === 'overview' || workspace === 'briefing' ? (
-          <HomeWorkspace
-            view={homeView.view}
+          <HudWorkspace
+            view={workspaceView.view}
             briefingPhase={briefingPhase}
-            identity={homeIdentity}
-            telemetry={homeTelemetry}
+            identity={hudIdentity}
+            telemetry={hudTelemetry}
             standbyActions={{
               onCollectTelemetry: handleCollectTelemetry,
               disabled: preflight.isChecking,
             }}
             briefingControls={{
               profiles: dailySessions.profiles,
-              profileId: homeView.profileId,
-              onProfileChange: homeView.setProfileId,
+              profileId: workspaceView.profileId,
+              onProfileChange: workspaceView.setProfileId,
               selectedModelId: selectedModel,
               cloudEffort,
               localReasoningMode,
@@ -1758,8 +1758,8 @@ export default function App(): ReactElement {
             snapshotAttached={snapshotAttached}
             snapshotAvailable={telemetry.snapshot !== null}
             onSnapshotAttachedChange={setSnapshotAttached}
-            personalContextEnabled={homeSelectedEntry?.runtime === 'local' ? localPersonalContextEnabled : cloudPersonalContextEnabled}
-            onPersonalContextEnabledChange={(enabled) => persistAgentSettings(homeSelectedEntry?.runtime === 'local' ? { local: { personal_context_enabled: enabled } } : { cloud: { personal_context_enabled: enabled } })}
+            personalContextEnabled={sharedAgentModelEntry?.runtime === 'local' ? localPersonalContextEnabled : cloudPersonalContextEnabled}
+            onPersonalContextEnabledChange={(enabled) => persistAgentSettings(sharedAgentModelEntry?.runtime === 'local' ? { local: { personal_context_enabled: enabled } } : { cloud: { personal_context_enabled: enabled } })}
             onModelChange={handleModelChange}
             onEffortChange={handleEffortChange}
             onHostedToolChange={handleHostedToolChange}
@@ -1770,10 +1770,10 @@ export default function App(): ReactElement {
             demoModeActive={demoModeActive}
             assistantRunConfig={{
               agent: activeAgent,
-              effort: homeSelectedEntry?.runtime === 'cloud' ? cloudEffort : null,
+              effort: sharedAgentModelEntry?.runtime === 'cloud' ? cloudEffort : null,
               modelId: selectedModel,
-              contextWindow: homeSelectedEntry?.runtime === 'local' ? localContextWindow : null,
-              localReasoningMode: homeSelectedEntry?.runtime === 'local' ? localReasoningMode : null,
+              contextWindow: sharedAgentModelEntry?.runtime === 'local' ? localContextWindow : null,
+              localReasoningMode: sharedAgentModelEntry?.runtime === 'local' ? localReasoningMode : null,
               selectedToolNames: toolCatalogState.selectedToolNames,
               toolProfileId: toolCatalogState.activeToolProfileId,
               snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
