@@ -507,9 +507,7 @@ async function selectWorkspace(user: ReturnType<typeof userEvent.setup>, name: s
 
 async function selectBriefingEffort(user: ReturnType<typeof userEvent.setup>, effort: string): Promise<void> {
   const dialog = screen.getByRole('dialog', { name: 'Set up your briefing' })
-  await user.click(within(dialog).getByRole('button', { name: /DeepSeek V4 Flash/ }))
-  const agentOptions = within(dialog).getByRole('group', { name: 'Apex Agent options' })
-  await user.click(within(agentOptions).getByRole('button', { name: /^Effort/ }))
+  await user.click(within(dialog).getByRole('button', { name: /^Select effort/ }))
   const effortChoices = within(dialog).getByRole('group', { name: 'Reasoning effort choices' })
   await user.click(within(effortChoices).getByRole('button', { name: effort }))
 }
@@ -1486,7 +1484,7 @@ describe('App briefing setup failure ordering', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'Set up your briefing' })
     expect(screen.getByRole('alert')).toHaveTextContent('settings denied')
-    expect(screen.getByRole('button', { name: /DeepSeek V4 Flash/ })).toHaveTextContent('High')
+    expect(screen.getByRole('button', { name: /^Select effort/ })).toHaveTextContent('High')
     expect(patches).toBe(1)
     expect(posts).toBe(0)
     expect(dialog).toBeInTheDocument()
@@ -1520,7 +1518,7 @@ describe('App briefing setup failure ordering', () => {
     expect(patches).toBe(1)
     await user.click(screen.getByRole('button', { name: 'Close' }))
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
-    expect(screen.getByRole('button', { name: /DeepSeek V4 Flash/ })).toHaveTextContent('High')
+    expect(screen.getByRole('button', { name: /^Select effort/ })).toHaveTextContent('High')
     expect(patches).toBe(1)
   })
 })
