@@ -20,6 +20,7 @@ import { CompletedRemindersDialog } from './components/CompletedRemindersDialog'
 import SettingsPanel from './components/SettingsPanel'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { HomeWorkspace } from './components/home/HomeWorkspace'
+import { BriefingSpeechControl } from './components/home/BriefingSpeechControl'
 import { WorkspaceMenu, type WorkspacePeer } from './components/WorkspaceMenu'
 import type { HomeIdentityProps } from './components/home/HomeIdentity'
 import type { HomeTelemetryData } from './components/home/HomeTelemetry'
@@ -29,6 +30,7 @@ import { useActions } from './hooks/useActions'
 import { useActivityInbox } from './hooks/useActivityInbox'
 import { useAppActivation } from './hooks/useAppActivation'
 import { useBriefingPipeline } from './hooks/useBriefingPipeline'
+import { useBriefingSpeech } from './hooks/useBriefingSpeech'
 import { useBriefingSessions } from './hooks/useBriefingSessions'
 import { resolveBriefingLayoutPhase, useHomeView, type HomeActiveView } from './hooks/useHomeView'
 import { useMarketData } from './hooks/useMarketData'
@@ -291,6 +293,12 @@ export default function App(): ReactElement {
   )
   const briefing = useBriefingPipeline()
   const dailySessions = useBriefingSessions()
+  const currentSelectedSession = dailySessions.activeSession
+  const selectedCompletedBriefing = currentSelectedSession && currentSelectedSession.id === dailySessions.selectedSessionId &&
+    currentSelectedSession.run_status === 'completed' && currentSelectedSession.artifact
+    ? currentSelectedSession
+    : null
+  const briefingSpeech = useBriefingSpeech(selectedCompletedBriefing?.id ?? null, voiceMode)
   const {
     openSession: openDailySession,
     generate: generateBriefing,
@@ -589,8 +597,10 @@ export default function App(): ReactElement {
     active_tts_engine,
     system_load_throttled,
   } = briefing
-  const isSpeaking = isPipelineSpeaking || voiceDelivery.isSpeaking
-  const resolvedTtsEngine = pipelineState?.active_tts_engine ?? active_tts_engine
+  const isSpeaking = isPipelineSpeaking || voiceDelivery.isSpeaking || briefingSpeech.speech?.status === 'playing'
+  const resolvedTtsEngine = briefingSpeech.speech?.status === 'playing' && briefingSpeech.speech.engine
+    ? briefingSpeech.speech.engine
+    : pipelineState?.active_tts_engine ?? active_tts_engine
   const resolvedSystemThrottled =
     pipelineState?.system_load_throttled ?? system_load_throttled
   const liveSynthesis = pipelineState?.synthesis
@@ -1520,6 +1530,10 @@ export default function App(): ReactElement {
               loadingLocalModel,
               localLifecycleBusy,
               onUnloadLocalModel: unloadLocalModel,
+              speechControl: selectedCompletedBriefing ? <BriefingSpeechControl
+                {...briefingSpeech}
+                voiceMode={voiceMode}
+              /> : null,
             }}
             briefingConversation={{
               ready: dailyConversationReady === dailySessions.activeSession?.conversation_id && assistantConversationId === dailySessions.activeSession?.conversation_id,

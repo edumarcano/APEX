@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import math
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -155,6 +157,365 @@ class BriefingSessionStore:
             conn.execute(
                 "INSERT INTO schema_versions(domain, version) VALUES ('briefing_sessions', 2) "
                 "ON CONFLICT(domain) DO UPDATE SET version = excluded.version"
+            )
+            speech_version = conn.execute(
+                "SELECT version FROM schema_versions WHERE domain = 'briefing_speech'"
+            ).fetchone()
+            if speech_version is not None and int(speech_version["version"]) > 1:
+                raise BriefingSessionStoreError(
+                    "Briefing speech schema is newer than this APEX build."
+                )
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS briefing_speech (
+                    session_id TEXT PRIMARY KEY NOT NULL
+                        REFERENCES briefing_sessions(id) ON DELETE CASCADE,
+                    partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')),
+                    request_id TEXT,
+                    artifact_sha256 TEXT NOT NULL CHECK(length(artifact_sha256) = 64),
+                    status TEXT NOT NULL CHECK(status IN ('preparing', 'ready', 'unavailable', 'cancelled')),
+                    script_json TEXT CHECK(script_json IS NULL OR json_valid(script_json)),
+                    requested_engine TEXT CHECK(requested_engine IN ('google', 'kokoro', 'pyttsx3')),
+                    engine TEXT CHECK(engine IN ('google', 'kokoro', 'pyttsx3')),
+                    voice_gender TEXT CHECK(voice_gender IN ('female', 'male')),
+                    error_code TEXT,
+                    duration_seconds REAL CHECK(duration_seconds IS NULL OR duration_seconds >= 0),
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS briefing_speech_audio_chunks (
+                    session_id TEXT NOT NULL REFERENCES briefing_speech(session_id) ON DELETE CASCADE,
+                    ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
+                    content_type TEXT NOT NULL CHECK(content_type IN ('audio/mpeg', 'audio/wav')),
+                    engine TEXT NOT NULL CHECK(engine IN ('google', 'kokoro', 'pyttsx3')),
+                    duration_seconds REAL NOT NULL CHECK(duration_seconds > 0),
+                    audio_blob BLOB NOT NULL CHECK(length(audio_blob) > 0),
+                    PRIMARY KEY(session_id, ordinal)
+                );
+                CREATE INDEX IF NOT EXISTS idx_briefing_speech_partition_status
+                    ON briefing_speech(partition, status);
+                """
+            )
+            conn.execute(
+                "UPDATE briefing_speech SET status = 'unavailable', request_id = NULL, "
+                "error_code = 'speech_interrupted', updated_at = ? WHERE status = 'preparing'",
+                (utc_now_iso(),),
+            )
+            conn.execute(
+                "INSERT INTO schema_versions(domain, version) VALUES ('briefing_speech', 1) "
+                "ON CONFLICT(domain) DO UPDATE SET version = excluded.version"
+            )
+
+    @staticmethod
+    def _speech_artifact_hash(raw_artifact: str) -> str:
+        artifact = CanonicalBriefingArtifact.model_validate_json(raw_artifact)
+        return hashlib.sha256(artifact.model_dump_json().encode("utf-8")).hexdigest()
+
+    @classmethod
+    def _require_speech_session(
+        cls,
+        connection: sqlite3.Connection,
+        *,
+        session_id: UUID,
+        partition: str,
+        artifact_sha256: str,
+    ) -> sqlite3.Row:
+        row = connection.execute(
+            "SELECT s.artifact_json, r.status AS run_status FROM briefing_sessions s "
+            "JOIN cortex_runs r ON r.id = s.run_id WHERE s.id = ? AND s.partition = ?",
+            (str(session_id), partition),
+        ).fetchone()
+        if row is None:
+            raise BriefingSessionNotFoundError("Briefing session was not found.")
+        if row["run_status"] != "completed" or row["artifact_json"] is None:
+            raise BriefingSessionConflictError(
+                "Speech is available only for a completed briefing."
+            )
+        if cls._speech_artifact_hash(row["artifact_json"]) != artifact_sha256:
+            raise BriefingSessionConflictError(
+                "Speech must remain bound to the persisted briefing artifact."
+            )
+        return row
+
+    def begin_speech_preparation(
+        self,
+        *,
+        session_id: UUID,
+        partition: str,
+        artifact_sha256: str,
+        request_id: UUID,
+        requested_engine: str,
+        voice_gender: str,
+    ) -> None:
+        if requested_engine not in {"google", "kokoro", "pyttsx3"}:
+            raise BriefingSessionConflictError("The selected speech engine is invalid.")
+        if voice_gender not in {"female", "male"}:
+            raise BriefingSessionConflictError("The selected speech voice is invalid.")
+        with self.transaction() as conn:
+            self._require_speech_session(
+                conn,
+                session_id=session_id,
+                partition=partition,
+                artifact_sha256=artifact_sha256,
+            )
+            current = conn.execute(
+                "SELECT status FROM briefing_speech WHERE session_id = ? AND partition = ?",
+                (str(session_id), partition),
+            ).fetchone()
+            if current is not None and current["status"] == "preparing":
+                raise BriefingSessionConflictError("Speech preparation is already running.")
+            conn.execute(
+                "DELETE FROM briefing_speech_audio_chunks WHERE session_id = ?",
+                (str(session_id),),
+            )
+            conn.execute(
+                """
+                INSERT INTO briefing_speech (
+                    session_id, partition, request_id, artifact_sha256, status,
+                    script_json, requested_engine, engine, voice_gender, error_code,
+                    duration_seconds, updated_at
+                ) VALUES (?, ?, ?, ?, 'preparing', NULL, ?, NULL, ?, NULL, NULL, ?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                    partition = excluded.partition,
+                    request_id = excluded.request_id,
+                    artifact_sha256 = excluded.artifact_sha256,
+                    status = 'preparing',
+                    script_json = NULL,
+                    requested_engine = excluded.requested_engine,
+                    engine = NULL,
+                    voice_gender = excluded.voice_gender,
+                    error_code = NULL,
+                    duration_seconds = NULL,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    str(session_id), partition, str(request_id), artifact_sha256,
+                    requested_engine, voice_gender, utc_now_iso(),
+                ),
+            )
+
+    def complete_speech_preparation(
+        self,
+        *,
+        session_id: UUID,
+        partition: str,
+        request_id: UUID,
+        artifact_sha256: str,
+        script_json: str,
+        engine: str,
+        duration_seconds: float,
+        chunks: list[dict[str, Any]],
+    ) -> bool:
+        if engine not in {"google", "kokoro", "pyttsx3"}:
+            raise BriefingSessionConflictError("The resolved speech engine is invalid.")
+        if not chunks or len(chunks) > 16:
+            raise BriefingSessionConflictError("Prepared speech audio has an invalid chunk count.")
+        if not math.isfinite(duration_seconds) or not 0 < duration_seconds <= 180:
+            raise BriefingSessionConflictError("Prepared speech audio exceeds its duration bound.")
+        total_bytes = 0
+        normalized: list[tuple[int, str, str, float, bytes]] = []
+        for ordinal, chunk in enumerate(chunks):
+            audio = chunk.get("audio")
+            content_type = chunk.get("content_type")
+            chunk_engine = chunk.get("engine")
+            duration = chunk.get("duration_seconds")
+            if not isinstance(audio, bytes) or not audio or len(audio) > 4 * 1024 * 1024:
+                raise BriefingSessionConflictError("Prepared speech audio chunk is invalid.")
+            if content_type not in {"audio/mpeg", "audio/wav"}:
+                raise BriefingSessionConflictError("Prepared speech audio type is invalid.")
+            if chunk_engine != engine:
+                raise BriefingSessionConflictError("Speech chunks must use one resolved engine.")
+            if not isinstance(duration, (int, float)) or not math.isfinite(duration) or not 0 < duration <= 60:
+                raise BriefingSessionConflictError("Prepared speech chunk duration is invalid.")
+            total_bytes += len(audio)
+            normalized.append((ordinal, content_type, chunk_engine, float(duration), audio))
+        if total_bytes > 12 * 1024 * 1024:
+            raise BriefingSessionConflictError("Prepared speech audio exceeds its storage bound.")
+        with self.transaction() as conn:
+            self._require_speech_session(
+                conn,
+                session_id=session_id,
+                partition=partition,
+                artifact_sha256=artifact_sha256,
+            )
+            current = conn.execute(
+                "SELECT request_id, status FROM briefing_speech "
+                "WHERE session_id = ? AND partition = ?",
+                (str(session_id), partition),
+            ).fetchone()
+            if (
+                current is None
+                or current["status"] != "preparing"
+                or current["request_id"] != str(request_id)
+            ):
+                return False
+            conn.execute(
+                "DELETE FROM briefing_speech_audio_chunks WHERE session_id = ?",
+                (str(session_id),),
+            )
+            conn.executemany(
+                "INSERT INTO briefing_speech_audio_chunks "
+                "(session_id, ordinal, content_type, engine, duration_seconds, audio_blob) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                [
+                    (str(session_id), ordinal, content_type, chunk_engine, duration, audio)
+                    for ordinal, content_type, chunk_engine, duration, audio in normalized
+                ],
+            )
+            conn.execute(
+                "UPDATE briefing_speech SET request_id = NULL, status = 'ready', "
+                "script_json = ?, engine = ?, error_code = NULL, duration_seconds = ?, updated_at = ? "
+                "WHERE session_id = ? AND partition = ? AND request_id = ?",
+                (
+                    script_json, engine, duration_seconds, utc_now_iso(), str(session_id),
+                    partition, str(request_id),
+                ),
+            )
+            return True
+
+    def fail_speech_preparation(
+        self,
+        *,
+        session_id: UUID,
+        partition: str,
+        request_id: UUID,
+        artifact_sha256: str,
+        error_code: str,
+    ) -> bool:
+        return self._finish_speech_preparation(
+            session_id=session_id,
+            partition=partition,
+            request_id=request_id,
+            artifact_sha256=artifact_sha256,
+            status="unavailable",
+            error_code=error_code,
+        )
+
+    def cancel_speech_preparation(
+        self,
+        *,
+        session_id: UUID,
+        partition: str,
+        request_id: UUID,
+        artifact_sha256: str,
+        error_code: str = "speech_cancelled",
+    ) -> bool:
+        return self._finish_speech_preparation(
+            session_id=session_id,
+            partition=partition,
+            request_id=request_id,
+            artifact_sha256=artifact_sha256,
+            status="cancelled",
+            error_code=error_code,
+        )
+
+    def _finish_speech_preparation(
+        self,
+        *,
+        session_id: UUID,
+        partition: str,
+        request_id: UUID,
+        artifact_sha256: str,
+        status: str,
+        error_code: str,
+    ) -> bool:
+        with self.transaction() as conn:
+            self._require_speech_session(
+                conn,
+                session_id=session_id,
+                partition=partition,
+                artifact_sha256=artifact_sha256,
+            )
+            cursor = conn.execute(
+                "UPDATE briefing_speech SET request_id = NULL, status = ?, error_code = ?, "
+                "updated_at = ? WHERE session_id = ? AND partition = ? "
+                "AND request_id = ? AND status = 'preparing'",
+                (
+                    status, error_code[:64], utc_now_iso(), str(session_id),
+                    partition, str(request_id),
+                ),
+            )
+            if cursor.rowcount:
+                conn.execute(
+                    "DELETE FROM briefing_speech_audio_chunks WHERE session_id = ?",
+                    (str(session_id),),
+                )
+            return cursor.rowcount == 1
+
+    def get_speech_status(self, session_id: UUID, partition: str) -> dict[str, Any]:
+        with self._connection() as conn:
+            session = conn.execute(
+                "SELECT 1 FROM briefing_sessions WHERE id = ? AND partition = ?",
+                (str(session_id), partition),
+            ).fetchone()
+            if session is None:
+                raise BriefingSessionNotFoundError("Briefing session was not found.")
+            row = conn.execute(
+                "SELECT * FROM briefing_speech WHERE session_id = ? AND partition = ?",
+                (str(session_id), partition),
+            ).fetchone()
+        if row is None:
+            return {"status": "not_requested", "artifact_sha256": None}
+        return {
+            "status": row["status"],
+            "artifact_sha256": row["artifact_sha256"],
+            "error_code": row["error_code"],
+            "engine": row["engine"],
+            "requested_engine": row["requested_engine"],
+            "voice_gender": row["voice_gender"],
+            "script_json": row["script_json"],
+            "duration_seconds": row["duration_seconds"],
+        }
+
+    def get_speech_audio(self, session_id: UUID, partition: str) -> dict[str, Any] | None:
+        with self._connection() as conn:
+            session = conn.execute(
+                "SELECT 1 FROM briefing_sessions WHERE id = ? AND partition = ?",
+                (str(session_id), partition),
+            ).fetchone()
+            if session is None:
+                raise BriefingSessionNotFoundError("Briefing session was not found.")
+            speech = conn.execute(
+                "SELECT * FROM briefing_speech WHERE session_id = ? AND partition = ?",
+                (str(session_id), partition),
+            ).fetchone()
+            if speech is None:
+                return None
+            chunks = conn.execute(
+                "SELECT ordinal, content_type, engine, duration_seconds, audio_blob "
+                "FROM briefing_speech_audio_chunks WHERE session_id = ? ORDER BY ordinal",
+                (str(session_id),),
+            ).fetchall()
+        result = dict(speech)
+        result["chunks"] = [
+            {
+                "ordinal": chunk["ordinal"],
+                "content_type": chunk["content_type"],
+                "engine": chunk["engine"],
+                "duration_seconds": chunk["duration_seconds"],
+                "audio": bytes(chunk["audio_blob"]),
+            }
+            for chunk in chunks
+        ]
+        return result
+
+    def set_speech_playback_error(
+        self,
+        session_id: UUID,
+        partition: str,
+        artifact_sha256: str,
+        error_code: str | None,
+    ) -> None:
+        with self.transaction() as conn:
+            self._require_speech_session(
+                conn,
+                session_id=session_id,
+                partition=partition,
+                artifact_sha256=artifact_sha256,
+            )
+            conn.execute(
+                "UPDATE briefing_speech SET error_code = ?, updated_at = ? "
+                "WHERE session_id = ? AND partition = ? AND artifact_sha256 = ? AND status = 'ready'",
+                (error_code[:64] if error_code else None, utc_now_iso(), str(session_id), partition, artifact_sha256),
             )
 
     def capture_history_selection(

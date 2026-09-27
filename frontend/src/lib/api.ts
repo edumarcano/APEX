@@ -71,6 +71,10 @@ export const API_ENDPOINTS = {
     return qs ? API_BASE + '/api/v1/briefing-sessions?' + qs : API_BASE + '/api/v1/briefing-sessions'
   },
   briefingSession: (sessionId: string) => API_BASE + '/api/v1/briefing-sessions/' + encodeURIComponent(sessionId),
+  briefingSessionSpeech: (sessionId: string) => API_BASE + '/api/v1/briefing-sessions/' + encodeURIComponent(sessionId) + '/speech',
+  briefingSessionSpeechPrepare: (sessionId: string, force = false) => API_BASE + '/api/v1/briefing-sessions/' + encodeURIComponent(sessionId) + '/speech/prepare' + (force ? '?force=true' : ''),
+  briefingSessionSpeechPlay: (sessionId: string) => API_BASE + '/api/v1/briefing-sessions/' + encodeURIComponent(sessionId) + '/speech/play',
+  briefingSessionSpeechStop: (sessionId: string) => API_BASE + '/api/v1/briefing-sessions/' + encodeURIComponent(sessionId) + '/speech/stop',
   briefingSessionEvidence: (sessionId: string, evidenceId: string) => API_BASE + '/api/v1/briefing-sessions/' + encodeURIComponent(sessionId) + '/evidence/' + encodeURIComponent(evidenceId),
   briefingSessionPresented: (sessionId: string) => API_BASE + '/api/v1/briefing-sessions/' + encodeURIComponent(sessionId) + '/presented',
   briefingHistory: `${API_BASE}/api/v1/briefings/history`,

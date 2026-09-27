@@ -53,6 +53,7 @@ from core.briefings.service import (
     set_briefing_service,
     set_briefing_session_queries,
 )
+from core.briefings.speech import BriefingSpeechService, set_briefing_speech_service
 from core.briefings.store import BriefingSessionStore
 from core.knowledge import KnowledgeService, KnowledgeStore, set_knowledge_service
 from core.context_vault.runtime import ContextVaultRuntime, set_context_vault_runtime
@@ -119,6 +120,7 @@ async def _app_lifespan(_app: FastAPI):
     conversation_store: ConversationStore | None = None
     run_store: RunStore | None = None
     briefing_session_store: BriefingSessionStore | None = None
+    briefing_speech_service: BriefingSpeechService | None = None
     run_coordinator: CortexRunCoordinator | None = None
     retrieval_store: RetrievalStore | None = None
     knowledge_store: KnowledgeStore | None = None
@@ -294,6 +296,11 @@ async def _app_lifespan(_app: FastAPI):
                 execute_generation=generate_briefing_generation,
             )
         )
+        briefing_speech_service = BriefingSpeechService(
+            briefing_session_store,
+            partition_getter=conversation_service.partition,
+        )
+        set_briefing_speech_service(briefing_speech_service)
         if not DEMO_MODE:
             context_vault_runtime = ContextVaultRuntime(
                 knowledge=KnowledgeService(knowledge_store),
@@ -363,6 +370,8 @@ async def _app_lifespan(_app: FastAPI):
         def _remaining_shutdown_seconds() -> float:
             return max(0.0, shutdown_deadline - asyncio.get_running_loop().time())
 
+        if briefing_speech_service is not None:
+            await asyncio.to_thread(briefing_speech_service.request_shutdown)
         if run_coordinator is not None:
             try:
                 runs_drained = await asyncio.to_thread(
@@ -402,6 +411,15 @@ async def _app_lifespan(_app: FastAPI):
             raise RuntimeError(
                 "Activity mailbox shutdown drain timed out; dependencies remain open."
             )
+        if briefing_speech_service is not None:
+            speech_drained = await asyncio.to_thread(
+                briefing_speech_service.close,
+                timeout_seconds=_remaining_shutdown_seconds(),
+            )
+            if speech_drained is not True:
+                raise RuntimeError(
+                    "Briefing speech shutdown drain timed out; application dependencies remain open."
+                )
         await _cleanup("stopping speech runtime", speaker.shutdown)
         if mcp_manager is not None:
             await _cleanup("stopping MCP client runtime", mcp_manager.shutdown)
@@ -427,6 +445,7 @@ async def _app_lifespan(_app: FastAPI):
         set_run_service(None)
         set_run_coordinator(None)
         set_briefing_service(None)
+        set_briefing_speech_service(None)
         set_briefing_session_queries(None)
         set_retrieval_service(None)
         set_knowledge_service(None)

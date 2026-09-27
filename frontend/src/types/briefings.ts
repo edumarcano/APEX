@@ -10,6 +10,15 @@ export type BriefingProfileSummary = {
 }
 
 export type BriefingSessionStatus = 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
+export type BriefingSpeechStatus = 'not_requested' | 'preparing' | 'ready' | 'unavailable' | 'cancelled' | 'playing' | 'stopping'
+export type BriefingSpeechEngine = 'google' | 'kokoro' | 'pyttsx3'
+export type BriefingSpeechState = {
+  session_id: string
+  artifact_sha256: string
+  status: BriefingSpeechStatus
+  error_code: string | null
+  engine: BriefingSpeechEngine | null
+}
 export type BriefingStage = 'preparing' | 'collecting' | 'selecting' | 'investigating' | 'synthesizing' | 'persisting'
 
 export type BriefingStageProgress = {
@@ -143,7 +152,7 @@ export type BriefingSessionDetail = {
   evidence_ids: string[]
   created_at: string
   presented_at: string | null
-  speech_status: 'not_requested' | 'ready' | 'unavailable'
+  speech_status: BriefingSpeechStatus
   active_stage?: BriefingStageProgress | null
 }
 
