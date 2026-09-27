@@ -92,7 +92,6 @@ export interface AgentQueryBarProps {
   selectionReady?: boolean
   draftPrompt?: string
   onDraftChange?: (value: string) => void
-  presentation?: 'home'
   error?: string | null
   selectedModelId?: string
   onModelChange?: (modelId: string) => void

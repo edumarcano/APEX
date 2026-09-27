@@ -1067,7 +1067,7 @@ describe('App Overview and Briefing states', () => {
 
     expect(screen.getByRole('button', { name: 'Collect Telemetry' })).toBeEnabled()
     expect(screen.queryByRole('button', { name: 'Open Briefing setup' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: 'Home command rail' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Agent command rail' })).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   })
 
@@ -1137,6 +1137,23 @@ describe('App Overview and Briefing states', () => {
     expect(appMocks.activate).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Generate Daily' })).toBeDisabled()
     expect(posts.filter((path) => path.endsWith('/briefing-sessions'))).toHaveLength(0)
+  })
+
+  it('does not collect telemetry from Enter while on inactive Briefing', async () => {
+    appMocks.activated = false
+    appMocks.activate.mockClear()
+    appMocks.requestOperation.mockClear()
+    const user = userEvent.setup()
+    stubHomeFetch([])
+    render(<App />)
+
+    await selectWorkspace(user, 'Briefing')
+    await user.keyboard('{Enter}')
+
+    expect(appMocks.activate).not.toHaveBeenCalled()
+    expect(appMocks.requestOperation).not.toHaveBeenCalledWith('activate')
+    expect(screen.queryByRole('region', { name: 'Overview' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
   })
 
   it('activates Overview from Collect Telemetry on Standby', async () => {

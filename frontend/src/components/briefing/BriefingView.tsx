@@ -33,7 +33,7 @@ export type BriefingViewProps = {
   conversation: BriefingViewConversation
 }
 
-function HomeAgentMessage({ text, metadata }: { text: string; metadata: Record<string, unknown> }): ReactElement {
+function BriefingAgentMessage({ text, metadata }: { text: string; metadata: Record<string, unknown> }): ReactElement {
   const toolOutputs = parseAgentQueryResponse({ ...metadata, answer: text }).tool_outputs ?? []
   return <>
     <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
@@ -47,7 +47,7 @@ function BriefingConversation({ conversation }: { conversation: BriefingViewConv
     if (session?.artifact && metadata.briefing_session_id === session.id) {
       return <BriefingArtifactMessage session={session} isLoadingSession={isLoadingSession} evidence={evidence} onMarkPresented={onMarkPresented} />
     }
-    return <HomeAgentMessage text={text} metadata={metadata} />
+    return <BriefingAgentMessage text={text} metadata={metadata} />
   }, [evidence, isLoadingSession, onMarkPresented, session])
   if (!session) return <div className="flex min-h-0 flex-1 items-center justify-center p-5 text-xs text-zinc-500">Open a saved briefing to continue its conversation.</div>
   return <section className="flex min-h-0 flex-1 flex-col" aria-label="Briefing conversation">

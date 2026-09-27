@@ -981,7 +981,12 @@ export default function App(): ReactElement {
 
   useEffect(() => {
     const handleGlobalEnter = (event: KeyboardEvent): void => {
-      if (activated || preflight.dialogOpen || preflight.isChecking) {
+      if (
+        activated ||
+        workspace !== 'overview' ||
+        preflight.dialogOpen ||
+        preflight.isChecking
+      ) {
         return
       }
 
@@ -1011,7 +1016,7 @@ export default function App(): ReactElement {
     return () => {
       window.removeEventListener('keydown', handleGlobalEnter)
     }
-  }, [activated, handleCollectTelemetry, preflight.dialogOpen, preflight.isChecking])
+  }, [activated, workspace, handleCollectTelemetry, preflight.dialogOpen, preflight.isChecking])
 
   const dailyControlsBusy = preflight.isChecking || preflight.dialogOpen || dailySessions.isGenerating
   const canGenerateDaily = Boolean(agentQueriesEnabled || demoModeActive)
