@@ -160,7 +160,7 @@ def build_parser() -> argparse.ArgumentParser:
     activity_list = activity_commands.add_parser("list", help="List received reports in the current partition.")
     _add_json_option(activity_list)
     activity_list.add_argument("--client", help="Filter by caller-declared source ID.")
-    activity_list.add_argument("--disposition", choices=("new", "reviewed", "dismissed"), help="Filter inbox disposition.")
+    activity_list.add_argument("--disposition", choices=("new", "reviewed", "dismissed"), help="Filter report disposition.")
     activity_list.add_argument("--limit", type=int, default=50, help="Maximum reports to return (1-100, default 50).")
     activity_list.set_defaults(handler=_activity_list)
     activity_show = activity_commands.add_parser("show", help="Show one immutable activity report.")

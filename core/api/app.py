@@ -19,10 +19,10 @@ from clients.http_sessions import ConnectorHttpSessions, set_connector_http_sess
 from clients.microsoft_auth import MicrosoftTodoAuthenticationService, set_microsoft_auth_service
 from core.actions import ActionService, set_action_service
 from core.activity import ActivityService, ActivityStore, set_activity_service
-from core.activity.mailbox import (
-    ActivityMailbox,
-    run_activity_mailbox_poller,
-    set_activity_mailbox,
+from core.activity.report_folder import (
+    ActivityReportFolder,
+    run_activity_report_folder_poller,
+    set_activity_report_folder,
 )
 from core.actions.microsoft_todo import (
     CreateMicrosoftTodoTaskExecutor,
@@ -125,9 +125,9 @@ async def _app_lifespan(_app: FastAPI):
     retrieval_store: RetrievalStore | None = None
     knowledge_store: KnowledgeStore | None = None
     activity_store: ActivityStore | None = None
-    activity_mailbox: ActivityMailbox | None = None
-    activity_mailbox_stop: asyncio.Event | None = None
-    activity_mailbox_task: asyncio.Task[None] | None = None
+    activity_report_folder: ActivityReportFolder | None = None
+    activity_report_folder_stop: asyncio.Event | None = None
+    activity_report_folder_task: asyncio.Task[None] | None = None
     context_vault_runtime: ContextVaultRuntime | None = None
     llama_supervisor = get_llama_cpp_server_supervisor()
     lifecycle_error: BaseException | None = None
@@ -231,17 +231,17 @@ async def _app_lifespan(_app: FastAPI):
             demo_mode=DEMO_MODE,
         )
         set_activity_service(activity_service)
-        activity_mailbox = ActivityMailbox(
+        activity_report_folder = ActivityReportFolder(
             activity_service,
-            settings_getter=lambda: get_settings_store().get_snapshot().activity_mailbox,
+            settings_getter=lambda: get_settings_store().get_snapshot().activity_report_folder,
             partition_getter=conversation_service.partition,
             demo_mode=DEMO_MODE,
         )
-        set_activity_mailbox(activity_mailbox)
-        activity_mailbox_stop = asyncio.Event()
-        activity_mailbox_task = asyncio.create_task(
-            run_activity_mailbox_poller(activity_mailbox, activity_mailbox_stop),
-            name="activity-mailbox-poller",
+        set_activity_report_folder(activity_report_folder)
+        activity_report_folder_stop = asyncio.Event()
+        activity_report_folder_task = asyncio.create_task(
+            run_activity_report_folder_poller(activity_report_folder, activity_report_folder_stop),
+            name="activity-report-folder-poller",
         )
         if not DEMO_MODE:
             assert microsoft_todo_client is not None
@@ -389,15 +389,15 @@ async def _app_lifespan(_app: FastAPI):
                 )
         if idle_model_stop is not None:
             idle_model_stop.set()
-        if activity_mailbox_stop is not None:
-            activity_mailbox_stop.set()
+        if activity_report_folder_stop is not None:
+            activity_report_folder_stop.set()
         if context_vault_runtime is not None:
             context_vault_runtime.request_stop()
         application_tasks = startup_tasks + (
             [idle_model_task] if idle_model_task is not None else []
         )
-        if activity_mailbox_task is not None:
-            application_tasks.append(activity_mailbox_task)
+        if activity_report_folder_task is not None:
+            application_tasks.append(activity_report_folder_task)
         if not await _drain_application_tasks(
             application_tasks,
             timeout_seconds=_remaining_shutdown_seconds(),
@@ -405,11 +405,11 @@ async def _app_lifespan(_app: FastAPI):
             raise RuntimeError(
                 "Application task shutdown drain timed out; dependencies remain open."
             )
-        if activity_mailbox is not None and not await activity_mailbox.wait_for_idle(
+        if activity_report_folder is not None and not await activity_report_folder.wait_for_idle(
             _remaining_shutdown_seconds()
         ):
             raise RuntimeError(
-                "Activity mailbox shutdown drain timed out; dependencies remain open."
+                "Activity report folder shutdown drain timed out; dependencies remain open."
             )
         if briefing_speech_service is not None:
             speech_drained = await asyncio.to_thread(
@@ -453,7 +453,7 @@ async def _app_lifespan(_app: FastAPI):
             knowledge_store.set_context_vault_change_callback(None)
         set_context_vault_runtime(None)
         set_activity_service(None)
-        set_activity_mailbox(None)
+        set_activity_report_folder(None)
         if conversation_store is not None:
             await _cleanup("closing conversation store", conversation_store.close)
         if briefing_session_store is not None:

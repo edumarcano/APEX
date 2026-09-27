@@ -118,13 +118,13 @@ For Context vault setup and sharing, see the [Context vault guide](context-vault
 
 `activity submit` builds a version-one report from `--submission-key`, `--title`, `--task-status`, and `--outcome`. Add repeatable findings, evidence links, artifact references, unresolved questions, subjects, or projects when they help inspection. `--markdown-file` stores a Markdown body as report content. Artifact references remain references; APEX does not fetch them.
 
-`activity import` accepts a JSON report object with the same version-one fields, or a `.md`/`.markdown` body with required metadata options. Import requires the running local backend but no external service. `list` filters the current partition by client and inbox disposition, and `show` prints the immutable receipt and report content.
+`activity import` accepts a JSON report object with the same version-one fields, or a `.md`/`.markdown` body with required metadata options. Import requires the running local backend but no external service. `list` filters the current partition by client and report disposition, and `show` prints the immutable receipt and report content.
 
 `activity propose-context` selects `/findings/<index>`, or `/outcome` or `/markdown_body` when the report has no structured findings. A new proposal creates a pending context review; repeating the same proposal returns its linked review with its current decision. Its text and structured fields describe the proposed claim; the stored finding remains the immutable source evidence. Pass `--correct-record <record-id>` to propose a correction through the same review lifecycle. Use `context review` commands to inspect, accept, or reject it. Refresh a stale review in Cortex Review or through the API before another decision.
 
 Reports do not automatically enter personal context, retrieval, prompts, briefings, or attention. Reading, reviewing, dismissing, or reopening a report does not approve a context change.
 
-See [configuration](configuration.md#external-activity-intake) for source IDs and [the optional local-folder mailbox](configuration.md#optional-local-folder-mailbox) for automatic intake setup.
+See [configuration](configuration.md#external-activity-intake) for source IDs and [the optional local report folder](configuration.md#optional-local-report-folder) for automatic intake setup.
 
 ## Actions
 

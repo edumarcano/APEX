@@ -82,7 +82,7 @@ function mockSettingsPanelFetches(
         permission: 'Tasks.ReadWrite',
       })
     }
-    if (url === API_ENDPOINTS.activityMailboxStatus) {
+    if (url === API_ENDPOINTS.activityReportFolderStatus) {
       return jsonResponse({
         enabled: false,
         state: 'disabled',
@@ -122,11 +122,11 @@ describe('SettingsPanel', () => {
     expect(dialog).toContainElement(document.activeElement as HTMLElement)
   })
 
-  it('shows the optional local mailbox settings without a client registration control', async () => {
+  it('shows the optional local report folder settings without a client registration control', async () => {
     mockSettingsPanelFetches()
     renderPanel()
 
-    expect(await screen.findByRole('switch', { name: 'Enable mailbox' })).toHaveAttribute('aria-checked', 'false')
+    expect(await screen.findByRole('switch', { name: 'Enable report folder' })).toHaveAttribute('aria-checked', 'false')
     expect(screen.getByLabelText('Absolute folder path')).toBeInTheDocument()
     expect(screen.queryByLabelText(/client id/i)).not.toBeInTheDocument()
     expect(await screen.findByText(/Disabled. APEX will not read this folder./)).toBeInTheDocument()
@@ -296,7 +296,7 @@ describe('SettingsPanel', () => {
     })
     await waitFor(() =>
       expect(
-        vi.mocked(fetch).mock.calls.filter(([input]) => input === API_ENDPOINTS.activityMailboxStatus),
+        vi.mocked(fetch).mock.calls.filter(([input]) => input === API_ENDPOINTS.activityReportFolderStatus),
       ).toHaveLength(2),
     )
   })

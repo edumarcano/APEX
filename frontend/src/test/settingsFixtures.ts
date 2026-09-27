@@ -73,7 +73,7 @@ export const BASE_SETTINGS: RuntimeSettings = {
   microsoft_todo: {
     reminder_list_id: '',
   },
-  activity_mailbox: {
+  activity_report_folder: {
     enabled: false,
     folder_path: '',
   },

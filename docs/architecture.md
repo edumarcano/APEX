@@ -1,13 +1,13 @@
 # Architecture
 
-APEX is a local-first personal intelligence HUD. FastAPI serves the backend, React provides the Inbox, Overview, Briefing, and Cortex workspaces through visible header tabs, SQLite owns durable application state, and optional providers and connectors stay behind explicit capability and privacy boundaries.
+APEX is a local-first personal intelligence HUD. FastAPI serves the backend, React provides the Reports, Overview, Briefing, and Cortex workspaces through visible header tabs, SQLite owns durable application state, and optional providers and connectors stay behind explicit capability and privacy boundaries.
 
 ## Core model
 
 - **Overview** shows the telemetry grid and reminders after activation. **Standby** is Overview-only before activation and is not a navigation peer.
 - **Briefing** covers profile controls, the saved briefing thread, and a single telemetry panel. It opens without activation; generation and setup stay Briefing-local.
 - **Cortex** is the control surface for conversations, model settings, tool selection, context, and approval-gated actions.
-- **Inbox** is the dedicated list-and-detail workspace for immutable, untrusted reports with caller-claimed source labels.
+- **Reports** is the dedicated list-and-detail workspace for immutable, untrusted reports with caller-claimed source labels.
 - **Apex Agent** is the single native personal operations assistant. It understands APEX briefings, trusted context, connected services, and APEX tools.
 - **Cortex Engine** executes bounded model turns and tool loops. It is model-routed, not Agent-routed.
 
@@ -40,11 +40,11 @@ Knowledge history records later status changes, evidence links, corrections, con
 
 ## External activity boundary
 
-External activity reports use their own SQLite table, receipt identity, partition, caller-claimed source label, idempotency key, and reversible inbox disposition. The ID syntax is checked at the shared service boundary but does not authenticate the caller. Their structured JSON and Markdown body stay immutable after receipt. Stable future-review evidence locations point to `/findings/<index>`, or to `/outcome` and `/markdown_body` when no structured finding exists.
+External activity reports use their own SQLite table, receipt identity, partition, caller-claimed source label, idempotency key, and reversible report disposition. The ID syntax is checked at the shared service boundary but does not authenticate the caller. Their structured JSON and Markdown body stay immutable after receipt. Stable future-review evidence locations point to `/findings/<index>`, or to `/outcome` and `/markdown_body` when no structured finding exists.
 
 Activity reports have no retrieval synchronization, general prompt assembly caller, attention integration, or automatic trust-promotion path. A Daily run may select up to three relevant, non-dismissed reports from the newest 50 candidates and include bounded excerpts as explicitly untrusted evidence. An operator may also select one immutable finding and create a linked pending context review. The server freezes the selected report text, locator, external source origin, and occurrence time as `external_activity` evidence; a finding can declare `model_interpretation`, otherwise its derivation is `unknown`. Only accepted context reviews write a normal knowledge record and retrieval entry.
 
-Inbox reads a bounded report list and exact report detail, lets the operator set the separate `new`, `reviewed`, or `dismissed` disposition, and opens linked decisions in Cortex Review. It never changes partitions automatically. Report text, Markdown, and external references remain untrusted display data; the HUD renders text without raw HTML and enables only HTTP(S) links.
+Reports reads a bounded report list and exact report detail, lets the operator set the separate `new`, `reviewed`, or `dismissed` disposition, and opens linked decisions in Cortex Review. It never changes partitions automatically. Report text, Markdown, and external references remain untrusted display data; the HUD renders text without raw HTML and enables only HTTP(S) links.
 
 An opt-in process on loopback can expose only activity submission through JSON HTTP and Streamable HTTP MCP. It opens the same activity store as local CLI and file import, resolves the generic local `operator` principal, and derives the current partition server-side. The process has no main API routes, Cortex initialization, connectors, report reads, resources, prompts, actions, or proxy behavior. Its process-wide rate limit allows 30 combined JSON and MCP attempts per minute. The gateway does not authenticate remote callers and must not be placed behind a tunnel or reverse proxy.
 

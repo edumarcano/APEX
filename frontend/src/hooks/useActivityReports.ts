@@ -9,7 +9,7 @@ import type {
   ActivityReport,
   ActivityReportContent,
 } from '../types/activity'
-import type { ActivityMailboxStatusResponse } from '../types/settings'
+import type { ActivityReportFolderStatusResponse } from '../types/settings'
 
 type SourceFilter = 'all' | string
 type DispositionFilter = 'all' | ActivityDisposition
@@ -89,7 +89,7 @@ async function responseBody(response: Response): Promise<unknown> {
   throw new Error(`Request failed (${response.status}).`)
 }
 
-function asMailboxStatus(value: unknown): ActivityMailboxStatusResponse | null {
+function asReportFolderStatus(value: unknown): ActivityReportFolderStatusResponse | null {
   if (!isRecord(value) || typeof value.enabled !== 'boolean' ||
     typeof value.state !== 'string' ||
     !['disabled', 'demo_mode', 'not_configured', 'folder_unavailable', 'ready', 'scan_error']
@@ -98,22 +98,22 @@ function asMailboxStatus(value: unknown): ActivityMailboxStatusResponse | null {
     typeof value.last_imported_count !== 'number' ||
     (value.last_scan_at !== null && typeof value.last_scan_at !== 'string') ||
     (value.last_error !== null && typeof value.last_error !== 'string')) return null
-  return value as unknown as ActivityMailboxStatusResponse
+  return value as unknown as ActivityReportFolderStatusResponse
 }
 
-function mailboxScanError(status: ActivityMailboxStatusResponse): string | null {
+function reportFolderScanError(status: ActivityReportFolderStatusResponse): string | null {
   if (status.state === 'ready' || status.state === 'disabled') return null
   if (status.last_error) return status.last_error
   switch (status.state) {
-    case 'demo_mode': return 'Mailbox scanning is unavailable in demo mode.'
-    case 'not_configured': return 'Set an absolute mailbox folder path in Runtime Settings.'
-    case 'folder_unavailable': return 'The mailbox folder is unavailable; APEX will retry on a later scan.'
-    case 'scan_error': return 'Some mailbox files could not be imported; APEX will retry.'
-    default: return 'The mailbox scan could not be completed.'
+    case 'demo_mode': return 'Report folder scanning is unavailable in demo mode.'
+    case 'not_configured': return 'Set an absolute report folder path in Runtime Settings.'
+    case 'folder_unavailable': return 'The report folder is unavailable; APEX will retry on a later scan.'
+    case 'scan_error': return 'Some report folder files could not be imported; APEX will retry.'
+    default: return 'The report folder scan could not be completed.'
   }
 }
 
-export interface UseActivityInboxResult {
+export interface UseActivityReportsResult {
   reports: ActivityReport[]
   detail: ActivityReport | null
   linkedReviews: ActivityContextReviewLink[]
@@ -133,10 +133,10 @@ export interface UseActivityInboxResult {
   proposeContext: (input: ActivityContextProposalInput) => Promise<ContextReview | null>
 }
 
-export function useActivityInbox(
+export function useActivityReports(
   enabled: boolean,
   partition: ActivityReport['partition'],
-): UseActivityInboxResult {
+): UseActivityReportsResult {
   const [reports, setReports] = useState<ActivityReport[]>([])
   const [detail, setDetail] = useState<ActivityReport | null>(null)
   const [linkedReviews, setLinkedReviews] = useState<ActivityContextReviewLink[]>([])
@@ -196,7 +196,7 @@ export function useActivityInbox(
       setError(null)
     } catch (caught) {
       if (requestGeneration === generation.current && request === listRequest.current) {
-        setError(caught instanceof Error ? caught.message : 'Activity inbox is unavailable.')
+        setError(caught instanceof Error ? caught.message : 'Activity reports are unavailable.')
       }
     } finally {
       if (requestGeneration === generation.current && request === listRequest.current) setIsLoading(false)
@@ -263,13 +263,13 @@ export function useActivityInbox(
     const requestGeneration = generation.current
     let scanError: string | null
     try {
-      const status = asMailboxStatus(await fetch(API_ENDPOINTS.activityMailboxScan, {
+      const status = asReportFolderStatus(await fetch(API_ENDPOINTS.activityReportFolderScan, {
         method: 'POST',
       }).then(responseBody))
-      if (!status) throw new Error('The mailbox scan response was invalid.')
-      scanError = mailboxScanError(status)
+      if (!status) throw new Error('The report folder scan response was invalid.')
+      scanError = reportFolderScanError(status)
     } catch (caught) {
-      scanError = caught instanceof Error ? caught.message : 'The mailbox scan could not be completed.'
+      scanError = caught instanceof Error ? caught.message : 'The report folder scan could not be completed.'
     }
     await Promise.all([loadList(), selectedReportId ? loadDetail(selectedReportId) : Promise.resolve()])
     if (requestGeneration !== generation.current) return

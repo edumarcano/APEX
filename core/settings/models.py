@@ -387,7 +387,7 @@ class MicrosoftTodoSettings(BaseModel):
         return value
 
 
-def _normalize_mailbox_folder_path(value: str) -> str:
+def _normalize_report_folder_path(value: str) -> str:
     normalized = value.strip()
     if "\x00" in normalized:
         raise ValueError("folder_path must not contain null bytes")
@@ -396,7 +396,7 @@ def _normalize_mailbox_folder_path(value: str) -> str:
     return normalized
 
 
-class ActivityMailboxSettings(BaseModel):
+class ActivityReportFolderSettings(BaseModel):
     """Machine-local folder used for optional external activity delivery."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -407,7 +407,7 @@ class ActivityMailboxSettings(BaseModel):
     @field_validator("folder_path")
     @classmethod
     def validate_folder_path(cls, value: str) -> str:
-        return _normalize_mailbox_folder_path(value)
+        return _normalize_report_folder_path(value)
 
 class RuntimeSettingsSnapshot(BaseModel):
     """Immutable published view of resolved editable settings."""
@@ -436,7 +436,7 @@ class RuntimeSettingsSnapshot(BaseModel):
     mcp: McpSettings = Field(default_factory=McpSettings)
     llama_cpp: LlamaCppSettings = Field(default_factory=LlamaCppSettings)
     microsoft_todo: MicrosoftTodoSettings = Field(default_factory=MicrosoftTodoSettings)
-    activity_mailbox: ActivityMailboxSettings = Field(default_factory=ActivityMailboxSettings)
+    activity_report_folder: ActivityReportFolderSettings = Field(default_factory=ActivityReportFolderSettings)
 
 
 class FeaturesPatch(BaseModel):
@@ -653,8 +653,8 @@ class MicrosoftTodoPatch(BaseModel):
         return value
 
 
-class ActivityMailboxPatch(BaseModel):
-    """Partial machine-local mailbox settings patch."""
+class ActivityReportFolderPatch(BaseModel):
+    """Partial machine-local report folder settings patch."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -664,7 +664,7 @@ class ActivityMailboxPatch(BaseModel):
     @field_validator("folder_path")
     @classmethod
     def validate_folder_path(cls, value: str | None) -> str | None:
-        return _normalize_mailbox_folder_path(value) if value is not None else None
+        return _normalize_report_folder_path(value) if value is not None else None
 
 class LlamaCppServerStatusResponse(BaseModel):
     """Sanitized llama.cpp server ownership status for the Settings UI."""
@@ -697,7 +697,7 @@ class SettingsPatch(BaseModel):
     mcp: McpPatch | None = None
     llama_cpp: LlamaCppPatch | None = None
     microsoft_todo: MicrosoftTodoPatch | None = None
-    activity_mailbox: ActivityMailboxPatch | None = None
+    activity_report_folder: ActivityReportFolderPatch | None = None
 
 
 class SettingsResponse(BaseModel):

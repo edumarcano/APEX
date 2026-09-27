@@ -224,7 +224,7 @@ def _gateway_error(error: Exception) -> HTTPException:
         if str(error) == "report_too_large":
             return HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Activity report exceeds the 256 KiB limit.")
         return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Activity report is invalid.")
-    return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Activity inbox is unavailable.")
+    return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Activity reports are unavailable.")
 
 
 def create_gateway_app(options: GatewayOptions = GatewayOptions()) -> FastAPI:
@@ -233,7 +233,7 @@ def create_gateway_app(options: GatewayOptions = GatewayOptions()) -> FastAPI:
     store = ActivityStore(None if DEMO_MODE else database.DB_NAME)
     service = ActivityService(store, demo_mode=DEMO_MODE)
     submissions = GatewaySubmissionService(service)
-    mcp = FastMCP("APEX Activity Submission", instructions="Submit one external activity report to the local APEX inbox.")
+    mcp = FastMCP("APEX Activity Submission", instructions="Submit one external activity report to the local APEX Reports workspace.")
 
     @mcp.tool(name="submit_activity", description="Submit one immutable external activity report.")
     def submit_activity(client_id: str, report: ActivityReportContent) -> dict[str, object]:

@@ -40,10 +40,10 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | POST | `/api/v1/reminders/dismiss` | Dismiss a reviewed uncertain local reminder |
 | POST | `/api/v1/activity/reports` | Receive one local external activity report |
 | GET | `/api/v1/activity/reports` | List reports in the current partition |
-| GET | `/api/v1/activity/mailbox/status` | Read local-folder mailbox readiness and latest scan status |
-| POST | `/api/v1/activity/mailbox/scan` | Scan the configured mailbox folder now |
+| GET | `/api/v1/activity/report-folder/status` | Read local report-folder readiness and latest scan status |
+| POST | `/api/v1/activity/report-folder/scan` | Scan the configured report folder now |
 | GET | `/api/v1/activity/reports/{report_id}` | Inspect one immutable report |
-| PATCH | `/api/v1/activity/reports/{report_id}` | Set its reversible Inbox disposition |
+| PATCH | `/api/v1/activity/reports/{report_id}` | Set its reversible report disposition |
 | GET | `/api/v1/activity/reports/{report_id}/context-reviews` | List durable reviews linked from this report |
 | GET | `/api/v1/actions` | List durable action proposals |
 | GET | `/api/v1/actions/{action_id}` | Inspect one proposal and its audit events |
@@ -169,7 +169,7 @@ Returns the resolved settings envelope. The current settings schema version is `
     "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } },
     "llama_cpp": { "enabled": false, "managed": false, "host": "http://127.0.0.1:8080", "executable_path": "", "preset_path": "" },
     "microsoft_todo": { "reminder_list_id": "" },
-    "activity_mailbox": { "enabled": false, "folder_path": "" }
+    "activity_report_folder": { "enabled": false, "folder_path": "" }
   },
   "local_file_present": false,
   "local_override_active": false,
@@ -185,7 +185,7 @@ Briefing profile selection is per session and does not add a Runtime Settings fi
 
 ### PATCH `/api/v1/settings`
 
-Accepts a strict partial patch for the optional user designation, optional agent display name, connectors, sports modules, followed football teams, market symbols, Google Calendar selection and label display, Context vault enablement and scopes, Agent query settings, tool profiles, voice, llama.cpp enablement, loopback host, optional managed-server paths, tracked MCP enablement, and local activity mailbox settings. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
+Accepts a strict partial patch for the optional user designation, optional agent display name, connectors, sports modules, followed football teams, market symbols, Google Calendar selection and label display, Context vault enablement and scopes, Agent query settings, tool profiles, voice, llama.cpp enablement, loopback host, optional managed-server paths, tracked MCP enablement, and local activity report folder settings. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
 
 ```json
 {
@@ -392,7 +392,7 @@ Archives one explicitly reviewed uncertain local row after the operator has insp
 { "id": "local:12" }
 ```
 
-## External activity inbox
+## External activity reports
 
 ### POST `/api/v1/activity/reports`
 
@@ -406,13 +406,13 @@ Report content is limited to 256 KiB and remains immutable. Artifact references 
 
 Lists up to 100 newest reports in the current partition. `client_id`, `disposition` (`new`, `reviewed`, or `dismissed`), and `limit` are optional filters.
 
-### GET `/api/v1/activity/mailbox/status`
+### GET `/api/v1/activity/report-folder/status`
 
-Returns the main backend's local mailbox settings state, configured-folder availability, and the latest scan time, import count, and retryable error. The mailbox remains disabled unless Runtime Settings enable it.
+Returns the main backend's local report-folder settings state, configured-folder availability, and the latest scan time, import count, and retryable error. The report folder remains disabled unless Runtime Settings enable it.
 
-### POST `/api/v1/activity/mailbox/scan`
+### POST `/api/v1/activity/report-folder/scan`
 
-Scans the folder from Runtime Settings and waits for the result. Each top-level JSON file must be an `ActivitySubmissionRequest` envelope with `client_id` and `report`; bare report objects are rejected. The request takes no body or path; callers cannot choose a directory. Concurrent manual and scheduled scans share one in-progress scan. The route is available only on the main loopback service, not the narrow activity gateway. A failed or partial scan returns status and an error while leaving existing Inbox reports available for the caller to reload. See [Optional local-folder mailbox](configuration.md#optional-local-folder-mailbox) for file format, size, attribution, and retry behavior.
+Scans the folder from Runtime Settings and waits for the result. Each top-level JSON file must be an `ActivitySubmissionRequest` envelope with `client_id` and `report`; bare report objects are rejected. The request takes no body or path; callers cannot choose a directory. Concurrent manual and scheduled scans share one in-progress scan. The route is available only on the main loopback service, not the narrow activity gateway. A failed or partial scan returns status and an error while leaving existing Reports workspace entries available for the caller to reload. See [Optional local report folder](configuration.md#optional-local-report-folder) for file format, size, attribution, and retry behavior.
 
 ### GET `/api/v1/activity/reports/{report_id}`
 
@@ -420,7 +420,7 @@ Returns one report only when it belongs to the current partition, including immu
 
 ### PATCH `/api/v1/activity/reports/{report_id}`
 
-Sets the operator's Inbox disposition to `new`, `reviewed`, or `dismissed`. This changes no report content, evidence, retrieval state, or context review decision. Setting `new` reopens a report.
+Sets the operator's report disposition to `new`, `reviewed`, or `dismissed`. This changes no report content, evidence, retrieval state, or context review decision. Setting `new` reopens a report.
 
 ### GET `/api/v1/activity/reports/{report_id}/context-reviews`
 
@@ -432,7 +432,7 @@ The local operator can select a stable finding reference and submit the normal c
 
 Accepted claims retain an `external_activity` source with the report-and-finding locator, original selected text, `external_tool` origin, occurrence time when the report supplied one, and the report's declared derivation. A report is never indexed directly.
 
-External activity is untrusted inbox material. Receiving, reading, reviewing, dismissing, or reopening a report never creates knowledge, changes retrieval, adds prompt context, affects attention or briefings, or approves a review. Retraction remains an explicit context operation.
+External activity is untrusted report material. Receiving, reading, reviewing, dismissing, or reopening a report never creates knowledge, changes retrieval, adds prompt context, affects attention or briefings, or approves a review. Retraction remains an explicit context operation.
 
 The separately started activity gateway is not part of this API schema. It exposes a liveness probe, JSON submission, and a Streamable HTTP MCP endpoint; see [External activity gateway](configuration.md#external-activity-gateway) for its startup and boundary contract.
 

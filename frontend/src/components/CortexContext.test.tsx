@@ -227,7 +227,7 @@ describe("CortexContext", () => {
     expect(refreshSelectedRecord).toHaveBeenCalledOnce();
   });
 
-  it("opens an Inbox-linked review by its exact id", () => {
+  it("opens a Reports-linked review by its exact id", () => {
     const inspector = inspectorFixture({ selectedReviewId: null, reviewDetail: null });
     render(
       <CortexContext

@@ -77,40 +77,40 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertTrue(settings.cloud.personal_context_enabled)
         self.assertTrue(settings.local.personal_context_enabled)
 
-    def test_activity_mailbox_settings_persist_only_in_the_local_layer(self) -> None:
+    def test_activity_report_folder_settings_persist_only_in_the_local_layer(self) -> None:
         folder = self._temp_root() / "synced reports"
         settings = self._store().apply_patch(SettingsPatch.model_validate({
-            "activity_mailbox": {
+            "activity_report_folder": {
                 "enabled": True,
                 "folder_path": str(folder),
             },
         }))
 
-        self.assertTrue(settings.activity_mailbox.enabled)
-        self.assertEqual(settings.activity_mailbox.folder_path, str(folder))
+        self.assertTrue(settings.activity_report_folder.enabled)
+        self.assertEqual(settings.activity_report_folder.folder_path, str(folder))
         local = json.loads(self.local_path.read_text(encoding="utf-8"))
         tracked = json.loads(self.config_path.read_text(encoding="utf-8"))
-        self.assertEqual(local["activity_mailbox"], {
+        self.assertEqual(local["activity_report_folder"], {
             "enabled": True,
             "folder_path": str(folder),
         })
-        self.assertNotIn("activity_mailbox", tracked)
+        self.assertNotIn("activity_report_folder", tracked)
 
-    def test_activity_mailbox_rejects_relative_paths_and_ignores_tracked_values(self) -> None:
+    def test_activity_report_folder_rejects_relative_paths_and_ignores_tracked_values(self) -> None:
         with self.assertRaises(ValidationError):
-            SettingsPatch.model_validate({"activity_mailbox": {"folder_path": "relative"}})
+            SettingsPatch.model_validate({"activity_report_folder": {"folder_path": "relative"}})
 
         _write_json(self.config_path, {
-            "activity_mailbox": {"enabled": True, "folder_path": str(self.config_path.parent), "client_id": "codex"},
+            "activity_report_folder": {"enabled": True, "folder_path": str(self.config_path.parent), },
         })
-        settings = self._store().get_snapshot().activity_mailbox
+        settings = self._store().get_snapshot().activity_report_folder
         self.assertFalse(settings.enabled)
         self.assertEqual(settings.folder_path, "")
 
-    def test_legacy_mailbox_client_id_is_ignored_until_a_settings_save(self) -> None:
-        folder = self._temp_root() / "legacy mailbox"
+    def test_report_folder_rejects_client_id_field(self) -> None:
+        folder = self._temp_root() / "legacy report folder"
         original = {
-            "activity_mailbox": {
+            "activity_report_folder": {
                 "enabled": True,
                 "folder_path": str(folder),
                 "client_id": "grok-bot",
@@ -121,14 +121,17 @@ class SettingsStoreTests(unittest.TestCase):
 
         store = self._store()
         snapshot = store.get_snapshot()
-        self.assertTrue(snapshot.activity_mailbox.enabled)
-        self.assertEqual(snapshot.activity_mailbox.folder_path, str(folder))
-        self.assertIsNone(store.load_warning)
+        self.assertTrue(snapshot.activity_report_folder.enabled)
+        self.assertEqual(snapshot.activity_report_folder.folder_path, str(folder))
+        self.assertIsNotNone(store.load_warning)
         self.assertEqual(json.loads(self.local_path.read_text(encoding="utf-8")), original)
 
         store.apply_patch(SettingsPatch(user_designation="Operator"))
         saved = json.loads(self.local_path.read_text(encoding="utf-8"))
-        self.assertEqual(saved["activity_mailbox"], {"enabled": True, "folder_path": str(folder)})
+        self.assertEqual(
+            saved["activity_report_folder"],
+            {"enabled": True, "folder_path": str(folder), "client_id": "grok-bot"},
+        )
         self.assertEqual(saved["microsoft_todo"], {"reminder_list_id": "personal"})
 
     def test_agent_display_name_is_local_only_and_validated(self) -> None:

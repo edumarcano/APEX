@@ -18,13 +18,13 @@ from pydantic import ValidationError
 from core.activity.models import ActivitySubmissionRequest
 from core.activity.service import ActivityService
 from core.activity.store import ActivityConflictError, ActivityStoreError, _MAX_REPORT_BYTES
-from core.settings.models import ActivityMailboxSettings
+from core.settings.models import ActivityReportFolderSettings
 
 _LOGGER = logging.getLogger(__name__)
 _MAX_DIAGNOSTIC_FILES = 3
 _MAX_DIAGNOSTIC_FILENAME = 64
-_mailbox: "ActivityMailbox | None" = None
-MailboxState = Literal[
+_report_folder: "ActivityReportFolder | None" = None
+ReportFolderState = Literal[
     "disabled",
     "demo_mode",
     "not_configured",
@@ -35,9 +35,9 @@ MailboxState = Literal[
 
 
 @dataclass(frozen=True, slots=True)
-class MailboxStatus:
+class ReportFolderStatus:
     enabled: bool
-    state: MailboxState
+    state: ReportFolderState
     folder_available: bool | None
     last_scan_at: str | None
     last_imported_count: int
@@ -56,7 +56,7 @@ def _same_file_version(left: os.stat_result, right: os.stat_result) -> bool:
 
 
 def _safe_filename(name: str) -> str:
-    """Keep scan diagnostics short and safe to render in the Inbox."""
+    """Keep scan diagnostics short and safe to render in Reports."""
     rendered = "".join(
         char if char.isprintable() and char not in '\\/:*?"<>|' else "_"
         for char in name
@@ -85,9 +85,9 @@ def _failure_reason(error: Exception) -> str:
         return "unreadable"
     if isinstance(error, ValueError):
         return {
-            "mailbox_entry_not_regular": "not a regular file",
-            "mailbox_report_too_large": "oversized",
-            "mailbox_file_changed": "changing file",
+            "report_folder_entry_not_regular": "not a regular file",
+            "report_folder_report_too_large": "oversized",
+            "report_folder_file_changed": "changing file",
         }.get(str(error), "invalid report fields")
     if isinstance(error, ActivityStoreError):
         return "submission failed"
@@ -97,7 +97,7 @@ def _failure_reason(error: Exception) -> str:
 def _format_scan_failures(
     count: int, examples: list[tuple[str, str]]
 ) -> str:
-    summary = f"{count} mailbox file(s) failed; APEX will retry on the next scan."
+    summary = f"{count} report folder file(s) failed; APEX will retry on the next scan."
     if not examples:
         return summary
     details = "; ".join(
@@ -110,14 +110,14 @@ def _format_scan_failures(
     return f"{summary} First issues: {details}."
 
 
-class ActivityMailbox:
+class ActivityReportFolder:
     """Scans one configured directory and submits reports through ActivityService."""
 
     def __init__(
         self,
         activity_service: ActivityService,
         *,
-        settings_getter: Callable[[], ActivityMailboxSettings],
+        settings_getter: Callable[[], ActivityReportFolderSettings],
         partition_getter: Callable[[], str],
         demo_mode: bool = False,
     ) -> None:
@@ -125,16 +125,16 @@ class ActivityMailbox:
         self._settings_getter = settings_getter
         self._partition_getter = partition_getter
         self._demo_mode = demo_mode
-        self._scan_task: asyncio.Task[MailboxStatus] | None = None
+        self._scan_task: asyncio.Task[ReportFolderStatus] | None = None
         self._scan_task_key: tuple[bool, str, str, bool] | None = None
         self._status_lock = threading.Lock()
         self._last_scan_at: str | None = None
         self._last_settings_key: tuple[bool, str, str, bool] | None = None
         self._last_imported_count = 0
         self._last_error: str | None = None
-        self._last_state: MailboxState | None = None
+        self._last_state: ReportFolderState | None = None
 
-    async def scan_now(self) -> MailboxStatus:
+    async def scan_now(self) -> ReportFolderStatus:
         """Scan the current settings, sharing equivalent work and following changes."""
         settings = self._settings_getter()
         partition = self._partition_getter()
@@ -150,7 +150,7 @@ class ActivityMailbox:
 
         if task is None or task.done():
             task = asyncio.create_task(
-                self._run_scan(settings, partition), name="activity-mailbox-scan"
+                self._run_scan(settings, partition), name="activity-report-folder-scan"
             )
             self._scan_task = task
             self._scan_task_key = requested_key
@@ -178,7 +178,7 @@ class ActivityMailbox:
             return True
         return True
 
-    def status(self) -> MailboxStatus:
+    def status(self) -> ReportFolderStatus:
         """Return live folder/client readiness and the matching latest scan result."""
         settings = self._settings_getter()
         base = self._base_status(settings)
@@ -192,7 +192,7 @@ class ActivityMailbox:
         state = base.state
         if base.state == "ready" and last_state in ("scan_error", "folder_unavailable"):
             state = last_state
-        return MailboxStatus(
+        return ReportFolderStatus(
             enabled=base.enabled,
             state=state,
             folder_available=base.folder_available,
@@ -202,24 +202,24 @@ class ActivityMailbox:
         )
 
     async def _run_scan(
-        self, settings: ActivityMailboxSettings, partition: str
-    ) -> MailboxStatus:
+        self, settings: ActivityReportFolderSettings, partition: str
+    ) -> ReportFolderStatus:
         try:
             return await asyncio.to_thread(self._scan_sync, settings, partition)
         except Exception:
-            _LOGGER.warning("Activity mailbox scan failed; it will retry later")
+            _LOGGER.warning("Activity report folder scan failed; it will retry later")
             return await asyncio.to_thread(
                 self._failure_status,
                 settings,
                 partition,
-                "The mailbox scan failed; APEX will retry.",
+                "The report folder scan failed; APEX will retry.",
             )
 
     def _scan_sync(
         self,
-        settings: ActivityMailboxSettings | None = None,
+        settings: ActivityReportFolderSettings | None = None,
         partition: str | None = None,
-    ) -> MailboxStatus:
+    ) -> ReportFolderStatus:
         settings = settings or self._settings_getter()
         partition = self._partition_getter() if partition is None else partition
         readiness = self._base_status(settings)
@@ -238,7 +238,7 @@ class ActivityMailbox:
                     key=lambda entry: entry.name.casefold(),
                 )
         except OSError:
-            unavailable = MailboxStatus(
+            unavailable = ReportFolderStatus(
                 enabled=readiness.enabled,
                 state="folder_unavailable",
                 folder_available=False,
@@ -248,7 +248,7 @@ class ActivityMailbox:
             )
             return self._recorded_result(
                 settings, partition, "folder_unavailable", unavailable,
-                "The mailbox folder is unavailable; APEX will retry.", 0,
+                "The report folder is unavailable; APEX will retry.", 0,
             )
 
         for entry in entries:
@@ -281,7 +281,7 @@ class ActivityMailbox:
                 imported += 1
 
         last_error = _format_scan_failures(failures, failure_examples) if failures else None
-        result = MailboxStatus(
+        result = ReportFolderStatus(
             enabled=True,
             state="scan_error" if failures else "ready",
             folder_available=True,
@@ -298,16 +298,16 @@ class ActivityMailbox:
         path = Path(entry.path)
         before_path = entry.stat(follow_symlinks=False)
         if not stat.S_ISREG(before_path.st_mode):
-            raise ValueError("mailbox_entry_not_regular")
+            raise ValueError("report_folder_entry_not_regular")
         if before_path.st_size > _MAX_REPORT_BYTES:
-            raise ValueError("mailbox_report_too_large")
+            raise ValueError("report_folder_report_too_large")
 
         flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
         file_descriptor = os.open(path, flags)
         try:
             opened_before = os.fstat(file_descriptor)
             if not stat.S_ISREG(opened_before.st_mode) or not _same_file_version(opened_before, before_path):
-                raise ValueError("mailbox_file_changed")
+                raise ValueError("report_folder_file_changed")
             with os.fdopen(file_descriptor, "rb", closefd=False) as report_file:
                 raw = report_file.read(_MAX_REPORT_BYTES + 1)
             opened_after = os.fstat(file_descriptor)
@@ -322,14 +322,14 @@ class ActivityMailbox:
             or not _same_file_version(opened_before, opened_after)
             or not _same_file_version(opened_after, after_path)
         ):
-            raise ValueError("mailbox_file_changed")
+            raise ValueError("report_folder_file_changed")
         return ActivitySubmissionRequest.model_validate_json(raw)
 
-    def _base_status(self, settings: ActivityMailboxSettings) -> MailboxStatus:
+    def _base_status(self, settings: ActivityReportFolderSettings) -> ReportFolderStatus:
         folder_available: bool | None = None
 
         if not settings.enabled:
-            state: MailboxState = "disabled"
+            state: ReportFolderState = "disabled"
         elif self._demo_mode:
             state = "demo_mode"
         elif not settings.folder_path:
@@ -341,7 +341,7 @@ class ActivityMailbox:
                 folder_available = False
             state = "ready" if folder_available else "folder_unavailable"
 
-        return MailboxStatus(
+        return ReportFolderStatus(
             enabled=settings.enabled,
             state=state,
             folder_available=folder_available,
@@ -351,21 +351,21 @@ class ActivityMailbox:
         )
 
     def _failure_status(
-        self, settings: ActivityMailboxSettings, partition: str, error: str
-    ) -> MailboxStatus:
+        self, settings: ActivityReportFolderSettings, partition: str, error: str
+    ) -> ReportFolderStatus:
         base = self._base_status(settings)
         return self._recorded_result(settings, partition, "scan_error", base, error, 0)
 
     def _recorded_result(
         self,
-        settings: ActivityMailboxSettings,
+        settings: ActivityReportFolderSettings,
         partition: str,
-        state: MailboxState,
-        base: MailboxStatus,
+        state: ReportFolderState,
+        base: ReportFolderStatus,
         error: str | None,
         imported: int,
-    ) -> MailboxStatus:
-        result = MailboxStatus(
+    ) -> ReportFolderStatus:
+        result = ReportFolderStatus(
             enabled=base.enabled,
             state=state,
             folder_available=base.folder_available,
@@ -382,7 +382,7 @@ class ActivityMailbox:
         return result
 
     def _settings_key(
-        self, settings: ActivityMailboxSettings, partition: str | None = None
+        self, settings: ActivityReportFolderSettings, partition: str | None = None
     ) -> tuple[bool, str, str, bool]:
         return (
             settings.enabled,
@@ -392,27 +392,27 @@ class ActivityMailbox:
         )
 
 
-def set_activity_mailbox(mailbox: ActivityMailbox | None) -> None:
-    """Publish the lifespan-owned mailbox for local API routes."""
-    global _mailbox
-    _mailbox = mailbox
+def set_activity_report_folder(report_folder: ActivityReportFolder | None) -> None:
+    """Publish the lifespan-owned report folder for local API routes."""
+    global _report_folder
+    _report_folder = report_folder
 
 
-def get_activity_mailbox() -> ActivityMailbox:
-    if _mailbox is None:
-        raise RuntimeError("Activity mailbox is unavailable.")
-    return _mailbox
+def get_activity_report_folder() -> ActivityReportFolder:
+    if _report_folder is None:
+        raise RuntimeError("Activity report folder is unavailable.")
+    return _report_folder
 
 
-async def run_activity_mailbox_poller(
-    mailbox: ActivityMailbox,
+async def run_activity_report_folder_poller(
+    report_folder: ActivityReportFolder,
     stop_event: asyncio.Event,
     *,
     interval_seconds: float = 60.0,
 ) -> None:
     """Scan on startup and repeat without blocking the API event loop."""
     while not stop_event.is_set():
-        await mailbox.scan_now()
+        await report_folder.scan_now()
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
         except asyncio.TimeoutError:
