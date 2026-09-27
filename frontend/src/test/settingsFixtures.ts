@@ -50,9 +50,6 @@ export const BASE_SETTINGS: RuntimeSettings = {
       personal_context_enabled: false,
     },
   },
-  briefing: {
-    default_mode: 'flash',
-  },
   voice: {
     engine: 'google',
     gender: 'female',

@@ -186,6 +186,20 @@ class SettingsStoreTests(unittest.TestCase):
             {"ask_apex": {"obsolete_agent": "retired"}},
         )
 
+    def test_legacy_briefing_preferences_are_inert_and_not_mapped(self) -> None:
+        original = {
+            "briefing": {"default_mode": "structured", "model_id": "old/model"},
+            "ask_apex": {"selected_model": "gpt-5.6-luna"},
+        }
+        _write_json(self.local_path, original)
+
+        store = self._store()
+        settings = store.get_snapshot()
+
+        self.assertEqual(settings.ask_apex.selected_model, "gpt-5.6-luna")
+        self.assertFalse(hasattr(settings, "briefing"))
+        self.assertEqual(json.loads(self.local_path.read_text(encoding="utf-8")), original)
+
     def test_persistence_failure_keeps_the_published_snapshot_unchanged(self) -> None:
         store = self._store()
         before = store.get_snapshot()

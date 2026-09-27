@@ -161,7 +161,6 @@ class TelemetryApiTests(unittest.TestCase):
             mock.patch(
                 "core.api.routers.system.get_settings_store", return_value=self.store
             ),
-            mock.patch("core.api.briefing.get_settings_store", return_value=self.store),
             mock.patch(
                 "core.telemetry.service.get_settings_store", return_value=self.store
             ),
@@ -476,7 +475,7 @@ class TelemetryApiTests(unittest.TestCase):
             response = self.client.post(
                 "/api/v1/preflight",
                 json={
-                    "operation": "generate_briefing",
+                    "operation": "generate_briefing_session",
                     "involves_cloud": True,
                     "cloud_disclosure_acknowledged": False,
                 },
@@ -485,20 +484,35 @@ class TelemetryApiTests(unittest.TestCase):
         self.assertIn("network_trust_unknown", codes)
         self.assertNotIn("cloud_data_disclosure", codes)
 
-    def test_structured_preflight_never_classifies_as_cloud(self) -> None:
+    def test_session_preflight_uses_selected_local_model(self) -> None:
+        backend = mock.Mock()
+        backend.enabled = True
+        local_snapshot = {
+            "reachable": True,
+            "installed_models": ["qwen3:1.7b"],
+            "loaded_models": [
+                {"name": "qwen3:1.7b", "model": "qwen3:1.7b", "state": "loaded"}
+            ],
+        }
         with mock.patch(
             "core.telemetry.preflight.is_dev_mode", return_value=True
         ), mock.patch(
             "core.telemetry.preflight.config.DEMO_MODE", False
+        ), mock.patch(
+            "core.telemetry.preflight.get_local_runtime_backend", return_value=backend
+        ), mock.patch(
+            "core.telemetry.preflight.get_provider_snapshot", return_value=local_snapshot
+        ), mock.patch(
+            "core.telemetry.preflight.is_local_execution_active", return_value=False
         ), mock.patch.dict(
             "os.environ", {"OPENAI_API_KEY": ""}, clear=False
         ):
             response = self.client.post(
                 "/api/v1/preflight",
                 json={
-                    "operation": "generate_briefing",
-                    "briefing_mode": "structured",
-                    "involves_cloud": True,
+                    "operation": "generate_briefing_session",
+                    "model_id": "qwen3:1.7b",
+                    "involves_cloud": False,
                 },
             )
 
@@ -510,7 +524,7 @@ class TelemetryApiTests(unittest.TestCase):
         self.assertNotIn("missing_credentials", blocker_codes)
         self.assertTrue(payload["can_proceed"])
 
-    def test_focused_briefing_mode_drives_cloud_preflight(self) -> None:
+    def test_session_preflight_uses_selected_cloud_model(self) -> None:
         with mock.patch(
             "core.telemetry.preflight.is_dev_mode", return_value=True
         ), mock.patch(
@@ -521,9 +535,9 @@ class TelemetryApiTests(unittest.TestCase):
             response = self.client.post(
                 "/api/v1/preflight",
                 json={
-                    "operation": "generate_briefing",
-                    "briefing_mode": "focused",
-                    "involves_cloud": False,
+                    "operation": "generate_briefing_session",
+                    "model_id": "gpt-5.6-luna",
+                    "involves_cloud": True,
                 },
             )
 
@@ -600,7 +614,7 @@ class TelemetryApiTests(unittest.TestCase):
             )
             briefing = self.client.post(
                 "/api/v1/preflight",
-                json={"operation": "generate_briefing", "force": True},
+                json={"operation": "generate_briefing_session", "force": True},
             )
 
         reminder_codes = {item["code"] for item in reminders.json()["warnings"]}
@@ -719,7 +733,7 @@ class TelemetryApiTests(unittest.TestCase):
             response = self.client.post(
                 "/api/v1/preflight",
                 json={
-                    "operation": "generate_briefing",
+                    "operation": "generate_briefing_session",
                     "involves_cloud": True,
                     "acknowledged_warnings": [
                         "outside_configured_network",
@@ -757,119 +771,6 @@ class TelemetryApiTests(unittest.TestCase):
             response = evaluate_preflight(result)
         self.assertFalse(response.can_proceed)
         self.assertEqual(response.blockers[0].code, "invalid_input")
-
-
-class TriggerWithoutGateTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self._temp_dir = tempfile.TemporaryDirectory(prefix="apex_trigger_gate_")
-        self.addCleanup(self._temp_dir.cleanup)
-        self._dir = Path(self._temp_dir.name)
-        self.config_path = self._dir / "config.json"
-        self.local_path = self._dir / "config.local.json"
-        self.db_path = self._dir / "apex_memory.db"
-        _write_json(
-            self.config_path,
-            {
-                "features": {
-                    "weather": False,
-                    "sports": False,
-                    "news": False,
-                    "email": False,
-                    "calendar": False,
-                    "market": False,
-                },
-                "modules": {"football": False, "f1": False},
-                "ask_apex": {
-                    "enabled": True,
-                    "selected_model": "qwen3:1.7b",
-                    "cloud": {"last_model": "gpt-5.6-luna", "effort": "low"},
-                    "local": {"last_model": "qwen3:1.7b", "reasoning_mode": "none"},
-                },
-                "tts_settings": {
-                    "primary_tts": "pyttsx3",
-                    "voice_gender": "female",
-                },
-                "ollama": {"enabled": True},
-            },
-        )
-        reset_settings_store_for_tests()
-        reset_telemetry_service_for_tests()
-        self.store = RuntimeSettingsStore(
-            config_path=self.config_path,
-            local_config_path=self.local_path,
-        )
-        self._patches = [
-            mock.patch(
-                "core.api.routers.system.get_settings_store", return_value=self.store
-            ),
-            mock.patch("core.api.briefing.get_settings_store", return_value=self.store),
-            mock.patch(
-                "core.telemetry.service.get_settings_store", return_value=self.store
-            ),
-            mock.patch("core.speaker.get_settings_store", return_value=self.store),
-            mock.patch("core.database.DB_NAME", str(self.db_path)),
-            mock.patch("core.api.app.any_local_runtime_enabled", return_value=False),
-        ]
-        for patcher in self._patches:
-            patcher.start()
-            self.addCleanup(patcher.stop)
-        self.addCleanup(reset_settings_store_for_tests)
-        self.addCleanup(reset_telemetry_service_for_tests)
-
-        from core import database
-        from core.api import app, global_pipeline_state
-
-        database.initialize_db()
-        global_pipeline_state.reset()
-        self.client = TestClient(app, raise_server_exceptions=True)
-
-    def test_trigger_no_longer_blocked_by_scanner_gate(self) -> None:
-        from core.synthesis.models import SynthesisResult
-
-        def _immediate_thread(*_a: object, target=None, kwargs=None, **_k: object):
-            thread = mock.Mock()
-
-            def start() -> None:
-                if target is not None:
-                    target(**(kwargs or {}))
-
-            thread.start = start
-            thread.join = mock.Mock()
-            return thread
-
-        synthesis = SynthesisResult(
-            briefing="Gate removed briefing.",
-            insights=["Insight"],
-            provider="raw",
-            fallback_reason="configured_raw",
-        )
-
-        with mock.patch("core.api.briefing.DEMO_MODE", False), mock.patch(
-            "core.api.briefing.is_dev_mode", return_value=True
-        ), mock.patch("core.api.briefing.DEV_AI_SYNTHESIS", "structured"), mock.patch(
-            "core.api.briefing.DEV_TTS_PLAYBACK", "pyttsx3"
-        ), mock.patch(
-            "core.telemetry.collector.collect_reminders",
-            return_value=_result("reminders", "healthy"),
-        ), mock.patch(
-            "core.api.briefing.SynthesisRouter.synthesize_mode",
-            return_value=synthesis,
-        ), mock.patch("core.api.briefing.speaker.speak"), mock.patch(
-            "core.api.state.speaker.speak"
-        ), mock.patch(
-            "core.api.briefing.threading.Thread", side_effect=_immediate_thread
-        ), mock.patch(
-            "core.api.briefing.SynthesisRouter.prepare_mode", return_value=None
-        ), mock.patch(
-            "core.api.tts.scanner.is_system_throttled", return_value=False
-        ):
-            response = self.client.post("/api/v1/trigger")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["briefing"], "Gate removed briefing.")
-        self.assertIn("telemetry", response.json())
-        latest = self.client.get("/api/v1/telemetry/latest")
-        self.assertEqual(latest.status_code, 200)
 
 
 class PowerStateTests(unittest.TestCase):

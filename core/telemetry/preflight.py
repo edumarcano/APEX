@@ -24,7 +24,7 @@ from core.agent.catalog import (
     local_reasoning_mode_for_model,
     resolve_model_selection,
 )
-from core.agent.model_catalog import FOCUSED_BRIEFING_MODEL, DEFAULT_LOCAL_MODEL, get_model_profile
+from core.agent.model_catalog import get_model_profile
 from core.config import ENV_PATH, is_dev_mode
 from core.settings import get_settings_store
 from core.connectors.models import CONNECTOR_NAMES, EXTERNAL_CONNECTOR_NAMES
@@ -37,10 +37,6 @@ from core.telemetry.models import (
     PreflightResponse,
     PreflightWarning,
     PreflightWarningCode,
-)
-from core.synthesis.models import (
-    FLASH_BRIEFING_CONTEXT_WINDOW,
-    VALID_BRIEFING_MODES,
 )
 from core.telemetry.service import get_telemetry_service
 
@@ -81,9 +77,8 @@ _BLOCKER_MESSAGES: dict[PreflightBlockerCode, str] = {
     "model_load_failure": "The selected local model failed to load.",
 }
 
-_BRIEFING_MODES = VALID_BRIEFING_MODES
 _CONNECTOR_OPERATIONS = frozenset(
-    {"activate", "activate_with_briefing", "refresh_telemetry", "generate_briefing_session"}
+    {"activate", "refresh_telemetry", "generate_briefing_session"}
 )
 _DAILY_CONNECTORS = frozenset({"reminders", "calendar", "email", "weather"})
 
@@ -211,17 +206,6 @@ def _cloud_credential_blockers(
     if not involves_cloud:
         return []
 
-    briefing_ops = {"activate_with_briefing", "generate_briefing"}
-    if model_id == FOCUSED_BRIEFING_MODEL and operation in briefing_ops:
-        if os.getenv("OPENROUTER_API_KEY"):
-            return []
-        return [
-            _blocker(
-                "missing_credentials",
-                "OpenRouter API key is not configured for Focused briefing.",
-            )
-        ]
-
     profile = get_model_profile(model_id) if model_id else None
     if profile is not None and profile.runtime == "cloud":
         if agent_has_credentials("apex", profile):
@@ -327,36 +311,15 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         _LOGGER.exception("Preflight database failure")
         blockers.append(_blocker("database_failure"))
 
-    briefing_mode = (request.briefing_mode or "").strip() or None
-    if briefing_mode is not None and not (
-        request.operation == "generate_briefing_session"
-        and briefing_mode == "daily"
-    ) and briefing_mode not in _BRIEFING_MODES:
-        blockers.append(
-            _blocker("invalid_input", f"Unknown briefing mode: {briefing_mode!r}")
-        )
-
     model_id: str | None = request.model_id
-    if briefing_mode is not None and request.operation in {
-        "activate_with_briefing",
-        "generate_briefing",
-    }:
-        model_id = DEFAULT_LOCAL_MODEL if briefing_mode == "flash" else FOCUSED_BRIEFING_MODEL if briefing_mode == "focused" else None
-        involves_cloud = briefing_mode == "focused"
-    else:
-        if (
-            model_id is None
-            and request.operation == "cortex_query"
-            and settings is not None
-        ):
-            _mode, model_id, _effort = resolve_model_selection(settings.ask_apex)
-        if model_id is None and request.operation in {
-            "activate_with_briefing",
-            "generate_briefing",
-        }:
-            model_id = DEFAULT_LOCAL_MODEL
-        profile = get_model_profile(model_id) if model_id else None
-        involves_cloud = bool(request.involves_cloud or (profile and profile.runtime == "cloud"))
+    if (
+        model_id is None
+        and request.operation == "cortex_query"
+        and settings is not None
+    ):
+        _mode, model_id, _effort = resolve_model_selection(settings.ask_apex)
+    profile = get_model_profile(model_id) if model_id else None
+    involves_cloud = bool(request.involves_cloud or (profile and profile.runtime == "cloud"))
 
     profile = get_model_profile(model_id) if model_id else None
     if model_id is not None and profile is None:
@@ -368,17 +331,8 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
 
     cold_local_load = False
     if local_model and model_id is not None:
-        local_context_window = (
-            FLASH_BRIEFING_CONTEXT_WINDOW
-            if (
-                briefing_mode == "flash"
-                and request.operation in {"activate_with_briefing", "generate_briefing"}
-            )
-            else None
-        )
         local_blockers, cold_local_load = _evaluate_local_model_blockers(
             model_id,
-            context_window=local_context_window,
         )
         blockers.extend(local_blockers)
 
@@ -386,7 +340,9 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
 
     effective_connectors = _effective_connector_names(request, settings)
     forced_external_refresh = bool(
-        request.force and effective_connectors & set(EXTERNAL_CONNECTOR_NAMES)
+        request.operation == "refresh_telemetry"
+        and request.force
+        and effective_connectors & set(EXTERNAL_CONNECTOR_NAMES)
     )
     if (
         forced_external_refresh
@@ -399,13 +355,7 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
             "apex",
             native_effort=None,
             local_context_window=(
-                FLASH_BRIEFING_CONTEXT_WINDOW
-                if (
-                    briefing_mode == "flash"
-                    and request.operation
-                    in {"activate_with_briefing", "generate_briefing"}
-                )
-                else local_context_window_for_model(model_id)
+                local_context_window_for_model(model_id)
             ),
             local_reasoning_mode=local_reasoning_mode_for_model(model_id),
             model_id=model_id,

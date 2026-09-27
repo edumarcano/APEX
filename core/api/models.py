@@ -8,26 +8,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from core.agent.types import (
-    AgentKey,
-    ApexEffort,
-    CostEstimate,
-    LocalReasoningMode,
-    TokenUsage,
-    ToolProfileMetadata,
-)
+from core.agent.types import AgentKey, ApexEffort, LocalReasoningMode, ToolProfileMetadata
 from core.activity.models import ActivityReportContent
 from core.connectors.models import ConnectorFreshness, ConnectorHealthEntry, ConnectorStatus
-from core.voice_cues import BRIEFING_CUES, VoiceCueName
+from core.voice_cues import VoiceCueName
 from core.settings.models import ContextVaultScopeSettings
-
-
-DigestStatus = Literal[
-    "valid",
-    "legacy",
-    "malformed",
-    "zero_health",
-]
 
 
 class ActivityReportResponse(BaseModel):
@@ -72,218 +57,6 @@ class ActivityDispositionRequest(BaseModel):
 class ActivityContextReviewLinkResponse(BaseModel):
     finding_reference: str
     review: "ContextReviewResponse"
-
-
-class RuntimeMetadata(BaseModel):
-    run_id: str | None = Field(
-        default=None,
-        description="Correlation ID for the briefing pipeline run.",
-    )
-    dev_mode_active: bool = Field(
-        description="Whether unified DEV_MODE is active for this run.",
-    )
-    demo_mode_active: bool = Field(
-        description="Whether DEMO_MODE simulation controls are active for this run.",
-    )
-    synthesis_strategy: str = Field(
-        description="Active briefing synthesis backend (dev config or production default).",
-    )
-    briefing_mode: Literal["flash", "focused", "structured"] | None = Field(
-        default=None,
-        description="Explicit briefing mode used for this run.",
-    )
-    # Gemini remains accepted here so historical briefing ledger rows parse.
-    synthesis_provider: (
-        Literal[
-            "gemini", "ollama", "llama_cpp", "raw", "demo", "openai", "openrouter"
-        ]
-        | None
-    ) = None
-    synthesis_model_id: str | None = None
-    synthesis_resolved_model: str | None = None
-    synthesis_fallback_reason: str | None = None
-    synthesis_fallback_steps: list[str] = Field(default_factory=list)
-    synthesis_warmup_ms: int | None = None
-    synthesis_generation_ms: int | None = None
-    synthesis_provider_ms: float | None = Field(default=None, ge=0)
-    synthesis_usage: TokenUsage | None = None
-    synthesis_cost_estimate: CostEstimate | None = None
-    tts_strategy: Literal["google", "kokoro", "pyttsx3"] = Field(
-        description="Active text-to-speech backend (google, kokoro, or pyttsx3).",
-    )
-    active_tts_engine: Literal["google", "kokoro", "pyttsx3"] = Field(
-        description="Resolved TTS engine for this run (google, kokoro, or pyttsx3).",
-    )
-    system_load_throttled: bool = Field(
-        description="True when CPU or RAM utilization triggered a local-engine fallback.",
-    )
-    snapshot_id: str | None = Field(
-        default=None,
-        description="Telemetry snapshot identity used for this briefing generation.",
-    )
-    spoken: bool = Field(
-        default=False,
-        description="Whether automatic voice delivery was started for this run.",
-    )
-
-
-class TelemetryPayload(BaseModel):
-    weather: str = Field(description="Weather module telemetry string.")
-    sports: str = Field(description="Sports module telemetry string.")
-    news: str = Field(description="News module telemetry string.")
-    email: str = Field(description="Email module telemetry string.")
-    calendar: str = Field(description="Calendar module telemetry string.")
-    reminders: str = Field(description="Reminders module telemetry string.")
-
-
-class DigestPayload(BaseModel):
-    weather_archetype: str | None = Field(
-        default=None,
-        description="Normalized weather condition label for HUD display.",
-    )
-    unread_emails_count: int = Field(
-        default=0,
-        description="Count of unread primary inbox messages.",
-    )
-    upcoming_events_count: int = Field(
-        default=0,
-        description="Count of calendar events within the briefing window.",
-    )
-    f1_sprint_active: bool = Field(
-        default=False,
-        description="Whether an F1 sprint session is scheduled this week.",
-    )
-    reminders_pending_count: int = Field(
-        default=0,
-        description="Count of unread reminders awaiting briefing inclusion.",
-    )
-    sync_health_score: float | None = Field(
-        default=None,
-        description=(
-            "Equal-weight connector sync health score (0–100) derived from typed "
-            "connector statuses."
-        ),
-    )
-    connector_health: list[ConnectorHealthEntry] = Field(
-        default_factory=list,
-        description=(
-            "Per-connector health rows with status, freshness, reason code, and "
-            "observation time."
-        ),
-    )
-    confidence_score: float = Field(
-        description=(
-            "Compatibility alias for sync_health_score. Legacy consumers should "
-            "prefer sync_health_score when present."
-        ),
-    )
-    failed_connectors: list[str] = Field(
-        default_factory=list,
-        description=(
-            "Legacy unavailable-connector labels. F1 and football failures map to "
-            "'sports'."
-        ),
-    )
-    insights: list[str] = Field(
-        default_factory=list,
-        description="Cross-correlated action-oriented insight bullets for HUD display.",
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _alias_sync_health(cls, data: Any) -> Any:
-        if not isinstance(data, dict):
-            return data
-        payload = dict(data)
-        sync_score = payload.get("sync_health_score")
-        confidence = payload.get("confidence_score")
-        if isinstance(sync_score, (int, float)) and not isinstance(sync_score, bool):
-            canonical_score = float(sync_score)
-            payload["sync_health_score"] = canonical_score
-            payload["confidence_score"] = canonical_score
-        elif isinstance(confidence, (int, float)) and not isinstance(confidence, bool):
-            canonical_score = float(confidence)
-            payload["sync_health_score"] = canonical_score
-            payload["confidence_score"] = canonical_score
-        return payload
-
-
-class BriefingResponse(BaseModel):
-    status: str = Field(description="Run outcome label.")
-    briefing: str = Field(description="Synthesized briefing text.")
-    telemetry: TelemetryPayload = Field(
-        description="Per-module raw telemetry captured before synthesis.",
-    )
-    digest: DigestPayload = Field(
-        description="Structured telemetry data summaries and trust scoring metrics.",
-    )
-    metadata: RuntimeMetadata = Field(
-        description="Runtime routing metadata for synthesis and TTS.",
-    )
-
-
-def classify_digest_payload(
-    raw_digest: Any,
-    *,
-    digest_parse_error: str | None = None,
-) -> tuple[DigestPayload, DigestStatus]:
-    """
-    Parse a digest and classify history quality.
-
-    Distinguishes malformed rows from genuine zero-health and legacy
-    confidence-only payloads. Safe HUD defaults are always returned.
-    """
-    if digest_parse_error:
-        return DigestPayload(confidence_score=0.0), "malformed"
-
-    if not isinstance(raw_digest, dict):
-        return DigestPayload(confidence_score=0.0), "malformed"
-
-    if not raw_digest:
-        return DigestPayload(confidence_score=0.0), "malformed"
-
-    has_sync = "sync_health_score" in raw_digest or "connector_health" in raw_digest
-    has_confidence = "confidence_score" in raw_digest
-
-    try:
-        parsed = DigestPayload.model_validate(raw_digest)
-    except Exception:
-        return DigestPayload(confidence_score=0.0), "malformed"
-
-    score = parsed.sync_health_score
-    if score is None:
-        score = parsed.confidence_score
-
-    if has_sync and score == 0.0:
-        return parsed, "zero_health"
-    if has_sync:
-        return parsed, "valid"
-    if has_confidence:
-        if score == 0.0:
-            return parsed, "zero_health"
-        return parsed, "legacy"
-    return parsed, "legacy"
-
-
-def parse_digest_payload(raw_digest: Any) -> DigestPayload:
-    """Safely parse a digest sub-object with fallback defaults on validation failure."""
-    digest, _status = classify_digest_payload(raw_digest)
-    return digest
-
-
-def parse_runtime_metadata(raw_metadata: Any) -> RuntimeMetadata | None:
-    """Parse optional history metadata without breaking legacy rows."""
-    if not isinstance(raw_metadata, dict):
-        return None
-    try:
-        return RuntimeMetadata.model_validate(raw_metadata)
-    except Exception:
-        return None
-
-
-# Compatibility aliases used by characterization tests during the package split.
-_parse_digest_payload = parse_digest_payload
-_parse_runtime_metadata = parse_runtime_metadata
 
 
 class CreateReminderRequest(BaseModel):
@@ -1004,44 +777,6 @@ class ModelVerificationRequest(BaseModel):
     model_id: str = Field(min_length=1)
 
 
-class BriefingTargetStatus(BaseModel):
-    """Authoritative synthesis target and live availability for one Briefing mode."""
-
-    mode: Literal["flash", "focused", "structured"] = Field(
-        description="Selectable briefing mode identifier.",
-    )
-    label: str = Field(description="Display label for the briefing mode.")
-    description: str = Field(description="Short description of the synthesis route.")
-    model_id: str | None = Field(
-        default=None,
-        description="Fixed model identifier used for synthesis.",
-    )
-    model_display_name: str | None = Field(
-        default=None,
-        description="Human-readable model label for the fixed synthesis route.",
-    )
-    provider: str | None = Field(
-        default=None,
-        description="Provider or local runtime executing the briefing synthesis.",
-    )
-    runtime: Literal["cloud", "local", "none"] = Field(
-        default="none",
-        description="Execution boundary for this briefing mode.",
-    )
-    status: AgentAvailabilityStatus = Field(
-        default="available",
-        description="Live availability status for this briefing target.",
-    )
-    reason: str | None = Field(
-        default=None,
-        description="Diagnostic explanation when the briefing target is not available.",
-    )
-    pricing: AgentPricingMetadata | None = Field(
-        default=None,
-        description="Token pricing metadata for this briefing target.",
-    )
-
-
 class ToolPreflightRequest(BaseModel):
     """Inputs for the next-request tool/context token estimate."""
 
@@ -1057,7 +792,6 @@ class ToolPreflightRequest(BaseModel):
     prompt: str = ""
     conversation_id: str | None = None
     snapshot_id: str | None = None
-    briefing_id: int | None = Field(default=None, ge=1)
 
 
 class ToolProfileCreateRequest(BaseModel):
@@ -1134,51 +868,6 @@ class LocalLoadResponse(BaseModel):
         description="Outcome label for the verified local model load.",
     )
     model_id: str = Field(description="Local model confirmed resident by the runtime.")
-
-
-class BriefingHistoryRecord(BaseModel):
-    id: int
-    timestamp: str
-    briefing: str
-    digest: DigestPayload
-    metadata: RuntimeMetadata | None = None
-    digest_status: DigestStatus = Field(
-        default="valid",
-        description=(
-            "History quality classification: valid, legacy, malformed, "
-            "or zero_health."
-        ),
-    )
-
-
-class PipelineSynthesisState(BaseModel):
-    phase: Literal["idle", "loading", "ready", "generating", "fallback", "complete"] = "idle"
-    provider: Literal[
-        "ollama", "llama_cpp", "raw", "demo", "openai", "openrouter"
-    ] | None = None
-    model_id: str | None = None
-    loading: bool = False
-    fallback_reason: str | None = None
-
-
-class PipelineStatusSnapshot(BaseModel):
-    run_id: str | None = Field(
-        default=None,
-        description="Correlation ID for the active briefing pipeline run.",
-    )
-    step: int = Field(description="Monotonic pipeline step index for the active run.")
-    label: str = Field(description="Short stage label for dashboards and probes.")
-    timestamp: str = Field(description="UTC ISO-8601 timestamp of the last stage update.")
-    is_speaking: bool = Field(
-        description="True when the speaker subsystem lock is held or audio playback is active.",
-    )
-    active_tts_engine: Literal["google", "kokoro", "pyttsx3"] = Field(
-        description="Resolved TTS engine for the active run (google, kokoro, or pyttsx3).",
-    )
-    system_load_throttled: bool = Field(
-        description="True when hardware throttle thresholds forced a local-engine fallback.",
-    )
-    synthesis: PipelineSynthesisState | None = None
 
 
 class MarketDailyBar(BaseModel):
@@ -1262,38 +951,8 @@ class VoiceCueRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     cue: VoiceCueName
-    mode: Literal["flash", "focused", "structured"] | None = None
-
-    @model_validator(mode="after")
-    def _requires_mode_for_briefing_cues(self) -> "VoiceCueRequest":
-        if self.cue in BRIEFING_CUES and self.mode is None:
-            raise ValueError("A briefing mode is required for this voice cue.")
-        return self
 
 
 class VoiceCueResponse(BaseModel):
     status: Literal["spoken", "skipped"]
     resolved_engine: Literal["google", "kokoro", "pyttsx3"] | None = None
-
-
-class BriefingTriggerRequest(BaseModel):
-    mode: Literal["flash", "focused", "structured"] | None = Field(
-        default=None,
-        description="Optional briefing mode override; omitted requests use the saved default.",
-    )
-
-
-class BriefingGenerateRequest(BaseModel):
-    snapshot_id: str = Field(
-        ...,
-        min_length=1,
-        description="Process-current telemetry snapshot identity to synthesize from.",
-    )
-    mode: Literal["flash", "focused", "structured"] = Field(
-        ...,
-        description="Explicit briefing synthesis mode.",
-    )
-    cue_context: Literal["existing_snapshot", "after_refresh"] = Field(
-        default="existing_snapshot",
-        description="Controls whether generation follows an existing snapshot or a fresh telemetry collection.",
-    )

@@ -142,15 +142,86 @@ class CliTests(unittest.TestCase):
         })
         self.assertEqual(session.calls[1]["timeout"], (3.0, 600.0))
 
-    def test_briefing_and_action_reads_map_to_their_existing_routes(self) -> None:
-        briefing_code, briefing_output, _, briefing_session = self._run(
-            ["briefing", "--mode", "structured"],
-            [_Response(200, {"status": "ok", "briefing": "All clear."})],
+    def test_briefing_creates_and_polls_a_daily_session_without_presenting_it(self) -> None:
+        session_id = "6723fc04-ecaf-4350-894d-1538b9705c16"
+        created = {"id": session_id, "run_status": "queued"}
+        running = {"id": session_id, "run_status": "running", "artifact": None}
+        completed = {
+            "id": session_id,
+            "run_status": "completed",
+            "presented_at": None,
+            "configuration": {
+                "profile": {"id": "daily", "label": "Daily"},
+                "model": {"model_id": "saved/model"},
+            },
+            "artifact": {
+                "sections": [{"title": "Today", "items": [{
+                    "title": "Planning", "body": "The review begins at 10.",
+                }]}],
+                "limitations": ["Calendar coverage is partial."],
+            },
+        }
+        with mock.patch("apex.cli.time.sleep"):
+            code, output, _, session = self._run(
+                ["briefing"],
+                [
+                    _Response(200, {"settings": {"ask_apex": {"selected_model": "saved/model"}}}),
+                    _Response(202, created),
+                    _Response(200, running),
+                    _Response(200, completed),
+                ],
+            )
+        self.assertEqual(code, 0)
+        self.assertIn("Briefing: Daily", output)
+        self.assertIn("The review begins at 10.", output)
+        self.assertIn("Calendar coverage is partial.", output)
+        self.assertIn("Presented: no", output)
+        self.assertEqual(session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/settings")
+        self.assertEqual(session.calls[1]["url"], f"{cli.API_ROOT}/api/v1/briefing-sessions")
+        self.assertEqual(session.calls[1]["json"]["origin"], "cli")
+        self.assertEqual(session.calls[1]["json"]["profile_id"], "daily")
+        self.assertEqual(session.calls[1]["json"]["model_id"], "saved/model")
+        self.assertEqual(
+            [call["url"] for call in session.calls[2:]],
+            [
+                f"{cli.API_ROOT}/api/v1/briefing-sessions/{session_id}",
+                f"{cli.API_ROOT}/api/v1/briefing-sessions/{session_id}",
+            ],
         )
-        self.assertEqual(briefing_code, 0)
-        self.assertIn("All clear.", briefing_output)
-        self.assertEqual(briefing_session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/trigger")
-        self.assertEqual(briefing_session.calls[0]["json"], {"mode": "structured"})
+        self.assertTrue(all(call["method"] == "GET" for call in session.calls[2:]))
+
+    def test_briefing_profile_and_model_overrides_and_json_detail(self) -> None:
+        session_id = "6723fc04-ecaf-4350-894d-1538b9705c17"
+        detail = {
+            "id": session_id,
+            "run_status": "completed",
+            "artifact": {"sections": [], "limitations": []},
+            "configuration": {"profile": {"id": "catch_up"}, "model": {"model_id": "override/model"}},
+        }
+        code, output, _, session = self._run(
+            ["briefing", "--profile", "catch-up", "--model", "override/model", "--json"],
+            [_Response(202, {"id": session_id}), _Response(200, detail)],
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(output), detail)
+        self.assertEqual(len(session.calls), 2)
+        self.assertEqual(session.calls[0]["json"]["profile_id"], "catch_up")
+        self.assertEqual(session.calls[0]["json"]["model_id"], "override/model")
+
+    def test_briefing_retires_mode_flag_with_profile_migration_message(self) -> None:
+        for argument in ("--mode", "--mode=structured"):
+            with self.subTest(argument=argument):
+                errors = io.StringIO()
+                arguments = ["briefing", argument]
+                if argument == "--mode":
+                    arguments.append("structured")
+                with redirect_stderr(errors), self.assertRaises(SystemExit) as raised:
+                    cli.main(arguments)
+                self.assertEqual(raised.exception.code, 2)
+                self.assertIn("--mode was retired", errors.getvalue())
+                self.assertIn("--profile daily|catch-up|deep", errors.getvalue())
+
+    def test_action_reads_map_to_their_existing_routes(self) -> None:
 
         listed_code, _, _, listed_session = self._run(
             ["actions", "list"],

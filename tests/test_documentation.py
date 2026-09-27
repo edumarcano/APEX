@@ -6,8 +6,8 @@ from pathlib import Path
 from scripts.check_docs import (
     ROOT,
     check_agent_profiles,
-    check_api_contract_version,
-    check_default_briefing_provider,
+    check_api_settings_schema_version,
+    check_briefing_profiles,
     check_frontend_owner_names,
     check_links,
     check_schema_versions,
@@ -68,10 +68,10 @@ class DocumentationCheckerTests(unittest.TestCase):
         self.assertEqual(len(issues), 1)
         self.assertIn("should be 5", issues[0].reason)
 
-    def test_reports_prose_api_contract_version_mismatch(self) -> None:
+    def test_reports_prose_api_settings_schema_version_mismatch(self) -> None:
         source = Path("virtual-api.md")
-        issues = check_api_contract_version(
-            source, 13, {source: "The current contract version is `12`.\n"}
+        issues = check_api_settings_schema_version(
+            source, 13, {source: "The current settings schema version is `12`.\n"}
         )
 
         self.assertEqual(len(issues), 1)
@@ -133,21 +133,18 @@ class DocumentationCheckerTests(unittest.TestCase):
 
         self.assertEqual(duplicates, [("POST", "/api/v1/example", 3)])
 
-    def test_readme_briefing_check_rejects_ollama_and_missing_paths(self) -> None:
-        issues = check_default_briefing_provider(
+    def test_readme_briefing_check_requires_current_profiles(self) -> None:
+        issues = check_briefing_profiles(
             ROOT,
             readme_text=(
-                "### Produces briefings on user-defined terms\n"
-                "A briefing can use a local model through Ollama.\n\n"
                 "```mermaid\n"
-                'B --> M["OpenRouter · Ollama"]\n'
+                'B --> M["Daily"]\n'
                 "```\n"
             ),
         )
 
-        reasons = {issue.reason for issue in issues}
-        self.assertIn("obsolete Ollama briefing provider is documented", reasons)
-        self.assertIn("briefing diagram omits a supported synthesis path", reasons)
+        missing_profiles = {issue.target for issue in issues}
+        self.assertEqual(missing_profiles, {"Catch Up", "Deep"})
 
     def test_frontend_owner_names_reports_missing_cortex_runs(self) -> None:
         root = Path("virtual-frontend").resolve()

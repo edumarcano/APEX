@@ -4,7 +4,7 @@ APEX keeps portable defaults in `config.json`, editable non-secret Runtime Setti
 
 ## Runtime Settings
 
-Runtime Settings persist the editable parts of the resolved configuration. Schema version `23` includes Context vault selections and `ask_apex` model routing. `ask_apex` has one native identity plus model-based routing:
+Runtime Settings persist the editable parts of the resolved configuration. Schema version `24` includes Context vault selections and `ask_apex` model routing. `ask_apex` has one native identity plus model-based routing:
 
 ```json
 {
@@ -113,11 +113,13 @@ The fresh interactive default is OpenRouter DeepSeek V4 Flash with Low reasoning
 
 Only one local generation may run at a time. APEX checks runtime reachability, installed models, resource gates, and residency before a cold load. The provider-neutral unload control releases the current local model.
 
-## Briefing modes
+## Briefing profiles
 
-The Home Daily, Catch Up, and Deep actions use the selected Apex Agent model and its supported controls. They do not silently substitute another model. Deep uses the shared bounded briefing snapshot and a curated, read-only tool set selected for that run's evidence, subject to current Agent policy and connector/MCP permissions rather than the saved tool profile. It needs room for investigation plus synthesis and is rejected before session creation when model/run limits cannot provide that capacity or no eligible read tool is available. Its investigation is limited to eight offered tools, four calls, six saved result records, at most 1,024 generated tokens per turn (or the lower configured output limit), and at most 180 seconds or half of remaining run time; it may decide not to call a tool. DEMO mode uses deterministic Daily and Catch Up fixtures; Deep is unavailable there. A model context window that cannot fit a useful briefing prompt is rejected before generation. Catch Up uses only source history from completed briefings that were presented; incomplete source snapshots limit membership claims. When its comparable sources have no material changes, it records a no-change result without running a model. The `briefing.default_mode` setting remains for the legacy `/api/v1/trigger` and `/api/v1/briefings/generate` compatibility routes.
+Home and `apex briefing` use one saved-session engine with the selected Apex Agent model. The built-in profiles are Daily for orientation, Catch Up for source changes since the last presented complete session, and Deep for broader reasoning with a bounded read-only investigation. Daily is the CLI default; the HUD lets you choose a profile. Sessions retain the selected model and canonical artifact, and the HUD can continue them in the linked Cortex conversation. Briefings do not silently substitute a different model.
 
-Those legacy routes retain fixed behavior. Focused uses OpenRouter DeepSeek V4 Flash with High reasoning; Flash uses Gemma E2B through llama.cpp at 16K with reasoning disabled; Structured is deterministic. Their fallback order is Focused, Flash, then Structured.
+Deep uses a curated read-only tool set selected for the session's evidence, subject to current Agent policy, partition, connector, and MCP permissions. It requires room for investigation and synthesis and is rejected before session creation when model/run limits cannot provide that capacity or no eligible read tool is available. Investigation is limited to eight offered tools, four calls, six saved result records, at most 1,024 generated tokens per turn (or the lower configured output limit), and at most 180 seconds or half of remaining run time; the model may decide not to call a tool. Demo mode provides deterministic Daily and Catch Up fixtures without provider calls; Deep is unavailable there. A model context window that cannot fit a useful briefing prompt is rejected before generation. Catch Up uses source history from completed sessions that were actually presented; incomplete source snapshots limit membership claims. When comparable sources show no material changes, it records a no-change result without running a model.
+
+The retired Flash, Focused, and Structured briefing engine and routes are not supported. Existing `briefing` entries in `config.local.json` are ignored; APEX does not map their settings or model choices into profile or Apex Agent preferences. On database initialization, APEX drops the legacy SQLite `briefings` table in a transaction. Its rows are permanently removed. The migration leaves `briefing_sessions` and unrelated tables and records intact.
 
 ## External and managed router modes
 

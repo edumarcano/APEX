@@ -81,10 +81,10 @@ class SettingsApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/settings")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["schema_version"], 23)
+        self.assertEqual(payload["schema_version"], 24)
         self.assertTrue(payload["settings"]["features"]["market"])
         self.assertTrue(payload["settings"]["features"]["weather"])
-        self.assertEqual(payload["settings"]["briefing"]["default_mode"], "flash")
+        self.assertNotIn("briefing", payload["settings"])
         self.assertEqual(payload["settings"]["voice"]["mode"], "automatic")
         self.assertTrue(payload["settings"]["modules"]["f1"])
         ask_apex = payload["settings"]["ask_apex"]
@@ -171,30 +171,14 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(boot.status_code, 200)
         self.assertFalse(boot.json()["market_enabled"])
 
-    def test_focused_briefing_default_mode_persists_and_is_restored_on_boot(self) -> None:
-        response = self.client.patch(
-            "/api/v1/settings",
-            json={"briefing": {"default_mode": "focused"}},
-        )
+    def test_settings_expose_no_retired_briefing_mode_preference(self) -> None:
+        response = self.client.get("/api/v1/settings")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["settings"]["briefing"]["default_mode"], "focused")
+        self.assertNotIn("briefing", response.json()["settings"])
 
         boot = self.client.get("/api/v1/config")
         self.assertEqual(boot.status_code, 200)
-        self.assertEqual(boot.json()["briefing_default_mode"], "focused")
-
-        reloaded = self.client.get("/api/v1/settings")
-        self.assertEqual(reloaded.json()["settings"]["briefing"]["default_mode"], "focused")
-
-    def test_dev_flash_synthesis_reports_its_fixed_runtime_and_model(self) -> None:
-        with mock.patch("core.api.routers.system.is_dev_mode", return_value=True), mock.patch(
-            "core.api.routers.system.DEV_AI_SYNTHESIS", "flash"
-        ), mock.patch("core.api.routers.system.DEMO_MODE", False):
-            response = self.client.get("/api/v1/config")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["synthesis_strategy"], "local")
-        self.assertEqual(response.json()["synthesis_model_id"], "gemma-4-E2B-Q4_K_M.gguf")
+        self.assertNotIn("briefing_default_mode", boot.json())
 
     def test_partial_patch_persists_and_returns_resolved(self) -> None:
         response = self.client.patch(

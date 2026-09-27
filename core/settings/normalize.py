@@ -25,12 +25,10 @@ from core.config import is_dev_mode
 from core.settings.models import (
     ActivityMailboxSettings,
     VALID_AGENT_KEYS,
-    VALID_BRIEFING_MODES,
     VALID_VOICE_ENGINES,
     VALID_VOICE_GENDERS,
     VALID_VOICE_MODES,
     AgentSettings,
-    BriefingSettings,
     CalendarSettings,
     ContextVaultSettings,
     FeaturesSettings,
@@ -206,11 +204,9 @@ def normalize_layer(
             if tool_profiles:
                 normalized["tool_profiles"] = tool_profiles
         elif key == "briefing":
-            briefing = _normalize_briefing(
-                value, layer_name, issues
-            )
-            if briefing:
-                normalized["briefing"] = briefing
+            # Retired legacy preferences are deliberately inert; no mode or
+            # model preference is inferred from an old local configuration.
+            continue
         elif key == "tts_settings":
             tts = _normalize_tts_settings(value, layer_name, issues)
             if tts:
@@ -988,60 +984,6 @@ def _normalize_tts_settings(
     return result
 
 
-def _normalize_briefing(
-    value: Any,
-    layer_name: str,
-    errors: NormalizationIssues | None,
-) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    if not isinstance(value, dict):
-        if value is not None:
-            _record_error(errors, "briefing must be a JSON object")
-            _LOGGER.warning(
-                'Config key "briefing" in %s must be a JSON object.',
-                layer_name,
-            )
-        return result
-
-    for key, raw in value.items():
-        if key == "default_mode":
-            mode = _coerce_briefing_mode(
-                raw,
-                layer_name=layer_name,
-                errors=errors,
-            )
-            if mode is not None:
-                result["default_mode"] = mode
-        else:
-            _LOGGER.warning(
-                "Ignoring unknown briefing key %r in %s.", key, layer_name
-            )
-    return result
-
-
-def _coerce_briefing_mode(
-    raw: Any, *, layer_name: str, errors: NormalizationIssues | None
-) -> str | None:
-    if not isinstance(raw, str):
-        if raw is not None:
-            _record_error(errors, "briefing.default_mode must be a string")
-            _LOGGER.warning(
-                "briefing.default_mode in %s must be a string; ignoring.",
-                layer_name,
-            )
-        return None
-    normalized = raw.strip().lower()
-    if normalized in VALID_BRIEFING_MODES:
-        return normalized
-    _record_error(errors, "briefing.default_mode is not a valid mode")
-    _LOGGER.warning(
-        "briefing.default_mode=%r in %s is not a valid mode; ignoring.",
-        raw,
-        layer_name,
-    )
-    return None
-
-
 def _coerce_voice_mode(
     raw: Any, *, layer_name: str, errors: NormalizationIssues | None
 ) -> str | None:
@@ -1230,15 +1172,6 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         gender=gender,  # type: ignore[arg-type]
         mode=voice_mode,  # type: ignore[arg-type]
     )
-    briefing_raw = (
-        merged.get("briefing") if isinstance(merged.get("briefing"), dict) else {}
-    )
-    default_mode = briefing_raw.get("default_mode", "flash")
-    if default_mode not in VALID_BRIEFING_MODES:
-        default_mode = "flash"
-    briefing = BriefingSettings(
-        default_mode=default_mode,  # type: ignore[arg-type]
-    )
     mcp = McpSettings(
         enabled=bool(mcp_raw.get("enabled", False)),
         servers=McpServersSettings(
@@ -1330,7 +1263,6 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         context_vault=context_vault,
         ask_apex=agent_settings_snapshot,
         tool_profiles=tool_profiles,
-        briefing=briefing,
         voice=voice,
         mcp=mcp,
         llama_cpp=llama_cpp,
@@ -1356,9 +1288,6 @@ def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
             "local": snapshot.ask_apex.local.model_dump(),
         },
         "tool_profiles": snapshot.tool_profiles.model_dump(),
-        "briefing": {
-            "default_mode": snapshot.briefing.default_mode,
-        },
         "tts_settings": {
             "primary_tts": snapshot.voice.engine,
             "voice_gender": snapshot.voice.gender,
@@ -1455,12 +1384,6 @@ def patch_to_ondisk(patch: SettingsPatch) -> dict[str, Any]:
             }
         if tool_profiles:
             ondisk["tool_profiles"] = tool_profiles
-    if patch.briefing is not None:
-        briefing: dict[str, Any] = {}
-        if patch.briefing.default_mode is not None:
-            briefing["default_mode"] = patch.briefing.default_mode
-        if briefing:
-            ondisk["briefing"] = briefing
     if patch.voice is not None:
         tts: dict[str, Any] = {}
         if patch.voice.engine is not None:

@@ -1,9 +1,6 @@
-import type { BriefingMode } from '../types/settings'
 import type {
-  AgentAvailabilityStatus,
   AgentKey,
   AgentStability,
-  BriefingTargetStatus,
   CloudEffort,
   HostedTool,
   LocalRuntime,
@@ -120,27 +117,6 @@ export function stabilityLabel(stability: AgentStability | null | undefined): st
     return 'Preview'
   }
   return 'Experimental'
-}
-
-export interface BriefingModeAvailability {
-  status: AgentAvailabilityStatus
-  reason: string | null
-}
-
-export function resolveBriefingModeAvailability(
-  mode: BriefingMode,
-  targets?: BriefingTargetStatus[],
-): BriefingModeAvailability {
-  if (mode === 'structured') {
-    return { status: 'available', reason: null }
-  }
-  if (targets && targets.length > 0) {
-    const target = targets.find((entry) => entry.mode === mode)
-    if (target) {
-      return { status: target.status, reason: target.reason }
-    }
-  }
-  return { status: 'unknown', reason: 'Mode status unavailable' }
 }
 
 const REASONING_RANK: readonly CloudEffort[] = [

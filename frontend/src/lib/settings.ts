@@ -3,11 +3,9 @@ import type {
   AgentKey,
   AgentInitialSelection,
   CloudEffort,
-  SystemState,
   TtsEngine,
 } from '../types/telemetry'
 import type {
-  BriefingMode,
   CalendarSettings,
   ContextVaultSettings,
   FeaturesSettings,
@@ -106,11 +104,6 @@ const VALID_CLOUD_EFFORTS: readonly CloudEffort[] = [
   'xhigh',
   'max',
 ]
-const VALID_BRIEFING_MODES: readonly BriefingMode[] = [
-  'flash',
-  'focused',
-  'structured',
-]
 const VALID_TTS_ENGINES: readonly TtsEngine[] = ['google', 'kokoro', 'pyttsx3']
 const VALID_VOICE_GENDERS: readonly VoiceGender[] = ['male', 'female']
 const VALID_VOICE_MODES: readonly VoiceMode[] = ['off', 'manual', 'automatic']
@@ -141,13 +134,6 @@ function isLocalReasoningMode(value: unknown): value is LocalReasoningMode {
   return (
     typeof value === 'string' &&
     (VALID_LOCAL_REASONING_MODES as readonly string[]).includes(value)
-  )
-}
-
-function isBriefingMode(value: unknown): value is BriefingMode {
-  return (
-    typeof value === 'string' &&
-    (VALID_BRIEFING_MODES as readonly string[]).includes(value)
   )
 }
 
@@ -512,7 +498,6 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     !calendar ||
     !context_vault ||
     !isRecord(value.ask_apex) ||
-    !isRecord(value.briefing) ||
     !isRecord(value.voice)
   ) {
     return null
@@ -533,9 +518,6 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   const cloud = parseCloudSettings(value.ask_apex.cloud)
   const local = parseLocalSettings(value.ask_apex.local)
   if (!cloud || !local) {
-    return null
-  }
-  if (!isBriefingMode(value.briefing.default_mode)) {
     return null
   }
   if (
@@ -565,9 +547,6 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
       local,
     },
     ...(hasToolProfiles ? { tool_profiles } : {}),
-    briefing: {
-      default_mode: value.briefing.default_mode,
-    },
     voice: {
       engine: value.voice.engine,
       gender: value.voice.gender,
@@ -631,7 +610,6 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
           },
         }
       : {}),
-    briefing: { ...settings.briefing },
     voice: { ...settings.voice },
     mcp: {
       enabled: settings.mcp.enabled,
@@ -783,11 +761,6 @@ export function diffSettingsPatch(
     }
   }
 
-  const briefing = diffSection(baseline.briefing, draft.briefing)
-  if (briefing) {
-    patch.briefing = briefing
-  }
-
   const voice = diffSection(baseline.voice, draft.voice)
   if (voice) {
     patch.voice = voice
@@ -841,7 +814,6 @@ export function isSettingsPatchEmpty(patch: SettingsPatch): boolean {
     patch.calendar === undefined &&
     patch.context_vault === undefined &&
     patch.ask_apex === undefined &&
-    patch.briefing === undefined &&
     patch.voice === undefined &&
     patch.mcp === undefined &&
     patch.llama_cpp === undefined &&
@@ -855,18 +827,17 @@ export function settingsAreEqual(a: RuntimeSettings, b: RuntimeSettings): boolea
 }
 
 export function buildSettingsTimingRuntime(input: {
-  status: SystemState
-  pipelineStep: number | null
+  briefingRunning: boolean
+  briefingStep: number | null
   isSpeaking: boolean
   isCortexQuerying: boolean
 }): SettingsTimingRuntime {
-  const step = input.pipelineStep
-  const briefingActive =
-    input.status === 'loading' || (step !== null && step >= 1 && step <= 4)
+  const step = input.briefingStep
+  const briefingActive = input.briefingRunning
 
   return {
     briefingActive,
-    pipelineStep: step,
+    briefingStep: step,
     isSpeaking: input.isSpeaking,
     isCortexQuerying: input.isCortexQuerying,
   }
@@ -892,10 +863,6 @@ export function resolveEffectiveTiming(
     return runtime.isCortexQuerying ? 'Applies next response' : 'Active'
   }
 
-  if (group === 'briefing') {
-    return runtime.briefingActive ? 'Applies next briefing' : 'Active'
-  }
-
   if (group === 'mcp' || group === 'llama_cpp') {
     return 'Active'
   }
@@ -905,7 +872,7 @@ export function resolveEffectiveTiming(
     return 'Applies next delivery'
   }
 
-  const step = runtime.pipelineStep
+  const step = runtime.briefingStep
   if (step !== null && step >= 1 && step <= 3) {
     return 'Applies this delivery'
   }

@@ -1022,7 +1022,6 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
             "selected_tool_names": selected_tools,
             "tool_profile_id": tool_profile_id,
             "snapshot_id": payload.snapshot_id,
-            "briefing_id": payload.briefing_id,
             **_resolved_turn_metadata(payload),
         }
         existing = coordinator.admit(
@@ -1081,7 +1080,6 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
         "history_partition": partition,
         "tool_profile_id": tool_profile_id,
         "snapshot_id": payload.snapshot_id,
-        "briefing_id": payload.briefing_id,
     }
     if selected_tools is not None:
         execution_kwargs["selected_tool_names"] = selected_tools

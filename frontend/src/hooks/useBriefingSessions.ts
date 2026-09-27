@@ -56,6 +56,34 @@ function updateSummary(
   return [next, ...sessions.filter((session) => session.id !== next.id)]
 }
 
+function summaryFromDetail(detail: BriefingSessionDetail): BriefingSessionSummary {
+  return {
+    id: detail.id,
+    profile_id: detail.configuration.profile.id,
+    model_id: detail.configuration.model.model_id,
+    conversation_id: detail.conversation_id,
+    run_id: detail.run_id,
+    run_status: detail.run_status,
+    created_at: detail.created_at,
+    presented_at: detail.presented_at,
+  }
+}
+
+function isSameSummary(
+  current: BriefingSessionSummary | undefined,
+  next: BriefingSessionSummary,
+): boolean {
+  return current !== undefined &&
+    current.id === next.id &&
+    current.profile_id === next.profile_id &&
+    current.model_id === next.model_id &&
+    current.conversation_id === next.conversation_id &&
+    current.run_id === next.run_id &&
+    current.run_status === next.run_status &&
+    current.created_at === next.created_at &&
+    current.presented_at === next.presented_at
+}
+
 export type UseBriefingSessionsResult = HookState & {
   hasActiveSession: boolean
   refreshSessions: () => Promise<void>
@@ -120,16 +148,12 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
       const detail = await requestJson<BriefingSessionDetail>(API_ENDPOINTS.briefingSession(sessionId))
       if (loadSequence.current === sequence) {
         setActiveSession(detail)
-        setSessions((current) => updateSummary(current, {
-          id: detail.id,
-          profile_id: detail.configuration.profile.id,
-          model_id: detail.configuration.model.model_id,
-          conversation_id: detail.conversation_id,
-          run_id: detail.run_id,
-          run_status: detail.run_status,
-          created_at: detail.created_at,
-          presented_at: detail.presented_at,
-        }))
+        setSessions((current) => {
+          const next = summaryFromDetail(detail)
+          return isSameSummary(current.find((session) => session.id === next.id), next)
+            ? current
+            : updateSummary(current, next)
+        })
       }
       return detail
     } catch (cause) {
@@ -138,6 +162,22 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
       throw cause
     } finally {
       if (loadSequence.current === sequence) setIsLoadingSession(false)
+    }
+  }, [])
+
+  const refreshActiveSummary = useCallback(async (sessionId: string): Promise<void> => {
+    try {
+      const detail = await requestJson<BriefingSessionDetail>(API_ENDPOINTS.briefingSession(sessionId))
+      const next = summaryFromDetail(detail)
+      setSessions((current) => isSameSummary(
+        current.find((session) => session.id === sessionId),
+        next,
+      ) ? current : updateSummary(current, next))
+      if (selectedSessionRef.current === sessionId) {
+        setActiveSession((current) => current?.id === sessionId ? detail : current)
+      }
+    } catch {
+      // Keep the active summary and retry on the next poll without changing selection.
     }
   }, [])
 
@@ -237,6 +277,29 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
     const timeout = window.setTimeout(() => { void openSession(session.id).catch(() => undefined) }, 900)
     return () => window.clearTimeout(timeout)
   }, [activeSession, openSession])
+
+  const unselectedActiveSessionKey = sessions
+    .filter((session) => ACTIVE_STATUSES.has(session.run_status) && session.id !== selectedSessionId)
+    .map((session) => session.id)
+    .join('|')
+
+  useEffect(() => {
+    if (!unselectedActiveSessionKey) return undefined
+    const sessionIds = unselectedActiveSessionKey.split('|')
+    let cancelled = false
+    let timeout = 0
+    const poll = async (): Promise<void> => {
+      await Promise.all(sessionIds.map((sessionId) => refreshActiveSummary(sessionId)))
+      if (!cancelled) {
+        timeout = window.setTimeout(() => { void poll() }, 900)
+      }
+    }
+    timeout = window.setTimeout(() => { void poll() }, 900)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeout)
+    }
+  }, [refreshActiveSummary, unselectedActiveSessionKey])
 
   return {
     sessions,

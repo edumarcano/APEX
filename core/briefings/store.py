@@ -707,6 +707,20 @@ class BriefingSessionStore:
             ).fetchall()
         return [self._record(row) for row in rows]
 
+    def list_completed(self, partition: str, *, limit: int) -> list[BriefingSessionRecord]:
+        """Return the newest completed artifact sessions in one partition-scoped query."""
+        bounded_limit = max(1, min(5, limit))
+        with self._connection() as conn:
+            rows = conn.execute(
+                "SELECT s.*, r.status AS run_status, r.error_code AS run_error_code "
+                "FROM briefing_sessions s JOIN cortex_runs r ON r.id = s.run_id "
+                "WHERE s.partition = ? AND r.status = 'completed' "
+                "AND s.artifact_json IS NOT NULL "
+                "ORDER BY s.created_at DESC, s.rowid DESC LIMIT ?",
+                (partition, bounded_limit),
+            ).fetchall()
+        return [self._record(row) for row in rows]
+
     def get_many(
         self,
         session_ids: list[UUID],

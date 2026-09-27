@@ -107,9 +107,7 @@ class TelemetryRefreshRequest(BaseModel):
 
 PreflightOperation = Literal[
     "activate",
-    "activate_with_briefing",
     "refresh_telemetry",
-    "generate_briefing",
     "generate_briefing_session",
     "cortex_query",
 ]
@@ -151,7 +149,6 @@ class PreflightRequest(BaseModel):
 
     operation: PreflightOperation
     connectors: list[str] | None = None
-    briefing_mode: str | None = None
     model_id: str | None = None
     force: bool = False
     involves_cloud: bool = False

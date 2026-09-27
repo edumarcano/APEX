@@ -29,7 +29,6 @@ CloudProvider = Literal["openai", "openrouter", "gemini"]
 LocalRuntime = Literal["ollama", "llama_cpp"]
 AgentRuntime = Literal["cloud", "local"]
 CloudEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
-BriefingMode = Literal["flash", "focused", "structured"]
 VoiceEngine = Literal["google", "pyttsx3", "kokoro"]
 VoiceGender = Literal["male", "female"]
 VoiceMode = Literal["off", "manual", "automatic"]
@@ -41,14 +40,11 @@ VALID_LOCAL_REASONING_MODES: frozenset[str] = frozenset({"none", "focused"})
 VALID_CLOUD_EFFORTS: frozenset[str] = frozenset(
     {"none", "minimal", "low", "medium", "high", "xhigh", "max"}
 )
-VALID_BRIEFING_MODES: frozenset[str] = frozenset(
-    {"flash", "focused", "structured"}
-)
 VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 23
+SETTINGS_SCHEMA_VERSION: int = 24
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 LlamaCppServerState = Literal[
@@ -321,14 +317,6 @@ class ToolProfilesSettings(BaseModel):
     default_profile_by_runtime: dict[str, str] = Field(default_factory=dict)
 
 
-class BriefingSettings(BaseModel):
-    """Default briefing synthesis mode for generate and trigger."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    default_mode: BriefingMode = "flash"
-
-
 class VoiceSettings(BaseModel):
     """TTS engine, voice gender, and delivery mode."""
 
@@ -444,7 +432,6 @@ class RuntimeSettingsSnapshot(BaseModel):
     context_vault: ContextVaultSettings = Field(default_factory=ContextVaultSettings)
     ask_apex: AgentSettings = Field(default_factory=AgentSettings)
     tool_profiles: ToolProfilesSettings = Field(default_factory=ToolProfilesSettings)
-    briefing: BriefingSettings = Field(default_factory=BriefingSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
     llama_cpp: LlamaCppSettings = Field(default_factory=LlamaCppSettings)
@@ -602,14 +589,6 @@ class ToolProfilesPatch(BaseModel):
     default_profile_by_runtime: dict[str, str] | None = None
 
 
-class BriefingPatch(BaseModel):
-    """Partial briefing patch; unknown fields are rejected."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    default_mode: BriefingMode | None = None
-
-
 class VoicePatch(BaseModel):
     """Partial voice patch; unknown fields are rejected."""
 
@@ -714,7 +693,6 @@ class SettingsPatch(BaseModel):
     context_vault: ContextVaultPatch | None = None
     ask_apex: AgentSettingsPatch | None = None
     tool_profiles: ToolProfilesPatch | None = None
-    briefing: BriefingPatch | None = None
     voice: VoicePatch | None = None
     mcp: McpPatch | None = None
     llama_cpp: LlamaCppPatch | None = None

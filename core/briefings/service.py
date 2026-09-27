@@ -447,6 +447,10 @@ class BriefingSessionQueries:
             )
         ]
 
+    def completed_history(self, *, limit: int = 5) -> list[BriefingSessionRecord]:
+        """Read completed artifact history using the active account partition."""
+        return self.store.list_completed(self._partition_getter(), limit=limit)
+
     def get(self, session_id: UUID) -> BriefingSessionDetail:
         partition = self._partition_getter()
         record = self.store.get(session_id, partition)

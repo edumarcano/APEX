@@ -12,10 +12,6 @@ from core.agent.model_catalog import get_model_profile
 from core.agent.prompting import build_tool_access_instruction
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.providers.gemini import _parse_grounding
-from core.agent.sandbox_context import (
-    clear_masked_briefing_for_tests,
-    publish_masked_briefing,
-)
 from core.agent.types import (
     AgentMessage,
     AgentQueryRequest,
@@ -23,8 +19,9 @@ from core.agent.types import (
     ToolCall,
 )
 from core.api.cortex import _build_hud_context
-from core.api.briefing import _mask_dev_personal_results
-from core.connectors.models import ConnectorResult
+from core.connectors.models import ConnectorResult, utc_now_iso
+from core.telemetry.service import get_telemetry_service, reset_telemetry_service_for_tests
+from core.telemetry.store import build_snapshot_from_results
 from tests.support.agent_fixtures import (
     GEMINI_FLASH_MODEL,
     build_cloud_profile,
@@ -193,79 +190,32 @@ class ToolAccessInstructionTests(unittest.TestCase):
 
 
 class SandboxContextTests(unittest.TestCase):
-    def tearDown(self) -> None:
-        clear_masked_briefing_for_tests()
+    def setUp(self) -> None:
+        reset_telemetry_service_for_tests()
+        self.addCleanup(reset_telemetry_service_for_tests)
 
-    def test_only_process_current_masked_briefing_is_attached(self) -> None:
-        publish_masked_briefing(
-            snapshot_id="current-snapshot",
-            briefing="Two unread emails; personal details were masked.",
-            insights=["Review the masked summary."],
-        )
-
+    def test_sandbox_never_receives_current_telemetry_snapshot(self) -> None:
+        snapshot = build_snapshot_from_results({"weather": ConnectorResult(
+            name="weather", status="healthy", freshness="live", reason_code="ok",
+            observed_at=utc_now_iso(), display_text="72F sunny", data={},
+        )})
+        get_telemetry_service().store.set(snapshot)
         ask_apex = mock.Mock()
         ask_apex.sandbox_mode = True
         with mock.patch("core.api.cortex.get_settings_store") as store, mock.patch(
             "core.api.cortex.is_dev_mode", return_value=True
         ):
             store.return_value.get_snapshot.return_value.ask_apex = ask_apex
-            current = _build_hud_context(
+            context = _build_hud_context(
                 AgentQueryRequest(
                     prompt="Summarize",
                     agent="apex",
-                    snapshot_id="current-snapshot",
+                    snapshot_id=snapshot.snapshot_id,
                     history_partition="sandbox",
                 ),
                 agent_key="apex",
             )
-            stale = _build_hud_context(
-                AgentQueryRequest(
-                    prompt="Summarize",
-                    agent="apex",
-                    snapshot_id="stale-snapshot",
-                    history_partition="sandbox",
-                ),
-                agent_key="apex",
-            )
-
-        self.assertIn("CURRENT MASKED DEV BRIEFING", current)
-        self.assertNotIn("CURRENT TELEMETRY SNAPSHOT", current)
-        self.assertEqual(stale, "")
-
-    def test_dev_masking_removes_personal_text_but_preserves_counts(self) -> None:
-        results = {
-            "email": ConnectorResult(
-                name="email",
-                status="healthy",
-                data={"count": 2, "emails": [{"subject": "Secret subject"}]},
-                display_text="Secret subject",
-            ),
-            "calendar": ConnectorResult(
-                name="calendar",
-                status="healthy",
-                data={
-                    "total_count": 1,
-                    "events": [{"summary": "Private appointment"}],
-                },
-                display_text="Private appointment",
-            ),
-            "reminders": ConnectorResult(
-                name="reminders",
-                status="healthy",
-                data={"count": 1, "notes": ["Call Alice"]},
-                display_text="Call Alice",
-            ),
-        }
-
-        masked = _mask_dev_personal_results(results)
-        serialized = str(masked)
-
-        self.assertNotIn("Secret subject", serialized)
-        self.assertNotIn("Private appointment", serialized)
-        self.assertNotIn("Call Alice", serialized)
-        self.assertEqual(masked["email"].data["count"], 2)  # type: ignore[union-attr]
-        self.assertEqual(masked["calendar"].data["total_count"], 1)  # type: ignore[union-attr]
-        self.assertEqual(masked["reminders"].data["count"], 1)  # type: ignore[union-attr]
+        self.assertEqual(context, "")
 
     def test_disallowed_hallucinated_tool_call_is_not_executed(self) -> None:
         weather = CapabilityDescriptor(

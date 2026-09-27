@@ -42,6 +42,20 @@ class ExtractedRouterHttpTests(unittest.TestCase):
     def setUp(self) -> None:
         self.client = TestClient(app, raise_server_exceptions=True)
 
+    def test_retired_briefing_routes_are_absent_from_the_api_contract(self) -> None:
+        paths = app.openapi()["paths"]
+        for path in (
+            "/api/v1/status",
+            "/api/v1/trigger",
+            "/api/v1/briefings/generate",
+            "/api/v1/briefings/history",
+            "/api/v1/briefings/targets",
+        ):
+            with self.subTest(path=path):
+                self.assertNotIn(path, paths)
+        self.assertIn("/api/v1/briefing-sessions", paths)
+        self.assertIn("/api/v1/briefing-sessions/{session_id}", paths)
+
     def test_reminder_routes_delegate_and_preserve_payloads(self) -> None:
         service = mock.Mock()
         service.list.return_value.to_dict.return_value = {

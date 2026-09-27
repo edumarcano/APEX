@@ -105,7 +105,6 @@ interface UseToolPreflightOptions {
   prompt?: string
   conversationId?: string | null
   snapshotId?: string | null
-  briefingId?: number | null
   enabled?: boolean
 }
 
@@ -120,7 +119,6 @@ export function useToolPreflight({
   prompt = '',
   conversationId = null,
   snapshotId = null,
-  briefingId = null,
   enabled = true,
 }: UseToolPreflightOptions): {
   estimate: ToolPreflightEstimate | null
@@ -159,7 +157,6 @@ export function useToolPreflight({
           prompt,
           ...(conversationId ? { conversation_id: conversationId } : {}),
           ...(snapshotId ? { snapshot_id: snapshotId } : {}),
-          ...(briefingId != null ? { briefing_id: briefingId } : {}),
         }),
       })
         .then(async (response) => {
@@ -203,7 +200,6 @@ export function useToolPreflight({
     }
   }, [
     agent,
-    briefingId,
     contextWindow,
     conversationId,
     effort,

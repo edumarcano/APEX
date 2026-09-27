@@ -12,7 +12,7 @@ APEX started as a small, fun experiment: could I build something that gave me a 
 
 Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, sourced personal context, outside activity reports, and Apex Agent work into one place. It turns those signals into Home telemetry, concise briefings, and Agent queries while keeping the local machine, not a hosted account, at the center of the system.
 
-APEX has three workspaces: Home shows telemetry and briefings, Inbox holds reports from outside tools, and Cortex is where you interact directly with Apex Agent and review personal context. Telemetry means structured status collected from connected services; a briefing summarizes that status; and an Agent query is a request sent to the selected model through Apex Agent.
+APEX has three workspaces: Home shows telemetry and briefings, Inbox holds reports from outside tools, and Cortex is where you interact directly with Apex Agent and review personal context. Telemetry means structured status collected from connected services; a briefing is a saved, structured session built from that evidence; and an Agent query is a request sent to the selected model through Apex Agent.
 
 <p align="center">
   <img
@@ -32,9 +32,9 @@ APEX has three workspaces: Home shows telemetry and briefings, Inbox holds repor
 
 APEX collects enabled weather, calendar, inbox, news, sports, reminder, and market signals into typed telemetry. Each connector reports its own freshness and health, so missing data is visible rather than hidden inside generated prose.
 
-### Produces briefings on user-defined terms
+### Produces interactive briefings
 
-A briefing uses Flash, Focused, or Structured. Flash uses a fixed local Gemma E2B route for immediate orientation; Focused uses the fixed OpenRouter DeepSeek V4 Flash route with High reasoning; Structured renders facts without a model. Focused falls back through Flash and then Structured. All routes derive from one bounded fact snapshot, and a provider failure ends in a useful deterministic result instead of a blank screen.
+Home creates Daily, Catch Up, and Deep briefing sessions with the selected Apex Agent model. Each session saves a canonical artifact and evidence in the active local partition, and opens a linked Cortex conversation for follow-up. Catch Up compares current sources with the last presented complete session; Deep can investigate with a bounded set of read-only tools. The HUD never silently changes the selected model. Demo mode uses fixed Daily and Catch Up fixtures without contacting a provider.
 
 ### Operates the Apex Agent
 
@@ -66,16 +66,16 @@ Local tools can submit completed-work reports through the APEX CLI, JSON or Mark
 
 ### Keeps runtime control visible
 
-The HUD exposes connector health, CPU and memory use, active model state, briefing mode, voice delivery, preflight warnings, and machine-local settings. Activation, telemetry refresh, briefing generation, Agent requests, and speech are separate operations rather than one mandatory pipeline.
+The HUD exposes connector health, CPU and memory use, active model state, briefing profile and progress, voice delivery, preflight warnings, and machine-local settings. Activation, telemetry refresh, briefing sessions, Agent requests, and speech are separate operations rather than one mandatory pipeline.
 
 ## Engineering highlights
 
 - **Local-first:** FastAPI, the React HUD, SQLite, runtime settings, and the default Ollama endpoint stay on the machine and bind to loopback.
 - **Independent features:** Telemetry, briefing generation, Agent work, and voice delivery can fail independently instead of taking the whole HUD down.
-- **Safer model input:** Connectors produce structured results, and briefing models receive only selected facts marked as untrusted data.
-- **Three briefing modes:** Flash is the default local Gemma orientation, Focused is OpenRouter DeepSeek V4 Flash planning, and Structured is a model-free deterministic view.
+- **Safer model input:** Connectors produce typed telemetry, and briefing models receive only bounded evidence marked as untrusted data.
+- **One briefing engine:** Daily, Catch Up, and Deep are built-in profiles over the selected Apex Agent model and one saved-session workflow.
 - **One local model at a time:** APEX avoids hidden local-inference queues and keeps model loading visible.
-- **Local storage:** SQLite keeps briefing history, the reminder cache and offline queue, Cortex conversations and run records, external activity reports, personal-context sources and history, retrieval indexes, context reviews, and the durable action ledger. Reloading APEX restores the active conversation branch and its per-conversation Agent/tool preferences.
+- **Local storage:** SQLite keeps briefing sessions and artifacts, the reminder cache and offline queue, Cortex conversations and run records, external activity reports, personal-context sources and history, retrieval indexes, context reviews, and the durable action ledger. Reloading APEX restores the active conversation branch and its per-conversation Agent/tool preferences.
 - **Visible failures:** Readiness checks, connector health, stable errors, run IDs, and preflight warnings make degraded states easier to understand.
 - **Credential isolation:** The backend receives credentials; the static server and browser receive a restricted child environment.
 
@@ -86,11 +86,12 @@ flowchart LR
     L["launcher.py"] --> API["FastAPI · 127.0.0.1:8000"]
     L --> HUD["React HUD · 127.0.0.1:5500"]
     HUD --> T["Telemetry snapshots"]
-    HUD --> B["Briefing synthesis"]
+    HUD --> B["Briefing sessions"]
     HUD --> A["Agent queries"]
     HUD --> V["Voice delivery"]
     T --> C["Local and external connectors"]
-    B --> M["Focused/OpenRouter · Flash/llama.cpp · Structured Digest"]
+    B --> M["Daily · Catch Up · Deep profiles"]
+    M --> A
     A --> P["Native and approved MCP capabilities"]
     API --> DB["SQLite"]
 ```
@@ -126,7 +127,7 @@ cd ..
 uv run python launcher.py
 ```
 
-Demo mode bypasses live connectors and model calls, does not write briefing history, and uses the configured demo voice path. For the complete Windows setup, optional providers, manual launch commands, and troubleshooting, see [Getting Started](docs/getting-started.md).
+Demo mode bypasses live connectors and model calls, uses static Daily and Catch Up sessions, and uses the configured demo voice path. For the complete Windows setup, optional providers, manual launch commands, and troubleshooting, see [Getting Started](docs/getting-started.md).
 
 ## Use APEX without the HUD
 
@@ -136,7 +137,8 @@ When the backend is already running, the included CLI can inspect APEX, run one 
 uv run apex status
 uv run apex models
 uv run apex ask "What needs my attention?" --profile personal_ops
-uv run apex briefing --mode structured
+uv run apex briefing
+uv run apex briefing --profile catch-up --model gemini-3.7-flash
 uv run apex activity list
 uv run apex context list
 uv run apex context review list
@@ -150,14 +152,14 @@ The CLI talks only to APEX's loopback API at `127.0.0.1:8000`; it does not start
 
 APEX is local-first, not fully offline. Enabled connectors and selected cloud model or speech providers receive the data required for their operation. The API has no authentication and intentionally binds only to `127.0.0.1`; CORS is not an access-control boundary.
 
-Use Flash or Structured to avoid sending briefing data to a cloud model provider. Review [Privacy and Data Boundaries](docs/privacy.md) before enabling personal connectors or cloud processing.
+Select a local model in Runtime Settings to keep briefing prompts on the configured local inference endpoint. Cloud models receive the bounded evidence required for the selected profile. Review [Privacy and Data Boundaries](docs/privacy.md) before enabling personal connectors or cloud processing.
 
 ## Documentation
 
 | Document | Its one job |
 |---|---|
 | [Getting Started](docs/getting-started.md) | Install APEX, run a safe demo, launch the full system, and resolve common startup problems |
-| [Configuration](docs/configuration.md) | Configure modes, settings, credentials, connectors, models, speech, and MCP providers |
+| [Configuration](docs/configuration.md) | Configure settings, credentials, connectors, models, speech, and MCP providers |
 | [Architecture](docs/architecture.md) | Understand processes, runtime paths, state ownership, data boundaries, concurrency, and failure behavior |
 | [API](docs/api.md) | Use the public HTTP workflows and understand their behavioral contracts |
 | [CLI](docs/cli.md) | Use the running local backend from a terminal without duplicating backend logic |

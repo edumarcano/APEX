@@ -98,7 +98,6 @@ describe('settings response parsing', () => {
     ['local model', ['settings', 'ask_apex', 'local', 'last_model'], ''],
     ['local context window', ['settings', 'ask_apex', 'local', 'context_window'], 0],
     ['local reasoning mode', ['settings', 'ask_apex', 'local', 'reasoning_mode'], 'invalid'],
-    ['briefing mode', ['settings', 'briefing', 'default_mode'], 'invalid'],
     ['voice engine', ['settings', 'voice', 'engine'], 'invalid'],
     ['voice gender', ['settings', 'voice', 'gender'], 'invalid'],
     ['voice mode', ['settings', 'voice', 'mode'], 'invalid'],
@@ -146,7 +145,6 @@ describe('settings cloning and mutations', () => {
     expect(clone.ask_apex).not.toBe(BASE_SETTINGS.ask_apex)
     expect(clone.ask_apex.cloud).not.toBe(BASE_SETTINGS.ask_apex.cloud)
     expect(clone.ask_apex.local).not.toBe(BASE_SETTINGS.ask_apex.local)
-    expect(clone.briefing).not.toBe(BASE_SETTINGS.briefing)
     expect(clone.voice).not.toBe(BASE_SETTINGS.voice)
     expect(clone.mcp).not.toBe(BASE_SETTINGS.mcp)
     expect(clone.mcp.servers.github).not.toBe(BASE_SETTINGS.mcp.servers.github)
@@ -236,7 +234,6 @@ describe('settings cloning and mutations', () => {
     draft.features.market = false
     draft.ask_apex.selected_model = 'gemma-4-E2B-Q4_K_M.gguf'
     draft.ask_apex.local.context_window = 32768
-    draft.briefing.default_mode = 'flash'
     draft.voice.gender = 'male'
     draft.voice.mode = 'manual'
     draft.mcp.enabled = true
@@ -290,8 +287,8 @@ describe('settings cloning and mutations', () => {
 
   it('resolves effective timing for settings groups', () => {
     const runtime = buildSettingsTimingRuntime({
-      status: 'loading',
-      pipelineStep: 2,
+      briefingRunning: true,
+      briefingStep: 2,
       isSpeaking: false,
       isCortexQuerying: false,
     })

@@ -114,30 +114,8 @@ class HudContextTests(unittest.TestCase):
         self.addCleanup(reset_telemetry_service_for_tests)
 
     def test_absent_identifiers_inject_no_context(self) -> None:
-        with mock.patch(
-            "core.api.cortex.database.fetch_briefing_history"
-        ) as fetch_history:
-            context = _build_hud_context(
-                AgentQueryRequest(prompt="hello", history=[])
-            )
-            fetch_history.assert_not_called()
+        context = _build_hud_context(AgentQueryRequest(prompt="hello", history=[]))
         self.assertEqual(context, "")
-
-    def test_briefing_id_injects_selected_row(self) -> None:
-        with mock.patch(
-            "core.api.cortex.database.fetch_briefing_by_id",
-            return_value={
-                "id": 7,
-                "briefing": "Morning overview.",
-                "digest": {"insights": ["Clear skies", "Inbox quiet"]},
-            },
-        ):
-            context = _build_hud_context(
-                AgentQueryRequest(prompt="explain", history=[], briefing_id=7)
-            )
-        self.assertIn("Morning overview.", context)
-        self.assertIn("Clear skies", context)
-        self.assertIn("CURRENT HUD BRIEFING", context)
 
     def test_mismatched_snapshot_id_omits_snapshot_context(self) -> None:
         service = get_telemetry_service()
@@ -169,6 +147,22 @@ class HudContextTests(unittest.TestCase):
         )
         self.assertIn("72F sunny", context)
         self.assertIn(snapshot.snapshot_id, context)
+
+    def test_sandbox_partition_never_injects_current_telemetry_snapshot(self) -> None:
+        service = get_telemetry_service()
+        snapshot = build_snapshot_from_results(
+            {"weather": _result("weather", "72F sunny")}
+        )
+        service.store.set(snapshot)
+        context = _build_hud_context(
+            AgentQueryRequest(
+                prompt="weather?",
+                history=[],
+                snapshot_id=snapshot.snapshot_id,
+            ),
+            execution_partition="sandbox",
+        )
+        self.assertEqual(context, "")
 
     def test_snapshot_context_is_sanitized_bounded_and_marked_untrusted(self) -> None:
         service = get_telemetry_service()
@@ -312,13 +306,13 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
         self.assertEqual(skipped.json(), {"status": "skipped", "resolved_engine": None})
         manual_speak.assert_not_called()
 
-    def test_contextual_cue_reports_speech_lock_conflict_and_requires_mode(self) -> None:
+    def test_contextual_cue_reports_lock_conflict_and_rejects_retired_briefing_cue(self) -> None:
         with mock.patch(
             "core.api.voice.get_settings_store", return_value=self.store
         ), mock.patch("core.api.voice.speaker.try_speak", return_value=None):
             conflict = self.client.post(
                 "/api/v1/voice/cue",
-                json={"cue": "briefing_refresh", "mode": "focused"},
+                json={"cue": "activation_ready"},
             )
         self.assertEqual(conflict.status_code, 409)
 
@@ -334,11 +328,11 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
         self.assertEqual(refresh_failure.status_code, 200)
         self.assertEqual(refresh_failure.json()["status"], "spoken")
 
-        missing_mode = self.client.post(
+        retired_cue = self.client.post(
             "/api/v1/voice/cue",
             json={"cue": "briefing_refresh"},
         )
-        self.assertEqual(missing_mode.status_code, 422)
+        self.assertEqual(retired_cue.status_code, 422)
 
 
 class TrySpeakLockTests(unittest.TestCase):

@@ -82,6 +82,48 @@ describe('CortexToolCards action proposals', () => {
   })
 })
 
+describe('CortexToolCards briefing history', () => {
+  it('renders completed session metadata, canonical sections, and limitations', () => {
+    render(
+      <CortexToolCards
+        toolOutputs={[{
+          name: 'get_briefing_history',
+          status: 'ok',
+          duration_ms: 14,
+          output: {
+            limit_requested: 5,
+            briefings: [{
+              id: '5a5dcd39-04f1-4a2a-9fc4-50ef6ef36003',
+              profile: { id: 'daily', label: 'Daily' },
+              model_id: 'demo/daily-fixture',
+              created_at: '2026-06-08T08:15:00-04:00',
+              presented_at: '2026-06-08T08:16:00-04:00',
+              presentation_status: 'presented',
+              sections: [{
+                title: 'Today',
+                items: [{
+                  category: 'observation',
+                  title: 'Clear weather',
+                  body: 'Simulation City is clear at 72°F.',
+                }],
+              }],
+              limitations: ['news: partial coverage'],
+            }],
+          },
+        }]}
+      />,
+    )
+
+    expect(screen.getByText('Daily · Presented')).toBeInTheDocument()
+    expect(screen.getByText('Model · demo/daily-fixture')).toBeInTheDocument()
+    expect(screen.getByText('Today')).toBeInTheDocument()
+    expect(screen.getByText('Clear weather')).toBeInTheDocument()
+    expect(screen.getByText('Simulation City is clear at 72°F.')).toBeInTheDocument()
+    expect(screen.getByText('news: partial coverage')).toBeInTheDocument()
+    expect(screen.getByText(/Presented ·/)).toBeInTheDocument()
+  })
+})
+
 describe('CortexToolCards calendar presentation', () => {
   it('presents normalized all-day calendar events without shifting the date', () => {
     render(

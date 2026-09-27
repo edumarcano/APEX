@@ -14,8 +14,6 @@ from core.agent.providers.contract import ProviderTurnResult
 from core.agent.model_catalog import get_model_profile
 from core.agent.catalog import build_concrete_agent, resolve_effort
 from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
-from core.api.models import RuntimeMetadata
-from core.api.state import PipelineState
 from core.runtime_logging import bind_run_id_context, get_run_id, run_id_scope
 
 
@@ -25,18 +23,6 @@ class RunIdPropagationTests(unittest.TestCase):
         with run_id_scope("abc-123"):
             self.assertEqual(get_run_id(), "abc-123")
         self.assertIsNone(get_run_id())
-
-    def test_pipeline_state_exposes_run_id(self) -> None:
-        state = PipelineState()
-        self.assertIsNone(state.get_state())
-        state.begin_run("run-xyz")
-        state.update(1, "GATE")
-        snapshot = state.get_state()
-        assert snapshot is not None
-        self.assertEqual(snapshot["run_id"], "run-xyz")
-        self.assertEqual(snapshot["step"], 1)
-        state.reset()
-        self.assertIsNone(state.get_state())
 
     def test_run_id_filter_injects_bound_context(self) -> None:
         from core.runtime_logging import RunIdFilter
