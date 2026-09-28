@@ -380,6 +380,36 @@ class BriefingSessionApiTests(unittest.TestCase):
             second_ack.json()["presented_at"], first_ack.json()["presented_at"]
         )
 
+    def test_saved_session_list_excludes_archived_conversations_before_pagination(self) -> None:
+        oldest = self._completed_session()
+        middle = self._completed_session()
+        newest = self._completed_session()
+        self.conversations.patch(
+            newest.conversation_id, "production", {"archived": True}
+        )
+
+        first_page = self.client.get("/api/v1/briefing-sessions?limit=1")
+        second_page = self.client.get("/api/v1/briefing-sessions?limit=1&offset=1")
+        archived_detail = self.client.get(
+            f"/api/v1/briefing-sessions/{newest.id}"
+        )
+
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(second_page.status_code, 200)
+        self.assertEqual([row["id"] for row in first_page.json()], [str(middle.id)])
+        self.assertEqual([row["id"] for row in second_page.json()], [str(oldest.id)])
+        self.assertEqual(archived_detail.status_code, 200)
+        self.assertIn(
+            newest.id,
+            [record.id for record in self.queries.completed_history(limit=5)],
+        )
+
+        self.conversations.patch(
+            newest.conversation_id, "production", {"archived": False}
+        )
+        restored_page = self.client.get("/api/v1/briefing-sessions?limit=1")
+        self.assertEqual([row["id"] for row in restored_page.json()], [str(newest.id)])
+
     def test_profile_catalog_lists_builtins_with_availability(self) -> None:
         response = self.client.get("/api/v1/briefing-profiles")
 

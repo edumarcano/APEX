@@ -115,14 +115,19 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
   const [isLoadingLatestSession, setIsLoadingLatestSession] = useState(true)
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const sessionListSequence = useRef(0)
   const loadSequence = useRef(0)
   const latestLoadSequence = useRef(0)
   const generatingRef = useRef(false)
   const selectedSessionRef = useRef<string | null>(null)
+  const sessionsRef = useRef(sessions)
+  const visibleSessionIdsRef = useRef(new Set<string>())
+  const pendingAdmissionIdsRef = useRef(new Map<string, BriefingSessionSummary>())
   const evidenceLoadedRef = useRef(new Set<string>())
   const evidenceLoadingRef = useRef(new Set<string>())
   const idempotencyRef = useRef<{ fingerprint: string; key: string } | null>(null)
   selectedSessionRef.current = selectedSessionId
+  sessionsRef.current = sessions
 
   const refreshLatestSession = useCallback(async (
     summary?: BriefingSessionSummary | null,
@@ -159,16 +164,39 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
   }, [])
 
   const refreshSessions = useCallback(async (): Promise<void> => {
+    const sequence = ++sessionListSequence.current
     const latestSequenceAtStart = latestLoadSequence.current
     setIsLoadingSessions(true)
     try {
       const next = await requestJson<BriefingSessionSummary[]>(API_ENDPOINTS.briefingSessions({ limit: 50 }))
+      if (sessionListSequence.current !== sequence) return
       const listed = Array.isArray(next) ? next : []
-      setSessions((current) => {
-        const listedIds = new Set(listed.map((session) => session.id))
-        const admitted = current.filter((session) => ACTIVE_STATUSES.has(session.run_status) && !listedIds.has(session.id))
-        return [...admitted, ...listed]
-      })
+      const listedIds = new Set(listed.map((session) => session.id))
+      const pendingAdmissions = [...pendingAdmissionIdsRef.current.values()]
+      const admitted = pendingAdmissions.filter((session) =>
+        ACTIVE_STATUSES.has(session.run_status) && !listedIds.has(session.id),
+      )
+      pendingAdmissionIdsRef.current.clear()
+      const nextSessions = [...admitted, ...listed]
+      sessionsRef.current = nextSessions
+      setSessions(nextSessions)
+      visibleSessionIdsRef.current = new Set(nextSessions.map((session) => session.id))
+      const selectedId = selectedSessionRef.current
+      if (selectedId && !visibleSessionIdsRef.current.has(selectedId)) {
+        ++loadSequence.current
+        selectedSessionRef.current = null
+        setSelectedSessionId(null)
+        setActiveSession(null)
+        setIsLoadingSession(false)
+        setEvidenceById({})
+        setEvidenceLoadingIds([])
+        setEvidenceErrors({})
+        evidenceLoadedRef.current.clear()
+        evidenceLoadingRef.current.clear()
+      }
+      setActiveRunDetail((current) =>
+        current && visibleSessionIdsRef.current.has(current.id) ? current : null,
+      )
       await refreshLatestSession(listed[0] ?? null).catch(() => null)
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Saved briefing sessions are unavailable.'
@@ -178,7 +206,7 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
         setIsLoadingLatestSession(false)
       }
     } finally {
-      setIsLoadingSessions(false)
+      if (sessionListSequence.current === sequence) setIsLoadingSessions(false)
     }
   }, [refreshLatestSession])
 
@@ -197,7 +225,9 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
     setError(null)
     try {
       const detail = await requestJson<BriefingSessionDetail>(API_ENDPOINTS.briefingSession(sessionId))
-      if (loadSequence.current === sequence) {
+      if (loadSequence.current === sequence && (
+        visibleSessionIdsRef.current.has(sessionId) || pendingAdmissionIdsRef.current.has(sessionId)
+      )) {
         setActiveSession(detail)
         setActiveRunDetail((current) => {
           if (ACTIVE_STATUSES.has(detail.run_status)) return detail
@@ -205,9 +235,11 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
         })
         setSessions((current) => {
           const next = summaryFromDetail(detail)
-          return isSameSummary(current.find((session) => session.id === next.id), next)
+          const updated = isSameSummary(current.find((session) => session.id === next.id), next)
             ? current
             : updateSummary(current, next)
+          sessionsRef.current = updated
+          return updated
         })
       }
       return detail
@@ -223,11 +255,16 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
   const refreshActiveSummary = useCallback(async (sessionId: string): Promise<void> => {
     try {
       const detail = await requestJson<BriefingSessionDetail>(API_ENDPOINTS.briefingSession(sessionId))
+      if (!visibleSessionIdsRef.current.has(sessionId)) return
       const next = summaryFromDetail(detail)
-      setSessions((current) => isSameSummary(
-        current.find((session) => session.id === sessionId),
-        next,
-      ) ? current : updateSummary(current, next))
+      setSessions((current) => {
+        const updated = isSameSummary(
+          current.find((session) => session.id === sessionId),
+          next,
+        ) ? current : updateSummary(current, next)
+        sessionsRef.current = updated
+        return updated
+      })
       setActiveRunDetail((current) => {
         if (ACTIVE_STATUSES.has(detail.run_status)) return detail
         return current?.id === sessionId ? null : current
@@ -290,7 +327,13 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
         body: JSON.stringify(body),
       })
       idempotencyRef.current = null
-      setSessions((current) => updateSummary(current, summary))
+      pendingAdmissionIdsRef.current.set(summary.id, summary)
+      visibleSessionIdsRef.current.add(summary.id)
+      setSessions((current) => {
+        const updated = updateSummary(current, summary)
+        sessionsRef.current = updated
+        return updated
+      })
       void openSession(summary.id).catch(() => undefined)
       void refreshSessions()
       return summary
@@ -307,9 +350,13 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
   const markPresented = useCallback(async (sessionId: string): Promise<void> => {
     const detail = await requestJson<BriefingSessionDetail>(API_ENDPOINTS.briefingSessionPresented(sessionId), { method: 'POST' })
     setActiveSession((current) => current?.id === sessionId ? { ...current, presented_at: detail.presented_at } : current)
-    setSessions((current) => current.map((session) => session.id === sessionId
-      ? { ...session, presented_at: detail.presented_at }
-      : session))
+    setSessions((current) => {
+      const updated = current.map((session) => session.id === sessionId
+        ? { ...session, presented_at: detail.presented_at }
+        : session)
+      sessionsRef.current = updated
+      return updated
+    })
   }, [])
 
   const cancelSession = useCallback(async (sessionId: string): Promise<void> => {

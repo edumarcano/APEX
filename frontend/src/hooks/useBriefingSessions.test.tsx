@@ -153,6 +153,61 @@ describe('useBriefingSessions', () => {
     expect(requested).toContain(API_ENDPOINTS.briefingSessions({ limit: 1 }))
   })
 
+  it('clears a selected session and latest artifact when refresh no longer lists it', async () => {
+    let listed: BriefingSessionSummary[] = [summary]
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url === API_ENDPOINTS.briefingSessions({ limit: 50 })) return response(listed)
+      if (url === API_ENDPOINTS.briefingSessions({ limit: 1 })) return response(listed.slice(0, 1))
+      if (url === API_ENDPOINTS.briefingSession(sessionId)) return response(detail())
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const { result } = renderHook(() => useBriefingSessions())
+    await waitFor(() => expect(result.current.sessions).toHaveLength(1))
+    await act(async () => { await result.current.openSession(sessionId) })
+    expect(result.current.activeSession?.id).toBe(sessionId)
+
+    listed = []
+    await act(async () => { await result.current.refreshSessions() })
+
+    expect(result.current.sessions).toEqual([])
+    expect(result.current.selectedSessionId).toBeNull()
+    expect(result.current.activeSession).toBeNull()
+    expect(result.current.latestSession).toBeNull()
+  })
+
+  it('does not let an older list response reinsert a session hidden by a newer refresh', async () => {
+    let listed: BriefingSessionSummary[] = [summary]
+    let releaseOlderList!: (value: Response) => void
+    let holdNextList = false
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url === API_ENDPOINTS.briefingSessions({ limit: 50 })) {
+        if (holdNextList) {
+          holdNextList = false
+          return new Promise<Response>((resolve) => { releaseOlderList = resolve })
+        }
+        return response(listed)
+      }
+      if (url === API_ENDPOINTS.briefingSessions({ limit: 1 })) return response(listed.slice(0, 1))
+      if (url === API_ENDPOINTS.briefingSession(sessionId)) return response(detail())
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const { result } = renderHook(() => useBriefingSessions())
+    await waitFor(() => expect(result.current.sessions).toHaveLength(1))
+    holdNextList = true
+    let olderRefresh!: Promise<void>
+    act(() => { olderRefresh = result.current.refreshSessions() })
+    await waitFor(() => expect(releaseOlderList).toBeTypeOf('function'))
+
+    listed = []
+    await act(async () => { await result.current.refreshSessions() })
+    releaseOlderList(response([summary]))
+    await act(async () => { await olderRefresh })
+
+    expect(result.current.sessions).toEqual([])
+  })
+
   it('reports a failed latest-history check instead of leaving Repeat in a loading state', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input)
