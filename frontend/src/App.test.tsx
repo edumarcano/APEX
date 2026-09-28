@@ -1355,6 +1355,29 @@ describe('App Overview and Briefing states', () => {
     expect(posts.filter((path) => path.endsWith('/briefing-sessions'))).toHaveLength(0)
   })
 
+  it('refreshes saved sessions whenever returning to Briefing from Cortex', async () => {
+    let sessionListReads = 0
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = new URL(String(input))
+      if (url.pathname.endsWith('/briefing-sessions')) {
+        sessionListReads += 1
+        return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (url.pathname.endsWith('/cortex/conversations')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
+      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+    const user = userEvent.setup()
+    renderOverviewApp()
+    await selectWorkspace(user, 'Briefing')
+    await waitFor(() => expect(sessionListReads).toBeGreaterThanOrEqual(2))
+    const readsOnBriefingEntry = sessionListReads
+
+    await selectWorkspace(user, 'Cortex')
+    await selectWorkspace(user, 'Briefing')
+
+    await waitFor(() => expect(sessionListReads).toBeGreaterThan(readsOnBriefingEntry))
+  })
+
   it('opens Briefing setup from the Briefing tab without activation, even without a model', async () => {
     appMocks.activated = false
     appMocks.noModels = true

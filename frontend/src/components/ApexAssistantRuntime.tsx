@@ -1014,9 +1014,10 @@ function ApexAssistantMessage(): ReactNode {
     if (role === 'assistant' && isLast && !hasScrolledRef.current) {
       hasScrolledRef.current = true
       const target = messageRef.current
-      if (typeof target?.scrollIntoView === 'function') {
-        target.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
+      const viewport = target?.closest<HTMLElement>('[data-cortex-thread-viewport]')
+      if (!target || !viewport || viewport.scrollHeight <= viewport.clientHeight) return
+      const targetTop = target.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop
+      viewport.scrollTo({ behavior: 'smooth', top: targetTop })
     }
   }, [role, isLast])
 
@@ -1057,7 +1058,7 @@ export function ApexAssistantThread({ disabled = false, renderAgent, composer, l
   const presentation = useMemo(() => ({ renderAgent, composer }), [composer, renderAgent])
   const messageComponents = useMemo(() => ({ Message: ApexAssistantMessage }), [])
   return <ApexAssistantPresentationContext.Provider value={presentation}><ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">
-    <ThreadPrimitive.Viewport className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 scrollbar-thin" autoScroll={false}>
+    <ThreadPrimitive.Viewport data-cortex-thread-viewport="" className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 scrollbar-thin" autoScroll={false}>
       <ThreadPrimitive.Empty><div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-white/10 px-6 py-8 text-center"><p className="font-mono text-xs uppercase tracking-widest text-zinc-500">APEX is ready. Start a session with a focused question.</p><div className="mt-4 flex max-w-xl flex-wrap justify-center gap-2">{OPERATION_PROMPT_CHIPS.map((chip) => <ThreadPrimitive.Suggestion key={chip.label} prompt={chip.query} send={false} className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 transition-colors hover:border-[#0F4DB8]/50 hover:bg-[#0F4DB8]/15 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF]">{chip.label}</ThreadPrimitive.Suggestion>)}</div>{logoProps ? <div data-slot="cortex-chat-logo" className="mt-6 flex items-center justify-center filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]"><ApexLogo {...logoProps} className="size-40 sm:size-48" /></div> : null}</div></ThreadPrimitive.Empty>
       <ThreadPrimitive.Messages components={messageComponents} />
       {running ? (activeRunSlot ?? <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-[#D8B4FE]" aria-live="polite"><span className="inline-block size-2 animate-pulse rounded-full bg-[#C084FC]" aria-hidden />{composer?.activeAgentName ?? 'Agent'} working</div>) : null}
@@ -1123,7 +1124,7 @@ function ApexConversationRailItem(): ReactNode {
   </ThreadListItemPrimitive.Root>
 }
 
-export function ApexConversationRail({ className = 'hidden xl:block', disabled = false }: { className?: string; disabled?: boolean }): ReactNode {
+export function ApexConversationRail({ className = 'hidden xl:flex', disabled = false, compact = false }: { className?: string; disabled?: boolean; compact?: boolean }): ReactNode {
   const aui = useAui()
   const [archived, setArchived] = useState(false)
   const isLoading = useAuiState((state) => state.threads.isLoading)
@@ -1135,7 +1136,7 @@ export function ApexConversationRail({ className = 'hidden xl:block', disabled =
   const interactionDisabled = disabled || Boolean(context?.isTurnLocked)
   const threadListError = context?.threadListError ?? null
   const itemComponents = useMemo(() => ({ ThreadListItem: ApexConversationRailItem }), [])
-  return <aside className={`${className} w-56 shrink-0 border-r border-white/10 bg-black/15 p-3`} aria-label="Conversations"><div className="mb-3 flex items-center justify-between"><p className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">Conversations</p><ApexAssistantNewConversation disabled={interactionDisabled} /></div><div className="mb-2 flex gap-2"><button type="button" disabled={interactionDisabled} onClick={() => setArchived(false)} aria-pressed={!archived} className="text-[10px] text-zinc-400 hover:text-white disabled:opacity-40">Active</button><button type="button" disabled={interactionDisabled} onClick={() => setArchived(true)} aria-pressed={archived} className="text-[10px] text-zinc-400 hover:text-white disabled:opacity-40">Archived</button></div>{isLoading ? <p className="px-2 py-4 text-xs text-zinc-500" role="status">Loading conversations…</p> : threadListError ? <div className="space-y-2 px-2 py-4"><p className="text-xs text-red-300" role="alert">{threadListError}</p><button type="button" disabled={interactionDisabled} onClick={() => void (context?.reloadThreads() ?? aui.threads.reload())} className="text-[10px] text-[#7EB3FF] hover:text-white disabled:opacity-40">Retry</button></div> : (!archived && isDraftActive) || threadCount > 0 ? <div className="space-y-0.5">{!archived && isDraftActive ? <div data-active="true" className="group relative flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors bg-white/10 border-l-2 border-[#1F6FE5] text-white"><span className="min-w-0 flex-1 truncate text-left font-mono text-xs font-medium text-white">New conversation</span></div> : null}<ThreadListPrimitive.Root><ThreadListPrimitive.Items archived={archived} components={itemComponents} /></ThreadListPrimitive.Root></div> : <div className="space-y-2 px-2 py-4"><p className="text-xs text-zinc-500">No {archived ? 'archived' : 'active'} conversations.</p></div>}</aside>
+  return <aside className={`${className} flex min-h-0 ${compact ? 'max-h-[min(60vh,32rem)] w-full' : 'h-full w-full xl:w-56'} shrink-0 flex-col overflow-hidden border-r border-white/10 bg-black/15 p-3`} aria-label="Conversations"><div className="mb-3 flex shrink-0 items-center justify-between"><p className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">Conversations</p><ApexAssistantNewConversation disabled={interactionDisabled} /></div><div className="mb-2 flex shrink-0 gap-2"><button type="button" disabled={interactionDisabled} onClick={() => setArchived(false)} aria-pressed={!archived} className="text-[10px] text-zinc-400 hover:text-white disabled:opacity-40">Active</button><button type="button" disabled={interactionDisabled} onClick={() => setArchived(true)} aria-pressed={archived} className="text-[10px] text-zinc-400 hover:text-white disabled:opacity-40">Archived</button></div><div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">{isLoading ? <p className="px-2 py-4 text-xs text-zinc-500" role="status">Loading conversations…</p> : threadListError ? <div className="space-y-2 px-2 py-4"><p className="text-xs text-red-300" role="alert">{threadListError}</p><button type="button" disabled={interactionDisabled} onClick={() => void (context?.reloadThreads() ?? aui.threads.reload())} className="text-[10px] text-[#7EB3FF] hover:text-white disabled:opacity-40">Retry</button></div> : (!archived && isDraftActive) || threadCount > 0 ? <div className="space-y-0.5">{!archived && isDraftActive ? <div data-active="true" className="group relative flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors bg-white/10 border-l-2 border-[#1F6FE5] text-white"><span className="min-w-0 flex-1 truncate text-left font-mono text-xs font-medium text-white">New conversation</span></div> : null}<ThreadListPrimitive.Root><ThreadListPrimitive.Items archived={archived} components={itemComponents} /></ThreadListPrimitive.Root></div> : <div className="space-y-2 px-2 py-4"><p className="text-xs text-zinc-500">No {archived ? 'archived' : 'active'} conversations.</p></div>}</div></aside>
 }
 
 export function ApexAssistantNewConversation({ disabled = false }: { disabled?: boolean }): ReactNode {

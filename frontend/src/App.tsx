@@ -302,6 +302,14 @@ export default function App(): ReactElement {
     marketSymbols,
   )
   const dailySessions = useBriefingSessions()
+  const refreshBriefingSessions = dailySessions.refreshSessions
+  const previousBriefingWorkspaceOpenRef = useRef(false)
+  useEffect(() => {
+    if (briefingWorkspaceOpen && !previousBriefingWorkspaceOpenRef.current) {
+      void refreshBriefingSessions()
+    }
+    previousBriefingWorkspaceOpenRef.current = briefingWorkspaceOpen
+  }, [briefingWorkspaceOpen, refreshBriefingSessions])
   const currentSelectedSession = dailySessions.activeSession
   const selectedCompletedBriefing = currentSelectedSession && currentSelectedSession.id === dailySessions.selectedSessionId &&
     currentSelectedSession.run_status === 'completed' && currentSelectedSession.artifact

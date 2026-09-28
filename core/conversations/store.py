@@ -6,6 +6,7 @@ import json
 import sqlite3
 import threading
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 from uuid import UUID
@@ -17,6 +18,8 @@ from core.conversations.models import (
     ConversationMessage,
     ConversationSummary,
 )
+
+MAX_CONVERSATION_PURGE_BATCH_SIZE = 100
 
 
 class ConversationStoreError(RuntimeError):
@@ -50,6 +53,8 @@ def _parse_json(value: str | None) -> Any:
 
 class ConversationStore:
     """Owns only short SQLite transactions; model execution happens above it."""
+
+    _MAX_PURGE_BATCH_SIZE = MAX_CONVERSATION_PURGE_BATCH_SIZE
 
     def __init__(
         self,
@@ -346,7 +351,7 @@ class ConversationStore:
             return self._history(conn, conversation_id, summary.active_leaf_message_id, limit)
 
     def patch(self, conversation_id: UUID, partition: str, updates: dict[str, Any]) -> ConversationSummary:
-        current = self.get_summary(conversation_id, partition)
+        self.get_summary(conversation_id, partition)
         if "active_leaf_message_id" in updates and updates["active_leaf_message_id"] is not None:
             leaf = str(updates["active_leaf_message_id"])
             with self._connection() as conn:
@@ -362,19 +367,173 @@ class ConversationStore:
             values["selected_tool_names_json"] = _json(updates["selected_tool_names"]) if updates["selected_tool_names"] is not None else None
         if "active_leaf_message_id" in updates:
             values["active_leaf_message_id"] = str(updates["active_leaf_message_id"]) if updates["active_leaf_message_id"] else None
-        if "archived" in updates:
-            values["archived_at"] = utc_now_iso() if updates["archived"] else None
         if not values:
-            return current
+            if "archived" not in updates:
+                return self.get_summary(conversation_id, partition)
         values["updated_at"] = utc_now_iso()
-        columns = ", ".join(f"{key} = ?" for key in values)
         with self._connection() as conn, conn:
-            conn.execute(f"UPDATE conversations SET {columns} WHERE id = ? AND partition = ?", (*values.values(), str(conversation_id), partition))
+            assignments = [f"{key} = ?" for key in values]
+            parameters: list[Any] = list(values.values())
+            if "archived" in updates:
+                if updates["archived"]:
+                    # Preserve the original retention start when an already
+                    # archived conversation receives another Archive action.
+                    assignments.append("archived_at = COALESCE(archived_at, ?)")
+                    parameters.append(utc_now_iso())
+                else:
+                    assignments.append("archived_at = NULL")
+            conn.execute(
+                f"UPDATE conversations SET {', '.join(assignments)} WHERE id = ? AND partition = ?",
+                (*parameters, str(conversation_id), partition),
+            )
         return self.get_summary(conversation_id, partition)
+
+    @staticmethod
+    def _conversation_has_pending_turn(
+        conn: sqlite3.Connection, conversation_id: str
+    ) -> bool:
+        return conn.execute(
+            "SELECT 1 FROM conversation_messages WHERE conversation_id = ? "
+            "AND role = 'agent' AND status = 'pending' LIMIT 1",
+            (conversation_id,),
+        ).fetchone() is not None
+
+    @staticmethod
+    def _conversation_has_active_run(
+        conn: sqlite3.Connection, conversation_id: str
+    ) -> bool:
+        table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'cortex_runs'"
+        ).fetchone()
+        if table is None:
+            return False
+        return conn.execute(
+            "SELECT 1 FROM cortex_runs WHERE conversation_id = ? "
+            "AND status IN ('queued', 'running', 'cancelling') LIMIT 1",
+            (conversation_id,),
+        ).fetchone() is not None
+
+    def purge_expired_archived(
+        self,
+        *,
+        retention_days: int,
+        limit: int = _MAX_PURGE_BATCH_SIZE,
+        now: datetime | None = None,
+    ) -> int:
+        """Atomically purge one bounded batch of expired archived conversations."""
+        if (
+            isinstance(retention_days, bool)
+            or not isinstance(retention_days, int)
+            or retention_days < 14
+        ):
+            raise ValueError("Archived conversation retention must be at least 14 days.")
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            raise ValueError("Purge batch size must be a positive integer.")
+        batch_size = min(limit, self._MAX_PURGE_BATCH_SIZE)
+        current_time = now or datetime.now(timezone.utc)
+        if current_time.tzinfo is None:
+            raise ValueError("Purge time must be timezone-aware.")
+        cutoff = (
+            current_time.astimezone(timezone.utc) - timedelta(days=retention_days)
+        ).isoformat()
+
+        deleted = 0
+        with self._connection() as conn:
+            # Serialize with Archive/Restore and turn/run writes. Every candidate
+            # is rechecked and deleted before this transaction releases its lock.
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                has_run_table = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'cortex_runs'"
+                ).fetchone() is not None
+                if has_run_table:
+                    candidates = conn.execute(
+                        """
+                        SELECT c.id, c.partition
+                        FROM conversations c
+                        WHERE c.archived_at IS NOT NULL AND c.archived_at < ?
+                          AND NOT EXISTS (
+                              SELECT 1 FROM conversation_messages m
+                              WHERE m.conversation_id = c.id
+                                AND m.role = 'agent' AND m.status = 'pending'
+                          )
+                          AND NOT EXISTS (
+                              SELECT 1 FROM cortex_runs r
+                              WHERE r.conversation_id = c.id
+                                AND r.status IN ('queued', 'running', 'cancelling')
+                          )
+                        ORDER BY c.archived_at ASC, c.id ASC
+                        LIMIT ?
+                        """,
+                        (cutoff, batch_size),
+                    ).fetchall()
+                else:
+                    candidates = conn.execute(
+                        """
+                        SELECT c.id, c.partition
+                        FROM conversations c
+                        WHERE c.archived_at IS NOT NULL AND c.archived_at < ?
+                          AND NOT EXISTS (
+                              SELECT 1 FROM conversation_messages m
+                              WHERE m.conversation_id = c.id
+                                AND m.role = 'agent' AND m.status = 'pending'
+                          )
+                        ORDER BY c.archived_at ASC, c.id ASC
+                        LIMIT ?
+                        """,
+                        (cutoff, batch_size),
+                    ).fetchall()
+
+                for candidate in candidates:
+                    conversation_id, partition = str(candidate[0]), str(candidate[1])
+                    # Recheck the cutoff and busy state inside the same write
+                    # transaction, protecting against a concurrent restore or
+                    # renewed Archive timestamp.
+                    row = conn.execute(
+                        "SELECT archived_at FROM conversations WHERE id = ? AND partition = ?",
+                        (conversation_id, partition),
+                    ).fetchone()
+                    if row is None or row[0] is None or str(row[0]) >= cutoff:
+                        continue
+                    if self._conversation_has_pending_turn(conn, conversation_id):
+                        continue
+                    if self._conversation_has_active_run(conn, conversation_id):
+                        continue
+                    self._delete_archived_conversation(conn, conversation_id, partition)
+                    deleted += 1
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        return deleted
+
+    @staticmethod
+    def _delete_archived_conversation(
+        conn: sqlite3.Connection, conversation_id: str, partition: str
+    ) -> None:
+        conn.execute(
+            "DELETE FROM conversation_messages WHERE conversation_id = ?",
+            (conversation_id,),
+        )
+        # Retrieval owns a trigger in normal initialization. This guarded
+        # cleanup keeps older databases safe when retrieval was not initialized.
+        retrieval_table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'retrieval_items'"
+        ).fetchone()
+        if retrieval_table is not None:
+            conn.execute(
+                "DELETE FROM retrieval_items WHERE conversation_id = ?",
+                (conversation_id,),
+            )
+        conn.execute(
+            "DELETE FROM conversations WHERE id = ? AND partition = ?",
+            (conversation_id, partition),
+        )
 
     def delete(self, conversation_id: UUID, partition: str) -> None:
         """Permanently remove one archived conversation and its message tree."""
         with self._connection() as conn, conn:
+            conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
                 "SELECT archived_at FROM conversations WHERE id = ? AND partition = ?",
                 (str(conversation_id), partition),
@@ -382,32 +541,19 @@ class ConversationStore:
             if row is None:
                 raise ConversationNotFoundError("Conversation was not found.")
             if row[0] is None:
-                raise ConversationConflictError("Only archived conversations can be permanently deleted.")
-            pending = conn.execute(
-                "SELECT 1 FROM conversation_messages WHERE conversation_id = ? AND role = 'agent' AND status = 'pending' LIMIT 1",
-                (str(conversation_id),),
-            ).fetchone()
-            if pending is not None:
-                raise ConversationConflictError("A conversation with a pending turn cannot be deleted.")
-            conn.execute(
-                "DELETE FROM conversation_messages WHERE conversation_id = ?",
-                (str(conversation_id),),
-            )
-            # Retrieval owns a trigger in normal initialization. This guarded
-            # cleanup keeps the same transaction safe when an older database
-            # was initialized before the retrieval domain was introduced.
-            retrieval_table = conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'retrieval_items'"
-            ).fetchone()
-            if retrieval_table is not None:
-                conn.execute(
-                    "DELETE FROM retrieval_items WHERE conversation_id = ?",
-                    (str(conversation_id),),
+                raise ConversationConflictError(
+                    "Only archived conversations can be permanently deleted."
                 )
-            conn.execute(
-                "DELETE FROM conversations WHERE id = ? AND partition = ?",
-                (str(conversation_id), partition),
-            )
+            if self._conversation_has_pending_turn(conn, str(conversation_id)):
+                raise ConversationConflictError(
+                    "A conversation with a pending turn cannot be deleted."
+                )
+            if self._conversation_has_active_run(conn, str(conversation_id)):
+                raise ConversationConflictError(
+                    "A conversation with an active run cannot be deleted."
+                )
+            self._delete_archived_conversation(conn, str(conversation_id), partition)
+            conn.commit()
 
     def begin_turn(self, *, conversation_id: UUID, partition: str, user_id: UUID, agent_id: UUID, parent_id: UUID | None, prompt: str, agent: str, request_metadata: dict[str, Any], selected_tool_names: list[str] | None, tool_profile_id: str | None, history_limit: int) -> tuple[ConversationMessage, ConversationMessage, list[AgentMessage], bool]:
         now = utc_now_iso()

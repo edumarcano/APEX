@@ -701,7 +701,9 @@ class BriefingSessionStore:
             rows = conn.execute(
                 "SELECT s.*, r.status AS run_status, r.error_code AS run_error_code FROM briefing_sessions s "
                 "JOIN cortex_runs r ON r.id = s.run_id "
-                "WHERE s.partition = ? ORDER BY s.created_at DESC, s.rowid DESC "
+                "JOIN conversations c ON c.id = s.conversation_id AND c.partition = s.partition "
+                "WHERE s.partition = ? AND c.archived_at IS NULL "
+                "ORDER BY s.created_at DESC, s.rowid DESC "
                 "LIMIT ? OFFSET ?",
                 (partition, bounded_limit, bounded_offset),
             ).fetchall()

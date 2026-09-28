@@ -67,6 +67,32 @@ describe('CortexWorkspace', () => {
     expect(screen.getByText('Choose the model for Nova.')).toBeVisible()
   })
 
+  it('keeps conversation controls outside the independently scrollable list', () => {
+    renderWorkspace()
+    const rail = screen.getByRole('complementary', { name: 'Conversations' })
+    expect(rail).toHaveClass('hidden', 'xl:flex')
+    const scrollArea = rail.querySelector(':scope > .overflow-y-auto')
+    expect(scrollArea).toHaveClass('min-h-0', 'flex-1', 'overflow-y-auto')
+    expect(rail.querySelector('p')?.parentElement).not.toBe(scrollArea)
+    expect(within(rail).getByRole('button', { name: 'New conversation' }).parentElement?.parentElement).not.toBe(scrollArea)
+    expect(within(rail).getByRole('button', { name: 'Active' }).parentElement).not.toBe(scrollArea)
+    expect(within(rail).getByRole('button', { name: 'Archived' }).parentElement).not.toBe(scrollArea)
+  })
+
+  it('bounds the compact conversation rail while keeping it full width', async () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }))
+    const user = userEvent.setup()
+    renderWorkspace()
+    await user.click(screen.getByRole('button', { name: 'Conversations' }))
+    const rail = screen.getAllByRole('complementary', { name: 'Conversations' })[0]
+    expect(rail).toHaveClass('flex', 'max-h-[min(60vh,32rem)]', 'w-full')
+    expect(rail.querySelector(':scope > .overflow-y-auto')).toHaveClass('overflow-y-auto')
+  })
+
   it('discloses model/provider response evidence', async () => {
     const metadata: AgentQueryMetadata = { agent: { key: 'apex', version: null, provider: 'openrouter', configuredModel: cloudModel.model_id, resolvedModel: cloudModel.model_id, requestedEffort: 'low', resolvedEffort: 'low' }, usage: { inputTokens: 1, cachedInputTokens: null, reasoningTokens: null, outputTokens: 1, totalTokens: 2 }, timing: { totalMs: 10, providerMs: 8, apexToolMs: 0 }, cost: { tokenCost: 0, hostedToolCost: 0, totalCost: 0, currency: 'USD', pricingVersion: 'test', completeness: 'complete' }, citations: [], grounding: null, toolSelection: null }
     const user = userEvent.setup()

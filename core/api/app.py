@@ -32,6 +32,7 @@ from core.actions.microsoft_todo import (
 )
 from core.api.routers import activity, actions, cortex, briefings, market, mcp, microsoft_todo, reminders, system, telemetry, voice
 from core.config import (
+    CORTEX_CONVERSATIONS_ARCHIVED_RETENTION_DAYS,
     CORTEX_RUNS_MAX_CONCURRENT_RUNS,
     CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS,
     DEMO_MODE,
@@ -44,6 +45,7 @@ from core.agent.local_runtime.registry import any_local_runtime_enabled
 from core.agent.providers.llama_cpp_supervisor import get_llama_cpp_server_supervisor
 from core import database, speaker
 from core.conversations import ConversationService, ConversationStore, set_conversation_service
+from core.conversations.retention import purge_expired_archived_conversations
 from core.runs import CortexRunCoordinator, RunService, RunStore, set_run_coordinator, set_run_service
 from core.briefings.daily import generate_briefing_generation
 from core.briefings.runtime import resolve_briefing_configuration
@@ -129,6 +131,7 @@ async def _app_lifespan(_app: FastAPI):
     activity_report_folder_stop: asyncio.Event | None = None
     activity_report_folder_task: asyncio.Task[None] | None = None
     context_vault_runtime: ContextVaultRuntime | None = None
+    conversation_retention_stop: asyncio.Event | None = None
     llama_supervisor = get_llama_cpp_server_supervisor()
     lifecycle_error: BaseException | None = None
 
@@ -302,6 +305,41 @@ async def _app_lifespan(_app: FastAPI):
         )
         set_briefing_speech_service(briefing_speech_service)
         if not DEMO_MODE:
+            assert conversation_store is not None
+            conversation_retention_stop = asyncio.Event()
+
+            async def _run_conversation_retention() -> None:
+                while not conversation_retention_stop.is_set():
+                    try:
+                        deleted = await purge_expired_archived_conversations(
+                            conversation_store,
+                            retention_days=CORTEX_CONVERSATIONS_ARCHIVED_RETENTION_DAYS,
+                            stop_event=conversation_retention_stop,
+                        )
+                        if deleted:
+                            _LOGGER.info(
+                                "Purged %s expired archived Cortex conversations.", deleted
+                            )
+                    except Exception:
+                        # Retention is maintenance work; a failed sweep must not
+                        # prevent startup and will be retried after the interval.
+                        _LOGGER.exception(
+                            "Archived Cortex conversation retention sweep failed"
+                        )
+                    try:
+                        await asyncio.wait_for(
+                            conversation_retention_stop.wait(), timeout=24 * 60 * 60
+                        )
+                    except asyncio.TimeoutError:
+                        pass
+
+            startup_tasks.append(
+                asyncio.create_task(
+                    _run_conversation_retention(),
+                    name="cortex-conversation-retention",
+                )
+            )
+        if not DEMO_MODE:
             context_vault_runtime = ContextVaultRuntime(
                 knowledge=KnowledgeService(knowledge_store),
                 settings_getter=lambda: get_settings_store().get_snapshot().context_vault,
@@ -391,6 +429,8 @@ async def _app_lifespan(_app: FastAPI):
             idle_model_stop.set()
         if activity_report_folder_stop is not None:
             activity_report_folder_stop.set()
+        if conversation_retention_stop is not None:
+            conversation_retention_stop.set()
         if context_vault_runtime is not None:
             context_vault_runtime.request_stop()
         application_tasks = startup_tasks + (

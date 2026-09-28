@@ -309,11 +309,11 @@ Source inventories are bounded: reminders include at most 8 items in the selecte
 
 ### GET `/api/v1/briefing-sessions`
 
-Returns up to 100 newest session summaries from the active production or sandbox partition. `limit` defaults to 25 and accepts 1–100; `offset` defaults to 0. Summaries include run status and the first-presentation timestamp. Listing does not change presentation state. The detail endpoint is addressable by session ID when a caller already knows it, even if it is outside the current summary page.
+Returns up to 100 newest session summaries whose linked Cortex conversations are active in the current production or sandbox partition. Archived conversations are excluded before `limit` and `offset` are applied. `limit` defaults to 25 and accepts 1–100; `offset` defaults to 0. Summaries include run status and the first-presentation timestamp. Listing does not change presentation state. A session linked to an archived conversation remains addressable by ID until that conversation is permanently deleted.
 
-The Briefing UI's Repeat action reads the newest summary with `limit=1`, then loads its detail without changing the displayed selection. It repeats that saved profile, model, and reasoning configuration through a new session `POST`; the server gathers a fresh context snapshot, and the client does not replay the old evidence or context. Failed and CLI-origin sessions remain eligible when their saved configuration is currently supported.
+The Briefing UI's Repeat action reads the newest visible summary with `limit=1`, then loads its detail without changing the displayed selection. It repeats that saved profile, model, and reasoning configuration through a new session `POST`; the server gathers a fresh context snapshot, and the client does not replay the old evidence or context. Failed and CLI-origin sessions remain eligible when their saved configuration is currently supported.
 
-The read-only Apex Agent tool `get_briefing_history` uses the same active-partition boundary. Its `limit` is clamped to 1–5; one joined query filters for completed sessions with canonical artifacts before applying the bound. Each result includes the session ID, profile, selected model, creation and presentation times, presentation status, up to two concise canonical items, and up to four recorded limitations. Failed and incomplete sessions are omitted. The tool does not fetch full evidence or speech data.
+The read-only Apex Agent tool `get_briefing_history` uses the same active-partition boundary. Its `limit` is clamped to 1–5; one joined query filters for completed sessions with canonical artifacts before applying the bound. Archived sessions remain available to this history query until their conversations are deleted. Each result includes the session ID, profile, selected model, creation and presentation times, presentation status, up to two concise canonical items, and up to four recorded limitations. Failed and incomplete sessions are omitted. The tool does not fetch full evidence or speech data.
 
 ### GET `/api/v1/briefing-sessions/{session_id}`
 
@@ -567,11 +567,11 @@ Updates title, archive state, active branch, or saved Agent/tool-selection state
 
 Permanently deletes an archived conversation and its stored message tree. The
 conversation must belong to the current server-derived partition and must not
-have a pending turn. Active conversations cannot be deleted; archive them first.
+have a pending turn or active run. Active conversations cannot be deleted; archive them first.
 
 ### Cortex turns
 
-APEX owns Cortex conversation history in `apex_memory.db`. Conversations contain a tree of user and Agent messages, an active branch, Agent/tool selection state, timestamps, and archive state. HUD scratch threads remain browser-local until their first accepted turn; archived conversations can be permanently deleted through the archived-only DELETE route.
+APEX owns Cortex conversation history in `apex_memory.db`. Conversations contain a tree of user and Agent messages, an active branch, Agent/tool selection state, timestamps, and archive state. HUD scratch threads remain browser-local until their first accepted turn; archived conversations can be permanently deleted through the archived-only DELETE route. A background sweep also deletes archived conversations after the configured retention period, measured from when they were archived. Repeating Archive does not extend that period; restoring and later archiving starts a new period. A pending turn or active run postpones automatic deletion until a later sweep.
 
 `GET /api/v1/cortex/conversations` lists the current server-derived partition. `POST /api/v1/cortex/conversations` creates a `hud` or `cli` conversation. `GET` and `PATCH /api/v1/cortex/conversations/{conversation_id}` read or update title, archive state, active branch, and saved Agent/tool state.
 
