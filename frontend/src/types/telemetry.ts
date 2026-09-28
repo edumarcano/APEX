@@ -399,6 +399,7 @@ export interface MarketResponse {
 export interface ApexDataState {
   activeReminders: ActiveReminder[]
   reminderSourceState?: 'live' | 'stale' | 'unavailable'
+  remindersLoaded: boolean
   demoModeActive: boolean
   devModeActive: boolean
   defaultAgent?: AgentKey

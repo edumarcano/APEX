@@ -38,7 +38,7 @@ import { useMarketData } from './hooks/useMarketData'
 import { useMcpStatus } from './hooks/useMcpStatus'
 import { usePreflight } from './hooks/usePreflight'
 import { useSystemDiagnostics } from './hooks/useSystemDiagnostics'
-import { useTelemetrySnapshot } from './hooks/useTelemetrySnapshot'
+import { useTelemetrySnapshot, type RefreshAllOutcome } from './hooks/useTelemetrySnapshot'
 import { useToolCatalog } from './hooks/useToolCatalog'
 import { useToolPreflight } from './hooks/useToolPreflight'
 import { API_ENDPOINTS } from './lib/api'
@@ -194,6 +194,8 @@ export default function App(): ReactElement {
   const [hasCollectedTelemetry, setHasCollectedTelemetry] = useState(false)
   const [overviewState, setOverviewState] = useState<'center' | 'collecting' | 'ready' | 'error' | 'no-data'>('center')
   const [overviewError, setOverviewError] = useState<string | null>(null)
+  const [briefingTelemetryCollectionState, setBriefingTelemetryCollectionState] = useState<'idle' | 'collecting' | 'error' | 'no-data'>('idle')
+  const [briefingTelemetryCollectionError, setBriefingTelemetryCollectionError] = useState<string | null>(null)
   const [dailyConversationReady, setDailyConversationReady] = useState<string | null>(null)
   const [briefingSetupAutoOpen, setBriefingSetupAutoOpen] = useState(false)
   const completedDailyHistoryRef = useRef(new Set<string>())
@@ -256,6 +258,7 @@ export default function App(): ReactElement {
   const {
     activeReminders,
     reminderSourceState,
+    remindersLoaded,
     createReminder,
     demoModeActive,
     devModeActive,
@@ -819,7 +822,7 @@ export default function App(): ReactElement {
     }
   }, [])
 
-  const handleStartApex = useCallback(async (onActivated?: () => void): Promise<boolean> => {
+  const handleStartApex = useCallback(async (onActivated?: () => void, onOutcome?: (outcome: RefreshAllOutcome) => void): Promise<boolean> => {
     const resolution = await preflight.requestOperation('activate')
     if (resolution !== 'proceed') {
       return false
@@ -834,6 +837,7 @@ export default function App(): ReactElement {
       ? requestVoiceCue('activation_loading')
       : Promise.resolve()
     const [outcome] = await Promise.all([refreshPromise, initialCuePromise])
+    onOutcome?.(outcome)
     if (outcome.kind === 'success') {
       if (hasUsableTelemetry(outcome.snapshot)) {
         setHasCollectedTelemetry(true)
@@ -999,6 +1003,27 @@ export default function App(): ReactElement {
     selectHudPeer('overview')
     void handleStartApex()
   }, [handleStartApex, selectHudPeer])
+
+  const handleCollectBriefingTelemetry = useCallback((): void => {
+    setBriefingTelemetryCollectionError(null)
+    void handleStartApex(
+      () => setBriefingTelemetryCollectionState('collecting'),
+      (outcome) => {
+        if (outcome.kind === 'success') {
+          setBriefingTelemetryCollectionState(hasUsableTelemetry(outcome.snapshot) ? 'idle' : 'no-data')
+          setBriefingTelemetryCollectionError(null)
+        } else if (outcome.kind === 'failure' || outcome.kind === 'conflict') {
+          setBriefingTelemetryCollectionState('error')
+          setBriefingTelemetryCollectionError(outcome.error)
+        } else {
+          setBriefingTelemetryCollectionState('idle')
+          setBriefingTelemetryCollectionError(null)
+        }
+      },
+    ).then((started) => {
+      if (!started) setBriefingTelemetryCollectionState('idle')
+    })
+  }, [handleStartApex])
 
   const handleSelectWorkspace = useCallback((peer: WorkspacePeer): void => {
     navigateWorkspace(peer)
@@ -1562,6 +1587,7 @@ export default function App(): ReactElement {
       statusMessage: remindersStatusMessage,
       compactValue: remindersCompactValue,
       items: activeReminders,
+      loaded: remindersLoaded,
       sourceState: reminderSourceState ?? null,
       actionError: reminderActionError,
       refreshDisabled: isRefreshingAll || isReminderRefreshPending,
@@ -1714,6 +1740,13 @@ export default function App(): ReactElement {
               evidence: briefingEvidence,
               onMarkPresented: dailySessions.markPresented,
               onOpenConversation: (conversationId) => void openDailyConversation(conversationId),
+            }}
+            briefingTelemetry={{
+              hasUsableSnapshot: hasCollectedTelemetry,
+              state: briefingTelemetryCollectionState,
+              error: briefingTelemetryCollectionError,
+              disabled: preflight.isChecking || preflight.dialogOpen,
+              onCollect: handleCollectBriefingTelemetry,
             }}
           />
         ) : workspace === 'cortex' ? (

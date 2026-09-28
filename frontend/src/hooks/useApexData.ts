@@ -218,6 +218,7 @@ async function fetchReminderEnvelope(): Promise<ReminderEnvelope | null> {
 export function useApexData(): UseApexDataReturn {
   const [state, setState] = useState<ApexDataState>({
     activeReminders: [],
+    remindersLoaded: false,
     demoModeActive: false,
     devModeActive: false,
     marketEnabled: true,
@@ -234,6 +235,7 @@ export function useApexData(): UseApexDataReturn {
     setState((prev) => ({
       ...prev,
       activeReminders: records.map((record) => ({ ...record })),
+      remindersLoaded: true,
       ...(sourceState ? { reminderSourceState: sourceState } : {}),
     }))
   }, [])
@@ -477,6 +479,7 @@ export function useApexData(): UseApexDataReturn {
           ...(envelope ? {
             activeReminders: envelope.items.map((record) => ({ ...record })),
             reminderSourceState: envelope.source_state,
+            remindersLoaded: true,
           } : {}),
         }))
       } catch (error) {

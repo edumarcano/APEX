@@ -32,6 +32,7 @@ function telemetry(overrides: Partial<HudTelemetryData> = {}): HudTelemetryData 
     email: { ledState: 'live', statusMessage: null, compactValue: null, count: 0, items: [], refreshing: false },
     news: { ledState: 'live', statusMessage: null, compactValue: null, items: [], refreshing: false },
     reminders: {
+      loaded: true,
       ledState: 'live',
       statusMessage: null,
       compactValue: '',
@@ -63,6 +64,45 @@ function domainSections(rail: HTMLElement): Array<HTMLElement | null> {
 }
 
 describe('HudTelemetryRail', () => {
+  it('offers collection before a usable snapshot and keeps database reminders below it', async () => {
+    const user = userEvent.setup()
+    const data = telemetry({ reminders: { ...telemetry().reminders, loaded: true, items: [{ id: 'reminder', note: 'Check the briefing', source: 'local', sync_state: 'synced' }] } })
+    const onCollect = vi.fn()
+    render(<HudTelemetryRail data={data} hasUsableSnapshot={false} onCollect={onCollect} />)
+
+    const rail = screen.getByRole('complementary', { name: 'Current telemetry' })
+    expect(within(rail).getByRole('button', { name: 'Collect Telemetry' })).toBeEnabled()
+    expect(within(rail).queryByRole('heading', { name: 'Weather' })).not.toBeInTheDocument()
+    expect(within(rail).getByText('Check the briefing')).toBeInTheDocument()
+    await user.click(within(rail).getByRole('button', { name: 'Collect Telemetry' }))
+    expect(onCollect).toHaveBeenCalledOnce()
+  })
+
+  it('does not claim reminders are empty until the independent reminder load completes', () => {
+    const data = telemetry({ reminders: { ...telemetry().reminders, loaded: false } })
+    render(<HudTelemetryRail data={data} hasUsableSnapshot={false} onCollect={vi.fn()} />)
+
+    const rail = screen.getByRole('complementary', { name: 'Current telemetry' })
+    expect(within(rail).getByText('Loading reminders…')).toBeInTheDocument()
+    expect(within(rail).queryByText('No pending reminders')).not.toBeInTheDocument()
+  })
+
+  it('shows collection progress, error retry, and no-data retry states', () => {
+    const data = telemetry()
+    const onCollect = vi.fn()
+    const { rerender } = render(<HudTelemetryRail data={data} hasUsableSnapshot={false} collectionState="collecting" onCollect={onCollect} />)
+    expect(screen.getByText('Collecting telemetry…')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Collect Telemetry' })).not.toBeInTheDocument()
+
+    rerender(<HudTelemetryRail data={data} hasUsableSnapshot={false} collectionState="error" collectionError="Connector request failed" onCollect={onCollect} />)
+    expect(screen.getByRole('alert')).toHaveTextContent('Connector request failed')
+    expect(screen.getByRole('button', { name: 'Retry Telemetry' })).toBeInTheDocument()
+
+    rerender(<HudTelemetryRail data={data} hasUsableSnapshot={false} collectionState="no-data" onCollect={onCollect} />)
+    expect(screen.getByText('No telemetry sources are available yet.')).toHaveAttribute('role', 'status')
+    expect(screen.getByRole('button', { name: 'Retry Telemetry' })).toBeInTheDocument()
+  })
+
   it('renders every domain as a section of one shared panel rather than separate cards', () => {
     render(<HudTelemetryRail data={telemetry()} />)
 

@@ -2,6 +2,7 @@ import type { ReactElement } from 'react'
 
 import { useCompactLayout } from '../../hooks/useCompactLayout'
 import { HudIdentityMark, type HudIdentityProps } from './HudIdentity'
+import { TelemetryCollectionAction } from './TelemetryCollectionAction'
 import {
   EventsTelemetry,
   EmailTelemetry,
@@ -45,16 +46,11 @@ export function OverviewView({ identity, telemetry, state, error, onCollect, col
       <HudIdentityMark identity={identity} size={hasGrid ? 'overview' : 'large'} />
       {state === 'error' ? <div className="max-w-sm text-center" role="alert"><p className="font-mono text-sm text-rose-300">{error || 'I couldn’t collect telemetry just now.'}</p></div> : null}
       {state === 'no-data' ? <p className="font-mono text-sm text-zinc-400" role="status">No telemetry sources are available yet.</p> : null}
-      {state === 'center' || state === 'error' || state === 'no-data' ? <button
-        type="button"
-        onClick={onCollect}
+      {state === 'center' || state === 'error' || state === 'no-data' ? <TelemetryCollectionAction
+        onCollect={onCollect}
         disabled={collectDisabled}
-        className={`inline-flex items-center gap-2 rounded-lg border border-[#047857]/60 bg-[#047857]/25 px-4 py-2.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6EE7B7] shadow-[inset_0_1px_0_rgba(110,231,183,0.15)] transition-[border-color,background-color,box-shadow,color] duration-300 motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#10B981] ${collectDisabled
-          ? 'cursor-not-allowed opacity-40'
-          : 'hover:border-[#10B981]/80 hover:bg-[#047857]/40 hover:text-[#6EE7B7] hover:shadow-[0_0_12px_rgba(16,185,129,0.35)]'}`}
-      >
-        {state === 'error' || state === 'no-data' ? 'Retry Telemetry' : 'Collect Telemetry'}
-      </button> : null}
+        label={state === 'error' || state === 'no-data' ? 'Retry Telemetry' : 'Collect Telemetry'}
+      /> : null}
     </div>
     {hasGrid ? <RemindersTelemetry data={telemetry} variant="card" className={narrow} /> : null}
     {hasGrid ? <MarketTelemetry data={telemetry} variant="card" className={wide} /> : null}

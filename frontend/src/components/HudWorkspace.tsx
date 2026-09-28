@@ -8,6 +8,7 @@ import type { HudTelemetryData } from './overview/HudTelemetry'
 import type { ComponentProps } from 'react'
 import { StandbyActions } from './StandbyActions'
 import type { BriefingLayoutPhase, WorkspacePresentationView } from '../hooks/useWorkspaceView'
+import type { BriefingTelemetryCollectionState } from './overview/HudTelemetryRail'
 
 export type HudWorkspaceProps = {
   view: WorkspacePresentationView
@@ -19,6 +20,13 @@ export type HudWorkspaceProps = {
   overviewActions: ComponentProps<typeof StandbyActions>
   briefingControls: BriefingProfilePanelProps
   briefingConversation: BriefingViewConversation
+  briefingTelemetry: {
+    hasUsableSnapshot: boolean
+    state: BriefingTelemetryCollectionState
+    error: string | null
+    disabled: boolean
+    onCollect: () => void
+  }
 }
 
 /** Composes Overview and Briefing workspace presentations. */
@@ -42,6 +50,7 @@ export function HudWorkspace(props: HudWorkspaceProps): ReactElement {
         telemetry={props.telemetry}
         controls={props.briefingControls}
         conversation={props.briefingConversation}
+        telemetryCollection={props.briefingTelemetry}
       />
     )}
   </div>

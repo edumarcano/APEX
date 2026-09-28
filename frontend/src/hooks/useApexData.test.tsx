@@ -54,6 +54,26 @@ describe('useApexData reminder completion', () => {
     vi.unstubAllGlobals()
   })
 
+  it('keeps reminders in a loading state until the reminder source responds', async () => {
+    let resolveReminders!: (value: Response) => void
+    const remindersResponse = new Promise<Response>((resolve) => {
+      resolveReminders = resolve
+    })
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input)
+      if (url === API_ENDPOINTS.config) return Promise.resolve(response({}))
+      if (url === API_ENDPOINTS.reminders && init?.method !== 'POST') return remindersResponse
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    const { result } = renderHook(() => useApexData())
+    expect(result.current.remindersLoaded).toBe(false)
+
+    resolveReminders(response(envelope([])))
+    await waitFor(() => expect(result.current.remindersLoaded).toBe(true))
+    expect(result.current.activeReminders).toEqual([])
+  })
+
   it('submits completion while the optimistic update is queued and refreshes on success', async () => {
     let resolveCompletion!: (value: Response) => void
     const completionResponse = new Promise<Response>((resolve) => {

@@ -63,6 +63,7 @@ export type HudTelemetryData = {
     refreshing: boolean
   }
   reminders: {
+    loaded: boolean
     ledState: LedState
     statusMessage: string | null
     compactValue: string
@@ -292,7 +293,9 @@ export function RemindersTelemetry({ data, variant, className }: DomainProps): R
     )}
   >
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      {reminders.items.length === 0 ? (
+      {!reminders.loaded ? (
+        <p className="text-sm text-[color:var(--hud-muted-text)]" role="status">Loading reminders…</p>
+      ) : reminders.items.length === 0 ? (
         <div className="rounded-md border border-white/[0.06] bg-zinc-950/20 px-3 py-2">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">No pending reminders</p>
         </div>
