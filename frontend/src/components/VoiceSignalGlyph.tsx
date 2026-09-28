@@ -86,7 +86,7 @@ function resolveSignalState(
   }
 
   if (isTelemetryCollecting) {
-    return { label: 'Collecting data', tone: 'emerald', isActive: true }
+    return { label: 'Collecting telemetry', tone: 'emerald', isActive: true }
   }
 
   return { label: 'Ready', tone: 'standby', isActive: false }

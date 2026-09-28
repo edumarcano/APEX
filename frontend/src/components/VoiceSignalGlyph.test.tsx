@@ -84,7 +84,7 @@ describe('VoiceSignalGlyph', () => {
     const { rerender } = render(
       <VoiceSignalGlyph status="success" isSpeaking={false} activity="briefing_ready" isTelemetryCollecting />,
     )
-    expect(screen.getByText('Collecting data')).toBeVisible()
+    expect(screen.getByText('Collecting telemetry')).toBeVisible()
 
     rerender(<VoiceSignalGlyph status="success" isSpeaking={false} activity="briefing_ready" />)
     expect(screen.getByText('Briefing ready')).toBeVisible()
