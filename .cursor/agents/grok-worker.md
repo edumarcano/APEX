@@ -1,5 +1,5 @@
 ---
-name: implementation-worker
+name: grok-worker
 description: Use proactively for substantial implementation of an approved or reconciled plan, especially multi-file work requiring tests, debugging, and sustained tool use. Do not use for architecture decisions or read-only review.
 model: grok-4.7[effort=medium,fast=false]
 readonly: false

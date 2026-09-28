@@ -1,5 +1,5 @@
 ---
-name: codebase-explorer
+name: composer-explorer
 description: Use proactively for substantial codebase exploration, dependency tracing, implementation-path discovery, and repository reconciliation when the parent needs focused evidence without bloating its context.
 model: composer-2.5[fast=false]
 readonly: true

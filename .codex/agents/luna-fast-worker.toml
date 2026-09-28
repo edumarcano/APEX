@@ -1,4 +1,4 @@
-name = "luna-fast-implementer"
+name = "luna-fast-worker"
 description = "Use for faster substantial implementation of an approved or reconciled plan when lower latency is preferred, while the parent retains architecture and final review."
 model = "gpt-6-luna"
 model_reasoning_effort = "high"
