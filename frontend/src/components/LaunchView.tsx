@@ -31,9 +31,9 @@ export function LaunchView({
   settingsButtonRef: RefObject<HTMLButtonElement | null>
   mode: 'DEMO' | 'DEVELOPER' | null
 }): ReactElement {
-  return <section className="h-full min-h-0 w-full flex-1 flex-col items-center justify-center gap-6 flex" aria-label="Launch">
-    <div data-testid="launch-logo" className="scale-115 xl:scale-125 filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]">
-      <ApexLogo {...logoProps} className="hud-logo-mark h-48 w-auto sm:h-56 xl:h-64" />
+  return <section className="h-full min-h-0 w-full flex-1 flex-col items-center justify-center gap-8 flex" aria-label="Launch">
+    <div data-testid="launch-logo" className="filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]">
+      <ApexLogo {...logoProps} className="hud-logo-mark h-56 w-auto sm:h-64 xl:h-80" />
     </div>
     <h1 className="font-orbitron text-3xl font-semibold uppercase tracking-[0.3em] text-[#FBBF24] sm:text-4xl xl:text-5xl">APEX</h1>
     <nav aria-label="Workspace" className="grid w-full max-w-3xl grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
