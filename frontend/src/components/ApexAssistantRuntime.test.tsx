@@ -75,6 +75,56 @@ afterEach(() => {
 })
 
 describe('ApexAssistantRuntime', () => {
+  it.each([
+    { label: 'short', clientHeight: 100, scrollHeight: 100, shouldScroll: false },
+    { label: 'long', clientHeight: 100, scrollHeight: 300, shouldScroll: true },
+  ])('keeps $label conversation restoration scrolling inside the chat viewport', async ({ clientHeight, scrollHeight, shouldScroll }) => {
+    const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight')
+    const originalScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTo')
+    const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView')
+    const originalBoundingClientRect = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'getBoundingClientRect')
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return this.hasAttribute('data-cortex-thread-viewport') ? clientHeight : 0 } })
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', { configurable: true, get() { return this.hasAttribute('data-cortex-thread-viewport') ? scrollHeight : 0 } })
+    Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', { configurable: true, value() {
+      const top = this.hasAttribute('data-cortex-thread-viewport') ? 10 : 50
+      return { x: 0, y: top, top, bottom: top, height: 0, left: 0, right: 0, width: 0, toJSON: () => ({}) } as DOMRect
+    } })
+    const scrollCalls: unknown[][] = []
+    const scrollTargets: HTMLElement[] = []
+    const scrollTo = vi.fn(function (this: HTMLElement, ...args: unknown[]) { scrollTargets.push(this); scrollCalls.push(args) })
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: scrollTo })
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView })
+    const userId = '00000000-0000-4000-8000-000000000040'
+    const agentId = '00000000-0000-4000-8000-000000000041'
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([summary])
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}`)) return response({ ...summary, active_leaf_message_id: agentId, messages: [
+        { id: userId, parent_message_id: null, role: 'user', content: 'Existing prompt', status: 'completed', created_at: '2026-08-17T12:00:00Z', response_metadata: null },
+        { id: agentId, parent_message_id: userId, role: 'agent', content: 'Existing answer', status: 'completed', created_at: '2026-08-17T12:00:01Z', response_metadata: {} },
+      ] })
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    try {
+      render(<ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}><ApexAssistantThread /></ApexAssistantRuntime>)
+      await waitFor(() => expect(screen.getByText('Existing answer')).toBeInTheDocument())
+      const viewport = document.querySelector<HTMLElement>('[data-cortex-thread-viewport]')
+      expect(viewport).not.toBeNull()
+      expect(scrollTargets.every((target) => target === viewport)).toBe(true)
+      expect(scrollCalls.some(([options]) => options && typeof options === 'object' && 'top' in options && (options as { top: number }).top === 40)).toBe(shouldScroll)
+      expect(scrollIntoView).not.toHaveBeenCalled()
+    } finally {
+      for (const [key, descriptor] of Object.entries({ clientHeight: originalClientHeight, scrollHeight: originalScrollHeight, scrollTo: originalScrollTo, scrollIntoView: originalScrollIntoView, getBoundingClientRect: originalBoundingClientRect })) {
+        if (descriptor) Object.defineProperty(HTMLElement.prototype, key, descriptor)
+        else Reflect.deleteProperty(HTMLElement.prototype, key)
+      }
+    }
+  })
+
   it('loads the authoritative thread and gates a prompt through the APEX turn endpoint', async () => {
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
