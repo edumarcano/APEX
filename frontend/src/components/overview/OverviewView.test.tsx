@@ -102,3 +102,64 @@ describe('OverviewView layout', () => {
     expect(layout).toHaveClass('grid-cols-1', 'md:grid-cols-2')
   })
 })
+
+describe('OverviewView identity mark sizing', () => {
+  function homeIdentity(layout: HTMLElement): HTMLElement {
+    const node = layout.querySelector('[data-slot="home-identity"]')
+    if (!node) {
+      throw new Error('Expected [data-slot="home-identity"]')
+    }
+    return node as HTMLElement
+  }
+
+  it('uses a large identity mark and Collect Telemetry in center, error, and no-data', () => {
+    setCompactLayout(false)
+    const onCollect = vi.fn()
+
+    const centerView = render(
+      <OverviewView identity={identity} telemetry={telemetry} state="center" onCollect={onCollect} />,
+    )
+    const centerLayout = screen.getByRole('region', { name: 'Overview' })
+    expect(homeIdentity(centerLayout)).toHaveAttribute('data-logo-size', 'large')
+    expect(screen.getByRole('button', { name: 'Collect Telemetry' })).toBeInTheDocument()
+    centerView.unmount()
+
+    const errorView = render(
+      <OverviewView
+        identity={identity}
+        telemetry={telemetry}
+        state="error"
+        error="Network down"
+        onCollect={onCollect}
+      />,
+    )
+    const errorLayout = screen.getByRole('region', { name: 'Overview' })
+    expect(homeIdentity(errorLayout)).toHaveAttribute('data-logo-size', 'large')
+    expect(screen.getByRole('button', { name: 'Retry Telemetry' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Network down')
+    errorView.unmount()
+
+    const noDataView = render(
+      <OverviewView identity={identity} telemetry={telemetry} state="no-data" onCollect={onCollect} />,
+    )
+    const noDataLayout = screen.getByRole('region', { name: 'Overview' })
+    expect(homeIdentity(noDataLayout)).toHaveAttribute('data-logo-size', 'large')
+    expect(screen.getByRole('button', { name: 'Retry Telemetry' })).toBeInTheDocument()
+    noDataView.unmount()
+  })
+
+  it('uses an overview identity mark when the telemetry grid is visible', () => {
+    setCompactLayout(false)
+    const onCollect = vi.fn()
+
+    const { rerender } = render(
+      <OverviewView identity={identity} telemetry={telemetry} state="collecting" onCollect={onCollect} />,
+    )
+    const layout = screen.getByRole('region', { name: 'Overview' })
+    expect(homeIdentity(layout)).toHaveAttribute('data-logo-size', 'overview')
+    expect(screen.queryByText(/Gathering telemetry/i)).not.toBeInTheDocument()
+
+    rerender(<OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={onCollect} />)
+    expect(homeIdentity(layout)).toHaveAttribute('data-logo-size', 'overview')
+  })
+})

@@ -39,11 +39,10 @@ export function OverviewView({ identity, telemetry, state, error, onCollect, col
     {hasGrid ? <EventsTelemetry data={telemetry} variant="card" className={wide} /> : null}
     {hasGrid ? <NewsTelemetry data={telemetry} variant="card" className={narrow} /> : null}
     <div
-      className={`hud-glass flex min-h-0 w-full max-w-xl flex-col items-center justify-center gap-3 rounded-xl border border-white/10 bg-zinc-950/40 p-3 ${hasGrid ? compact ? 'order-first md:col-span-2' : narrow : ''}`}
+      className={`hud-glass flex min-h-0 flex-col items-center justify-center gap-3 rounded-xl border border-white/10 bg-zinc-950/40 p-3 ${hasGrid ? (compact ? 'order-first md:col-span-2' : narrow) : 'w-auto max-w-full'}`}
       data-slot="overview-identity-card"
     >
-      <HudIdentityMark identity={identity} size="overview" />
-      {state === 'collecting' ? <p className="font-mono text-xs text-zinc-400" role="status">Gathering telemetry…</p> : null}
+      <HudIdentityMark identity={identity} size={hasGrid ? 'overview' : 'large'} />
       {state === 'error' ? <div className="max-w-sm text-center" role="alert"><p className="font-mono text-sm text-rose-300">{error || 'I couldn’t collect telemetry just now.'}</p></div> : null}
       {state === 'no-data' ? <p className="font-mono text-sm text-zinc-400" role="status">No telemetry sources are available yet.</p> : null}
       {state === 'center' || state === 'error' || state === 'no-data' ? <button
