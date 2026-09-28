@@ -669,7 +669,7 @@ describe('App catalog-affecting settings', () => {
 
     const nav = screen.getByRole('navigation', { name: 'Workspace' })
     const tabs = within(nav).getAllByRole('button')
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['Reports', 'Overview', 'Briefing', 'Cortex'])
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Overview', 'Briefing', 'Cortex', 'Reports'])
     expect(within(nav).getByRole('button', { name: 'Overview' })).toHaveAttribute('aria-current', 'page')
     expect(within(nav).getByRole('button', { name: 'Briefing' })).not.toHaveAttribute('aria-current')
 

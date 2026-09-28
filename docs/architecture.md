@@ -1,6 +1,6 @@
 # Architecture
 
-APEX is a local-first personal intelligence HUD. FastAPI serves the backend, React opens on a Launch screen and provides Reports, Overview, Briefing, and Cortex as peer workspaces, SQLite owns durable application state, and optional providers and connectors stay behind explicit capability and privacy boundaries.
+APEX is a local-first personal intelligence HUD. FastAPI serves the backend, React opens on a Launch screen and provides Overview, Briefing, Cortex, and Reports as peer workspaces, SQLite owns durable application state, and optional providers and connectors stay behind explicit capability and privacy boundaries.
 
 ## Core model
 

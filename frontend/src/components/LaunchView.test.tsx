@@ -16,15 +16,17 @@ function renderLaunch() {
 }
 
 const ICON_ACCENTS: Array<[string, string, string]> = [
-  ['Reports', 'reports', '#22D3EE'],
   ['Overview', 'overview', '#1F6FE5'],
   ['Briefing', 'briefing', '#FBBF24'],
   ['Cortex', 'cortex', '#D8B4FE'],
+  ['Reports', 'reports', '#22D3EE'],
 ]
 
 describe('LaunchView', () => {
   it('keeps workspace buttons neutral with accent icons only', () => {
     renderLaunch()
+    const labels = screen.getAllByRole('button', { name: /^(Overview|Briefing|Cortex|Reports)$/ }).map((button) => button.textContent)
+    expect(labels).toEqual(['Overview', 'Briefing', 'Cortex', 'Reports'])
     for (const [label, id, iconColor] of ICON_ACCENTS) {
       const button = screen.getByRole('button', { name: label })
       expect(button).toHaveClass('hud-glass', 'text-zinc-300', 'border-white/10')
