@@ -16,7 +16,7 @@ function parsePreflight(value: unknown): ToolPreflightEstimate | null {
     value.agent === undefined ||
     typeof breakdown.system_instructions !== 'number' ||
     typeof breakdown.conversation_history !== 'number' ||
-    typeof breakdown.hud_context !== 'number' ||
+    typeof breakdown.telemetry_context !== 'number' ||
     typeof breakdown.selected_tool_schemas !== 'number' ||
     typeof breakdown.current_prompt !== 'number' ||
     typeof breakdown.total !== 'number' ||
@@ -71,7 +71,7 @@ function parsePreflight(value: unknown): ToolPreflightEstimate | null {
     breakdown: {
       system_instructions: breakdown.system_instructions,
       conversation_history: breakdown.conversation_history,
-      hud_context: breakdown.hud_context,
+      telemetry_context: breakdown.telemetry_context,
       ...(typeof breakdown.retrieved_context === 'number' ? { retrieved_context: breakdown.retrieved_context } : {}),
       selected_tool_schemas: breakdown.selected_tool_schemas,
       current_prompt: breakdown.current_prompt,

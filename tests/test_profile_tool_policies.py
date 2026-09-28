@@ -18,7 +18,7 @@ from core.agent.types import (
     GroundingPresentation,
     ToolCall,
 )
-from core.api.cortex import _build_hud_context
+from core.api.cortex import _build_telemetry_context
 from core.connectors.models import ConnectorResult, utc_now_iso
 from core.telemetry.service import get_telemetry_service, reset_telemetry_service_for_tests
 from core.telemetry.store import build_snapshot_from_results
@@ -206,7 +206,7 @@ class SandboxContextTests(unittest.TestCase):
             "core.api.cortex.is_dev_mode", return_value=True
         ):
             store.return_value.get_snapshot.return_value.ask_apex = ask_apex
-            context = _build_hud_context(
+            context = _build_telemetry_context(
                 AgentQueryRequest(
                     prompt="Summarize",
                     agent="apex",

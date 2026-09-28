@@ -1,6 +1,6 @@
 import type { SystemState } from '../types/telemetry'
 
-/** Visual attention state for HUD telemetry surfaces. */
+/** Visual attention state for telemetry surfaces. */
 export type AttentionTier = 'dormant' | 'pending' | 'active' | 'complete'
 
 /** Surfaces that participate in the pipeline reveal sequence. */
