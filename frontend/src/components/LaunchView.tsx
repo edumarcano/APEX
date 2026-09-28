@@ -10,10 +10,10 @@ const LAUNCH_WORKSPACES: Array<{
   icon: LucideIcon
   tone: string
 }> = [
-  { id: 'reports', label: 'Reports', icon: Newspaper, tone: 'hover:border-cyan-400/45 hover:text-cyan-100 focus-visible:outline-cyan-300' },
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard, tone: 'hover:border-blue-400/45 hover:text-blue-100 focus-visible:outline-blue-300' },
-  { id: 'briefing', label: 'Briefing', icon: AudioLines, tone: 'hover:border-amber-300/45 hover:text-amber-100 focus-visible:outline-amber-300' },
-  { id: 'cortex', label: 'Cortex', icon: BrainCircuit, tone: 'hover:border-purple-400/45 hover:text-purple-100 focus-visible:outline-purple-300' },
+  { id: 'reports', label: 'Reports', icon: Newspaper, tone: 'border-[#22D3EE]/40 bg-[#22D3EE]/15 text-[#A5F3FC] hover:border-[#22D3EE]/70 hover:bg-[#22D3EE]/25 focus-visible:outline-[#22D3EE]' },
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard, tone: 'border-[#0F4DB8]/50 bg-[#0F4DB8]/20 text-[#A5C7FF] hover:border-[#0F4DB8]/80 hover:bg-[#0F4DB8]/30 focus-visible:outline-[#A5C7FF]' },
+  { id: 'briefing', label: 'Briefing', icon: AudioLines, tone: 'border-[#FBBF24]/40 bg-[#FBBF24]/15 text-[#FFF3B0] hover:border-[#FBBF24]/70 hover:bg-[#FBBF24]/25 focus-visible:outline-[#FBBF24]' },
+  { id: 'cortex', label: 'Cortex', icon: BrainCircuit, tone: 'border-[#7E22CE]/50 bg-[#7E22CE]/25 text-[#D8B4FE] hover:border-[#7E22CE]/80 hover:bg-[#7E22CE]/35 focus-visible:outline-[#D8B4FE]' },
 ]
 
 export function LaunchView({
@@ -32,17 +32,19 @@ export function LaunchView({
   mode: 'DEMO' | 'DEVELOPER' | null
 }): ReactElement {
   return <section className="h-full min-h-0 w-full flex-1 flex-col items-center justify-center gap-6 flex" aria-label="Launch">
-    <ApexLogo {...logoProps} className="h-24 w-auto sm:h-28" />
-    <h1 className="font-orbitron text-lg font-semibold uppercase tracking-[0.3em] text-[color:var(--hud-text)]">APEX</h1>
+    <div data-testid="launch-logo" className="scale-115 xl:scale-125 filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]">
+      <ApexLogo {...logoProps} className="hud-logo-mark h-48 w-auto sm:h-56 xl:h-64" />
+    </div>
+    <h1 className="font-orbitron text-3xl font-semibold uppercase tracking-[0.3em] text-[#FBBF24] sm:text-4xl xl:text-5xl">APEX</h1>
     <nav aria-label="Workspace" className="grid w-full max-w-3xl grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
       {LAUNCH_WORKSPACES.map(({ id, label, icon: Icon, tone }) => <button
         key={id}
         type="button"
         onClick={() => onSelect(id)}
         aria-current={current === id ? 'page' : undefined}
-        className={`hud-interactive-shell hud-glass flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-zinc-950/35 px-4 py-3 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-300 transition-[border-color,background-color,color,box-shadow] duration-200 hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${tone}`}
+        className={`hud-interactive-shell flex min-h-12 items-center justify-center gap-2 rounded-xl border px-4 py-3 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] transition-[border-color,background-color,color,box-shadow] duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${tone}`}
       >
-        <Icon className="size-4 shrink-0 opacity-75" aria-hidden="true" />
+        <Icon className="size-4 shrink-0" aria-hidden="true" />
         {label}
       </button>)}
     </nav>
