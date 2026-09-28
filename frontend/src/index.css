@@ -165,6 +165,50 @@
   }
 }
 
+@media (max-width: 1279px), (max-height: 820px) {
+  .hud-main-shell.hud-main-shell--overview-center {
+    flex: 1 1 0;
+    height: auto;
+    min-height: 0;
+  }
+
+  .hud-body-layout--overview-center {
+    flex: 1 1 0;
+    height: auto;
+    min-height: 0;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .hud-header--workspace {
+    height: auto;
+    min-height: 8rem;
+  }
+
+  .system-diagnostics-grid {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-content: center;
+    row-gap: 0.35rem;
+  }
+
+  .system-diagnostics-left {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .system-diagnostics-center {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: center;
+  }
+
+  .system-diagnostics-right {
+    grid-column: 3;
+    grid-row: 1;
+  }
+}
+
 @media (max-width: 767px) {
   .hud-app-shell {
     padding: 1rem;

@@ -8,7 +8,8 @@ export type HudIdentityProps = {
   glyphProps: VoiceSignalGlyphProps
 }
 
-const LOGO_GLOW_CLASS = 'filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-[filter] duration-1000 motion-reduce:transition-none'
+const LOGO_GLOW_CLASS = 'filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]'
+const LOGO_SIZE_TRANSITION_CLASS = 'transition-[height,width] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none'
 
 export function HudIdentityMark({
   identity,
@@ -24,9 +25,9 @@ export function HudIdentityMark({
       : size === 'overview'
         ? 'h-24 w-auto sm:h-28'
         : 'h-16 w-auto sm:h-20'
-  return <div className="relative flex flex-col items-center" data-slot="home-identity">
+  return <div className="relative flex flex-col items-center" data-slot="home-identity" data-logo-size={size}>
     <div className={`${LOGO_GLOW_CLASS} ${size === 'hero' ? 'scale-115 xl:scale-125' : ''}`}>
-      <ApexLogo {...identity.logoProps} className={logoClass} />
+      <ApexLogo {...identity.logoProps} className={`${logoClass} ${LOGO_SIZE_TRANSITION_CLASS}`} />
     </div>
     <div className={`flex flex-col items-center whitespace-nowrap ${size === 'hero' ? 'mt-7 xl:mt-9' : 'mt-2'}`}>
       <VoiceSignalGlyph {...identity.glyphProps} />

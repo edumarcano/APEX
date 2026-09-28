@@ -117,7 +117,7 @@ export function resolveTelemetryAttentionTier(
   }
 
   if (isRefreshing && !hasSnapshot) {
-    return surface === 'reminders' ? 'complete' : 'active'
+    return 'pending'
   }
 
   return 'complete'

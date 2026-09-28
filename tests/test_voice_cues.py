@@ -16,17 +16,22 @@ class VoiceCueFormattingTests(unittest.TestCase):
             user_designation="  Chief.  ",
             now=datetime(2026, 9, 23, 8),
         )
-        self.assertEqual(
-            ready,
-            "Good morning, Chief. I have your telemetry at hand. I’m standing by to brief you.",
-        )
+        self.assertEqual(ready, "Your Overview is ready.")
         self.assertEqual(
             format_voice_cue("activation_no_fresh_telemetry"),
-            "I’m standing by without fresh telemetry.",
+            "I couldn’t find an available telemetry source for your Overview. Please try again.",
         )
         self.assertEqual(
             format_voice_cue("activation_loading", now=datetime(2026, 9, 23, 17)),
-            "Good evening. I’m gathering your telemetry and standing by for a briefing.",
+            "Good evening. I’m collecting telemetry for your Overview.",
+        )
+        self.assertEqual(
+            format_voice_cue(
+                "activation_loading",
+                user_designation="  Chief.  ",
+                now=datetime(2026, 9, 23, 8),
+            ),
+            "Good morning, Chief. I’m collecting telemetry for your Overview.",
         )
 
     def test_daypart_boundaries(self) -> None:
@@ -45,10 +50,10 @@ class VoiceCueFormattingTests(unittest.TestCase):
                 )
                 self.assertTrue(text.startswith(f"{salutation}."))
 
-    def test_telemetry_failure_cue_and_reminder_speech_cleanup(self) -> None:
+    def test_refresh_failure_cue_and_reminder_speech_cleanup(self) -> None:
         self.assertEqual(
-            format_voice_cue("telemetry_refresh_failed"),
-            "I couldn’t refresh your telemetry just now. Please try again.",
+            format_voice_cue("activation_refresh_failed"),
+            "I couldn’t refresh your Overview telemetry just now. Please try again.",
         )
         self.assertEqual(
             clean_for_tts("**Hello** `world` café Ãƒbroken"),

@@ -33,9 +33,9 @@ Kokoro stays local. If Kokoro is unavailable or fails during preparation, synthe
 
 ## Contextual cues
 
-In automatic voice mode, APEX may speak short cues during activation and telemetry refresh. The supported cues acknowledge activation, report refresh failure, or say that no fresh telemetry is available. They use the local time of day and optional saved user designation. They do not announce a briefing profile or fallback. Manual and off modes skip these cues.
+In automatic voice mode, APEX may speak short first-person cues while collecting telemetry and when the collection finishes, fails, or returns no fresh data. They use the local time of day and optional saved user designation. They do not announce a briefing profile or fallback. Manual and off modes skip these cues.
 
-Cue requests share the speech lock and configured engine fallback with other speech. They are best effort: a busy or failed cue does not fail activation or telemetry refresh. See the [voice cue API](api.md#post-apiv1voicecue) for the request and response contract.
+Cue requests share the speech lock and configured engine fallback with other speech. They are best effort: a busy or failed cue does not fail telemetry collection or refresh. See the [voice cue API](api.md#post-apiv1voicecue) for the request and response contract.
 
 ## Long-text delivery
 

@@ -200,6 +200,7 @@ interface SystemDiagnosticsProps {
   onOpenSettings?: () => void
   settingsButtonRef?: RefObject<HTMLButtonElement | null>
   workspaceNavigation?: ReactNode
+  onReturnToLaunch?: () => void
 }
 
 function MetricBar({
@@ -277,6 +278,7 @@ export function SystemDiagnostics({
   onOpenSettings,
   settingsButtonRef,
   workspaceNavigation,
+  onReturnToLaunch,
 }: SystemDiagnosticsProps): ReactElement {
   const [isBrowserOnline, setIsBrowserOnline] = useState(navigator.onLine)
   const [isConnectorInspectorOpen, setIsConnectorInspectorOpen] = useState(false)
@@ -390,9 +392,9 @@ export function SystemDiagnostics({
   const diskText = formatPercentage(diagnostics.disk, isInitializing)
 
   return (
-    <div className="pointer-events-auto grid h-full w-full min-w-0 grid-cols-3 items-center gap-2 sm:gap-3">
-      {/* Left flank — system and connector health */}
-      <div className="flex min-w-0 items-center justify-self-start gap-2 sm:gap-2.5">
+      <div className="system-diagnostics-grid pointer-events-auto grid h-full w-full min-w-0 grid-cols-3 items-center gap-2 sm:gap-3">
+        {/* Left flank — system and connector health */}
+        <div className="system-diagnostics-left flex min-w-0 items-center justify-self-start gap-2 sm:gap-2.5">
         <div
           ref={systemContainerRef}
           className="relative z-50"
@@ -549,33 +551,20 @@ export function SystemDiagnostics({
       </div>
 
       {/* Center — stable APEX identity */}
-      <div className="relative z-40 justify-self-center shrink-0">
+      <div className="system-diagnostics-center relative z-40 justify-self-center shrink-0">
         <div className="hud-corner-brackets hud-interactive-shell hud-glass relative flex min-w-[7rem] flex-col items-center rounded-2xl px-1 py-1 transition-all duration-300 hover-blue-medium" aria-label="APEX identity">
           <span className="hud-corner-bl" aria-hidden />
           <span className="hud-corner-br" aria-hidden />
-          <div
-            className="hud-inner-lift flex h-9 w-full flex-col items-center justify-center rounded-xl px-3 leading-none"
+          <button
+            type="button"
+            onClick={onReturnToLaunch}
+            aria-label="APEX Launch"
+            className="hud-inner-lift flex h-9 w-full flex-col items-center justify-center rounded-xl px-3 leading-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
           >
-            <span className="font-orbitron text-sm font-bold uppercase tracking-[0.28em] text-[color:var(--hud-accent)] sm:text-base">
-              APEX
-            </span>
-            {modeSubtitle === 'DEMO' && (
-              <span
-                className="mt-0.5 font-mono text-[8px] uppercase tracking-[0.22em] text-amber-400"
-                data-slot="demo-mode-subtitle"
-              >
-                DEMO
-              </span>
-            )}
-            {modeSubtitle === 'DEVELOPER' && (
-              <span
-                className="mt-0.5 font-mono text-[8px] uppercase tracking-[0.22em] text-cyan-400"
-                data-slot="dev-mode-subtitle"
-              >
-                DEVELOPER
-              </span>
-            )}
-          </div>
+            <span className="font-orbitron text-sm font-bold uppercase tracking-[0.28em] text-[color:var(--hud-accent)] sm:text-base">APEX</span>
+            {modeSubtitle === 'DEMO' ? <span className="mt-0.5 font-mono text-[8px] uppercase tracking-[0.22em] text-amber-400" data-slot="demo-mode-subtitle">DEMO</span> : null}
+            {modeSubtitle === 'DEVELOPER' ? <span className="mt-0.5 font-mono text-[8px] uppercase tracking-[0.22em] text-cyan-400" data-slot="dev-mode-subtitle">DEVELOPER</span> : null}
+          </button>
           {workspaceNavigation ? (
             <div className="hud-inner-lift mt-1 w-full border-t border-white/10 pt-1">
               {workspaceNavigation}
@@ -586,7 +575,7 @@ export function SystemDiagnostics({
       </div>
 
       {/* Right flank — net / clock */}
-      <div className="flex min-w-0 items-center justify-self-end gap-2 sm:gap-2.5">
+      <div className="system-diagnostics-right flex min-w-0 items-center justify-self-end gap-2 sm:gap-2.5">
         <StatusPill
           label="NET"
           value={isNetworkConnected ? 'Online' : 'Offline'}

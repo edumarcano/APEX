@@ -30,7 +30,7 @@ describe('VoiceSignalGlyph', () => {
     expect(screen.getByText('Loading local model')).toBeVisible()
   })
 
-  it('renders standby state when idle', () => {
+  it('renders Ready when no work is active', () => {
     render(
       <VoiceSignalGlyph
         step={null}
@@ -38,7 +38,7 @@ describe('VoiceSignalGlyph', () => {
         isSpeaking={false}
       />,
     )
-    expect(screen.getByText('Standby')).toBeVisible()
+    expect(screen.getByText('Ready')).toBeVisible()
   })
 
   it('renders working state when querying Cortex', () => {

@@ -1,10 +1,11 @@
 # Architecture
 
-APEX is a local-first personal intelligence HUD. FastAPI serves the backend, React provides the Reports, Overview, Briefing, and Cortex workspaces through visible header tabs, SQLite owns durable application state, and optional providers and connectors stay behind explicit capability and privacy boundaries.
+APEX is a local-first personal intelligence HUD. FastAPI serves the backend, React opens on a Launch screen and provides Overview, Briefing, Cortex, and Reports as peer workspaces, SQLite owns durable application state, and optional providers and connectors stay behind explicit capability and privacy boundaries.
 
 ## Core model
 
-- **Overview** shows the telemetry grid and reminders after activation. **Standby** is Overview-only before activation and is not a navigation peer.
+- **Launch** is the initial view after each page load. It exposes workspace navigation, Settings, and the active DEMO/DEVELOPER indicator without loading a snapshot or starting collection.
+- **Overview** initially shows only its central identity card and **Collect Telemetry**. The explicit action runs preflight, refreshes sources, then opens the grid when a usable snapshot exists; unavailable sources leave a centered retry state. Workspace navigation itself has no collection or voice-cue side effect.
 - **Briefing** covers profile controls, the saved briefing thread, and a single telemetry panel. It opens without activation; generation and setup stay Briefing-local.
 - **Cortex** is the control surface for conversations, model settings, tool selection, context, and approval-gated actions.
 - **Reports** is the dedicated list-and-detail workspace for immutable, untrusted reports with caller-claimed source labels.

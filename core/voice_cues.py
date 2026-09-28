@@ -10,7 +10,6 @@ VoiceCueName = Literal[
     "activation_loading",
     "activation_refresh_failed",
     "activation_no_fresh_telemetry",
-    "telemetry_refresh_failed",
 ]
 
 
@@ -39,15 +38,12 @@ def format_voice_cue(
     vocative = _vocative(user_designation)
 
     if cue == "activation_ready":
-        return f"{salutation}{vocative}. I have your telemetry at hand. I’m standing by to brief you."
+        return "Your Overview is ready."
     if cue == "activation_loading":
-        return f"{salutation}{vocative}. I’m gathering your telemetry and standing by for a briefing."
+        return f"{salutation}{vocative}. I’m collecting telemetry for your Overview."
     if cue == "activation_refresh_failed":
-        return "I couldn’t refresh your telemetry just now. I’m still standing by."
+        return "I couldn’t refresh your Overview telemetry just now. Please try again."
     if cue == "activation_no_fresh_telemetry":
-        return "I’m standing by without fresh telemetry."
-
-    if cue == "telemetry_refresh_failed":
-        return "I couldn’t refresh your telemetry just now. Please try again."
+        return "I couldn’t find an available telemetry source for your Overview. Please try again."
 
     raise ValueError(f"Unsupported voice cue: {cue!r}")

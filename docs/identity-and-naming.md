@@ -6,24 +6,24 @@ This document defines the product names used in APEX. Runtime behavior belongs i
 
 ```text
 APEX
-├── Reports
-│   └── External activity reports
 ├── Overview
 │   └── Telemetry, reminders, and connector health
 ├── Briefing
 │   ├── Profiles: Daily, Catch Up, Deep
 │   └── Saved sessions and linked conversations
-└── Cortex
-    ├── Cortex workspace
-    ├── Apex Agent (full workspace)
-    └── Cortex Engine
+├── Cortex
+│   ├── Cortex workspace
+│   ├── Apex Agent (full workspace)
+│   └── Cortex Engine
+└── Reports
+    └── External activity reports
 ```
 
-- **APEX** is the complete local-first product: Reports, Overview, Briefing, Cortex, telemetry, briefings, voice, connectors, settings, and persistence.
-- **Overview** is the telemetry-first workspace for reminders, connector health, and the activated telemetry grid.
+- **APEX** is the complete local-first product: Overview, Briefing, Cortex, Reports, telemetry, briefings, voice, connectors, settings, and persistence.
+- **Overview** is the telemetry-first workspace for reminders, connector health, and the grid shown after an explicit telemetry collection.
 - **Briefing** is the workspace for profile controls, saved briefing sessions, linked conversations, and briefing-local telemetry.
-- **Reports** is the workspace for untrusted external activity reports, their reversible dispositions, and links to existing context reviews.
 - **Cortex** is the detailed workspace for conversations, model settings, tools, context, action review, and local-model lifecycle.
+- **Reports** is the workspace for untrusted external activity reports, their reversible dispositions, and links to existing context reviews.
 - **Cortex Engine** is the backend execution boundary for bounded Agent turns, context assembly, tools, providers, and local runtime coordination.
 - **Apex Agent** is APEX's single built-in personal operations assistant, with a compact Overview and Briefing prompt and a full Cortex workspace.
 - A **model** is the selected execution model. Its catalog profile determines whether the turn uses a cloud provider or local runtime and which controls are available.

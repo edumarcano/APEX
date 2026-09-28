@@ -9,7 +9,6 @@ import {
 const BASE: LogoVisualStateInput = {
   briefingStatus: 'idle',
   activeStep: null,
-  activated: true,
   isBriefingRunning: false,
   isCortexQuerying: false,
   isLocalModelLoading: false,
@@ -31,6 +30,24 @@ describe('resolveOuterShellActivity', () => {
 })
 
 describe('resolveLogoVisualColors', () => {
+  it('keeps the shared standby identity blue before telemetry collection', () => {
+    expect(resolveLogoVisualColors(BASE)).toEqual({
+      atmosphere: '15, 77, 184',
+      logo: '15, 77, 184',
+    })
+  })
+
+  it('keeps error precedence in every workspace state', () => {
+    expect(resolveLogoVisualColors({ ...BASE, briefingStatus: 'error' }).logo).toBe('220, 38, 38')
+  })
+
+  it('uses cyan for speech when no higher-priority error is active', () => {
+    expect(resolveLogoVisualColors({ ...BASE, isSpeaking: true })).toEqual({
+      atmosphere: '34, 211, 238',
+      logo: '34, 211, 238',
+    })
+  })
+
   it('uses rust for both visual layers while a local model loads', () => {
     expect(resolveLogoVisualColors({ ...BASE, isLocalModelLoading: true })).toEqual({
       atmosphere: '249, 115, 22',

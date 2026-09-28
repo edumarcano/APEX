@@ -481,7 +481,7 @@ export function useApexData(): UseApexDataReturn {
         }))
       } catch (error) {
         if (!signal.aborted && !(error instanceof DOMException && error.name === 'AbortError')) {
-          // Standby boot requests are best-effort; subsequent refresh actions can retry.
+          // Launch boot requests are best-effort; subsequent refresh actions can retry.
         }
       }
     })()

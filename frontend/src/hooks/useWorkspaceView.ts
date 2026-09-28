@@ -1,9 +1,9 @@
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 
 import type { BriefingProfileId, BriefingSessionDetail, BriefingSessionSummary } from '../types/briefings'
 
-export type WorkspacePresentationView = 'standby' | 'overview' | 'briefing'
-export type WorkspaceHudDestination = Exclude<WorkspacePresentationView, 'standby'>
+export type WorkspacePresentationView = 'overview' | 'briefing'
+export type WorkspaceHudDestination = WorkspacePresentationView
 export type BriefingLayoutPhase = 'identity' | 'generating' | 'workspace'
 
 const RUNNING_STATUSES = new Set(['queued', 'running', 'cancelling'])
@@ -27,32 +27,26 @@ export function resolveBriefingLayoutPhase({
 }
 
 export type UseWorkspaceViewOptions = {
-  activated: boolean
-  deactivate: () => void
-  /** Overview or Briefing peer chosen in the header tabs. */
+  /** Overview or Briefing peer chosen in workspace navigation. */
   destination: WorkspaceHudDestination
 }
 
 export type UseWorkspaceViewResult = {
   view: WorkspacePresentationView
   profileId: BriefingProfileId
-  returnToStandby: () => void
   setProfileId: (profileId: BriefingProfileId) => void
 }
 
 /**
- * Resolves Overview/Briefing presentation and owns the selected briefing profile.
- * Standby is Overview-only until activation; Briefing renders without activation.
+ * Resolves the selected Overview/Briefing presentation and owns the briefing profile.
+ * Collection admission belongs to the explicit Overview action, not navigation.
  */
-export function useWorkspaceView({ activated, deactivate, destination }: UseWorkspaceViewOptions): UseWorkspaceViewResult {
+export function useWorkspaceView({ destination }: UseWorkspaceViewOptions): UseWorkspaceViewResult {
   const [profileId, setProfileId] = useState<BriefingProfileId>('daily')
-  const returnToStandby = useCallback((): void => deactivate(), [deactivate])
-  const view: WorkspacePresentationView =
-    !activated && destination === 'overview' ? 'standby' : destination
+  const view: WorkspacePresentationView = destination
   return {
     view,
     profileId,
-    returnToStandby,
     setProfileId,
   }
 }

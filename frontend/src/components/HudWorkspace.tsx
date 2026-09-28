@@ -5,7 +5,8 @@ import type { BriefingProfilePanelProps } from './briefing/BriefingProfilePanel'
 import type { HudIdentityProps } from './overview/HudIdentity'
 import { OverviewView } from './overview/OverviewView'
 import type { HudTelemetryData } from './overview/HudTelemetry'
-import { StandbyView, type StandbyViewProps } from './standby/StandbyView'
+import type { ComponentProps } from 'react'
+import { StandbyActions } from './StandbyActions'
 import type { BriefingLayoutPhase, WorkspacePresentationView } from '../hooks/useWorkspaceView'
 
 export type HudWorkspaceProps = {
@@ -13,20 +14,26 @@ export type HudWorkspaceProps = {
   briefingPhase: BriefingLayoutPhase
   identity: HudIdentityProps
   telemetry: HudTelemetryData
-  standbyActions: StandbyViewProps['actions']
+  overviewState: 'center' | 'collecting' | 'ready' | 'error' | 'no-data'
+  overviewError?: string | null
+  overviewActions: ComponentProps<typeof StandbyActions>
   briefingControls: BriefingProfilePanelProps
   briefingConversation: BriefingViewConversation
 }
 
-/** Composes Standby, Overview, and Briefing peer presentations. */
+/** Composes Overview and Briefing workspace presentations. */
 export function HudWorkspace(props: HudWorkspaceProps): ReactElement {
-  return <div className="hud-body-layout flex w-full min-w-0 flex-col overflow-visible xl:h-full xl:min-h-0 xl:flex-1 xl:overflow-hidden">
-    {props.view === 'standby' ? (
-      <StandbyView identity={props.identity} actions={props.standbyActions} />
-    ) : props.view === 'overview' ? (
+  const overviewCentered = props.view === 'overview' &&
+    (props.overviewState === 'center' || props.overviewState === 'error' || props.overviewState === 'no-data')
+  return <div className={`hud-body-layout flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-visible xl:overflow-hidden ${overviewCentered ? 'hud-body-layout--overview-center' : ''}`}>
+    {props.view === 'overview' ? (
       <OverviewView
         identity={props.identity}
         telemetry={props.telemetry}
+        state={props.overviewState}
+        error={props.overviewError}
+        onCollect={props.overviewActions.onCollectTelemetry}
+        collectDisabled={props.overviewActions.disabled}
       />
     ) : (
       <BriefingView

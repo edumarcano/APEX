@@ -1,9 +1,10 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useEffect, useState, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
+import type { ApexLogoProps } from './components/ApexLogo'
 import type { AgentKey, ModelCatalogEntry, TelemetrySnapshot, ToolCatalog } from './types/telemetry'
 import type { RuntimeSettings, SettingsResponse } from './types/settings'
 import { BASE_SETTINGS, buildSettingsResponse } from './test/settingsFixtures'
@@ -63,8 +64,10 @@ const appMocks = vi.hoisted(() => ({
 }))
 
 vi.mock('./components/ApexLogo', () => ({
-  ApexLogo: ({ reminderPulseCount }: { reminderPulseCount?: number }) => (
-    <output data-testid="reminder-pulse-count">{reminderPulseCount ?? 0}</output>
+  ApexLogo: ({ reminderPulseCount, status, hasCollectedTelemetry }: Pick<ApexLogoProps, 'reminderPulseCount' | 'status' | 'hasCollectedTelemetry'>) => (
+    <output data-testid="reminder-pulse-count" data-status={status} data-collected={String(hasCollectedTelemetry ?? false)}>
+      {reminderPulseCount ?? 0}
+    </output>
   ),
 }))
 vi.mock('./components/CelestialBackground', () => ({ CelestialBackground: () => null }))
@@ -124,8 +127,8 @@ vi.mock('./components/SettingsPanel', () => ({
   },
 }))
 vi.mock('./components/SystemDiagnostics', () => ({
-  SystemDiagnostics: ({ workspaceNavigation }: { workspaceNavigation?: ReactNode }) => (
-    <>{workspaceNavigation}</>
+  SystemDiagnostics: ({ workspaceNavigation, onReturnToLaunch, onRefreshConnectors }: { workspaceNavigation?: ReactNode; onReturnToLaunch?: () => void; onRefreshConnectors?: () => void }) => (
+    <>{workspaceNavigation}<button type="button" onClick={onReturnToLaunch}>APEX Launch</button><button type="button" onClick={onRefreshConnectors}>Refresh checks</button></>
   ),
 }))
 vi.mock('./components/CortexWorkspace', () => ({
@@ -139,6 +142,7 @@ vi.mock('./components/CortexWorkspace', () => ({
     onSandboxModeChange,
     toolCatalog,
     actions,
+    logoProps,
   }: {
     activeAgent: AgentKey
     devModeActive: boolean
@@ -149,6 +153,7 @@ vi.mock('./components/CortexWorkspace', () => ({
     onSandboxModeChange: (enabled: boolean) => void
     toolCatalog: ToolCatalog | null
     actions?: { pendingCount: number }
+    logoProps?: Pick<ApexLogoProps, 'status' | 'hasCollectedTelemetry'>
   }) => {
     appMocks.cortexLifecycleBusy = lifecycleBusy
     const authoritativeContextWindow = toolCatalog?.context_window ?? null
@@ -182,6 +187,7 @@ vi.mock('./components/CortexWorkspace', () => ({
     }
     return (
       <div>
+        {logoProps && <output data-testid="reminder-pulse-count" data-status={logoProps.status} data-collected={String(logoProps.hasCollectedTelemetry ?? false)} />}
         <output data-testid="active-agent">{activeAgent}</output>
         <output data-testid="provider-hosted-tools">
           {toolCatalog?.provider_hosted_tools.join(',') ?? ''}
@@ -505,6 +511,34 @@ async function selectWorkspace(user: ReturnType<typeof userEvent.setup>, name: s
   await user.click(within(nav).getByRole('button', { name }))
 }
 
+function renderOverviewApp(): ReturnType<typeof render> {
+  const result = render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: 'Overview' }))
+  return result
+}
+
+function usableTelemetrySnapshot(): TelemetrySnapshot {
+  const collectedAt = new Date().toISOString()
+  return {
+    snapshot_id: 'test-snapshot',
+    collected_at: collectedAt,
+    modules: {
+      weather: {
+        name: 'weather', status: 'healthy', freshness: 'live', reason_code: 'ok',
+        observed_at: collectedAt, display_text: 'Clear', data: { temp_f: 72, condition: 'mainly clear' },
+      },
+    },
+    sync_health_score: 100,
+    connector_health: [],
+    failed_connectors: [],
+  }
+}
+
+async function collectOverview(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Collect Telemetry' })).not.toBeInTheDocument())
+}
+
 async function selectBriefingEffort(user: ReturnType<typeof userEvent.setup>, effort: string): Promise<void> {
   const dialog = screen.getByRole('dialog', { name: 'Set up your briefing' })
   await user.click(within(dialog).getByRole('button', { name: /^Select effort/ }))
@@ -557,7 +591,7 @@ describe('App catalog-affecting settings', () => {
       }),
     )
 
-    render(<App />)
+    renderOverviewApp()
 
     await selectWorkspace(user, 'Cortex')
     await waitFor(() => expect(catalogRequests).toContain('deepseek/deepseek-v4-flash-0731'))
@@ -580,7 +614,7 @@ describe('App catalog-affecting settings', () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(catalogFor('apex')), { status: 200 }))))
     appMocks.toolPreflight.mockClear()
 
-    render(<App />)
+    renderOverviewApp()
     const baseline = structuredClone(BASE_SETTINGS)
     const withHighCloudEffort = structuredClone(BASE_SETTINGS)
     withHighCloudEffort.ask_apex.cloud.effort = 'high'
@@ -613,7 +647,7 @@ describe('App catalog-affecting settings', () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(catalogFor('apex')), { status: 200 }))))
     appMocks.toolPreflight.mockClear()
 
-    render(<App />)
+    renderOverviewApp()
     const localSettings = structuredClone(BASE_SETTINGS)
     localSettings.ask_apex.selected_model = 'qwen3:1.7b'
     localSettings.ask_apex.local.last_model = 'qwen3:1.7b'
@@ -631,11 +665,11 @@ describe('App catalog-affecting settings', () => {
 
   it('switches peer workspaces from visible header tabs without a Standby peer', async () => {
     const user = userEvent.setup()
-    render(<App />)
+    renderOverviewApp()
 
     const nav = screen.getByRole('navigation', { name: 'Workspace' })
     const tabs = within(nav).getAllByRole('button')
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['Reports', 'Overview', 'Briefing', 'Cortex'])
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Overview', 'Briefing', 'Cortex', 'Reports'])
     expect(within(nav).getByRole('button', { name: 'Overview' })).toHaveAttribute('aria-current', 'page')
     expect(within(nav).getByRole('button', { name: 'Briefing' })).not.toHaveAttribute('aria-current')
 
@@ -673,7 +707,7 @@ describe('App catalog-affecting settings', () => {
       }),
     )
 
-    render(<App />)
+    renderOverviewApp()
 
     await selectWorkspace(user, 'Cortex')
     await waitFor(() => expect(catalogRequests).toContain('deepseek/deepseek-v4-flash-0731'))
@@ -735,7 +769,7 @@ describe('App catalog-affecting settings', () => {
       }),
     )
 
-    render(<App />)
+    renderOverviewApp()
 
     await selectWorkspace(user, 'Cortex')
     await waitFor(() => expect(actionsRequested).toBeGreaterThan(0))
@@ -752,10 +786,13 @@ describe('App market loading feedback', () => {
     appMocks.telemetryRefreshingConnectors = new Set<string>()
   })
 
-  it('shows loading only while Market participates in telemetry refresh', () => {
+  it('shows loading only while Market participates in telemetry refresh', async () => {
     appMocks.marketEnabled = true
     appMocks.telemetryRefreshingAll = true
-    const { rerender } = render(<App />)
+    appMocks.refreshAllWithOutcome.mockResolvedValue({ kind: 'success', snapshot: usableTelemetrySnapshot() })
+    const user = userEvent.setup()
+    const { rerender } = renderOverviewApp()
+    await collectOverview(user)
     expect(screen.getByTestId('market-loading-state')).toHaveTextContent('loading')
 
     appMocks.telemetryRefreshingAll = false
@@ -778,7 +815,7 @@ describe('App Market settings refresh', () => {
   })
 
   it('refreshes changed Market settings only while the application is activated', async () => {
-    const { rerender } = render(<App />)
+    const { rerender } = renderOverviewApp()
     const baseline = structuredClone(BASE_SETTINGS)
     const unrelated = structuredClone(baseline)
     unrelated.voice.mode = 'off'
@@ -816,7 +853,7 @@ describe('App Market settings refresh', () => {
 })
 
 describe('App weather attribution', () => {
-  it('keeps Open-Meteo, GeoNames, licence, and adaptation credit visible in the weather header', () => {
+  it('keeps Open-Meteo, GeoNames, licence, and adaptation credit visible in the weather header', async () => {
     appMocks.weatherSnapshot = {
       modules: {
         weather: {
@@ -826,7 +863,10 @@ describe('App weather attribution', () => {
         },
       },
     }
-    render(<App />)
+    appMocks.refreshAllWithOutcome.mockResolvedValue({ kind: 'success', snapshot: usableTelemetrySnapshot() })
+    const user = userEvent.setup()
+    renderOverviewApp()
+    await collectOverview(user)
 
     expect(screen.getByText('Weather by')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open-Meteo' })).toHaveAttribute(
@@ -849,8 +889,10 @@ describe('App weather attribution', () => {
 describe('App reminder feedback', () => {
   it('pulses the logo after an accepted reminder save', async () => {
     const user = userEvent.setup()
+    appMocks.refreshAllWithOutcome.mockResolvedValue({ kind: 'success', snapshot: usableTelemetrySnapshot() })
 
-    render(<App />)
+    renderOverviewApp()
+    await collectOverview(user)
 
     expect(screen.getByTestId('reminder-pulse-count')).toHaveTextContent('0')
     await user.click(screen.getByRole('button', { name: 'Add reminder' }))
@@ -861,7 +903,9 @@ describe('App reminder feedback', () => {
 
   it('opens completed reminders from the panel header without renaming the panel', async () => {
     const user = userEvent.setup()
-    render(<App />)
+    appMocks.refreshAllWithOutcome.mockResolvedValue({ kind: 'success', snapshot: usableTelemetrySnapshot() })
+    renderOverviewApp()
+    await collectOverview(user)
 
     await user.click(screen.getByRole('button', { name: 'Completed reminders' }))
 
@@ -932,15 +976,15 @@ describe('App contextual voice cues', () => {
       return { kind: 'success', snapshot: createTelemetrySnapshot() }
     })
 
-    render(<App />)
+    renderOverviewApp()
     await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
 
     await waitFor(() => {
-      expect(events).toEqual(['refresh', 'cue:activation_loading'])
+      expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_ready'])
     })
   })
 
-  it('loads a fresh current snapshot before choosing the single ready welcome', async () => {
+  it('does not race a cached snapshot load against the explicit refresh', async () => {
     const user = userEvent.setup()
     const events: string[] = []
     appMocks.activated = false
@@ -951,43 +995,92 @@ describe('App contextual voice cues', () => {
       return { kind: 'success', snapshot: createTelemetrySnapshot() }
     })
 
-    render(<App />)
+    renderOverviewApp()
     await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
 
-    await waitFor(() => expect(events).toEqual(['refresh', 'cue:activation_ready']))
-    expect(appMocks.loadLatest).toHaveBeenCalledOnce()
+    await waitFor(() => expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_ready']))
+    expect(appMocks.loadLatest).not.toHaveBeenCalled()
   })
 
-  it('uses the latest fresh snapshot when the local snapshot has expired', async () => {
+  it('keeps the center error state when the first refresh fails despite cached usable telemetry', async () => {
     const user = userEvent.setup()
     const events: string[] = []
     appMocks.activated = false
-    appMocks.telemetrySnapshot = createTelemetrySnapshot(
-      new Date(Date.now() - 5 * 60 * 1000 - 1000).toISOString(),
-      {
+    appMocks.telemetrySnapshot = createTelemetrySnapshot()
+    appMocks.loadLatest.mockResolvedValue(createTelemetrySnapshot())
+    stubAppFetch(events)
+    appMocks.refreshAllWithOutcome.mockImplementation(async () => {
+      events.push('refresh')
+      return { kind: 'failure', snapshot: null, error: 'network down' }
+    })
+
+    renderOverviewApp()
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
+
+    await waitFor(() => expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_refresh_failed']))
+    expect(await screen.findByRole('alert')).toHaveTextContent('network down')
+    expect(screen.getByRole('button', { name: 'Retry Telemetry' })).toBeInTheDocument()
+    expect(screen.queryByTestId('weather-compact-value')).not.toBeInTheDocument()
+    expect(appMocks.loadLatest).not.toHaveBeenCalled()
+  })
+
+  it('treats a stale module in a successful refresh as no data', async () => {
+    const user = userEvent.setup()
+    const events: string[] = []
+    const freshAt = new Date().toISOString()
+    appMocks.activated = false
+    stubAppFetch(events)
+    appMocks.refreshAllWithOutcome.mockImplementation(async () => {
+      events.push('refresh')
+      return {
+        kind: 'success',
+        snapshot: createTelemetrySnapshot(freshAt, {
+          weather: {
+            name: 'weather',
+            status: 'healthy',
+            freshness: 'stale',
+            reason_code: 'stale',
+            observed_at: freshAt,
+            display_text: 'Old clear conditions',
+            data: {},
+          },
+        }),
+      }
+    })
+
+    renderOverviewApp()
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
+
+    await waitFor(() => expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_no_fresh_telemetry']))
+    expect(await screen.findByText('No telemetry sources are available yet.')).toBeInTheDocument()
+  })
+
+  it('rejects an old cached module even when its freshness label is not stale', async () => {
+    const user = userEvent.setup()
+    const events: string[] = []
+    const oldAt = new Date(Date.now() - 6 * 60 * 1000).toISOString()
+    appMocks.activated = false
+    stubAppFetch(events)
+    appMocks.refreshAllWithOutcome.mockResolvedValue({
+      kind: 'success',
+      snapshot: createTelemetrySnapshot(oldAt, {
         weather: {
           name: 'weather',
           status: 'healthy',
-          freshness: 'live',
-          reason_code: 'ok',
-          observed_at: new Date().toISOString(),
-          display_text: 'Clear',
+          freshness: 'fresh_cache',
+          reason_code: 'cached',
+          observed_at: oldAt,
+          display_text: 'Old clear conditions',
           data: {},
         },
-      },
-    )
-    appMocks.loadLatest.mockResolvedValue(createTelemetrySnapshot())
-    stubAppFetch(events)
-    appMocks.refreshAllWithOutcome.mockImplementation(async () => {
-      events.push('refresh')
-      return { kind: 'success', snapshot: createTelemetrySnapshot() }
+      }),
     })
 
-    render(<App />)
+    renderOverviewApp()
     await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
 
-    await waitFor(() => expect(events).toEqual(['refresh', 'cue:activation_ready']))
-    expect(appMocks.loadLatest).toHaveBeenCalledOnce()
+    await waitFor(() => expect(events).toEqual(['cue:activation_loading', 'cue:activation_no_fresh_telemetry']))
+    expect(await screen.findByText('No telemetry sources are available yet.')).toBeInTheDocument()
   })
 
   it('orders the activation refresh failure follow-up and skips it on conflict', async () => {
@@ -1000,7 +1093,7 @@ describe('App contextual voice cues', () => {
       return { kind: 'failure', snapshot: null, error: 'network down' }
     })
 
-    const firstRender = render(<App />)
+    const firstRender = renderOverviewApp()
     await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
     await waitFor(() => {
       expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_refresh_failed'])
@@ -1015,12 +1108,12 @@ describe('App contextual voice cues', () => {
       error: 'A telemetry refresh is already in progress',
     })
     const secondUser = userEvent.setup()
-    render(<App />)
+    renderOverviewApp()
     await secondUser.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
     await waitFor(() => expect(events).toEqual(['cue:activation_loading']))
   })
 
-  it('uses standby wording rather than refresh-failed wording when no fresh module is available', async () => {
+  it('uses the no-data cue when no telemetry modules are usable', async () => {
     const user = userEvent.setup()
     const events: string[] = []
     appMocks.activated = false
@@ -1030,7 +1123,7 @@ describe('App contextual voice cues', () => {
       return { kind: 'success', snapshot: createTelemetrySnapshot(new Date().toISOString(), {}) }
     })
 
-    render(<App />)
+    renderOverviewApp()
     await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
 
     await waitFor(() => {
@@ -1045,7 +1138,10 @@ describe('App Overview and Briefing states', () => {
     appMocks.activated = true
     appMocks.noModels = false
     appMocks.weatherSnapshot = null
+    appMocks.telemetrySnapshot = null
     appMocks.deactivate.mockClear()
+    appMocks.activate.mockClear()
+    appMocks.requestOperation.mockReset().mockResolvedValue('proceed')
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
@@ -1060,24 +1156,140 @@ describe('App Overview and Briefing states', () => {
     }))
   }
 
-  it('offers Collect Telemetry from Standby without a command panel or composer', () => {
+  it('opens on Launch and offers Collect Telemetry after navigating to Overview', async () => {
     appMocks.activated = false
+    appMocks.loadLatest.mockClear()
+    appMocks.requestOperation.mockClear()
     stubHomeFetch([])
+    const user = userEvent.setup()
     render(<App />)
 
+    expect(screen.getByRole('region', { name: 'Launch' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open settings' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Collect Telemetry' })).not.toBeInTheDocument()
+    expect(appMocks.loadLatest).not.toHaveBeenCalled()
+    await selectWorkspace(user, 'Overview')
+
+    expect(screen.getByRole('region', { name: 'Overview' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Collect Telemetry' })).toBeEnabled()
     expect(screen.queryByRole('button', { name: 'Open Briefing setup' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Agent command rail' })).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   })
 
-  it('shows telemetry in Overview without a model, composer, or briefing controls', () => {
-    appMocks.noModels = true
-    appMocks.weatherSnapshot = {
-      modules: { weather: { status: 'healthy', data: { temp_f: 72 }, display_text: 'Current temperature is 72 degrees.' } },
-    }
+  it('shares standby logo state across workspaces and leaves it uncollected after failure', async () => {
+    appMocks.activated = false
+    appMocks.refreshAllWithOutcome.mockResolvedValue({ kind: 'failure', snapshot: null, error: 'offline' })
     stubHomeFetch([])
+    const user = userEvent.setup()
     render(<App />)
+
+    const expectStandbyLogo = (): void => {
+      const logos = screen.getAllByTestId('reminder-pulse-count')
+      expect(logos.length).toBeGreaterThan(0)
+      for (const logo of logos) {
+        expect(logo).toHaveAttribute('data-status', 'idle')
+        expect(logo).toHaveAttribute('data-collected', 'false')
+      }
+    }
+
+    expectStandbyLogo()
+    await selectWorkspace(user, 'Overview')
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Retry Telemetry' })).toBeInTheDocument())
+    expectStandbyLogo()
+
+    await selectWorkspace(user, 'Briefing')
+    expectStandbyLogo()
+    await selectWorkspace(user, 'Cortex')
+    expectStandbyLogo()
+  })
+
+  it('uses the collected logo state across workspaces after a usable snapshot', async () => {
+    appMocks.activated = false
+    appMocks.refreshAllWithOutcome.mockResolvedValue({ kind: 'success', snapshot: usableTelemetrySnapshot() })
+    stubHomeFetch([])
+    const user = userEvent.setup()
+    renderOverviewApp()
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
+
+    await waitFor(() => {
+      for (const logo of screen.getAllByTestId('reminder-pulse-count')) {
+        expect(logo).toHaveAttribute('data-status', 'success')
+        expect(logo).toHaveAttribute('data-collected', 'true')
+      }
+    })
+
+    await selectWorkspace(user, 'Briefing')
+    for (const logo of screen.getAllByTestId('reminder-pulse-count')) {
+      expect(logo).toHaveAttribute('data-status', 'success')
+      expect(logo).toHaveAttribute('data-collected', 'true')
+    }
+  })
+
+  it('keeps the telemetry standby state after a no-data collection', async () => {
+    appMocks.activated = false
+    appMocks.refreshAllWithOutcome.mockResolvedValue({
+      kind: 'success',
+      snapshot: { ...usableTelemetrySnapshot(), modules: {} },
+    })
+    stubHomeFetch([])
+    const user = userEvent.setup()
+    renderOverviewApp()
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Retry Telemetry' })).toBeInTheDocument())
+    for (const logo of screen.getAllByTestId('reminder-pulse-count')) {
+      expect(logo).toHaveAttribute('data-status', 'idle')
+      expect(logo).toHaveAttribute('data-collected', 'false')
+    }
+  })
+
+  it('latches a usable snapshot supplied outside Overview collection', async () => {
+    appMocks.activated = false
+    appMocks.telemetrySnapshot = usableTelemetrySnapshot()
+    stubHomeFetch([])
+    const user = userEvent.setup()
+    const { rerender } = render(<App />)
+
+    await waitFor(() => {
+      for (const logo of screen.getAllByTestId('reminder-pulse-count')) {
+        expect(logo).toHaveAttribute('data-status', 'success')
+        expect(logo).toHaveAttribute('data-collected', 'true')
+      }
+    })
+
+    appMocks.telemetrySnapshot = null
+    rerender(<App />)
+    for (const logo of screen.getAllByTestId('reminder-pulse-count')) {
+      expect(logo).toHaveAttribute('data-status', 'success')
+      expect(logo).toHaveAttribute('data-collected', 'true')
+    }
+
+    await selectWorkspace(user, 'Briefing')
+    for (const logo of screen.getAllByTestId('reminder-pulse-count')) {
+      expect(logo).toHaveAttribute('data-status', 'success')
+      expect(logo).toHaveAttribute('data-collected', 'true')
+    }
+  })
+
+  it('shows telemetry in Overview without a model, composer, or briefing controls', async () => {
+    appMocks.noModels = true
+    appMocks.refreshAllWithOutcome.mockResolvedValue({
+      kind: 'success',
+      snapshot: {
+        snapshot_id: 'overview-snapshot',
+        collected_at: new Date().toISOString(),
+        modules: { weather: { name: 'weather', status: 'healthy', freshness: 'live', reason_code: 'ok', observed_at: new Date().toISOString(), data: { temp_f: 72 }, display_text: 'Current temperature is 72 degrees.' } },
+        sync_health_score: 100,
+        connector_health: [],
+        failed_connectors: [],
+      },
+    })
+    stubHomeFetch([])
+    const user = userEvent.setup()
+    renderOverviewApp()
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
 
     expect(screen.getByRole('region', { name: 'Overview' })).toBeInTheDocument()
     expect(screen.getByTestId('weather-compact-value')).not.toBeEmptyDOMElement()
@@ -1086,11 +1298,27 @@ describe('App Overview and Briefing states', () => {
     expect(screen.queryByRole('region', { name: 'Briefing controls' })).not.toBeInTheDocument()
   })
 
-  it('switches between Overview and Briefing from the header menu without generating', async () => {
+  it('keeps the ready Overview grid visible after a later refresh failure', async () => {
+    appMocks.refreshAllWithOutcome.mockResolvedValue({ kind: 'success', snapshot: usableTelemetrySnapshot() })
+    appMocks.refreshAll.mockResolvedValue({ kind: 'failure', snapshot: null, error: 'network down' })
+    stubHomeFetch([])
+    const user = userEvent.setup()
+    renderOverviewApp()
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
+
+    expect(screen.getByRole('button', { name: 'Refresh Reminders' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Refresh checks' }))
+
+    expect(appMocks.refreshAll).toHaveBeenCalledWith({ force: false })
+    expect(screen.getByRole('button', { name: 'Refresh Reminders' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Retry Telemetry' })).not.toBeInTheDocument()
+  })
+
+  it('switches workspaces and returns to Launch without generating', async () => {
     const user = userEvent.setup()
     const posts: string[] = []
     stubHomeFetch(posts)
-    render(<App />)
+    renderOverviewApp()
 
     await selectWorkspace(user, 'Briefing')
     expect(screen.getByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
@@ -1100,17 +1328,22 @@ describe('App Overview and Briefing states', () => {
     await selectWorkspace(user, 'Overview')
     expect(screen.getByRole('region', { name: 'Overview' })).toBeInTheDocument()
     expect(posts.filter((path) => path.endsWith('/briefing-sessions'))).toHaveLength(0)
+    expect(appMocks.requestOperation).not.toHaveBeenCalledWith('activate')
+
+    await user.click(screen.getByRole('button', { name: 'APEX Launch' }))
+    expect(screen.getByRole('region', { name: 'Launch' })).toBeInTheDocument()
+    expect(posts.filter((path) => path.endsWith('/briefing-sessions'))).toHaveLength(0)
   })
 
-  it('opens Briefing from Standby without activation or generating a briefing', async () => {
+  it('opens Briefing from Overview without activation or generating a briefing', async () => {
     appMocks.activated = false
     appMocks.activate.mockClear()
     const user = userEvent.setup()
     const posts: string[] = []
     stubHomeFetch(posts)
-    render(<App />)
+    renderOverviewApp()
 
-    expect(screen.getByRole('region', { name: 'Standby' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Overview' })).toBeInTheDocument()
 
     await selectWorkspace(user, 'Briefing')
     expect(appMocks.activate).not.toHaveBeenCalled()
@@ -1126,7 +1359,7 @@ describe('App Overview and Briefing states', () => {
     const user = userEvent.setup()
     const posts: string[] = []
     stubHomeFetch(posts)
-    render(<App />)
+    renderOverviewApp()
 
     await selectWorkspace(user, 'Briefing')
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
@@ -1145,7 +1378,7 @@ describe('App Overview and Briefing states', () => {
     appMocks.requestOperation.mockClear()
     const user = userEvent.setup()
     stubHomeFetch([])
-    render(<App />)
+    renderOverviewApp()
 
     await selectWorkspace(user, 'Briefing')
     await user.keyboard('{Enter}')
@@ -1156,15 +1389,30 @@ describe('App Overview and Briefing states', () => {
     expect(screen.getByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
   })
 
+  it('does not collect telemetry from the global Enter key in Overview', async () => {
+    appMocks.activated = false
+    appMocks.activate.mockClear()
+    appMocks.requestOperation.mockClear()
+    const user = userEvent.setup()
+    stubHomeFetch([])
+    renderOverviewApp()
+
+    await user.keyboard('{Enter}')
+
+    expect(appMocks.activate).not.toHaveBeenCalled()
+    expect(appMocks.requestOperation).not.toHaveBeenCalledWith('activate')
+    expect(screen.getByRole('button', { name: 'Collect Telemetry' })).toBeInTheDocument()
+  })
+
   it('activates Overview from Collect Telemetry on Standby', async () => {
     appMocks.activated = false
     const user = userEvent.setup()
     stubHomeFetch([])
-    render(<App />)
+    renderOverviewApp()
 
     await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
     expect(await screen.findByRole('region', { name: 'Overview' })).toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: 'Standby' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Overview' })).toBeInTheDocument()
   })
 })
 
@@ -1211,7 +1459,7 @@ describe('App active local briefing lifecycle', () => {
     }))
 
     const user = userEvent.setup()
-    render(<App />)
+    renderOverviewApp()
     expect(await screen.findByTestId('local-model-loading-label')).toHaveTextContent('Qwen 3 1.7B')
 
     await selectWorkspace(user, 'Cortex')
@@ -1395,7 +1643,7 @@ describe('App briefing session flow', () => {
       return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
     }))
 
-    render(<App />)
+    renderOverviewApp()
     await selectWorkspace(user, 'Briefing')
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
     const setup = await screen.findByRole('dialog', { name: 'Set up your briefing' })
@@ -1481,7 +1729,7 @@ describe('App briefing setup failure ordering', () => {
       return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
     }))
     const user = userEvent.setup()
-    render(<App />)
+    renderOverviewApp()
     await selectWorkspace(user, 'Briefing')
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
     await selectBriefingEffort(user, 'High')
@@ -1511,7 +1759,7 @@ describe('App briefing setup failure ordering', () => {
       return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
     }))
     const user = userEvent.setup()
-    render(<App />)
+    renderOverviewApp()
     await selectWorkspace(user, 'Briefing')
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
     await selectBriefingEffort(user, 'High')
@@ -1643,7 +1891,7 @@ describe('App Repeat last briefing', () => {
     }))
 
     const user = userEvent.setup()
-    render(<App />)
+    renderOverviewApp()
     await selectWorkspace(user, 'Briefing')
     await waitFor(() => expect(screen.getByRole('button', { name: 'Repeat last briefing' })).toBeEnabled())
     expect(screen.getByText(/Catch Up · DeepSeek V4 Flash · failed/)).toBeInTheDocument()
@@ -1747,7 +1995,7 @@ describe('App Repeat last briefing', () => {
     }))
 
     const user = userEvent.setup()
-    render(<App />)
+    renderOverviewApp()
     await selectWorkspace(user, 'Briefing')
     await waitFor(() => expect(screen.getByRole('button', { name: 'Repeat last briefing' })).toBeEnabled())
     await user.click(screen.getByRole('button', { name: 'Repeat last briefing' }))

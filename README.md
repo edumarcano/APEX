@@ -12,7 +12,7 @@ APEX started as a small, fun experiment: could I build something that gave me a 
 
 Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, sourced personal context, outside activity reports, and Apex Agent work into one place. It turns those signals into Overview telemetry, concise briefings, and Agent queries while keeping the local machine, not a hosted account, at the center of the system.
 
-APEX has four peer workspaces in the header: Reports holds reports from outside tools, Overview shows the telemetry grid after Collect Telemetry, Briefing runs saved sessions and setup, and Cortex is where you interact directly with Apex Agent and review personal context. Telemetry means structured status collected from connected services; a briefing is a saved, structured session built from that evidence; and an Agent query is a request sent to the selected model through Apex Agent.
+APEX opens on Launch, which provides access to four peer workspaces: Overview shows the telemetry grid after Collect Telemetry, Briefing runs saved sessions and setup, Cortex is where you interact directly with Apex Agent and review personal context, and Reports holds reports from outside tools. Overview navigation does not collect data; choose Collect Telemetry to run preflight and begin a refresh. Telemetry means structured status collected from connected services; a briefing is a saved, structured session built from that evidence; and an Agent query is a request sent to the selected model through Apex Agent.
 
 <p align="center">
   <img

@@ -9,6 +9,7 @@ export interface ApexLogoProps {
   reminderPulseCount?: number
   isCortexQuerying?: boolean
   isTelemetryCollecting?: boolean
+  hasCollectedTelemetry?: boolean
   outerShellActivity?: OuterShellActivity
   className?: string
 }
@@ -20,6 +21,7 @@ export function ApexLogo({
   reminderPulseCount = 0,
   isCortexQuerying = false,
   isTelemetryCollecting = false,
+  hasCollectedTelemetry = false,
   outerShellActivity = 'normal',
   className = '',
 }: ApexLogoProps): ReactElement {
@@ -63,8 +65,11 @@ export function ApexLogo({
       return 'apex-blue-metal apex-blue-metal--collection-surge'
     }
 
-    const blueMetal =
-      outerShellActivity === 'synthesis' || hasDelivered ? activeBlue : baseBlue
+    if (outerShellActivity === 'synthesis') {
+      return `transition-all duration-700 ease-in-out ${activeBlue}`
+    }
+
+    const blueMetal = hasDelivered || !hasCollectedTelemetry ? activeBlue : baseBlue
 
     return `transition-all duration-700 ease-in-out ${blueMetal}`
   }
@@ -86,8 +91,8 @@ export function ApexLogo({
   const greenSurgeCore = 'apex-core-metal apex-core-metal--green-surge'
   const purpleSurgeCore = 'apex-core-metal apex-core-metal--purple-surge'
   const redCore = 'apex-core-metal apex-core-metal--red'
+  const speakingCore = 'apex-core-metal apex-core-metal--speaking'
   const goldActiveCore = 'apex-core-metal apex-core-metal--gold-active'
-  const goldActiveBreathing = `${goldActiveCore} apex-core-metal--speaking animate-[pulse_3s_ease-in-out_infinite]`
 
   const getGoldStageDelay = (segmentStep: number): { animationDelay: string } => ({
     animationDelay: `${STAGE_DELAYS_MS[segmentStep - 1]}ms`,
@@ -96,6 +101,10 @@ export function ApexLogo({
   const getGoldSegmentClass = (): string => {
     if (isCortexQuerying) {
       return purpleSurgeCore
+    }
+
+    if (isSpeaking) {
+      return speakingCore
     }
 
     if (isDormant) {
@@ -123,8 +132,7 @@ export function ApexLogo({
     }
 
     if (hasDelivered) {
-      const deliveredCore = isSpeaking ? goldActiveBreathing : goldActiveCore
-      return `transition-all duration-700 ease-in-out ${deliveredCore}`
+      return `transition-all duration-700 ease-in-out ${goldActiveCore}`
     }
 
     return `transition-all duration-700 ease-in-out ${dormantCore}`
@@ -216,6 +224,20 @@ export function ApexLogo({
             <stop offset="62%" stopColor="#7E22CE" />
             <stop offset="82%" stopColor="#3B0764" />
             <stop offset="100%" stopColor="#D8B4FE" />
+          </linearGradient>
+
+          <linearGradient
+            id="apexCyanMetal"
+            x1="2110"
+            y1="520"
+            x2="3090"
+            y2="5410"
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop offset="0%" stopColor="#A5F3FC" />
+            <stop offset="24%" stopColor="#22D3EE" />
+            <stop offset="62%" stopColor="#0891B2" />
+            <stop offset="100%" stopColor="#67E8F9" />
           </linearGradient>
 
           <linearGradient
@@ -327,10 +349,31 @@ export function ApexLogo({
               filter: drop-shadow(0 0 14px rgba(220, 38, 38, 0.8));
             }
 
+            @keyframes apexSpeechPulse {
+              0%, 100% {
+                filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.48));
+              }
+              50% {
+                filter: drop-shadow(0 0 16px rgba(34, 211, 238, 0.9));
+              }
+            }
+
+            .apex-core-metal--speaking {
+              fill: url(#apexCyanMetal);
+              filter: drop-shadow(0 0 12px rgba(34, 211, 238, 0.75));
+              animation: apexSpeechPulse 900ms ease-in-out infinite;
+            }
+
             .apex-core-metal--gold-active {
               fill: url(#apexGoldMetal);
               filter: drop-shadow(0 0 14px rgba(251, 191, 36, 0.85));
               transition: all 1000ms ease-in-out;
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+              .apex-core-metal--speaking {
+                animation: none;
+              }
             }
 
             .apex-core-metal--gold-surge {

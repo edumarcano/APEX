@@ -85,7 +85,7 @@ function resolveSignalState(
     return { label: 'Processing', tone: 'emerald', isActive: true }
   }
 
-  return { label: 'Standby', tone: 'standby', isActive: false }
+  return { label: 'Ready', tone: 'standby', isActive: false }
 }
 
 function resolveToneClasses(tone: SignalTone): {

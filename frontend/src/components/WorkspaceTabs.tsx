@@ -1,20 +1,20 @@
 import type { ReactElement } from 'react'
 
-export type WorkspacePeer = 'reports' | 'overview' | 'briefing' | 'cortex'
+export type WorkspacePeer = 'overview' | 'briefing' | 'cortex' | 'reports'
 
 const PEERS: Array<{ id: WorkspacePeer; label: string; activeClass: string }> = [
-  { id: 'reports', label: 'Reports', activeClass: 'bg-[#22D3EE]/15 text-[#A5F3FC]' },
   { id: 'overview', label: 'Overview', activeClass: 'bg-[#0F4DB8]/20 text-[#A5C7FF]' },
   { id: 'briefing', label: 'Briefing', activeClass: 'bg-[#FBBF24]/15 text-[#FFF3B0]' },
   { id: 'cortex', label: 'Cortex', activeClass: 'bg-[#7E22CE]/25 text-[#D8B4FE]' },
+  { id: 'reports', label: 'Reports', activeClass: 'bg-[#22D3EE]/15 text-[#A5F3FC]' },
 ]
 
-/** Visible header tabs for the four peer workspaces. Standby is a state, not a peer. */
+/** Visible header tabs for the four peer workspaces. Launch is outside this set. */
 export function WorkspaceTabs({
   current,
   onSelect,
 }: {
-  current: WorkspacePeer
+  current: WorkspacePeer | null
   onSelect: (peer: WorkspacePeer) => void
 }): ReactElement {
   return (
