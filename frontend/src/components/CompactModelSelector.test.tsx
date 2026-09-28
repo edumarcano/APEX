@@ -6,7 +6,7 @@ import type { ModelCatalogEntry } from '../types/telemetry'
 import { CompactModelSelector } from './CompactModelSelector'
 
 const catalog: ModelCatalogEntry[] = [
-  { model_id: 'deepseek/deepseek-v4-flash-0731', display_name: 'DeepSeek V4 Flash', provider: 'openrouter', runtime: 'cloud', stability: 'stable', reasoning_options: ['none', 'low', 'high', 'max'], default_reasoning: 'high', hosted_capabilities: [], status: 'configured' },
+  { model_id: 'deepseek/deepseek-v4-flash-0731', display_name: 'DeepSeek V4 Flash', provider: 'openrouter', runtime: 'cloud', stability: 'stable', reasoning_options: ['none', 'low', 'high', 'max'], default_reasoning: 'high', pricing: { currency: 'USD', pricing_version: 'test', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 0.4, cached_input_per_million: null, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null }, hosted_capabilities: [], status: 'configured' },
   { model_id: 'gpt-5.6-luna', display_name: 'GPT-5.6 Luna', provider: 'openai', runtime: 'cloud', stability: 'preview', reasoning_options: ['none', 'low', 'high'], default_reasoning: 'low', hosted_capabilities: [], status: 'verified' },
   { model_id: 'gemma-4-E2B-Q4_K_M.gguf', display_name: 'Gemma 4 E2B', provider: 'llama_cpp', runtime: 'local', stability: 'experimental', reasoning_options: null, default_reasoning: null, maximum_context_window: 131072, hosted_capabilities: [], status: 'available' },
 ]
@@ -56,5 +56,50 @@ describe('CompactModelSelector', () => {
     const popover = screen.getByRole('listbox', { name: /select model/i })
     expect(within(popover).getByText(/Ollama · 4K context/i)).toBeInTheDocument()
     expect(within(popover).getByText(/llama\.cpp · 16K context/i)).toBeInTheDocument()
+  })
+
+  it('integrates the selected model and reasoning value and exposes supported effort choices separately', async () => {
+    const user = userEvent.setup()
+    const onEffortChange = vi.fn()
+    render(<CompactModelSelector
+      selectedModelId={catalog[0].model_id}
+      onModelChange={vi.fn()}
+      catalog={catalog}
+      presentation="composer"
+      cloudEffort="high"
+      onEffortChange={onEffortChange}
+    />)
+
+    const trigger = screen.getByRole('button', { name: /model: deepseek v4 flash, reasoning high/i })
+    expect(trigger).toHaveTextContent('DeepSeek V4 Flash')
+    expect(trigger).toHaveTextContent('High')
+    await user.click(trigger)
+    const menu = screen.getByRole('listbox', { name: /select model/i })
+    expect(within(menu).getByText(/In .*Out .* \/ 1M/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Reasoning, currently High' }))
+    await user.click(screen.getByRole('button', { name: 'Low' }))
+    expect(onEffortChange).toHaveBeenCalledWith('low')
+  })
+
+  it('offers local reasoning modes and disables both selectors while the thread is running', async () => {
+    const user = userEvent.setup()
+    const localCatalog: ModelCatalogEntry[] = [{ ...catalog[2], reasoning_modes: ['none', 'focused'], default_reasoning_mode: 'none' }]
+    const onLocalReasoningModeChange = vi.fn()
+    const { rerender } = render(<CompactModelSelector
+      selectedModelId={localCatalog[0].model_id}
+      onModelChange={vi.fn()}
+      catalog={localCatalog}
+      presentation="composer"
+      localReasoningMode="none"
+      onLocalReasoningModeChange={onLocalReasoningModeChange}
+    />)
+    const trigger = screen.getByRole('button', { name: /model: gemma 4 e2b, reasoning none/i })
+    await user.click(trigger)
+    await user.click(screen.getByRole('button', { name: 'Reasoning, currently None' }))
+    await user.click(screen.getByRole('button', { name: 'Focused' }))
+    expect(onLocalReasoningModeChange).toHaveBeenCalledWith('focused')
+    expect(screen.getByRole('button', { name: /model: gemma 4 e2b, reasoning none/i })).toBeEnabled()
+    rerender(<CompactModelSelector selectedModelId={localCatalog[0].model_id} onModelChange={vi.fn()} catalog={localCatalog} presentation="composer" disabled isQuerying />)
+    expect(screen.getByRole('button', { name: /model: gemma 4 e2b/i })).toBeDisabled()
   })
 })

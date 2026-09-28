@@ -6,7 +6,7 @@ import { useCompactLayout } from '../../hooks/useCompactLayout'
 import type { BriefingLayoutPhase } from '../../hooks/useWorkspaceView'
 import { parseAgentQueryResponse } from '../../lib/cortexResponse'
 import type { BriefingSessionDetail } from '../../types/briefings'
-import { ApexAssistantThread } from '../ApexAssistantRuntime'
+import { ApexAssistantThread, type ApexAssistantComposerProps } from '../ApexAssistantRuntime'
 import { BriefingArtifactMessage } from './BriefingArtifactMessage'
 import type { BriefingEvidenceState } from './BriefingEvidence'
 import { BriefingProfilePanel, type BriefingProfilePanelProps } from './BriefingProfilePanel'
@@ -23,6 +23,7 @@ export type BriefingViewConversation = {
   evidence: Omit<BriefingEvidenceState, 'sessionId'>
   onMarkPresented: (sessionId: string) => Promise<void>
   onOpenConversation: (conversationId: string) => void
+  composer?: ApexAssistantComposerProps
 }
 
 export type BriefingViewProps = {
@@ -59,7 +60,7 @@ function BriefingConversation({ conversation }: { conversation: BriefingViewConv
   if (!session) return <div className="flex min-h-0 flex-1 items-center justify-center p-5 text-xs text-zinc-500">Open a saved briefing to continue its conversation.</div>
   return <section className="flex min-h-0 flex-1 flex-col" aria-label="Briefing conversation">
     {conversation.ready ? (
-      <ApexAssistantThread disabled={!conversation.canFollowUp} renderAgent={renderAgent} />
+      <ApexAssistantThread disabled={!conversation.canFollowUp} renderAgent={renderAgent} composer={conversation.composer} />
     ) : (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-5 text-center text-xs text-zinc-500">
         <p role="status">{isLoadingSession ? 'Loading saved conversation…' : 'This briefing conversation is not open yet.'}</p>
@@ -114,7 +115,7 @@ export function BriefingView(props: BriefingViewProps): ReactElement {
       <HudIdentityMark identity={props.identity} size="compact" />
       {controls}
     </aside>
-    <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-zinc-950/45">
+    <div className="flex min-h-0 flex-col overflow-visible rounded-xl border border-white/10 bg-zinc-950/45">
       <BriefingConversation conversation={props.conversation} />
     </div>
     <HudTelemetryRail data={props.telemetry} hasUsableSnapshot={props.telemetryCollection.hasUsableSnapshot} collectionState={props.telemetryCollection.state} collectionError={props.telemetryCollection.error} collectionDisabled={props.telemetryCollection.disabled} onCollect={props.telemetryCollection.onCollect} />

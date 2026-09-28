@@ -258,4 +258,22 @@ describe('ToolsSelector', () => {
     await user.click(document.body)
     expect(screen.queryByRole('dialog', { name: 'Tools selector' })).not.toBeInTheDocument()
   })
+
+  it('renders the Briefing menu in the viewport layer outside the clipped composer', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<div className="overflow-hidden"><ToolsSelector
+      compact
+      portal
+      catalog={catalog}
+      selectedToolNames={[]}
+      activeToolProfileId={null}
+      onSelectionChange={vi.fn()}
+      onProfileChange={vi.fn()}
+    /></div>)
+    await user.click(screen.getByRole('button', { name: /Tools:/ }))
+    const panel = screen.getByRole('dialog', { name: 'Tools selector' })
+    expect(panel.parentElement).toBe(document.body)
+    expect(panel).toHaveStyle({ position: 'fixed' })
+    expect(container.querySelector('#apex-tools-selector-panel')).toBeNull()
+  })
 })

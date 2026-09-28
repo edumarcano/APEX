@@ -1419,13 +1419,25 @@ export default function App(): ReactElement {
         setCloudEffort(nextEffort)
       }
     }
-    const runtimePatch = entry?.runtime === 'local'
-      ? { local: { last_model: model } }
-      : { cloud: { last_model: model, effort: nextEffort } }
+    let runtimePatch: { local?: { last_model: string; reasoning_mode?: LocalReasoningMode }; cloud?: { last_model: string; effort: CloudEffort } }
+    if (entry?.runtime === 'local') {
+      const supportedModes = entry.reasoning_modes ?? []
+      if (supportedModes.length === 0) {
+        runtimePatch = { local: { last_model: model } }
+      } else {
+        const nextMode = supportedModes.includes(localReasoningMode)
+          ? localReasoningMode
+          : entry.default_reasoning_mode ?? supportedModes[0]
+        if (nextMode !== localReasoningMode) setLocalReasoningMode(nextMode)
+        runtimePatch = { local: { last_model: model, reasoning_mode: nextMode } }
+      }
+    } else {
+      runtimePatch = { cloud: { last_model: model, effort: nextEffort } }
+    }
     void persistAgentSettings({
       selected_model: model, ...runtimePatch,
     }, { refreshToolCatalog: true })
-  }, [cloudEffort, fullModelCatalog, persistAgentSettings])
+  }, [cloudEffort, fullModelCatalog, localReasoningMode, persistAgentSettings])
 
   const handleEffortChange = useCallback((effort: CloudEffort): void => {
     setCloudEffort(effort)
@@ -1740,6 +1752,38 @@ export default function App(): ReactElement {
               evidence: briefingEvidence,
               onMarkPresented: dailySessions.markPresented,
               onOpenConversation: (conversationId) => void openDailyConversation(conversationId),
+              composer: {
+                activeAgent: 'apex',
+                activeAgentName: 'Apex Agent',
+                integrated: true,
+                disabled: conversationHydrating || !toolCatalogState.selectionReady || demoModeActive,
+                selectedModelId: selectedModel,
+                onModelChange: handleModelChange,
+                modelCatalog: fullModelCatalog,
+                cloudEffort,
+                onEffortChange: handleEffortChange,
+                localReasoningMode,
+                onLocalReasoningModeChange: handleLocalReasoningModeChange,
+                tools: {
+                  catalog: toolCatalogState.catalog,
+                  selectedToolNames: toolCatalogState.selectedToolNames,
+                  activeToolProfileId: toolCatalogState.activeToolProfileId,
+                  onSelectionChange: toolCatalogState.setSelectedToolNames,
+                  onProfileChange: toolCatalogState.applyToolProfile,
+                  preflight: toolPreflightState.estimate,
+                  preflightLoading: toolPreflightState.isLoading,
+                  catalogError: toolCatalogState.error,
+                  preflightError: toolPreflightState.error,
+                  profileFeedback: toolProfileFeedback,
+                  profileError: toolProfileError,
+                  onSaveProfile: saveToolProfile,
+                  onDuplicateProfile: duplicateToolProfile,
+                  onRenameProfile: renameToolProfile,
+                  onDeleteProfile: deleteToolProfile,
+                  onRestoreProfile: restoreToolProfile,
+                  onSetDefaultProfile: setDefaultToolProfile,
+                },
+              },
             }}
             briefingTelemetry={{
               hasUsableSnapshot: hasCollectedTelemetry,
