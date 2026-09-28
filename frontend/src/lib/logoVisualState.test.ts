@@ -16,6 +16,7 @@ const BASE: LogoVisualStateInput = {
   isLocalModelLoaded: false,
   isSpeaking: false,
   isTelemetryCollecting: false,
+  isRestingIdentity: false,
 }
 
 describe('resolveOuterShellActivity', () => {
@@ -31,6 +32,24 @@ describe('resolveOuterShellActivity', () => {
 })
 
 describe('resolveLogoVisualColors', () => {
+  it('keeps the resting identity blue before activation', () => {
+    expect(resolveLogoVisualColors({ ...BASE, activated: false })).toEqual({
+      atmosphere: '15, 77, 184',
+      logo: '15, 77, 184',
+    })
+  })
+
+  it('does not persist an earlier error on the resting Launch identity', () => {
+    expect(resolveLogoVisualColors({ ...BASE, isRestingIdentity: true, briefingStatus: 'error' }).logo).toBe('15, 77, 184')
+  })
+
+  it('uses cyan for speech over the resting identity', () => {
+    expect(resolveLogoVisualColors({ ...BASE, isRestingIdentity: true, isSpeaking: true, briefingStatus: 'error' })).toEqual({
+      atmosphere: '34, 211, 238',
+      logo: '34, 211, 238',
+    })
+  })
+
   it('uses rust for both visual layers while a local model loads', () => {
     expect(resolveLogoVisualColors({ ...BASE, isLocalModelLoading: true })).toEqual({
       atmosphere: '249, 115, 22',

@@ -50,14 +50,14 @@ Demo mode uses static telemetry, deterministic Agent responses, and fixed Daily 
 
 <p align="center">
   <img
-    src="assets/apex-standby.png"
-    alt="APEX Overview standby screen with Collect Telemetry"
+    src="assets/apex-launch.png"
+    alt="APEX Launch screen with workspace navigation and Settings"
     width="900"
   >
 </p>
 
 <p align="center">
-  <em>APEX opens on Overview Standby and waits for Collect Telemetry or a switch to Briefing.</em>
+  <em>APEX opens on Launch. Choose a workspace or open Settings; Overview waits for an explicit telemetry collection.</em>
 </p>
 
 ## Run the full local system
@@ -165,10 +165,10 @@ uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model ge
 
 ## First-run expectations
 
-- Overview Standby does not automatically collect telemetry or run a briefing.
-- **Collect Telemetry** activates APEX, refreshes telemetry, and opens the Overview grid without running a model.
+- Launch does not automatically restore a telemetry snapshot, collect telemetry, or run a briefing.
+- Opening Overview only shows its central identity card. **Collect Telemetry** runs preflight, refreshes telemetry, and opens the Overview grid without running a model.
 - Open the **Briefing** tab to set up or generate a session with the shared Apex Agent model. Choose Catch Up or Deep from Briefing controls.
-- Agent queries become available after activation when they are enabled in Settings.
+- Agent queries are available in Cortex when enabled in Settings; they do not require telemetry collection.
 - Personal-context retrieval is off by default for both cloud and local models. The Cortex Context inspector remains available for adding, inspecting, correcting, retracting, and reviewing local records.
 - Context vault export is off by default. See the [Context vault guide](context-vault.md) when you want to share selected records as local Markdown notes.
 - Runtime Settings writes machine-local overrides to `config.local.json`.

@@ -9,12 +9,12 @@ const PEERS: Array<{ id: WorkspacePeer; label: string; activeClass: string }> = 
   { id: 'cortex', label: 'Cortex', activeClass: 'bg-[#7E22CE]/25 text-[#D8B4FE]' },
 ]
 
-/** Visible header tabs for the four peer workspaces. Standby is a state, not a peer. */
+/** Visible header tabs for the four peer workspaces. Launch is outside this set. */
 export function WorkspaceTabs({
   current,
   onSelect,
 }: {
-  current: WorkspacePeer
+  current: WorkspacePeer | null
   onSelect: (peer: WorkspacePeer) => void
 }): ReactElement {
   return (

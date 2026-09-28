@@ -20,7 +20,7 @@ APEX
 ```
 
 - **APEX** is the complete local-first product: Reports, Overview, Briefing, Cortex, telemetry, briefings, voice, connectors, settings, and persistence.
-- **Overview** is the telemetry-first workspace for reminders, connector health, and the activated telemetry grid.
+- **Overview** is the telemetry-first workspace for reminders, connector health, and the grid shown after an explicit telemetry collection.
 - **Briefing** is the workspace for profile controls, saved briefing sessions, linked conversations, and briefing-local telemetry.
 - **Reports** is the workspace for untrusted external activity reports, their reversible dispositions, and links to existing context reviews.
 - **Cortex** is the detailed workspace for conversations, model settings, tools, context, action review, and local-model lifecycle.

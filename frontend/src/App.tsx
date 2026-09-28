@@ -23,6 +23,7 @@ import { HudWorkspace } from './components/HudWorkspace'
 import { BriefingSpeechControl } from './components/briefing/BriefingSpeechControl'
 import type { BriefingSetupDraft } from './components/briefing/BriefingProfilePanel'
 import { WorkspaceTabs, type WorkspacePeer } from './components/WorkspaceTabs'
+import { LaunchView } from './components/LaunchView'
 import type { HudIdentityProps } from './components/overview/HudIdentity'
 import type { HudTelemetryData } from './components/overview/HudTelemetry'
 import { useApexData } from './hooks/useApexData'
@@ -78,25 +79,22 @@ function sameToolNames(left: string[], right: string[]): boolean {
 
 const TELEMETRY_FRESHNESS_WINDOW_MS = 5 * 60 * 1000
 
-function hasFreshUsableTelemetry(snapshot: TelemetrySnapshot): boolean {
-  const collectedAt = Date.parse(snapshot.collected_at)
+function hasUsableTelemetry(snapshot: TelemetrySnapshot | null): boolean {
+  if (!snapshot) return false
   const now = Date.now()
-  const ageMs = now - collectedAt
-  // Keep this aligned with core.telemetry.models.FRESHNESS_WINDOW_SECONDS.
-  if (!Number.isFinite(collectedAt) || ageMs < 0 || ageMs >= TELEMETRY_FRESHNESS_WINDOW_MS) {
+  const collectedAt = Date.parse(snapshot.collected_at)
+  const collectedAgeMs = now - collectedAt
+  if (!Number.isFinite(collectedAt) || collectedAgeMs < 0 || collectedAgeMs >= TELEMETRY_FRESHNESS_WINDOW_MS) {
     return false
   }
 
   return Object.values(snapshot.modules).some((module) => {
     if (
-      module.status === 'disabled' ||
-      module.status === 'unavailable' ||
+      (module.status !== 'healthy' && module.status !== 'degraded') ||
       module.freshness === 'stale' ||
       module.freshness === 'none' ||
       module.observed_at === null
-    ) {
-      return false
-    }
+    ) return false
     const observedAt = Date.parse(module.observed_at)
     const observedAgeMs = now - observedAt
     return Number.isFinite(observedAt) && observedAgeMs >= 0 && observedAgeMs < TELEMETRY_FRESHNESS_WINDOW_MS
@@ -192,6 +190,9 @@ export default function App(): ReactElement {
   const [cloudEffort, setCloudEffort] = useState<CloudEffort>('medium')
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
   const [workspace, setWorkspace] = useState<WorkspacePeer>('overview')
+  const [isLaunch, setIsLaunch] = useState(true)
+  const [overviewState, setOverviewState] = useState<'center' | 'collecting' | 'ready' | 'error' | 'no-data'>('center')
+  const [overviewError, setOverviewError] = useState<string | null>(null)
   const [dailyConversationReady, setDailyConversationReady] = useState<string | null>(null)
   const [briefingSetupAutoOpen, setBriefingSetupAutoOpen] = useState(false)
   const completedDailyHistoryRef = useRef(new Set<string>())
@@ -201,6 +202,7 @@ export default function App(): ReactElement {
   const [lastAssistantWorkspace, setLastAssistantWorkspace] = useState<Exclude<WorkspacePeer, 'reports'>>('overview')
   const [hudDestination, setHudDestination] = useState<WorkspaceHudDestination>('overview')
   const navigateWorkspace = useCallback((nextWorkspace: WorkspacePeer): void => {
+    setIsLaunch(false)
     if (nextWorkspace === 'overview' || nextWorkspace === 'briefing') setHudDestination(nextWorkspace)
     if (nextWorkspace !== 'reports') setLastAssistantWorkspace(nextWorkspace)
     setWorkspace(nextWorkspace)
@@ -278,8 +280,8 @@ export default function App(): ReactElement {
   const actions = useActions(
     workspace === 'cortex' && !demoModeActive,
   )
-  const { activated, activate, deactivate } = useAppActivation()
-  const workspaceView = useWorkspaceView({ activated, deactivate, destination: hudDestination })
+  const { activated, activate } = useAppActivation()
+  const workspaceView = useWorkspaceView({ destination: hudDestination })
   const selectHudPeer = navigateWorkspace
   const briefingWorkspaceOpen = workspace === 'briefing' && workspaceView.view === 'briefing'
   const preflight = usePreflight()
@@ -773,6 +775,7 @@ export default function App(): ReactElement {
         isLocalModelLoaded,
         isSpeaking,
         isTelemetryCollecting,
+        isRestingIdentity: isLaunch || (workspace === 'overview' && overviewState !== 'collecting'),
       }),
     [
       briefingStatus,
@@ -784,6 +787,9 @@ export default function App(): ReactElement {
       isLocalModelLoaded,
       isSpeaking,
       isTelemetryCollecting,
+      isLaunch,
+      overviewState,
+      workspace,
     ],
   )
   const atmosphereGlowColor = visualColors.atmosphere
@@ -811,18 +817,27 @@ export default function App(): ReactElement {
       return false
     }
 
+    setOverviewError(null)
+    setOverviewState('collecting')
     activate()
     onActivated?.()
-    const localSnapshotIsReady = telemetry.snapshot !== null && hasFreshUsableTelemetry(telemetry.snapshot)
-    const initialSnapshot = voiceMode === 'automatic' && !localSnapshotIsReady
-      ? await telemetry.loadLatest()
-      : telemetry.snapshot
-    const telemetryWasReady = initialSnapshot !== null && hasFreshUsableTelemetry(initialSnapshot)
     const refreshPromise = telemetry.refreshAllWithOutcome({ force: false })
     const initialCuePromise = voiceMode === 'automatic'
-      ? requestVoiceCue(telemetryWasReady ? 'activation_ready' : 'activation_loading')
+      ? requestVoiceCue('activation_loading')
       : Promise.resolve()
     const [outcome] = await Promise.all([refreshPromise, initialCuePromise])
+    if (outcome.kind === 'success') {
+      if (hasUsableTelemetry(outcome.snapshot)) {
+        setOverviewState('ready')
+      } else {
+        setOverviewState('no-data')
+      }
+    } else if (outcome.kind === 'failure') {
+      setOverviewState('error')
+      setOverviewError(outcome.error)
+    } else {
+      setOverviewState('center')
+    }
     if (
       voiceMode === 'automatic' &&
       outcome.kind !== 'conflict' &&
@@ -830,10 +845,10 @@ export default function App(): ReactElement {
     ) {
       if (outcome.kind === 'failure') {
         await requestVoiceCue('activation_refresh_failed')
-      } else if (!telemetryWasReady) {
-        if (!hasFreshUsableTelemetry(outcome.snapshot)) {
-          await requestVoiceCue('activation_no_fresh_telemetry')
-        }
+      } else if (!hasUsableTelemetry(outcome.snapshot)) {
+        await requestVoiceCue('activation_no_fresh_telemetry')
+      } else {
+        await requestVoiceCue('activation_ready')
       }
     }
     return true
@@ -971,6 +986,7 @@ export default function App(): ReactElement {
   }, [agentQueriesEnabled, demoModeActive, fullModelCatalog, hasActiveDailySession, refreshLatestBriefingSession, startBriefing])
 
   const handleCollectTelemetry = useCallback((): void => {
+    setIsLaunch(false)
     selectHudPeer('overview')
     void handleStartApex()
   }, [handleStartApex, selectHudPeer])
@@ -978,45 +994,6 @@ export default function App(): ReactElement {
   const handleSelectWorkspace = useCallback((peer: WorkspacePeer): void => {
     navigateWorkspace(peer)
   }, [navigateWorkspace])
-
-  useEffect(() => {
-    const handleGlobalEnter = (event: KeyboardEvent): void => {
-      if (
-        activated ||
-        workspace !== 'overview' ||
-        preflight.dialogOpen ||
-        preflight.isChecking
-      ) {
-        return
-      }
-
-      if (event.key !== 'Enter') {
-        return
-      }
-
-      const target = event.target
-      if (!(target instanceof HTMLElement)) {
-        return
-      }
-
-      const tagName = target.tagName
-      if (
-        target.closest('button, a, select, [role="button"], [role="dialog"]') !== null ||
-        tagName === 'INPUT' ||
-        tagName === 'TEXTAREA' ||
-        target.isContentEditable
-      ) {
-        return
-      }
-
-      handleCollectTelemetry()
-    }
-
-    window.addEventListener('keydown', handleGlobalEnter)
-    return () => {
-      window.removeEventListener('keydown', handleGlobalEnter)
-    }
-  }, [activated, workspace, handleCollectTelemetry, preflight.dialogOpen, preflight.isChecking])
 
   const dailyControlsBusy = preflight.isChecking || preflight.dialogOpen || dailySessions.isGenerating
   const canGenerateDaily = Boolean(agentQueriesEnabled || demoModeActive)
@@ -1163,13 +1140,16 @@ export default function App(): ReactElement {
   }, [cancelDailySession])
 
   const logoStatus =
-    !activated
+    (!activated || isLaunch || (workspace === 'overview' && overviewState !== 'collecting')) && !isBriefingRunning
       ? 'idle'
       : briefingStatus !== 'idle'
         ? briefingStatus
         : isRefreshingAll
           ? 'loading'
           : 'success'
+  const isOverviewCentered = !isLaunch && workspace === 'overview' &&
+    (overviewState === 'center' || overviewState === 'error' || overviewState === 'no-data')
+
   const cortexLogoProps: Omit<ApexLogoProps, 'className'> = {
     step: activeStep,
     status: logoStatus,
@@ -1177,6 +1157,7 @@ export default function App(): ReactElement {
     reminderPulseCount,
     isCortexQuerying,
     isTelemetryCollecting,
+    isRestingIdentity: isLaunch || (workspace === 'overview' && overviewState !== 'collecting'),
     outerShellActivity,
   }
 
@@ -1609,8 +1590,8 @@ export default function App(): ReactElement {
         <div className="absolute inset-0 bg-atmosphere-vignette" />
       </div>
 
-      <div className="hud-main-shell relative z-[var(--z-bento-hud)] flex min-h-0 flex-1 flex-col overflow-visible xl:overflow-hidden">
-        <header className="hud-header relative pointer-events-none mb-4 flex h-20 w-full shrink-0 select-none flex-nowrap items-center">
+      <div className={`hud-main-shell relative z-[var(--z-bento-hud)] flex h-full min-h-0 flex-1 flex-col overflow-visible xl:overflow-hidden ${isOverviewCentered ? 'hud-main-shell--overview-center' : ''}`}>
+        {!isLaunch ? <header className="hud-header hud-header--workspace relative pointer-events-none mb-4 flex h-20 w-full shrink-0 select-none flex-nowrap items-center">
           <SystemDiagnostics
             diagnostics={diagnostics}
             diagnosticsStatus={diagnosticsStatus}
@@ -1623,9 +1604,10 @@ export default function App(): ReactElement {
             devModeActive={devModeActive}
             onOpenSettings={() => setIsSettingsOpen(true)}
             settingsButtonRef={settingsButtonRef}
+            onReturnToLaunch={() => setIsLaunch(true)}
             workspaceNavigation={<WorkspaceTabs current={workspace} onSelect={handleSelectWorkspace} />}
           />
-        </header>
+        </header> : null}
 
         <SettingsPanel
           open={isSettingsOpen}
@@ -1661,16 +1643,25 @@ export default function App(): ReactElement {
           onRunningChange={handleAssistantRunningChange}
           onResponseChange={handleAssistantResponseChange}
         >
-        {workspace === 'overview' || workspace === 'briefing' ? (
+        {isLaunch ? <LaunchView
+          logoProps={cortexLogoProps}
+          current={null}
+          onSelect={handleSelectWorkspace}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          settingsButtonRef={settingsButtonRef}
+          mode={demoModeActive ? 'DEMO' : devModeActive ? 'DEVELOPER' : null}
+        /> : workspace === 'overview' || workspace === 'briefing' ? (
           <HudWorkspace
             view={workspaceView.view}
             briefingPhase={briefingPhase}
             identity={hudIdentity}
             telemetry={hudTelemetry}
-            standbyActions={{
+            overviewActions={{
               onCollectTelemetry: handleCollectTelemetry,
               disabled: preflight.isChecking,
             }}
+            overviewState={overviewState}
+            overviewError={overviewError}
             briefingControls={{
               profiles: dailySessions.profiles,
               profileId: workspaceView.profileId,

@@ -293,7 +293,10 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
         self.assertEqual(response.json(), {"status": "spoken", "resolved_engine": "pyttsx3"})
         text = speak.call_args_list[0].args[0]
         self.assertRegex(text, r"^Good (morning|afternoon|evening), Chief\.")
-        self.assertIn("I have your telemetry at hand.", text)
+        self.assertRegex(text, r"\bI(?:['’]ve| have)\b")
+        self.assertIn("Overview", text)
+        self.assertIn("telemetry", text.lower())
+        self.assertRegex(text.lower(), r"\b(collected|ready)\b")
         self.store.apply_patch(SettingsPatch(voice=VoicePatch(mode="manual")))
         with mock.patch(
             "core.api.voice.get_settings_store", return_value=self.store

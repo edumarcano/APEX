@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import type { BriefingSessionDetail, BriefingSessionSummary } from '../types/briefings'
 import { resolveBriefingLayoutPhase, useWorkspaceView } from './useWorkspaceView'
@@ -32,31 +32,27 @@ function detail(run_status: BriefingSessionDetail['run_status'], withArtifact: b
 }
 
 describe('useWorkspaceView', () => {
-  it('shows Standby only for Overview until activation; Briefing renders without activation', () => {
-    const deactivate = vi.fn()
-    const { result, rerender } = renderHook((props: { activated: boolean; destination: 'overview' | 'briefing' }) => useWorkspaceView({ ...props, deactivate }), { initialProps: { activated: false, destination: 'briefing' } })
+  it('resolves the selected workspace without activating collection', () => {
+    const { result, rerender } = renderHook((props: { destination: 'overview' | 'briefing' }) => useWorkspaceView(props), { initialProps: { destination: 'briefing' } })
     expect(result.current.view).toBe('briefing')
 
-    rerender({ activated: false, destination: 'overview' })
-    expect(result.current.view).toBe('standby')
+    rerender({ destination: 'overview' })
+    expect(result.current.view).toBe('overview')
 
-    rerender({ activated: true, destination: 'briefing' })
+    rerender({ destination: 'briefing' })
     expect(result.current.view).toBe('briefing')
-    rerender({ activated: true, destination: 'overview' })
+    rerender({ destination: 'overview' })
     expect(result.current.view).toBe('overview')
   })
 
-  it('returns to Standby only through deactivation and keeps the profile', () => {
-    const deactivate = vi.fn()
-    const { result, rerender } = renderHook((props: { activated: boolean; destination: 'overview' | 'briefing' }) => useWorkspaceView({ ...props, deactivate }), { initialProps: { activated: true, destination: 'briefing' } })
+  it('keeps the selected briefing profile across workspace changes', () => {
+    const { result, rerender } = renderHook((props: { destination: 'overview' | 'briefing' }) => useWorkspaceView(props), { initialProps: { destination: 'briefing' } })
     act(() => result.current.setProfileId('catch_up'))
 
-    act(() => result.current.returnToStandby())
-    expect(deactivate).toHaveBeenCalledTimes(1)
-    rerender({ activated: false, destination: 'overview' })
-    expect(result.current.view).toBe('standby')
+    rerender({ destination: 'overview' })
+    expect(result.current.view).toBe('overview')
 
-    rerender({ activated: true, destination: 'briefing' })
+    rerender({ destination: 'briefing' })
     expect(result.current.view).toBe('briefing')
     expect(result.current.profileId).toBe('catch_up')
   })

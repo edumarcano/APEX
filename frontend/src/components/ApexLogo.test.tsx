@@ -33,4 +33,26 @@ describe('ApexLogo shell behavior', () => {
       expect(segment).toHaveClass('apex-blue-metal--active')
     }
   })
+
+  it('keeps the shell and warm core visibly on for a resting identity', () => {
+    const { container } = render(
+      <ApexLogo step={null} status="idle" isRestingIdentity />,
+    )
+
+    for (const segment of shellSegments(container)) {
+      expect(segment).toHaveClass('apex-blue-metal--resting')
+    }
+    expect(container.querySelector('#gold-stage-1')).toHaveClass('apex-core-metal--resting')
+  })
+
+  it('shows cyan speech activity over the resting core', () => {
+    const { container } = render(
+      <ApexLogo step={null} status="idle" isRestingIdentity isSpeaking />,
+    )
+
+    expect(container.querySelector('#gold-stage-1')).toHaveClass('apex-core-metal--speaking')
+    for (const segment of shellSegments(container)) {
+      expect(segment).toHaveClass('apex-blue-metal--resting')
+    }
+  })
 })

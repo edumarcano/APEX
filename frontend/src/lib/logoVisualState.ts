@@ -16,6 +16,7 @@ export interface LogoVisualStateInput {
   isLocalModelLoaded: boolean
   isSpeaking: boolean
   isTelemetryCollecting: boolean
+  isRestingIdentity: boolean
 }
 
 const COLORS = {
@@ -23,9 +24,9 @@ const COLORS = {
   gold: '251, 191, 36',
   green: '57, 255, 136',
   purple: '168, 85, 247',
+  cyan: '34, 211, 238',
   red: '220, 38, 38',
   rust: '249, 115, 22',
-  slate: '15, 23, 42',
 } as const
 
 export function resolveOuterShellActivity({
@@ -49,9 +50,24 @@ export function resolveOuterShellActivity({
 }
 
 function resolveColor(input: LogoVisualStateInput): string {
+  if (
+    input.isRestingIdentity &&
+    input.isSpeaking &&
+    !input.isCortexQuerying &&
+    !input.isLocalModelLoading
+  ) return COLORS.cyan
+  if (
+    input.isRestingIdentity &&
+    !input.isBriefingRunning &&
+    !input.isCortexQuerying &&
+    !input.isLocalModelLoading &&
+    !input.isTelemetryCollecting &&
+    !input.isSpeaking
+  ) return COLORS.blue
   if (input.briefingStatus === 'error') return COLORS.red
   if (input.isLocalModelLoading) return COLORS.rust
   if (input.isCortexQuerying) return COLORS.purple
+  if (input.isSpeaking) return COLORS.cyan
   if (input.activeStep === 4) return COLORS.gold
   if (input.briefingStatus === 'success' && !input.isSpeaking) {
     return input.isLocalModelLoaded ? COLORS.rust : COLORS.blue
@@ -66,7 +82,7 @@ function resolveColor(input: LogoVisualStateInput): string {
     return COLORS.green
   }
   if (input.isLocalModelLoaded) return COLORS.rust
-  return input.activated ? COLORS.blue : COLORS.slate
+  return COLORS.blue
 }
 
 export function resolveLogoVisualColors(input: LogoVisualStateInput): {
