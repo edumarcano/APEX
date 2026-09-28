@@ -7,13 +7,15 @@ import {
   type ReactElement,
 } from 'react'
 
-import type { AgentAvailabilityStatus, ModelCatalogEntry } from '../types/telemetry'
+import type { ModelCatalogEntry } from '../types/telemetry'
 import {
   formatAgentPricing,
   formatContextWindowLabel,
   providerDisplayName,
   runtimeDisplayName,
 } from '../lib/agents'
+import { cloudAvailabilityPresentation } from '../lib/cloudAvailability'
+import { useBrowserOnline } from '../hooks/useBrowserOnline'
 
 import { ModelMark } from './ModelMark'
 import { StabilityBadge } from './StabilityBadge'
@@ -27,43 +29,6 @@ interface ModelSelectorProps {
   verifyingModelId?: string | null
   onVerify?: (modelId: string) => Promise<boolean>
   agentDisplayName?: string
-}
-
-const STATUS_LABELS: Record<AgentAvailabilityStatus, string> = {
-  available: 'Ready',
-  busy: 'Busy',
-  configured: 'Ready',
-  verifying: 'Verifying…',
-  verified: 'Verified',
-  unauthorized: 'Access denied',
-  model_unavailable: 'Unavailable',
-  rate_limited: 'Rate limited',
-  quota_exhausted: 'Quota exhausted',
-  billing_blocked: 'Billing blocked',
-  provider_unreachable: 'Unreachable',
-  provider_error: 'Provider error',
-  unknown: 'Checking…',
-  disabled: 'Unavailable',
-  ollama_unreachable: 'Ollama offline',
-  model_not_installed: 'Not installed',
-  insufficient_ram: 'Low memory',
-  cpu_overloaded: 'CPU busy',
-}
-
-function statusClass(status: AgentAvailabilityStatus): string {
-  if (status === 'available' || status === 'configured' || status === 'verified') return 'text-emerald-300'
-  if (status === 'unknown' || status === 'busy' || status === 'verifying' || status === 'rate_limited') return 'text-amber-200'
-  return 'text-[#DC2626]'
-}
-
-function statusDotClass(status: AgentAvailabilityStatus): string {
-  if (status === 'available' || status === 'configured' || status === 'verified') {
-    return 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]'
-  }
-  if (status === 'unknown' || status === 'busy' || status === 'verifying' || status === 'rate_limited') {
-    return 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.7)]'
-  }
-  return 'bg-[#DC2626] shadow-[0_0_6px_rgba(220,38,38,0.8)]'
 }
 
 function capabilityTags(entry: ModelCatalogEntry): string[] {
@@ -143,12 +108,16 @@ export function ModelSelector({
   }
 
   const isCloud = selectedModel?.runtime === 'cloud'
+  const browserOnline = useBrowserOnline()
+  const cloudAvailability = isCloud
+    ? cloudAvailabilityPresentation(selectedModel?.status, selectedModel?.credentials_configured, browserOnline)
+    : null
   const isVerifying = verifyingModelId === selectedModel?.model_id || selectedModel?.status === 'verifying'
   const canVerify = isCloud && onVerify && selectedModel?.status !== 'disabled'
 
   // Model-level readiness/residency status label
   const readinessLabel = isCloud
-    ? STATUS_LABELS[selectedModel?.status ?? 'configured'] ?? 'Ready'
+    ? cloudAvailability?.label ?? 'Configured'
     : selectedModel?.loading
       ? 'Loading…'
       : selectedModel?.active
@@ -156,7 +125,11 @@ export function ModelSelector({
         : 'Unloaded'
 
   const readinessClass = isCloud
-    ? statusClass(selectedModel?.status ?? 'configured')
+    ? cloudAvailability?.tone === 'success'
+      ? 'text-emerald-300'
+      : cloudAvailability?.tone === 'error'
+        ? 'text-[#DC2626]'
+        : 'text-zinc-400'
     : selectedModel?.loading
       ? 'text-amber-200'
       : selectedModel?.active
@@ -164,7 +137,11 @@ export function ModelSelector({
         : 'text-zinc-400'
 
   const readinessDot = isCloud
-    ? statusDotClass(selectedModel?.status ?? 'configured')
+    ? cloudAvailability?.tone === 'success'
+      ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]'
+      : cloudAvailability?.tone === 'error'
+        ? 'bg-[#DC2626] shadow-[0_0_6px_rgba(220,38,38,0.8)]'
+        : 'bg-zinc-500'
     : selectedModel?.loading
       ? 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.7)]'
       : selectedModel?.active

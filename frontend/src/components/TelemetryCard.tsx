@@ -493,7 +493,7 @@ export function TelemetryCard({
       ? 'relative flex'
       : 'hud-corner-brackets hud-interactive-shell relative flex overflow-hidden rounded-2xl border border-[color:var(--hud-border-color)] hud-glass transition-all duration-700 ease-in-out',
     bareSection && !isCompact
-      ? 'min-h-0 flex-col py-3'
+      ? 'min-h-0 flex-col py-4'
       : isCompact
       ? 'h-auto min-h-[3.75rem] shrink-0 flex-none flex-row items-center px-4 py-3'
       : 'h-full min-h-0 flex-col p-[var(--hud-panel-pad)]',

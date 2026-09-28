@@ -6,14 +6,14 @@ import { useCompactLayout } from '../../hooks/useCompactLayout'
 import type { BriefingLayoutPhase } from '../../hooks/useWorkspaceView'
 import { parseAgentQueryResponse } from '../../lib/cortexResponse'
 import type { BriefingSessionDetail } from '../../types/briefings'
-import { ApexAssistantThread } from '../ApexAssistantRuntime'
+import { ApexAssistantThread, type ApexAssistantComposerProps } from '../ApexAssistantRuntime'
 import { BriefingArtifactMessage } from './BriefingArtifactMessage'
 import type { BriefingEvidenceState } from './BriefingEvidence'
 import { BriefingProfilePanel, type BriefingProfilePanelProps } from './BriefingProfilePanel'
 import { CompactToolResults } from './CompactToolResults'
 import { HudIdentityMark, type HudIdentityProps } from '../overview/HudIdentity'
 import type { HudTelemetryData } from '../overview/HudTelemetry'
-import { HudTelemetryRail } from '../overview/HudTelemetryRail'
+import { HudTelemetryRail, type BriefingTelemetryCollectionState } from '../overview/HudTelemetryRail'
 
 export type BriefingViewConversation = {
   ready: boolean
@@ -23,6 +23,7 @@ export type BriefingViewConversation = {
   evidence: Omit<BriefingEvidenceState, 'sessionId'>
   onMarkPresented: (sessionId: string) => Promise<void>
   onOpenConversation: (conversationId: string) => void
+  composer?: ApexAssistantComposerProps
 }
 
 export type BriefingViewProps = {
@@ -31,6 +32,13 @@ export type BriefingViewProps = {
   telemetry: HudTelemetryData
   controls: BriefingProfilePanelProps
   conversation: BriefingViewConversation
+  telemetryCollection: {
+    hasUsableSnapshot: boolean
+    state: BriefingTelemetryCollectionState
+    error: string | null
+    disabled: boolean
+    onCollect: () => void
+  }
 }
 
 function BriefingAgentMessage({ text, metadata }: { text: string; metadata: Record<string, unknown> }): ReactElement {
@@ -52,7 +60,7 @@ function BriefingConversation({ conversation }: { conversation: BriefingViewConv
   if (!session) return <div className="flex min-h-0 flex-1 items-center justify-center p-5 text-xs text-zinc-500">Open a saved briefing to continue its conversation.</div>
   return <section className="flex min-h-0 flex-1 flex-col" aria-label="Briefing conversation">
     {conversation.ready ? (
-      <ApexAssistantThread disabled={!conversation.canFollowUp} renderAgent={renderAgent} />
+      <ApexAssistantThread disabled={!conversation.canFollowUp} renderAgent={renderAgent} composer={conversation.composer} />
     ) : (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-5 text-center text-xs text-zinc-500">
         <p role="status">{isLoadingSession ? 'Loading saved conversation…' : 'This briefing conversation is not open yet.'}</p>
@@ -78,7 +86,16 @@ export function BriefingView(props: BriefingViewProps): ReactElement {
         <button type="button" aria-expanded={compactPanel === 'telemetry'} aria-controls="home-briefing-telemetry" onClick={() => togglePanel('telemetry')} className="rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300">Telemetry</button>
       </header>
       {showControls ? <div id="home-briefing-controls" className="rounded-xl border border-white/10 bg-zinc-950/60 p-3">{controls}</div> : null}
-      {compactPanel === 'telemetry' ? <HudTelemetryRail id="home-briefing-telemetry" data={props.telemetry} className="max-h-[70vh]" /> : null}
+      {compactPanel === 'telemetry' ? <HudTelemetryRail
+        id="home-briefing-telemetry"
+        data={props.telemetry}
+        className="max-h-[70vh]"
+        hasUsableSnapshot={props.telemetryCollection.hasUsableSnapshot}
+        collectionState={props.telemetryCollection.state}
+        collectionError={props.telemetryCollection.error}
+        collectionDisabled={props.telemetryCollection.disabled}
+        onCollect={props.telemetryCollection.onCollect}
+      /> : null}
       {workspace ? <div className="flex min-h-[32rem] flex-col rounded-xl border border-white/10 bg-zinc-950/45"><BriefingConversation conversation={props.conversation} /></div> : null}
     </section>
   }
@@ -89,7 +106,7 @@ export function BriefingView(props: BriefingViewProps): ReactElement {
         <HudIdentityMark identity={props.identity} size="large" />
         <div className="w-full max-w-[40rem] rounded-xl border border-white/10 bg-zinc-950/55 p-3 backdrop-blur-md">{controls}</div>
       </div>
-      <HudTelemetryRail data={props.telemetry} />
+      <HudTelemetryRail data={props.telemetry} hasUsableSnapshot={props.telemetryCollection.hasUsableSnapshot} collectionState={props.telemetryCollection.state} collectionError={props.telemetryCollection.error} collectionDisabled={props.telemetryCollection.disabled} onCollect={props.telemetryCollection.onCollect} />
     </section>
   }
 
@@ -101,6 +118,6 @@ export function BriefingView(props: BriefingViewProps): ReactElement {
     <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-zinc-950/45">
       <BriefingConversation conversation={props.conversation} />
     </div>
-    <HudTelemetryRail data={props.telemetry} />
+    <HudTelemetryRail data={props.telemetry} hasUsableSnapshot={props.telemetryCollection.hasUsableSnapshot} collectionState={props.telemetryCollection.state} collectionError={props.telemetryCollection.error} collectionDisabled={props.telemetryCollection.disabled} onCollect={props.telemetryCollection.onCollect} />
   </section>
 }

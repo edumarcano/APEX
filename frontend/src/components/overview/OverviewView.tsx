@@ -1,7 +1,9 @@
 import type { ReactElement } from 'react'
+import { RefreshCw } from 'lucide-react'
 
 import { useCompactLayout } from '../../hooks/useCompactLayout'
 import { HudIdentityMark, type HudIdentityProps } from './HudIdentity'
+import { TelemetryCollectionAction } from './TelemetryCollectionAction'
 import {
   EventsTelemetry,
   EmailTelemetry,
@@ -18,11 +20,12 @@ export type OverviewViewProps = {
   state: 'center' | 'collecting' | 'ready' | 'error' | 'no-data'
   error?: string | null
   onCollect: () => void
+  onRefreshAll: () => void
   collectDisabled?: boolean
 }
 
 /** Telemetry-first Overview peer. It never needs a model. */
-export function OverviewView({ identity, telemetry, state, error, onCollect, collectDisabled = false }: OverviewViewProps): ReactElement {
+export function OverviewView({ identity, telemetry, state, error, onCollect, onRefreshAll, collectDisabled = false }: OverviewViewProps): ReactElement {
   const compact = useCompactLayout()
   const wide = compact ? '' : 'col-span-3'
   const narrow = compact ? '' : 'col-span-2'
@@ -39,22 +42,27 @@ export function OverviewView({ identity, telemetry, state, error, onCollect, col
     {hasGrid ? <EventsTelemetry data={telemetry} variant="card" className={wide} /> : null}
     {hasGrid ? <NewsTelemetry data={telemetry} variant="card" className={narrow} /> : null}
     <div
-      className={`hud-glass flex min-h-0 flex-col items-center justify-center gap-3 rounded-xl border border-white/10 bg-zinc-950/40 p-3 ${hasGrid ? (compact ? 'order-first md:col-span-2' : narrow) : compact ? 'w-full max-w-sm px-8 py-6' : 'w-[calc((100%-2rem)/3)] px-8 py-6'}`}
+      className={`hud-glass relative flex min-h-0 flex-col items-center justify-center gap-3 rounded-xl border border-white/10 bg-zinc-950/40 p-3 ${hasGrid ? (compact ? 'order-first md:col-span-2' : narrow) : compact ? 'w-full max-w-sm px-8 py-6' : 'w-[calc((100%-2rem)/3)] px-8 py-6'}`}
       data-slot="overview-identity-card"
     >
+      {hasGrid ? <button
+        type="button"
+        onClick={onRefreshAll}
+        disabled={state === 'collecting' || telemetry.isRefreshingAll || telemetry.isRefreshingAnyConnector}
+        aria-label="Refresh All"
+        title="Refresh All"
+        className="absolute right-3 top-3 inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-[color:var(--hud-muted-text)] transition-colors hover:border-white/20 hover:bg-white/10 hover:text-[color:var(--hud-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <RefreshCw className={`size-3.5 motion-reduce:animate-none ${state === 'collecting' || telemetry.isRefreshingAll ? 'animate-spin' : ''}`} strokeWidth={2} aria-hidden />
+      </button> : null}
       <HudIdentityMark identity={identity} size={hasGrid ? 'overview' : 'large'} />
       {state === 'error' ? <div className="max-w-sm text-center" role="alert"><p className="font-mono text-sm text-rose-300">{error || 'I couldn’t collect telemetry just now.'}</p></div> : null}
       {state === 'no-data' ? <p className="font-mono text-sm text-zinc-400" role="status">No telemetry sources are available yet.</p> : null}
-      {state === 'center' || state === 'error' || state === 'no-data' ? <button
-        type="button"
-        onClick={onCollect}
+      {state === 'center' || state === 'error' || state === 'no-data' ? <TelemetryCollectionAction
+        onCollect={onCollect}
         disabled={collectDisabled}
-        className={`inline-flex items-center gap-2 rounded-lg border border-[#047857]/60 bg-[#047857]/25 px-4 py-2.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6EE7B7] shadow-[inset_0_1px_0_rgba(110,231,183,0.15)] transition-[border-color,background-color,box-shadow,color] duration-300 motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#10B981] ${collectDisabled
-          ? 'cursor-not-allowed opacity-40'
-          : 'hover:border-[#10B981]/80 hover:bg-[#047857]/40 hover:text-[#6EE7B7] hover:shadow-[0_0_12px_rgba(16,185,129,0.35)]'}`}
-      >
-        {state === 'error' || state === 'no-data' ? 'Retry Telemetry' : 'Collect Telemetry'}
-      </button> : null}
+        label={state === 'error' || state === 'no-data' ? 'Retry Telemetry' : 'Collect Telemetry'}
+      /> : null}
     </div>
     {hasGrid ? <RemindersTelemetry data={telemetry} variant="card" className={narrow} /> : null}
     {hasGrid ? <MarketTelemetry data={telemetry} variant="card" className={wide} /> : null}

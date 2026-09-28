@@ -19,6 +19,8 @@ import { createPortal } from 'react-dom'
 
 import type {
   AgentAvailabilityStatus,
+  CloudEffort,
+  LocalReasoningMode,
   LocalRuntime,
   ModelCatalogEntry,
 } from '../types/telemetry'
@@ -27,6 +29,8 @@ import {
   providerDisplayName,
   runtimeDisplayName,
 } from '../lib/agents'
+import { cloudAvailabilityPresentation } from '../lib/cloudAvailability'
+import { useBrowserOnline } from '../hooks/useBrowserOnline'
 
 import { ModelMark } from './ModelMark'
 import { StabilityBadge } from './StabilityBadge'
@@ -39,13 +43,47 @@ export interface CompactModelSelectorProps {
   isQuerying?: boolean
   className?: string
   presentation?: 'rail' | 'composer'
+  cloudEffort?: CloudEffort
+  onEffortChange?: (effort: CloudEffort) => void
+  localReasoningMode?: LocalReasoningMode
+  onLocalReasoningModeChange?: (mode: LocalReasoningMode) => void
 }
 
-function statusLedClass(status: AgentAvailabilityStatus): string {
+function statusLedClass(tone: 'success' | 'neutral' | 'error'): string {
+  if (tone === 'success') return 'hud-led--live'
+  if (tone === 'error') return 'hud-led--error'
+  return 'bg-zinc-500'
+}
+
+function localStatusLedClass(status: AgentAvailabilityStatus): string {
   if (status === 'available' || status === 'configured' || status === 'verified') return 'hud-led--live'
   if (status === 'busy' || status === 'verifying' || status === 'rate_limited') return 'hud-led--loading'
   if (status === 'unknown') return 'hud-led--stale'
   return 'hud-led--error'
+}
+
+function localAvailabilityLabel(model: ModelCatalogEntry | null, status: AgentAvailabilityStatus): string {
+  const statusLabels: Partial<Record<AgentAvailabilityStatus, string>> = {
+    unauthorized: 'Access denied',
+    model_unavailable: 'Unavailable',
+    rate_limited: 'Rate limited',
+    quota_exhausted: 'Quota exhausted',
+    billing_blocked: 'Billing blocked',
+    provider_unreachable: 'Unreachable',
+    provider_error: 'Provider error',
+    disabled: 'Unavailable',
+    ollama_unreachable: 'Ollama offline',
+    model_not_installed: 'Not installed',
+    insufficient_ram: 'Low memory',
+    cpu_overloaded: 'CPU busy',
+  }
+  const knownStatus = statusLabels[status]
+  if (knownStatus) return knownStatus
+  if (model?.loading) return 'Loading'
+  if (status === 'busy') return 'Busy'
+  if (status === 'verifying') return 'Verifying'
+  if (status === 'unknown') return 'Checking'
+  return model?.active ? 'Loaded' : 'Unloaded'
 }
 
 function compactRate(value: number): string {
@@ -79,11 +117,17 @@ export function CompactModelSelector({
   isQuerying = false,
   className = '',
   presentation = 'rail',
+  cloudEffort,
+  onEffortChange,
+  localReasoningMode,
+  onLocalReasoningModeChange,
 }: CompactModelSelectorProps): ReactElement {
   const triggerRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const menuScrollRef = useRef<HTMLDivElement>(null)
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([])
   const [open, setOpen] = useState(false)
+  const [reasoningOpen, setReasoningOpen] = useState(false)
   const [position, setPosition] = useState<CSSProperties | null>(null)
 
   const selectedModel = useMemo(
@@ -110,9 +154,22 @@ export function CompactModelSelector({
     if (selectedModel.credentials_configured === false) return 'unauthorized'
     return selectedModel.status ?? (selectedModel.runtime === 'local' ? 'available' : 'configured')
   }, [selectedModel])
+  const browserOnline = useBrowserOnline()
+  const selectedAvailability = selectedModel?.runtime === 'cloud'
+    ? cloudAvailabilityPresentation(selectedModel.status, selectedModel.credentials_configured, browserOnline)
+    : null
+  const reasoningOptions = selectedModel?.runtime === 'local'
+    ? (selectedModel.reasoning_modes ?? [])
+    : (selectedModel?.reasoning_options ?? [])
+  const selectedReasoning = selectedModel?.runtime === 'local' ? localReasoningMode : cloudEffort
+  const reasoningLabel = selectedReasoning
+    ? formatReasoningLabel(selectedReasoning)
+    : 'Reasoning'
+  const availabilityLabel = selectedAvailability?.label ?? localAvailabilityLabel(selectedModel, selectedStatus)
 
   const close = useCallback((focusTrigger = false): void => {
     setOpen(false)
+    setReasoningOpen(false)
     if (focusTrigger) {
       triggerRef.current?.focus()
     }
@@ -187,6 +244,13 @@ export function CompactModelSelector({
     }
   }, [allOrderedModels, focusOption, open, selectedModel, updatePosition])
 
+  useLayoutEffect(() => {
+    if (reasoningOpen) {
+      const scrollContainer = menuScrollRef.current
+      if (scrollContainer) scrollContainer.scrollTop = scrollContainer.scrollHeight
+    }
+  }, [reasoningOpen])
+
   return (
     <div className={`relative shrink-0 ${className}`} data-slot="home-model-selector-container">
       <button
@@ -195,9 +259,12 @@ export function CompactModelSelector({
         disabled={disabled || isQuerying}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={`Model: ${selectedModel?.display_name ?? 'Select model'}`}
+        aria-label={`Model: ${selectedModel?.display_name ?? 'Select model'}${presentation === 'composer' ? `, reasoning ${reasoningLabel}` : ''}, availability ${availabilityLabel}`}
         title={`Model: ${selectedModel?.display_name ?? 'Select model'}`}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          if (open) close()
+          else setOpen(true)
+        }}
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown' && !open) {
             event.preventDefault()
@@ -216,7 +283,12 @@ export function CompactModelSelector({
           : 'inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.03]'}>
           <ModelMark modelId={selectedModel?.model_id} provider={selectedModel?.provider} size={presentation === 'composer' ? 12 : 14} />
         </span>
-        <span className={`hud-led size-1.5 shrink-0 ${statusLedClass(selectedStatus)}`} aria-hidden />
+        <span
+          className={`hud-led size-1.5 shrink-0 ${selectedAvailability ? statusLedClass(selectedAvailability.tone) : localStatusLedClass(selectedStatus)}`}
+          role="img"
+          aria-label={`Availability: ${availabilityLabel}`}
+        />
+        {presentation === 'composer' ? <span className="max-w-[9rem] truncate font-sans text-xs text-zinc-200">{selectedModel?.display_name ?? 'Select model'} <span className="text-zinc-500">{reasoningLabel}</span></span> : null}
         <ChevronDown
           className={`size-3 shrink-0 text-[#6EA8FF] transition-transform ${open ? 'rotate-180' : ''}`}
           aria-hidden
@@ -240,7 +312,7 @@ export function CompactModelSelector({
             </p>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin pt-1">
+          <div ref={menuScrollRef} className="min-h-0 flex-1 overflow-y-auto scrollbar-thin pt-1">
             <ul role="listbox" aria-label="Select model">
               {cloudModels.length > 0 && (
                 <li role="presentation">
@@ -371,6 +443,22 @@ export function CompactModelSelector({
                 </li>
               )}
             </ul>
+            {presentation === 'composer' && reasoningOptions.length > 0 ? <div className="mt-2 border-t border-white/10 pt-2">
+              <button type="button" aria-label={`Reasoning, currently ${reasoningLabel}`} aria-expanded={reasoningOpen} aria-controls="briefing-reasoning-options" onClick={() => setReasoningOpen((value) => !value)} className="flex min-h-9 w-full items-center justify-between rounded-lg px-2.5 text-left text-xs text-zinc-200 hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7EB3FF]">
+                <span>Reasoning</span><span className="flex items-center gap-2 text-zinc-400">{reasoningLabel}<ChevronDown className={`size-3 transition-transform ${reasoningOpen ? 'rotate-180' : ''}`} aria-hidden /></span>
+              </button>
+              {reasoningOpen ? <div id="briefing-reasoning-options" role="group" aria-label={selectedModel?.runtime === 'local' ? 'Local reasoning mode' : 'Reasoning effort'} className="mt-1 grid grid-cols-2 gap-1">
+                {reasoningOptions.map((option) => {
+                  const selected = option === selectedReasoning
+                  return <button key={option} type="button" aria-pressed={selected} onClick={() => {
+                    if (selectedModel?.runtime === 'local') onLocalReasoningModeChange?.(option as LocalReasoningMode)
+                    else onEffortChange?.(option as CloudEffort)
+                    setReasoningOpen(false)
+                    close(true)
+                  }} className={`min-h-8 rounded-md px-2 text-left text-[11px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7EB3FF] ${selected ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'text-zinc-300 hover:bg-white/[0.06]'}`}>{formatReasoningLabel(option)}{selected ? <Check className="ml-1 inline size-3" aria-hidden /> : null}</button>
+                })}
+              </div> : null}
+            </div> : null}
           </div>
         </div>,
         document.body,

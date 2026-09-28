@@ -234,6 +234,7 @@ vi.mock('./components/CortexWorkspace', () => ({
 vi.mock('./hooks/useApexData', () => ({
   useApexData: () => ({
     activeReminders: [],
+    remindersLoadState: 'loaded' as const,
     createReminder: appMocks.createReminder,
     demoModeActive: appMocks.demoModeActive,
     devModeActive: appMocks.devModeActive,
@@ -1310,7 +1311,8 @@ describe('App Overview and Briefing states', () => {
     await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
 
     expect(screen.getByRole('button', { name: 'Refresh Reminders' })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Refresh checks' }))
+    expect(screen.getByRole('button', { name: 'Refresh All' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Refresh All' }))
 
     expect(appMocks.refreshAll).toHaveBeenCalledWith({ force: false })
     expect(screen.getByRole('button', { name: 'Refresh Reminders' })).toBeInTheDocument()
@@ -1353,6 +1355,37 @@ describe('App Overview and Briefing states', () => {
     expect(await screen.findByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: 'Set up your briefing' })).not.toBeInTheDocument()
     expect(posts.filter((path) => path.endsWith('/briefing-sessions'))).toHaveLength(0)
+  })
+
+  it('collects telemetry from Briefing in place and reveals the sections when the snapshot is usable', async () => {
+    appMocks.activated = false
+    appMocks.activate.mockClear()
+    appMocks.requestOperation.mockClear()
+    const refresh = deferred<{
+      kind: 'success'
+      snapshot: TelemetrySnapshot
+    }>()
+    appMocks.refreshAllWithOutcome.mockReturnValue(refresh.promise)
+    const user = userEvent.setup()
+    stubHomeFetch([])
+    renderOverviewApp()
+
+    await selectWorkspace(user, 'Briefing')
+    const rail = screen.getByRole('complementary', { name: 'Current telemetry' })
+    await user.click(within(rail).getByRole('button', { name: 'Collect Telemetry' }))
+
+    expect(appMocks.requestOperation).toHaveBeenCalledWith('activate')
+    expect(appMocks.activate).toHaveBeenCalledOnce()
+    expect(await within(rail).findByText('Collecting telemetry…')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Overview' })).not.toBeInTheDocument()
+
+    await act(async () => refresh.resolve({ kind: 'success', snapshot: usableTelemetrySnapshot() }))
+
+    expect(await within(rail).findByTestId('weather-compact-value')).toBeInTheDocument()
+    expect(within(rail).queryByRole('button', { name: 'Collect Telemetry' })).not.toBeInTheDocument()
+    expect(within(rail).getByTestId('market-loading-state')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
   })
 
   it('refreshes saved sessions whenever returning to Briefing from Cortex', async () => {

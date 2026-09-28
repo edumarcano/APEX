@@ -20,6 +20,7 @@ type Surface = 'weather' | 'events' | 'market' | 'email' | 'news' | 'reminders'
 export type HudTelemetryData = {
   hasSnapshot: boolean
   isRefreshingAll: boolean
+  isRefreshingAnyConnector: boolean
   onRefreshConnector: (name: string) => void
   attentionTiers: Record<Surface, AttentionTier>
   attentionStagger: Record<Surface, number>
@@ -63,6 +64,7 @@ export type HudTelemetryData = {
     refreshing: boolean
   }
   reminders: {
+    loadState: 'loading' | 'loaded' | 'unavailable'
     ledState: LedState
     statusMessage: string | null
     compactValue: string
@@ -292,7 +294,14 @@ export function RemindersTelemetry({ data, variant, className }: DomainProps): R
     )}
   >
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      {reminders.items.length === 0 ? (
+      {reminders.loadState === 'loading' ? (
+        <p className="text-sm text-[color:var(--hud-muted-text)]" role="status">Loading reminders…</p>
+      ) : reminders.items.length === 0 && (reminders.loadState === 'unavailable' || reminders.sourceState === 'unavailable') ? (
+        <div className="flex flex-col items-start gap-2" role="status">
+          <p className="text-sm text-[color:var(--hud-muted-text)]">Reminders unavailable.</p>
+          <button type="button" onClick={reminders.onRefresh} disabled={reminders.refreshDisabled} className="font-mono text-[10px] uppercase tracking-wide text-[#9AC2FF] hover:text-white disabled:cursor-not-allowed disabled:opacity-40">Retry Reminders</button>
+        </div>
+      ) : reminders.items.length === 0 ? (
         <div className="rounded-md border border-white/[0.06] bg-zinc-950/20 px-3 py-2">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">No pending reminders</p>
         </div>

@@ -12,13 +12,16 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactElement,
+  type CSSProperties,
 } from 'react'
 
 import type {
@@ -31,6 +34,7 @@ export interface ToolsSelectorProps {
   compact?: boolean
   className?: string
   align?: 'left' | 'right'
+  portal?: boolean
   catalog: ToolCatalog | null
   selectedToolNames: string[]
   activeToolProfileId: string | null
@@ -67,6 +71,10 @@ function selectedTokenTotal(
   return catalog.tools
     .filter((tool) => selected.has(tool.name))
     .reduce((total, tool) => total + tool.estimated_schema_tokens, 0)
+}
+
+function SelectorMenuPortal({ enabled, children }: { enabled: boolean; children: ReactElement }): ReactElement {
+  return enabled && typeof document !== 'undefined' ? createPortal(children, document.body) : children
 }
 
 function groupSelection(
@@ -118,6 +126,7 @@ export function ToolsSelector({
   compact = false,
   className = '',
   align = 'left',
+  portal = false,
   catalog,
   selectedToolNames,
   activeToolProfileId,
@@ -138,7 +147,9 @@ export function ToolsSelector({
   onSetDefaultProfile,
 }: ToolsSelectorProps): ReactElement {
   const selectorRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
+  const [portalStyle, setPortalStyle] = useState<CSSProperties | null>(null)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const [profileMenuIndex, setProfileMenuIndex] = useState(0)
   const [search, setSearch] = useState('')
@@ -171,13 +182,41 @@ export function ToolsSelector({
     if (!open) return
     const closeOnOutsidePointer = (event: PointerEvent): void => {
       const target = event.target as Node
-      if (selectorRef.current?.contains(target)) return
+      if (selectorRef.current?.contains(target) || panelRef.current?.contains(target)) return
       setProfileMenuOpen(false)
       setOpen(false)
     }
     document.addEventListener('pointerdown', closeOnOutsidePointer)
     return () => document.removeEventListener('pointerdown', closeOnOutsidePointer)
   }, [open])
+
+  useLayoutEffect(() => {
+    if (!open || !portal || !selectorRef.current) return
+    const update = (): void => {
+      const rect = selectorRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const width = Math.min(544, window.innerWidth - 24)
+      const roomAbove = Math.max(0, rect.top - 24)
+      const roomBelow = Math.max(0, window.innerHeight - rect.bottom - 24)
+      const openAbove = roomAbove >= roomBelow
+      const availableHeight = Math.max(96, openAbove ? roomAbove : roomBelow)
+      setPortalStyle({
+        position: 'fixed',
+        ...(openAbove ? { bottom: window.innerHeight - rect.top + 8 } : { top: rect.bottom + 8 }),
+        left: Math.max(12, Math.min(align === 'right' ? rect.right - width : rect.left, window.innerWidth - width - 12)),
+        width,
+        maxHeight: Math.min(window.innerHeight * 0.75, 608, availableHeight),
+      })
+    }
+    update()
+    window.addEventListener('resize', update)
+    window.addEventListener('scroll', update, true)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('scroll', update, true)
+    }
+  }, [align, open, portal])
+
 
   const selectedUnavailableNames = selectedToolNames.filter((name) => {
     const tool = catalog?.tools.find((item) => item.name === name)
@@ -283,7 +322,6 @@ export function ToolsSelector({
   }
 
   const hasActiveTools = selectedToolNames.length > 0
-
   return (
     <div ref={selectorRef} className="relative shrink-0">
       <button
@@ -324,12 +362,15 @@ export function ToolsSelector({
           </>
         )}
       </button>
-      {open ? (
-        <div
+      {open ? <SelectorMenuPortal enabled={portal}><div
+          ref={panelRef}
           id="apex-tools-selector-panel"
           role="dialog"
           aria-label="Tools selector"
-          className={`absolute bottom-full ${align === 'right' ? 'right-0' : 'left-0'} z-50 mb-2 max-h-[min(75vh,38rem)] w-[min(92vw,34rem)] overflow-y-auto rounded-xl border border-white/15 bg-zinc-950/95 p-3 text-left shadow-2xl backdrop-blur-xl scrollbar-thin`}
+          style={portal ? portalStyle ?? { visibility: 'hidden' } : undefined}
+          className={portal
+            ? 'hud-glass hud-glass-solid z-[100] max-h-[min(75vh,38rem)] overflow-y-auto rounded-xl border border-white/15 p-3 text-left shadow-2xl backdrop-blur-xl scrollbar-thin'
+            : `absolute bottom-full ${align === 'right' ? 'right-0' : 'left-0'} z-50 mb-2 max-h-[min(75vh,38rem)] w-[min(92vw,34rem)] overflow-y-auto rounded-xl border border-white/15 bg-zinc-950/95 p-3 text-left shadow-2xl backdrop-blur-xl scrollbar-thin`}
         >
           <div className="flex items-center justify-between gap-2">
             <div>
@@ -540,7 +581,7 @@ export function ToolsSelector({
             <p className="mt-2 flex items-center gap-1 font-mono text-[9px] text-zinc-600"><Check className="size-3" aria-hidden /> Estimates use the model-facing schemas.</p>
           </div>
         </div>
-      ) : null}
+      </SelectorMenuPortal> : null}
     </div>
   )
 }

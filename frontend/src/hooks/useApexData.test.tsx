@@ -54,6 +54,85 @@ describe('useApexData reminder completion', () => {
     vi.unstubAllGlobals()
   })
 
+  it('keeps reminders in a loading state until the reminder source responds', async () => {
+    let resolveReminders!: (value: Response) => void
+    const remindersResponse = new Promise<Response>((resolve) => {
+      resolveReminders = resolve
+    })
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input)
+      if (url === API_ENDPOINTS.config) return Promise.resolve(response({}))
+      if (url === API_ENDPOINTS.reminders && init?.method !== 'POST') return remindersResponse
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    const { result } = renderHook(() => useApexData())
+    expect(result.current.remindersLoadState).toBe('loading')
+
+    resolveReminders(response(envelope([])))
+    await waitFor(() => expect(result.current.remindersLoadState).toBe('loaded'))
+    expect(result.current.activeReminders).toEqual([])
+  })
+
+  it('settles an invalid initial reminders response as unavailable and recovers on retry', async () => {
+    const fetchMock = vi.mocked(fetch)
+    let remindersReads = 0
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input)
+      if (url === API_ENDPOINTS.config) return Promise.resolve(response({}))
+      if (url === API_ENDPOINTS.reminders && init?.method !== 'POST') {
+        remindersReads += 1
+        return Promise.resolve(response(remindersReads === 1 ? { malformed: true } : envelope([REMINDER])))
+      }
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    const { result } = renderHook(() => useApexData())
+    await waitFor(() => expect(result.current.remindersLoadState).toBe('unavailable'))
+    expect(result.current.activeReminders).toEqual([])
+
+    await act(async () => result.current.refreshReminders())
+    expect(result.current.remindersLoadState).toBe('loaded')
+    expect(result.current.activeReminders).toEqual([REMINDER])
+  })
+
+  it('settles a failed initial reminders request as unavailable', async () => {
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input)
+      if (url === API_ENDPOINTS.config) return Promise.resolve(response({}))
+      if (url === API_ENDPOINTS.reminders && init?.method !== 'POST') return Promise.reject(new Error('offline'))
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    const { result } = renderHook(() => useApexData())
+    await waitFor(() => expect(result.current.remindersLoadState).toBe('unavailable'))
+    expect(result.current.activeReminders).toEqual([])
+  })
+
+  it('preserves loaded reminders after a failed retry', async () => {
+    const fetchMock = vi.mocked(fetch)
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = requestUrl(input)
+      if (url === API_ENDPOINTS.config) return Promise.resolve(response({}))
+      if (url === API_ENDPOINTS.reminders && init?.method !== 'POST') {
+        const readCount = fetchMock.mock.calls.filter(([request, requestInit]) =>
+          requestUrl(request) === API_ENDPOINTS.reminders && requestInit?.method !== 'POST',
+        ).length
+        return readCount === 1
+          ? Promise.resolve(response(envelope([REMINDER])))
+          : Promise.reject(new Error('offline'))
+      }
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    const { result } = renderHook(() => useApexData())
+    await waitFor(() => expect(result.current.remindersLoadState).toBe('loaded'))
+    await act(async () => result.current.refreshReminders())
+
+    expect(result.current.remindersLoadState).toBe('loaded')
+    expect(result.current.activeReminders).toEqual([REMINDER])
+  })
+
   it('submits completion while the optimistic update is queued and refreshes on success', async () => {
     let resolveCompletion!: (value: Response) => void
     const completionResponse = new Promise<Response>((resolve) => {
