@@ -854,9 +854,9 @@
   12%,
   88%,
   100% {
-    opacity: 0.55;
-    fill: url(#apexGreenMetal);
-    filter: drop-shadow(0 0 8px rgba(57, 255, 136, 0.35));
+    opacity: 0.45;
+    fill: url(#apexGoldMetal);
+    filter: drop-shadow(0 0 8px rgba(217, 119, 6, 0.2));
   }
   25%,
   72% {
@@ -884,9 +884,9 @@
 }
 
 .apex-core-metal.apex-core-metal--green-surge {
-  fill: url(#apexGreenMetal);
-  opacity: 0.55;
-  filter: drop-shadow(0 0 8px rgba(57, 255, 136, 0.35));
+  fill: url(#apexGoldMetal);
+  opacity: 0.45;
+  filter: drop-shadow(0 0 8px rgba(217, 119, 6, 0.2));
   animation: greenSurge 2.5s ease-in-out infinite backwards;
   will-change: opacity, filter, fill;
 }
