@@ -1,6 +1,6 @@
 ---
-name: lightweight-worker
-description: Use proactively for straightforward, well-bounded implementation work where the solution is already clear and does not require deep architectural judgment. Prefer this for small-to-medium edits, mechanical changes, focused tests, and routine repository work before escalating to a heavier implementation worker.
+name: composer-worker
+description: Use proactively for straightforward, well-bounded implementation work where the solution is already clear and does not require deep architectural judgment. Prefer this for small-to-medium edits, mechanical changes, focused tests, and routine repository work before escalating to grok-worker.
 model: composer-2.5[fast=false]
 readonly: false
 ---
