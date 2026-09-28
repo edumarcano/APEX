@@ -1124,7 +1124,7 @@ function ApexConversationRailItem(): ReactNode {
   </ThreadListItemPrimitive.Root>
 }
 
-export function ApexConversationRail({ className = 'hidden xl:block', disabled = false, compact = false }: { className?: string; disabled?: boolean; compact?: boolean }): ReactNode {
+export function ApexConversationRail({ className = 'hidden xl:flex', disabled = false, compact = false }: { className?: string; disabled?: boolean; compact?: boolean }): ReactNode {
   const aui = useAui()
   const [archived, setArchived] = useState(false)
   const isLoading = useAuiState((state) => state.threads.isLoading)

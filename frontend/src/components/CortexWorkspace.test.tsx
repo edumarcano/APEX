@@ -70,6 +70,7 @@ describe('CortexWorkspace', () => {
   it('keeps conversation controls outside the independently scrollable list', () => {
     renderWorkspace()
     const rail = screen.getByRole('complementary', { name: 'Conversations' })
+    expect(rail).toHaveClass('hidden', 'xl:flex')
     const scrollArea = rail.querySelector(':scope > .overflow-y-auto')
     expect(scrollArea).toHaveClass('min-h-0', 'flex-1', 'overflow-y-auto')
     expect(rail.querySelector('p')?.parentElement).not.toBe(scrollArea)
@@ -88,7 +89,7 @@ describe('CortexWorkspace', () => {
     renderWorkspace()
     await user.click(screen.getByRole('button', { name: 'Conversations' }))
     const rail = screen.getAllByRole('complementary', { name: 'Conversations' })[0]
-    expect(rail).toHaveClass('max-h-[min(60vh,32rem)]', 'w-full')
+    expect(rail).toHaveClass('flex', 'max-h-[min(60vh,32rem)]', 'w-full')
     expect(rail.querySelector(':scope > .overflow-y-auto')).toHaveClass('overflow-y-auto')
   })
 
