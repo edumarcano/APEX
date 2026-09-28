@@ -120,14 +120,12 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
   const latestLoadSequence = useRef(0)
   const generatingRef = useRef(false)
   const selectedSessionRef = useRef<string | null>(null)
-  const sessionsRef = useRef(sessions)
   const visibleSessionIdsRef = useRef(new Set<string>())
   const pendingAdmissionIdsRef = useRef(new Map<string, BriefingSessionSummary>())
   const evidenceLoadedRef = useRef(new Set<string>())
   const evidenceLoadingRef = useRef(new Set<string>())
   const idempotencyRef = useRef<{ fingerprint: string; key: string } | null>(null)
   selectedSessionRef.current = selectedSessionId
-  sessionsRef.current = sessions
 
   const refreshLatestSession = useCallback(async (
     summary?: BriefingSessionSummary | null,
@@ -178,7 +176,6 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
       )
       pendingAdmissionIdsRef.current.clear()
       const nextSessions = [...admitted, ...listed]
-      sessionsRef.current = nextSessions
       setSessions(nextSessions)
       visibleSessionIdsRef.current = new Set(nextSessions.map((session) => session.id))
       const selectedId = selectedSessionRef.current
@@ -238,7 +235,6 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
           const updated = isSameSummary(current.find((session) => session.id === next.id), next)
             ? current
             : updateSummary(current, next)
-          sessionsRef.current = updated
           return updated
         })
       }
@@ -262,7 +258,6 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
           current.find((session) => session.id === sessionId),
           next,
         ) ? current : updateSummary(current, next)
-        sessionsRef.current = updated
         return updated
       })
       setActiveRunDetail((current) => {
@@ -331,7 +326,6 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
       visibleSessionIdsRef.current.add(summary.id)
       setSessions((current) => {
         const updated = updateSummary(current, summary)
-        sessionsRef.current = updated
         return updated
       })
       void openSession(summary.id).catch(() => undefined)
@@ -354,7 +348,6 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
       const updated = current.map((session) => session.id === sessionId
         ? { ...session, presented_at: detail.presented_at }
         : session)
-      sessionsRef.current = updated
       return updated
     })
   }, [])
