@@ -74,6 +74,14 @@ describe('CompactModelSelector', () => {
     expect(screen.getByRole('img', { name: 'Availability: Rate limited' })).toHaveClass('hud-led--error')
   })
 
+  it('uses the local runtime failure as the accessible availability label', () => {
+    const unavailableLocal = [{ ...catalog[2], status: 'ollama_unreachable' as const, active: false, loading: false }]
+    render(<CompactModelSelector selectedModelId={catalog[2].model_id} onModelChange={vi.fn()} catalog={unavailableLocal} />)
+
+    expect(screen.getByRole('img', { name: 'Availability: Ollama offline' })).toHaveClass('hud-led--error')
+    expect(screen.getByRole('button', { name: /availability ollama offline/i })).toBeInTheDocument()
+  })
+
   it('describes local providers with their model-specific context behavior', async () => {
     const user = userEvent.setup()
     const localCatalog: ModelCatalogEntry[] = [{ model_id: 'qwen3:1.7b', display_name: 'Qwen 3 1.7B', provider: 'ollama', runtime: 'local', stability: 'stable', hosted_capabilities: [], status: 'available' }, ...catalog]

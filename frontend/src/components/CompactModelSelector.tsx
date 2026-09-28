@@ -62,6 +62,30 @@ function localStatusLedClass(status: AgentAvailabilityStatus): string {
   return 'hud-led--error'
 }
 
+function localAvailabilityLabel(model: ModelCatalogEntry | null, status: AgentAvailabilityStatus): string {
+  const statusLabels: Partial<Record<AgentAvailabilityStatus, string>> = {
+    unauthorized: 'Access denied',
+    model_unavailable: 'Unavailable',
+    rate_limited: 'Rate limited',
+    quota_exhausted: 'Quota exhausted',
+    billing_blocked: 'Billing blocked',
+    provider_unreachable: 'Unreachable',
+    provider_error: 'Provider error',
+    disabled: 'Unavailable',
+    ollama_unreachable: 'Ollama offline',
+    model_not_installed: 'Not installed',
+    insufficient_ram: 'Low memory',
+    cpu_overloaded: 'CPU busy',
+  }
+  const knownStatus = statusLabels[status]
+  if (knownStatus) return knownStatus
+  if (model?.loading) return 'Loading'
+  if (status === 'busy') return 'Busy'
+  if (status === 'verifying') return 'Verifying'
+  if (status === 'unknown') return 'Checking'
+  return model?.active ? 'Loaded' : 'Unloaded'
+}
+
 function compactRate(value: number): string {
   return `$${Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2)}`
 }
@@ -141,8 +165,7 @@ export function CompactModelSelector({
   const reasoningLabel = selectedReasoning
     ? formatReasoningLabel(selectedReasoning)
     : 'Reasoning'
-  const availabilityLabel = selectedAvailability?.label
-    ?? (selectedModel?.loading ? 'Loading' : selectedModel?.active ? 'Loaded' : 'Unloaded')
+  const availabilityLabel = selectedAvailability?.label ?? localAvailabilityLabel(selectedModel, selectedStatus)
 
   const close = useCallback((focusTrigger = false): void => {
     setOpen(false)
