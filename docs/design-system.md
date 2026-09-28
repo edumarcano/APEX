@@ -36,7 +36,7 @@ Color meaning depends on the state system in which it appears. Do not assume one
 
 | State | Visual family |
 | --- | --- |
-| Launch or ready Overview | Resting blue shell with a soft warm core |
+| Before a usable telemetry snapshot is available in the current app session | Filled blue shell with a dormant core while idle |
 | Telemetry refresh, or a briefing in preparation/collection | Emerald |
 | Briefing selection, investigation, synthesis, or Agent working | Purple |
 | Briefing artifact persistence or prepared output | Gold |
@@ -55,7 +55,7 @@ Color meaning depends on the state system in which it appears. Do not assume one
 
 Pair state color with text, icons, shape, motion, or an accessible label. Never rely on color alone.
 
-On Launch, Overview, Briefing, and in the compact Cortex header, the shared logo keeps the outer blue shell and core independent. Launch and ready Overview use the resting blue shell and soft warm core. Session collection uses the blue outer wave with an emerald core; selection, investigation, and synthesis use a fully lit blue shell while the core pulses purple. Telemetry refresh progress comes from the telemetry refresh state. Local-model loading and residency come from the model catalog and use a rust-metal wave over blue segments; an active local briefing session also identifies the selected model while its generation is running. Playing speech uses a cyan waveform. The logo returns to its resting state when no operation is active.
+On Launch, Overview, Briefing, and in the compact Cortex header, the shared logo uses the same app-wide reactive state. Before a usable telemetry snapshot is available during the current app session, the blue shell stays filled while the core remains dormant when idle; active collection, briefing, query, speech, and error states retain their established treatments. Once a usable snapshot becomes available, the shell and core follow operational state consistently in every workspace. Session collection uses the blue outer wave with an emerald core; selection, investigation, and synthesis use a fully lit blue shell while the core pulses purple. Telemetry refresh progress comes from the telemetry refresh state. Local-model loading and residency come from the model catalog and use a rust-metal wave over blue segments; an active local briefing session also identifies the selected model while its generation is running. Playing speech uses a cyan waveform. The logo returns to its collected idle treatment when no operation is active.
 
 ## Material System
 

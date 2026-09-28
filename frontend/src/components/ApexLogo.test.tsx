@@ -34,25 +34,33 @@ describe('ApexLogo shell behavior', () => {
     }
   })
 
-  it('keeps the shell and warm core visibly on for a resting identity', () => {
-    const { container } = render(
-      <ApexLogo step={null} status="idle" isRestingIdentity />,
-    )
+  it('fills the blue shell before usable telemetry has been collected', () => {
+    const { container } = render(<ApexLogo step={null} status="idle" />)
 
     for (const segment of shellSegments(container)) {
-      expect(segment).toHaveClass('apex-blue-metal--resting')
+      expect(segment).toHaveClass('apex-blue-metal--active')
     }
-    expect(container.querySelector('#gold-stage-1')).toHaveClass('apex-core-metal--resting')
+    expect(container.querySelector('#gold-stage-1')).toHaveClass('apex-core-metal--breathing-dormant')
   })
 
-  it('shows cyan speech activity over the resting core', () => {
+  it('keeps shared shell behavior while showing cyan speech activity', () => {
     const { container } = render(
-      <ApexLogo step={null} status="idle" isRestingIdentity isSpeaking />,
+      <ApexLogo step={null} status="idle" isSpeaking />,
     )
 
     expect(container.querySelector('#gold-stage-1')).toHaveClass('apex-core-metal--speaking')
     for (const segment of shellSegments(container)) {
-      expect(segment).toHaveClass('apex-blue-metal--resting')
+      expect(segment).toHaveClass('apex-blue-metal--active')
+    }
+  })
+
+  it('returns to the collected idle shell after usable telemetry exists', () => {
+    const { container } = render(
+      <ApexLogo step={null} status="idle" hasCollectedTelemetry />,
+    )
+
+    for (const segment of shellSegments(container)) {
+      expect(segment).toHaveClass('apex-blue-metal--base')
     }
   })
 })

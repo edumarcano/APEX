@@ -9,14 +9,12 @@ export type OuterShellActivity =
 export interface LogoVisualStateInput {
   briefingStatus: SystemState
   activeStep: number | null
-  activated: boolean
   isBriefingRunning: boolean
   isCortexQuerying: boolean
   isLocalModelLoading: boolean
   isLocalModelLoaded: boolean
   isSpeaking: boolean
   isTelemetryCollecting: boolean
-  isRestingIdentity: boolean
 }
 
 const COLORS = {
@@ -50,20 +48,6 @@ export function resolveOuterShellActivity({
 }
 
 function resolveColor(input: LogoVisualStateInput): string {
-  if (
-    input.isRestingIdentity &&
-    input.isSpeaking &&
-    !input.isCortexQuerying &&
-    !input.isLocalModelLoading
-  ) return COLORS.cyan
-  if (
-    input.isRestingIdentity &&
-    !input.isBriefingRunning &&
-    !input.isCortexQuerying &&
-    !input.isLocalModelLoading &&
-    !input.isTelemetryCollecting &&
-    !input.isSpeaking
-  ) return COLORS.blue
   if (input.briefingStatus === 'error') return COLORS.red
   if (input.isLocalModelLoading) return COLORS.rust
   if (input.isCortexQuerying) return COLORS.purple

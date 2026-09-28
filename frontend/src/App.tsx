@@ -191,6 +191,7 @@ export default function App(): ReactElement {
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
   const [workspace, setWorkspace] = useState<WorkspacePeer>('overview')
   const [isLaunch, setIsLaunch] = useState(true)
+  const [hasCollectedTelemetry, setHasCollectedTelemetry] = useState(false)
   const [overviewState, setOverviewState] = useState<'center' | 'collecting' | 'ready' | 'error' | 'no-data'>('center')
   const [overviewError, setOverviewError] = useState<string | null>(null)
   const [dailyConversationReady, setDailyConversationReady] = useState<string | null>(null)
@@ -286,6 +287,11 @@ export default function App(): ReactElement {
   const briefingWorkspaceOpen = workspace === 'briefing' && workspaceView.view === 'briefing'
   const preflight = usePreflight()
   const telemetry = useTelemetrySnapshot()
+  useEffect(() => {
+    if (hasCollectedTelemetry || !hasUsableTelemetry(telemetry.snapshot)) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- A usable snapshot from any refresh path latches the session's collected state.
+    setHasCollectedTelemetry(true)
+  }, [hasCollectedTelemetry, telemetry.snapshot])
   const [marketSymbols, setMarketSymbols] = useState<readonly string[] | null>(null)
   const marketRevision = typeof telemetry.snapshot?.modules.market?.data.collection_revision === 'number'
     ? telemetry.snapshot.modules.market.data.collection_revision
@@ -768,28 +774,22 @@ export default function App(): ReactElement {
       resolveLogoVisualColors({
         briefingStatus,
         activeStep,
-        activated,
         isBriefingRunning,
         isCortexQuerying,
         isLocalModelLoading,
         isLocalModelLoaded,
         isSpeaking,
         isTelemetryCollecting,
-        isRestingIdentity: isLaunch || (workspace === 'overview' && overviewState !== 'collecting'),
       }),
     [
       briefingStatus,
       activeStep,
-      activated,
       isBriefingRunning,
       isCortexQuerying,
       isLocalModelLoading,
       isLocalModelLoaded,
       isSpeaking,
       isTelemetryCollecting,
-      isLaunch,
-      overviewState,
-      workspace,
     ],
   )
   const atmosphereGlowColor = visualColors.atmosphere
@@ -828,6 +828,7 @@ export default function App(): ReactElement {
     const [outcome] = await Promise.all([refreshPromise, initialCuePromise])
     if (outcome.kind === 'success') {
       if (hasUsableTelemetry(outcome.snapshot)) {
+        setHasCollectedTelemetry(true)
         setOverviewState('ready')
       } else {
         setOverviewState('no-data')
@@ -1139,14 +1140,13 @@ export default function App(): ReactElement {
     void cancelDailySession(sessionId).catch(() => undefined)
   }, [cancelDailySession])
 
-  const logoStatus =
-    (!activated || isLaunch || (workspace === 'overview' && overviewState !== 'collecting')) && !isBriefingRunning
-      ? 'idle'
-      : briefingStatus !== 'idle'
-        ? briefingStatus
-        : isRefreshingAll
-          ? 'loading'
-          : 'success'
+  const logoStatus = briefingStatus !== 'idle'
+    ? briefingStatus
+    : isRefreshingAll
+      ? 'loading'
+      : hasCollectedTelemetry
+        ? 'success'
+        : 'idle'
   const isOverviewCentered = !isLaunch && workspace === 'overview' &&
     (overviewState === 'center' || overviewState === 'error' || overviewState === 'no-data')
 
@@ -1157,7 +1157,7 @@ export default function App(): ReactElement {
     reminderPulseCount,
     isCortexQuerying,
     isTelemetryCollecting,
-    isRestingIdentity: isLaunch || (workspace === 'overview' && overviewState !== 'collecting'),
+    hasCollectedTelemetry,
     outerShellActivity,
   }
 

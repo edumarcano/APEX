@@ -9,7 +9,7 @@ export interface ApexLogoProps {
   reminderPulseCount?: number
   isCortexQuerying?: boolean
   isTelemetryCollecting?: boolean
-  isRestingIdentity?: boolean
+  hasCollectedTelemetry?: boolean
   outerShellActivity?: OuterShellActivity
   className?: string
 }
@@ -21,7 +21,7 @@ export function ApexLogo({
   reminderPulseCount = 0,
   isCortexQuerying = false,
   isTelemetryCollecting = false,
-  isRestingIdentity = false,
+  hasCollectedTelemetry = false,
   outerShellActivity = 'normal',
   className = '',
 }: ApexLogoProps): ReactElement {
@@ -69,11 +69,7 @@ export function ApexLogo({
       return `transition-all duration-700 ease-in-out ${activeBlue}`
     }
 
-    if (isRestingIdentity) {
-      return 'apex-blue-metal apex-blue-metal--resting'
-    }
-
-    const blueMetal = hasDelivered ? activeBlue : baseBlue
+    const blueMetal = hasDelivered || !hasCollectedTelemetry ? activeBlue : baseBlue
 
     return `transition-all duration-700 ease-in-out ${blueMetal}`
   }
@@ -112,9 +108,6 @@ export function ApexLogo({
     }
 
     if (isDormant) {
-      if (isRestingIdentity) {
-        return 'apex-core-metal apex-core-metal--resting'
-      }
       return 'apex-core-metal apex-core-metal--breathing-dormant'
     }
 
@@ -301,11 +294,6 @@ export function ApexLogo({
               opacity: 0.3;
             }
 
-            .apex-blue-metal--resting {
-              opacity: 0.78;
-              filter: drop-shadow(0 0 10px rgba(79, 143, 255, 0.28));
-            }
-
             .apex-blue-metal--active {
               filter: drop-shadow(0 0 12px rgba(79, 143, 255, 0.75));
               transition: all 1000ms ease-in-out;
@@ -354,12 +342,6 @@ export function ApexLogo({
             .apex-core-metal--dormant {
               fill: url(#apexDormantMetal);
               opacity: 0.2;
-            }
-
-            .apex-core-metal--resting {
-              fill: url(#apexDormantMetal);
-              opacity: 0.72;
-              filter: drop-shadow(0 0 8px rgba(180, 83, 9, 0.32));
             }
 
             .apex-core-metal--red {

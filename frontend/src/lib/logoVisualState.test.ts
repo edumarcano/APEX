@@ -9,14 +9,12 @@ import {
 const BASE: LogoVisualStateInput = {
   briefingStatus: 'idle',
   activeStep: null,
-  activated: true,
   isBriefingRunning: false,
   isCortexQuerying: false,
   isLocalModelLoading: false,
   isLocalModelLoaded: false,
   isSpeaking: false,
   isTelemetryCollecting: false,
-  isRestingIdentity: false,
 }
 
 describe('resolveOuterShellActivity', () => {
@@ -32,19 +30,19 @@ describe('resolveOuterShellActivity', () => {
 })
 
 describe('resolveLogoVisualColors', () => {
-  it('keeps the resting identity blue before activation', () => {
-    expect(resolveLogoVisualColors({ ...BASE, activated: false })).toEqual({
+  it('keeps the shared standby identity blue before telemetry collection', () => {
+    expect(resolveLogoVisualColors(BASE)).toEqual({
       atmosphere: '15, 77, 184',
       logo: '15, 77, 184',
     })
   })
 
-  it('does not persist an earlier error on the resting Launch identity', () => {
-    expect(resolveLogoVisualColors({ ...BASE, isRestingIdentity: true, briefingStatus: 'error' }).logo).toBe('15, 77, 184')
+  it('keeps error precedence in every workspace state', () => {
+    expect(resolveLogoVisualColors({ ...BASE, briefingStatus: 'error' }).logo).toBe('220, 38, 38')
   })
 
-  it('uses cyan for speech over the resting identity', () => {
-    expect(resolveLogoVisualColors({ ...BASE, isRestingIdentity: true, isSpeaking: true, briefingStatus: 'error' })).toEqual({
+  it('uses cyan for speech when no higher-priority error is active', () => {
+    expect(resolveLogoVisualColors({ ...BASE, isSpeaking: true })).toEqual({
       atmosphere: '34, 211, 238',
       logo: '34, 211, 238',
     })
