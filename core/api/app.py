@@ -45,6 +45,7 @@ from core.agent.local_runtime.registry import any_local_runtime_enabled
 from core.agent.providers.llama_cpp_supervisor import get_llama_cpp_server_supervisor
 from core import database, speaker
 from core.conversations import ConversationService, ConversationStore, set_conversation_service
+from core.conversations.retention import purge_expired_archived_conversations
 from core.runs import CortexRunCoordinator, RunService, RunStore, set_run_coordinator, set_run_service
 from core.briefings.daily import generate_briefing_generation
 from core.briefings.runtime import resolve_briefing_configuration
@@ -310,9 +311,10 @@ async def _app_lifespan(_app: FastAPI):
             async def _run_conversation_retention() -> None:
                 while not conversation_retention_stop.is_set():
                     try:
-                        deleted = await asyncio.to_thread(
-                            conversation_store.purge_expired_archived,
+                        deleted = await purge_expired_archived_conversations(
+                            conversation_store,
                             retention_days=CORTEX_CONVERSATIONS_ARCHIVED_RETENTION_DAYS,
+                            stop_event=conversation_retention_stop,
                         )
                         if deleted:
                             _LOGGER.info(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 import tempfile
@@ -16,6 +17,11 @@ from core.conversations.store import (
     ConversationConflictError,
     ConversationStore,
 )
+from core.conversations.retention import purge_expired_archived_conversations
+from core.briefings.store import BriefingSessionStore
+from core.connectors.models import utc_now_iso
+from core.retrieval import RetrievalStore
+from core.retrieval.models import RetrievalItem
 from core.runs import RunStore
 from core.runs.models import RunLimitSnapshot
 
@@ -356,6 +362,152 @@ class ConversationStoreTests(unittest.TestCase):
         self.assertEqual(
             self.store.purge_expired_archived(retention_days=30, now=now), 1
         )
+
+    def test_retention_sweep_drains_multiple_batches_and_honors_shutdown(self) -> None:
+        archived_at = "2000-01-01T00:00:00+00:00"
+        created_at = "1999-12-01T00:00:00+00:00"
+        expired_ids = [uuid4() for _ in range(205)]
+        with closing(sqlite3.connect(self.store._db_path)) as conn, conn:
+            conn.executemany(
+                """
+                INSERT INTO conversations (
+                    id, title, partition, origin, agent, created_at, updated_at, archived_at
+                ) VALUES (?, 'Expired', 'production', 'hud', 'apex', ?, ?, ?)
+                """,
+                [
+                    (str(conversation_id), created_at, created_at, archived_at)
+                    for conversation_id in expired_ids
+                ],
+            )
+
+        deleted = asyncio.run(
+            purge_expired_archived_conversations(
+                self.store,
+                retention_days=30,
+                stop_event=asyncio.Event(),
+            )
+        )
+        self.assertEqual(deleted, len(expired_ids))
+        with self.store._connection() as conn:
+            remaining = conn.execute(
+                "SELECT COUNT(*) FROM conversations WHERE archived_at IS NOT NULL"
+            ).fetchone()[0]
+        self.assertEqual(remaining, 0)
+
+        async def stop_between_batches() -> tuple[int, int]:
+            stop_event = asyncio.Event()
+            loop = asyncio.get_running_loop()
+
+            class StopAfterBatch:
+                calls = 0
+
+                def purge_expired_archived(self, **_kwargs: object) -> int:
+                    self.calls += 1
+                    loop.call_soon_threadsafe(stop_event.set)
+                    return 100
+
+            fake_store = StopAfterBatch()
+            deleted_before_stop = await purge_expired_archived_conversations(
+                fake_store,  # type: ignore[arg-type]
+                retention_days=30,
+                stop_event=stop_event,
+            )
+            return deleted_before_stop, fake_store.calls
+
+        deleted_before_stop, batches_before_stop = asyncio.run(stop_between_batches())
+        self.assertEqual(deleted_before_stop, 100)
+        self.assertEqual(batches_before_stop, 1)
+
+    def test_retention_purge_cascades_run_briefing_and_retrieval_data(self) -> None:
+        run_store = RunStore(self.store._db_path)
+        run_store.initialize()
+        self.addCleanup(run_store.close)
+        briefing_store = BriefingSessionStore(self.store._db_path)
+        briefing_store.initialize()
+        self.addCleanup(briefing_store.close)
+        retrieval_store = RetrievalStore(self.store._db_path)
+        retrieval_store.initialize()
+        self.addCleanup(retrieval_store.close)
+
+        user, agent, _, _ = self._begin(prompt="Retained source text")
+        run, _ = run_store.create_run(
+            run_id=uuid4(),
+            conversation_id=self.conversation_id,
+            partition="production",
+            user_message_id=user.id,
+            agent_message_id=agent.id,
+            requested_model="test-model",
+            limit_snapshot=RunLimitSnapshot(
+                max_elapsed_seconds=600,
+                max_retries=4,
+                max_model_turns=6,
+                max_tool_calls=10,
+            ),
+        )
+        now = utc_now_iso()
+        briefing_id = uuid4()
+        with closing(sqlite3.connect(self.store._db_path)) as conn, conn:
+            conn.execute(
+                "UPDATE conversation_messages SET status = 'completed' WHERE id = ?",
+                (str(agent.id),),
+            )
+            conn.execute(
+                "UPDATE cortex_runs SET status = 'completed' WHERE id = ?",
+                (str(run.id),),
+            )
+            conn.execute(
+                """
+                INSERT INTO briefing_sessions (
+                    id, partition, idempotency_key, conversation_id,
+                    opening_message_id, run_id, profile_id, created_at,
+                    request_json, configuration_json
+                ) VALUES (?, 'production', 'retention-test', ?, ?, ?, 'daily', ?, '{}', '{}')
+                """,
+                (
+                    str(briefing_id),
+                    str(self.conversation_id),
+                    str(user.id),
+                    str(run.id),
+                    now,
+                ),
+            )
+        retrieval_store.upsert_item(
+            RetrievalItem(
+                namespace="conversation",
+                source_type="message",
+                source_id=str(user.id),
+                partition="production",
+                conversation_id=str(self.conversation_id),
+                message_id=str(user.id),
+                role="user",
+                timestamp=now,
+                locator=f"conversation/{self.conversation_id}/message/{user.id}",
+                content_hash="retention-test",
+                text=user.content,
+            )
+        )
+        self.store.patch(self.conversation_id, "production", {"archived": True})
+        self._set_archived_at(
+            self.conversation_id,
+            "production",
+            datetime(2000, 1, 1, tzinfo=timezone.utc),
+        )
+
+        self.assertEqual(
+            asyncio.run(
+                purge_expired_archived_conversations(
+                    self.store,
+                    retention_days=30,
+                    stop_event=asyncio.Event(),
+                )
+            ),
+            1,
+        )
+        self.assertEqual(retrieval_store.counts(), (0, 0))
+        with self.assertRaises(Exception):
+            run_store.get_run(run.id, partition="production")
+        with self.assertRaises(Exception):
+            briefing_store.get(briefing_id, "production")
 
 
 class ConversationMigrationTests(unittest.TestCase):

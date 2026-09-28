@@ -19,6 +19,8 @@ from core.conversations.models import (
     ConversationSummary,
 )
 
+MAX_CONVERSATION_PURGE_BATCH_SIZE = 100
+
 
 class ConversationStoreError(RuntimeError):
     pass
@@ -52,7 +54,7 @@ def _parse_json(value: str | None) -> Any:
 class ConversationStore:
     """Owns only short SQLite transactions; model execution happens above it."""
 
-    _MAX_PURGE_BATCH_SIZE = 100
+    _MAX_PURGE_BATCH_SIZE = MAX_CONVERSATION_PURGE_BATCH_SIZE
 
     def __init__(
         self,
