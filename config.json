@@ -62,6 +62,9 @@
     "event_replay_limit": 512,
     "shutdown_drain_seconds": 30
   },
+  "cortex_conversations": {
+    "archived_retention_days": 30
+  },
   "ollama": {
     "enabled": true,
     "host": "http://localhost:11434",

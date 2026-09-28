@@ -24,6 +24,7 @@ __all__ = [
     "CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS",
     "CORTEX_RUNS_MAX_TOOL_CALLS",
     "CortexRunsConfig",
+    "CORTEX_CONVERSATIONS_ARCHIVED_RETENTION_DAYS",
     "AGENT_SYSTEM_PROMPT",
     "LOCAL_AGENT_SYSTEM_PROMPT",
     "APEX_CONTEXT_VAULT_PATH",
@@ -497,6 +498,26 @@ CORTEX_RUNS_CONFIG: Final[CortexRunsConfig] = CortexRunsConfig(
     event_replay_limit=CORTEX_RUNS_EVENT_REPLAY_LIMIT,
     shutdown_drain_seconds=CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS,
 )
+
+try:
+    _cortex_conversations_cfg = _CONFIG_DATA.get("cortex_conversations", {})
+    if not isinstance(_cortex_conversations_cfg, dict):
+        _LOGGER.warning(
+            'Config key "cortex_conversations" must be a JSON object; using defaults.'
+        )
+        _cortex_conversations_cfg = {}
+    CORTEX_CONVERSATIONS_ARCHIVED_RETENTION_DAYS: Final[int] = _parse_config_int(
+        _cortex_conversations_cfg.get("archived_retention_days"),
+        key="cortex_conversations.archived_retention_days",
+        default=30,
+        min_value=14,
+        max_value=36500,
+    )
+except Exception as exc:
+    _LOGGER.warning(
+        "Unable to parse cortex_conversations config: %s; using defaults.", exc
+    )
+    CORTEX_CONVERSATIONS_ARCHIVED_RETENTION_DAYS = 30
 
 _DEFAULT_QWEN_17B_RAM: Final[float] = 88.0
 _DEFAULT_QWEN_17B_CPU: Final[float] = 95.0
