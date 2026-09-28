@@ -18,6 +18,7 @@ const identity: HudIdentityProps = {
 const telemetry: HudTelemetryData = {
   hasSnapshot: false,
   isRefreshingAll: false,
+  isRefreshingAnyConnector: false,
   onRefreshConnector: vi.fn(),
   attentionTiers: { weather: 'pending', events: 'pending', market: 'pending', email: 'pending', news: 'pending', reminders: 'pending' },
   attentionStagger: { weather: 0, events: 0, market: 0, email: 0, news: 0, reminders: 0 },
@@ -131,6 +132,13 @@ describe('OverviewView layout', () => {
     )
     expect(refreshButton).toBeDisabled()
     expect(refreshButton.querySelector('svg')).toHaveClass('animate-spin')
+
+    center.rerender(
+      <OverviewView identity={identity} telemetry={{ ...telemetry, isRefreshingAnyConnector: true }} state="ready" onCollect={vi.fn()} onRefreshAll={onRefreshAll} />,
+    )
+    expect(refreshButton).toBeDisabled()
+    expect(refreshButton.querySelector('svg')).not.toHaveClass('animate-spin')
+    expect(refreshButton.querySelector('svg')).toHaveClass('motion-reduce:animate-none')
   })
 })
 

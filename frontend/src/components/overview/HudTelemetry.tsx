@@ -20,6 +20,7 @@ type Surface = 'weather' | 'events' | 'market' | 'email' | 'news' | 'reminders'
 export type HudTelemetryData = {
   hasSnapshot: boolean
   isRefreshingAll: boolean
+  isRefreshingAnyConnector: boolean
   onRefreshConnector: (name: string) => void
   attentionTiers: Record<Surface, AttentionTier>
   attentionStagger: Record<Surface, number>

@@ -1556,6 +1556,7 @@ export default function App(): ReactElement {
   const hudTelemetry: HudTelemetryData = {
     hasSnapshot,
     isRefreshingAll,
+    isRefreshingAnyConnector: telemetry.refreshingConnectors.size > 0,
     onRefreshConnector: handleRefreshConnector,
     attentionTiers,
     attentionStagger,

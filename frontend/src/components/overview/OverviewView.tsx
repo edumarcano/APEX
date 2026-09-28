@@ -48,12 +48,12 @@ export function OverviewView({ identity, telemetry, state, error, onCollect, onR
       {hasGrid ? <button
         type="button"
         onClick={onRefreshAll}
-        disabled={state === 'collecting' || telemetry.isRefreshingAll}
+        disabled={state === 'collecting' || telemetry.isRefreshingAll || telemetry.isRefreshingAnyConnector}
         aria-label="Refresh All"
         title="Refresh All"
         className="absolute right-3 top-3 inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-[color:var(--hud-muted-text)] transition-colors hover:border-white/20 hover:bg-white/10 hover:text-[color:var(--hud-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
       >
-        <RefreshCw className={`size-3.5 ${state === 'collecting' || telemetry.isRefreshingAll ? 'animate-spin' : ''}`} strokeWidth={2} aria-hidden />
+        <RefreshCw className={`size-3.5 motion-reduce:animate-none ${state === 'collecting' || telemetry.isRefreshingAll ? 'animate-spin' : ''}`} strokeWidth={2} aria-hidden />
       </button> : null}
       <HudIdentityMark identity={identity} size={hasGrid ? 'overview' : 'large'} />
       {state === 'error' ? <div className="max-w-sm text-center" role="alert"><p className="font-mono text-sm text-rose-300">{error || 'I couldn’t collect telemetry just now.'}</p></div> : null}

@@ -12,6 +12,7 @@ function telemetry(overrides: Partial<HudTelemetryData> = {}): HudTelemetryData 
   return {
     hasSnapshot: true,
     isRefreshingAll: false,
+    isRefreshingAnyConnector: false,
     onRefreshConnector: vi.fn(),
     attentionTiers: { weather: 'complete', events: 'complete', market: 'complete', email: 'complete', news: 'complete', reminders: 'complete' },
     attentionStagger: surfaces,
