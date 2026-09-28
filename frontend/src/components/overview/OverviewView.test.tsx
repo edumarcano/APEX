@@ -162,4 +162,22 @@ describe('OverviewView identity mark sizing', () => {
     rerender(<OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={onCollect} />)
     expect(homeIdentity(layout)).toHaveAttribute('data-logo-size', 'overview')
   })
+
+  it('uses grid-slot width on the identity card before collection but not after on desktop', () => {
+    setCompactLayout(false)
+    const onCollect = vi.fn()
+
+    const centerView = render(
+      <OverviewView identity={identity} telemetry={telemetry} state="center" onCollect={onCollect} />,
+    )
+    const centerLayout = screen.getByRole('region', { name: 'Overview' })
+    const centerCard = centerLayout.querySelector('[data-slot="overview-identity-card"]')
+    expect(centerCard).toHaveClass('w-full', 'max-w-sm')
+    centerView.unmount()
+
+    render(<OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={onCollect} />)
+    const readyLayout = screen.getByRole('region', { name: 'Overview' })
+    const readyCard = readyLayout.querySelector('[data-slot="overview-identity-card"]')
+    expect(readyCard).not.toHaveClass('max-w-sm')
+  })
 })
