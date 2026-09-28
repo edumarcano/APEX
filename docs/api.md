@@ -567,7 +567,7 @@ Updates title, archive state, active branch, or saved Agent/tool-selection state
 
 Permanently deletes an archived conversation and its stored message tree. The
 conversation must belong to the current server-derived partition and must not
-have a pending turn. Active conversations cannot be deleted; archive them first.
+have a pending turn or active run. Active conversations cannot be deleted; archive them first.
 
 ### Cortex turns
 
