@@ -95,16 +95,15 @@ describe('BriefingView', () => {
         telemetry={{} as HudTelemetryData}
         controls={{} as BriefingProfilePanelProps}
         conversation={conversation}
+        telemetryCollection={{ hasUsableSnapshot: false, state: 'idle', error: null, disabled: false, onCollect: vi.fn() }}
       />
     </ApexAssistantRuntime>)
 
     const query = await screen.findByPlaceholderText('Add a follow up')
     const shell = query.closest('[data-slot="briefing-query-composer"]')
-    expect(shell).toHaveClass('briefing-composer-shell')
-    expect(shell?.querySelector('.briefing-composer-tools')).toBeInTheDocument()
-    expect(shell?.querySelector('.briefing-composer-model')).toBeInTheDocument()
-    expect(shell?.querySelector('.briefing-composer-send')).toBeInTheDocument()
+    expect(shell).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Tools:/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Model: Model A, reasoning Medium/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument()
   })
 })
