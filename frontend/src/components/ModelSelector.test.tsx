@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -45,5 +45,25 @@ describe('ModelSelector', () => {
     render(<ModelSelector selectedModelId="gpt-5.6-luna" onModelChange={vi.fn()} catalog={catalog} onVerify={verify} />)
     await user.click(screen.getByRole('button', { name: 'Verify' }))
     expect(verify).toHaveBeenCalledWith('gpt-5.6-luna')
+  })
+
+  it('shows configured credentials neutrally and cached cloud success as offline when needed', () => {
+    const configuredCatalog = [{ ...catalog[0], credentials_configured: true, status: 'configured' as const }]
+    const { rerender } = render(<ModelSelector selectedModelId="gpt-5.6-luna" onModelChange={vi.fn()} catalog={configuredCatalog} />)
+    expect(screen.getByText('Configured')).toHaveClass('text-zinc-400')
+
+    rerender(<ModelSelector selectedModelId="gpt-5.6-luna" onModelChange={vi.fn()} catalog={catalog} />)
+    expect(screen.getByText('Verified')).toHaveClass('text-emerald-300')
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    fireEvent.offline(window)
+    expect(screen.getByText('Browser offline')).toHaveClass('text-[#DC2626]')
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+    fireEvent.online(window)
+  })
+
+  it('shows rate limiting as a red cloud blocker', () => {
+    const limitedCatalog = [{ ...catalog[0], status: 'rate_limited' as const }]
+    render(<ModelSelector selectedModelId="gpt-5.6-luna" onModelChange={vi.fn()} catalog={limitedCatalog} />)
+    expect(screen.getByText('Rate limited')).toHaveClass('text-[#DC2626]')
   })
 })

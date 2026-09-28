@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -15,7 +15,7 @@ describe('CompactModelSelector', () => {
   it('shows the selected model and its provider metadata', async () => {
     const user = userEvent.setup()
     render(<CompactModelSelector selectedModelId={catalog[0].model_id} onModelChange={vi.fn()} catalog={catalog} />)
-    await user.click(screen.getByRole('button', { name: 'Model: DeepSeek V4 Flash' }))
+    await user.click(screen.getByRole('button', { name: /model: deepseek v4 flash/i }))
     const listbox = screen.getByRole('listbox', { name: /select model/i })
     expect(within(listbox).getByText('DeepSeek V4 Flash')).toBeInTheDocument()
     expect(within(listbox).getByText(/OpenRouter · Reasoning configurable/i)).toBeInTheDocument()
@@ -48,11 +48,37 @@ describe('CompactModelSelector', () => {
     expect(within(popover).getByRole('option', { name: /gemma 4 e2b/i })).not.toBeDisabled()
   })
 
+  it('labels the selected cloud LED accessibly and overrides cached green while offline', async () => {
+    const user = userEvent.setup()
+    render(<CompactModelSelector selectedModelId={catalog[1].model_id} onModelChange={vi.fn()} catalog={catalog} />)
+
+    const led = screen.getByRole('img', { name: 'Availability: Verified' })
+    expect(led).toHaveClass('hud-led--live')
+    expect(screen.getByRole('button', { name: /availability verified/i })).toBeInTheDocument()
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    fireEvent.offline(window)
+    expect(screen.getByRole('img', { name: 'Availability: Browser offline' })).toHaveClass('hud-led--error')
+
+    await user.click(screen.getByRole('button', { name: /model: gpt-5\.6 luna/i }))
+    expect(screen.getByRole('option', { name: /gpt-5\.6 luna/i })).toBeEnabled()
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+    fireEvent.online(window)
+  })
+
+  it('shows configured credentials as neutral and rate limits as errors', () => {
+    const configured = [{ ...catalog[0], credentials_configured: true, status: 'configured' as const }]
+    const { rerender } = render(<CompactModelSelector selectedModelId={catalog[0].model_id} onModelChange={vi.fn()} catalog={configured} />)
+    expect(screen.getByRole('img', { name: 'Availability: Configured' })).not.toHaveClass('hud-led--live')
+
+    rerender(<CompactModelSelector selectedModelId={catalog[0].model_id} onModelChange={vi.fn()} catalog={[{ ...catalog[0], status: 'rate_limited' }]} />)
+    expect(screen.getByRole('img', { name: 'Availability: Rate limited' })).toHaveClass('hud-led--error')
+  })
+
   it('describes local providers with their model-specific context behavior', async () => {
     const user = userEvent.setup()
     const localCatalog: ModelCatalogEntry[] = [{ model_id: 'qwen3:1.7b', display_name: 'Qwen 3 1.7B', provider: 'ollama', runtime: 'local', stability: 'stable', hosted_capabilities: [], status: 'available' }, ...catalog]
     render(<CompactModelSelector selectedModelId="qwen3:1.7b" onModelChange={vi.fn()} catalog={localCatalog} />)
-    await user.click(screen.getByRole('button', { name: 'Model: Qwen 3 1.7B' }))
+    await user.click(screen.getByRole('button', { name: /model: qwen 3 1\.7b/i }))
     const popover = screen.getByRole('listbox', { name: /select model/i })
     expect(within(popover).getByText(/Ollama · 4K context/i)).toBeInTheDocument()
     expect(within(popover).getByText(/llama\.cpp · 16K context/i)).toBeInTheDocument()
