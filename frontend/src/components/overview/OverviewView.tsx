@@ -39,7 +39,7 @@ export function OverviewView({ identity, telemetry, state, error, onCollect, col
     {hasGrid ? <EventsTelemetry data={telemetry} variant="card" className={wide} /> : null}
     {hasGrid ? <NewsTelemetry data={telemetry} variant="card" className={narrow} /> : null}
     <div
-      className={`hud-glass flex min-h-0 w-full max-w-xl flex-col items-center justify-center gap-3 rounded-xl border border-white/10 bg-zinc-950/40 p-3 ${state === 'ready' ? narrow : hasGrid ? compact ? 'order-first md:col-span-2' : 'col-span-6 col-start-1 row-start-2 mx-auto' : ''}`}
+      className={`hud-glass flex min-h-0 w-full max-w-xl flex-col items-center justify-center gap-3 rounded-xl border border-white/10 bg-zinc-950/40 p-3 ${hasGrid ? compact ? 'order-first md:col-span-2' : narrow : ''}`}
       data-slot="overview-identity-card"
     >
       <HudIdentityMark identity={identity} size="overview" />
