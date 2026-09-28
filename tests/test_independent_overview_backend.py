@@ -286,17 +286,30 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
         ) as speak:
             response = self.client.post(
                 "/api/v1/voice/cue",
-                json={"cue": "activation_ready"},
+                json={"cue": "activation_loading"},
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "spoken", "resolved_engine": "pyttsx3"})
         text = speak.call_args_list[0].args[0]
         self.assertRegex(text, r"^Good (morning|afternoon|evening), Chief\.")
-        self.assertRegex(text, r"\bI(?:['’]ve| have)\b")
-        self.assertIn("Overview", text)
+        self.assertIn("your Overview", text)
         self.assertIn("telemetry", text.lower())
-        self.assertRegex(text.lower(), r"\b(collected|ready)\b")
+        self.assertRegex(text.lower(), r"\bcollecting\b")
+
+        with mock.patch(
+            "core.api.voice.get_settings_store", return_value=self.store
+        ), mock.patch(
+            "core.api.voice.speaker.try_speak", return_value="pyttsx3"
+        ) as ready_speak:
+            ready = self.client.post(
+                "/api/v1/voice/cue",
+                json={"cue": "activation_ready"},
+            )
+        self.assertEqual(ready.status_code, 200)
+        self.assertEqual(ready.json(), {"status": "spoken", "resolved_engine": "pyttsx3"})
+        self.assertEqual(ready_speak.call_args_list[0].args[0], "Your Overview is ready.")
+
         self.store.apply_patch(SettingsPatch(voice=VoicePatch(mode="manual")))
         with mock.patch(
             "core.api.voice.get_settings_store", return_value=self.store
@@ -326,7 +339,7 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
         ):
             refresh_failure = self.client.post(
                 "/api/v1/voice/cue",
-                json={"cue": "telemetry_refresh_failed"},
+                json={"cue": "activation_refresh_failed"},
             )
         self.assertEqual(refresh_failure.status_code, 200)
         self.assertEqual(refresh_failure.json()["status"], "spoken")

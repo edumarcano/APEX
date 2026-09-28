@@ -872,7 +872,7 @@ Formats and speaks one fixed activation or telemetry-refresh cue using the local
 { "cue": "activation_ready" }
 ```
 
-Supported cue names are `activation_ready`, `activation_loading`, `activation_refresh_failed`, `activation_no_fresh_telemetry`, and `telemetry_refresh_failed`.
+Supported cue names are `activation_ready`, `activation_loading`, `activation_refresh_failed`, and `activation_no_fresh_telemetry`.
 
 Automatic voice mode speaks the cue and returns its resolved engine. Manual and off modes return `{ "status": "skipped", "resolved_engine": null }`. The endpoint shares the speech lock with `/api/v1/voice/speak`; a busy speaker returns `409`, and failed delivery returns `503`.
 

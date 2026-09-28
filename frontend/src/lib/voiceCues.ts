@@ -5,7 +5,6 @@ export type VoiceCueName =
   | 'activation_loading'
   | 'activation_refresh_failed'
   | 'activation_no_fresh_telemetry'
-  | 'telemetry_refresh_failed'
 
 export async function requestVoiceCue(
   cue: VoiceCueName,
