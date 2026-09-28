@@ -1708,6 +1708,7 @@ export default function App(): ReactElement {
             }}
             overviewState={overviewState}
             overviewError={overviewError}
+            onRefreshAll={handleRefreshAll}
             briefingControls={{
               profiles: dailySessions.profiles,
               profileId: workspaceView.profileId,

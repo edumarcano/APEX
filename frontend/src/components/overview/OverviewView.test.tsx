@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { DEFAULT_WEATHER_INFO } from '../../lib/weatherTelemetry'
@@ -68,7 +68,7 @@ describe('OverviewView layout', () => {
   it('keeps the desktop identity in its final grid slot while telemetry collection resolves', () => {
     setCompactLayout(false)
     const { rerender } = render(
-      <OverviewView identity={identity} telemetry={telemetry} state="collecting" onCollect={vi.fn()} />,
+      <OverviewView identity={identity} telemetry={telemetry} state="collecting" onCollect={vi.fn()} onRefreshAll={vi.fn()} />,
     )
 
     const layout = screen.getByRole('region', { name: 'Overview' })
@@ -78,7 +78,7 @@ describe('OverviewView layout', () => {
     expect(identityCard).not.toHaveClass('col-span-6', 'row-start-2')
     expect(screen.getByRole('heading', { name: 'Reminders' }).closest('section')).toHaveClass('col-span-2')
 
-    rerender(<OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={vi.fn()} />)
+    rerender(<OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={vi.fn()} onRefreshAll={vi.fn()} />)
 
     expect(layout.querySelector('[data-slot="overview-identity-card"]')).toHaveClass('col-span-2')
     expect(screen.getByRole('heading', { name: 'Reminders' }).closest('section')).toHaveClass('col-span-2')
@@ -90,17 +90,47 @@ describe('OverviewView layout', () => {
   it('keeps the compact identity first during collection and after telemetry arrives', () => {
     setCompactLayout(true)
     const { rerender } = render(
-      <OverviewView identity={identity} telemetry={telemetry} state="collecting" onCollect={vi.fn()} />,
+      <OverviewView identity={identity} telemetry={telemetry} state="collecting" onCollect={vi.fn()} onRefreshAll={vi.fn()} />,
     )
 
     const layout = screen.getByRole('region', { name: 'Overview' })
     const identityCard = layout.querySelector('[data-slot="overview-identity-card"]')
     expect(identityCard).toHaveClass('order-first', 'md:col-span-2')
 
-    rerender(<OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={vi.fn()} />)
+    rerender(<OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={vi.fn()} onRefreshAll={vi.fn()} />)
 
     expect(layout.querySelector('[data-slot="overview-identity-card"]')).toHaveClass('order-first', 'md:col-span-2')
     expect(layout).toHaveClass('grid-cols-1', 'md:grid-cols-2')
+  })
+
+  it('shows Refresh All only with the telemetry grid and disables it while collection or refresh is active', () => {
+    setCompactLayout(false)
+    const onRefreshAll = vi.fn()
+    const center = render(
+      <OverviewView identity={identity} telemetry={telemetry} state="center" onCollect={vi.fn()} onRefreshAll={onRefreshAll} />,
+    )
+    expect(screen.queryByRole('button', { name: 'Refresh All' })).not.toBeInTheDocument()
+
+    center.rerender(
+      <OverviewView identity={identity} telemetry={telemetry} state="collecting" onCollect={vi.fn()} onRefreshAll={onRefreshAll} />,
+    )
+    const refreshButton = screen.getByRole('button', { name: 'Refresh All' })
+    expect(refreshButton).toBeDisabled()
+    expect(refreshButton.querySelector('svg')).toHaveClass('animate-spin')
+
+    center.rerender(
+      <OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={vi.fn()} onRefreshAll={onRefreshAll} />,
+    )
+    expect(refreshButton).toBeEnabled()
+    expect(refreshButton.querySelector('svg')).not.toHaveClass('animate-spin')
+    fireEvent.click(refreshButton)
+    expect(onRefreshAll).toHaveBeenCalledOnce()
+
+    center.rerender(
+      <OverviewView identity={identity} telemetry={{ ...telemetry, isRefreshingAll: true }} state="ready" onCollect={vi.fn()} onRefreshAll={onRefreshAll} />,
+    )
+    expect(refreshButton).toBeDisabled()
+    expect(refreshButton.querySelector('svg')).toHaveClass('animate-spin')
   })
 })
 
@@ -118,11 +148,12 @@ describe('OverviewView identity mark sizing', () => {
     const onCollect = vi.fn()
 
     const centerView = render(
-      <OverviewView identity={identity} telemetry={telemetry} state="center" onCollect={onCollect} />,
+      <OverviewView identity={identity} telemetry={telemetry} state="center" onCollect={onCollect} onRefreshAll={vi.fn()} />,
     )
     const centerLayout = screen.getByRole('region', { name: 'Overview' })
     expect(homeIdentity(centerLayout)).toHaveAttribute('data-logo-size', 'large')
     expect(screen.getByRole('button', { name: 'Collect Telemetry' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Refresh All' })).not.toBeInTheDocument()
     centerView.unmount()
 
     const errorView = render(
@@ -132,6 +163,7 @@ describe('OverviewView identity mark sizing', () => {
         state="error"
         error="Network down"
         onCollect={onCollect}
+        onRefreshAll={vi.fn()}
       />,
     )
     const errorLayout = screen.getByRole('region', { name: 'Overview' })
@@ -141,7 +173,7 @@ describe('OverviewView identity mark sizing', () => {
     errorView.unmount()
 
     const noDataView = render(
-      <OverviewView identity={identity} telemetry={telemetry} state="no-data" onCollect={onCollect} />,
+      <OverviewView identity={identity} telemetry={telemetry} state="no-data" onCollect={onCollect} onRefreshAll={vi.fn()} />,
     )
     const noDataLayout = screen.getByRole('region', { name: 'Overview' })
     expect(homeIdentity(noDataLayout)).toHaveAttribute('data-logo-size', 'large')
@@ -154,13 +186,13 @@ describe('OverviewView identity mark sizing', () => {
     const onCollect = vi.fn()
 
     const { rerender } = render(
-      <OverviewView identity={identity} telemetry={telemetry} state="collecting" onCollect={onCollect} />,
+      <OverviewView identity={identity} telemetry={telemetry} state="collecting" onCollect={onCollect} onRefreshAll={vi.fn()} />,
     )
     const layout = screen.getByRole('region', { name: 'Overview' })
     expect(homeIdentity(layout)).toHaveAttribute('data-logo-size', 'overview')
     expect(screen.queryByText(/Gathering telemetry/i)).not.toBeInTheDocument()
 
-    rerender(<OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={onCollect} />)
+    rerender(<OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={onCollect} onRefreshAll={vi.fn()} />)
     expect(homeIdentity(layout)).toHaveAttribute('data-logo-size', 'overview')
   })
 
@@ -170,7 +202,7 @@ describe('OverviewView identity mark sizing', () => {
 
     setCompactLayout(false)
     const centerView = render(
-      <OverviewView identity={identity} telemetry={telemetry} state="center" onCollect={onCollect} />,
+      <OverviewView identity={identity} telemetry={telemetry} state="center" onCollect={onCollect} onRefreshAll={vi.fn()} />,
     )
     const centerLayout = screen.getByRole('region', { name: 'Overview' })
     const centerCard = centerLayout.querySelector('[data-slot="overview-identity-card"]')
@@ -179,7 +211,7 @@ describe('OverviewView identity mark sizing', () => {
     centerView.unmount()
 
     const readyView = render(
-      <OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={onCollect} />,
+      <OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={onCollect} onRefreshAll={vi.fn()} />,
     )
     const readyLayout = screen.getByRole('region', { name: 'Overview' })
     const readyCard = readyLayout.querySelector('[data-slot="overview-identity-card"]')
@@ -188,7 +220,7 @@ describe('OverviewView identity mark sizing', () => {
 
     setCompactLayout(true)
     const compactCenterView = render(
-      <OverviewView identity={identity} telemetry={telemetry} state="center" onCollect={onCollect} />,
+      <OverviewView identity={identity} telemetry={telemetry} state="center" onCollect={onCollect} onRefreshAll={vi.fn()} />,
     )
     const compactLayout = screen.getByRole('region', { name: 'Overview' })
     const compactCenterCard = compactLayout.querySelector('[data-slot="overview-identity-card"]')

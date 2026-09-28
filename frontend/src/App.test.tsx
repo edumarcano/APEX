@@ -1311,7 +1311,8 @@ describe('App Overview and Briefing states', () => {
     await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
 
     expect(screen.getByRole('button', { name: 'Refresh Reminders' })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Refresh checks' }))
+    expect(screen.getByRole('button', { name: 'Refresh All' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Refresh All' }))
 
     expect(appMocks.refreshAll).toHaveBeenCalledWith({ force: false })
     expect(screen.getByRole('button', { name: 'Refresh Reminders' })).toBeInTheDocument()
