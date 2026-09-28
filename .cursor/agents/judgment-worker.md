@@ -1,7 +1,7 @@
 ---
 name: judgment-worker
 description: Use for bounded implementation work where correctness depends on subtle semantics, integration choices, or interpreting existing contracts. Prefer this over the general implementation worker when the task is small enough to stay focused but requires unusually strong judgment.
-model: claude-opus-5.5[effort=low]
+model: claude-sonnet-5.5[effort=high]
 readonly: false
 ---
 
