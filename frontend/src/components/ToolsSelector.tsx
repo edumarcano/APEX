@@ -196,13 +196,16 @@ export function ToolsSelector({
       const rect = selectorRef.current?.getBoundingClientRect()
       if (!rect) return
       const width = Math.min(544, window.innerWidth - 24)
-      const height = panelRef.current?.offsetHeight ?? Math.min(window.innerHeight * 0.75, 608)
-      const roomAbove = rect.top - height - 8 >= 12
+      const roomAbove = Math.max(0, rect.top - 24)
+      const roomBelow = Math.max(0, window.innerHeight - rect.bottom - 24)
+      const openAbove = roomAbove >= roomBelow
+      const availableHeight = Math.max(96, openAbove ? roomAbove : roomBelow)
       setPortalStyle({
         position: 'fixed',
-        ...(roomAbove ? { bottom: window.innerHeight - rect.top + 8 } : { top: rect.bottom + 8 }),
+        ...(openAbove ? { bottom: window.innerHeight - rect.top + 8 } : { top: rect.bottom + 8 }),
         left: Math.max(12, Math.min(align === 'right' ? rect.right - width : rect.left, window.innerWidth - width - 12)),
         width,
+        maxHeight: Math.min(window.innerHeight * 0.75, 608, availableHeight),
       })
     }
     update()

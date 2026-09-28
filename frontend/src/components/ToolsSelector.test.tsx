@@ -276,4 +276,28 @@ describe('ToolsSelector', () => {
     expect(panel).toHaveStyle({ position: 'fixed' })
     expect(container.querySelector('#apex-tools-selector-panel')).toBeNull()
   })
+
+  it('anchors above a trigger near the bottom of a short viewport and caps the menu to available space', async () => {
+    const user = userEvent.setup()
+    const heightDescriptor = Object.getOwnPropertyDescriptor(window, 'innerHeight')
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 480 })
+    render(<ToolsSelector
+      compact
+      portal
+      catalog={catalog}
+      selectedToolNames={[]}
+      activeToolProfileId={null}
+      onSelectionChange={vi.fn()}
+      onProfileChange={vi.fn()}
+    />)
+    const trigger = screen.getByRole('button', { name: /Tools:/ })
+    vi.spyOn(trigger.parentElement!, 'getBoundingClientRect').mockReturnValue({
+      x: 40, y: 400, top: 400, left: 40, right: 76, bottom: 436, width: 36, height: 36,
+      toJSON: () => ({}),
+    })
+    await user.click(trigger)
+    const panel = screen.getByRole('dialog', { name: 'Tools selector' })
+    expect(panel).toHaveStyle({ position: 'fixed', bottom: '88px', maxHeight: '360px' })
+    if (heightDescriptor) Object.defineProperty(window, 'innerHeight', heightDescriptor)
+  })
 })

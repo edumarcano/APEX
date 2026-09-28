@@ -131,6 +131,7 @@ export function CompactModelSelector({
 
   const close = useCallback((focusTrigger = false): void => {
     setOpen(false)
+    setReasoningOpen(false)
     if (focusTrigger) {
       triggerRef.current?.focus()
     }
@@ -215,7 +216,10 @@ export function CompactModelSelector({
         aria-expanded={open}
         aria-label={`Model: ${selectedModel?.display_name ?? 'Select model'}${presentation === 'composer' ? `, reasoning ${reasoningLabel}` : ''}`}
         title={`Model: ${selectedModel?.display_name ?? 'Select model'}`}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          if (open) close()
+          else setOpen(true)
+        }}
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown' && !open) {
             event.preventDefault()

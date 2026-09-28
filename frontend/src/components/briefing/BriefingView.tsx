@@ -115,7 +115,7 @@ export function BriefingView(props: BriefingViewProps): ReactElement {
       <HudIdentityMark identity={props.identity} size="compact" />
       {controls}
     </aside>
-    <div className="flex min-h-0 flex-col overflow-visible rounded-xl border border-white/10 bg-zinc-950/45">
+    <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-zinc-950/45">
       <BriefingConversation conversation={props.conversation} />
     </div>
     <HudTelemetryRail data={props.telemetry} hasUsableSnapshot={props.telemetryCollection.hasUsableSnapshot} collectionState={props.telemetryCollection.state} collectionError={props.telemetryCollection.error} collectionDisabled={props.telemetryCollection.disabled} onCollect={props.telemetryCollection.onCollect} />

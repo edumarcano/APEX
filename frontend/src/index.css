@@ -1,6 +1,36 @@
 @import 'tailwindcss';
 @config '../tailwind.config.js';
 
+.briefing-composer-container {
+  container-type: inline-size;
+  min-width: 0;
+}
+
+.briefing-composer-shell {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "tools query"
+    "model send";
+  align-items: center;
+  column-gap: 0.5rem;
+  row-gap: 0.25rem;
+}
+
+.briefing-composer-tools { grid-area: tools; }
+.briefing-composer-query { grid-area: query; width: 100%; }
+.briefing-composer-model { grid-area: model; }
+.briefing-composer-send { grid-area: send; justify-self: end; }
+
+@container (min-width: 36rem) {
+  .briefing-composer-shell {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "tools query model send";
+    column-gap: 0.5rem;
+    row-gap: 0;
+  }
+}
+
 /* Legacy APEX HUD custom properties (frontend/style.css) */
 @layer base {
   :root {

@@ -958,10 +958,11 @@ function GatedComposer({
   const briefingComposer = !edit && composer?.integrated
   return <ComposerPrimitive.Root onSubmit={handleSubmit} className="relative border-t border-white/10 bg-black/20 p-3 sm:p-4">
     {!edit && composer && queryActive ? <CortexQueryRim /> : null}
-    {briefingComposer ? <div className="flex min-h-[46px] min-w-0 items-center gap-2 rounded-full border border-white/15 bg-zinc-900/60 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition-colors focus-within:border-[#0F4DB8]/70 focus-within:bg-zinc-900/80">
-      <ToolsSelector {...composer.tools} compact className="size-9 rounded-full" align="left" portal disabled={blocked || queryActive} />
-      <ComposerPrimitive.Input disabled={blocked || queryActive} placeholder="Add a follow up" className="min-h-9 min-w-0 flex-1 resize-none bg-transparent px-1 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:ring-0 disabled:cursor-not-allowed disabled:opacity-45" />
-      {composer.selectedModelId && composer.onModelChange && composer.modelCatalog ? <CompactModelSelector
+    {briefingComposer ? <div className="briefing-composer-container min-w-0">
+      <div data-slot="briefing-query-composer" className="briefing-composer-shell min-h-[46px] gap-1.5 rounded-3xl border border-white/15 bg-zinc-900/60 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition-colors focus-within:border-[#0F4DB8]/70 focus-within:bg-zinc-900/80">
+      <div className="briefing-composer-tools flex items-center"><ToolsSelector {...composer.tools} compact className="size-9 rounded-full" align="left" portal disabled={blocked || queryActive} /></div>
+      <ComposerPrimitive.Input disabled={blocked || queryActive} placeholder="Add a follow up" className="briefing-composer-query min-h-9 min-w-0 bg-transparent px-1 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:ring-0 disabled:cursor-not-allowed disabled:opacity-45" />
+      {composer.selectedModelId && composer.onModelChange && composer.modelCatalog ? <div className="briefing-composer-model min-w-0"><CompactModelSelector
         selectedModelId={composer.selectedModelId}
         onModelChange={composer.onModelChange}
         catalog={composer.modelCatalog}
@@ -972,13 +973,14 @@ function GatedComposer({
         disabled={blocked || queryActive}
         isQuerying={queryActive || Boolean(context?.isTurnLocked)}
         presentation="composer"
-      /> : null}
-      {queryActive ? <button type="button" onClick={() => aui.thread.cancelRun()} className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-red-500/10 text-red-200 hover:bg-red-500/20" aria-label="Stop generation"><Square className="size-3.5 fill-current" aria-hidden /></button> : <ComposerPrimitive.Send
+      /></div> : null}
+      <div className="briefing-composer-send">{queryActive ? <button type="button" onClick={() => aui.thread.cancelRun()} className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-red-500/10 text-red-200 hover:bg-red-500/20" aria-label="Stop generation"><Square className="size-3.5 fill-current" aria-hidden /></button> : <ComposerPrimitive.Send
         disabled={blocked || queryActive}
         onClick={(event) => { event.preventDefault(); void submit() }}
         className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-[#7E22CE]/20 text-[#D8B4FE] transition-colors hover:bg-[#7E22CE]/35 disabled:cursor-not-allowed disabled:opacity-45"
         aria-label="Send"
-      ><Send className="size-4" aria-hidden /></ComposerPrimitive.Send>}
+      ><Send className="size-4" aria-hidden /></ComposerPrimitive.Send>}</div>
+      </div>
     </div> : <div className="flex items-end gap-2">
       {!edit && composer ? (
         <ToolsSelector
