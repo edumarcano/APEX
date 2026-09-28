@@ -218,7 +218,7 @@ async function fetchReminderEnvelope(): Promise<ReminderEnvelope | null> {
 export function useApexData(): UseApexDataReturn {
   const [state, setState] = useState<ApexDataState>({
     activeReminders: [],
-    remindersLoaded: false,
+    remindersLoadState: 'loading',
     demoModeActive: false,
     devModeActive: false,
     marketEnabled: true,
@@ -235,9 +235,15 @@ export function useApexData(): UseApexDataReturn {
     setState((prev) => ({
       ...prev,
       activeReminders: records.map((record) => ({ ...record })),
-      remindersLoaded: true,
+      remindersLoadState: 'loaded',
       ...(sourceState ? { reminderSourceState: sourceState } : {}),
     }))
+  }, [])
+
+  const markRemindersUnavailable = useCallback((): void => {
+    setState((previous) => previous.remindersLoadState === 'loaded'
+      ? previous
+      : { ...previous, remindersLoadState: 'unavailable' })
   }, [])
 
   const applyBootSettings = useCallback(
@@ -263,10 +269,12 @@ export function useApexData(): UseApexDataReturn {
       const envelope = await fetchReminderEnvelope()
       if (requestSequence !== reminderRefreshSequenceRef.current) return
       if (envelope) applyReminderRecords(envelope.items, envelope.source_state)
+      else markRemindersUnavailable()
     } catch {
       // Reminder refresh is best-effort; preserve existing HUD state on failure.
+      markRemindersUnavailable()
     }
-  }, [applyReminderRecords])
+  }, [applyReminderRecords, markRemindersUnavailable])
 
   const createReminder = useCallback(
     async (text: string): Promise<'synced' | 'pending' | 'unknown'> => {
@@ -431,14 +439,16 @@ export function useApexData(): UseApexDataReturn {
 
     void (async (): Promise<void> => {
       try {
-        const [remindersResponse, configResponse] = await Promise.all([
+        const [remindersResult, configResult] = await Promise.allSettled([
           fetch(REMINDERS_ENDPOINT, { signal }),
           fetch(CONFIG_ENDPOINT, { signal }),
         ])
         if (signal.aborted) return
 
+        const remindersResponse = remindersResult.status === 'fulfilled' ? remindersResult.value : null
+        const configResponse = configResult.status === 'fulfilled' ? configResult.value : null
         let bootPatch: Partial<ApexDataState> = {}
-        if (configResponse.ok) {
+        if (configResponse?.ok) {
           try {
             const raw: unknown = await configResponse.json()
             if (raw && typeof raw === 'object') {
@@ -464,7 +474,7 @@ export function useApexData(): UseApexDataReturn {
         }
 
         let envelope: ReminderEnvelope | null = null
-        if (remindersResponse.ok) {
+        if (remindersResponse?.ok) {
           try {
             envelope = parseReminderEnvelope(await remindersResponse.json())
           } catch {
@@ -479,12 +489,15 @@ export function useApexData(): UseApexDataReturn {
           ...(envelope ? {
             activeReminders: envelope.items.map((record) => ({ ...record })),
             reminderSourceState: envelope.source_state,
-            remindersLoaded: true,
+            remindersLoadState: 'loaded',
           } : {}),
+          ...(!envelope && previous.remindersLoadState !== 'loaded' ? { remindersLoadState: 'unavailable' } : {}),
         }))
       } catch (error) {
         if (!signal.aborted && !(error instanceof DOMException && error.name === 'AbortError')) {
-          // Launch boot requests are best-effort; subsequent refresh actions can retry.
+          setState((previous) => previous.remindersLoadState === 'loaded'
+            ? previous
+            : { ...previous, remindersLoadState: 'unavailable' })
         }
       }
     })()

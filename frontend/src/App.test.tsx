@@ -234,7 +234,7 @@ vi.mock('./components/CortexWorkspace', () => ({
 vi.mock('./hooks/useApexData', () => ({
   useApexData: () => ({
     activeReminders: [],
-    remindersLoaded: true,
+    remindersLoadState: 'loaded' as const,
     createReminder: appMocks.createReminder,
     demoModeActive: appMocks.demoModeActive,
     devModeActive: appMocks.devModeActive,

@@ -258,7 +258,7 @@ export default function App(): ReactElement {
   const {
     activeReminders,
     reminderSourceState,
-    remindersLoaded,
+    remindersLoadState,
     createReminder,
     demoModeActive,
     devModeActive,
@@ -1587,7 +1587,7 @@ export default function App(): ReactElement {
       statusMessage: remindersStatusMessage,
       compactValue: remindersCompactValue,
       items: activeReminders,
-      loaded: remindersLoaded,
+      loadState: remindersLoadState,
       sourceState: reminderSourceState ?? null,
       actionError: reminderActionError,
       refreshDisabled: isRefreshingAll || isReminderRefreshPending,

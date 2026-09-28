@@ -38,7 +38,7 @@ const telemetry: HudTelemetryData = {
   email: { ledState: 'loading', statusMessage: null, compactValue: null, count: 0, items: [], refreshing: false },
   news: { ledState: 'loading', statusMessage: null, compactValue: null, items: [], refreshing: false },
   reminders: {
-    loaded: true,
+    loadState: 'loaded',
     ledState: 'loading',
     statusMessage: null,
     compactValue: '',
