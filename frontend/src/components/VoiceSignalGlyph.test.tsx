@@ -57,7 +57,7 @@ describe('VoiceSignalGlyph', () => {
     ['synthesizing', 'Synthesizing', 'purple'],
     ['persisting', 'Saving briefing', 'gold'],
     ['briefing_ready', 'Briefing ready', 'gold'],
-    ['speech_preparing', 'Preparing spoken highlights', 'purple'],
+    ['speech_preparing', 'Preparing highlights', 'purple'],
     ['speech_playing', 'Playing highlights', 'cyan'],
   ] as const)('renders the %s activity label and tone', (activity, label, tone) => {
     const { container } = render(

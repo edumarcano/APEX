@@ -74,7 +74,7 @@ function resolveSignalState(
       synthesizing: { label: 'Synthesizing', tone: 'purple', isActive: true },
       persisting: { label: 'Saving briefing', tone: 'gold', isActive: true },
       briefing_ready: { label: 'Briefing ready', tone: 'gold', isActive: false },
-      speech_preparing: { label: 'Preparing spoken highlights', tone: 'purple', isActive: true },
+      speech_preparing: { label: 'Preparing highlights', tone: 'purple', isActive: true },
       speech_playing: { label: 'Playing highlights', tone: 'cyan', isActive: true },
     }
     const signal = signals[activity]

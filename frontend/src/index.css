@@ -854,9 +854,9 @@
   12%,
   88%,
   100% {
-    opacity: 0.45;
-    fill: url(#apexDormantMetal);
-    filter: drop-shadow(0 0 8px rgba(120, 53, 15, 0.15));
+    opacity: 0.55;
+    fill: url(#apexGreenMetal);
+    filter: drop-shadow(0 0 8px rgba(57, 255, 136, 0.35));
   }
   25%,
   72% {
@@ -883,8 +883,11 @@
   }
 }
 
-.apex-core-metal--green-surge {
-  animation: greenSurge 2.5s ease-in-out infinite;
+.apex-core-metal.apex-core-metal--green-surge {
+  fill: url(#apexGreenMetal);
+  opacity: 0.55;
+  filter: drop-shadow(0 0 8px rgba(57, 255, 136, 0.35));
+  animation: greenSurge 2.5s ease-in-out infinite backwards;
   will-change: opacity, filter, fill;
 }
 
@@ -930,7 +933,7 @@
     filter: drop-shadow(0 0 12px rgba(120, 53, 15, 0.3));
   }
 
-  .apex-core-metal--green-surge {
+  .apex-core-metal.apex-core-metal--green-surge {
     animation: none;
     opacity: 0.95;
     fill: url(#apexGreenMetal);
