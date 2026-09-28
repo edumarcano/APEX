@@ -147,6 +147,22 @@ Configure llama.cpp aliases with one preset per exposed context size. A tracked 
 
 `total_tokens` remains cumulative usage accounting for every provider turn. It does not stop a run: multi-turn requests may resend conversation context, while the provider's context-window checks still protect each individual request. Previous `max_total_tokens` configuration values are ignored after beta.3, and old run records retain their recorded ceiling for history inspection.
 
+## Archived conversation retention
+
+`config.json` sets how long Cortex keeps an archived conversation before permanent deletion:
+
+```json
+{
+  "cortex_conversations": {
+    "archived_retention_days": 30
+  }
+}
+```
+
+The minimum is 14 days. The period starts when the conversation is archived, not when it was last edited. Repeating Archive does not restart it; restoring and later archiving does. APEX checks at startup and about every 24 hours, so deletion may happen after the exact cutoff. It skips conversations with a pending turn or active run and retries them at a later check. The sweep covers production and development sandbox history; demo mode has no durable history to purge. The existing archived-only Delete action still removes a conversation immediately.
+
+Archived Briefing conversations disappear from Saved sessions and Repeat last but remain available to Catch Up and Agent history until deletion. Permanent deletion also removes their linked Briefing session and speech data. Separately accepted personal-context sources keep their own lifecycle.
+
 ## OpenTelemetry GenAI tracing
 
 APEX can export distributed trace spans adhering to OpenTelemetry GenAI semantic conventions when an endpoint is configured in `.env`:
