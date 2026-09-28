@@ -15,29 +15,30 @@ function renderLaunch() {
   />)
 }
 
-const ACCENTS: Array<[string, string, string]> = [
-  ['Reports', '#22D3EE', '#A5F3FC'],
-  ['Overview', '#0F4DB8', '#A5C7FF'],
-  ['Briefing', '#FBBF24', '#FFF3B0'],
-  ['Cortex', '#7E22CE', '#D8B4FE'],
+const ICON_ACCENTS: Array<[string, string, string]> = [
+  ['Reports', 'reports', '#22D3EE'],
+  ['Overview', 'overview', '#1F6FE5'],
+  ['Briefing', 'briefing', '#FBBF24'],
+  ['Cortex', 'cortex', '#D8B4FE'],
 ]
 
 describe('LaunchView', () => {
-  it('shows each workspace accent at rest', () => {
+  it('keeps workspace buttons neutral with accent icons only', () => {
     renderLaunch()
-    for (const [label, fill, text] of ACCENTS) {
+    for (const [label, id, iconColor] of ICON_ACCENTS) {
       const button = screen.getByRole('button', { name: label })
-      expect(button).toHaveClass(`text-[${text}]`)
-      expect(button.className).toMatch(new RegExp(`(^|\\s)bg-\\[${fill}\\]/\\d+`))
-      expect(button.className).toMatch(new RegExp(`(^|\\s)border-\\[${fill}\\]/\\d+`))
-      expect(button).not.toHaveClass('hud-glass')
+      expect(button).toHaveClass('hud-glass', 'text-zinc-300', 'border-white/10')
+      expect(button.className).not.toMatch(/(?:^|\s)bg-\[#(?:22D3EE|0F4DB8|FBBF24|7E22CE)\]\/\d+/)
+      expect(button.className).not.toMatch(/(?:^|\s)text-\[#(?:22D3EE|1F6FE5|0F4DB8|A5C7FF|FBBF24|D8B4FE|A5F3FC|FFF3B0)\]/)
+      const icon = screen.getByTestId(`launch-icon-${id}`)
+      expect(icon).toHaveClass(`text-[${iconColor}]`)
     }
   })
 
   it('keeps settings off the workspace accent colors', () => {
     renderLaunch()
     const settings = screen.getByRole('button', { name: 'Open settings' })
-    for (const [, , text] of ACCENTS) expect(settings).not.toHaveClass(`text-[${text}]`)
+    for (const [, , iconColor] of ICON_ACCENTS) expect(settings).not.toHaveClass(`text-[${iconColor}]`)
   })
 
   it('renders the hero wordmark and logo', () => {

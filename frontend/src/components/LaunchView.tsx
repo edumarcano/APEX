@@ -8,12 +8,12 @@ const LAUNCH_WORKSPACES: Array<{
   id: WorkspacePeer
   label: string
   icon: LucideIcon
-  tone: string
+  iconTone: string
 }> = [
-  { id: 'reports', label: 'Reports', icon: Newspaper, tone: 'border-[#22D3EE]/40 bg-[#22D3EE]/15 text-[#A5F3FC] hover:border-[#22D3EE]/70 hover:bg-[#22D3EE]/25 focus-visible:outline-[#22D3EE]' },
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard, tone: 'border-[#0F4DB8]/50 bg-[#0F4DB8]/20 text-[#A5C7FF] hover:border-[#0F4DB8]/80 hover:bg-[#0F4DB8]/30 focus-visible:outline-[#A5C7FF]' },
-  { id: 'briefing', label: 'Briefing', icon: AudioLines, tone: 'border-[#FBBF24]/40 bg-[#FBBF24]/15 text-[#FFF3B0] hover:border-[#FBBF24]/70 hover:bg-[#FBBF24]/25 focus-visible:outline-[#FBBF24]' },
-  { id: 'cortex', label: 'Cortex', icon: BrainCircuit, tone: 'border-[#7E22CE]/50 bg-[#7E22CE]/25 text-[#D8B4FE] hover:border-[#7E22CE]/80 hover:bg-[#7E22CE]/35 focus-visible:outline-[#D8B4FE]' },
+  { id: 'reports', label: 'Reports', icon: Newspaper, iconTone: 'text-[#22D3EE]' },
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard, iconTone: 'text-[#1F6FE5]' },
+  { id: 'briefing', label: 'Briefing', icon: AudioLines, iconTone: 'text-[#FBBF24]' },
+  { id: 'cortex', label: 'Cortex', icon: BrainCircuit, iconTone: 'text-[#D8B4FE]' },
 ]
 
 export function LaunchView({
@@ -37,14 +37,14 @@ export function LaunchView({
     </div>
     <h1 className="font-orbitron text-3xl font-semibold uppercase tracking-[0.3em] text-[#FBBF24] sm:text-4xl xl:text-5xl">APEX</h1>
     <nav aria-label="Workspace" className="grid w-full max-w-3xl grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
-      {LAUNCH_WORKSPACES.map(({ id, label, icon: Icon, tone }) => <button
+      {LAUNCH_WORKSPACES.map(({ id, label, icon: Icon, iconTone }) => <button
         key={id}
         type="button"
         onClick={() => onSelect(id)}
         aria-current={current === id ? 'page' : undefined}
-        className={`hud-interactive-shell flex min-h-12 items-center justify-center gap-2 rounded-xl border px-4 py-3 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] transition-[border-color,background-color,color,box-shadow] duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${tone}`}
+        className="hud-interactive-shell hud-glass flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/10 px-4 py-3 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-300 transition-[border-color,background-color,color,box-shadow] duration-200 hover:text-[color:var(--hud-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
       >
-        <Icon className="size-4 shrink-0" aria-hidden="true" />
+        <Icon className={`size-4 shrink-0 ${iconTone}`} aria-hidden="true" data-testid={`launch-icon-${id}`} />
         {label}
       </button>)}
     </nav>
