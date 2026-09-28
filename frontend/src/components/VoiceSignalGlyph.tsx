@@ -1,10 +1,11 @@
 import { useId, type ReactElement } from 'react'
 
 import type { SystemState, TtsEngine } from '../types/telemetry'
+import type { LogoActivity } from '../lib/logoVisualState'
 
 export interface VoiceSignalGlyphProps {
-  step: number | null
   status: SystemState
+  activity?: LogoActivity
   isSpeaking: boolean
   activeTtsEngine?: TtsEngine
   systemLoadThrottled?: boolean
@@ -15,7 +16,7 @@ export interface VoiceSignalGlyphProps {
   className?: string
 }
 
-type SignalTone = 'standby' | 'emerald' | 'purple' | 'gold' | 'rust'
+type SignalTone = 'standby' | 'emerald' | 'purple' | 'gold' | 'rust' | 'cyan'
 
 interface SignalState {
   label: string
@@ -49,8 +50,7 @@ const WAVE_BARS = [
 const RAIL_Y = 26
 
 function resolveSignalState(
-  step: number | null,
-  status: SystemState,
+  activity: LogoActivity,
   isLocalModelLoading: boolean,
   loadingDisplayName: string | null,
   isCortexQuerying: boolean,
@@ -65,24 +65,28 @@ function resolveSignalState(
     }
   }
 
+  if (activity && !(activity === 'briefing_ready' && (isCortexQuerying || isTelemetryCollecting))) {
+    const signals: Partial<Record<NonNullable<LogoActivity>, SignalState>> = {
+      preparing: { label: 'Preparing briefing', tone: 'emerald', isActive: true },
+      collecting: { label: 'Collecting data', tone: 'emerald', isActive: true },
+      selecting: { label: 'Selecting evidence', tone: 'emerald', isActive: true },
+      investigating: { label: 'Investigating', tone: 'purple', isActive: true },
+      synthesizing: { label: 'Synthesizing', tone: 'purple', isActive: true },
+      persisting: { label: 'Saving briefing', tone: 'gold', isActive: true },
+      briefing_ready: { label: 'Briefing ready', tone: 'gold', isActive: false },
+      speech_preparing: { label: 'Preparing spoken highlights', tone: 'purple', isActive: true },
+      speech_playing: { label: 'Playing highlights', tone: 'cyan', isActive: true },
+    }
+    const signal = signals[activity]
+    if (signal) return signal
+  }
+
   if (isCortexQuerying) {
     return { label: 'Working', tone: 'purple', isActive: true }
   }
 
-  if (step === 4) {
-    return { label: 'Delivering', tone: 'gold', isActive: true }
-  }
-
-  if (status === 'loading' && step === 3) {
-    return { label: 'Synthesizing', tone: 'purple', isActive: true }
-  }
-
-  if ((status === 'loading' && step === 2) || isTelemetryCollecting) {
-    return { label: 'Collecting Data', tone: 'emerald', isActive: true }
-  }
-
-  if (status === 'loading' && step === 1) {
-    return { label: 'Processing', tone: 'emerald', isActive: true }
+  if (isTelemetryCollecting) {
+    return { label: 'Collecting data', tone: 'emerald', isActive: true }
   }
 
   return { label: 'Ready', tone: 'standby', isActive: false }
@@ -102,6 +106,16 @@ function resolveToneClasses(tone: SignalTone): {
       label: 'text-[#FBBF24]',
       rail: 'stroke-[#FBBF24]/35',
       nodeRing: 'stroke-[#FFF3B0]/70',
+    }
+  }
+
+  if (tone === 'cyan') {
+    return {
+      accent: 'stroke-[#22D3EE]/90',
+      aperture: 'fill-[#22D3EE]/82 stroke-[#A5F3FC]/80 drop-shadow-[0_0_10px_rgba(34,211,238,0.72)]',
+      label: 'text-[#67E8F9]',
+      rail: 'stroke-[#22D3EE]/35',
+      nodeRing: 'stroke-[#A5F3FC]/65',
     }
   }
 
@@ -145,8 +159,7 @@ function resolveToneClasses(tone: SignalTone): {
 }
 
 export function VoiceSignalGlyph({
-  step,
-  status,
+  activity = null,
   isSpeaking,
   activeTtsEngine = 'google',
   systemLoadThrottled = false,
@@ -159,8 +172,7 @@ export function VoiceSignalGlyph({
   const filterId = useId().replace(/:/g, '')
   const waveBlur = `url(#${filterId})`
   const signalState = resolveSignalState(
-    step,
-    status,
+    activity,
     isLocalModelLoading,
     loadingDisplayName,
     isCortexQuerying,

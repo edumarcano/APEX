@@ -893,6 +893,12 @@
   will-change: opacity, filter, fill;
 }
 
+.apex-core-metal--green-active {
+  fill: url(#apexGreenMetal);
+  filter: drop-shadow(0 0 14px rgba(57, 255, 136, 0.85));
+  transition: all 1000ms ease-in-out;
+}
+
 @keyframes rustSurge {
   0%,
   12%,

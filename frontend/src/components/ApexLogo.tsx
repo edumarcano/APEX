@@ -1,10 +1,10 @@
 import { useEffect, useState, type ReactElement } from 'react'
-import type { OuterShellActivity } from '../lib/logoVisualState'
+import type { LogoActivity, OuterShellActivity } from '../lib/logoVisualState'
 import type { SystemState } from '../types/telemetry'
 
 export interface ApexLogoProps {
-  step: number | null
   status: SystemState
+  activity?: LogoActivity
   isSpeaking?: boolean
   reminderPulseCount?: number
   isCortexQuerying?: boolean
@@ -15,8 +15,8 @@ export interface ApexLogoProps {
 }
 
 export function ApexLogo({
-  step,
   status,
+  activity = null,
   isSpeaking = false,
   reminderPulseCount = 0,
   isCortexQuerying = false,
@@ -39,8 +39,7 @@ export function ApexLogo({
 
   const isError = status === 'error'
   const isDormant = status === 'idle' && !isCortexQuerying && !isTelemetryCollecting
-  const activeStep = step ?? 0
-  const hasDelivered = status === 'success' || activeStep >= 4
+  const isBriefingComplete = status === 'success'
 
   // =========================================================
   // DYNAMIC STATE STYLING MATRICES
@@ -61,15 +60,19 @@ export function ApexLogo({
       return `transition-all duration-300 ease-out ${reminderSurge}`
     }
 
-    if (outerShellActivity === 'collection') {
+    if (outerShellActivity === 'wave') {
       return 'apex-blue-metal apex-blue-metal--collection-surge'
     }
 
-    if (outerShellActivity === 'synthesis') {
+    if (
+      activity === 'investigating' ||
+      activity === 'speech_playing' ||
+      (activity === 'briefing_ready' && !isTelemetryCollecting)
+    ) {
       return `transition-all duration-700 ease-in-out ${activeBlue}`
     }
 
-    const blueMetal = hasDelivered || !hasCollectedTelemetry ? activeBlue : baseBlue
+    const blueMetal = isBriefingComplete || !hasCollectedTelemetry ? activeBlue : baseBlue
 
     return `transition-all duration-700 ease-in-out ${blueMetal}`
   }
@@ -79,7 +82,7 @@ export function ApexLogo({
   ): { animationDelay: string } | undefined => {
     if (
       outerShellActivity !== 'local_loading' &&
-      outerShellActivity !== 'collection'
+      outerShellActivity !== 'wave'
     ) {
       return undefined
     }
@@ -99,6 +102,17 @@ export function ApexLogo({
   })
 
   const getGoldSegmentClass = (): string => {
+    if (activity === 'preparing' || activity === 'collecting') return greenSurgeCore
+    if (activity === 'selecting') return 'apex-core-metal apex-core-metal--green-active'
+    if (activity === 'investigating' || activity === 'synthesizing' || activity === 'speech_preparing') return purpleSurgeCore
+    if (activity === 'speech_playing') return goldActiveCore
+    if (activity === 'persisting') return goldActiveCore
+    if (activity === 'briefing_ready' && !isCortexQuerying && !isTelemetryCollecting) return goldActiveCore
+
+    if (pulseActive) {
+      return `transition-all duration-300 ease-out ${reminderSurgeCore}`
+    }
+
     if (isCortexQuerying) {
       return purpleSurgeCore
     }
@@ -111,10 +125,6 @@ export function ApexLogo({
       return 'apex-core-metal apex-core-metal--breathing-dormant'
     }
 
-    if (pulseActive) {
-      return `transition-all duration-300 ease-out ${reminderSurgeCore}`
-    }
-
     if (isTelemetryCollecting) {
       return greenSurgeCore
     }
@@ -123,15 +133,7 @@ export function ApexLogo({
       return `transition-all duration-700 ease-in-out ${redCore}`
     }
 
-    if (activeStep === 1 || activeStep === 2) {
-      return greenSurgeCore
-    }
-
-    if (activeStep === 3) {
-      return purpleSurgeCore
-    }
-
-    if (hasDelivered) {
+    if (isBriefingComplete) {
       return `transition-all duration-700 ease-in-out ${goldActiveCore}`
     }
 
@@ -139,7 +141,7 @@ export function ApexLogo({
   }
 
   return (
-    <div className={`relative flex items-center justify-center ${className}`} aria-hidden="true">
+    <div className={`relative flex items-center justify-center ${className}`} aria-hidden="true" data-activity={activity ?? undefined}>
       <svg 
         viewBox="0 0 5208 5420" 
         className="h-full w-full overflow-visible select-none"

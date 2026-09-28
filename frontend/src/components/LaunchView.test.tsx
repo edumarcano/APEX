@@ -6,7 +6,7 @@ import { LaunchView } from './LaunchView'
 
 function renderLaunch() {
   return render(<LaunchView
-    logoProps={{ step: null, status: 'idle' }}
+    logoProps={{ status: 'idle' }}
     current={null}
     onSelect={vi.fn()}
     onOpenSettings={vi.fn()}

@@ -1,15 +1,12 @@
+import type { BriefingVisualActivity } from './briefingVisualState'
 import type { SystemState } from '../types/telemetry'
 
-export type OuterShellActivity =
-  | 'normal'
-  | 'collection'
-  | 'synthesis'
-  | 'local_loading'
+export type LogoActivity = BriefingVisualActivity | 'speech_preparing' | 'speech_playing' | null
+export type OuterShellActivity = 'normal' | 'wave' | 'local_loading'
 
 export interface LogoVisualStateInput {
+  activity: LogoActivity
   briefingStatus: SystemState
-  activeStep: number | null
-  isBriefingRunning: boolean
   isCortexQuerying: boolean
   isLocalModelLoading: boolean
   isLocalModelLoaded: boolean
@@ -28,53 +25,76 @@ const COLORS = {
 } as const
 
 export function resolveOuterShellActivity({
-  activeStep,
-  isBriefingRunning,
+  activity,
   isLocalModelLoading,
   isTelemetryCollecting,
-}: Pick<
-  LogoVisualStateInput,
-  'activeStep' | 'isBriefingRunning' | 'isLocalModelLoading' | 'isTelemetryCollecting'
->): OuterShellActivity {
+}: Pick<LogoVisualStateInput, 'activity' | 'isLocalModelLoading' | 'isTelemetryCollecting'>): OuterShellActivity {
   if (isLocalModelLoading) return 'local_loading'
-  if (isBriefingRunning && activeStep === 3) return 'synthesis'
+  if (activity === 'investigating' || activity === 'speech_playing') return 'normal'
   if (
-    isTelemetryCollecting ||
-    (isBriefingRunning && (activeStep === 1 || activeStep === 2))
+    activity === 'preparing' ||
+    activity === 'collecting' ||
+    activity === 'selecting' ||
+    activity === 'synthesizing' ||
+    activity === 'persisting' ||
+    activity === 'speech_preparing' ||
+    (!activity && isTelemetryCollecting)
   ) {
-    return 'collection'
+    return 'wave'
   }
+  if (isTelemetryCollecting) return 'wave'
   return 'normal'
 }
 
-function resolveColor(input: LogoVisualStateInput): string {
-  if (input.briefingStatus === 'error') return COLORS.red
-  if (input.isLocalModelLoading) return COLORS.rust
-  if (input.isCortexQuerying) return COLORS.purple
-  if (input.isSpeaking) return COLORS.cyan
-  if (input.activeStep === 4) return COLORS.gold
-  if (input.briefingStatus === 'success' && !input.isSpeaking) {
-    return input.isLocalModelLoaded ? COLORS.rust : COLORS.blue
+function activityColor(activity: LogoActivity): string | null {
+  switch (activity) {
+    case 'preparing':
+    case 'collecting':
+    case 'selecting':
+      return COLORS.green
+    case 'investigating':
+    case 'synthesizing':
+    case 'speech_preparing':
+      return COLORS.purple
+    case 'persisting':
+      return COLORS.gold
+    case 'briefing_ready':
+      return COLORS.blue
+    case 'speech_playing':
+      return COLORS.cyan
+    default:
+      return null
   }
-  if (input.activeStep === 3) return COLORS.purple
-  if (
-    input.isBriefingRunning ||
-    input.isTelemetryCollecting ||
-    input.activeStep === 1 ||
-    input.activeStep === 2
-  ) {
-    return COLORS.green
-  }
-  if (input.isLocalModelLoaded) return COLORS.rust
-  return COLORS.blue
 }
 
 export function resolveLogoVisualColors(input: LogoVisualStateInput): {
   atmosphere: string
   logo: string
 } {
+  const activeColor = activityColor(input.activity)
+  const atmosphere = input.isLocalModelLoading
+    ? COLORS.rust
+    : input.activity !== 'briefing_ready' && activeColor !== null
+        ? activeColor
+        : input.isCortexQuerying
+          ? COLORS.purple
+          : input.activity === 'briefing_ready' && input.isTelemetryCollecting
+            ? COLORS.green
+            : input.activity === 'briefing_ready'
+              ? COLORS.blue
+            : input.isSpeaking
+              ? COLORS.cyan
+              : input.isTelemetryCollecting
+                ? COLORS.green
+                : input.briefingStatus === 'error'
+                  ? COLORS.red
+                  : COLORS.blue
   return {
-    atmosphere: resolveColor(input),
-    logo: resolveColor(input),
+    atmosphere,
+    logo: input.isLocalModelLoading
+      ? COLORS.rust
+      : input.isLocalModelLoaded
+        ? COLORS.rust
+        : atmosphere,
   }
 }

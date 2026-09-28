@@ -21,6 +21,7 @@ type HookState = {
   profiles: BriefingProfileSummary[]
   selectedSessionId: string | null
   activeSession: BriefingSessionDetail | null
+  activeRunDetail: BriefingSessionDetail | null
   latestSession: BriefingSessionDetail | null
   latestError: string | null
   evidenceById: Record<string, BriefingEvidence>
@@ -103,6 +104,7 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
   const [profiles, setProfiles] = useState<BriefingProfileSummary[]>([])
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [activeSession, setActiveSession] = useState<BriefingSessionDetail | null>(null)
+  const [activeRunDetail, setActiveRunDetail] = useState<BriefingSessionDetail | null>(null)
   const [latestSession, setLatestSession] = useState<BriefingSessionDetail | null>(null)
   const [latestError, setLatestError] = useState<string | null>(null)
   const [evidenceById, setEvidenceById] = useState<Record<string, BriefingEvidence>>({})
@@ -143,6 +145,7 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
       const detail = await requestJson<BriefingSessionDetail>(API_ENDPOINTS.briefingSession(newest.id))
       if (latestLoadSequence.current === sequence) {
         setLatestSession(detail)
+        if (ACTIVE_STATUSES.has(detail.run_status)) setActiveRunDetail(detail)
         setLatestError(null)
       }
       return detail
@@ -196,6 +199,10 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
       const detail = await requestJson<BriefingSessionDetail>(API_ENDPOINTS.briefingSession(sessionId))
       if (loadSequence.current === sequence) {
         setActiveSession(detail)
+        setActiveRunDetail((current) => {
+          if (ACTIVE_STATUSES.has(detail.run_status)) return detail
+          return current?.id === detail.id ? null : current
+        })
         setSessions((current) => {
           const next = summaryFromDetail(detail)
           return isSameSummary(current.find((session) => session.id === next.id), next)
@@ -221,6 +228,10 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
         current.find((session) => session.id === sessionId),
         next,
       ) ? current : updateSummary(current, next))
+      setActiveRunDetail((current) => {
+        if (ACTIVE_STATUSES.has(detail.run_status)) return detail
+        return current?.id === sessionId ? null : current
+      })
       if (selectedSessionRef.current === sessionId) {
         setActiveSession((current) => current?.id === sessionId ? detail : current)
       }
@@ -354,6 +365,7 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
     profiles,
     selectedSessionId,
     activeSession,
+    activeRunDetail,
     latestSession,
     latestError,
     evidenceById,

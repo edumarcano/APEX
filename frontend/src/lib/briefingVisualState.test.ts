@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { BriefingSessionDetail } from '../types/briefings'
-import { resolveActiveBriefingActivity, resolveBriefingVisualState } from './briefingVisualState'
+import { resolveActiveBriefingActivity, resolveBriefingLogoActivity, resolveBriefingVisualState } from './briefingVisualState'
 
 const SESSION = {
   id: 'session-1',
@@ -29,20 +29,42 @@ const SESSION = {
 describe('resolveBriefingVisualState', () => {
   it('maps active session status and stages to the HUD progress contract', () => {
     expect(resolveBriefingVisualState({ ...SESSION, active_stage: { stage: 'collecting', state: 'started' } })).toEqual({
-      status: 'loading', step: 2,
+      status: 'loading', step: 2, activity: 'collecting',
     })
     expect(resolveBriefingVisualState({ ...SESSION, active_stage: { stage: 'investigating', state: 'started' } })).toEqual({
-      status: 'loading', step: 3,
+      status: 'loading', step: 3, activity: 'investigating',
     })
     expect(resolveBriefingVisualState({ ...SESSION, active_stage: { stage: 'persisting', state: 'started' } })).toEqual({
-      status: 'loading', step: 4,
+      status: 'loading', step: 4, activity: 'persisting',
     })
+    expect(resolveBriefingVisualState({ ...SESSION, run_status: 'queued' })).toEqual({ status: 'loading', step: null, activity: 'preparing' })
   })
 
   it('maps terminal session outcomes and missing sessions to stable visual states', () => {
-    expect(resolveBriefingVisualState({ ...SESSION, run_status: 'completed' })).toEqual({ status: 'success', step: null })
-    expect(resolveBriefingVisualState({ ...SESSION, run_status: 'failed' })).toEqual({ status: 'error', step: null })
-    expect(resolveBriefingVisualState(null)).toEqual({ status: 'idle', step: null })
+    expect(resolveBriefingVisualState({ ...SESSION, run_status: 'completed' })).toEqual({ status: 'success', step: null, activity: 'briefing_ready' })
+    expect(resolveBriefingVisualState({ ...SESSION, run_status: 'failed' })).toEqual({ status: 'error', step: null, activity: null })
+    expect(resolveBriefingVisualState(null)).toEqual({ status: 'idle', step: null, activity: null })
+  })
+})
+
+describe('resolveBriefingLogoActivity', () => {
+  const activeSynthesis = {
+    activeRun: true,
+    activeActivity: 'synthesizing' as const,
+    selectedActivity: 'briefing_ready' as const,
+    isPreparingSpeech: false,
+    isSpeaking: false,
+  }
+
+  it('prioritizes speech preparation and playback over another active briefing, then resumes that stage', () => {
+    expect(resolveBriefingLogoActivity({ ...activeSynthesis, isPreparingSpeech: true })).toBe('speech_preparing')
+    expect(resolveBriefingLogoActivity({ ...activeSynthesis, isSpeaking: true })).toBe('speech_playing')
+    expect(resolveBriefingLogoActivity(activeSynthesis)).toBe('synthesizing')
+  })
+
+  it('uses the queued fallback for an active run without detail and selected state when idle', () => {
+    expect(resolveBriefingLogoActivity({ ...activeSynthesis, activeActivity: null })).toBe('preparing')
+    expect(resolveBriefingLogoActivity({ ...activeSynthesis, activeRun: false })).toBe('briefing_ready')
   })
 })
 

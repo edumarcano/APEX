@@ -209,6 +209,9 @@ describe('useBriefingSessions', () => {
             ...detail(status).configuration,
             model: { ...detail(status).configuration.model, model_id: activeSummary.model_id },
           },
+          active_stage: status === 'completed'
+            ? null
+            : { stage: activeReads === 1 ? 'collecting' : 'synthesizing', state: 'started' },
         })
       }
       throw new Error(`Unexpected request: ${url}`)
@@ -221,14 +224,17 @@ describe('useBriefingSessions', () => {
     })
     expect(result.current.hasActiveSession).toBe(true)
     expect(activeReads).toBe(1)
+    expect(result.current.activeRunDetail?.active_stage?.stage).toBe('collecting')
 
     await act(async () => { await result.current.openSession(olderId) })
     expect(result.current.selectedSessionId).toBe(olderId)
     expect(result.current.activeSession?.id).toBe(olderId)
+    expect(result.current.activeRunDetail?.active_stage?.stage).toBe('collecting')
 
     await act(async () => { await vi.advanceTimersByTimeAsync(900) })
     expect(activeReads).toBe(2)
     expect(result.current.hasActiveSession).toBe(true)
+    expect(result.current.activeRunDetail?.active_stage?.stage).toBe('synthesizing')
     expect(result.current.selectedSessionId).toBe(olderId)
     expect(result.current.activeSession?.id).toBe(olderId)
 
@@ -236,6 +242,7 @@ describe('useBriefingSessions', () => {
     expect(activeReads).toBe(3)
     expect(result.current.sessions.find((session) => session.id === activeId)?.run_status).toBe('completed')
     expect(result.current.hasActiveSession).toBe(false)
+    expect(result.current.activeRunDetail).toBeNull()
     expect(result.current.selectedSessionId).toBe(olderId)
     expect(result.current.activeSession?.id).toBe(olderId)
   })

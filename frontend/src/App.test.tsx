@@ -64,8 +64,8 @@ const appMocks = vi.hoisted(() => ({
 }))
 
 vi.mock('./components/ApexLogo', () => ({
-  ApexLogo: ({ reminderPulseCount, status, hasCollectedTelemetry }: Pick<ApexLogoProps, 'reminderPulseCount' | 'status' | 'hasCollectedTelemetry'>) => (
-    <output data-testid="reminder-pulse-count" data-status={status} data-collected={String(hasCollectedTelemetry ?? false)}>
+  ApexLogo: ({ reminderPulseCount, status, activity, hasCollectedTelemetry }: Pick<ApexLogoProps, 'reminderPulseCount' | 'status' | 'activity' | 'hasCollectedTelemetry'>) => (
+    <output data-testid="reminder-pulse-count" data-status={status} data-activity={activity ?? 'none'} data-collected={String(hasCollectedTelemetry ?? false)}>
       {reminderPulseCount ?? 0}
     </output>
   ),
@@ -116,8 +116,11 @@ vi.mock('./components/TelemetryCard', () => ({
   ) : null,
 }))
 vi.mock('./components/VoiceSignalGlyph', () => ({
-  VoiceSignalGlyph: ({ isLocalModelLoading, loadingDisplayName }: { isLocalModelLoading: boolean; loadingDisplayName?: string | null }) => (
-    isLocalModelLoading ? <output data-testid="local-model-loading-label">{loadingDisplayName}</output> : null
+  VoiceSignalGlyph: ({ isLocalModelLoading, loadingDisplayName, activity, isTelemetryCollecting }: { isLocalModelLoading: boolean; loadingDisplayName?: string | null; activity?: string | null; isTelemetryCollecting?: boolean }) => (
+    <>
+      {isLocalModelLoading ? <output data-testid="local-model-loading-label">{loadingDisplayName}</output> : null}
+      <output data-testid="voice-activity" data-activity={activity ?? 'none'} data-telemetry-collecting={String(isTelemetryCollecting ?? false)}>{activity ?? 'none'}</output>
+    </>
   ),
 }))
 vi.mock('./components/SettingsPanel', () => ({
@@ -1426,7 +1429,7 @@ describe('App active local briefing lifecycle', () => {
     vi.unstubAllGlobals()
   })
 
-  it('keeps local loading identity and lifecycle controls busy for an active unselected session', async () => {
+  it('does not treat an active local briefing as model loading while keeping lifecycle controls busy', async () => {
     appMocks.initialModelId = 'qwen3:1.7b'
     appMocks.initialModelRuntime = 'local'
     appMocks.localBriefingModel = {
@@ -1447,6 +1450,8 @@ describe('App active local briefing lifecycle', () => {
       created_at: '2026-09-26T10:00:00Z',
       presented_at: null,
     }
+    const activeDetail = deferred<Response>()
+    let activeDetailBody: unknown = null
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = new URL(String(input))
       if (url.pathname.endsWith('/briefing-profiles')) {
@@ -1455,12 +1460,42 @@ describe('App active local briefing lifecycle', () => {
       if (url.pathname.endsWith('/briefing-sessions')) {
         return new Response(JSON.stringify([activeSummary]), { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
+      if (url.pathname.endsWith(`/briefing-sessions/${activeSummary.id}`)) {
+        return activeDetailBody === null
+          ? activeDetail.promise
+          : new Response(JSON.stringify(activeDetailBody), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
       return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
     }))
 
     const user = userEvent.setup()
     renderOverviewApp()
-    expect(await screen.findByTestId('local-model-loading-label')).toHaveTextContent('Qwen 3 1.7B')
+    expect(await screen.findByTestId('voice-activity')).toHaveAttribute('data-activity', 'preparing')
+    await act(async () => {
+      activeDetailBody = {
+        id: activeSummary.id,
+        conversation_id: activeSummary.conversation_id,
+        opening_message_id: '00000000-0000-4000-8000-000000000084',
+        run_id: activeSummary.run_id,
+        run_status: 'running',
+        run_error_code: null,
+        configuration: {
+          profile: { id: 'daily', label: 'Daily', purpose: 'Current information.', definition_version: 1 },
+          model: { model_id: activeSummary.model_id, provider: 'ollama', runtime: 'local', reasoning: null, context_window: null, local_reasoning_mode: null },
+          origin: 'hud', execution_kind: 'model',
+        },
+        artifact: null,
+        evidence_count: 0,
+        evidence_ids: [],
+        created_at: activeSummary.created_at,
+        presented_at: null,
+        speech_status: 'not_requested',
+        active_stage: { stage: 'synthesizing', state: 'started' },
+      }
+      activeDetail.resolve(new Response(JSON.stringify(activeDetailBody), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    })
+    await waitFor(() => expect(screen.getByTestId('voice-activity')).toHaveAttribute('data-activity', 'synthesizing'))
+    await waitFor(() => expect(screen.queryByTestId('local-model-loading-label')).not.toBeInTheDocument())
 
     await selectWorkspace(user, 'Cortex')
     expect(screen.getByTestId('cortex-lifecycle-busy')).toHaveTextContent('true')
@@ -1534,7 +1569,7 @@ describe('App briefing session flow', () => {
     let speechReads = 0
     let speechPrepares = 0
     let speechPlays = 0
-    let speechStatus: 'not_requested' | 'preparing' | 'ready' = 'not_requested'
+    let speechStatus: 'not_requested' | 'preparing' | 'playing' | 'ready' = 'not_requested'
     const speechResponse = () => ({
       session_id: sessionId,
       artifact_sha256: 'canonical-artifact-digest',
@@ -1583,7 +1618,8 @@ describe('App briefing session flow', () => {
         return new Response(JSON.stringify(sessionSummary), { status: 202, headers: { 'Content-Type': 'application/json' } })
       }
       if (path.endsWith('/briefing-sessions') && init?.method !== 'POST') {
-        return new Response(JSON.stringify(admissionBody ? [{ ...sessionSummary, run_status: runStatus }] : []), { status: 200, headers: { 'Content-Type': 'application/json' } })
+        const summaries = admissionBody ? [{ ...sessionSummary, run_status: runStatus }] : []
+        return new Response(JSON.stringify(summaries), { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
       if (path.endsWith(`/briefing-sessions/${sessionId}/speech/prepare`)) {
         speechPrepares += 1
@@ -1601,7 +1637,6 @@ describe('App briefing session flow', () => {
       }
       if (path.endsWith(`/briefing-sessions/${sessionId}/speech`)) {
         speechReads += 1
-        if (speechStatus === 'preparing' && speechReads > 1) speechStatus = 'ready'
         return new Response(JSON.stringify(speechResponse()), { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
       if (path.endsWith(`/briefing-sessions/${sessionId}/presented`)) {
@@ -1643,7 +1678,7 @@ describe('App briefing session flow', () => {
       return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
     }))
 
-    renderOverviewApp()
+    const app = renderOverviewApp()
     await selectWorkspace(user, 'Briefing')
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
     const setup = await screen.findByRole('dialog', { name: 'Set up your briefing' })
@@ -1682,12 +1717,24 @@ describe('App briefing session flow', () => {
     const prepareSpeech = await screen.findByRole('button', { name: 'Prepare highlights' })
     expect(speechReads).toBeGreaterThan(0)
     expect(speechPlays).toBe(0)
+
+    appMocks.telemetryRefreshingAll = true
+    app.rerender(<App />)
+    await waitFor(() => expect(screen.getByTestId('voice-activity')).toHaveAttribute('data-telemetry-collecting', 'true'))
+    expect(screen.getByTestId('voice-activity')).toHaveAttribute('data-activity', 'briefing_ready')
+    expect(screen.getByRole('main').style.getPropertyValue('--atmosphere-glow-color')).toBe('57, 255, 136')
+    appMocks.telemetryRefreshingAll = false
+    app.rerender(<App />)
+    await waitFor(() => expect(screen.getByRole('main').style.getPropertyValue('--atmosphere-glow-color')).toBe('15, 77, 184'))
+
     await user.click(prepareSpeech)
     await waitFor(() => expect(speechPrepares).toBe(1))
+    await waitFor(() => expect(screen.getByTestId('voice-activity')).toHaveAttribute('data-activity', 'speech_preparing'))
     expect(speechPlays).toBe(0)
+    speechStatus = 'playing'
+    await waitFor(() => expect(screen.getByTestId('voice-activity')).toHaveAttribute('data-activity', 'speech_playing'), { timeout: 2500 })
     await waitFor(() => expect(presentationWrites).toBe(1))
     expect(admissions).toBe(1)
-
     const composer = await screen.findByRole('textbox')
     await user.type(composer, 'What about traffic?')
     await selectWorkspace(user, 'Reports')

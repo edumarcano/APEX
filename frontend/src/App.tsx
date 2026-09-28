@@ -44,7 +44,7 @@ import { useToolPreflight } from './hooks/useToolPreflight'
 import { API_ENDPOINTS } from './lib/api'
 import { requestVoiceCue } from './lib/voiceCues'
 import { resolveAttentionStaggerMs, resolveTelemetryAttentionTier } from './lib/attentionTier'
-import { resolveActiveBriefingActivity, resolveBriefingVisualState } from './lib/briefingVisualState'
+import { resolveActiveBriefingActivity, resolveBriefingLogoActivity, resolveBriefingVisualState } from './lib/briefingVisualState'
 import { resolveCalendarTelemetry } from './lib/calendarTelemetry'
 import { resolveFootballTelemetry } from './lib/footballTelemetry'
 import {
@@ -711,11 +711,21 @@ export default function App(): ReactElement {
     dailySessions.selectedSessionId === activeBriefingActivity.session.id &&
     currentSelectedSession?.id === activeBriefingActivity.session.id
     ? currentSelectedSession
-    : null
+    : dailySessions.activeRunDetail?.id === activeBriefingActivity.session?.id
+      ? dailySessions.activeRunDetail
+      : null
   const activeBriefingVisual = resolveBriefingVisualState(activeBriefingDetail)
   const briefingStatus = activeBriefingActivity.isRunning ? 'loading' : selectedBriefingVisual.status
   const activeStep = activeBriefingActivity.isRunning ? activeBriefingVisual.step : selectedBriefingVisual.step
   const isSpeaking = briefingSpeech.speech?.status === 'playing'
+  const isPreparingSpeech = briefingSpeech.speech?.status === 'preparing' || briefingSpeech.pendingAction === 'prepare'
+  const logoActivity = resolveBriefingLogoActivity({
+    activeRun: activeBriefingActivity.isRunning,
+    activeActivity: activeBriefingVisual.activity,
+    selectedActivity: selectedBriefingVisual.activity,
+    isPreparingSpeech,
+    isSpeaking,
+  })
   const resolvedTtsEngine = briefingSpeech.speech?.engine ?? 'google'
   const resolvedSystemThrottled = false
   const localLifecycleBusy =
@@ -747,24 +757,16 @@ export default function App(): ReactElement {
       ) ?? null,
     [fullModelCatalog],
   )
-  const isLocalModelLoading = loadingLocalModel !== null ||
-    activeBriefingActivity.isLocalModelRunning ||
-    (dailySessions.isGenerating && sharedAgentModelEntry?.runtime === 'local')
+  const isLocalModelLoading = loadingLocalModel !== null
   const isLocalModelLoaded = activeLocalModel !== null
   const loadingDisplayName = useMemo(() => {
-    if (activeBriefingActivity.isLocalModelRunning) {
-      return activeBriefingActivity.displayName
-    }
-    const localEntry = dailySessions.isGenerating && sharedAgentModelEntry?.runtime === 'local'
-      ? sharedAgentModelEntry
-      : sharedAgentModelEntry?.runtime === 'local'
+    const localEntry = loadingLocalModel ?? (sharedAgentModelEntry?.runtime === 'local'
         ? sharedAgentModelEntry
-        : fullModelCatalog.find((entry) => entry.model_id === selectedModel && entry.runtime === 'local')
+        : fullModelCatalog.find((entry) => entry.model_id === selectedModel && entry.runtime === 'local'))
     return localEntry?.display_name ?? null
-  }, [activeBriefingActivity, dailySessions.isGenerating, fullModelCatalog, sharedAgentModelEntry, selectedModel])
+  }, [fullModelCatalog, loadingLocalModel, sharedAgentModelEntry, selectedModel])
   const outerShellActivity = resolveOuterShellActivity({
-    activeStep,
-    isBriefingRunning,
+    activity: logoActivity,
     isLocalModelLoading,
     isTelemetryCollecting,
   })
@@ -772,9 +774,8 @@ export default function App(): ReactElement {
   const visualColors = useMemo(
     () =>
       resolveLogoVisualColors({
+        activity: logoActivity,
         briefingStatus,
-        activeStep,
-        isBriefingRunning,
         isCortexQuerying,
         isLocalModelLoading,
         isLocalModelLoaded,
@@ -783,8 +784,7 @@ export default function App(): ReactElement {
       }),
     [
       briefingStatus,
-      activeStep,
-      isBriefingRunning,
+      logoActivity,
       isCortexQuerying,
       isLocalModelLoading,
       isLocalModelLoaded,
@@ -1151,8 +1151,8 @@ export default function App(): ReactElement {
     (overviewState === 'center' || overviewState === 'error' || overviewState === 'no-data')
 
   const cortexLogoProps: Omit<ApexLogoProps, 'className'> = {
-    step: activeStep,
     status: logoStatus,
+    activity: logoActivity,
     isSpeaking,
     reminderPulseCount,
     isCortexQuerying,
@@ -1497,8 +1497,8 @@ export default function App(): ReactElement {
   const hudIdentity: HudIdentityProps = {
     logoProps: cortexLogoProps,
     glyphProps: {
-      step: activeStep,
       status: logoStatus,
+      activity: logoActivity,
       isSpeaking,
       activeTtsEngine: resolvedTtsEngine,
       systemLoadThrottled: resolvedSystemThrottled,

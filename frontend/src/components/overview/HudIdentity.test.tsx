@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest'
 import { HudIdentityMark, type HudIdentityProps } from './HudIdentity'
 
 const identity: HudIdentityProps = {
-  logoProps: { step: null, status: 'idle' },
-  glyphProps: { step: null, status: 'idle', isSpeaking: false },
+  logoProps: { status: 'idle' },
+  glyphProps: { status: 'idle', isSpeaking: false },
 }
 
 function renderMark(size: 'hero' | 'large' | 'overview' | 'compact') {
