@@ -154,10 +154,21 @@ class ContextVaultRuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def test_concurrent_manual_refreshes_are_serialized(self) -> None:
         started = threading.Event()
         release = threading.Event()
+        second_marked_dirty = threading.Event()
         guard = threading.Lock()
         active = 0
         maximum_active = 0
+        dirty_calls = 0
         original = ContextVaultPublisher.publish
+        original_mark_dirty = self.runtime._state.mark_dirty
+
+        def record_refresh_request() -> None:
+            nonlocal dirty_calls
+            original_mark_dirty()
+            with guard:
+                dirty_calls += 1
+                if dirty_calls == 2:
+                    second_marked_dirty.set()
 
         class BlockingPublisher(ContextVaultPublisher):
             def publish(inner_self, files):
@@ -176,16 +187,22 @@ class ContextVaultRuntimeTests(unittest.IsolatedAsyncioTestCase):
                     with guard:
                         active -= 1
 
-        with mock.patch("core.context_vault.runtime.ContextVaultPublisher", BlockingPublisher):
+        with (
+            mock.patch("core.context_vault.runtime.ContextVaultPublisher", BlockingPublisher),
+            mock.patch.object(self.runtime._state, "mark_dirty", record_refresh_request),
+        ):
             first = asyncio.create_task(self.runtime.refresh_now())
             self.assertTrue(await asyncio.to_thread(started.wait, 5))
             second = asyncio.create_task(self.runtime.refresh_now())
+            second_marked = await asyncio.to_thread(second_marked_dirty.wait, 5)
             release.set()
             first_status, second_status = await asyncio.gather(first, second)
 
-        self.assertLessEqual(maximum_active, 1)
-        self.assertFalse(first_status.dirty)
+        self.assertTrue(second_marked)
+        self.assertEqual(maximum_active, 1)
+        self.assertEqual(first_status.exported_revision, self.store.context_vault_revision())
         self.assertFalse(second_status.dirty)
+        self.assertFalse(self.runtime.status().dirty)
 
     async def test_runtime_change_reconciles_new_destination_without_deleting_old_copies(self) -> None:
         await self.runtime.refresh_now()
