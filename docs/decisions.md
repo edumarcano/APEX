@@ -68,7 +68,7 @@ The beta.6 cutover transactionally drops only the retired legacy `briefings` tab
 
 **Why.** Snapshot state is temporary and tied to refreshes. Persisting every connector observation would add migrations, cleanup, and stale-record ambiguity without improving anything in a single-process session.
 
-**Trade-off.** Restarting FastAPI invalidates an explicit HUD snapshot reference. Briefing sessions instead persist the evidence captured during generation and remain readable after restart.
+**Trade-off.** Restarting FastAPI invalidates an explicit telemetry snapshot reference. Briefing sessions instead persist the evidence captured during generation and remain readable after restart.
 
 ### Make operational preflight advisory before it is blocking
 
@@ -270,9 +270,9 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 ## Security
 
-### Treat connector, HUD, and tool content as untrusted model data
+### Treat connector, telemetry, and tool content as untrusted model data
 
-**Decision.** Briefing facts, explicit HUD context, and tool results use separate untrusted-data markers with matching system instructions.
+**Decision.** Briefing facts, explicit telemetry context, and tool results use separate untrusted-data markers with matching system instructions.
 
 **Why.** Calendar titles, headlines, email content, tasks, and provider results are written outside APEX's control and can contain instruction-like text.
 

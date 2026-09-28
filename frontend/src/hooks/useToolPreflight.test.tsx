@@ -28,7 +28,7 @@ describe('useToolPreflight', () => {
           breakdown: {
             system_instructions: 10,
             conversation_history: 5,
-            hud_context: 0,
+            telemetry_context: 0,
             selected_tool_schemas: 0,
             current_prompt: 4,
             total: 19,
@@ -91,7 +91,7 @@ describe('useToolPreflight', () => {
         breakdown: {
           system_instructions: 10,
           conversation_history: 0,
-          hud_context: 0,
+          telemetry_context: 0,
           selected_tool_schemas: 0,
           current_prompt: 2,
           total: 12,
@@ -149,7 +149,7 @@ describe('useToolPreflight', () => {
         breakdown: {
           system_instructions: 1,
           conversation_history: 0,
-          hud_context: 0,
+          telemetry_context: 0,
           selected_tool_schemas: 0,
           current_prompt: 1,
           total: 2,

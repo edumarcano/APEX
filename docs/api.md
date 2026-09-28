@@ -457,7 +457,7 @@ policy when `DEV_MODE` and `ask_apex.sandbox_mode` are active.
 
 Accepts an Agent, optional model override, optional context window, optional local reasoning mode, selected stable names, optional profile, prompt, optional conversation ID, and an optional current telemetry snapshot ID. The backend reconstructs
 the bounded active branch when a conversation ID is present. It returns estimates for
-system instructions, conversation history, HUD context, reserved retrieved context, selected schemas,
+system instructions, conversation history, telemetry context, reserved retrieved context, selected schemas,
 prompt, total, configured context, reserved response capacity, and remaining
 capacity. Every value is marked as an estimate by the response contract.
 Rejected selections remain in the response as structured diagnostics with
@@ -595,7 +595,7 @@ APEX owns Cortex conversation history in `apex_memory.db`. Conversations contain
 
 `model_id`, `context_window`, and `local_reasoning_mode` are optional per-turn overrides. When supplied, the turn uses those values instead of saved model preferences. Briefing follow-ups and their tool preflight use the shared Apex Agent selection: the saved cloud reasoning effort, or the saved local context window and reasoning mode. These per-turn values are ephemeral and are not written back by a follow-up.
 
-`snapshot_id` is optional explicit current telemetry context; when absent, APEX injects no HUD telemetry. A stale snapshot ID is omitted rather than replaced with the latest data. A briefing session owns its linked Cortex conversation and canonical opening artifact; callers continue that session by using the returned conversation ID, not by attaching a legacy briefing ID. The server derives `sandbox` only when both `DEV_MODE` and the saved sandbox setting are active; clients cannot select or cross partitions. Snapshot context is included only when its ID matches the process-current telemetry snapshot.
+`snapshot_id` is optional explicit current telemetry context; when absent, APEX injects no telemetry context. A stale snapshot ID is omitted rather than replaced with the latest data. A briefing session owns its linked Cortex conversation and canonical opening artifact; callers continue that session by using the returned conversation ID, not by attaching a legacy briefing ID. The server derives `sandbox` only when both `DEV_MODE` and the saved sandbox setting are active; clients cannot select or cross partitions. Snapshot context is included only when its ID matches the process-current telemetry snapshot.
 
 The effective exposure is `selected tools ∩ Apex Agent policy ∩ runtime availability ∩ persistent MCP allowlists`. An explicit empty `selected_tool_names` list means `No APEX Tools`; omitted selection preserves runtime defaults of All APEX Tools for cloud and No APEX Tools for local. Invalid, unauthorized, disconnected, risk-rejected, or unavailable selected names are returned as structured per-tool failures. Cloud models can receive approved APEX capabilities and optional provider-hosted grounding where supported. `effort` is accepted only for models with reasoning levels. Responses contain Apex Agent and resolved model metadata, tool trace, usage, timing, and cost evidence.
 

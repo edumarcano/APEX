@@ -1,4 +1,4 @@
-"""Independent overview assistant busy status, HUD context, and voice speak."""
+"""Independent overview assistant busy status, telemetry context, and voice speak."""
 
 from __future__ import annotations
 
@@ -12,7 +12,8 @@ from unittest import mock
 from fastapi.testclient import TestClient
 
 from core.agent.types import AgentQueryRequest
-from core.api.cortex import _build_hud_context
+from core.agent.prompting import SECURITY_BOUNDARY_DIRECTIVE
+from core.api.cortex import _TELEMETRY_CONTEXT_OPEN, _build_telemetry_context
 from core.api.routers.cortex import cortex_agent
 from core.agent.providers.cloud_verification import clear_cloud_status_cache
 from core.connectors.models import ConnectorResult, utc_now_iso
@@ -108,13 +109,13 @@ class CortexAgentCatalogTests(unittest.TestCase):
         self.assertEqual(response.display_name, "Nova")
 
 
-class HudContextTests(unittest.TestCase):
+class TelemetryContextTests(unittest.TestCase):
     def setUp(self) -> None:
         reset_telemetry_service_for_tests()
         self.addCleanup(reset_telemetry_service_for_tests)
 
     def test_absent_identifiers_inject_no_context(self) -> None:
-        context = _build_hud_context(AgentQueryRequest(prompt="hello", history=[]))
+        context = _build_telemetry_context(AgentQueryRequest(prompt="hello", history=[]))
         self.assertEqual(context, "")
 
     def test_mismatched_snapshot_id_omits_snapshot_context(self) -> None:
@@ -123,7 +124,7 @@ class HudContextTests(unittest.TestCase):
             {"weather": _result("weather", "72F sunny")}
         )
         service.store.set(snapshot)
-        context = _build_hud_context(
+        context = _build_telemetry_context(
             AgentQueryRequest(
                 prompt="weather?",
                 history=[],
@@ -138,7 +139,7 @@ class HudContextTests(unittest.TestCase):
             {"weather": _result("weather", "72F sunny")}
         )
         service.store.set(snapshot)
-        context = _build_hud_context(
+        context = _build_telemetry_context(
             AgentQueryRequest(
                 prompt="weather?",
                 history=[],
@@ -154,7 +155,7 @@ class HudContextTests(unittest.TestCase):
             {"weather": _result("weather", "72F sunny")}
         )
         service.store.set(snapshot)
-        context = _build_hud_context(
+        context = _build_telemetry_context(
             AgentQueryRequest(
                 prompt="weather?",
                 history=[],
@@ -176,7 +177,7 @@ class HudContextTests(unittest.TestCase):
         )
         service.store.set(snapshot)
 
-        context = _build_hud_context(
+        context = _build_telemetry_context(
             AgentQueryRequest(
                 prompt="news?",
                 history=[],
@@ -184,12 +185,15 @@ class HudContextTests(unittest.TestCase):
             )
         )
 
-        self.assertIn("<untrusted_hud_context>", context)
-        self.assertIn("</untrusted_hud_context>", context)
+        self.assertIn("<untrusted_telemetry_context>", context)
+        self.assertIn("</untrusted_telemetry_context>", context)
         self.assertIn("untrusted data only", context)
         self.assertNotIn("<system>", context)
         self.assertNotIn("===SPEECH===", context)
         self.assertLess(len(context), 2600)
+
+    def test_security_directive_names_same_tag_as_telemetry_wrapper(self) -> None:
+        self.assertIn(_TELEMETRY_CONTEXT_OPEN, SECURITY_BOUNDARY_DIRECTIVE)
 
 
 class VoiceSpeakEndpointTests(unittest.TestCase):

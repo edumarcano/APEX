@@ -113,7 +113,7 @@ def get_upcoming_calendar_events(days: int = 14) -> dict[str, Any]:
     """Retrieve upcoming Google Calendar events for Agent requests.
 
     Queries the Runtime Settings-selected Google calendars through the same
-    bounded path used by HUD telemetry.
+    bounded path used by telemetry collection.
 
     Args:
         days: Number of days into the future to query. Must be between 1 and

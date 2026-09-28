@@ -106,7 +106,7 @@ class SandboxPolicyTests(unittest.TestCase):
                     "snapshot_id": payload.snapshot_id,
                     "history": list(payload.history),
                     "disable_tools": kwargs.get("disable_tools"),
-                    "disable_hud_context": kwargs.get("disable_hud_context"),
+                    "disable_telemetry_context": kwargs.get("disable_telemetry_context"),
                 }
             )
             return AgentQueryResponse(answer="ok", agent_used={}, session_id=None)
@@ -155,7 +155,7 @@ class SandboxPolicyTests(unittest.TestCase):
         self.assertEqual(captured["snapshot_id"], "snap-1")
         self.assertEqual(captured.get("history"), [])
         self.assertFalse(captured["disable_tools"])
-        self.assertFalse(captured["disable_hud_context"])
+        self.assertFalse(captured["disable_telemetry_context"])
 
     def test_sandbox_local_model_rejects_production_history(self) -> None:
         captured: dict[str, object] = {}
@@ -164,7 +164,7 @@ class SandboxPolicyTests(unittest.TestCase):
             captured.update(
                 {
                     "history": list(payload.history),
-                    "disable_hud_context": kwargs.get("disable_hud_context"),
+                    "disable_telemetry_context": kwargs.get("disable_telemetry_context"),
                 }
             )
             return AgentQueryResponse(answer="ok", agent_used={}, session_id=None)
@@ -209,7 +209,7 @@ class SandboxPolicyTests(unittest.TestCase):
             )
 
         self.assertEqual(captured.get("history"), [])
-        self.assertFalse(captured["disable_hud_context"])
+        self.assertFalse(captured["disable_telemetry_context"])
 
     def test_sandbox_capability_policy_is_an_explicit_allowlist(self) -> None:
         def descriptor(name: str) -> CapabilityDescriptor:

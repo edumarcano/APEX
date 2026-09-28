@@ -33,7 +33,7 @@ const overflowPreflight: ToolPreflightEstimate = {
   breakdown: {
     system_instructions: 100,
     conversation_history: 200,
-    hud_context: 0,
+    telemetry_context: 0,
     selected_tool_schemas: 80,
     current_prompt: 5000,
     total: 5380,

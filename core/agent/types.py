@@ -219,7 +219,7 @@ class ToolTokenBreakdown(BaseModel):
 
     system_instructions: int = Field(default=0, ge=0)
     conversation_history: int = Field(default=0, ge=0)
-    hud_context: int = Field(default=0, ge=0)
+    telemetry_context: int = Field(default=0, ge=0)
     retrieved_context: int = Field(default=0, ge=0)
     selected_tool_schemas: int = Field(default=0, ge=0)
     current_prompt: int = Field(default=0, ge=0)
@@ -334,7 +334,7 @@ class AgentQueryRequest(BaseModel):
         description=(
             "Optional telemetry snapshot ID. When present and matching the "
             "current in-memory snapshot, module display text is injected as "
-            "HUD context. Absent or mismatched IDs inject no snapshot context."
+            "telemetry context. Absent or mismatched IDs inject no snapshot context."
         ),
     )
     model_id: Optional[str] = Field(
