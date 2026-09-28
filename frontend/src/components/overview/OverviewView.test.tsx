@@ -164,20 +164,34 @@ describe('OverviewView identity mark sizing', () => {
   })
 
   it('uses grid-slot width on the identity card before collection but not after on desktop', () => {
-    setCompactLayout(false)
     const onCollect = vi.fn()
+    const gridSlotWidth = 'w-[calc((100%-2rem)/3)]'
 
+    setCompactLayout(false)
     const centerView = render(
       <OverviewView identity={identity} telemetry={telemetry} state="center" onCollect={onCollect} />,
     )
     const centerLayout = screen.getByRole('region', { name: 'Overview' })
     const centerCard = centerLayout.querySelector('[data-slot="overview-identity-card"]')
-    expect(centerCard).toHaveClass('w-full', 'max-w-sm')
+    expect(centerCard).toHaveClass(gridSlotWidth)
+    expect(centerCard).not.toHaveClass('max-w-sm')
     centerView.unmount()
 
-    render(<OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={onCollect} />)
+    const readyView = render(
+      <OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={onCollect} />,
+    )
     const readyLayout = screen.getByRole('region', { name: 'Overview' })
     const readyCard = readyLayout.querySelector('[data-slot="overview-identity-card"]')
-    expect(readyCard).not.toHaveClass('max-w-sm')
+    expect(readyCard).not.toHaveClass('max-w-sm', gridSlotWidth)
+    readyView.unmount()
+
+    setCompactLayout(true)
+    const compactCenterView = render(
+      <OverviewView identity={identity} telemetry={telemetry} state="center" onCollect={onCollect} />,
+    )
+    const compactLayout = screen.getByRole('region', { name: 'Overview' })
+    const compactCenterCard = compactLayout.querySelector('[data-slot="overview-identity-card"]')
+    expect(compactCenterCard).toHaveClass('max-w-sm')
+    compactCenterView.unmount()
   })
 })
