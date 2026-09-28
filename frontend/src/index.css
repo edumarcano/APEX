@@ -855,8 +855,8 @@
   88%,
   100% {
     opacity: 0.45;
-    fill: url(#apexDormantMetal);
-    filter: drop-shadow(0 0 8px rgba(120, 53, 15, 0.15));
+    fill: url(#apexGoldMetal);
+    filter: drop-shadow(0 0 8px rgba(217, 119, 6, 0.2));
   }
   25%,
   72% {
@@ -883,14 +883,23 @@
   }
 }
 
-.apex-core-metal--green-surge {
-  animation: greenSurge 2.5s ease-in-out infinite;
+.apex-core-metal.apex-core-metal--green-surge {
+  fill: url(#apexGoldMetal);
+  opacity: 0.45;
+  filter: drop-shadow(0 0 8px rgba(217, 119, 6, 0.2));
+  animation: greenSurge 2.5s ease-in-out infinite backwards;
   will-change: opacity, filter, fill;
 }
 
 .apex-core-metal--purple-surge {
   animation: purpleSurge 2.5s ease-in-out infinite;
   will-change: opacity, filter, fill;
+}
+
+.apex-core-metal--green-active {
+  fill: url(#apexGreenMetal);
+  filter: drop-shadow(0 0 14px rgba(57, 255, 136, 0.85));
+  transition: all 1000ms ease-in-out;
 }
 
 @keyframes rustSurge {
@@ -924,7 +933,7 @@
     filter: drop-shadow(0 0 12px rgba(120, 53, 15, 0.3));
   }
 
-  .apex-core-metal--green-surge {
+  .apex-core-metal.apex-core-metal--green-surge {
     animation: none;
     opacity: 0.95;
     fill: url(#apexGreenMetal);

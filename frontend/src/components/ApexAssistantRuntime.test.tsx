@@ -1077,7 +1077,7 @@ describe('ApexAssistantRuntime', () => {
       <ApexAssistantRuntime
         config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}
       >
-        <ApexAssistantThread logoProps={{ step: 1, status: 'idle' }} />
+        <ApexAssistantThread logoProps={{ status: 'idle' }} />
       </ApexAssistantRuntime>,
     )
 

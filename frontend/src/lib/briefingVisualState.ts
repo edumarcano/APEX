@@ -1,11 +1,32 @@
-import type { BriefingSessionDetail, BriefingSessionSummary } from '../types/briefings'
+import type { BriefingSessionDetail, BriefingSessionSummary, BriefingStage } from '../types/briefings'
 import type { ModelCatalogEntry } from '../types/telemetry'
 
 export type BriefingVisualStatus = 'idle' | 'loading' | 'success' | 'error'
+export type BriefingVisualActivity = BriefingStage | 'briefing_ready'
+
+export function resolveBriefingLogoActivity({
+  activeRun,
+  activeActivity,
+  selectedActivity,
+  isPreparingSpeech,
+  isSpeaking,
+}: {
+  activeRun: boolean
+  activeActivity: BriefingVisualActivity | null
+  selectedActivity: BriefingVisualActivity | null
+  isPreparingSpeech: boolean
+  isSpeaking: boolean
+}): BriefingVisualActivity | 'speech_preparing' | 'speech_playing' | null {
+  if (isPreparingSpeech) return 'speech_preparing'
+  if (isSpeaking) return 'speech_playing'
+  if (activeRun) return activeActivity ?? 'preparing'
+  return selectedActivity
+}
 
 export function resolveBriefingVisualState(session: BriefingSessionDetail | null): {
   status: BriefingVisualStatus
   step: number | null
+  activity: BriefingVisualActivity | null
 } {
   const status: BriefingVisualStatus =
     session?.run_status === 'queued' || session?.run_status === 'running' || session?.run_status === 'cancelling'
@@ -16,6 +37,11 @@ export function resolveBriefingVisualState(session: BriefingSessionDetail | null
           ? 'error'
           : 'idle'
   const stage = session?.active_stage?.stage
+  const activity: BriefingVisualActivity | null = status === 'loading'
+    ? stage ?? 'preparing'
+    : status === 'success'
+      ? 'briefing_ready'
+      : null
   const step = stage === 'preparing'
     ? 1
     : stage === 'collecting'
@@ -25,7 +51,7 @@ export function resolveBriefingVisualState(session: BriefingSessionDetail | null
         : stage === 'persisting'
           ? 4
           : null
-  return { status, step }
+  return { status, step, activity }
 }
 
 export function resolveActiveBriefingActivity({

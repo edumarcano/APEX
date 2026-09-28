@@ -11,8 +11,8 @@ afterEach(() => {
 })
 
 const identity: HudIdentityProps = {
-  logoProps: { step: null, status: 'idle' },
-  glyphProps: { step: null, status: 'idle', isSpeaking: false },
+  logoProps: { status: 'idle' },
+  glyphProps: { status: 'idle', isSpeaking: false },
 }
 
 const telemetry: HudTelemetryData = {
