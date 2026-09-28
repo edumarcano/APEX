@@ -92,6 +92,7 @@ export function CompactModelSelector({
 }: CompactModelSelectorProps): ReactElement {
   const triggerRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const menuScrollRef = useRef<HTMLDivElement>(null)
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([])
   const [open, setOpen] = useState(false)
   const [reasoningOpen, setReasoningOpen] = useState(false)
@@ -206,6 +207,13 @@ export function CompactModelSelector({
     }
   }, [allOrderedModels, focusOption, open, selectedModel, updatePosition])
 
+  useLayoutEffect(() => {
+    if (reasoningOpen) {
+      const scrollContainer = menuScrollRef.current
+      if (scrollContainer) scrollContainer.scrollTop = scrollContainer.scrollHeight
+    }
+  }, [reasoningOpen])
+
   return (
     <div className={`relative shrink-0 ${className}`} data-slot="home-model-selector-container">
       <button
@@ -263,7 +271,7 @@ export function CompactModelSelector({
             </p>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin pt-1">
+          <div ref={menuScrollRef} className="min-h-0 flex-1 overflow-y-auto scrollbar-thin pt-1">
             <ul role="listbox" aria-label="Select model">
               {cloudModels.length > 0 && (
                 <li role="presentation">

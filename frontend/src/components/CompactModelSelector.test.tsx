@@ -86,6 +86,36 @@ describe('CompactModelSelector', () => {
     expect(onEffortChange).toHaveBeenCalledWith('low')
   })
 
+  it('scrolls the model menu to the final reasoning choice when reasoning expands', async () => {
+    const user = userEvent.setup()
+    const geminiCatalog: ModelCatalogEntry[] = [{
+      ...catalog[0],
+      model_id: 'google/gemini-test',
+      display_name: 'Gemini',
+      provider: 'gemini',
+      reasoning_options: ['low', 'medium', 'high'],
+    }]
+    render(<CompactModelSelector
+      selectedModelId={geminiCatalog[0].model_id}
+      onModelChange={vi.fn()}
+      catalog={geminiCatalog}
+      presentation="composer"
+      cloudEffort="low"
+    />)
+
+    await user.click(screen.getByRole('button', { name: /model: gemini, reasoning low/i }))
+    const reasoningToggle = screen.getByRole('button', { name: 'Reasoning, currently Low' })
+    const menuScrollContainer = screen.getByRole('listbox', { name: /select model/i }).parentElement
+    expect(menuScrollContainer).not.toBeNull()
+    Object.defineProperty(menuScrollContainer, 'scrollHeight', { configurable: true, value: 360 })
+
+    await user.click(reasoningToggle)
+
+    expect(menuScrollContainer).toHaveProperty('scrollTop', 360)
+    expect(screen.getByRole('button', { name: 'High' })).toBeInTheDocument()
+    expect(document.activeElement).toBe(reasoningToggle)
+  })
+
   it('offers local reasoning modes and disables both selectors while the thread is running', async () => {
     const user = userEvent.setup()
     const localCatalog: ModelCatalogEntry[] = [{ ...catalog[2], reasoning_modes: ['none', 'focused'], default_reasoning_mode: 'none' }]
