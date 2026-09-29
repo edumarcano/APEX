@@ -311,12 +311,15 @@ class MarketClientTests(unittest.TestCase):
         response.raise_for_status.return_value = None
         response.json.side_effect = [
             {"Information": "Our standard API rate limit is 25 requests per day."},
+            {"Information": "Please consider spreading out your free API requests more sparingly (1 request per second). You may subscribe to any of the premium plans to lift the free key rate limit (25 requests per day)."},
             {"Error Message": "Invalid API call."},
         ]
         with mock.patch.object(market_client, "get_connector_http_session", return_value=None), mock.patch.object(market_client.requests, "get", return_value=response):
             _, quota_error = market_client._alpha_vantage_get({"symbol": "SPY"})
+            _, burst_error = market_client._alpha_vantage_get({"symbol": "SPY"})
             _, symbol_error = market_client._alpha_vantage_get({"symbol": "BAD"})
         self.assertEqual(quota_error, "daily_rate_limit")
+        self.assertEqual(burst_error, "rate_limited")
         self.assertEqual(symbol_error, "invalid_symbol")
 
     def test_partial_fresh_cache_preserves_symbol_failure_reason(self) -> None:

@@ -269,6 +269,9 @@ def _alpha_vantage_get(params: dict[str, str]) -> tuple[dict[str, Any] | None, s
     provider_message = note if isinstance(note, str) else information if isinstance(information, str) else ""
     normalized_message = provider_message.casefold()
     if provider_message:
+        # Alpha Vantage burst notices also cite the daily quota, so they must be matched first.
+        if any(fragment in normalized_message for fragment in ("per second", "sparingly", "burst")):
+            return None, "rate_limited"
         if "25 requests per day" in normalized_message or "daily" in normalized_message and "limit" in normalized_message:
             return None, "daily_rate_limit"
         if any(fragment in normalized_message for fragment in ("rate limit", "call frequency", "api call volume")):
