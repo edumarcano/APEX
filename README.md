@@ -163,10 +163,12 @@ Select a local model in Runtime Settings to keep briefing prompts on the configu
 | [Architecture](docs/architecture.md) | Understand processes, runtime paths, state ownership, data boundaries, concurrency, and failure behavior |
 | [API](docs/api.md) | Use the public HTTP workflows and understand their behavioral contracts |
 | [CLI](docs/cli.md) | Use the running local backend from a terminal without duplicating backend logic |
+| [Context Vault](docs/context-vault.md) | Manage, export, and safely synchronize selected personal knowledge with local Markdown vaults |
 | [Engineering Decisions](docs/decisions.md) | Understand why important technical choices and trade-offs were made |
 | [Identity and Naming](docs/identity-and-naming.md) | Understand the APEX name, logo symbolism, product vocabulary, and Apex Agent |
 | [Privacy](docs/privacy.md) | See what stays local, what can leave the machine, and what is persisted |
 | [Design System](docs/design-system.md) | Preserve the HUD's visual language, state semantics, responsiveness, and accessibility |
+| [Speech Runtime](docs/speech-runtime.md) | Understand voice modes, engine fallback, speech caching, and audio playback |
 | [Roadmap](docs/roadmap.md) | Follow APEX's product and architectural evolution and its planned direction |
 | [Changelog](CHANGELOG.md) | Review the detailed record of released changes |
 | [Frontend Guide](frontend/README.md) | Work specifically in the React/TypeScript application |

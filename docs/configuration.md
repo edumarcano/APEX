@@ -20,7 +20,7 @@ Current default model mapping is `apex` -> `deepseek/deepseek-v4-flash-0731`; `s
 
 Optional `user_designation` and `agent_display_name` are machine-local personalization fields stored only in `config.local.json`. An empty `agent_display_name` keeps the default visible name Apex Agent.
 
-Overview, Briefing, and Cortex share this model selection. Overview and Briefing apply per-turn overrides: the lowest supported cloud effort, or a 16K local context with reasoning disabled. Those overrides never change saved Cortex preferences.
+Briefing and Cortex share this model selection; Overview is telemetry-first and runs no model. Briefing follow-ups use the saved cloud reasoning effort, or the saved local context window and reasoning mode; these per-turn values are ephemeral and never modify saved Cortex settings.
 
 ## Context vault selection
 
@@ -176,6 +176,22 @@ When `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is unset, tracing is disabled with zer
 ## Privacy and development modes
 
 Personal context is off by default for both runtimes. Sandbox mode is available only in `DEV_MODE`, uses a restricted non-personal tool allowlist, and stores conversation history in the sandbox partition. `DEMO_MODE` takes precedence for demo paths and does not contact configured providers.
+
+## Voice settings
+
+Runtime Settings configures text-to-speech engine selection, voice gender, and delivery mode:
+
+```json
+{
+  "tts_settings": {
+    "primary_tts": "pyttsx3",
+    "voice_gender": "female",
+    "voice_mode": "automatic"
+  }
+}
+```
+
+The settings API exposes these under `voice` with `engine` (`google`, `pyttsx3`, or `kokoro`), `gender` (`female` or `male`), and `mode` (`automatic`, `manual`, or `off`). In automatic mode, APEX can speak short contextual telemetry cues; manual and off modes suppress telemetry cues while keeping briefing highlights and explicit speech endpoints available. For installation, fallback behavior, Kokoro hardware gates, and speech caching, see the [Speech runtime guide](speech-runtime.md).
 
 ## Market data
 

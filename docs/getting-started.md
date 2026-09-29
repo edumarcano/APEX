@@ -215,4 +215,6 @@ If Gmail or Calendar scopes change, remove the local `token.json` and authorize 
 - [Configuration](configuration.md) for all settings and provider boundaries
 - [Architecture](architecture.md) for runtime ownership and failure behavior
 - [Privacy](privacy.md) before enabling personal data or cloud processing
+- [Speech Runtime](speech-runtime.md) for local and cloud voice options
+- [Context Vault](context-vault.md) for managing personal knowledge exports
 - [API](api.md) for manual HTTP workflows

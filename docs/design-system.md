@@ -168,7 +168,7 @@ Cortex shows the Apex Agent (or a local display name when set) with one model se
 
 Keep the Cortex heading visible when opening a conversation. The conversation rail keeps its heading, New Conversation button, and Active/Archived tabs in place while the list scrolls independently; the compact panel bounds that list rather than stretching the workspace. Programmatic message scrolling stays within the chat viewport.
 
-The selected model determines which reasoning controls, hosted tools, local context options, and lifecycle controls make sense. Overview may offer a smaller Agent trigger; the Briefing follow-up composer may expose its tool selector plus the selected model and supported reasoning choice. Its model menu groups Cloud and Local entries with their marks, availability, and pricing, while reasoning opens as a separate selector. Detailed runtime, context, and lifecycle controls stay in Cortex.
+The selected model determines which reasoning controls, hosted tools, local context options, and lifecycle controls make sense. The Briefing follow-up composer may expose its tool selector plus the selected model and supported reasoning choice. Its model menu groups Cloud and Local entries with their marks, availability, and pricing, while reasoning opens as a separate selector. Detailed runtime, context, and lifecycle controls stay in Cortex.
 
 Treat `Configured` as credentials present but not provider-verified. Display verification and runtime-failure states with text and iconography, not color alone. `Verify access` remains a secondary action for the selected cloud model and must not be nested inside its model-selection button.
 

@@ -530,7 +530,9 @@ class TelemetryApiTests(unittest.TestCase):
         ), mock.patch(
             "core.telemetry.preflight.config.DEMO_MODE", False
         ), mock.patch.dict(
-            "os.environ", {"OPENROUTER_API_KEY": ""}, clear=False
+            "os.environ",
+            {"OPENAI_API_KEY": "", "OPENROUTER_API_KEY": ""},
+            clear=False,
         ):
             response = self.client.post(
                 "/api/v1/preflight",
