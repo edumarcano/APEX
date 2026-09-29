@@ -1,4 +1,4 @@
-"""Focused production-path coverage for beta.2 provider streaming seams."""
+"""Focused production-path coverage for streaming provider responses and tool call handling."""
 
 from __future__ import annotations
 

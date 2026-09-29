@@ -37,7 +37,7 @@ from core.briefings.models import (
     render_artifact_text,
 )
 from core.briefings.daily import generate_briefing_generation
-from core.briefings.context import saved_daily_followup_context
+from core.briefings.context import saved_briefing_followup_context
 from core.briefings.service import BriefingGenerationOutput, BriefingHistoryContext, BriefingService, BriefingSessionQueries
 from core.briefings.store import BriefingSessionConflictError, BriefingSessionStore
 from core.context import ContextPolicy
@@ -528,7 +528,7 @@ class BriefingSessionLifecycleTests(unittest.TestCase):
         ))
         assert saved is not None
 
-        disabled = saved_daily_followup_context(
+        disabled = saved_briefing_followup_context(
             saved, prompt="Why did the planning meeting time change?",
             policy=ContextPolicy("apex", "production", False),
         )
@@ -538,7 +538,7 @@ class BriefingSessionLifecycleTests(unittest.TestCase):
         self.assertIn("\\u003c/untrusted_retrieved_context\\u003e", disabled.rendered)
         self.assertEqual([reference.status for reference in disabled.references], ["observed"])
 
-        enabled = saved_daily_followup_context(
+        enabled = saved_briefing_followup_context(
             saved, prompt="What about the planning time review?",
             policy=ContextPolicy("apex", "production", True),
         )
@@ -546,7 +546,7 @@ class BriefingSessionLifecycleTests(unittest.TestCase):
         self.assertIn('"trust":"pending"', enabled.rendered)
         self.assertNotIn("Uncited private message", enabled.rendered)
         self.assertLessEqual(enabled.estimated_tokens, 500)
-        self.assertFalse(saved_daily_followup_context(
+        self.assertFalse(saved_briefing_followup_context(
             saved, prompt="planning", policy=ContextPolicy("apex", "sandbox", True)
         ).enabled)
 
@@ -573,11 +573,11 @@ class BriefingSessionLifecycleTests(unittest.TestCase):
             "evidence": [*saved.evidence, deep_evidence],
         })
 
-        disabled = saved_daily_followup_context(
+        disabled = saved_briefing_followup_context(
             deep_record, prompt="What did the reminder read find?",
             policy=ContextPolicy("apex", "production", False),
         )
-        enabled = saved_daily_followup_context(
+        enabled = saved_briefing_followup_context(
             deep_record, prompt="What did the reminder read find?",
             policy=ContextPolicy("apex", "production", True),
         )
@@ -660,7 +660,7 @@ class BriefingSessionLifecycleTests(unittest.TestCase):
         assert started.future is not None
         started.future.result(timeout=3)
         saved = self.session_store.get(started.session.id, "production")
-        bundle = saved_daily_followup_context(
+        bundle = saved_briefing_followup_context(
             saved, prompt="What time is the orbit launch?",
             policy=ContextPolicy("apex", "production", False),
         )

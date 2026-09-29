@@ -165,18 +165,7 @@ class BriefingGenerationConfiguration(BaseModel):
     execution_kind: Literal["model", "demo"] = "model"
 
 
-class BriefingSessionGenerateRequest(BaseModel):
-    """Generation request with a constrained caller origin and server-owned limits."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    idempotency_key: UUID
-    profile_id: BriefingProfileId
-    model_id: str = Field(min_length=1, max_length=160)
-    reasoning: str | None = Field(default=None, min_length=1, max_length=32)
-    context_window: int | None = Field(default=None, ge=1)
-    local_reasoning_mode: Literal["none", "focused"] | None = None
-    origin: BriefingOrigin = "hud"
+BriefingSessionGenerateRequest = BriefingGenerationRequest
 
 
 class ExistingRecordReference(BaseModel):

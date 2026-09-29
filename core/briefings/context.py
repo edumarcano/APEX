@@ -98,7 +98,3 @@ def combine_context_bundles(first: ContextBundle, second: ContextBundle) -> Cont
         estimated_tokens=first.estimated_tokens + second.estimated_tokens,
         truncated=first.truncated or second.truncated,
     )
-
-
-# Retained for callers outside the shared briefing router during migration.
-saved_daily_followup_context = saved_briefing_followup_context
