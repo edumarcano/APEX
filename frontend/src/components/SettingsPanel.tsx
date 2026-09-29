@@ -3,24 +3,25 @@ import {
   useId,
   useMemo,
   useRef,
+  useState,
   type KeyboardEvent,
   type MouseEvent,
   type ReactElement,
   type RefObject,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { Settings, X } from 'lucide-react'
+import { Loader2, RotateCcw, Settings, X } from 'lucide-react'
 
-import McpSettingsSection from './McpSettingsSection'
-import CalendarSettingsSection from './CalendarSettingsSection'
-import MicrosoftTodoSettingsSection from './MicrosoftTodoSettingsSection'
-import { FootballTeamsEditor, MarketSymbolsEditor } from './SettingsListEditors'
+import DataSourcesView from './settings/DataSourcesView'
+import IntelligenceView from './settings/IntelligenceView'
+import IntegrationsView from './settings/IntegrationsView'
+import VoiceAudioView from './settings/VoiceAudioView'
+import SystemStatusView from './settings/SystemStatusView'
 import {
-  SectionHeading,
-  SettingsSelect,
-  SettingsToggle,
-  StatusRow,
-} from './SettingsControls'
+  SETTINGS_CATEGORIES,
+  getCategoryDirtyMap,
+  type SettingsCategoryKey,
+} from './settings/settingsCategories'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useLlamaCppStatus } from '../hooks/useLlamaCppStatus'
 import { useMcpStatus, type McpStatusState } from '../hooks/useMcpStatus'
@@ -31,54 +32,8 @@ import {
   buildSettingsTimingRuntime,
   resolveEffectiveTiming,
 } from '../lib/settings'
-import type {
-  ModelCatalogEntry,
-  TtsEngine,
-} from '../types/telemetry'
-import type {
-  RuntimeSettings,
-  SettingsResponse,
-  VoiceGender,
-  VoiceMode,
-} from '../types/settings'
-
-const FEATURE_CONTROLS: readonly {
-  key: keyof RuntimeSettings['features']
-  label: string
-}[] = [
-  { key: 'weather', label: 'Weather' },
-  { key: 'sports', label: 'Sports' },
-  { key: 'news', label: 'News' },
-  { key: 'email', label: 'Email' },
-  { key: 'calendar', label: 'Calendar' },
-  { key: 'market', label: 'Market' },
-]
-
-const MODULE_CONTROLS: readonly {
-  key: keyof RuntimeSettings['modules']
-  label: string
-}[] = [
-  { key: 'f1', label: 'Formula 1' },
-  { key: 'football', label: 'Football' },
-]
-
-
-const ENGINE_OPTIONS: readonly { value: TtsEngine; label: string }[] = [
-  { value: 'google', label: 'Google' },
-  { value: 'pyttsx3', label: 'pyttsx3' },
-  { value: 'kokoro', label: 'Kokoro' },
-]
-
-const GENDER_OPTIONS: readonly { value: VoiceGender; label: string }[] = [
-  { value: 'female', label: 'Female' },
-  { value: 'male', label: 'Male' },
-]
-
-const VOICE_MODE_OPTIONS: readonly { value: VoiceMode; label: string }[] = [
-  { value: 'automatic', label: 'Automatic' },
-  { value: 'manual', label: 'Manual' },
-  { value: 'off', label: 'Off' },
-]
+import type { ModelCatalogEntry } from '../types/telemetry'
+import type { RuntimeSettings, SettingsResponse } from '../types/settings'
 
 interface SettingsPanelProps {
   open: boolean
@@ -94,64 +49,6 @@ interface SettingsPanelProps {
   hasTelemetryEvidence: boolean
   onApplied: (response: SettingsResponse, previousSettings: RuntimeSettings) => void
   mcpRuntime?: McpStatusState
-}
-
-
-function resolveConnectorStatus(
-  connectorKey: string,
-  enabled: boolean,
-  failedConnectors: string[],
-  hasTelemetryEvidence: boolean,
-): { value: string; tone: 'neutral' | 'ok' | 'warn' | 'error' } {
-  if (!enabled) {
-    return { value: 'Disabled', tone: 'neutral' }
-  }
-  if (connectorKey === 'market') {
-    return { value: 'Enabled', tone: 'ok' }
-  }
-  if (!hasTelemetryEvidence) {
-    return { value: 'Not yet checked', tone: 'neutral' }
-  }
-
-  const failedSet = new Set(failedConnectors.map((id) => id.trim().toLowerCase()))
-  const aliases =
-    connectorKey === 'sports'
-      ? ['sports', 'sports_f1', 'sports_football']
-      : [connectorKey]
-
-  if (aliases.some((alias) => failedSet.has(alias))) {
-    return { value: 'Failed last refresh', tone: 'error' }
-  }
-  return { value: 'Clear last refresh', tone: 'ok' }
-}
-
-function describeLlamaCppServerStatus(runtime: {
-  status: { state: string } | null
-  loading: boolean
-  unavailable: boolean
-}): string {
-  if (runtime.unavailable) {
-    return 'Status unavailable'
-  }
-  if (!runtime.status) {
-    return runtime.loading ? 'Checking…' : 'Unknown'
-  }
-  switch (runtime.status.state) {
-    case 'disabled':
-      return 'Disabled'
-    case 'external_connected':
-      return 'External server connected'
-    case 'managed_running':
-      return 'Managed server running'
-    case 'starting':
-      return 'Starting managed server'
-    case 'managed_stopped':
-      return 'Managed server stopped'
-    case 'startup_failed':
-      return 'Startup failed'
-    default:
-      return 'Unknown'
-  }
 }
 
 export default function SettingsPanel({
@@ -171,6 +68,9 @@ export default function SettingsPanel({
 }: SettingsPanelProps): ReactElement | null {
   const titleId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const [activeTab, setActiveTab] = useState<SettingsCategoryKey>('data_sources')
+
   const {
     loadStatus,
     loadError,
@@ -182,7 +82,9 @@ export default function SettingsPanel({
     saveError,
     setDraft,
     save,
+    resetDraft,
   } = useSettingsEditor({ open, onApplied })
+
   const polledMcpRuntime = useMcpStatus(open && sharedMcpRuntime === undefined)
   const mcpRuntime = sharedMcpRuntime ?? polledMcpRuntime
   const llamaCppRuntime = useLlamaCppStatus(open)
@@ -214,21 +116,49 @@ export default function SettingsPanel({
   const mcpTiming = resolveEffectiveTiming('mcp', timingRuntime)
   const llamaCppTiming = resolveEffectiveTiming('llama_cpp', timingRuntime)
 
+  const dirtyMap = useMemo(
+    () => getCategoryDirtyMap(baseline, draft),
+    [baseline, draft],
+  )
+
+  const dirtyCategoryLabels = useMemo(
+    () =>
+      SETTINGS_CATEGORIES.filter((c) => dirtyMap[c.key]).map((c) => c.label),
+    [dirtyMap],
+  )
+
+  const dirtyCount = dirtyCategoryLabels.length
+
+  const dirtySummary = useMemo(() => {
+    if (dirtyCount === 0) {
+      return 'All settings in sync with runtime'
+    }
+    return `${dirtyCount} unsaved change${dirtyCount === 1 ? '' : 's'} in ${dirtyCategoryLabels.join(', ')}`
+  }, [dirtyCount, dirtyCategoryLabels])
+
+  const activeCategoryMeta = useMemo(
+    () =>
+      SETTINGS_CATEGORIES.find((c) => c.key === activeTab) ??
+      SETTINGS_CATEGORIES[0],
+    [activeTab],
+  )
+
   const reportFolderStatusMessage = reportFolderAvailability
     ? 'Report folder status is unavailable.'
     : !reportFolderStatus
       ? 'Checking report folder status…'
-      : reportFolderStatus.last_error ?? (reportFolderStatus.state === 'disabled'
-        ? 'Disabled. APEX will not read this folder.'
-        : reportFolderStatus.state === 'demo_mode'
+      : reportFolderStatus.last_error ??
+        (reportFolderStatus.state === 'disabled'
+          ? 'Disabled. APEX will not read this folder.'
+          : reportFolderStatus.state === 'demo_mode'
             ? 'Unavailable in demo mode.'
-          : reportFolderStatus.state === 'not_configured'
-            ? 'Choose an absolute folder path.'
-            : reportFolderStatus.state === 'folder_unavailable'
-              ? 'Folder unavailable. APEX will retry when it scans again.'
-              : reportFolderStatus.state === 'scan_error'
-                ? 'Some files could not be imported; APEX will retry.'
-                : `Ready. Latest scan imported ${reportFolderStatus.last_imported_count} report${reportFolderStatus.last_imported_count === 1 ? '' : 's'}.`)
+            : reportFolderStatus.state === 'not_configured'
+              ? 'Choose an absolute folder path.'
+              : reportFolderStatus.state === 'folder_unavailable'
+                ? 'Folder unavailable. APEX will retry when it scans again.'
+                : reportFolderStatus.state === 'scan_error'
+                  ? 'Some files could not be imported; APEX will retry.'
+                  : `Ready. Latest scan imported ${reportFolderStatus.last_imported_count} report${reportFolderStatus.last_imported_count === 1 ? '' : 's'}.`)
 
   const requestClose = useCallback(() => {
     if (isDirty || saving) {
@@ -261,6 +191,35 @@ export default function SettingsPanel({
     [requestClose],
   )
 
+  const handleTabListKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      const currentIndex = SETTINGS_CATEGORIES.findIndex((c) => c.key === activeTab)
+      if (currentIndex === -1) return
+
+      let nextIndex: number | null = null
+      if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+        event.preventDefault()
+        nextIndex = (currentIndex + 1) % SETTINGS_CATEGORIES.length
+      } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+        event.preventDefault()
+        nextIndex = (currentIndex - 1 + SETTINGS_CATEGORIES.length) % SETTINGS_CATEGORIES.length
+      } else if (event.key === 'Home') {
+        event.preventDefault()
+        nextIndex = 0
+      } else if (event.key === 'End') {
+        event.preventDefault()
+        nextIndex = SETTINGS_CATEGORIES.length - 1
+      }
+
+      if (nextIndex !== null) {
+        const nextKey = SETTINGS_CATEGORIES[nextIndex].key
+        setActiveTab(nextKey)
+        tabRefs.current[nextKey]?.focus()
+      }
+    },
+    [activeTab],
+  )
+
   const handleSave = useCallback(() => {
     void save().then((saved) => {
       if (saved) {
@@ -282,7 +241,10 @@ export default function SettingsPanel({
       cloud: !cortexAgentHydrated
         ? { value: 'Checking…', tone: 'neutral' as const }
         : configuredCloud > 0
-          ? { value: `${configuredCloud} configured · ${verifiedCloud} verified`, tone: verifiedCloud > 0 ? 'ok' as const : 'neutral' as const }
+          ? {
+              value: `${configuredCloud} configured · ${verifiedCloud} verified`,
+              tone: verifiedCloud > 0 ? ('ok' as const) : ('neutral' as const),
+            }
           : { value: 'Not configured', tone: 'error' as const },
       local: !cortexAgentHydrated
         ? { value: 'Checking…', tone: 'neutral' as const }
@@ -298,7 +260,10 @@ export default function SettingsPanel({
                 : 'Unavailable',
               tone: 'error' as const,
             },
-      activeModel: activeLocal?.loaded_model?.model ?? activeLocal?.loaded_model?.name ?? 'None',
+      activeModel:
+        activeLocal?.loaded_model?.model ??
+        activeLocal?.loaded_model?.name ??
+        'None',
     }
   }, [cortexAgentHydrated, modelCatalog])
 
@@ -308,30 +273,42 @@ export default function SettingsPanel({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-md transition-opacity duration-300 motion-reduce:transition-none sm:p-6"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-3 sm:p-6 backdrop-blur-md transition-opacity duration-300 motion-reduce:transition-none"
       onClick={handleBackdropClick}
       role="presentation"
     >
       <div
         ref={dialogRef}
-        className="relative flex max-h-[min(88vh,720px)] w-full max-w-xl flex-col rounded-2xl border border-white/10 hud-glass p-5 shadow-2xl outline-none transition-all duration-300 motion-reduce:transition-none sm:p-6"
+        className="hud-corner-brackets hud-glass relative flex h-[82vh] max-h-[820px] min-h-[480px] w-full max-w-5xl flex-col rounded-2xl border border-white/10 p-4 sm:p-6 shadow-2xl outline-none transition-all duration-300 motion-reduce:transition-none"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={handleDialogKeyDown}
       >
-        <header className="mb-4 flex shrink-0 items-center justify-between gap-4">
+        <span className="hud-corner-bl" aria-hidden />
+        <span className="hud-corner-br" aria-hidden />
+
+        {/* Modal Header */}
+        <header className="mb-4 flex shrink-0 items-center justify-between gap-4 border-b border-white/10 pb-3">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="inline-flex size-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-[color:var(--hud-accent)]">
+            <span className="hud-icon-badge size-8 text-[color:var(--hud-accent)]">
               <Settings className="size-4" strokeWidth={2} aria-hidden="true" />
             </span>
-            <h2
-              id={titleId}
-              className="font-orbitron text-sm font-semibold tracking-[0.12em] text-[color:var(--hud-text)]"
-            >
-              Runtime Settings
-            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2
+                id={titleId}
+                className="font-orbitron text-sm font-semibold tracking-[0.14em] text-[color:var(--hud-text)] uppercase"
+              >
+                Runtime Settings
+              </h2>
+              <span className="font-mono text-xs text-zinc-500" aria-hidden="true">
+                //
+              </span>
+              <span className="font-orbitron text-xs tracking-[0.12em] text-[color:var(--hud-accent)] uppercase">
+                {activeCategoryMeta.label}
+              </span>
+            </div>
           </div>
           <button
             type="button"
@@ -343,495 +320,208 @@ export default function SettingsPanel({
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1 scrollbar-thin">
-          {loadStatus === 'loading' || loadStatus === 'idle' ? (
-            <div className="space-y-2 py-6" aria-busy="true" aria-live="polite">
-              <div className="h-3 w-full animate-pulse rounded bg-white/5" />
-              <div className="h-3 w-5/6 animate-pulse rounded bg-white/5" />
-              <div className="h-3 w-4/5 animate-pulse rounded bg-white/5" />
+        {/* Two-Pane Body Container */}
+        <div className="flex flex-1 min-h-0 flex-col lg:flex-row gap-4 lg:gap-6 overflow-hidden">
+          {/* Category Navigation Rail (horizontal scroll strip on <lg, vertical rail on >=lg) */}
+          <nav
+            role="tablist"
+            aria-label="Settings categories"
+            onKeyDown={handleTabListKeyDown}
+            className="flex shrink-0 flex-row lg:flex-col gap-1.5 overflow-x-auto lg:overflow-x-visible border-b lg:border-b-0 lg:border-r border-white/10 pb-2.5 lg:pb-0 lg:pr-4 w-full lg:w-60 scrollbar-thin"
+          >
+            <div className="hidden lg:block mb-1 px-2 font-mono text-[9px] uppercase tracking-[0.2em] text-zinc-500">
+              Categories
             </div>
-          ) : null}
-
-          {loadStatus === 'error' ? (
-            <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200" role="alert">
-              {loadError ?? 'Failed to load settings.'}
-            </p>
-          ) : null}
-
-          {loadStatus === 'ready' && draft ? (
-            <>
-              <section className="space-y-2.5" aria-labelledby={`${titleId}-data`}>
-                <SectionHeading id={`${titleId}-data`} title="Data Sources" />
-                <div className="space-y-2">
-                  {FEATURE_CONTROLS.map((control) => (
-                    <div key={control.key} className="space-y-2">
-                      <SettingsToggle
-                        id={`settings-feature-${control.key}`}
-                        label={control.label}
-                        checked={draft.features[control.key]}
-                        timing={control.key === 'market' ? marketTiming : featuresTiming}
-                        onChange={(next) =>
-                          setDraft((prev) => ({
-                            ...prev,
-                            features: { ...prev.features, [control.key]: next },
-                          }))
-                        }
-                      />
-                      {control.key === 'sports' ? (
-                        <div className="ml-3 space-y-2 border-l border-white/10 pl-3">
-                          {MODULE_CONTROLS.map((module) => (
-                            <div key={module.key} className="space-y-2">
-                              <SettingsToggle
-                                id={`settings-module-${module.key}`}
-                                label={module.label}
-                                checked={draft.modules[module.key]}
-                                disabled={!draft.features.sports}
-                                timing={modulesTiming}
-                                onChange={(next) =>
-                                  setDraft((prev) => ({
-                                    ...prev,
-                                    modules: { ...prev.modules, [module.key]: next },
-                                  }))
-                                }
-                              />
-                              {module.key === 'football' ? (
-                                <FootballTeamsEditor
-                                  teams={draft.football.teams}
-                                  disabled={!draft.features.sports || !draft.modules.football}
-                                  onChange={(teams) =>
-                                    setDraft((prev) => ({
-                                      ...prev,
-                                      football: { teams },
-                                    }))
-                                  }
-                                />
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                      {control.key === 'market' ? (
-                        <div className="ml-3 border-l border-white/10 pl-3">
-                          <MarketSymbolsEditor
-                            symbols={draft.market.symbols}
-                            disabled={!draft.features.market}
-                            onChange={(symbols) =>
-                              setDraft((prev) => ({
-                                ...prev,
-                                market: { symbols },
-                              }))
-                            }
-                          />
-                        </div>
-                      ) : null}
-                      {control.key === 'calendar' ? (
-                        <CalendarSettingsSection
-                          sectionId={`${titleId}-calendar`}
-                          enabled={draft.features.calendar}
-                          settings={draft.calendar}
-                          timing={calendarTiming}
-                          onChange={(calendar) =>
-                            setDraft((prev) => ({ ...prev, calendar }))
-                          }
-                        />
-                      ) : null}
+            {SETTINGS_CATEGORIES.map((cat) => {
+              const isSelected = activeTab === cat.key
+              const isCategoryDirty = dirtyMap[cat.key]
+              const Icon = cat.icon
+              return (
+                <button
+                  key={cat.key}
+                  ref={(el) => {
+                    tabRefs.current[cat.key] = el
+                  }}
+                  id={`settings-tab-${cat.key}`}
+                  role="tab"
+                  aria-selected={isSelected}
+                  aria-controls={`settings-tabpanel-${cat.key}`}
+                  tabIndex={isSelected ? 0 : -1}
+                  onClick={() => setActiveTab(cat.key)}
+                  className={`group relative flex shrink-0 items-center justify-between rounded-lg lg:rounded-xl border px-3 py-1.5 lg:p-2.5 text-left transition-all duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] ${
+                    isSelected
+                      ? 'border-[color:var(--hud-accent)]/50 bg-[color:var(--hud-accent)]/15 text-white shadow-[0_0_16px_rgba(15,77,184,0.2)]'
+                      : 'border-white/5 bg-white/[0.02] text-zinc-400 hover:border-white/15 hover:bg-white/[0.05] hover:text-zinc-200'
+                  }`}
+                >
+                  <div className="flex min-w-0 items-center gap-2 lg:gap-3">
+                    <span
+                      className={`hud-icon-badge size-6 lg:size-8 shrink-0 transition-colors ${
+                        isSelected
+                          ? 'border-[color:var(--hud-accent)]/40 bg-[color:var(--hud-accent)]/20 text-white'
+                          : 'text-zinc-400 group-hover:text-zinc-200'
+                      }`}
+                    >
+                      <Icon className="size-3 lg:size-4" aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="font-orbitron text-xs font-semibold uppercase tracking-[0.12em] whitespace-nowrap lg:whitespace-normal truncate">
+                        {cat.label}
+                      </div>
+                      <div className="hidden lg:block font-mono text-[10px] text-zinc-500 truncate group-hover:text-zinc-400">
+                        {cat.description}
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </section>
-
-              <section className="space-y-2.5" aria-labelledby={`${titleId}-personalization`}>
-                <SectionHeading id={`${titleId}-personalization`} title="Personalization" />
-                <div className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2.5">
-                  <label
-                    htmlFor="settings-user-designation"
-                    className="text-xs tracking-wide text-[color:var(--hud-text)]"
-                  >
-                    User designation
-                  </label>
-                  <input
-                    id="settings-user-designation"
-                    type="text"
-                    value={draft.user_designation}
-                    maxLength={80}
-                    placeholder="Optional"
-                    aria-describedby={`${titleId}-designation-help`}
-                    onChange={(event) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        user_designation: event.target.value,
-                      }))
-                    }
-                    className="hud-command-surface mt-1.5 w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
-                  />
-                  <p
-                    id={`${titleId}-designation-help`}
-                    className="mt-1.5 text-[11px] leading-relaxed text-zinc-500"
-                  >
-                    Optional. APEX uses it when addressing you in future requests and briefings.
-                  </p>
-                </div>
-                <div className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2.5">
-                  <label
-                    htmlFor="settings-agent-display-name"
-                    className="text-xs tracking-wide text-[color:var(--hud-text)]"
-                  >
-                    Agent name
-                  </label>
-                  <input
-                    id="settings-agent-display-name"
-                    type="text"
-                    value={draft.agent_display_name}
-                    maxLength={80}
-                    placeholder="Apex Agent"
-                    aria-describedby={`${titleId}-agent-name-help`}
-                    onChange={(event) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        agent_display_name: event.target.value,
-                      }))
-                    }
-                    className="hud-command-surface mt-1.5 w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
-                  />
-                  <p
-                    id={`${titleId}-agent-name-help`}
-                    className="mt-1.5 text-[11px] leading-relaxed text-zinc-500"
-                  >
-                    Optional local name for the Apex Agent in Cortex, the CLI, and assistant replies. Leave blank for Apex Agent.
-                  </p>
-                </div>
-              </section>
-
-              <section className="space-y-2.5" aria-labelledby={`${titleId}-agent-queries`}>
-                <SectionHeading id={`${titleId}-agent-queries`} title="Agent queries" />
-                <div className="space-y-2">
-                  <SettingsToggle
-                    id="settings-agent-queries-enabled"
-                    label="Agent queries enabled"
-                    checked={draft.ask_apex.enabled}
-                    timing={agentQueriesTiming}
-                    onChange={(next) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        ask_apex: { ...prev.ask_apex, enabled: next },
-                      }))
-                    }
-                  />
-                </div>
-              </section>
-
-              <section className="space-y-2.5" aria-labelledby={`${titleId}-llama-cpp`}>
-                <SectionHeading id={`${titleId}-llama-cpp`} title="llama.cpp" />
-                <div className="space-y-2">
-                  <SettingsToggle
-                    id="settings-llama-cpp-enabled"
-                    label="Enable llama.cpp"
-                    checked={draft.llama_cpp.enabled}
-                    timing={llamaCppTiming}
-                    onChange={(next) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        llama_cpp: { ...prev.llama_cpp, enabled: next },
-                      }))
-                    }
-                  />
-                  <SettingsToggle
-                    id="settings-llama-cpp-managed"
-                    label="Manage server automatically"
-                    checked={draft.llama_cpp.managed}
-                    timing={llamaCppTiming}
-                    onChange={(next) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        llama_cpp: { ...prev.llama_cpp, managed: next },
-                      }))
-                    }
-                  />
-                  <div>
-                    <label
-                      htmlFor="settings-llama-cpp-host"
-                      className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500"
-                    >
-                      Router URL
-                    </label>
-                    <input
-                      id="settings-llama-cpp-host"
-                      type="url"
-                      inputMode="url"
-                      value={draft.llama_cpp.host}
-                      placeholder="http://127.0.0.1:8080"
-                      aria-describedby={`${titleId}-llama-cpp-help`}
-                      onChange={(event) =>
-                        setDraft((prev) => ({
-                          ...prev,
-                          llama_cpp: { ...prev.llama_cpp, host: event.target.value },
-                        }))
-                      }
-                      className="hud-command-surface mt-1.5 w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-1.5 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
-                    />
-                    <p
-                      id={`${titleId}-llama-cpp-help`}
-                      className="mt-1.5 text-[11px] leading-relaxed text-zinc-500"
-                    >
-                      External mode uses a loopback router you start yourself. Managed mode
-                      starts your installed llama-server when the router is unreachable.
-                      APEX does not install llama.cpp or download model weights.
-                    </p>
                   </div>
-                  {draft.llama_cpp.managed ? (
-                    <>
-                      <div>
-                        <label
-                          htmlFor="settings-llama-cpp-executable"
-                          className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500"
-                        >
-                          Executable path
-                        </label>
-                        <input
-                          id="settings-llama-cpp-executable"
-                          type="text"
-                          value={draft.llama_cpp.executable_path}
-                          placeholder="C:\path\to\llama-server.exe"
-                          onChange={(event) =>
-                            setDraft((prev) => ({
-                              ...prev,
-                              llama_cpp: {
-                                ...prev.llama_cpp,
-                                executable_path: event.target.value,
-                              },
-                            }))
-                          }
-                          className="hud-command-surface mt-1.5 w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-1.5 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
-                        />
-                      </div>
-                      <div>
-                        <label
-                          htmlFor="settings-llama-cpp-preset"
-                          className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500"
-                        >
-                          Preset path
-                        </label>
-                        <input
-                          id="settings-llama-cpp-preset"
-                          type="text"
-                          value={draft.llama_cpp.preset_path}
-                          placeholder="C:\path\to\llama-cpp-apex-local-models.preset.ini"
-                          onChange={(event) =>
-                            setDraft((prev) => ({
-                              ...prev,
-                              llama_cpp: {
-                                ...prev.llama_cpp,
-                                preset_path: event.target.value,
-                              },
-                            }))
-                          }
-                          className="hud-command-surface mt-1.5 w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-1.5 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
-                        />
-                      </div>
-                    </>
-                  ) : null}
-                  <StatusRow
-                    label="Server"
-                    value={describeLlamaCppServerStatus(llamaCppRuntime)}
-                  />
-                  {llamaCppRuntime.status?.state === 'startup_failed' &&
-                  llamaCppRuntime.status.last_error ? (
-                    <p className="text-[11px] leading-relaxed text-rose-300/90">
-                      {llamaCppRuntime.status.last_error}
-                    </p>
-                  ) : null}
-                </div>
-              </section>
 
-              <McpSettingsSection
-                sectionId={`${titleId}-mcp`}
-                baseline={baseline?.mcp ?? null}
-                draft={draft.mcp}
-                timing={mcpTiming}
-                runtime={mcpRuntime}
-                onChange={(updater) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    mcp: updater(prev.mcp),
-                  }))
-                }
-              />
-
-              <MicrosoftTodoSettingsSection
-                sectionId={`${titleId}-microsoft-todo`}
-                runtime={microsoftTodoRuntime}
-                reminderListId={draft.microsoft_todo.reminder_list_id}
-                onReminderListIdChange={(reminder_list_id) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    microsoft_todo: { ...prev.microsoft_todo, reminder_list_id },
-                  }))
-                }
-              />
-
-              <section className="space-y-2.5" aria-labelledby={`${titleId}-activity-report-folder`}>
-                <SectionHeading id={`${titleId}-activity-report-folder`} title="Local report folder" />
-                <div className="space-y-2">
-                  <SettingsToggle
-                    id="settings-activity-report-folder-enabled"
-                    label="Enable report folder"
-                    checked={draft.activity_report_folder.enabled}
-                    timing="Active"
-                    onChange={(next) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        activity_report_folder: { ...prev.activity_report_folder, enabled: next },
-                      }))
-                    }
-                  />
-                  <div>
-                    <label htmlFor="settings-activity-report-folder-path" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">
-                      Absolute folder path
-                    </label>
-                    <input
-                      id="settings-activity-report-folder-path"
-                      type="text"
-                      autoComplete="off"
-                      spellCheck={false}
-                      value={draft.activity_report_folder.folder_path}
-                      placeholder="C:\\Users\\you\\AppData\\Local\\APEX\\activity-report-folder"
-                      onChange={(event) => setDraft((prev) => ({
-                        ...prev,
-                        activity_report_folder: { ...prev.activity_report_folder, folder_path: event.target.value },
-                      }))}
-                      className="hud-command-surface mt-1.5 w-full rounded-md border border-white/10 bg-zinc-950 px-2.5 py-1.5 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)]"
-                    />
-                  </div>
-                  <div className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-1">
-                    <StatusRow label="Report folder" value={reportFolderStatusMessage} tone={reportFolderStatus?.state === 'ready' ? 'ok' : reportFolderStatus?.state === 'disabled' ? 'neutral' : 'warn'} />
-                  </div>
-                  <p className="text-[11px] leading-relaxed text-zinc-500">
-                    APEX polls this folder every minute and leaves files untouched. Place each completed version-one {`{"client_id":"source-id","report":{...}}`} envelope in a top-level .json file. The source ID is claimed attribution, not authentication.
-                  </p>
-                </div>
-              </section>
-
-              <section className="space-y-2.5" aria-labelledby={`${titleId}-voice`}>
-                <SectionHeading id={`${titleId}-voice`} title="Voice" />
-                <div className="space-y-2">
-                  <SettingsSelect
-                    id="settings-voice-mode"
-                    label="Mode"
-                    value={draft.voice.mode}
-                    options={VOICE_MODE_OPTIONS}
-                    timing={voiceTiming}
-                    onChange={(next) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        voice: { ...prev.voice, mode: next },
-                      }))
-                    }
-                  />
-                  <SettingsSelect
-                    id="settings-voice-engine"
-                    label="Engine"
-                    value={draft.voice.engine}
-                    options={ENGINE_OPTIONS}
-                    timing={voiceTiming}
-                    onChange={(next) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        voice: { ...prev.voice, engine: next },
-                      }))
-                    }
-                  />
-                  <SettingsSelect
-                    id="settings-voice-gender"
-                    label="Gender"
-                    value={draft.voice.gender}
-                    options={GENDER_OPTIONS}
-                    timing={voiceTiming}
-                    onChange={(next) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        voice: { ...prev.voice, gender: next },
-                      }))
-                    }
-                  />
-                </div>
-              </section>
-
-              <section className="space-y-2.5" aria-labelledby={`${titleId}-runtime`}>
-                <SectionHeading id={`${titleId}-runtime`} title="Runtime Status" />
-                <div className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-1">
-                  <StatusRow
-                    label="Backend"
-                    value="Reachable"
-                    tone="ok"
-                  />
-                  <StatusRow
-                    label="Cloud models"
-                    value={providerRows.cloud.value}
-                    tone={providerRows.cloud.tone}
-                  />
-                  <StatusRow
-                    label="Local models"
-                    value={providerRows.local.value}
-                    tone={providerRows.local.tone}
-                  />
-                  <StatusRow label="Active local model" value={providerRows.activeModel} />
-                  {FEATURE_CONTROLS.map((control) => {
-                    const connectorStatus = resolveConnectorStatus(
-                      control.key,
-                      baseline?.features[control.key] ?? false,
-                      failedConnectors,
-                      hasTelemetryEvidence,
-                    )
-                    return (
-                      <StatusRow
-                        key={`status-${control.key}`}
-                        label={control.label}
-                        value={connectorStatus.value}
-                        tone={connectorStatus.tone}
-                      />
-                    )
-                  })}
-                  <StatusRow
-                    label="DEV_MODE"
-                    value={envelope?.dev_mode_active ? 'Active (read-only)' : 'Off'}
-                    tone={envelope?.dev_mode_active ? 'warn' : 'neutral'}
-                  />
-                  <StatusRow
-                    label="DEMO_MODE"
-                    value={envelope?.demo_mode_active ? 'Active (read-only)' : 'Off'}
-                    tone={envelope?.demo_mode_active ? 'warn' : 'neutral'}
-                  />
-                  <StatusRow
-                    label="Local override"
-                    value={
-                      envelope?.local_override_active
-                        ? 'Active (config.local.json)'
-                        : envelope?.local_file_present
-                          ? 'File present, inactive'
-                          : 'None'
-                    }
-                    tone={envelope?.local_override_active ? 'ok' : 'neutral'}
-                  />
-                  {envelope?.load_warning ? (
-                    <StatusRow
-                      label="Load warning"
-                      value={envelope.load_warning}
-                      tone="warn"
+                  {isCategoryDirty ? (
+                    <span
+                      className="size-2 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.9)] animate-pulse shrink-0 ml-2"
+                      aria-label="Unsaved changes in category"
+                      title="Unsaved changes in this category"
                     />
                   ) : null}
-                </div>
-              </section>
-            </>
-          ) : null}
+                </button>
+              )
+            })}
+          </nav>
+
+          {/* Right Content Canvas */}
+          <div
+            id={`settings-tabpanel-${activeTab}`}
+            role="tabpanel"
+            aria-labelledby={`settings-tab-${activeTab}`}
+            tabIndex={0}
+            className="flex-1 min-h-0 overflow-y-auto pr-1 sm:pr-2 scrollbar-thin focus-visible:outline-none"
+          >
+            {loadStatus === 'loading' || loadStatus === 'idle' ? (
+              <div className="space-y-3 py-6" aria-busy="true" aria-live="polite">
+                <div className="h-4 w-full animate-pulse rounded bg-white/5" />
+                <div className="h-4 w-5/6 animate-pulse rounded bg-white/5" />
+                <div className="h-4 w-4/5 animate-pulse rounded bg-white/5" />
+              </div>
+            ) : null}
+
+            {loadStatus === 'error' ? (
+              <p
+                className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200"
+                role="alert"
+              >
+                {loadError ?? 'Failed to load settings.'}
+              </p>
+            ) : null}
+
+            {loadStatus === 'ready' && draft ? (
+              <>
+                {activeTab === 'data_sources' ? (
+                  <DataSourcesView
+                    titleId={titleId}
+                    draft={draft}
+                    setDraft={setDraft}
+                    featuresTiming={featuresTiming}
+                    marketTiming={marketTiming}
+                    calendarTiming={calendarTiming}
+                    modulesTiming={modulesTiming}
+                  />
+                ) : null}
+
+                {activeTab === 'intelligence' ? (
+                  <IntelligenceView
+                    titleId={titleId}
+                    draft={draft}
+                    setDraft={setDraft}
+                    agentQueriesTiming={agentQueriesTiming}
+                    llamaCppTiming={llamaCppTiming}
+                    llamaCppRuntime={llamaCppRuntime}
+                  />
+                ) : null}
+
+                {activeTab === 'integrations' ? (
+                  <IntegrationsView
+                    titleId={titleId}
+                    baseline={baseline}
+                    draft={draft}
+                    setDraft={setDraft}
+                    mcpTiming={mcpTiming}
+                    mcpRuntime={mcpRuntime}
+                    microsoftTodoRuntime={microsoftTodoRuntime}
+                    reportFolderStatusMessage={reportFolderStatusMessage}
+                    reportFolderStatus={reportFolderStatus}
+                  />
+                ) : null}
+
+                {activeTab === 'voice_audio' ? (
+                  <VoiceAudioView
+                    titleId={titleId}
+                    draft={draft}
+                    setDraft={setDraft}
+                    voiceTiming={voiceTiming}
+                  />
+                ) : null}
+
+                {activeTab === 'system_status' ? (
+                  <SystemStatusView
+                    titleId={titleId}
+                    envelope={envelope}
+                    baseline={baseline}
+                    providerRows={providerRows}
+                    failedConnectors={failedConnectors}
+                    hasTelemetryEvidence={hasTelemetryEvidence}
+                  />
+                ) : null}
+              </>
+            ) : null}
+          </div>
         </div>
 
-        <footer className="mt-4 flex shrink-0 flex-col gap-2 border-t border-white/10 pt-4">
-          {saveError ? (
-            <p className="text-[11px] text-red-300" role="alert">
-              {saveError}
-            </p>
-          ) : null}
-          <div className="flex items-center justify-end gap-2">
+        {/* Modal Footer */}
+        <footer className="mt-4 flex shrink-0 flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-white/10 pt-4">
+          {/* Status / Error Summary */}
+          <div className="flex flex-col gap-1 min-w-0">
+            {saveError ? (
+              <p
+                className="rounded border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs text-red-200"
+                role="alert"
+              >
+                {saveError}
+              </p>
+            ) : null}
+            <div className="flex items-center gap-2">
+              {isDirty ? (
+                <>
+                  <span
+                    className="size-2 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.9)] animate-pulse shrink-0"
+                    aria-hidden="true"
+                  />
+                  <span className="font-mono text-xs text-amber-200/90 truncate">
+                    {dirtySummary}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span
+                    className="size-1.5 rounded-full bg-emerald-400/80 shrink-0"
+                    aria-hidden="true"
+                  />
+                  <span className="font-mono text-xs text-zinc-500">
+                    All settings in sync with runtime
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+            <button
+              type="button"
+              onClick={resetDraft}
+              disabled={!isDirty || saving || loadStatus !== 'ready'}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 font-mono text-[11px] tracking-[0.08em] text-[color:var(--hud-text)] uppercase transition-colors hover:border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <RotateCcw className="size-3" aria-hidden="true" />
+              <span>Reset Draft</span>
+            </button>
             <button
               type="button"
               onClick={requestClose}
@@ -843,9 +533,17 @@ export default function SettingsPanel({
               type="button"
               onClick={handleSave}
               disabled={!isDirty || saving || loadStatus !== 'ready'}
-              className="rounded-lg border border-[color:var(--hud-accent)]/40 bg-[color:var(--hud-accent)]/20 px-3 py-1.5 font-mono text-[11px] tracking-[0.08em] text-[color:var(--hud-text)] uppercase transition-colors hover:bg-[color:var(--hud-accent)]/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Save changes"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--hud-accent)]/40 bg-[color:var(--hud-accent)]/20 px-3 py-1.5 font-mono text-[11px] tracking-[0.08em] text-[color:var(--hud-text)] uppercase transition-colors hover:bg-[color:var(--hud-accent)]/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--hud-accent)] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {saving ? 'Saving…' : 'Save'}
+              {saving ? (
+                <>
+                  <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+                  <span>Saving…</span>
+                </>
+              ) : (
+                <span>Save Changes</span>
+              )}
             </button>
           </div>
         </footer>

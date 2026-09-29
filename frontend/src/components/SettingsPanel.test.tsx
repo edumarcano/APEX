@@ -124,8 +124,10 @@ describe('SettingsPanel', () => {
 
   it('shows the optional local report folder settings without a client registration control', async () => {
     mockSettingsPanelFetches()
+    const user = userEvent.setup()
     renderPanel()
 
+    await user.click(await screen.findByRole('tab', { name: /integrations/i }))
     expect(await screen.findByRole('switch', { name: 'Enable report folder' })).toHaveAttribute('aria-checked', 'false')
     expect(screen.getByLabelText('Absolute folder path')).toBeInTheDocument()
     expect(screen.queryByLabelText(/client id/i)).not.toBeInTheDocument()
@@ -215,12 +217,114 @@ describe('SettingsPanel', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
+  it('allows tab switching between all five categories with breadcrumb updates', async () => {
+    mockSettingsPanelFetches()
+    const user = userEvent.setup()
+    renderPanel()
+
+    await screen.findByRole('switch', { name: 'Weather' })
+    expect(screen.getByRole('tab', { name: /data sources/i })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('Data Sources', { selector: 'header *' })).toBeVisible()
+
+    // Switch to Intelligence
+    await user.click(screen.getByRole('tab', { name: /intelligence/i }))
+    expect(screen.getByRole('tab', { name: /intelligence/i })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('heading', { name: 'Personalization' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Agent queries' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'llama.cpp' })).toBeVisible()
+
+    // Switch to Integrations
+    await user.click(screen.getByRole('tab', { name: /integrations/i }))
+    expect(screen.getByRole('tab', { name: /integrations/i })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('heading', { name: 'External MCP Tools' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Microsoft To Do' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Local report folder' })).toBeVisible()
+
+    // Switch to Voice & Audio
+    await user.click(screen.getByRole('tab', { name: /voice & audio/i }))
+    expect(screen.getByRole('tab', { name: /voice & audio/i })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('heading', { name: 'Voice' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Operational Notes' })).toBeVisible()
+
+    // Switch to System Status
+    await user.click(screen.getByRole('tab', { name: /system status/i }))
+    expect(screen.getByRole('tab', { name: /system status/i })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('heading', { name: 'Runtime Status' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'AI Providers' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Environment Flags' })).toBeVisible()
+  })
+
+  it('supports keyboard navigation across category tabs', async () => {
+    mockSettingsPanelFetches()
+    const user = userEvent.setup()
+    renderPanel()
+
+    const firstTab = await screen.findByRole('tab', { name: /data sources/i })
+    firstTab.focus()
+
+    await user.keyboard('{ArrowDown}')
+    expect(screen.getByRole('tab', { name: /intelligence/i })).toHaveAttribute('aria-selected', 'true')
+
+    await user.keyboard('{ArrowDown}')
+    expect(screen.getByRole('tab', { name: /integrations/i })).toHaveAttribute('aria-selected', 'true')
+
+    await user.keyboard('{End}')
+    expect(screen.getByRole('tab', { name: /system status/i })).toHaveAttribute('aria-selected', 'true')
+
+    await user.keyboard('{Home}')
+    expect(screen.getByRole('tab', { name: /data sources/i })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('shows category dirty badges and enables reset draft which restores baseline', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
+    const user = userEvent.setup()
+    renderPanel()
+
+    const resetButton = await screen.findByRole('button', { name: /reset draft/i })
+    const saveButton = screen.getByRole('button', { name: /save changes/i })
+    expect(resetButton).toBeDisabled()
+    expect(saveButton).toBeDisabled()
+    expect(screen.getByText('All settings in sync with runtime')).toBeVisible()
+
+    // Edit a Data Sources field
+    const weatherToggle = screen.getByRole('switch', { name: 'Weather' })
+    await user.click(weatherToggle)
+
+    expect(resetButton).toBeEnabled()
+    expect(saveButton).toBeEnabled()
+    expect(screen.getByText(/1 unsaved change in Data Sources/i)).toBeVisible()
+    expect(screen.getByRole('tab', { name: /data sources/i })).toContainElement(
+      screen.getByTitle('Unsaved changes in this category'),
+    )
+
+    // Edit an Intelligence field
+    await user.click(screen.getByRole('tab', { name: /intelligence/i }))
+    const designationInput = screen.getByRole('textbox', { name: 'User designation' })
+    await user.type(designationInput, 'Commander')
+
+    expect(screen.getByText(/2 unsaved changes in Data Sources, Intelligence/i)).toBeVisible()
+
+    // Click Reset Draft
+    await user.click(resetButton)
+
+    expect(resetButton).toBeDisabled()
+    expect(saveButton).toBeDisabled()
+    expect(screen.getByText('All settings in sync with runtime')).toBeVisible()
+    expect(screen.queryByTitle('Unsaved changes in this category')).not.toBeInTheDocument()
+    expect(designationInput).toHaveValue('')
+
+    // Verify Data Sources baseline was restored
+    await user.click(screen.getByRole('tab', { name: /data sources/i }))
+    expect(screen.getByRole('switch', { name: 'Weather' })).toHaveAttribute('aria-checked', 'true')
+  })
+
   it('keeps runtime status bound to persisted settings while editing the draft', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
     const user = userEvent.setup()
     renderPanel()
 
     await user.click(await screen.findByRole('switch', { name: 'Weather' }))
+    await user.click(screen.getByRole('tab', { name: /system status/i }))
     const runtimeSection = screen
       .getByRole('heading', { name: 'Runtime Status' })
       .closest('section')
@@ -236,8 +340,10 @@ describe('SettingsPanel', () => {
 
   it('keeps assistant configuration in Cortex while retaining the global enable switch', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
+    const user = userEvent.setup()
     renderPanel()
 
+    await user.click(await screen.findByRole('tab', { name: /intelligence/i }))
     expect(await screen.findByRole('switch', { name: 'Agent queries enabled' })).toBeVisible()
     expect(screen.queryByLabelText('Agent runtime')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Cloud profile')).not.toBeInTheDocument()
@@ -251,6 +357,7 @@ describe('SettingsPanel', () => {
     const user = userEvent.setup()
     renderPanel({ cortexAgentHydrated: true })
 
+    await user.click(await screen.findByRole('tab', { name: /intelligence/i }))
     expect(await screen.findByRole('heading', { name: 'llama.cpp' })).toBeVisible()
     expect(screen.getByRole('switch', { name: 'Enable llama.cpp' })).toBeVisible()
     expect(
@@ -280,9 +387,10 @@ describe('SettingsPanel', () => {
     const user = userEvent.setup()
     renderPanel()
 
+    await user.click(await screen.findByRole('tab', { name: /intelligence/i }))
     const designation = await screen.findByRole('textbox', { name: 'User designation' })
     await user.type(designation, 'Chief')
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await user.click(screen.getByRole('button', { name: /save changes/i }))
 
     await waitFor(() =>
       expect(
@@ -310,7 +418,7 @@ describe('SettingsPanel', () => {
 
     const weather = await screen.findByRole('switch', { name: 'Weather' })
     await user.click(weather)
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await user.click(screen.getByRole('button', { name: /save changes/i }))
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Write failed.'))
     expect(weather).toHaveAttribute('aria-checked', 'false')
@@ -318,11 +426,14 @@ describe('SettingsPanel', () => {
 
   it('surfaces Market enablement in settings and runtime status', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
+    const user = userEvent.setup()
     renderPanel()
 
     expect(await screen.findByRole('switch', { name: 'Market' })).toBeVisible()
     const market = screen.getByRole('switch', { name: 'Market' }).closest('div')
     expect(market).toHaveTextContent('Active')
+
+    await user.click(screen.getByRole('tab', { name: /system status/i }))
     const runtimeSection = screen.getByRole('heading', { name: 'Runtime Status' }).closest('section')
     expect(runtimeSection).not.toBeNull()
     const marketStatus = within(runtimeSection as HTMLElement).getByText('Market').parentElement
@@ -360,6 +471,7 @@ describe('SettingsPanel', () => {
     const user = userEvent.setup()
     renderPanel()
 
+    await user.click(await screen.findByRole('tab', { name: /integrations/i }))
     const master = await screen.findByRole('switch', { name: 'External MCP tools' })
     const github = screen.getByRole('switch', { name: 'GitHub' })
     expect(github).toBeDisabled()
@@ -367,7 +479,7 @@ describe('SettingsPanel', () => {
     await user.click(master)
     expect(github).toBeEnabled()
     await user.click(github)
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await user.click(screen.getByRole('button', { name: /save changes/i }))
 
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
@@ -410,8 +522,10 @@ describe('SettingsPanel', () => {
           }),
         ),
       )
+    const user = userEvent.setup()
     renderPanel()
 
+    await user.click(await screen.findByRole('tab', { name: /integrations/i }))
     expect(await screen.findByText('Connected')).toBeVisible()
     expect(screen.getByText('github_search_code')).toBeVisible()
     expect(screen.queryByText(/should-never-render/)).not.toBeInTheDocument()
@@ -420,8 +534,10 @@ describe('SettingsPanel', () => {
 
   it('keeps briefing mode persistence out of the visible settings surface', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(buildSettingsResponse()))
+    const user = userEvent.setup()
     renderPanel()
 
+    await user.click(await screen.findByRole('tab', { name: /intelligence/i }))
     await screen.findByRole('switch', { name: 'Agent queries enabled' })
     expect(screen.queryByLabelText('Default mode')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Briefing' })).not.toBeInTheDocument()
