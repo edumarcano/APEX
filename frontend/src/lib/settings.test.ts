@@ -180,7 +180,7 @@ describe('settings cloning and mutations', () => {
     })
   })
 
-  it('resolves the singular Apex Agent from settings', () => {
+  it('resolves the singular APEX Agent from settings', () => {
     expect(resolveAgentKey(BASE_SETTINGS.ask_apex)).toBe('apex')
   })
 

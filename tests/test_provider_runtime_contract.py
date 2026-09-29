@@ -991,7 +991,8 @@ class ResponsesAdapterTests(unittest.TestCase):
 class PublicRosterTests(unittest.TestCase):
     def test_registry_exposes_the_singular_apex_agent(self) -> None:
         self.assertEqual(set(AGENT_SPECS), {"apex"})
-        self.assertEqual(AGENT_SPECS["apex"].display_name, "Apex Agent")
+        self.assertEqual(AGENT_SPECS["apex"].display_name, "Lynx")
+        self.assertEqual(AGENT_SPECS["apex"].canonical_name, "APEX Agent")
 
 
 if __name__ == "__main__":

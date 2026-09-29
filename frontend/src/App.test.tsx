@@ -290,7 +290,7 @@ vi.mock('./hooks/useCortex', () => ({
     cortexContextUsage: null,
     cortexAgent: {
       key: 'apex' as AgentKey,
-      display_name: 'Apex Agent',
+      display_name: 'Lynx',
       description: 'Native assistant.',
       selected_model: 'deepseek/deepseek-v4-flash-0731',
       model_catalog: [{

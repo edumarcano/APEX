@@ -36,7 +36,7 @@ class ModelTokenRates:
 
 @dataclass(frozen=True, slots=True)
 class ProfilePricing:
-    """Catalog pricing shown and estimated for one Apex Agent."""
+    """Catalog pricing shown and estimated for one APEX Agent."""
 
     billing_basis: str
     rates: ModelTokenRates
@@ -90,7 +90,7 @@ def agent_pricing(
     model: str,
     provider: InferenceProvider,
 ) -> ProfilePricing:
-    """Return the authoritative billing basis for an Apex Agent."""
+    """Return the authoritative billing basis for an APEX Agent."""
     if is_local_inference_provider(provider):
         return ProfilePricing("local", _LOCAL_ZERO)
     return ProfilePricing(

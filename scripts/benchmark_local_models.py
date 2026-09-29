@@ -1927,7 +1927,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--llama-candidate",
-        help="One-off llama.cpp model filename or path, without changing the Apex Agent identity.",
+        help="One-off llama.cpp model filename or path, without changing the APEX Agent identity.",
     )
     parser.add_argument(
         "--runtime-alias",

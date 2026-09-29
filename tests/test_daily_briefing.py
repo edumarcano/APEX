@@ -957,7 +957,7 @@ class DailyInputTests(unittest.TestCase):
             maximum_context_window=16_384,
         )
         model_profile = OpenRouterModelProfile(
-            display_name="Apex Agent",
+            display_name="Lynx",
             api_model="deepseek/deepseek-v4-flash-0731",
             max_tool_turns=0,
             max_tool_calls=0,

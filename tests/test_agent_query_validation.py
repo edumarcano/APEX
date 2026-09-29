@@ -1,4 +1,4 @@
-"""Validation and safety boundaries for Apex Agent queries."""
+"""Validation and safety boundaries for APEX Agent queries."""
 
 from __future__ import annotations
 

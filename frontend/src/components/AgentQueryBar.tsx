@@ -93,6 +93,7 @@ export interface AgentQueryBarProps {
   draftPrompt?: string
   onDraftChange?: (value: string) => void
   error?: string | null
+  agentDisplayName?: string
   selectedModelId?: string
   onModelChange?: (modelId: string) => void
   modelCatalog?: ModelCatalogEntry[]
@@ -124,6 +125,7 @@ export function AgentQueryBar({
   selectionReady = true,
   draftPrompt,
   onDraftChange,
+  agentDisplayName = 'Lynx',
   selectedModelId,
   onModelChange,
   modelCatalog,
@@ -175,7 +177,7 @@ export function AgentQueryBar({
     <form onSubmit={handleSubmit} className={formClassName} aria-label="Agent query bar" aria-busy={isSubmitting || submissionPending}>
       <div className="flex min-h-[46px] items-center gap-2 px-2.5 py-1.5">
         <ToolsSelector compact align="left" catalog={catalog} selectedToolNames={selectedToolNames} activeToolProfileId={activeToolProfileId} onSelectionChange={onToolSelectionChange ?? (() => undefined)} onProfileChange={onToolProfileChange ?? (() => undefined)} preflight={toolPreflight} preflightLoading={toolPreflightLoading} catalogError={toolCatalogError} preflightError={toolPreflightError} profileFeedback={toolProfileFeedback} profileError={toolProfileError} disabled={editorDisabled} onSaveProfile={onSaveToolProfile} onDuplicateProfile={onDuplicateToolProfile} onRenameProfile={onRenameToolProfile} onDeleteProfile={onDeleteToolProfile} onRestoreProfile={onRestoreToolProfile} onSetDefaultProfile={onSetDefaultToolProfile} />
-        <input type="text" value={query} onChange={(event) => { draftRef.current = event.target.value; setLocalQuery(event.target.value); onDraftChange?.(event.target.value) }} onKeyDown={handleInputKeyDown} placeholder="Ask APEX" disabled={editorDisabled} className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-zinc-400 outline-none focus:ring-0 px-1" aria-label="Agent query" autoComplete="off" spellCheck={false} />
+        <input type="text" value={query} onChange={(event) => { draftRef.current = event.target.value; setLocalQuery(event.target.value); onDraftChange?.(event.target.value) }} onKeyDown={handleInputKeyDown} placeholder={`Ask ${agentDisplayName?.trim() || 'Lynx'}`} disabled={editorDisabled} className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-zinc-400 outline-none focus:ring-0 px-1" aria-label="Agent query" autoComplete="off" spellCheck={false} />
         {selectedModelId && onModelChange && modelCatalog ? (
           <CompactModelSelector
             selectedModelId={selectedModelId}

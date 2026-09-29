@@ -75,7 +75,7 @@ export default function IntelligenceView({
               type="text"
               value={draft.agent_display_name}
               maxLength={80}
-              placeholder="Apex Agent"
+              placeholder="Lynx"
               aria-describedby={`${titleId}-agent-name-help`}
               onChange={(event) =>
                 setDraft((prev) => ({
@@ -89,7 +89,7 @@ export default function IntelligenceView({
               id={`${titleId}-agent-name-help`}
               className="mt-1.5 text-[11px] leading-relaxed text-zinc-500"
             >
-              Optional local name for the Apex Agent in Cortex, the CLI, and assistant replies. Leave blank for Apex Agent.
+              Optional local name for the APEX Agent in Cortex, the CLI, and assistant replies. Leave blank for Lynx.
             </p>
           </div>
         </div>

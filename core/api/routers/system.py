@@ -11,7 +11,11 @@ from fastapi import APIRouter, HTTPException, status
 
 from core import config, database, scanner
 from core.config import DEMO_MODE, is_dev_mode
-from core.agent.catalog import resolve_agent_display_name, resolve_model_selection
+from core.agent.catalog import (
+    AGENT_SPECS,
+    resolve_agent_display_name,
+    resolve_model_selection,
+)
 from core.settings import (
     SETTINGS_SCHEMA_VERSION,
     LlamaCppServerStatusResponse,
@@ -93,6 +97,7 @@ def get_global_config() -> dict[str, Any]:
         "cortex_initial_selection": {
             "runtime": runtime,
             "agent": "apex",
+            "canonical_name": AGENT_SPECS["apex"].canonical_name,
             "display_name": resolve_agent_display_name(snapshot.agent_display_name),
             "model_id": model_id,
             "effort": effort,

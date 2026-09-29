@@ -167,8 +167,8 @@ describe('ApexAssistantRuntime', () => {
     const onActivityChange = vi.fn()
     render(<ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }} beforeRun={async () => true} onActivityChange={onActivityChange}><ApexAssistantThread /></ApexAssistantRuntime>)
     const user = userEvent.setup()
-    await waitFor(() => expect(screen.getByPlaceholderText('Ask APEX…')).toBeInTheDocument())
-    await user.type(screen.getByPlaceholderText('Ask APEX…'), 'Show my calendar')
+    await waitFor(() => expect(screen.getByPlaceholderText('Ask Lynx…')).toBeInTheDocument())
+    await user.type(screen.getByPlaceholderText('Ask Lynx…'), 'Show my calendar')
     await user.click(screen.getByRole('button', { name: 'Send' }))
     await waitFor(() => expect(document.querySelector('[data-run-id]')).toHaveAttribute('data-run-id', runId))
     send(1, 'model.started', { turn: 1 })
@@ -217,8 +217,8 @@ describe('ApexAssistantRuntime', () => {
         <ApexAssistantThread />
       </ApexAssistantRuntime>,
     )
-    await waitFor(() => expect(screen.getByPlaceholderText('Ask APEX…')).toBeInTheDocument())
-    await user.type(screen.getByPlaceholderText('Ask APEX…'), 'Resync this response')
+    await waitFor(() => expect(screen.getByPlaceholderText('Ask Lynx…')).toBeInTheDocument())
+    await user.type(screen.getByPlaceholderText('Ask Lynx…'), 'Resync this response')
     await user.click(screen.getByRole('button', { name: 'Send' }))
     await waitFor(() => expect(document.querySelector('[data-run-id]')).toHaveAttribute('data-run-id', runId))
 
@@ -325,7 +325,7 @@ describe('ApexAssistantRuntime', () => {
 
     await waitFor(() => expect(screen.getByText('Reminders')).toBeInTheDocument())
     await user.click(screen.getByText('Reminders'))
-    expect(screen.getByPlaceholderText('Ask APEX…')).toHaveValue('List my pending reminders.')
+    expect(screen.getByPlaceholderText('Ask Lynx…')).toHaveValue('List my pending reminders.')
     await user.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => expect(screen.getByText('There are three active reminders.')).toBeInTheDocument())
@@ -360,7 +360,7 @@ describe('ApexAssistantRuntime', () => {
         <ApexAssistantThread
           composer={{
             activeAgent: 'apex',
-            activeAgentName: 'Apex Agent',
+            activeAgentName: 'Lynx',
             tools: {
               catalog: null,
               selectedToolNames: [],
@@ -373,10 +373,10 @@ describe('ApexAssistantRuntime', () => {
       </ApexAssistantRuntime>,
     )
     await waitFor(() => expect(screen.getByText('APEX is ready. Start a session with a focused question.')).toBeInTheDocument())
-    await user.type(screen.getByPlaceholderText('Ask APEX…'), 'Keep this request running')
+    await user.type(screen.getByPlaceholderText('Ask Lynx…'), 'Keep this request running')
     await user.click(screen.getByRole('button', { name: 'Send' }))
     await waitFor(() => expect(screen.getByText('Queued')).toBeInTheDocument())
-    expect(screen.queryByText('Apex Agent working')).not.toBeInTheDocument()
+    expect(screen.queryByText('Lynx working')).not.toBeInTheDocument()
     resolveTurn(sseResponse([
       { sequence: 1, type: 'response.delta', payload: { text: 'Finished.' } },
       { sequence: 2, type: 'run.completed', payload: { status: 'completed' } },
@@ -423,8 +423,8 @@ describe('ApexAssistantRuntime', () => {
       </ApexAssistantRuntime>,
     )
 
-    await waitFor(() => expect(screen.getByPlaceholderText('Ask APEX…')).toBeInTheDocument())
-    await user.type(screen.getByPlaceholderText('Ask APEX…'), 'Fast stream test')
+    await waitFor(() => expect(screen.getByPlaceholderText('Ask Lynx…')).toBeInTheDocument())
+    await user.type(screen.getByPlaceholderText('Ask Lynx…'), 'Fast stream test')
     await user.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => expect(screen.getByTestId('agent-msg-text')).toHaveTextContent('High throughput token stream.'))
@@ -583,7 +583,7 @@ describe('ApexAssistantRuntime', () => {
     )
     await waitFor(() => expect(screen.getByText('APEX is ready. Start a session with a focused question.')).toBeInTheDocument())
     expect(createCalls).toBe(0)
-    await user.type(screen.getByPlaceholderText('Ask APEX…'), 'Use this thread')
+    await user.type(screen.getByPlaceholderText('Ask Lynx…'), 'Use this thread')
     await user.click(screen.getByRole('button', { name: 'Send' }))
     await waitFor(() => expect(screen.getByText('Created after use.')).toBeInTheDocument())
     expect(createCalls).toBe(1)
@@ -818,7 +818,7 @@ describe('ApexAssistantRuntime', () => {
     const user = userEvent.setup()
     render(<ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}><ApexAssistantThread /></ApexAssistantRuntime>)
     await waitFor(() => expect(screen.getByText('Existing prompt')).toBeInTheDocument())
-    await user.type(screen.getByPlaceholderText('Ask APEX…'), 'New request')
+    await user.type(screen.getByPlaceholderText('Ask Lynx…'), 'New request')
     await user.click(screen.getByRole('button', { name: 'Send' }))
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Edit' }).every((button) => (button as HTMLButtonElement).disabled)).toBe(true))
     expect(screen.getByRole('button', { name: 'Retry' })).toBeDisabled()
@@ -847,7 +847,7 @@ describe('ApexAssistantRuntime', () => {
     render(<ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }} onRunningChange={onRunningChange}><ApexAssistantThread /></ApexAssistantRuntime>)
     await waitFor(() => expect(screen.getByText('Preparing request')).toBeInTheDocument())
     expect(onRunningChange).toHaveBeenCalledWith(true, 'apex')
-    expect(screen.getByPlaceholderText('Ask APEX…')).toBeDisabled()
+    expect(screen.getByPlaceholderText('Ask Lynx…')).toBeDisabled()
   })
 
   it('does not initialize a transient thread when preflight rejects', async () => {
@@ -870,7 +870,7 @@ describe('ApexAssistantRuntime', () => {
       </ApexAssistantRuntime>,
     )
     await waitFor(() => expect(screen.getByText('APEX is ready. Start a session with a focused question.')).toBeInTheDocument())
-    await user.type(screen.getByPlaceholderText('Ask APEX…'), 'Blocked request')
+    await user.type(screen.getByPlaceholderText('Ask Lynx…'), 'Blocked request')
     await user.click(screen.getByRole('button', { name: 'Send' }))
     expect(createCalls).toBe(0)
     expect(fetchMock).toHaveBeenCalled()
@@ -992,7 +992,7 @@ describe('ApexAssistantRuntime', () => {
     )
 
     await waitFor(() => expect(screen.getByText('APEX is ready. Start a session with a focused question.')).toBeInTheDocument())
-    await user.type(screen.getByPlaceholderText('Ask APEX…'), 'What is the system diagnostics status?')
+    await user.type(screen.getByPlaceholderText('Ask Lynx…'), 'What is the system diagnostics status?')
     await user.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => expect(sentTitle).toBe('What is the system diagnostics status?'))
@@ -1107,7 +1107,7 @@ describe('ApexAssistantRuntime', () => {
     await waitFor(() => expect(screen.getByText('Turn 1 in Alpha')).toBeInTheDocument())
 
     // Send follow-up turn in Chat Alpha
-    await user.type(screen.getByPlaceholderText('Ask APEX…'), 'Follow up question')
+    await user.type(screen.getByPlaceholderText('Ask Lynx…'), 'Follow up question')
     await user.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => expect(sentParentId).toBe(msg1Agent))
@@ -1543,7 +1543,7 @@ describe('ApexAssistantRuntime', () => {
       await waitFor(() => expect(screen.getByText(provisionalAnswer)).toBeInTheDocument())
       expect(cancelCalls).toBe(0)
       expect(eventCalls).toBe(4)
-      expect(screen.getByPlaceholderText('Ask APEX…')).toBeDisabled()
+      expect(screen.getByPlaceholderText('Ask Lynx…')).toBeDisabled()
       expect(onRunningChange).toHaveBeenCalledWith(true, 'apex')
       expect(pendingPoll).not.toBeNull()
 
@@ -1555,14 +1555,14 @@ describe('ApexAssistantRuntime', () => {
         expect(pendingPoll).not.toBeNull()
       })
       expect(screen.getByText(provisionalAnswer)).toBeInTheDocument()
-      expect(screen.getByPlaceholderText('Ask APEX…')).toBeDisabled()
+      expect(screen.getByPlaceholderText('Ask Lynx…')).toBeDisabled()
       expect(onRunningChange).toHaveBeenLastCalledWith(true, 'apex')
 
       const secondPoll = pendingPoll as unknown as () => void
       pendingPoll = null
       secondPoll()
       await waitFor(() => expect(screen.getByText(durableAnswer)).toBeInTheDocument())
-      expect(screen.getByPlaceholderText('Ask APEX…')).not.toBeDisabled()
+      expect(screen.getByPlaceholderText('Ask Lynx…')).not.toBeDisabled()
       expect(onRunningChange).toHaveBeenLastCalledWith(false, null)
       expect(cancelCalls).toBe(0)
     } finally {
@@ -1664,7 +1664,7 @@ describe('ApexAssistantRuntime', () => {
         <ApexAssistantThread
           composer={{
             activeAgent: 'apex',
-            activeAgentName: 'Apex',
+            activeAgentName: 'Lynx',
             tools: {
               catalog: toolCatalog,
               selectedToolNames: [],
@@ -1677,9 +1677,9 @@ describe('ApexAssistantRuntime', () => {
       </ApexAssistantRuntime>,
     )
 
-    await waitFor(() => expect(screen.getByPlaceholderText('Ask APEX…')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByPlaceholderText('Ask Lynx…')).toBeInTheDocument())
     const toolsButton = screen.getByRole('button', { name: /Tools:/ })
-    const input = screen.getByPlaceholderText('Ask APEX…')
+    const input = screen.getByPlaceholderText('Ask Lynx…')
     const sendButton = screen.getByRole('button', { name: 'Send' })
 
     expect(toolsButton.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()

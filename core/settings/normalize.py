@@ -768,7 +768,7 @@ def _normalize_modules(
 def _normalize_agent_settings(
     value: Any, layer_name: str, errors: NormalizationIssues | None
 ) -> dict[str, Any]:
-    """Normalize the current v20 Apex Agent settings shape."""
+    """Normalize the current v20 APEX Agent settings shape."""
     if not isinstance(value, dict):
         if value is not None:
             _record_error(errors, "ask_apex must be a JSON object")

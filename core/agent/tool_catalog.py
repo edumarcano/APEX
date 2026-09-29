@@ -339,7 +339,7 @@ def build_tool_catalog(
     model_id: str | None = None,
     execution_partition: Literal["production", "sandbox"] | None = None,
 ) -> ToolCatalogResponse:
-    """Build the complete provider-neutral catalog for one Apex Agent.
+    """Build the complete provider-neutral catalog for one APEX Agent.
 
     ``execution_partition`` binds sandbox policy to an already-admitted Cortex
     run. Availability and revocation checks still use the live settings and

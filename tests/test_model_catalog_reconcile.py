@@ -1,4 +1,4 @@
-"""Reconciliation coverage for singular Apex Agent model routes."""
+"""Reconciliation coverage for singular APEX Agent model routes."""
 
 from __future__ import annotations
 

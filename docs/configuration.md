@@ -18,7 +18,7 @@ Runtime Settings persist the editable parts of the resolved configuration. Schem
 
 Current default model mapping is `apex` -> `deepseek/deepseek-v4-flash-0731`; `selected_model` is authoritative. Selecting a cloud or local model remembers that choice and its controls in the matching runtime section. Cloud and local personal-context preferences are independent. Cloud tool profiles default to All APEX Tools; local profiles default to No APEX Tools.
 
-Optional `user_designation` and `agent_display_name` are machine-local personalization fields stored only in `config.local.json`. An empty `agent_display_name` keeps the default visible name Apex Agent.
+Optional `user_designation` and `agent_display_name` are machine-local personalization fields stored only in `config.local.json`. An empty `agent_display_name` keeps the default visible name Lynx.
 
 Briefing and Cortex share this model selection; Overview is telemetry-first and runs no model. Briefing follow-ups use the saved cloud reasoning effort, or the saved local context window and reasoning mode; these per-turn values are ephemeral and never modify saved Cortex settings.
 
@@ -115,11 +115,11 @@ Only one local generation may run at a time. APEX checks runtime reachability, i
 
 ## Briefing profiles
 
-Briefing and `apex briefing` use one saved-session engine with the selected Apex Agent model. The built-in profiles are Daily for orientation, Catch Up for source changes since the last presented complete session, and Deep for broader reasoning with a bounded read-only investigation. Daily is the CLI default; the HUD lets you choose a profile. Sessions retain the selected model and canonical artifact, and the HUD can continue them in the linked Cortex conversation. Briefings do not silently substitute a different model.
+Briefing and `apex briefing` use one saved-session engine with the selected APEX Agent model. The built-in profiles are Daily for orientation, Catch Up for source changes since the last presented complete session, and Deep for broader reasoning with a bounded read-only investigation. Daily is the CLI default; the HUD lets you choose a profile. Sessions retain the selected model and canonical artifact, and the HUD can continue them in the linked Cortex conversation. Briefings do not silently substitute a different model.
 
 Deep uses a curated read-only tool set selected for the session's evidence, subject to current Agent policy, partition, connector, and MCP permissions. It requires room for investigation and synthesis and is rejected before session creation when model/run limits cannot provide that capacity or no eligible read tool is available. Investigation is limited to eight offered tools, four calls, six saved result records, at most 1,024 generated tokens per turn (or the lower configured output limit), and at most 180 seconds or half of remaining run time; the model may decide not to call a tool. Demo mode provides deterministic Daily and Catch Up fixtures without provider calls; Deep is unavailable there. A model context window that cannot fit a useful briefing prompt is rejected before generation. Catch Up uses source history from completed sessions that were actually presented; incomplete source snapshots limit membership claims. When comparable sources show no material changes, it records a no-change result without running a model.
 
-The retired Flash, Focused, and Structured briefing engine and routes are not supported. Existing `briefing` entries in `config.local.json` are ignored; APEX does not map their settings or model choices into profile or Apex Agent preferences. On database initialization, APEX drops the legacy SQLite `briefings` table in a transaction. Its rows are permanently removed. The migration leaves `briefing_sessions` and unrelated tables and records intact.
+The retired Flash, Focused, and Structured briefing engine and routes are not supported. Existing `briefing` entries in `config.local.json` are ignored; APEX does not map their settings or model choices into profile or APEX Agent preferences. On database initialization, APEX drops the legacy SQLite `briefings` table in a transaction. Its rows are permanently removed. The migration leaves `briefing_sessions` and unrelated tables and records intact.
 
 ## External and managed router modes
 

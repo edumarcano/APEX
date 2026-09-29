@@ -57,7 +57,7 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | PATCH | `/api/v1/cortex/tool-profiles/{profile_id}` | Edit a saved tool profile |
 | DELETE | `/api/v1/cortex/tool-profiles/{profile_id}` | Delete a saved tool profile |
 | POST | `/api/v1/cortex/tool-profiles/default` | Assign an Agent default profile |
-| GET | `/api/v1/cortex/agent` | Apex Agent and unified model catalog |
+| GET | `/api/v1/cortex/agent` | APEX Agent and unified model catalog |
 | POST | `/api/v1/cortex/models/verify` | Explicit non-generative cloud model access check |
 | POST | `/api/v1/cortex/local-model/load` | Pre-warm a selected local model |
 | POST | `/api/v1/cortex/local-model/unload` | Unload the active local model |
@@ -130,7 +130,7 @@ Optional external services are deliberately excluded.
 
 ### GET `/api/v1/config`
 
-Returns boot-time HUD values such as Agent query enablement, the effective model selection, voice defaults, market enablement, message limits, runtime modes, and `cortex_initial_selection` for Apex Agent and the saved model/runtime selection.
+Returns boot-time HUD values such as Agent query enablement, the effective model selection, voice defaults, market enablement, message limits, runtime modes, and `cortex_initial_selection` containing `canonical_name` ("APEX Agent"), default or resolved `display_name` ("Lynx"), and the saved model/runtime selection.
 
 ### GET `/api/v1/settings`
 
@@ -180,7 +180,7 @@ Returns the resolved settings envelope. The current settings schema version is `
 }
 ```
 
-`football.teams`, `market.symbols`, `calendar`, `context_vault`, `tool_profiles`, and `microsoft_todo.reminder_list_id` are returned in the resolved settings snapshot. Apex Agent settings persist the selected model and independent cloud/local controls; the model catalog derives provider or local runtime. The selected provider/runtime remains in execution metadata and historical records. The optional Microsoft To Do list ID is opaque, bounded to 512 characters, and is never selected or cleared automatically. OpenAPI contains the complete shape. Tool profiles persist through the same settings store, but the dedicated `/api/v1/cortex/tool-profiles` routes are the canonical mutation workflow for built-in/custom profiles and per-runtime defaults.
+`football.teams`, `market.symbols`, `calendar`, `context_vault`, `tool_profiles`, and `microsoft_todo.reminder_list_id` are returned in the resolved settings snapshot. APEX Agent settings persist the selected model and independent cloud/local controls; the model catalog derives provider or local runtime. The selected provider/runtime remains in execution metadata and historical records. The optional Microsoft To Do list ID is opaque, bounded to 512 characters, and is never selected or cleared automatically. OpenAPI contains the complete shape. Tool profiles persist through the same settings store, but the dedicated `/api/v1/cortex/tool-profiles` routes are the canonical mutation workflow for built-in/custom profiles and per-runtime defaults.
 
 Briefing profile selection is per session and does not add a Runtime Settings field. The selected model comes from `settings.ask_apex.selected_model`.
 
@@ -270,7 +270,7 @@ Calling an operation endpoint directly skips advisory acknowledgement; operation
 
 ## Briefing sessions
 
-Briefings use the saved-session API. Each session records its built-in profile, selected Apex Agent model, active partition, canonical artifact, evidence, presentation state, and linked Cortex conversation. Session creation is asynchronous; callers read its detail until it reaches a terminal state. There are no legacy trigger, transcript-history, or fixed-target routes.
+Briefings use the saved-session API. Each session records its built-in profile, selected APEX Agent model, active partition, canonical artifact, evidence, presentation state, and linked Cortex conversation. Session creation is asynchronous; callers read its detail until it reaches a terminal state. There are no legacy trigger, transcript-history, or fixed-target routes.
 
 ### GET `/api/v1/briefing-profiles`
 
@@ -278,7 +278,7 @@ Returns the built-in briefing profiles in a stable order. Each entry includes `i
 
 ### POST `/api/v1/briefing-sessions`
 
-Admits an asynchronous Daily, Catch Up, or Deep generation using the explicit model from the selected Apex Agent catalog entry. The server captures the active production or sandbox partition, applies the current run limits, and creates a saved session linked to a Cortex conversation. It does not fall back to another model. Demo mode uses deterministic Daily and Catch Up fixtures without contacting a model provider; Deep is unavailable in demo mode. Catch Up uses the current source inventory and the presented source history selected when the run is admitted; it calls no model when the deterministic comparison finds no material changes.
+Admits an asynchronous Daily, Catch Up, or Deep generation using the explicit model from the selected APEX Agent catalog entry. The server captures the active production or sandbox partition, applies the current run limits, and creates a saved session linked to a Cortex conversation. It does not fall back to another model. Demo mode uses deterministic Daily and Catch Up fixtures without contacting a model provider; Deep is unavailable in demo mode. Catch Up uses the current source inventory and the presented source history selected when the run is admitted; it calls no model when the deterministic comparison finds no material changes.
 
 ```json
 {
@@ -298,7 +298,7 @@ Admits an asynchronous Daily, Catch Up, or Deep generation using the explicit mo
 - `429` — the run coordinator has no free execution slot.
 - `503` — briefing generation is unavailable or shutting down.
 
-The Briefing setup UI uses the existing preflight, settings, and session routes. For a model-backed Generate action it first preflights the draft model, then saves `selected_model` and that runtime's `last_model` plus supported reasoning value with one settings `PATCH`, then admits the session with the resolved settings. A cancelled or blocked preflight and a failed settings save do not send the session `POST`. Demo runs keep using the saved fixture and do not persist its fixture model as the Apex Agent selection.
+The Briefing setup UI uses the existing preflight, settings, and session routes. For a model-backed Generate action it first preflights the draft model, then saves `selected_model` and that runtime's `last_model` plus supported reasoning value with one settings `PATCH`, then admits the session with the resolved settings. A cancelled or blocked preflight and a failed settings save do not send the session `POST`. Demo runs keep using the saved fixture and do not persist its fixture model as the APEX Agent selection.
 
 Deep first gathers the shared current and relevant history evidence, then makes a bounded investigation with up to eight eligible read capabilities selected for the evidence and source coverage. Its investigation prompt includes selected current evidence and paired historical evidence, with each row's role, capture time, trust, and content, so it can frame reads against observed changes. The selected set is independent of the saved runtime tool profile and still intersects current Agent policy, connector availability, partition, sandbox, and MCP allowlist/risk checks. Deep requires capacity for at least two investigation turns, one tool call, and two synthesis turns; otherwise admission returns `422` before creating a session. Investigation is limited to four tool calls, 180 seconds or half of the remaining run time (whichever is smaller), at most six saved read-result evidence records, and at most 1,024 generated tokens per investigation turn (or the lower configured output limit). The model may decide no additional read is needed. Write, destructive, hosted, and unbounded tools are not offered. Read-result evidence keeps an untrusted source label and capture time; raw investigation transcripts are not saved. The completed artifact's optional `investigation` field reports whether investigation completed, was limited, or needed no read, along with bounded counts and limitations. The total saved evidence remains capped at 50 records.
 
@@ -318,7 +318,7 @@ Returns up to 100 newest session summaries whose linked Cortex conversations are
 
 The Briefing UI's Repeat action reads the newest visible summary with `limit=1`, then loads its detail without changing the displayed selection. It repeats that saved profile, model, and reasoning configuration through a new session `POST`; the server gathers a fresh context snapshot, and the client does not replay the old evidence or context. Failed and CLI-origin sessions remain eligible when their saved configuration is currently supported.
 
-The read-only Apex Agent tool `get_briefing_history` uses the same active-partition boundary. Its `limit` is clamped to 1–5; one joined query filters for completed sessions with canonical artifacts before applying the bound. Archived sessions remain available to this history query until their conversations are deleted. Each result includes the session ID, profile, selected model, creation and presentation times, presentation status, up to two concise canonical items, and up to four recorded limitations. Failed and incomplete sessions are omitted. The tool does not fetch full evidence or speech data.
+The read-only APEX Agent tool `get_briefing_history` uses the same active-partition boundary. Its `limit` is clamped to 1–5; one joined query filters for completed sessions with canonical artifacts before applying the bound. Archived sessions remain available to this history query until their conversations are deleted. Each result includes the session ID, profile, selected model, creation and presentation times, presentation status, up to two concise canonical items, and up to four recorded limitations. Failed and incomplete sessions are omitted. The tool does not fetch full evidence or speech data.
 
 ### GET `/api/v1/briefing-sessions/{session_id}`
 
@@ -338,7 +338,7 @@ Returns the speech status, a SHA-256 binding to the exact persisted canonical ar
 
 ### POST `/api/v1/briefing-sessions/{session_id}/speech/prepare`
 
-Prepares short spoken highlights from the completed session's persisted artifact and synthesizes ordered, separately playable audio chunks. For model-backed sessions the script call uses only the session's selected Apex Agent model, with no tools, retrieval, or other conversation context; the script is validated against the artifact's item IDs, numbers, dates, uncertainty, report attribution, review status, and suggestion/completion distinctions. APEX may immediately retain individually valid highlights or read the exact title and body of a model-selected item after a numeric-fact mismatch, subject to the same validation and speech limits and only when the source has no URL or citation. An unrecoverable response gets at most one repair call. Invalid segments with changed dates, missing qualifiers, or other factual drift are never spoken; if no valid segment or eligible exact-source numeric recovery remains, preparation stays unavailable. The model call is bounded by the smaller of its saved model budget and 240 seconds; a deadline reports `speech_model_timeout` rather than an audio error. Demo Daily and Catch Up instead use a deterministic script from the exact saved fixture artifact and the configured `DEMO_TTS` engine, with no provider call. Work is admitted asynchronously and returns `202`; a matching ready cache returns `200`. Calling Prepare after the selected voice engine or gender changes replaces the cached derivative. `?force=true` explicitly rebuilds the speech derivative with the current voice settings, without regenerating the briefing. Google TTS may receive the script text; Kokoro and pyttsx3 keep synthesis local. The response contains `session_id`, `artifact_sha256`, `status`, `error_code`, `engine`, and `voice_gender`.
+Prepares short spoken highlights from the completed session's persisted artifact and synthesizes ordered, separately playable audio chunks. For model-backed sessions the script call uses only the session's selected APEX Agent model, with no tools, retrieval, or other conversation context; the script is validated against the artifact's item IDs, numbers, dates, uncertainty, report attribution, review status, and suggestion/completion distinctions. APEX may immediately retain individually valid highlights or read the exact title and body of a model-selected item after a numeric-fact mismatch, subject to the same validation and speech limits and only when the source has no URL or citation. An unrecoverable response gets at most one repair call. Invalid segments with changed dates, missing qualifiers, or other factual drift are never spoken; if no valid segment or eligible exact-source numeric recovery remains, preparation stays unavailable. The model call is bounded by the smaller of its saved model budget and 240 seconds; a deadline reports `speech_model_timeout` rather than an audio error. Demo Daily and Catch Up instead use a deterministic script from the exact saved fixture artifact and the configured `DEMO_TTS` engine, with no provider call. Work is admitted asynchronously and returns `202`; a matching ready cache returns `200`. Calling Prepare after the selected voice engine or gender changes replaces the cached derivative. `?force=true` explicitly rebuilds the speech derivative with the current voice settings, without regenerating the briefing. Google TTS may receive the script text; Kokoro and pyttsx3 keep synthesis local. The response contains `session_id`, `artifact_sha256`, `status`, `error_code`, `engine`, and `voice_gender`.
 
 ### POST `/api/v1/briefing-sessions/{session_id}/speech/play`
 
@@ -441,7 +441,7 @@ External activity is untrusted report material. Receiving, reading, reviewing, d
 
 The separately started activity gateway is not part of this API schema. It exposes a liveness probe, JSON submission, and a Streamable HTTP MCP endpoint; see [External activity gateway](configuration.md#external-activity-gateway) for its startup and boundary contract.
 
-## Apex Agent and local models
+## APEX Agent and local models
 
 ### GET `/api/v1/cortex/tool-catalog`
 
@@ -505,9 +505,9 @@ Assigns an existing built-in or custom profile as the default for one runtime (`
 
 ### GET `/api/v1/cortex/agent`
 
-Returns the single Apex Agent and its ordered model catalog. Each entry supplies model/provider/runtime, stability, supported reasoning and local controls, grounded-tool state, pricing, and availability/lifecycle diagnostics. Provider capability fields describe `streaming` (`native` or `completed_turn`), `structured_output` (`native` or `unavailable`), `usage_reporting` (`reported`, `estimated`, or `unavailable`), and the allowlisted `supported_runtime_measurements`. Native streaming is available for OpenAI, OpenRouter, Gemini, and llama.cpp; Ollama remains a completed-turn development fallback. Structured output is enforced only on final tool-free turns by providers whose `structured_output` capability is `native`.
+Returns the single APEX Agent and its ordered model catalog. Its `canonical_name` is "APEX Agent", and `display_name` defaults to "Lynx" unless a custom `agent_display_name` is saved. Each entry supplies model/provider/runtime, stability, supported reasoning and local controls, grounded-tool state, pricing, and availability/lifecycle diagnostics. Provider capability fields describe `streaming` (`native` or `completed_turn`), `structured_output` (`native` or `unavailable`), `usage_reporting` (`reported`, `estimated`, or `unavailable`), and the allowlisted `supported_runtime_measurements`. Native streaming is available for OpenAI, OpenRouter, Gemini, and llama.cpp; Ollama remains a completed-turn development fallback. Structured output is enforced only on final tool-free turns by providers whose `structured_output` capability is `native`.
 
-Development-only models appear in the `model_catalog` list only when `DEV_MODE` is active. They are not separate Apex Agents.
+Development-only models appear in the `model_catalog` list only when `DEV_MODE` is active. They are not separate APEX Agents.
 
 Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Local availability distinguishes an unreachable runtime, missing model, loading model, busy execution slot, and provider-reported residency. Local catalog entries publish model-specific context and reasoning values, options, and defaults.
 
@@ -603,11 +603,11 @@ messages and detailed tool outcomes.
 }
 ```
 
-`model_id`, `context_window`, and `local_reasoning_mode` are optional per-turn overrides. When supplied, the turn uses those values instead of saved model preferences. Briefing follow-ups and their tool preflight use the shared Apex Agent selection: the saved cloud reasoning effort, or the saved local context window and reasoning mode. These per-turn values are ephemeral and are not written back by a follow-up.
+`model_id`, `context_window`, and `local_reasoning_mode` are optional per-turn overrides. When supplied, the turn uses those values instead of saved model preferences. Briefing follow-ups and their tool preflight use the shared APEX Agent selection: the saved cloud reasoning effort, or the saved local context window and reasoning mode. These per-turn values are ephemeral and are not written back by a follow-up.
 
 `snapshot_id` is optional explicit current telemetry context; when absent, APEX injects no telemetry context. A stale snapshot ID is omitted rather than replaced with the latest data. A briefing session owns its linked Cortex conversation and canonical opening artifact; callers continue that session by using the returned conversation ID, not by attaching a legacy briefing ID. The server derives `sandbox` only when both `DEV_MODE` and the saved sandbox setting are active; clients cannot select or cross partitions. Snapshot context is included only when its ID matches the process-current telemetry snapshot.
 
-The effective exposure is `selected tools ∩ Apex Agent policy ∩ runtime availability ∩ persistent MCP allowlists`. An explicit empty `selected_tool_names` list means `No APEX Tools`; omitted selection preserves runtime defaults of All APEX Tools for cloud and No APEX Tools for local. Invalid, unauthorized, disconnected, risk-rejected, or unavailable selected names are returned as structured per-tool failures. Cloud models can receive approved APEX capabilities and optional provider-hosted grounding where supported. `effort` is accepted only for models with reasoning levels. Responses contain Apex Agent and resolved model metadata, tool trace, usage, timing, and cost evidence.
+The effective exposure is `selected tools ∩ APEX Agent policy ∩ runtime availability ∩ persistent MCP allowlists`. An explicit empty `selected_tool_names` list means `No APEX Tools`; omitted selection preserves runtime defaults of All APEX Tools for cloud and No APEX Tools for local. Invalid, unauthorized, disconnected, risk-rejected, or unavailable selected names are returned as structured per-tool failures. Cloud models can receive approved APEX capabilities and optional provider-hosted grounding where supported. `effort` is accepted only for models with reasoning levels. Responses contain APEX Agent and resolved model metadata, tool trace, usage, timing, and cost evidence.
 
 - `400` — selected tools are invalid, outside policy, or unavailable.
 - A provider-authoritative local context overflow is returned as an actionable
@@ -781,7 +781,7 @@ A selected entity ID that no longer exists is returned as a selection issue with
 
 When exports are enabled, one lifespan-owned worker reconciles at startup and after committed production knowledge or selection changes. The status describes local file publication only; it does not claim that a sync service copied files or that another application indexed them. `POST /api/v1/cortex/vault/refresh` requests a serialized publication and returns the resulting status, including any sanitized error. Disable exports before calling `DELETE /api/v1/cortex/vault/copies`; it returns `409` while exports are enabled. Removal deletes only files recorded as APEX-owned at the currently configured destination; it does not recursively delete the destination or remove handwritten files or `.obsidian/`. Disabling the vault stops updates and retains existing files; enabled scope deselection removes obsolete managed copies during refresh. Changing the configured root leaves the old root in place and reports it, including when export is disabled. Demo and sandbox requests receive an explicit restriction status, and refresh or removal returns `403` in those modes.
 
-When personal context is enabled for an Apex Agent turn, prompt assembly reloads
+When personal context is enabled for an APEX Agent turn, prompt assembly reloads
 the selected records from canonical storage. It excludes rejected proposals and
 superseded or retracted records even if retrieval still returns an old entry.
 Current records with pending reviews are labeled as uncertain without exposing
@@ -814,7 +814,7 @@ Cortex turns.
 `search_apex_docs` is a selected native read capability, not a public search
 endpoint. It refreshes only `README.md` and `docs/**/*.md` immediately before
 searching, then returns at most five excerpts with repository-relative source
-locations. The excerpts are untrusted tool output. Apex Agent should cite a used
+locations. The excerpts are untrusted tool output. APEX Agent should cite a used
 excerpt as `path:Lstart-Lend`; it cannot alter system instructions or policy.
 
 ## Actions

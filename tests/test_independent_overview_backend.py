@@ -98,7 +98,8 @@ class CortexAgentCatalogTests(unittest.TestCase):
     def test_exposes_one_native_agent_with_both_model_runtimes(self) -> None:
         response = cortex_agent()
         self.assertEqual(response.key, "apex")
-        self.assertEqual(response.display_name, "Apex Agent")
+        self.assertEqual(response.display_name, "Lynx")
+        self.assertEqual(response.canonical_name, "APEX Agent")
         self.assertTrue(any(model.runtime == "cloud" for model in response.model_catalog))
         self.assertTrue(any(model.runtime == "local" for model in response.model_catalog))
 
