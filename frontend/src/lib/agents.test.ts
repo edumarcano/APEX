@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   AGENT_KEYS,
   formatContextWindowLabel,
+  formatLocalReasoningLabel,
   formatReasoningLabel,
   isAgentKey,
   providerDisplayName,
@@ -44,6 +45,12 @@ describe('agents helpers', () => {
     expect(formatReasoningLabel('xhigh')).toBe('Extra High')
     expect(formatReasoningLabel('max')).toBe('Max')
     expect(formatReasoningLabel(null)).toBe('')
+  })
+
+  it('maps local reasoning wire values to Cortex-facing labels', () => {
+    expect(formatLocalReasoningLabel('none')).toBe('None')
+    expect(formatLocalReasoningLabel('focused')).toBe('High')
+    expect(formatLocalReasoningLabel('high')).toBe('High')
   })
 
   it('uses sandbox history only in DEV_MODE with sandbox enabled', () => {

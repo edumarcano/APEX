@@ -71,30 +71,27 @@ export function resolveLogoVisualColors(input: LogoVisualStateInput): {
   atmosphere: string
   logo: string
 } {
+  if (input.isLocalModelLoading || input.isLocalModelLoaded) {
+    return { atmosphere: COLORS.rust, logo: COLORS.rust }
+  }
   const activeColor = activityColor(input.activity)
-  const atmosphere = input.isLocalModelLoading
-    ? COLORS.rust
-    : input.activity !== 'briefing_ready' && activeColor !== null
-        ? activeColor
-        : input.isCortexQuerying
-          ? COLORS.purple
-          : input.activity === 'briefing_ready' && input.isTelemetryCollecting
-            ? COLORS.green
-            : input.activity === 'briefing_ready'
-              ? COLORS.blue
-            : input.isSpeaking
-              ? COLORS.cyan
-              : input.isTelemetryCollecting
-                ? COLORS.green
-                : input.briefingStatus === 'error'
-                  ? COLORS.red
-                  : COLORS.blue
+  const atmosphere = input.activity !== 'briefing_ready' && activeColor !== null
+    ? activeColor
+    : input.isCortexQuerying
+      ? COLORS.purple
+      : input.activity === 'briefing_ready' && input.isTelemetryCollecting
+        ? COLORS.green
+        : input.activity === 'briefing_ready'
+          ? COLORS.blue
+          : input.isSpeaking
+            ? COLORS.cyan
+            : input.isTelemetryCollecting
+              ? COLORS.green
+              : input.briefingStatus === 'error'
+                ? COLORS.red
+                : COLORS.blue
   return {
     atmosphere,
-    logo: input.isLocalModelLoading
-      ? COLORS.rust
-      : input.isLocalModelLoaded
-        ? COLORS.rust
-        : atmosphere,
+    logo: atmosphere,
   }
 }

@@ -99,6 +99,19 @@ export function formatReasoningLabel(option: string | null | undefined): string 
   }
 }
 
+/** Local wire values (`none` | `focused`) use Cortex-facing labels (None / High). */
+export function formatLocalReasoningLabel(mode: string | null | undefined): string {
+  if (!mode) return ''
+  switch (mode.trim().toLowerCase()) {
+    case 'none':
+      return 'None'
+    case 'focused':
+      return 'High'
+    default:
+      return formatReasoningLabel(mode)
+  }
+}
+
 export function findModelCatalogEntry(
   modelId: string,
   catalog: readonly ModelCatalogEntry[],

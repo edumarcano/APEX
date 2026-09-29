@@ -41,7 +41,7 @@ Color meaning depends on the state system in which it appears. Do not assume one
 | Briefing investigation, synthesis, or Agent working | Purple |
 | Briefing persistence or prepared output | Gold |
 | Local model loading | Rust |
-| Resident local model | Rust logo glow |
+| Resident local model | Rust logo glow and nebula |
 | Spoken-highlight playback | Cyan waveform and atmospheric glow over the gold core |
 | Failure | Red |
 
@@ -56,7 +56,7 @@ Color meaning depends on the state system in which it appears. Do not assume one
 
 Pair state color with text, icons, shape, motion, or an accessible label. Never rely on color alone.
 
-On Launch, Overview, Briefing, and in the compact Cortex header, the shared logo uses the same app-wide reactive state. Briefing preparation and collection use a dim gold core between emerald surges, selection uses a steady emerald core, investigation and synthesis use a dim bronze core between purple surges, and persistence and completion use a steady gold core. Active stages use a traveling blue shell wave except investigation, which keeps the shell steady. The nebula and logo glow follow the core during active work; completed briefings return both glows to blue. Spoken-highlight preparation uses the purple surge and blue wave. During playback the core stays gold, the shell stays steady blue, and the glyph waveform and nebula glow cyan. Actual model loading temporarily adds an orange shell wave and orange glows while keeping the current core stage visible. A loaded local model keeps the logo glow orange while the nebula continues to follow briefing or speech activity. Telemetry collection shares the dim gold core between emerald surges and traveling blue wave. Reduced motion keeps the stage colors without running the surges or waves.
+On Launch, Overview, Briefing, and in the compact Cortex header, the shared logo uses the same app-wide reactive state. Briefing preparation and collection use a dim gold core between emerald surges, selection uses a steady emerald core, investigation and synthesis use a dim bronze core between purple surges, and persistence and completion use a steady gold core. Active stages use a traveling blue shell wave except investigation, which keeps the shell steady. The nebula and logo glow follow the core during active work; completed briefings return both glows to blue. Spoken-highlight preparation uses the purple surge and blue wave. During playback the core stays gold, the shell stays steady blue, and the glyph waveform and nebula glow cyan. Actual model loading temporarily adds an orange shell wave and orange glows while keeping the current core stage visible. A loaded local model keeps both the logo glow and nebula orange until the model is unloaded. Telemetry collection shares the dim gold core between emerald surges and traveling blue wave. Reduced motion keeps the stage colors without running the surges or waves.
 
 ## Material System
 
