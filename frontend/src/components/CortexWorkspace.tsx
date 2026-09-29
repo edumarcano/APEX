@@ -17,6 +17,7 @@ import type {
 import type { CloudHostedToolsSettings } from '../types/settings'
 import {
   formatContextWindowLabel,
+  formatLocalReasoningLabel,
   formatReasoningLabel,
   hostedCapabilitiesForModel,
   providerDisplayName,
@@ -250,7 +251,7 @@ function LocalReasoningControl({
       >
         {options.map((option) => (
           <option key={option} value={option}>
-            {option === 'none' ? 'None' : 'High'}
+            {formatLocalReasoningLabel(option)}
           </option>
         ))}
       </select>

@@ -3,7 +3,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement,
 import { createPortal } from 'react-dom'
 
 import { formatBriefingTime } from '../../lib/briefingFormat'
-import { formatAgentPricing, formatReasoningLabel, providerDisplayName } from '../../lib/agents'
+import { formatAgentPricing, formatLocalReasoningLabel, formatReasoningLabel, providerDisplayName } from '../../lib/agents'
 import type {
   BriefingProfileId,
   BriefingProfileSummary,
@@ -98,7 +98,7 @@ function reasoningSummary(model: ModelCatalogEntry | undefined, draft: BriefingS
   if (model?.runtime === 'local') {
     const modes = supportedLocalModes(model)
     if (modes.length === 0) return 'Unavailable'
-    if (draft.localReasoningMode && modes.includes(draft.localReasoningMode)) return formatReasoningLabel(draft.localReasoningMode)
+    if (draft.localReasoningMode && modes.includes(draft.localReasoningMode)) return formatLocalReasoningLabel(draft.localReasoningMode)
     return 'Choose effort'
   }
   return 'Choose model'
@@ -386,7 +386,7 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
         disabled={isSubmitting || isRepeating}
         aria-haspopup="dialog"
         aria-expanded={setupOpen}
-        className="hud-command-surface inline-flex min-h-10 w-full min-w-0 items-center justify-center rounded-lg border border-[#1F6FE5]/50 bg-[#0F4DB8]/20 px-2 py-2 text-center font-orbitron text-[9px] font-semibold uppercase leading-snug tracking-[0.12em] text-[#DCEAFF] hover:bg-[#0F4DB8]/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] disabled:cursor-not-allowed disabled:opacity-45"
+        className="inline-flex min-h-10 w-full min-w-0 items-center justify-center rounded-lg border border-[#1F6FE5]/50 bg-[#0F4DB8]/20 px-2 py-2 text-center font-orbitron text-[9px] font-semibold uppercase leading-snug tracking-[0.12em] text-[#DCEAFF] transition-[background-color,border-color,box-shadow] duration-200 motion-reduce:transition-none enabled:hover:border-[#6EA8FF]/70 enabled:hover:bg-[#0F4DB8]/35 enabled:hover:shadow-[0_0_16px_rgba(31,111,229,0.22)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] disabled:cursor-not-allowed disabled:opacity-45"
       >
         Set up briefing
       </button>
@@ -579,7 +579,7 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
                       }}
                       className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-left font-mono text-[10px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7EB3FF] disabled:opacity-50 ${isSelected ? 'border-[#7EB3FF]/45 bg-[#0F4DB8]/15 text-[#DCEAFF]' : 'border-white/5 text-zinc-300 hover:border-white/15 hover:bg-white/[0.04]'}`}
                     >
-                      {formatReasoningLabel(option)}
+                      {selectedModel?.runtime === 'local' ? formatLocalReasoningLabel(option) : formatReasoningLabel(option)}
                       {isSelected ? <Check className="size-3.5 text-[#39FF88]" aria-hidden /> : null}
                     </button>
                   })}</div> : <p className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-[10px] leading-relaxed text-zinc-400">{selectedModel?.runtime === 'cloud' ? 'This model has no configurable reasoning effort.' : selectedModel?.runtime === 'local' ? 'This model has no reported reasoning modes.' : 'Choose a model to see its reasoning options.'}</p>}
@@ -598,7 +598,7 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
               onClick={() => void submitDraft()}
               disabled={generateDisabled}
               title={profileError ?? (props.hasActiveSession ? 'Wait for the active briefing to finish.' : undefined)}
-              className="hud-command-surface min-h-10 rounded-lg border border-[#1F6FE5]/60 bg-[#0F4DB8]/30 px-5 py-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[#E5F0FF] shadow-[0_0_18px_rgba(31,111,229,0.18)] hover:bg-[#0F4DB8]/45 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] disabled:cursor-not-allowed disabled:opacity-40"
+              className="min-h-10 rounded-lg border border-[#1F6FE5]/60 bg-[#0F4DB8]/30 px-5 py-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[#E5F0FF] shadow-[0_0_18px_rgba(31,111,229,0.18)] transition-[background-color,border-color,box-shadow] duration-200 motion-reduce:transition-none enabled:hover:border-[#6EA8FF]/70 enabled:hover:bg-[#0F4DB8]/45 enabled:hover:shadow-[0_0_22px_rgba(31,111,229,0.28)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isSubmitting || props.isGenerating ? 'Starting…' : `Generate ${profile.label}`}
             </button>

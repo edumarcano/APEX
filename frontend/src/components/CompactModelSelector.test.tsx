@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -145,9 +145,14 @@ describe('CompactModelSelector', () => {
 
     await user.click(reasoningToggle)
 
-    expect(menuScrollContainer).toHaveProperty('scrollTop', 360)
-    expect(screen.getByRole('button', { name: 'High' })).toBeInTheDocument()
-    expect(document.activeElement).toBe(reasoningToggle)
+    await waitFor(() => {
+      expect(menuScrollContainer).toHaveProperty('scrollTop', 360)
+    })
+    const reasoningChoices = screen.getByRole('group', { name: 'Reasoning effort' })
+    expect(within(reasoningChoices).getByRole('button', { name: 'High' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(document.activeElement).toBe(reasoningToggle)
+    })
   })
 
   it('offers local reasoning modes and disables both selectors while the thread is running', async () => {
@@ -165,7 +170,7 @@ describe('CompactModelSelector', () => {
     const trigger = screen.getByRole('button', { name: /model: gemma 4 e2b, reasoning none/i })
     await user.click(trigger)
     await user.click(screen.getByRole('button', { name: 'Reasoning, currently None' }))
-    await user.click(screen.getByRole('button', { name: 'Focused' }))
+    await user.click(screen.getByRole('button', { name: 'High' }))
     expect(onLocalReasoningModeChange).toHaveBeenCalledWith('focused')
     expect(screen.getByRole('button', { name: /model: gemma 4 e2b, reasoning none/i })).toBeEnabled()
     rerender(<CompactModelSelector selectedModelId={localCatalog[0].model_id} onModelChange={vi.fn()} catalog={localCatalog} presentation="composer" disabled isQuerying />)

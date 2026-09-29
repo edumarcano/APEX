@@ -25,6 +25,7 @@ import type {
   ModelCatalogEntry,
 } from '../types/telemetry'
 import {
+  formatLocalReasoningLabel,
   formatReasoningLabel,
   providerDisplayName,
   runtimeDisplayName,
@@ -163,7 +164,9 @@ export function CompactModelSelector({
     : (selectedModel?.reasoning_options ?? [])
   const selectedReasoning = selectedModel?.runtime === 'local' ? localReasoningMode : cloudEffort
   const reasoningLabel = selectedReasoning
-    ? formatReasoningLabel(selectedReasoning)
+    ? selectedModel?.runtime === 'local'
+      ? formatLocalReasoningLabel(selectedReasoning)
+      : formatReasoningLabel(selectedReasoning)
     : 'Reasoning'
   const availabilityLabel = selectedAvailability?.label ?? localAvailabilityLabel(selectedModel, selectedStatus)
 
@@ -455,7 +458,7 @@ export function CompactModelSelector({
                     else onEffortChange?.(option as CloudEffort)
                     setReasoningOpen(false)
                     close(true)
-                  }} className={`min-h-8 rounded-md px-2 text-left text-[11px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7EB3FF] ${selected ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'text-zinc-300 hover:bg-white/[0.06]'}`}>{formatReasoningLabel(option)}{selected ? <Check className="ml-1 inline size-3" aria-hidden /> : null}</button>
+                  }} className={`min-h-8 rounded-md px-2 text-left text-[11px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7EB3FF] ${selected ? 'bg-[#0F4DB8]/20 text-[#A5C7FF]' : 'text-zinc-300 hover:bg-white/[0.06]'}`}>{selectedModel?.runtime === 'local' ? formatLocalReasoningLabel(option) : formatReasoningLabel(option)}{selected ? <Check className="ml-1 inline size-3" aria-hidden /> : null}</button>
                 })}
               </div> : null}
             </div> : null}
