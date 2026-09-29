@@ -16,10 +16,10 @@ function renderLaunch() {
 }
 
 const ICON_ACCENTS: Array<[string, string, string]> = [
-  ['Overview', 'overview', '#1F6FE5'],
-  ['Briefing', 'briefing', '#FBBF24'],
-  ['Cortex', 'cortex', '#D8B4FE'],
-  ['Reports', 'reports', '#22D3EE'],
+  ['Overview', 'overview', 'text-[#1F6FE5]'],
+  ['Briefing', 'briefing', 'text-[#FBBF24]'],
+  ['Cortex', 'cortex', 'text-[#D8B4FE]'],
+  ['Reports', 'reports', 'text-slate-300'],
 ]
 
 describe('LaunchView', () => {
@@ -27,20 +27,20 @@ describe('LaunchView', () => {
     renderLaunch()
     const labels = screen.getAllByRole('button', { name: /^(Overview|Briefing|Cortex|Reports)$/ }).map((button) => button.textContent)
     expect(labels).toEqual(['Overview', 'Briefing', 'Cortex', 'Reports'])
-    for (const [label, id, iconColor] of ICON_ACCENTS) {
+    for (const [label, id, iconClass] of ICON_ACCENTS) {
       const button = screen.getByRole('button', { name: label })
       expect(button).toHaveClass('hud-glass', 'text-zinc-300', 'border-white/10')
       expect(button.className).not.toMatch(/(?:^|\s)bg-\[#(?:22D3EE|0F4DB8|FBBF24|7E22CE)\]\/\d+/)
       expect(button.className).not.toMatch(/(?:^|\s)text-\[#(?:22D3EE|1F6FE5|0F4DB8|A5C7FF|FBBF24|D8B4FE|A5F3FC|FFF3B0)\]/)
       const icon = screen.getByTestId(`launch-icon-${id}`)
-      expect(icon).toHaveClass(`text-[${iconColor}]`)
+      expect(icon).toHaveClass(iconClass)
     }
   })
 
   it('keeps settings off the workspace accent colors', () => {
     renderLaunch()
     const settings = screen.getByRole('button', { name: 'Open settings' })
-    for (const [, , iconColor] of ICON_ACCENTS) expect(settings).not.toHaveClass(`text-[${iconColor}]`)
+    for (const [, , iconClass] of ICON_ACCENTS) expect(settings).not.toHaveClass(iconClass)
   })
 
   it('renders the hero wordmark and logo', () => {

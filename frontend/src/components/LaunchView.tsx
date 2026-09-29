@@ -13,7 +13,7 @@ const LAUNCH_WORKSPACES: Array<{
   { id: 'overview', label: 'Overview', icon: LayoutDashboard, iconTone: 'text-[#1F6FE5]' },
   { id: 'briefing', label: 'Briefing', icon: AudioLines, iconTone: 'text-[#FBBF24]' },
   { id: 'cortex', label: 'Cortex', icon: BrainCircuit, iconTone: 'text-[#D8B4FE]' },
-  { id: 'reports', label: 'Reports', icon: Newspaper, iconTone: 'text-[#22D3EE]' },
+  { id: 'reports', label: 'Reports', icon: Newspaper, iconTone: 'text-slate-300' },
 ]
 
 export function LaunchView({

@@ -6,7 +6,7 @@ const PEERS: Array<{ id: WorkspacePeer; label: string; activeClass: string }> = 
   { id: 'overview', label: 'Overview', activeClass: 'bg-[#0F4DB8]/20 text-[#A5C7FF]' },
   { id: 'briefing', label: 'Briefing', activeClass: 'bg-[#FBBF24]/15 text-[#FFF3B0]' },
   { id: 'cortex', label: 'Cortex', activeClass: 'bg-[#7E22CE]/25 text-[#D8B4FE]' },
-  { id: 'reports', label: 'Reports', activeClass: 'bg-[#22D3EE]/15 text-[#A5F3FC]' },
+  { id: 'reports', label: 'Reports', activeClass: 'bg-slate-400/20 text-slate-200' },
 ]
 
 /** Visible header tabs for the four peer workspaces. Launch is outside this set. */

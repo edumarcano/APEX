@@ -27,7 +27,7 @@ describe('ActivityReportsWorkspace', () => {
     expect(workspace).toHaveClass('min-h-0')
     expect(workspace).toHaveClass('w-full', 'mx-auto')
     expect(workspace).not.toHaveClass('max-w-[1520px]')
-    expect(workspace.querySelector('svg')?.parentElement).toHaveClass('text-[#A5F3FC]')
+    expect(workspace.querySelector('svg')?.parentElement).toHaveClass('text-slate-200')
     expect(screen.getByRole('complementary', { name: 'Activity reports' })).toHaveClass('scrollbar-thin')
     expect(screen.getByRole('article')).toHaveClass('lg:overflow-y-auto')
     expect(screen.getByRole('article')).toHaveClass('scrollbar-thin')
