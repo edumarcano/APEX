@@ -467,7 +467,7 @@ provider serializes the actual request, applies its template allowance and
 safety margin, trims complete older interactions, and is authoritative for
 whether the current interaction fits.
 
-`model_id`, `context_window`, and `local_reasoning_mode` are all optional. When supplied, the estimate uses those values instead of the Agent's saved Cortex presets. Overview and Briefing use these fields to estimate token use against the selected model and its ephemeral overrides without touching saved Cortex settings.
+`model_id`, `context_window`, and `local_reasoning_mode` are all optional. When supplied, the estimate uses those values instead of the Agent's saved Cortex presets. Briefing follow-up turns use these fields to estimate token use against the selected model and its ephemeral overrides without touching saved Cortex settings.
 
 ### GET `/api/v1/cortex/tool-profiles`
 

@@ -192,7 +192,7 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 **Decision.** APEX has one native Apex Agent. The selected model determines cloud provider or local runtime, capabilities, controls, availability, and lifecycle behavior.
 
-**Why.** Cloud and local execution are runtime details, not enduring product identities. A singular assistant keeps Home, Cortex, settings, and persistence aligned.
+**Why.** Cloud and local execution are runtime details, not enduring product identities. A singular assistant keeps Overview, Briefing, Cortex, settings, and persistence aligned.
 
 **Trade-off.** The model catalog can grow without creating another Agent identity, but model metadata, settings, and documentation still need to stay in sync.
 
@@ -282,6 +282,6 @@ Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not 
 
 **Decision.** Microsoft To Do changes go through APEX's action flow: propose the change, ask for approval when needed, execute it, verify the result, and record what happened. To Do is the first real use of this system and serves as a test case for future Cortex actions.
 
-**Why.** Task changes are simple enough to test the full flow without much risk. The approval flow applies to Agent-requested changes, where APEX needs a clear boundary between a model suggestion and an external write. Direct reminder management in the Home workspace stays simpler and does not add approval steps just to edit a task. This gives APEX a place to work through approval, failed or uncertain writes, restart recovery, verification, and history before the same ideas are used for more important workflows.
+**Why.** Task changes are simple enough to test the full flow without much risk. The approval flow applies to Agent-requested changes, where APEX needs a clear boundary between a model suggestion and an external write. Direct reminder management in the Overview workspace stays simpler and does not add approval steps just to edit a task. This gives APEX a place to work through approval, failed or uncertain writes, restart recovery, verification, and history before the same ideas are used for more important workflows.
 
 **Trade-off.** This is more machinery than Microsoft To Do alone needs. For now, that extra complexity is intentional because the goal is to prove the action flow, not just build task editing.
