@@ -16,6 +16,7 @@ from core.agent.providers.contract import (
     ProviderTurnResult,
     ProviderStreamEvent,
     ProviderStreamObserver,
+    merge_token_usage,
 )
 from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.providers.retries import (
@@ -402,9 +403,7 @@ class GeminiProvider:
 
         config = types.GenerateContentConfig(**config_kwargs)
 
-        def _generate() -> Any:
-            if execution_control is not None:
-                execution_control.before_provider_attempt()
+        def _request_config() -> types.GenerateContentConfig:
             request_config = config
             if execution_control is not None:
                 request_config = config.model_copy(update={
@@ -421,10 +420,15 @@ class GeminiProvider:
                         )
                     )
                 })
+            return request_config
+
+        def _generate() -> Any:
+            if execution_control is not None:
+                execution_control.before_provider_attempt()
             return self.client.models.generate_content_stream(
                 model=profile.api_model,
                 contents=contents,
-                config=request_config,
+                config=_request_config(),
             )
 
         def _consume() -> Any:
@@ -522,7 +526,9 @@ class GeminiProvider:
             remaining_seconds=execution_control.remaining_seconds if execution_control is not None else None,
             execution_control=execution_control,
         )
-        provider_ms = round((time.perf_counter() - started) * 1000, 2)
+        stream_measurements = getattr(response, "_stream_measurements", None)
+        if not isinstance(stream_measurements, dict):
+            stream_measurements = {}
 
         streamed_text = getattr(response, "_stream_text", None)
         if isinstance(streamed_text, str):
@@ -542,6 +548,39 @@ class GeminiProvider:
             if candidate_content is None:
                 raise ValueError("Gemini returned empty candidate content.")
             message = _content_to_agent_message(candidate_content)
+        prior_usage: TokenUsage | None = None
+        prior_provider_tool_events: list[ProviderToolEvent] = []
+        if (
+            output_schema is None
+            and isinstance(getattr(response, "_stream_tool_calls", None), list)
+            and not (message.content or "").strip()
+            and not message.tool_calls
+            and _gemini_finish_reason(response) == "STOP"
+        ):
+            if execution_control is not None:
+                execution_control.before_retry(retry_count + 1)
+                execution_control.before_provider_attempt()
+            _LOGGER.warning(
+                "Gemini stream ended without visible text or tool calls; "
+                "retrying once without streaming: finish_reason=STOP"
+            )
+            prior_usage = _parse_gemini_usage(response)
+            prior_provider_tool_events = _parse_grounding(response)[1]
+            response = self.client.models.generate_content(
+                model=profile.api_model,
+                contents=contents,
+                config=_request_config(),
+            )
+            retry_count += 1
+            if not response.candidates:
+                raise ValueError("Gemini returned no response candidates.")
+            candidate_content = response.candidates[0].content
+            if candidate_content is None:
+                raise ValueError("Gemini returned empty candidate content.")
+            message = _content_to_agent_message(candidate_content)
+            if stream_observer is not None and message.content:
+                stream_observer(ProviderStreamEvent(kind="text", text=message.content))
+        provider_ms = round((time.perf_counter() - started) * 1000, 2)
         resolved_model = (
             getattr(response, "model_version", None)
             or getattr(response, "model", None)
@@ -553,6 +592,7 @@ class GeminiProvider:
         citations, provider_tool_events, grounding, grounded_content = _parse_grounding(
             response, message.content
         )
+        provider_tool_events = prior_provider_tool_events + provider_tool_events
         if grounded_content != message.content:
             message = message.model_copy(update={"content": grounded_content})
         if not (message.content or "").strip() and not message.tool_calls:
@@ -567,13 +607,10 @@ class GeminiProvider:
         if stream_observer is not None:
             stream_observer(ProviderStreamEvent(kind="completed"))
 
-        stream_measurements = getattr(response, "_stream_measurements", None)
-        if not isinstance(stream_measurements, dict):
-            stream_measurements = {}
         return ProviderTurnResult(
             message=message,
             resolved_model=resolved_model,
-            usage=_parse_gemini_usage(response),
+            usage=merge_token_usage(prior_usage, _parse_gemini_usage(response)),
             provider_ms=provider_ms,
             citations=citations,
             grounding=grounding,

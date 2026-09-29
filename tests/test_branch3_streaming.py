@@ -179,6 +179,86 @@ class Branch3StreamingTests(unittest.TestCase):
         self.assertNotIn("private prompt", logs.output[0])
         self.assertNotIn("private reasoning", repr(result))
         self.assertNotIn("private reasoning", repr(events))
+        client.models.generate_content.assert_not_called()
+
+    @patch("core.agent.providers.gemini.genai.Client")
+    def test_gemini_empty_stop_stream_recovers_with_one_bounded_unary_call(self, client_cls):
+        empty = SimpleNamespace(
+            candidates=[SimpleNamespace(
+                content=SimpleNamespace(parts=[SimpleNamespace(text="", function_call=None)]),
+                finish_reason=SimpleNamespace(name="STOP"),
+                grounding_metadata=SimpleNamespace(grounding_chunks=[SimpleNamespace(
+                    web=SimpleNamespace(uri="https://example.com/source", title="Source"),
+                    maps=None,
+                )]),
+            )],
+            usage_metadata=SimpleNamespace(
+                prompt_token_count=5, candidates_token_count=2, total_token_count=7,
+            ),
+        )
+        recovered = SimpleNamespace(
+            candidates=[SimpleNamespace(content=SimpleNamespace(parts=[
+                SimpleNamespace(text="Calendar is clear.", thought=False, function_call=None),
+            ]))],
+            usage_metadata=SimpleNamespace(
+                prompt_token_count=5, candidates_token_count=4, total_token_count=9,
+            ),
+            model_version="gemini-recovered",
+        )
+        stream = _Stream([empty])
+        client = Mock()
+        client.models.generate_content_stream.return_value = stream
+        client.models.generate_content.return_value = recovered
+        client_cls.return_value = client
+        profile = GeminiModelProfile(
+            display_name="Gemini", api_model="gemini", stability="stable",
+            thinking_level="low", system_instruction="",
+        )
+        control = _Control()
+        events: list[ProviderStreamEvent] = []
+
+        with self.assertLogs("core.agent.providers.gemini", level="WARNING") as logs:
+            result = GeminiProvider("key").generate_turn(
+                [AgentMessage(role="user", content="private calendar question")], [], profile,
+                execution_control=control, stream_observer=events.append,
+            )
+
+        self.assertEqual(result.message.content, "Calendar is clear.")
+        self.assertEqual(result.resolved_model, "gemini-recovered")
+        self.assertEqual(result.usage.total_tokens, 16)
+        self.assertEqual(result.retry_count, 1)
+        self.assertEqual(control.retries, 1)
+        self.assertEqual([event.name for event in result.provider_tool_events], ["google_search"])
+        self.assertEqual(result.provider_tool_events[0].billable_units, 1)
+        self.assertFalse(result.citations)
+        self.assertEqual([event.kind for event in events], ["text", "completed"])
+        self.assertTrue(stream.closed)
+        client.models.generate_content.assert_called_once()
+        self.assertNotIn("private calendar question", repr(logs.output))
+
+    @patch("core.agent.providers.gemini.genai.Client")
+    def test_gemini_briefing_empty_stop_leaves_repair_to_briefing(self, client_cls):
+        chunk = SimpleNamespace(candidates=[SimpleNamespace(
+            content=SimpleNamespace(parts=[SimpleNamespace(text="", function_call=None)]),
+            finish_reason=SimpleNamespace(name="STOP"),
+        )])
+        client = Mock()
+        client.models.generate_content_stream.return_value = _Stream([chunk])
+        client_cls.return_value = client
+        profile = GeminiModelProfile(
+            display_name="Gemini", api_model="gemini", stability="stable",
+            thinking_level="low", system_instruction="",
+        )
+
+        with self.assertLogs("core.agent.providers.gemini", level="WARNING"):
+            result = GeminiProvider("key").generate_turn(
+                [AgentMessage(role="user", content="x")], [], profile,
+                output_schema={"type": "object"},
+            )
+
+        self.assertIsNone(result.message.content)
+        self.assertEqual(result.retry_count, 0)
+        client.models.generate_content.assert_not_called()
 
     @patch("core.agent.providers.gemini.genai.Client")
     def test_gemini_stream_omits_thought_text_from_answer_and_deltas(self, client_cls):
