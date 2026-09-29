@@ -481,11 +481,7 @@ Publish selected trusted personal context as linked Markdown notes for Obsidian 
 **Status:** Complete
 
 **Objective:**
-Rebuilt Home briefings around one bounded, saved-session engine using the selected Apex Agent model. Daily, Catch Up, and Deep are built-in profiles; completed sessions retain canonical artifacts and evidence and continue in linked Cortex conversations. Catch Up compares presented source history, while Deep can use bounded read-only investigation. Optional speech is prepared from the saved artifact, and Home now presents Standby, Overview, and Briefing as three states of one workspace.
-
-Final integration removed the previous Flash, Focused, and Structured pipeline, its routes and UI controls, old status ownership, and their model/preference defaults. No old settings are mapped. The upgrade drops only the legacy SQLite `briefings` table transactionally, preserving `briefing_sessions` and unrelated data while permanently retiring old history. The CLI and Apex Agent briefing-history tool use the saved-session contract.
-
-Custom profiles, a scheduler, user-editable execution graphs, and a stable release are outside this milestone. The stable release remains the next roadmap milestone.
+Rebuild briefings around a bounded, saved-session engine with Daily, Catch Up, and Deep profiles, grounded speech synthesis from saved artifacts, and dedicated Overview and Briefing workspaces.
 
 ---
 
