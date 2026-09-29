@@ -9,6 +9,7 @@ type BriefingSpeechControlProps = Pick<UseBriefingSpeechResult,
   'speech' | 'isLoading' | 'pendingAction' | 'error' | 'playbackCompleted' | 'refresh' | 'prepare' | 'recreateAudio' | 'play' | 'stop'
 > & {
   voiceMode: VoiceMode
+  agentDisplayName?: string
 }
 
 function engineLabel(engine: BriefingSpeechEngine): string {
@@ -19,13 +20,13 @@ function engineLabel(engine: BriefingSpeechEngine): string {
   }
 }
 
-function statusText(props: BriefingSpeechControlProps): string {
+function statusText(props: BriefingSpeechControlProps, agentName: string): string {
   if (props.voiceMode === 'off') return 'Voice mode is off. Spoken highlights are disabled.'
-  if (props.isLoading && !props.speech) return 'Checking saved spoken highlights…'
+  if (props.isLoading && !props.speech) return 'APEX is checking saved spoken highlights…'
   if (!props.speech) return 'Spoken highlights are unavailable.'
   switch (props.speech.status) {
     case 'not_requested': return 'No spoken highlights are prepared.'
-    case 'preparing': return 'Preparing spoken highlights…'
+    case 'preparing': return `${agentName} is preparing spoken highlights…`
     case 'ready':
       if (props.speech.error_code === 'speaker_busy') return 'Voice output is busy. Try playing again.'
       if (props.speech.error_code) return 'Playback failed. Play again to retry.'
@@ -34,8 +35,8 @@ function statusText(props: BriefingSpeechControlProps): string {
       if (props.speech.error_code === 'speech_model_timeout') return 'The selected model took too long to prepare spoken highlights. Retry preparation.'
       return `Spoken highlights are unavailable${props.speech.error_code ? ` (${props.speech.error_code})` : ''}.`
     case 'cancelled': return 'Speech preparation was cancelled.'
-    case 'playing': return 'Playing spoken highlights…'
-    case 'stopping': return 'Stopping spoken highlights…'
+    case 'playing': return 'APEX is playing spoken highlights…'
+    case 'stopping': return 'APEX is stopping spoken highlights…'
   }
 }
 
@@ -57,6 +58,7 @@ function controlLabel(props: BriefingSpeechControlProps): string | null {
 
 export function BriefingSpeechControl(props: BriefingSpeechControlProps): ReactElement {
   const label = controlLabel(props)
+  const agentName = props.agentDisplayName?.trim() || 'Apex Agent'
   const isStop = props.speech?.status === 'playing' || props.speech?.status === 'preparing'
   const actionBusy = props.pendingAction !== null
   const disabled = actionBusy || props.isLoading || (props.voiceMode === 'off' && !isStop)
@@ -80,7 +82,7 @@ export function BriefingSpeechControl(props: BriefingSpeechControlProps): ReactE
       <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
         <p className="font-orbitron text-[9px] uppercase tracking-[0.13em] text-zinc-300">Spoken highlights</p>
         <p className={`text-[10px] ${props.speech?.status === 'unavailable' || playbackFailed ? 'text-red-200' : 'text-zinc-400'}`} role={playbackFailed ? 'alert' : 'status'}>
-          {props.pendingAction === 'prepare' ? 'Preparing spoken highlights…' : statusText(props)}
+          {props.pendingAction === 'prepare' ? `${agentName} is preparing spoken highlights…` : statusText(props, agentName)}
         </p>
         {props.error ? <p className="text-[10px] text-red-200" role="alert">{props.error}</p> : null}
         {(props.speech?.status === 'ready' || props.speech?.status === 'playing') && props.speech.engine ? <p className="truncate font-mono text-[9px] text-zinc-500">Voice engine · {engineLabel(props.speech.engine)}</p> : null}

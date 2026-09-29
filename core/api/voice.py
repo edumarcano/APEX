@@ -19,6 +19,7 @@ def speak_cue(payload: VoiceCueRequest) -> VoiceCueResponse:
     text = format_voice_cue(
         payload.cue,
         user_designation=settings.user_designation,
+        briefing_profile=payload.briefing_profile,
     )
     try:
         resolved_engine = speaker.try_speak(text)

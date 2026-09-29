@@ -49,6 +49,12 @@ describe('BriefingSpeechControl', () => {
     expect(prepare).toHaveBeenCalledTimes(1)
   })
 
+  it('names the actor for background work using the display name', () => {
+    render(<BriefingSpeechControl {...props({ speech: speech('preparing') })} agentDisplayName="Nova" />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('Nova is preparing spoken highlights')
+  })
+
   it('identifies Google TTS without implying synthesis is local', () => {
     const googleSpeech = { ...speech('ready'), engine: 'google' as const }
     render(<BriefingSpeechControl {...props({ speech: googleSpeech })} />)

@@ -191,7 +191,7 @@ Runtime Settings configures text-to-speech engine selection, voice gender, and d
 }
 ```
 
-The settings API exposes these under `voice` with `engine` (`google`, `pyttsx3`, or `kokoro`), `gender` (`female` or `male`), and `mode` (`automatic`, `manual`, or `off`). In automatic mode, APEX can speak short contextual telemetry cues; manual and off modes suppress telemetry cues while keeping briefing highlights and explicit speech endpoints available. For installation, fallback behavior, Kokoro hardware gates, and speech caching, see the [Speech runtime guide](speech-runtime.md).
+The settings API exposes these under `voice` with `engine` (`google`, `pyttsx3`, or `kokoro`), `gender` (`female` or `male`), and `mode` (`automatic`, `manual`, or `off`). In automatic mode, APEX can speak short contextual cues for telemetry collection and for briefing and spoken-highlights progress; manual and off modes suppress these cues while keeping briefing highlights and explicit speech endpoints available. For installation, fallback behavior, Kokoro hardware gates, and speech caching, see the [Speech runtime guide](speech-runtime.md).
 
 ## Market data
 

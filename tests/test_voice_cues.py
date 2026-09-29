@@ -60,6 +60,19 @@ class VoiceCueFormattingTests(unittest.TestCase):
             "Hello world café",
         )
 
+    def test_briefing_and_highlights_cues(self) -> None:
+        self.assertEqual(
+            format_voice_cue("briefing_generating", briefing_profile="catch_up"),
+            "I’m preparing your Catch Up briefing.",
+        )
+        self.assertEqual(
+            format_voice_cue("briefing_generating"),
+            "I’m preparing your briefing.",
+        )
+        for cue in ("briefing_ready", "briefing_failed", "highlights_ready", "highlights_failed"):
+            with self.subTest(cue=cue):
+                self.assertTrue(format_voice_cue(cue).strip())
+
 
 if __name__ == "__main__":
     unittest.main()

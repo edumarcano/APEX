@@ -83,6 +83,60 @@ describe('useBriefingSpeech', () => {
     expect(writes[0]).not.toContain('force=true')
   })
 
+  it('reports a preparation outcome once, and only for preparation started here', async () => {
+    vi.useFakeTimers()
+    const reads: BriefingSpeechStatus[] = ['unavailable', 'unavailable']
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === API_ENDPOINTS.briefingSessionSpeech(firstSessionId) && !init?.method) {
+        return response(state(firstSessionId, reads.shift() ?? 'ready'))
+      }
+      if (url === API_ENDPOINTS.briefingSessionSpeechPrepare(firstSessionId)) {
+        return response(state(firstSessionId, 'preparing'), 202)
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    }))
+    const onOutcome = vi.fn()
+    const { result } = renderHook(() => useBriefingSpeech(firstSessionId, 'automatic', onOutcome))
+    await flush()
+
+    expect(result.current.speech?.status).toBe('unavailable')
+    expect(onOutcome).not.toHaveBeenCalled()
+
+    await act(async () => { await result.current.prepare() })
+    expect(onOutcome).not.toHaveBeenCalled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(900) })
+    expect(onOutcome).toHaveBeenCalledTimes(1)
+    expect(onOutcome).toHaveBeenCalledWith('failed')
+    await act(async () => { await result.current.refresh() })
+    expect(onOutcome).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports ready after started preparation and stays silent when it is cancelled', async () => {
+    vi.useFakeTimers()
+    const reads: BriefingSpeechStatus[] = ['not_requested', 'ready']
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === API_ENDPOINTS.briefingSessionSpeech(firstSessionId) && !init?.method) {
+        return response(state(firstSessionId, reads.shift() ?? 'cancelled'))
+      }
+      if (url === API_ENDPOINTS.briefingSessionSpeechPrepare(firstSessionId)) {
+        return response(state(firstSessionId, 'preparing'), 202)
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    }))
+    const onOutcome = vi.fn()
+    const { result } = renderHook(() => useBriefingSpeech(firstSessionId, 'automatic', onOutcome))
+    await flush()
+    await act(async () => { await result.current.prepare() })
+    await act(async () => { await vi.advanceTimersByTimeAsync(900) })
+    expect(onOutcome).toHaveBeenCalledWith('ready')
+
+    await act(async () => { await result.current.prepare() })
+    await act(async () => { await vi.advanceTimersByTimeAsync(900) })
+    expect(onOutcome).toHaveBeenCalledTimes(1)
+  })
+
   it('does not start playback when reopening an already prepared session', async () => {
     const requests: Array<{ url: string; method?: string }> = []
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

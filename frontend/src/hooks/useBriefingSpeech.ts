@@ -6,6 +6,8 @@ import type { VoiceMode } from '../types/settings'
 
 export type BriefingSpeechAction = 'prepare' | 'play' | 'stop'
 
+export type BriefingSpeechPreparationOutcome = 'ready' | 'failed'
+
 export type UseBriefingSpeechResult = {
   speech: BriefingSpeechState | null
   isLoading: boolean
@@ -63,6 +65,7 @@ function responseError(cause: unknown, fallback: string): string {
 export function useBriefingSpeech(
   sessionId: string | null,
   voiceMode: VoiceMode,
+  onPreparationOutcome?: (outcome: BriefingSpeechPreparationOutcome) => void,
 ): UseBriefingSpeechResult {
   const [speechState, setSpeechState] = useState<BriefingSpeechState | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -81,6 +84,19 @@ export function useBriefingSpeech(
   const voiceOffStopForRef = useRef<string | null>(null)
   const contextRef = useRef({ sessionId, voiceMode })
   const stopRequestedForRef = useRef<string | null>(null)
+  const preparationStartedForRef = useRef<string | null>(null)
+  const outcomeCallbackRef = useRef(onPreparationOutcome)
+
+  useLayoutEffect(() => {
+    outcomeCallbackRef.current = onPreparationOutcome
+  }, [onPreparationOutcome])
+
+  const reportPreparationOutcome = useCallback((next: BriefingSpeechState): void => {
+    if (preparationStartedForRef.current !== next.session_id || ACTIVE_STATUSES.has(next.status)) return
+    preparationStartedForRef.current = null
+    if (next.status === 'ready') outcomeCallbackRef.current?.(next.error_code === null ? 'ready' : 'failed')
+    else if (next.status === 'unavailable') outcomeCallbackRef.current?.('failed')
+  }, [])
 
   const currentSpeech = sessionId && speechState?.session_id === sessionId ? speechState : null
 
@@ -121,6 +137,7 @@ export function useBriefingSpeech(
       }
       speechRef.current = next
       setSpeechState(next)
+      reportPreparationOutcome(next)
     }
   const read = async (): Promise<void> => {
       if (!sessionId || !current()) return
@@ -194,7 +211,7 @@ export function useBriefingSpeech(
       readSequenceRef.current += 1
       actionSequenceRef.current += 1
     }
-  }, [requestSessionStop, sessionId, voiceMode])
+  }, [reportPreparationOutcome, requestSessionStop, sessionId, voiceMode])
 
   const refresh = useCallback(async (): Promise<void> => {
     if (!sessionId) return
@@ -257,6 +274,8 @@ export function useBriefingSpeech(
       }
       speechRef.current = body
       setSpeechState(body)
+      if (action === 'prepare') preparationStartedForRef.current = sessionId
+      reportPreparationOutcome(body)
       if (!ACTIVE_STATUSES.has(body.status) && stopRequestedForRef.current === sessionId) {
         stopRequestedForRef.current = null
       }
@@ -274,7 +293,7 @@ export function useBriefingSpeech(
       }
       if (actionContextRef.current === actionContext) actionContextRef.current = null
     }
-  }, [currentSpeech, requestSessionStop, sessionId, voiceMode])
+  }, [currentSpeech, reportPreparationOutcome, requestSessionStop, sessionId, voiceMode])
 
   useEffect(() => {
     if (voiceMode !== 'off') {

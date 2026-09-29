@@ -935,9 +935,12 @@ describe('App contextual voice cues', () => {
     vi.unstubAllGlobals()
   })
 
-  function stubAppFetch(events: string[]): void {
+  function stubAppFetch(events: string[], options: { reusable?: boolean } = {}): void {
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input))
+      if (url.pathname.endsWith('/telemetry/reuse')) {
+        return Promise.resolve(new Response(JSON.stringify({ reusable: options.reusable ?? false }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      }
       if (url.pathname.endsWith('/voice/cue')) {
         const body = JSON.parse(String(init?.body)) as { cue: string }
         events.push(`cue:${body.cue}`)
@@ -986,6 +989,43 @@ describe('App contextual voice cues', () => {
     await waitFor(() => {
       expect(events).toEqual(['refresh', 'cue:activation_loading', 'cue:activation_ready'])
     })
+  })
+
+  it('skips the collecting cue when the refresh reuses a fresh snapshot but still announces the result', async () => {
+    const user = userEvent.setup()
+    const events: string[] = []
+    appMocks.activated = false
+    stubAppFetch(events, { reusable: true })
+    appMocks.refreshAllWithOutcome.mockImplementation(async () => {
+      events.push('refresh')
+      return { kind: 'success', snapshot: createTelemetrySnapshot() }
+    })
+
+    renderOverviewApp()
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
+
+    await waitFor(() => expect(events).toEqual(['refresh', 'cue:activation_ready']))
+  })
+
+  it('stays silent about collecting when the reuse check cannot be confirmed', async () => {
+    const user = userEvent.setup()
+    const events: string[] = []
+    appMocks.activated = false
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input))
+      if (url.pathname.endsWith('/telemetry/reuse')) return Promise.reject(new Error('offline'))
+      if (url.pathname.endsWith('/voice/cue')) events.push(`cue:${(JSON.parse(String(init?.body)) as { cue: string }).cue}`)
+      return Promise.resolve(new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    }))
+    appMocks.refreshAllWithOutcome.mockImplementation(async () => {
+      events.push('refresh')
+      return { kind: 'success', snapshot: createTelemetrySnapshot() }
+    })
+
+    renderOverviewApp()
+    await user.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
+
+    await waitFor(() => expect(events).toEqual(['refresh', 'cue:activation_ready']))
   })
 
   it('does not race a cached snapshot load against the explicit refresh', async () => {
@@ -1618,6 +1658,7 @@ describe('App briefing session flow', () => {
     let admissionBody: Record<string, unknown> | null = null
     let settingsPatchBody: Record<string, unknown> | null = null
     const eventOrder: string[] = []
+    const spokenCues: string[] = []
     let admissions = 0
     let detailReads = 0
     let presentationWrites = 0
@@ -1666,6 +1707,10 @@ describe('App briefing session flow', () => {
         settingsPatchBody = JSON.parse(String(init.body)) as Record<string, unknown>
         eventOrder.push('settings-patch')
         return briefingSettingsResponse(settingsPatchBody)
+      }
+      if (path.endsWith('/voice/cue')) {
+        spokenCues.push((JSON.parse(String(init?.body)) as { cue: string }).cue)
+        return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
       if (path.endsWith('/briefing-sessions') && init?.method === 'POST') {
         admissions += 1
@@ -1803,6 +1848,7 @@ describe('App briefing session flow', () => {
     expect(admissions).toBe(1)
     expect(presentationWrites).toBe(1)
     expect(cancellationWrites).toBe(0)
+    expect(spokenCues).toEqual(['briefing_generating', 'briefing_ready'])
   }, 10000)
 })
 

@@ -951,6 +951,10 @@ class VoiceCueRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     cue: VoiceCueName
+    briefing_profile: Literal["daily", "catch_up", "deep"] | None = Field(
+        default=None,
+        description="Briefing profile named by the briefing_generating cue.",
+    )
 
 
 class VoiceCueResponse(BaseModel):

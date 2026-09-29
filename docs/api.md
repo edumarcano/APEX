@@ -103,6 +103,7 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | POST | `/api/v1/microsoft-todo/auth/start` | Begin device-code authorization |
 | DELETE | `/api/v1/microsoft-todo/auth` | Disconnect Microsoft To Do |
 | GET | `/api/v1/telemetry/latest` | Current process-local snapshot |
+| GET | `/api/v1/telemetry/reuse` | Check whether a normal refresh would reuse the current snapshot |
 | POST | `/api/v1/telemetry/refresh` | Refresh all or selected connectors |
 | POST | `/api/v1/preflight` | Evaluate an intended operation |
 | POST | `/api/v1/voice/speak` | Speak an existing transcript |
@@ -224,6 +225,10 @@ Returns current CPU, memory, disk, and network diagnostics for the HUD. This pol
 Returns the current process-local `TelemetrySnapshot`. Each module reports typed status, freshness, reason, observation time, display text, and structured data.
 
 Returns `404` before the first successful snapshot or after a process restart.
+
+### GET `/api/v1/telemetry/reuse`
+
+Returns `{ "reusable": true }` when a normal full refresh would return the current snapshot without connector calls, and `{ "reusable": false }` when it would collect, including when no snapshot exists and in demo mode. It reads state only and never starts a refresh. The HUD uses it to skip the "collecting" voice cue when nothing will be collected.
 
 ### POST `/api/v1/telemetry/refresh`
 
@@ -883,13 +888,13 @@ The endpoint does not generate or persist a briefing. It speaks only the text su
 
 ### POST `/api/v1/voice/cue`
 
-Formats and speaks one fixed activation or telemetry-refresh cue using the local daypart and optional saved user designation. The request contains a `cue` key.
+Formats and speaks one fixed contextual cue using the local daypart and optional saved user designation. The request contains a `cue` key.
 
 ```json
 { "cue": "activation_ready" }
 ```
 
-Supported cue names are `activation_ready`, `activation_loading`, `activation_refresh_failed`, and `activation_no_fresh_telemetry`.
+Supported cue names are `activation_ready`, `activation_loading`, `activation_refresh_failed`, `activation_no_fresh_telemetry`, `briefing_generating`, `briefing_ready`, `briefing_failed`, `highlights_ready`, and `highlights_failed`. `briefing_generating` accepts an optional `briefing_profile` (`daily`, `catch_up`, or `deep`) that the spoken text names; other values return `422`.
 
 Automatic voice mode speaks the cue and returns its resolved engine. Manual and off modes return `{ "status": "skipped", "resolved_engine": null }`. The endpoint shares the speech lock with `/api/v1/voice/speak`; a busy speaker returns `409`, and failed delivery returns `503`.
 

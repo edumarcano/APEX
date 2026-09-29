@@ -243,6 +243,28 @@ class TelemetryApiTests(unittest.TestCase):
         self.assertEqual(collect_weather.call_count, 1)
         self.assertEqual(collect_news.call_count, 1)
 
+    def test_reuse_check_matches_what_a_normal_refresh_would_do(self) -> None:
+        self.assertEqual(self.client.get("/api/v1/telemetry/reuse").json(), {"reusable": False})
+        with mock.patch(
+            "core.telemetry.collector.weather_client.collect_weather",
+            return_value=_result("weather", "healthy"),
+        ), mock.patch(
+            "core.telemetry.collector.news_client.collect_news",
+            return_value=_result("news", "healthy"),
+        ), mock.patch(
+            "core.telemetry.collector.collect_reminders",
+            return_value=_result("reminders", "healthy"),
+        ):
+            self.client.post("/api/v1/telemetry/refresh", json={"force": True})
+            reusable = self.client.get("/api/v1/telemetry/reuse")
+            self.store.apply_patch(
+                SettingsPatch.model_validate({"features": {"weather": False}})
+            )
+            after_setting_change = self.client.get("/api/v1/telemetry/reuse")
+
+        self.assertEqual(reusable.json(), {"reusable": True})
+        self.assertEqual(after_setting_change.json(), {"reusable": False})
+
     def test_force_refresh_bypasses_freshness(self) -> None:
         weather = _result("weather", "healthy")
         news = _result("news", "healthy")

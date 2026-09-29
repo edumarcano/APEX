@@ -348,6 +348,23 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
         self.assertEqual(refresh_failure.status_code, 200)
         self.assertEqual(refresh_failure.json()["status"], "spoken")
 
+        with mock.patch(
+            "core.api.voice.get_settings_store", return_value=self.store
+        ), mock.patch(
+            "core.api.voice.speaker.try_speak", return_value="pyttsx3"
+        ) as briefing_speak:
+            briefing = self.client.post(
+                "/api/v1/voice/cue",
+                json={"cue": "briefing_generating", "briefing_profile": "deep"},
+            )
+        self.assertEqual(briefing.status_code, 200)
+        self.assertIn("Deep", briefing_speak.call_args_list[0].args[0])
+        unknown_profile = self.client.post(
+            "/api/v1/voice/cue",
+            json={"cue": "briefing_generating", "briefing_profile": "flash"},
+        )
+        self.assertEqual(unknown_profile.status_code, 422)
+
         retired_cue = self.client.post(
             "/api/v1/voice/cue",
             json={"cue": "briefing_refresh"},

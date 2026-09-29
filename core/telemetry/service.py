@@ -82,6 +82,24 @@ class TelemetryService:
         age = (datetime.now(timezone.utc) - last).total_seconds()
         return age < FRESHNESS_WINDOW_SECONDS
 
+    def _reuses_snapshot(self, names: list[str] | None) -> bool:
+        settings = get_settings_store().get_snapshot()
+        enabled_names = enabled_connector_names(
+            features=settings.features,
+            modules=settings.modules,
+        )
+        return self._store.connectors_are_fresh(
+            names or list(CONNECTOR_NAMES),
+            enabled_names=enabled_names,
+            max_age_seconds=FRESHNESS_WINDOW_SECONDS,
+        )
+
+    def would_reuse_snapshot(self) -> bool:
+        """Report whether a normal full refresh would return the current snapshot unchanged."""
+        if config.DEMO_MODE or self._store.get() is None:
+            return False
+        return self._reuses_snapshot(None)
+
     def refresh(
         self,
         *,
@@ -134,15 +152,7 @@ class TelemetryService:
             modules=settings.modules,
         )
         target_names = names or list(CONNECTOR_NAMES)
-        if (
-            not force
-            and current is not None
-            and self._store.connectors_are_fresh(
-                target_names,
-                enabled_names=enabled_names,
-                max_age_seconds=FRESHNESS_WINDOW_SECONDS,
-            )
-        ):
+        if not force and current is not None and self._reuses_snapshot(names):
             _LOGGER.info(
                 "Returning fresh telemetry snapshot without connector calls",
             )

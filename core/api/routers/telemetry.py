@@ -8,6 +8,7 @@ from core.telemetry.models import (
     PreflightRequest,
     PreflightResponse,
     TelemetryRefreshRequest,
+    TelemetryReuseResponse,
     TelemetrySnapshot,
 )
 from core.telemetry.preflight import evaluate_preflight
@@ -30,6 +31,16 @@ def get_latest_telemetry() -> TelemetrySnapshot:
             detail="No telemetry snapshot is available.",
         )
     return snapshot
+
+
+@router.get(
+    "/api/v1/telemetry/reuse",
+    response_model=TelemetryReuseResponse,
+    summary="Check Telemetry Snapshot Reuse",
+)
+def get_telemetry_reuse() -> TelemetryReuseResponse:
+    """Report whether a normal full refresh would reuse the current snapshot."""
+    return TelemetryReuseResponse(reusable=get_telemetry_service().would_reuse_snapshot())
 
 
 @router.post(

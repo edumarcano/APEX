@@ -629,11 +629,11 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
     {runningSession ? <p className="animate-pulse font-mono text-[10px] uppercase tracking-wider text-[#A5C7FF] motion-reduce:animate-none" role="status">
       {runningSession.configuration.profile.id === 'deep'
         ? deepStage?.stage === 'investigating'
-          ? 'Deep is checking relevant read sources…'
+          ? `${agentDisplayName} is checking your connected sources…`
           : deepStage?.stage === 'synthesizing'
-            ? 'Deep is preparing its evidence-backed briefing…'
-            : 'Deep is collecting the briefing snapshot…'
-        : `Preparing ${runningSession.configuration.profile.label} from the available snapshot…`}
+            ? `${agentDisplayName} is preparing your evidence-backed briefing…`
+            : 'APEX is collecting the briefing snapshot…'
+        : `${agentDisplayName} is preparing your ${runningSession.configuration.profile.label} briefing from the available snapshot…`}
     </p> : null}
     {props.error && !setupOpen ? <p className="rounded-md border border-red-500/20 bg-red-950/20 px-2 py-1.5 text-xs text-red-200" role="alert">{props.error}</p> : null}
     {failureCopy ? <p className="rounded-md border border-amber-400/20 bg-amber-950/15 px-2 py-1.5 text-xs text-amber-100" role="alert">{failureCopy}</p> : null}

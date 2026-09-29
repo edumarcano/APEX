@@ -33,7 +33,11 @@ Kokoro stays local. If Kokoro is unavailable or fails during preparation, synthe
 
 ## Contextual cues
 
-In automatic voice mode, APEX may speak short first-person cues while collecting telemetry and when the collection finishes, fails, or returns no fresh data. They use the local time of day and optional saved user designation. They do not announce a briefing profile or fallback. Manual and off modes skip these cues.
+In automatic voice mode, APEX may speak short first-person cues in two places. Telemetry collection speaks a cue when it starts and when it finishes, fails, or returns no fresh data. The start cue is skipped when the refresh would reuse a snapshot that is still fresh, for example after reloading the page, because nothing is being collected. The result cue is still spoken.
+
+Briefing speaks a cue when a briefing starts (naming its profile), when it completes, and when it fails, plus a cue when spoken highlights finish preparing or fail to prepare. These cues are spoken only for work started in the current page session and once per run. Opening a saved session, reloading while a run is in progress, cancelling, and reading saved highlight status are silent. Highlights are never played automatically.
+
+Cues use the local time of day and optional saved user designation where they greet. They do not announce a fallback. Manual and off modes skip them.
 
 Cue requests share the speech lock and configured engine fallback with other speech. They are best effort: a busy or failed cue does not fail telemetry collection or refresh. See the [voice cue API](api.md#post-apiv1voicecue) for the request and response contract.
 
