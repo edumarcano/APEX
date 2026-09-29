@@ -1,10 +1,11 @@
-import type { ReactElement } from 'react'
+import type { ReactElement, ReactNode } from 'react'
+import type { LucideIcon } from 'lucide-react'
 
 import type { SettingsEffectiveTiming } from '../types/settings'
 
 export type SettingsStatusTone = 'neutral' | 'ok' | 'warn' | 'error'
 
-function TimingChip({ label }: { label: SettingsEffectiveTiming }): ReactElement {
+export function TimingChip({ label }: { label: SettingsEffectiveTiming }): ReactElement {
   const muted = label === 'Active'
   return (
     <span
@@ -162,5 +163,57 @@ export function StatusRow({
         {value}
       </span>
     </div>
+  )
+}
+
+export function SettingsCard({
+  id,
+  title,
+  icon: Icon,
+  badgeText,
+  timing,
+  children,
+  className = '',
+}: {
+  id?: string
+  title: string
+  icon?: LucideIcon
+  badgeText?: string
+  timing?: SettingsEffectiveTiming
+  children: ReactNode
+  className?: string
+}): ReactElement {
+  return (
+    <section
+      aria-labelledby={id}
+      className={`hud-corner-brackets hud-glass relative flex flex-col rounded-xl border border-white/10 bg-white/[0.02] p-4 transition-all duration-300 ${className}`}
+    >
+      <span className="hud-corner-bl" aria-hidden />
+      <span className="hud-corner-br" aria-hidden />
+      <header className="mb-3.5 flex shrink-0 items-center justify-between gap-2 border-b border-white/10 pb-2.5">
+        <div className="flex items-center gap-2.5">
+          {Icon ? (
+            <span className="hud-icon-badge size-7 text-[color:var(--hud-accent)]">
+              <Icon className="size-3.5" aria-hidden="true" />
+            </span>
+          ) : null}
+          <h3
+            id={id}
+            className="font-orbitron text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--hud-text)]"
+          >
+            {title}
+          </h3>
+        </div>
+        <div className="flex items-center gap-2">
+          {timing ? <TimingChip label={timing} /> : null}
+          {badgeText ? (
+            <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-zinc-500">
+              {badgeText}
+            </span>
+          ) : null}
+        </div>
+      </header>
+      <div className="flex-1 space-y-3">{children}</div>
+    </section>
   )
 }
