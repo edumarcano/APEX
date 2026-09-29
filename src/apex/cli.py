@@ -128,13 +128,13 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json_option(status)
     status.set_defaults(handler=_status)
 
-    models = commands.add_parser("models", help="List models available to Apex Agent.")
+    models = commands.add_parser("models", help="List models available to APEX Agent.")
     _add_json_option(models)
     models.set_defaults(handler=_models)
 
     ask = commands.add_parser("ask", help="Run one Agent turn.")
     _add_json_option(ask)
-    ask.add_argument("prompt", help="Prompt for Apex Agent.")
+    ask.add_argument("prompt", help="Prompt for APEX Agent.")
     ask.add_argument("--model", help="Model ID. Defaults to the backend selection.")
     ask.add_argument(
         "--effort",
@@ -306,7 +306,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="daily",
         help="Briefing profile (default: daily).",
     )
-    briefing.add_argument("--model", help="Model ID. Defaults to the saved Apex Agent selection.")
+    briefing.add_argument("--model", help="Model ID. Defaults to the saved APEX Agent selection.")
     briefing.set_defaults(handler=_briefing)
 
     actions = commands.add_parser("actions", help="Inspect or resolve action proposals.")
@@ -455,7 +455,7 @@ def _status(_args: argparse.Namespace, client: ApiClient, json_mode: bool) -> in
             "display_name": (
                 display_name
                 if isinstance(display_name, str) and display_name.strip()
-                else "Apex Agent"
+                else "Lynx"
             ),
             "runtime": runtime if isinstance(runtime, str) else None,
             "effort": effort if isinstance(effort, str) else None,
@@ -899,7 +899,7 @@ def _briefing(args: argparse.Namespace, client: ApiClient, json_mode: bool) -> i
         if not isinstance(selected_model, str) or not selected_model.strip():
             raise CliError(
                 "invalid_response",
-                "APEX settings did not include the saved Apex Agent model selection.",
+                "APEX settings did not include the saved APEX Agent model selection.",
             )
         model_id = selected_model.strip()
 
@@ -1065,7 +1065,7 @@ def _render_models(payload: object) -> None:
     print(
         header
         if isinstance(header, str) and header.strip()
-        else "Apex Agent"
+        else "Lynx"
     )
     for model in catalog:
         if not isinstance(model, dict):

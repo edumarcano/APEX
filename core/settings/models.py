@@ -165,7 +165,7 @@ class LocalSettings(BaseModel):
 
 
 class AgentSettings(BaseModel):
-    """Apex Agent query enablement, selected model, and runtime preferences."""
+    """APEX Agent query enablement, selected model, and runtime preferences."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -422,7 +422,7 @@ class RuntimeSettingsSnapshot(BaseModel):
     agent_display_name: str = Field(
         default="",
         max_length=80,
-        description="Optional local display name for the Apex Agent.",
+        description="Optional local display name for the APEX Agent.",
     )
     features: FeaturesSettings = Field(default_factory=FeaturesSettings)
     modules: ModulesSettings = Field(default_factory=ModulesSettings)

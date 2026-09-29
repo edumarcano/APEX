@@ -1,4 +1,4 @@
-"""Registered model profiles for the native Apex Agent."""
+"""Registered model profiles for the native APEX Agent."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ class ModelProfile:
     dev_only: bool = False
     maximum_context_window: int | None = None
 
-# Cloud models available to Apex Agent.
+# Cloud models available to APEX Agent.
 CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
     "deepseek/deepseek-v4-flash-0731": ModelProfile(
         model_id="deepseek/deepseek-v4-flash-0731",
@@ -86,7 +86,7 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
     ),
 }
 
-# Local models available to Apex Agent.
+# Local models available to APEX Agent.
 LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
     "gemma-4-E2B-Q4_K_M.gguf": ModelProfile(
         model_id="gemma-4-E2B-Q4_K_M.gguf",

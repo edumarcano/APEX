@@ -10,9 +10,9 @@
 
 APEX started as a small, fun experiment: could I build something that gave me a spoken daily briefing with a little of the Jarvis feeling from *Iron Man*? As it grew, it became a playground for a new interest in AI tools and software development, a place to experiment, learn, and find out what I could actually build.
 
-Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, sourced personal context, outside activity reports, and Apex Agent work into one place. It turns those signals into Overview telemetry, concise briefings, and Agent queries while keeping the local machine, not a hosted account, at the center of the system.
+Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, sourced personal context, outside activity reports, and APEX Agent work into one place. It turns those signals into Overview telemetry, concise briefings, and Agent queries while keeping the local machine, not a hosted account, at the center of the system.
 
-APEX opens on Launch, which provides access to four peer workspaces: Overview shows the telemetry grid after Collect Telemetry, Briefing runs saved sessions and setup, Cortex is where you interact directly with Apex Agent and review personal context, and Reports holds reports from outside tools. Overview navigation does not collect data; choose Collect Telemetry to run preflight and begin a refresh. Telemetry means structured status collected from connected services; a briefing is a saved, structured session built from that evidence; and an Agent query is a request sent to the selected model through Apex Agent.
+APEX opens on Launch, which provides access to four peer workspaces: Overview shows the telemetry grid after Collect Telemetry, Briefing runs saved sessions and setup, Cortex is where you interact directly with APEX Agent and review personal context, and Reports holds reports from outside tools. Overview navigation does not collect data; choose Collect Telemetry to run preflight and begin a refresh. Telemetry means structured status collected from connected services; a briefing is a saved, structured session built from that evidence; and an Agent query is a request sent to the selected model through APEX Agent.
 
 <p align="center">
   <img
@@ -34,7 +34,7 @@ APEX collects enabled weather, calendar, email, news, sports, reminder, and mark
 
 ### Produces interactive briefings
 
-Briefing creates Daily, Catch Up, and Deep sessions with the selected Apex Agent model. Each session saves a canonical artifact and evidence in the active local partition, and opens a linked Cortex conversation for follow-up. Catch Up compares current sources with the last presented complete session; Deep can investigate with a bounded set of read-only tools. The HUD never silently changes the selected model. Demo mode uses fixed Daily and Catch Up fixtures without contacting a provider.
+Briefing creates Daily, Catch Up, and Deep sessions with the selected APEX Agent model. Each session saves a canonical artifact and evidence in the active local partition, and opens a linked Cortex conversation for follow-up. Catch Up compares current sources with the last presented complete session; Deep can investigate with a bounded set of read-only tools. The HUD never silently changes the selected model. Demo mode uses fixed Daily and Catch Up fixtures without contacting a provider.
 
 <p align="center">
   <img
@@ -48,13 +48,13 @@ Briefing creates Daily, Catch Up, and Deep sessions with the selected Apex Agent
   <em>The Briefing workspace with session setup, repeat controls, and active telemetry context.</em>
 </p>
 
-### Operates the Apex Agent
+### Operates the APEX Agent
 
 Agent queries can use approved read tools for live data, briefing history, Gmail, Microsoft To Do, personal context, and optional MCP (Model Context Protocol) providers. Reads run directly. Supported native writes create action proposals that require local approval and verification before they are considered complete.
 
 Cortex keeps normalized personal-context records separate from their original evidence and append-only history. Clear operator input can be saved or corrected directly; sensitive, conflicting, or model-interpreted changes wait in a durable review queue. Pending proposals do not enter retrieval, and the Records and Review views expose the evidence behind the current claim before the operator accepts or rejects a change.
 
-After a Microsoft To Do list is selected, its incomplete tasks become the Overview reminder source. SQLite keeps a small cache for stale display and an offline queue for local reminders that still need to sync. The Overview Reminders panel can edit, complete, delete, reopen, and review completed tasks directly without adding the Agent approval step. Apex Agent uses one Tools selector; cloud and local model defaults remain runtime-scoped, while policy and MCP permissions remain separate boundaries.
+After a Microsoft To Do list is selected, its incomplete tasks become the Overview reminder source. SQLite keeps a small cache for stale display and an offline queue for local reminders that still need to sync. The Overview Reminders panel can edit, complete, delete, reopen, and review completed tasks directly without adding the Agent approval step. APEX Agent uses one Tools selector; cloud and local model defaults remain runtime-scoped, while policy and MCP permissions remain separate boundaries.
 
 <p align="center">
   <img
@@ -85,7 +85,7 @@ The HUD exposes connector health, CPU and memory use, active model state, briefi
 - **Local-first:** FastAPI, the React HUD, SQLite, runtime settings, and the default Ollama endpoint stay on the machine and bind to loopback.
 - **Independent features:** Telemetry, briefing generation, Agent work, and voice delivery can fail independently instead of taking the whole HUD down.
 - **Safer model input:** Connectors produce typed telemetry, and briefing models receive only bounded evidence marked as untrusted data.
-- **One briefing engine:** Daily, Catch Up, and Deep are built-in profiles over the selected Apex Agent model and one saved-session workflow.
+- **One briefing engine:** Daily, Catch Up, and Deep are built-in profiles over the selected APEX Agent model and one saved-session workflow.
 - **One local model at a time:** APEX avoids hidden local-inference queues and keeps model loading visible.
 - **Local storage:** SQLite keeps briefing sessions and artifacts, the reminder cache and offline queue, Cortex conversations and run records, external activity reports, personal-context sources and history, retrieval indexes, context reviews, and the durable action ledger. Reloading APEX restores the active conversation branch and its per-conversation Agent/tool preferences.
 - **Visible failures:** Readiness checks, connector health, stable errors, run IDs, and preflight warnings make degraded states easier to understand.
@@ -117,8 +117,8 @@ The browser owns the interactive session. FastAPI owns connector access, runtime
 | Backend | Python 3.14, FastAPI, Pydantic, uvicorn |
 | Frontend | React 19, TypeScript 6, Vite 8, Tailwind CSS 4 |
 | Persistence | SQLite |
-| Cloud reasoning | Apex Agent through OpenAI, OpenRouter, or Google; see Configuration for current model IDs |
-| Local model infrastructure | Apex Agent through Ollama development models or llama.cpp with Gemma and Qwen options |
+| Cloud reasoning | APEX Agent through OpenAI, OpenRouter, or Google; see Configuration for current model IDs |
+| Local model infrastructure | APEX Agent through Ollama development models or llama.cpp with Gemma and Qwen options |
 | Voice | Google Cloud TTS, pyttsx3, optional Kokoro ONNX |
 | Tool integrations | Native connectors plus allowlisted MCP clients |
 | Validation | unittest, Vitest, ESLint, TypeScript, Vite build |
@@ -177,7 +177,7 @@ Select a local model in Runtime Settings to keep briefing prompts on the configu
 | [CLI](docs/cli.md) | Use the running local backend from a terminal without duplicating backend logic |
 | [Context Vault](docs/context-vault.md) | Manage, export, and safely synchronize selected personal knowledge with local Markdown vaults |
 | [Engineering Decisions](docs/decisions.md) | Understand why important technical choices and trade-offs were made |
-| [Identity and Naming](docs/identity-and-naming.md) | Understand the APEX name, logo symbolism, product vocabulary, and Apex Agent |
+| [Identity and Naming](docs/identity-and-naming.md) | Understand the APEX name, logo symbolism, product vocabulary, and APEX Agent |
 | [Privacy](docs/privacy.md) | See what stays local, what can leave the machine, and what is persisted |
 | [Design System](docs/design-system.md) | Preserve the HUD's visual language, state semantics, responsiveness, and accessibility |
 | [Speech Runtime](docs/speech-runtime.md) | Understand voice modes, engine fallback, speech caching, and audio playback |

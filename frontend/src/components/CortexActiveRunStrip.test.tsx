@@ -68,14 +68,24 @@ describe('CortexActiveRunStrip', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('renders compact active indicator with agent name, elapsed time, and aria-live region', () => {
+  it('renders default Lynx working indicator when agentName is omitted', () => {
     const run = createMockRun({ status: 'running' })
-    render(<CortexActiveRunStrip run={run} agentName="Apex" />)
+    render(<CortexActiveRunStrip run={run} />)
 
     const indicator = screen.getByTestId('cortex-active-run-strip')
     expect(indicator).toBeInTheDocument()
     expect(indicator).toHaveAttribute('aria-live', 'polite')
-    expect(screen.getByText('Apex working')).toBeInTheDocument()
+    expect(screen.getByText('Lynx working')).toBeInTheDocument()
+  })
+
+  it('renders compact active indicator with agent name, elapsed time, and aria-live region', () => {
+    const run = createMockRun({ status: 'running' })
+    render(<CortexActiveRunStrip run={run} agentName="Nova" />)
+
+    const indicator = screen.getByTestId('cortex-active-run-strip')
+    expect(indicator).toBeInTheDocument()
+    expect(indicator).toHaveAttribute('aria-live', 'polite')
+    expect(screen.getByText('Nova working')).toBeInTheDocument()
   })
 
   it('triggers onInspect when inspect button is clicked', async () => {

@@ -1,4 +1,4 @@
-"""Regression coverage for persisted singular Apex Agent settings."""
+"""Regression coverage for persisted singular APEX Agent settings."""
 
 from __future__ import annotations
 

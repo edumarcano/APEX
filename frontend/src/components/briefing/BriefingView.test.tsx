@@ -135,7 +135,7 @@ describe('BriefingView', () => {
       onOpenConversation: vi.fn(),
       composer: {
         activeAgent: 'apex',
-        activeAgentName: 'Apex Agent',
+        activeAgentName: 'Lynx',
         integrated: true,
         selectedModelId: 'provider/model-a',
         onModelChange: vi.fn(),

@@ -344,7 +344,7 @@ export default function App(): ReactElement {
     verifyCloudAgent,
     refreshAgentsStatus,
   } = useCortex(true)
-  const agentDisplayName = cortexAgent?.display_name?.trim() || 'Apex Agent'
+  const agentDisplayName = cortexAgent?.display_name?.trim() || 'Lynx'
   const isCortexQuerying = assistantRunning
   const activeQueryAgent = assistantRunningAgent
   const cortexLatestTrace = assistantResponse && Array.isArray(assistantResponse.tool_trace)

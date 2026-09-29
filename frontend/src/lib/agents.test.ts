@@ -14,7 +14,7 @@ import {
 import type { ModelCatalogEntry } from '../types/telemetry'
 
 describe('agents helpers', () => {
-  it('exposes only the singular Apex Agent key', () => {
+  it('exposes only the singular APEX Agent key', () => {
     expect(AGENT_KEYS).toEqual(['apex'])
     expect(isAgentKey('apex')).toBe(true)
     expect(isAgentKey('unknown')).toBe(false)

@@ -1142,7 +1142,7 @@ function GatedComposer({
           disabled={blocked || queryActive}
         />
       ) : null}
-      <ComposerPrimitive.Input disabled={blocked} placeholder={edit ? 'Edit message…' : 'Ask APEX…'} className="min-h-11 flex-1 resize-none rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 transition-[border-color,box-shadow] duration-300 focus:border-[#0F4DB8]/70 focus:shadow-[0_0_16px_rgba(15,77,184,0.24)] disabled:cursor-not-allowed disabled:opacity-45" />
+      <ComposerPrimitive.Input disabled={blocked} placeholder={edit ? 'Edit message…' : `Ask ${composer?.activeAgentName?.trim() || 'Lynx'}…`} className="min-h-11 flex-1 resize-none rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 transition-[border-color,box-shadow] duration-300 focus:border-[#0F4DB8]/70 focus:shadow-[0_0_16px_rgba(15,77,184,0.24)] disabled:cursor-not-allowed disabled:opacity-45" />
       {edit ? <ComposerPrimitive.Cancel disabled={blocked} className="h-11 rounded-lg border border-white/10 px-3 py-2 font-mono text-xs text-zinc-400 hover:text-white disabled:opacity-45">Cancel</ComposerPrimitive.Cancel> : null}
       {!edit && queryActive ? (
         <button

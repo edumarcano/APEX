@@ -14,7 +14,7 @@ vi.mock('./CortexContext', () => ({
 
 const cloudModel: ModelCatalogEntry = { model_id: 'deepseek/deepseek-v4-flash-0731', display_name: 'DeepSeek V4 Flash', provider: 'openrouter', runtime: 'cloud', stability: 'stable', hosted_capabilities: [], status: 'configured', reasoning_options: ['none', 'low', 'high'], default_reasoning: 'low' }
 const localModel: ModelCatalogEntry = { model_id: 'gemma-4-E2B-Q4_K_M.gguf', display_name: 'Gemma 4 E2B', provider: 'llama_cpp', runtime: 'local', stability: 'stable', hosted_capabilities: [], status: 'available', context_options: [4096, 16384], default_context_window: 16384, reasoning_modes: ['none', 'focused'], default_reasoning_mode: 'none', active: false, loading: false }
-const apex: CortexAgent = { key: 'apex', display_name: 'Apex Agent', description: 'Native assistant.', selected_model: cloudModel.model_id, model_catalog: [cloudModel, localModel] }
+const apex: CortexAgent = { key: 'apex', display_name: 'Lynx', canonical_name: 'APEX Agent', description: 'Native assistant.', selected_model: cloudModel.model_id, model_catalog: [cloudModel, localModel] }
 const toolCatalog: ToolCatalog = { agent: 'apex', groups: [], tools: [], profiles: [], default_profile_id: 'no_tools', default_profile_name: 'No APEX Tools', default_selected_tool_names: [], provider_hosted_tools: [], context_window: 4096, reserved_response_tokens: 512 }
 
 function props(overrides: Partial<ComponentProps<typeof CortexWorkspace>> = {}): ComponentProps<typeof CortexWorkspace> {
@@ -36,12 +36,12 @@ describe('CortexWorkspace', () => {
     expect(screen.queryByLabelText('Tool trace')).not.toBeInTheDocument()
   })
 
-  it('identifies the singular Apex Agent and groups its selectable models', async () => {
+  it('identifies the singular APEX Agent and groups its selectable models', async () => {
     const user = userEvent.setup()
     renderWorkspace()
-    expect(screen.getAllByText('Apex Agent').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Lynx').length).toBeGreaterThan(0)
     await user.click(screen.getByRole('button', { name: 'Model' }))
-    const picker = screen.getByRole('listbox', { name: 'Select Apex Agent model' })
+    const picker = screen.getByRole('listbox', { name: 'Select Lynx model' })
     expect(within(picker).getByRole('group', { name: 'Cloud models' })).toBeVisible()
     expect(within(picker).getByRole('group', { name: 'Local models' })).toBeVisible()
   })
@@ -60,8 +60,8 @@ describe('CortexWorkspace', () => {
 
   it('shows local controls from the selected model rather than a second Agent', () => {
     renderWorkspace({ selectedModel: localModel.model_id, localContextWindow: 4096, localReasoningMode: 'focused' })
-    expect(screen.getByRole('region', { name: 'Apex Agent reasoning' })).toBeVisible()
-    expect(screen.getByRole('region', { name: 'Apex Agent context window' })).toBeVisible()
+    expect(screen.getByRole('region', { name: 'Lynx reasoning' })).toBeVisible()
+    expect(screen.getByRole('region', { name: 'Lynx context window' })).toBeVisible()
     expect(screen.getByLabelText('Reasoning')).toHaveValue('focused')
     expect(screen.getByLabelText('Context window')).toHaveValue('4096')
   })

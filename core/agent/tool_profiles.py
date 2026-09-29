@@ -160,7 +160,7 @@ def default_profile_for_runtime(runtime: str) -> ToolProfile:
 
 
 def default_profile_for_agent(agent_key: str) -> ToolProfile:
-    """Compatibility wrapper for the sole public Apex Agent."""
+    """Compatibility wrapper for the sole public APEX Agent."""
     from core.agent.catalog import resolve_selected_model_profile
     return default_profile_for_runtime(resolve_selected_model_profile().runtime)
 

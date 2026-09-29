@@ -58,7 +58,7 @@ export function ModelSelector({
   isQuerying = false,
   verifyingModelId,
   onVerify,
-  agentDisplayName = 'Apex Agent',
+  agentDisplayName = 'Lynx',
 }: ModelSelectorProps): ReactElement {
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)

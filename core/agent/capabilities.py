@@ -1,4 +1,4 @@
-"""Provider-neutral capability registry for Apex Agents and future MCP surfaces."""
+"""Provider-neutral capability registry for APEX Agents and future MCP surfaces."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ class CapabilityDescriptor(BaseModel):
         description="Read, write, or destructive risk classification."
     )
     expose_to_agent: bool = Field(
-        description="Whether an Apex Agent may discover and invoke this capability."
+        description="Whether an APEX Agent may discover and invoke this capability."
     )
     expose_to_mcp_server: bool = Field(
         description="Whether the APEX MCP server may export this capability."

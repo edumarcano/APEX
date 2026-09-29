@@ -383,7 +383,8 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["cortex_initial_selection"]["agent"], "apex")
-        self.assertEqual(payload["cortex_initial_selection"]["display_name"], "Apex Agent")
+        self.assertEqual(payload["cortex_initial_selection"]["display_name"], "Lynx")
+        self.assertEqual(payload["cortex_initial_selection"]["canonical_name"], "APEX Agent")
         self.assertEqual(payload["cortex_initial_selection"]["model_id"], "qwen3:1.7b")
         self.assertEqual(payload["cortex_initial_selection"]["runtime"], "local")
         self.assertFalse(payload["ask_apex_enabled"])
@@ -417,7 +418,8 @@ class SettingsApiTests(unittest.TestCase):
         with mock.patch("core.agent.catalog.is_dev_mode", return_value=False):
             config_payload = self.client.get("/api/v1/config").json()
         self.assertEqual(config_payload["cortex_initial_selection"]["agent"], "apex")
-        self.assertEqual(config_payload["cortex_initial_selection"]["display_name"], "Apex Agent")
+        self.assertEqual(config_payload["cortex_initial_selection"]["display_name"], "Lynx")
+        self.assertEqual(config_payload["cortex_initial_selection"]["canonical_name"], "APEX Agent")
 
     def test_agent_display_name_round_trips_and_feeds_config(self) -> None:
         response = self.client.patch(

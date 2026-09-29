@@ -79,6 +79,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(status_code, 0)
         self.assertIn("ready", status_output.lower())
         self.assertIn("apex", status_output.lower())
+        self.assertIn("lynx", status_output.lower())
         self.assertIn("gemma-4-e2b", status_output.lower())
         self.assertEqual(status_session.calls[0]["method"], "GET")
         self.assertEqual(status_session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/health/ready")
@@ -120,6 +121,16 @@ class CliTests(unittest.TestCase):
         self.assertIn("Nova", agent_output)
         self.assertIn("DeepSeek", agent_output)
         self.assertEqual(agent_session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/agent")
+
+        default_agent_code, default_agent_output, _, _ = self._run(
+            ["models"],
+            [_Response(200, {"key": "apex", "model_catalog": [{
+                "model_id": "deepseek/deepseek-v4-flash-0731", "display_name": "DeepSeek V4 Flash",
+                "runtime": "cloud", "provider": "openrouter", "status": "available",
+            }]})],
+        )
+        self.assertEqual(default_agent_code, 0)
+        self.assertIn("Lynx", default_agent_output)
 
     def test_ask_preserves_backend_defaults_and_sends_explicit_options(self) -> None:
         conversation = _Response(201, {"id": "conversation-1"})

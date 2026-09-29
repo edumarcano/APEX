@@ -42,7 +42,7 @@ It does not need to become the place where every task is performed. General-purp
 
 APEX should connect to those tools without becoming dependent on them. It should receive useful results, relate them to personal context, preserve their sources, and show what deserves attention.
 
-The Apex Agent is the native assistant for this environment. It should be unusually good at working with APEX context, telemetry, connected services, briefings, and verified actions. It does not need to compete with general-purpose Agent products.
+The APEX Agent is the native assistant for this environment. It should be unusually good at working with APEX context, telemetry, connected services, briefings, and verified actions. It does not need to compete with general-purpose Agent products.
 
 Models, external tools, and connection methods can change. The operator's accumulated context should not.
 
@@ -353,12 +353,12 @@ This milestone also establishes delegated read-only Microsoft To Do access and n
 
 ---
 
-## v1.19.0 - Apex Agents & Cortex Workspace
+## v1.19.0 - APEX Agents & Cortex Workspace
 
 **Status:** Complete
 
 **Objective:**
-Establish Apex Agents as APEX's provider-neutral intelligence abstraction, unify cloud and local runtime behavior, expand local execution across multiple providers, and evolve the Cortex Workspace into the primary surface for Agent configuration, tool policy, runtime control, and interaction.
+Establish APEX Agents as APEX's provider-neutral intelligence abstraction, unify cloud and local runtime behavior, expand local execution across multiple providers, and evolve the Cortex Workspace into the primary surface for Agent configuration, tool policy, runtime control, and interaction.
 
 ---
 
@@ -399,9 +399,9 @@ When another project already solves one of those problems well, APEX should conn
 
 The Cortex initiative established APEX's interactive foundation: model and provider support, tool use, runtime controls, persistent conversations, verified actions, and access from both the HUD and CLI.
 
-Earlier versions explored a larger family of named Agents and later reduced it to separate cloud and local Agents. That structure was eventually consolidated into one Apex Agent.
+Earlier versions explored a larger family of named Agents and later reduced it to separate cloud and local Agents. That structure was eventually consolidated into one APEX Agent.
 
-Apex Agent is now APEX's built-in personal operations assistant. The selected model determines whether a request runs through a cloud provider or a local runtime.
+APEX Agent is now APEX's built-in personal operations assistant. The selected model determines whether a request runs through a cloud provider or a local runtime.
 
 This keeps the useful model, tool, and action infrastructure without treating every model or runtime as a separate Agent identity.
 
@@ -423,7 +423,7 @@ Trusted context can also travel in the other direction. APEX can maintain a sele
 
 The exported folder is a view of APEX context, not a second source of truth. APEX decides what it generates; the storage provider and receiving applications control access to the copies they receive.
 
-Apex Agent remains the native assistant for this environment. It can explain records, compare connected information, prepare briefings, investigate relevant changes, and propose APEX-managed actions.
+APEX Agent remains the native assistant for this environment. It can explain records, compare connected information, prepare briefings, investigate relevant changes, and propose APEX-managed actions.
 
 Adding or removing an outside tool should usually be a configuration or sharing decision. The personal context and its meaning should not depend on which AI products the operator happens to use.
 
@@ -443,7 +443,7 @@ Establish the APEX 2.0 foundation with persistent conversations, personal contex
 **Status:** Complete
 
 **Objective:**
-Unify models and runtimes under a single Apex Agent, and introduce bounded execution with APEX-enforced limits, a durable run ledger, live event streaming, an in-HUD activity inspector, OpenTelemetry GenAI tracing, and CLI run controls.
+Unify models and runtimes under a single APEX Agent, and introduce bounded execution with APEX-enforced limits, a durable run ledger, live event streaming, an in-HUD activity inspector, OpenTelemetry GenAI tracing, and CLI run controls.
 
 ---
 
@@ -492,7 +492,7 @@ Rebuild briefings around a bounded, saved-session engine with Daily, Catch Up, a
 **Objective:**
 Consolidate the six beta milestones into a stable APEX 2.0 release without adding another major feature area.
 
-The release should settle the contracts for personal context and evidence, review decisions, Apex Agent runs, verified actions, external activity, generated context vaults, briefing configuration, and persistent attention.
+The release should settle the contracts for personal context and evidence, review decisions, APEX Agent runs, verified actions, external activity, generated context vaults, briefing configuration, and persistent attention.
 
 Migration work should preserve useful operator data, including conversations, accepted context, source history, reviews, actions, run summaries, reports, and new briefing sessions. The retired legacy `briefings` table is deliberately dropped during the beta.6 cutover, and its records are not migrated. Old briefing profile and model settings are also not mapped into the current configuration.
 
@@ -601,7 +601,7 @@ It should understand the operator's environment, preserve where information came
 
 Personal context should be useful both inside and outside APEX. A generated vault can make selected knowledge readable in a note application or available to an AI tool without moving ownership of that knowledge out of APEX.
 
-Apex Agent is the native assistant for this environment. Its role is to help the operator understand their context, investigate relevant changes, prepare useful briefings, and carry out approved APEX actions.
+APEX Agent is the native assistant for this environment. Its role is to help the operator understand their context, investigate relevant changes, prepare useful briefings, and carry out approved APEX actions.
 
 Briefings should become configurable and interactive. Different needs may call for different sources, levels of detail, models, and delivery styles. The lasting value should come from how APEX relates information to the operator's environment, not from a particular model or a fixed collection of briefing modes.
 

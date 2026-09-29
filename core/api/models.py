@@ -765,7 +765,8 @@ class CortexAgentResponse(BaseModel):
     """The singular native Agent and its model-directed execution catalog."""
 
     key: Literal["apex"] = "apex"
-    display_name: str = "Apex Agent"
+    canonical_name: str = "APEX Agent"
+    display_name: str = "Lynx"
     description: str
     selected_model: str
     model_catalog: list[AgentModelCatalogEntry] = Field(default_factory=list)

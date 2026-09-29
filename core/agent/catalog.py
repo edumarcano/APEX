@@ -1,4 +1,4 @@
-"""Apex Agent catalog, effort resolution, and provider model factories."""
+"""APEX Agent catalog, effort resolution, and provider model factories."""
 
 from __future__ import annotations
 
@@ -67,27 +67,32 @@ AgentModelProfile = (
 
 @dataclass(frozen=True, slots=True)
 class AgentSpec:
-    """Static metadata for one durable Apex Agent identity."""
+    """Static metadata for one durable APEX Agent identity."""
 
     key: AgentKey
     display_name: str
     description: str
     identity_instruction: str
     capability_tags: tuple[str, ...]
+    canonical_name: str = "APEX Agent"
 
 
 def agent_identity_instruction(display_name: str) -> str:
-    """Format the Apex Agent identity sentence for a resolved display name."""
-    return f"You are {display_name}, APEX's built-in personal operations assistant."
+    """Format the APEX Agent identity sentence for a resolved display name."""
+    return (
+        f"You are {display_name}, the APEX Agent and APEX's built-in personal "
+        "operations assistant."
+    )
 
 
 AGENT_SPECS: dict[str, AgentSpec] = {
     "apex": AgentSpec(
         key="apex",
-        display_name="Apex Agent",
+        display_name="Lynx",
         description="APEX's built-in personal operations assistant for briefings, trusted context, connected services, and APEX actions.",
-        identity_instruction=agent_identity_instruction("Apex Agent"),
+        identity_instruction=agent_identity_instruction("Lynx"),
         capability_tags=("APEX", "Personal operations"),
+        canonical_name="APEX Agent",
     ),
 }
 
@@ -231,6 +236,7 @@ def build_concrete_agent(
     if agent_key != "apex":
         raise ValueError(f"Unknown Agent key: {agent_key!r}")
     spec = AGENT_SPECS["apex"]
+    resolved_display_name = resolve_agent_display_name(agent_display_name)
     if model_id is None:
         model_profile = resolve_selected_model_profile()
     else:
@@ -253,7 +259,7 @@ def build_concrete_agent(
             or "medium"  # type: ignore[assignment]
         )
         return GeminiModelProfile(
-            display_name=spec.display_name,
+            display_name=resolved_display_name,
             api_model=model_profile.model_id,
             stability=model_profile.stability,
             thinking_level=thinking,
@@ -272,7 +278,7 @@ def build_concrete_agent(
             model_profile.model_id, local_reasoning_mode
         )
         return OllamaModelProfile(
-            display_name=spec.display_name,
+            display_name=resolved_display_name,
             api_model=model_profile.model_id,
             stability=model_profile.stability,
             default_temperature=runtime.default_temperature,
@@ -298,7 +304,7 @@ def build_concrete_agent(
         )
         return build_llama_cpp_profile(
             model_profile.model_id,
-            display_name=spec.display_name,
+            display_name=resolved_display_name,
             api_model=model_profile.model_id,
             stability=model_profile.stability,
             max_tool_turns=model_profile.max_tool_turns,
@@ -314,7 +320,7 @@ def build_concrete_agent(
             else model_profile.default_reasoning
         )
         return OpenRouterModelProfile(
-            display_name=spec.display_name,
+            display_name=resolved_display_name,
             api_model=model_profile.model_id,
             max_tool_turns=model_profile.max_tool_turns,
             max_tool_calls=model_profile.max_tool_calls,
@@ -332,7 +338,7 @@ def build_concrete_agent(
     )
     return ResponsesModelProfile(
         provider=model_profile.provider,  # type: ignore[arg-type]
-        display_name=spec.display_name,
+        display_name=resolved_display_name,
         api_model=model_profile.model_id,
         max_tool_turns=model_profile.max_tool_turns,
         max_tool_calls=model_profile.max_tool_calls,

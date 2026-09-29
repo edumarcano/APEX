@@ -247,6 +247,7 @@ export interface LocalLoadedModelStatus {
 /** The singular native Agent response returned by `/api/v1/cortex/agent`. */
 export interface CortexAgent {
   key: AgentKey
+  canonical_name?: string
   display_name: string
   description: string
   selected_model: string

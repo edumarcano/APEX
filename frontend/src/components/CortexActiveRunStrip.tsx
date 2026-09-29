@@ -13,7 +13,7 @@ export interface CortexActiveRunStripProps {
 
 export function CortexActiveRunStrip({
   run,
-  agentName = 'Agent',
+  agentName = 'Lynx',
   onInspect,
   className = '',
 }: CortexActiveRunStripProps) {

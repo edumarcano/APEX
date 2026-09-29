@@ -294,7 +294,7 @@ class AgentQueryRequest(BaseModel):
     prompt: str = Field(description="The user's direct operations query.")
     agent: AgentKey = Field(
         default="apex",
-        description="The native Apex Agent identity.",
+        description="The native APEX Agent identity.",
     )
     effort: ApexEffort | None = Field(
         default=None,

@@ -1,4 +1,4 @@
-"""Apex Agent tool policy, grounding, and sandbox privacy coverage."""
+"""APEX Agent tool policy, grounding, and sandbox privacy coverage."""
 
 from __future__ import annotations
 

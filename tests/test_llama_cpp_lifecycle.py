@@ -31,7 +31,7 @@ def _load_fixture(name: str) -> dict:
 def _apex_local_profile(*, context_window: int = 16384):
     return build_llama_cpp_profile(
         "gemma-4-E2B-Q4_K_M.gguf",
-        display_name="Apex Agent",
+        display_name="Lynx",
         api_model="gemma-4-E2B-Q4_K_M.gguf",
         stability="stable",
         max_tool_turns=3,

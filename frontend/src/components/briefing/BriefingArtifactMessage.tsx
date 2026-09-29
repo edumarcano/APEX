@@ -20,7 +20,7 @@ type Props = {
 }
 
 /** Structured opening message of a completed briefing session's conversation. */
-export function BriefingArtifactMessage({ session, isLoadingSession, evidence, onMarkPresented, agentDisplayName = 'Apex Agent' }: Props): ReactElement | null {
+export function BriefingArtifactMessage({ session, isLoadingSession, evidence, onMarkPresented, agentDisplayName = 'Lynx' }: Props): ReactElement | null {
   const presentationRef = useBriefingPresentation({ session, isLoadingSession, onMarkPresented })
   const artifact = session.artifact
   if (!artifact) return null

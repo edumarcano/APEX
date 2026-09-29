@@ -24,7 +24,7 @@ describe('ModelSelector', () => {
     const user = userEvent.setup()
     render(<ModelSelector selectedModelId="gpt-5.6-luna" onModelChange={change} catalog={catalog} />)
     await user.click(screen.getByRole('button', { name: 'Model' }))
-    const listbox = screen.getByRole('listbox', { name: 'Select Apex Agent model' })
+    const listbox = screen.getByRole('listbox', { name: 'Select Lynx model' })
     expect(within(listbox).getByRole('group', { name: 'Cloud models' })).toBeVisible()
     expect(within(listbox).getByRole('group', { name: 'Local models' })).toBeVisible()
     await user.click(screen.getByRole('option', { name: /Gemma 4 E2B/i }))

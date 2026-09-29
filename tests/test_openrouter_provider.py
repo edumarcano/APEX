@@ -19,7 +19,7 @@ from core.agent.types import AgentMessage, ToolCall, ToolResult
 class OpenRouterProviderTests(unittest.TestCase):
     def _profile(self, effort: str = "high") -> OpenRouterModelProfile:
         return OpenRouterModelProfile(
-            display_name="Apex Agent",
+            display_name="Lynx",
             api_model="deepseek/deepseek-v4-flash-0731",
             max_tool_turns=6,
             max_tool_calls=10,

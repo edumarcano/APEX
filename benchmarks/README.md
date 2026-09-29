@@ -1,7 +1,7 @@
 # Local model benchmark v0
 
 This directory contains a lightweight developer utility for comparing local
-models under Apex Agent policy on one Windows development machine. It is intentionally not a
+models under APEX Agent policy on one Windows development machine. It is intentionally not a
 benchmark service: results are local files, there is no frontend or database
 history, and the case set is kept small enough for a manual model comparison.
 
@@ -97,7 +97,7 @@ multi-tool completion, unnecessary tool calls, and failures. There is no
 LLM-as-judge or weighted overall score.
 
 The benchmark measures selected local models as APEX configures them, including
-the Apex Agent identity instruction; it is not a neutral underlying-model test.
+the APEX Agent identity instruction; it is not a neutral underlying-model test.
 
 ## Results
 

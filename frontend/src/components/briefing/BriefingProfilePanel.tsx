@@ -192,7 +192,7 @@ function errorCopy(cause: unknown, fallback: string): string {
 }
 
 export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactElement {
-  const agentDisplayName = props.agentDisplayName?.trim() || 'Apex Agent'
+  const agentDisplayName = props.agentDisplayName?.trim() || 'Lynx'
   const profiles = (props.profiles.length > 0 ? props.profiles : FALLBACK_PROFILES).map((item) => (
     props.demoModeActive && item.id === 'deep'
       ? { ...item, available: false, unavailable_reason: 'Deep is unavailable in DEMO_MODE.' }

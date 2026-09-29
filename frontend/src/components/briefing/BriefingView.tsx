@@ -56,7 +56,7 @@ function BriefingAgentMessage({ text, metadata, agentDisplayName }: { text: stri
 
 function BriefingConversation({ conversation }: { conversation: BriefingViewConversation }): ReactElement {
   const { session, isLoadingSession, evidence, onMarkPresented } = conversation
-  const agentDisplayName = conversation.agentDisplayName?.trim() || 'Apex Agent'
+  const agentDisplayName = conversation.agentDisplayName?.trim() || 'Lynx'
   const renderAgent = useCallback((text: string, metadata: Record<string, unknown>): ReactNode => {
     if (session?.artifact && metadata.briefing_session_id === session.id) {
       return <BriefingArtifactMessage session={session} isLoadingSession={isLoadingSession} evidence={evidence} onMarkPresented={onMarkPresented} agentDisplayName={agentDisplayName} />

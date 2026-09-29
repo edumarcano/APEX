@@ -318,7 +318,7 @@ export function AssistantResponseDisplay({
   text,
   rawMetadata,
   onOpenRecord,
-  agentDisplayName = 'Apex Agent',
+  agentDisplayName = 'Lynx',
 }: {
   text: string
   rawMetadata: Record<string, unknown>
@@ -483,7 +483,7 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
     ? 'grid min-h-0 flex-1 grid-cols-1'
     : 'grid min-h-0 flex-1 grid-cols-[14rem_minmax(0,1fr)_22rem]'
   const agentDisplayName =
-    activeAgent?.display_name?.trim() || 'Apex Agent'
+    activeAgent?.display_name?.trim() || 'Lynx'
   const assistantComposer: ApexAssistantComposerProps = {
     activeAgent: props.activeAgent,
     activeAgentName: agentDisplayName,

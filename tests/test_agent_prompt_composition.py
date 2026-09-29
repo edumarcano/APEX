@@ -1,4 +1,4 @@
-"""Apex Agent prompt identity coverage."""
+"""APEX Agent prompt identity coverage."""
 
 from __future__ import annotations
 
@@ -25,8 +25,13 @@ class ApexAgentPromptTests(unittest.TestCase):
         self.assertTrue(
             instruction.startswith(AGENT_SPECS["apex"].identity_instruction)
         )
-        self.assertEqual(resolve_agent_display_name(""), "Apex Agent")
-        self.assertEqual(resolve_agent_display_name("  "), "Apex Agent")
+        self.assertTrue(
+            instruction.startswith(
+                "You are Lynx, the APEX Agent and APEX's built-in personal operations assistant."
+            )
+        )
+        self.assertEqual(resolve_agent_display_name(""), "Lynx")
+        self.assertEqual(resolve_agent_display_name("  "), "Lynx")
 
     def test_custom_display_name_and_user_designation_are_composed(self) -> None:
         instruction = compose_agent_system_instruction(
@@ -38,19 +43,21 @@ class ApexAgentPromptTests(unittest.TestCase):
         )
         self.assertTrue(
             instruction.startswith(
-                "You are Nova, APEX's built-in personal operations assistant."
+                "You are Nova, the APEX Agent and APEX's built-in personal operations assistant."
             )
         )
         self.assertIn('Address the user as "Chief" when natural.', instruction)
         self.assertEqual(instruction.count("Nova"), 1)
-        self.assertNotIn("Apex Agent", instruction)
+        self.assertNotIn("Lynx", instruction)
+        self.assertIn("the APEX Agent", instruction)
 
     def test_model_name_and_user_designation_are_composed_once(self) -> None:
         instruction = compose_agent_system_instruction(
             "apex", "Behavior instructions.", model_profile=None, user_designation="Chief"
         )
         self.assertIn('Address the user as "Chief" when natural.', instruction)
-        self.assertEqual(instruction.count("Apex Agent"), 1)
+        self.assertEqual(instruction.count("Lynx"), 1)
+        self.assertEqual(instruction.count("APEX Agent"), 1)
 
 
 if __name__ == "__main__":

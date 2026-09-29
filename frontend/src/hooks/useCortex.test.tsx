@@ -5,7 +5,7 @@ import { useCortex } from './useCortex'
 
 const modelId = 'gemma-4-E2B-Q4_K_M.gguf'
 const catalogResponse = {
-  key: 'apex', display_name: 'Apex Agent', description: 'Native assistant.', selected_model: modelId,
+  key: 'apex', display_name: 'Lynx', canonical_name: 'APEX Agent', description: 'Native assistant.', selected_model: modelId,
   model_catalog: [{ model_id: modelId, display_name: 'Gemma 4 E2B', provider: 'llama_cpp', runtime: 'local', stability: 'stable', hosted_capabilities: [], status: 'available', active: false, loading: false }],
 }
 

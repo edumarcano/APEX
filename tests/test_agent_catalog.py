@@ -1,4 +1,4 @@
-"""Coverage for the singular Apex Agent model catalog."""
+"""Coverage for the singular APEX Agent model catalog."""
 
 from __future__ import annotations
 
@@ -13,7 +13,8 @@ from core.settings.models import AgentSettings, CloudSettings, LocalSettings
 class ApexAgentCatalogTests(unittest.TestCase):
     def test_catalog_has_one_native_agent(self) -> None:
         self.assertEqual(tuple(AGENT_SPECS), ("apex",))
-        self.assertEqual(AGENT_SPECS["apex"].display_name, "Apex Agent")
+        self.assertEqual(AGENT_SPECS["apex"].display_name, "Lynx")
+        self.assertEqual(AGENT_SPECS["apex"].canonical_name, "APEX Agent")
 
     def test_response_metadata_runtime_comes_from_the_resolved_model(self) -> None:
         cloud = build_agent_used_metadata(
@@ -99,7 +100,8 @@ class ApexAgentCatalogTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["key"], "apex")
-        self.assertEqual(payload["display_name"], "Apex Agent")
+        self.assertEqual(payload["display_name"], "Lynx")
+        self.assertEqual(payload["canonical_name"], "APEX Agent")
         self.assertEqual(payload["selected_model"], "deepseek/deepseek-v4-flash-0731")
         self.assertTrue(payload["model_catalog"])
         local_model = next(
@@ -113,5 +115,6 @@ class ApexAgentCatalogTests(unittest.TestCase):
     def test_resolve_agent_display_name_prefers_saved_value(self) -> None:
         from core.agent.catalog import resolve_agent_display_name
 
-        self.assertEqual(resolve_agent_display_name(""), "Apex Agent")
+        self.assertEqual(resolve_agent_display_name(""), "Lynx")
+        self.assertEqual(resolve_agent_display_name("   "), "Lynx")
         self.assertEqual(resolve_agent_display_name("Nova"), "Nova")

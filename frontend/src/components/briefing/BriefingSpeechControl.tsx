@@ -58,7 +58,7 @@ function controlLabel(props: BriefingSpeechControlProps): string | null {
 
 export function BriefingSpeechControl(props: BriefingSpeechControlProps): ReactElement {
   const label = controlLabel(props)
-  const agentName = props.agentDisplayName?.trim() || 'Apex Agent'
+  const agentName = props.agentDisplayName?.trim() || 'Lynx'
   const isStop = props.speech?.status === 'playing' || props.speech?.status === 'preparing'
   const actionBusy = props.pendingAction !== null
   const disabled = actionBusy || props.isLoading || (props.voiceMode === 'off' && !isStop)

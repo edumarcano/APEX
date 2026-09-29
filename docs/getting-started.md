@@ -167,7 +167,7 @@ uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model ge
 
 - Launch does not automatically restore a telemetry snapshot, collect telemetry, or run a briefing.
 - Opening Overview only shows its central identity card. **Collect Telemetry** runs preflight, refreshes telemetry, and opens the Overview grid without running a model.
-- Open the **Briefing** tab to set up or generate a session with the shared Apex Agent model. Choose Catch Up or Deep from Briefing controls.
+- Open the **Briefing** tab to set up or generate a session with the shared APEX Agent model. Choose Catch Up or Deep from Briefing controls.
 - Agent queries are available in Cortex when enabled in Settings; they do not require telemetry collection.
 - Personal-context retrieval is off by default for both cloud and local models. The Cortex Context inspector remains available for adding, inspecting, correcting, retracting, and reviewing local records.
 - Context vault export is off by default. See the [Context vault guide](context-vault.md) when you want to share selected records as local Markdown notes.

@@ -142,7 +142,7 @@ def build_agent_failure_details(
                 "after provider-authoritative history trimming.",
             )
         answer = (
-            "The Apex Agent encountered an issue reaching the local "
+            "The APEX Agent encountered an issue reaching the local "
             "provider or running the requested operations. Please verify that "
             "the local runtime is available, the model is installed, and system "
             "resources are sufficient, then try again."
@@ -150,7 +150,7 @@ def build_agent_failure_details(
         error_detail = f"Local provider error ({type(exc).__name__})."
     else:
         answer = (
-            "The Apex Agent encountered an issue reaching the cloud provider "
+            "The APEX Agent encountered an issue reaching the cloud provider "
             "or running the requested operations. Please check your credentials, "
             "network status, or quota allocations, and try again."
         )

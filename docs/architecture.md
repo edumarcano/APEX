@@ -9,7 +9,7 @@ APEX is a local-first personal intelligence HUD. FastAPI serves the backend, Rea
 - **Briefing** covers profile controls, the saved briefing thread, and a single telemetry panel. It opens without activation; generation and setup stay Briefing-local.
 - **Cortex** is the control surface for conversations, model settings, tool selection, context, and approval-gated actions.
 - **Reports** is the dedicated list-and-detail workspace for immutable, untrusted reports with caller-claimed source labels.
-- **Apex Agent** is the single native personal operations assistant. It understands APEX briefings, trusted context, connected services, and APEX tools.
+- **APEX Agent** is the single native personal operations assistant. It understands APEX briefings, trusted context, connected services, and APEX tools.
 - **Cortex Engine** executes bounded model turns and tool loops. It is model-routed, not Agent-routed.
 
 The selected model determines cloud versus local execution, provider/runtime, model limits, pricing, availability, supported reasoning and context controls, and hosted tools. The stable Agent identity is always `apex`.
@@ -19,17 +19,17 @@ The selected model determines cloud versus local execution, provider/runtime, mo
 ```text
 Overview, Briefing, or Cortex
     -> selected model and effective controls
-    -> Apex Agent policy and tool projection
+    -> APEX Agent policy and tool projection
     -> Cortex Engine bounded loop
     -> provider or local runtime
     -> durable conversation metadata and action evidence
 ```
 
-Conversation storage owns prompts and answers. Turn request metadata records the resolved model, provider, runtime, effective controls, and accepted partition so idempotent replay distinguishes executions that use the same Apex Agent identity. An accepted asynchronous run keeps those execution choices through completion even if later settings changes affect subsequent requests.
+Conversation storage owns prompts and answers. Turn request metadata records the resolved model, provider, runtime, effective controls, and accepted partition so idempotent replay distinguishes executions that use the same APEX Agent identity. An accepted asynchronous run keeps those execution choices through completion even if later settings changes affect subsequent requests.
 
 ## Tool and action boundary
 
-Tool exposure is the intersection of user selection, Apex Agent policy, runtime availability, sandbox restrictions, risk controls, and MCP allowlists. An empty selection means no APEX-managed tools. Provider-hosted grounding is separate from APEX and MCP tool schemas.
+Tool exposure is the intersection of user selection, APEX Agent policy, runtime availability, sandbox restrictions, risk controls, and MCP allowlists. An empty selection means no APEX-managed tools. Provider-hosted grounding is separate from APEX and MCP tool schemas.
 
 Write-capable tools create approval-gated action proposals. New proposals use `agent_key="apex"`; historical action records retain their immutable provenance and checksums.
 
@@ -120,7 +120,7 @@ When configured, APEX exports failure-isolated distributed traces using OpenTele
 
 ## Briefing routes
 
-Briefing's Daily, Catch Up, and Deep actions create durable sessions and use the same bounded collection, history, synthesis, and artifact path with the explicitly selected Apex Agent model. Deep adds an `investigating` stage that offers up to eight evidence-selected read capabilities through the shared Agent loop, with current policy, partition, connector, and MCP checks enforced both at selection and invocation. Its bounded investigation prompt includes selected current evidence and paired historical records with their role, capture time, trust, and content. The stage is limited to four calls, at most 1,024 generated tokens per turn or the lower session output limit, and at most 180 seconds or half of remaining run time; run/model turn limits reserve at least two turns for synthesis, including one repair. Local investigation admission is released before synthesis admission, avoiding a nested local-model lease. A completed artifact records bounded investigation status and limitations; cancellation, global run limits, invalid synthesis, and persistence errors do not produce a completed artifact. The session owns a conversation whose rendered opening assistant message is linked to the artifact; the canonical artifact and evidence remain in briefing-session storage. Follow-up turns use the ordinary conversation history and context policy. A small, relevance-ranked slice of cited saved evidence is attached inside the existing untrusted retrieved-context boundary and budget; personal-context-derived snapshots follow the selected runtime's retrieval setting. The saved evidence inspector still reads the complete snapshots on demand. Briefings do not silently switch models when the selected model is unavailable or its context cannot fit a useful prompt. Deep is unavailable in demo mode.
+Briefing's Daily, Catch Up, and Deep actions create durable sessions and use the same bounded collection, history, synthesis, and artifact path with the explicitly selected APEX Agent model. Deep adds an `investigating` stage that offers up to eight evidence-selected read capabilities through the shared Agent loop, with current policy, partition, connector, and MCP checks enforced both at selection and invocation. Its bounded investigation prompt includes selected current evidence and paired historical records with their role, capture time, trust, and content. The stage is limited to four calls, at most 1,024 generated tokens per turn or the lower session output limit, and at most 180 seconds or half of remaining run time; run/model turn limits reserve at least two turns for synthesis, including one repair. Local investigation admission is released before synthesis admission, avoiding a nested local-model lease. A completed artifact records bounded investigation status and limitations; cancellation, global run limits, invalid synthesis, and persistence errors do not produce a completed artifact. The session owns a conversation whose rendered opening assistant message is linked to the artifact; the canonical artifact and evidence remain in briefing-session storage. Follow-up turns use the ordinary conversation history and context policy. A small, relevance-ranked slice of cited saved evidence is attached inside the existing untrusted retrieved-context boundary and budget; personal-context-derived snapshots follow the selected runtime's retrieval setting. The saved evidence inspector still reads the complete snapshots on demand. Briefings do not silently switch models when the selected model is unavailable or its context cannot fit a useful prompt. Deep is unavailable in demo mode.
 
 The canonical briefing API consists of `GET /api/v1/briefing-profiles` and the `/api/v1/briefing-sessions` routes. The CLI uses the same asynchronous session API and marks its constrained origin as `cli`; it does not call services or SQLite directly. The Agent's `get_briefing_history` tool queries at most five newest completed artifact-backed sessions from the active partition in one joined read and returns bounded canonical content, profile/model identity, timestamps, presentation status, and limitations. Failed or incomplete sessions are skipped before applying the limit. The old transcript-based pipeline, mode settings, routes, and status poll are retired.
 
