@@ -25,7 +25,8 @@ import {
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-import { CortexToolCards } from './CortexToolCards'
+import { AgentResponseName } from './AgentResponseName'
+import { CompactToolResults } from './CompactToolResults'
 import { CortexActions } from './CortexActions'
 import { CortexContext } from './CortexContext'
 import { CortexActivity } from './CortexActivity'
@@ -327,7 +328,7 @@ export function AssistantResponseDisplay({
   const response = parseAgentQueryResponse({ ...rawMetadata, answer: text })
   const metadata = response.metadata
   return <>
-    {metadata?.agent ? <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#C084FC]">{agentDisplayName}</p> : null}
+    {metadata?.agent ? <AgentResponseName name={agentDisplayName} /> : null}
     <div className="text-sm leading-relaxed text-zinc-200"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{
       a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer" translate={typeof children === 'string' && children.startsWith('Google Maps:') ? 'no' : undefined} className="text-[#7EB3FF] hover:underline">{children}</a>,
       code: ({ className, children, ...props }) => className ? <code className={`${className} block font-mono text-xs text-zinc-200`} {...props}>{children}</code> : <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-xs text-purple-200" {...props}>{children}</code>,
@@ -350,7 +351,7 @@ export function AssistantResponseDisplay({
     <MapsGroundingSources citations={metadata?.citations ?? []} />
     <GoogleSearchSuggestions grounding={metadata?.grounding ?? null} />
     <TraceList trace={response.tool_trace ?? []} />
-    {response.tool_outputs && response.tool_outputs.length > 0 ? <CortexToolCards toolOutputs={response.tool_outputs} /> : null}
+    <CompactToolResults toolOutputs={response.tool_outputs ?? []} />
   </>
 }
 

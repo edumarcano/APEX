@@ -98,6 +98,18 @@ function baseProps(overrides: Partial<PanelProps> = {}): PanelProps {
 }
 
 describe('BriefingProfilePanel', () => {
+  it('shows the configured agent display name in the setup dialog', async () => {
+    const user = userEvent.setup()
+    render(<BriefingProfilePanel {...baseProps({ agentDisplayName: 'Commander' })} />)
+
+    await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
+    const dialog = screen.getByRole('dialog', { name: 'Set up your briefing' })
+    expect(within(dialog).getByText('Commander')).toBeInTheDocument()
+    expect(within(dialog).getByText(/configure Commander/)).toBeInTheDocument()
+    expect(within(dialog).getByRole('group', { name: 'Commander model and effort' })).toBeInTheDocument()
+    expect(within(dialog).queryByText('Apex Agent')).not.toBeInTheDocument()
+  })
+
   it('opens accessible setup and submits the selected profile and reasoning draft', async () => {
     const user = userEvent.setup()
     const onGenerate = vi.fn().mockResolvedValue(undefined)

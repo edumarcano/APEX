@@ -34,6 +34,7 @@ export type BriefingSetupDraft = {
 
 export type BriefingProfilePanelProps = {
   actionLayout?: 'row' | 'column'
+  agentDisplayName?: string
   profiles: BriefingProfileSummary[]
   profileId: BriefingProfileId
   onProfileChange: (profileId: BriefingProfileId) => void
@@ -122,11 +123,12 @@ function modelSelectionError(
   model: ModelCatalogEntry | undefined,
   draft: BriefingSetupDraft,
   props: BriefingProfilePanelProps,
+  agentDisplayName: string,
 ): string | null {
   if (!profile.available) return profile.unavailable_reason ?? `${profile.label} is unavailable.`
-  if (!props.canGenerate && !props.demoModeActive) return 'Briefings are disabled in Apex Agent settings.'
+  if (!props.canGenerate && !props.demoModeActive) return `Briefings are disabled in ${agentDisplayName} settings.`
   if (props.demoModeActive) return null
-  if (!model) return 'Select an available Apex Agent model.'
+  if (!model) return `Select an available ${agentDisplayName} model.`
   if (!modelIsAvailable(model)) return `${model.display_name} is not currently available.`
   if (model.runtime === 'cloud' && model.reasoning_options && model.reasoning_options.length > 0) {
     if (!draft.cloudEffort || !model.reasoning_options.includes(draft.cloudEffort)) {
@@ -148,6 +150,7 @@ function repeatUnavailableReason(
   latestError: string | null,
   isLoading: boolean,
   props: BriefingProfilePanelProps,
+  agentDisplayName: string,
 ): string | null {
   if (isLoading) return 'Checking the latest saved briefing.'
   if (latestError) return 'The latest saved briefing could not be checked.'
@@ -159,7 +162,7 @@ function repeatUnavailableReason(
     return null
   }
   if (props.demoModeActive) return 'Model-backed sessions cannot be repeated in DEMO_MODE.'
-  if (!props.canGenerate) return 'Briefings are disabled in Apex Agent settings.'
+  if (!props.canGenerate) return `Briefings are disabled in ${agentDisplayName} settings.`
   const savedModel = session.configuration.model
   const model = props.modelCatalog.find((entry) => entry.model_id === savedModel.model_id)
   if (!model || !modelIsAvailable(model) || model.runtime !== savedModel.runtime) {
@@ -189,6 +192,7 @@ function errorCopy(cause: unknown, fallback: string): string {
 }
 
 export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactElement {
+  const agentDisplayName = props.agentDisplayName?.trim() || 'Apex Agent'
   const profiles = (props.profiles.length > 0 ? props.profiles : FALLBACK_PROFILES).map((item) => (
     props.demoModeActive && item.id === 'deep'
       ? { ...item, available: false, unavailable_reason: 'Deep is unavailable in DEMO_MODE.' }
@@ -307,9 +311,9 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
     : selectedModel?.runtime === 'local' ? supportedLocalModes(selectedModel) : []
   const selectedReasoning = reasoningSummary(selectedModel, draft)
   const selectedProvider = selectedModel ? providerDisplayName(selectedModel.provider) : null
-  const profileError = modelSelectionError(profile, selectedModel, draft, props)
+  const profileError = modelSelectionError(profile, selectedModel, draft, props, agentDisplayName)
   const generateDisabled = Boolean(profileError) || props.busy || props.hasActiveSession || isSubmitting || isRepeating
-  const repeatReason = repeatUnavailableReason(props.latestSession, props.latestError, props.isLoadingLatestSession, props)
+  const repeatReason = repeatUnavailableReason(props.latestSession, props.latestError, props.isLoadingLatestSession, props, agentDisplayName)
   const repeatDisabled = props.isLoadingLatestSession || props.hasActiveSession || isRepeating || isSubmitting || props.busy || Boolean(repeatReason && !props.latestError)
   const repeatModelLabel = props.latestSession?.configuration.execution_kind === 'demo'
     ? 'Demo fixture'
@@ -423,7 +427,7 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
             <div className="min-w-0 flex-1">
               <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#6EA8FF]">Briefing configuration</p>
               <h2 id="briefing-setup-title" className="mt-1 font-orbitron text-sm font-semibold uppercase tracking-[0.12em] text-zinc-100 sm:text-base">Set up your briefing</h2>
-              <p id="briefing-setup-description" className="mt-2 max-w-2xl text-xs leading-relaxed text-zinc-400">Choose a briefing profile and configure Apex Agent. These choices are saved when you generate.</p>
+              <p id="briefing-setup-description" className="mt-2 max-w-2xl text-xs leading-relaxed text-zinc-400">{`Choose a briefing profile and configure ${agentDisplayName}. These choices are saved when you generate.`}</p>
             </div>
             <button
               ref={closeButtonRef}
@@ -464,9 +468,9 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
             </fieldset>
 
             <div className="min-w-0">
-              <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300">Apex Agent</p>
+              <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300">{agentDisplayName}</p>
               <div ref={agentSelectorRef} className="min-w-0">
-                <div role="group" aria-label="Apex Agent model and effort" className="flex min-w-0 rounded-xl border border-white/10 bg-zinc-950/70">
+                <div role="group" aria-label={`${agentDisplayName} model and effort`} className="flex min-w-0 rounded-xl border border-white/10 bg-zinc-950/70">
                   <button
                     ref={modelSelectorTriggerRef}
                     type="button"
@@ -509,7 +513,7 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
                 {agentMenuOpen === 'model' ? <div
                   id={`${agentMenuId}-models`}
                   role="group"
-                  aria-label="Apex Agent model choices"
+                  aria-label={`${agentDisplayName} model choices`}
                   className="mt-2 grid max-h-[min(48vh,24rem)] min-w-0 grid-cols-1 gap-3 overflow-y-auto rounded-xl border border-white/15 bg-zinc-950/95 p-2 shadow-xl scrollbar-thin sm:grid-cols-2"
                   data-slot="briefing-agent-model-menu"
                 >

@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
-import type { ToolOutputItem } from '../../types/telemetry'
+import type { ToolOutputItem } from '../types/telemetry'
 import { CompactToolResults } from './CompactToolResults'
 
 const approval: ToolOutputItem = {

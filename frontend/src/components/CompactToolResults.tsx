@@ -1,15 +1,15 @@
 import { useState, type ReactElement } from 'react'
 
-import { requiresFullToolResult } from '../../lib/toolOutputs'
-import type { ToolOutputItem } from '../../types/telemetry'
-import { CortexToolCards } from '../CortexToolCards'
+import { requiresFullToolResult } from '../lib/toolOutputs'
+import type { ToolOutputItem } from '../types/telemetry'
+import { CortexToolCards } from './CortexToolCards'
 
 function toolLabel(name: string): string {
   return name.replace(/^get_/, '').replace(/_/g, ' ')
 }
 
 /**
- * Briefing presentation of the same tool outputs Cortex renders as cards. Routine
+ * Shared presentation of tool outputs in Cortex and Briefing threads. Routine
  * results collapse into chips that expand into the Cortex card; failures,
  * pending approvals, and trust-labelled results always render in full.
  */
