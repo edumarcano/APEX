@@ -8,10 +8,11 @@ import { parseAgentQueryResponse } from '../../lib/cortexResponse'
 import type { BriefingSessionDetail } from '../../types/briefings'
 import type { BriefingPreviewSection } from '../../types/runs'
 import { ApexAssistantThread, type ApexAssistantComposerProps } from '../ApexAssistantRuntime'
+import { AgentResponseName } from '../AgentResponseName'
+import { CompactToolResults } from '../CompactToolResults'
 import { BriefingArtifactMessage } from './BriefingArtifactMessage'
 import type { BriefingEvidenceState } from './BriefingEvidence'
 import { BriefingProfilePanel, type BriefingProfilePanelProps } from './BriefingProfilePanel'
-import { CompactToolResults } from './CompactToolResults'
 import { HudIdentityMark, type HudIdentityProps } from '../overview/HudIdentity'
 import type { HudTelemetryData } from '../overview/HudTelemetry'
 import { HudTelemetryRail, type BriefingTelemetryCollectionState } from '../overview/HudTelemetryRail'
@@ -25,6 +26,7 @@ export type BriefingViewConversation = {
   evidence: Omit<BriefingEvidenceState, 'sessionId'>
   onMarkPresented: (sessionId: string) => Promise<void>
   onOpenConversation: (conversationId: string) => void
+  agentDisplayName?: string
   composer?: ApexAssistantComposerProps
 }
 
@@ -43,9 +45,10 @@ export type BriefingViewProps = {
   }
 }
 
-function BriefingAgentMessage({ text, metadata }: { text: string; metadata: Record<string, unknown> }): ReactElement {
+function BriefingAgentMessage({ text, metadata, agentDisplayName }: { text: string; metadata: Record<string, unknown>; agentDisplayName: string }): ReactElement {
   const toolOutputs = parseAgentQueryResponse({ ...metadata, answer: text }).tool_outputs ?? []
   return <>
+    <AgentResponseName name={agentDisplayName} />
     <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
     <CompactToolResults toolOutputs={toolOutputs} />
   </>
@@ -53,12 +56,13 @@ function BriefingAgentMessage({ text, metadata }: { text: string; metadata: Reco
 
 function BriefingConversation({ conversation }: { conversation: BriefingViewConversation }): ReactElement {
   const { session, isLoadingSession, evidence, onMarkPresented } = conversation
+  const agentDisplayName = conversation.agentDisplayName?.trim() || 'Apex Agent'
   const renderAgent = useCallback((text: string, metadata: Record<string, unknown>): ReactNode => {
     if (session?.artifact && metadata.briefing_session_id === session.id) {
-      return <BriefingArtifactMessage session={session} isLoadingSession={isLoadingSession} evidence={evidence} onMarkPresented={onMarkPresented} />
+      return <BriefingArtifactMessage session={session} isLoadingSession={isLoadingSession} evidence={evidence} onMarkPresented={onMarkPresented} agentDisplayName={agentDisplayName} />
     }
-    return <BriefingAgentMessage text={text} metadata={metadata} />
-  }, [evidence, isLoadingSession, onMarkPresented, session])
+    return <BriefingAgentMessage text={text} metadata={metadata} agentDisplayName={agentDisplayName} />
+  }, [agentDisplayName, evidence, isLoadingSession, onMarkPresented, session])
   if (!session) return <div className="flex min-h-0 flex-1 items-center justify-center p-5 text-xs text-zinc-500">Open a saved briefing to continue its conversation.</div>
   const showPreview = !session.artifact && conversation.previewSections?.length
   return <section className="flex min-h-0 flex-1 flex-col" aria-label="Briefing conversation">

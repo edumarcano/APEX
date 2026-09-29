@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react'
 
+import { AgentResponseName } from '../AgentResponseName'
 import { useBriefingPresentation } from '../../hooks/useBriefingPresentation'
 import { formatBriefingTime } from '../../lib/briefingFormat'
 import type { BriefingComparison, BriefingSessionDetail } from '../../types/briefings'
@@ -15,10 +16,11 @@ type Props = {
   isLoadingSession: boolean
   evidence: Omit<BriefingEvidenceState, 'sessionId'>
   onMarkPresented: (sessionId: string) => Promise<void>
+  agentDisplayName?: string
 }
 
 /** Structured opening message of a completed briefing session's conversation. */
-export function BriefingArtifactMessage({ session, isLoadingSession, evidence, onMarkPresented }: Props): ReactElement | null {
+export function BriefingArtifactMessage({ session, isLoadingSession, evidence, onMarkPresented, agentDisplayName = 'Apex Agent' }: Props): ReactElement | null {
   const presentationRef = useBriefingPresentation({ session, isLoadingSession, onMarkPresented })
   const artifact = session.artifact
   if (!artifact) return null
@@ -29,6 +31,7 @@ export function BriefingArtifactMessage({ session, isLoadingSession, evidence, o
   const isCatchUp = session.configuration.profile.id === 'catch_up'
   const investigation = artifact.investigation
   return <article data-testid="briefing-artifact" className="space-y-4" aria-label={`${session.configuration.profile.label} briefing`}>
+    <AgentResponseName name={agentDisplayName} />
     <header ref={presentationRef}>
       <p className="font-orbitron text-[11px] uppercase tracking-[0.15em] text-[#A5C7FF]">{session.configuration.profile.label} briefing</p>
       <p className="mt-1 font-mono text-[10px] text-zinc-500">

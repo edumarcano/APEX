@@ -98,6 +98,18 @@ function baseProps(overrides: Partial<PanelProps> = {}): PanelProps {
 }
 
 describe('BriefingProfilePanel', () => {
+  it('shows the configured agent display name in the setup dialog', async () => {
+    const user = userEvent.setup()
+    render(<BriefingProfilePanel {...baseProps({ agentDisplayName: 'Commander' })} />)
+
+    await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
+    const dialog = screen.getByRole('dialog', { name: 'Set up your briefing' })
+    expect(within(dialog).getByText('Commander')).toBeInTheDocument()
+    expect(within(dialog).getByText(/configure Commander/)).toBeInTheDocument()
+    expect(within(dialog).getByRole('group', { name: 'Commander model and effort' })).toBeInTheDocument()
+    expect(within(dialog).queryByText('Apex Agent')).not.toBeInTheDocument()
+  })
+
   it('opens accessible setup and submits the selected profile and reasoning draft', async () => {
     const user = userEvent.setup()
     const onGenerate = vi.fn().mockResolvedValue(undefined)
@@ -386,9 +398,9 @@ describe('BriefingProfilePanel', () => {
     await user.click(effortTrigger)
     const effortChoices = screen.getByRole('group', { name: 'Reasoning effort choices' })
     expect(within(effortChoices).getByRole('button', { name: 'None' })).toHaveAttribute('aria-pressed', 'true')
-    await user.click(within(effortChoices).getByRole('button', { name: 'Focused' }))
+    await user.click(within(effortChoices).getByRole('button', { name: 'High' }))
     expect(onGenerate).not.toHaveBeenCalled()
-    expect(effortTrigger).toHaveTextContent('Focused')
+    expect(effortTrigger).toHaveTextContent('High')
     await user.click(screen.getByRole('button', { name: 'Generate Daily' }))
     await waitFor(() => expect(onGenerate).toHaveBeenCalledWith({
       profileId: 'daily', modelId: 'local-a', cloudEffort: null, localReasoningMode: 'focused',

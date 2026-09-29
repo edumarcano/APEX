@@ -338,6 +338,7 @@ export default function App(): ReactElement {
     verifyCloudAgent,
     refreshAgentsStatus,
   } = useCortex(true)
+  const agentDisplayName = cortexAgent?.display_name?.trim() || 'Apex Agent'
   const isCortexQuerying = assistantRunning
   const activeQueryAgent = assistantRunningAgent
   const cortexLatestTrace = assistantResponse && Array.isArray(assistantResponse.tool_trace)
@@ -641,7 +642,7 @@ export default function App(): ReactElement {
       : undefined
     const resolved = settings?.ask_apex
     if (!settings || !resolved?.cloud || !resolved.local) {
-      throw new Error('Briefing settings were saved without a usable Apex Agent configuration response.')
+      throw new Error(`Briefing settings were saved without a usable ${agentDisplayName} configuration response.`)
     }
 
     handleSettingsApplied({ settings } as SettingsResponse)
@@ -670,7 +671,7 @@ export default function App(): ReactElement {
       contextWindow,
       localReasoningMode: resolved.local.reasoning_mode,
     }
-  }, [devModeActive, handleSettingsApplied, refreshAgentsStatus, refreshToolCatalog])
+  }, [agentDisplayName, devModeActive, handleSettingsApplied, refreshAgentsStatus, refreshToolCatalog])
 
   // Cortex remembers both production runtime choices. This is deliberately
   // separate from DEV_MODE's session-only sandbox override.
@@ -895,11 +896,11 @@ export default function App(): ReactElement {
 
   const performBriefingGeneration = useCallback(async (draft: BriefingSetupDraft): Promise<void> => {
     if (hasActiveDailySession) throw new Error('A briefing is already running.')
-    if (!agentQueriesEnabled && !demoModeActive) throw new Error('Briefings are disabled in Apex Agent settings.')
+    if (!agentQueriesEnabled && !demoModeActive) throw new Error(`Briefings are disabled in ${agentDisplayName} settings.`)
     const sequence = ++dailyOpenSequenceRef.current
     const model = fullModelCatalog.find((entry) => entry.model_id === draft.modelId)
     if (!demoModeActive && (!model || model.credentials_configured === false || model.status === 'disabled' || !['available', 'configured', 'verified', 'unknown', undefined].includes(model.status))) {
-      throw new Error('The selected Apex Agent model is not currently available.')
+      throw new Error(`The selected ${agentDisplayName} model is not currently available.`)
     }
     const selectedProfile = dailySessions.profiles.find((entry) => entry.id === draft.profileId)
     if (selectedProfile && !selectedProfile.available) {
@@ -922,7 +923,7 @@ export default function App(): ReactElement {
     if (demoModeActive) {
       generationOptions = { modelId: 'demo/daily-fixture' }
     } else {
-      if (!model) throw new Error('The selected Apex Agent model is no longer available.')
+      if (!model) throw new Error(`The selected ${agentDisplayName} model is no longer available.`)
       generationOptions = await saveBriefingModelSettings(draft, model)
     }
 
@@ -937,6 +938,7 @@ export default function App(): ReactElement {
         if (dailyOpeningSessionsRef.current.get(summary.id) === sequence) dailyOpeningSessionsRef.current.delete(summary.id)
       })
   }, [
+    agentDisplayName,
     agentQueriesEnabled,
     dailySessions.profiles,
     demoModeActive,
@@ -977,7 +979,7 @@ export default function App(): ReactElement {
       return
     }
     if (latest.configuration.execution_kind !== 'model') throw new Error('This saved fixture is available only in DEMO_MODE.')
-    if (!agentQueriesEnabled) throw new Error('Briefings are disabled in Apex Agent settings.')
+    if (!agentQueriesEnabled) throw new Error(`Briefings are disabled in ${agentDisplayName} settings.`)
     const savedModel = latest.configuration.model
     const model = fullModelCatalog.find((entry) => entry.model_id === savedModel.model_id)
     if (!model || model.credentials_configured === false || model.status === 'disabled' || !['available', 'configured', 'verified', 'unknown', undefined].includes(model.status) || model.runtime !== savedModel.runtime) {
@@ -997,7 +999,7 @@ export default function App(): ReactElement {
       throw new Error('The saved local reasoning mode is no longer supported by this model.')
     }
     await startBriefing({ profileId, modelId: model.model_id, cloudEffort: null, localReasoningMode: savedModel.local_reasoning_mode as LocalReasoningMode })
-  }, [agentQueriesEnabled, demoModeActive, fullModelCatalog, hasActiveDailySession, refreshLatestBriefingSession, startBriefing])
+  }, [agentDisplayName, agentQueriesEnabled, demoModeActive, fullModelCatalog, hasActiveDailySession, refreshLatestBriefingSession, startBriefing])
 
   const handleCollectTelemetry = useCallback((): void => {
     setIsLaunch(false)
@@ -1715,6 +1717,7 @@ export default function App(): ReactElement {
             overviewError={overviewError}
             onRefreshAll={handleRefreshAll}
             briefingControls={{
+              agentDisplayName,
               profiles: dailySessions.profiles,
               profileId: workspaceView.profileId,
               onProfileChange: workspaceView.setProfileId,
@@ -1759,9 +1762,10 @@ export default function App(): ReactElement {
               evidence: briefingEvidence,
               onMarkPresented: dailySessions.markPresented,
               onOpenConversation: (conversationId) => void openDailyConversation(conversationId),
+              agentDisplayName,
               composer: {
                 activeAgent: 'apex',
-                activeAgentName: 'Apex Agent',
+                activeAgentName: agentDisplayName,
                 integrated: true,
                 disabled: conversationHydrating || !toolCatalogState.selectionReady || demoModeActive,
                 selectedModelId: selectedModel,

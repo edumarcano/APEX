@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -138,6 +138,9 @@ describe('CompactModelSelector', () => {
     />)
 
     await user.click(screen.getByRole('button', { name: /model: gemini, reasoning low/i }))
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByRole('option', { name: /gemini/i }))
+    })
     const reasoningToggle = screen.getByRole('button', { name: 'Reasoning, currently Low' })
     const menuScrollContainer = screen.getByRole('listbox', { name: /select model/i }).parentElement
     expect(menuScrollContainer).not.toBeNull()
@@ -146,7 +149,8 @@ describe('CompactModelSelector', () => {
     await user.click(reasoningToggle)
 
     expect(menuScrollContainer).toHaveProperty('scrollTop', 360)
-    expect(screen.getByRole('button', { name: 'High' })).toBeInTheDocument()
+    const reasoningChoices = screen.getByRole('group', { name: 'Reasoning effort' })
+    expect(within(reasoningChoices).getByRole('button', { name: 'High' })).toBeInTheDocument()
     expect(document.activeElement).toBe(reasoningToggle)
   })
 
@@ -165,7 +169,7 @@ describe('CompactModelSelector', () => {
     const trigger = screen.getByRole('button', { name: /model: gemma 4 e2b, reasoning none/i })
     await user.click(trigger)
     await user.click(screen.getByRole('button', { name: 'Reasoning, currently None' }))
-    await user.click(screen.getByRole('button', { name: 'Focused' }))
+    await user.click(screen.getByRole('button', { name: 'High' }))
     expect(onLocalReasoningModeChange).toHaveBeenCalledWith('focused')
     expect(screen.getByRole('button', { name: /model: gemma 4 e2b, reasoning none/i })).toBeEnabled()
     rerender(<CompactModelSelector selectedModelId={localCatalog[0].model_id} onModelChange={vi.fn()} catalog={localCatalog} presentation="composer" disabled isQuerying />)

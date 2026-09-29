@@ -46,6 +46,7 @@ from core.briefings.speech import (
     MAX_HIGHLIGHTS,
     MAX_SCRIPT_CHARS,
     _generate_speech_script,
+    _speech_prompt,
     canonical_artifact_sha256,
     validate_speech_script,
 )
@@ -82,10 +83,12 @@ class BriefingSessionApiTests(unittest.TestCase):
             self.session_store, lambda: self.partition
         )
         self.voice_settings = ("manual", "pyttsx3", "female")
+        self.user_designation = ""
         self.speech_service = BriefingSpeechService(
             self.session_store,
             partition_getter=lambda: self.partition,
             voice_settings_reader=lambda: self.voice_settings,
+            user_designation_reader=lambda: self.user_designation,
         )
         self.speech_patch = patch(
             "core.api.routers.briefings.get_briefing_speech_service",
@@ -852,6 +855,145 @@ class BriefingSessionApiTests(unittest.TestCase):
         self.assertEqual(build_agent.call_args.kwargs["google_search_enabled"], False)
         self.assertEqual(build_agent.call_args.kwargs["google_maps_enabled"], False)
 
+    def test_speech_prompt_omits_user_designation_when_empty(self) -> None:
+        record = self._completed_session()
+        assert record.artifact is not None
+        prompt = _speech_prompt(record.artifact)
+        payload = json.loads(prompt.rsplit("Speech input JSON:\n", 1)[1])
+        self.assertNotIn("user_designation", payload)
+        self.assertNotIn("user_designation", prompt.split("Speech input JSON:\n", 1)[0])
+
+    def test_speech_prompt_includes_user_designation_when_set(self) -> None:
+        record = self._completed_session()
+        assert record.artifact is not None
+        designation = "Chief"
+        prompt = _speech_prompt(record.artifact, user_designation=designation)
+        payload = json.loads(prompt.rsplit("Speech input JSON:\n", 1)[1])
+        self.assertEqual(payload["user_designation"], designation)
+        self.assertIn("user_designation", prompt.split("Speech input JSON:\n", 1)[0])
+
+    def test_validate_speech_script_ignores_digits_in_user_designation(self) -> None:
+        artifact = self._artifact_with_items([
+            (
+                "observation",
+                "Transit update",
+                "The route includes 6 stops and 24 miles.",
+            ),
+        ])
+        item = artifact.sections[0].items[0]
+        script = BriefingSpeechScript(highlights=[
+            BriefingSpeechHighlight(
+                item_id=item.id,
+                text="Agent 47, the route includes 6 stops and 24 miles.",
+            ),
+        ])
+        validate_speech_script(script, artifact, user_designation="Agent 47")
+
+    def test_validate_speech_script_does_not_strip_designation_inside_other_tokens(
+        self,
+    ) -> None:
+        artifact = self._artifact_with_items([
+            ("observation", "Inventory", "The shelf holds 3 units."),
+        ])
+        item = artifact.sections[0].items[0]
+        script = BriefingSpeechScript(highlights=[
+            BriefingSpeechHighlight(
+                item_id=item.id,
+                text="The shelf holds 347 units.",
+            ),
+        ])
+        with self.assertRaisesRegex(
+            BriefingSpeechValidationError, "script_numeric_fact_mismatch"
+        ):
+            validate_speech_script(script, artifact, user_designation="47")
+
+    def test_validate_speech_script_still_rejects_numeric_drift_beyond_designation(
+        self,
+    ) -> None:
+        artifact = self._artifact_with_items([
+            (
+                "observation",
+                "Transit update",
+                "The route includes 6 stops and 24 miles.",
+            ),
+        ])
+        item = artifact.sections[0].items[0]
+        script = BriefingSpeechScript(highlights=[
+            BriefingSpeechHighlight(
+                item_id=item.id,
+                text="Agent 47, the route includes 7 stops and 24 miles.",
+            ),
+        ])
+        with self.assertRaisesRegex(
+            BriefingSpeechValidationError, "script_numeric_fact_mismatch"
+        ):
+            validate_speech_script(script, artifact, user_designation="Agent 47")
+
+    def test_speech_prepare_threads_saved_user_designation_into_model_prompt(
+        self,
+    ) -> None:
+        record = self._completed_session()
+        assert record.artifact is not None
+        item = record.artifact.sections[0].items[0]
+        designation = "Operator"
+        captured_prompts: list[str] = []
+        generation_started = threading.Event()
+        release_generation = threading.Event()
+
+        def capture_execute_single_call(**kwargs):
+            captured_prompts.append(kwargs["prompt"])
+            generation_started.set()
+            if not release_generation.wait(timeout=3):
+                raise TimeoutError("designation prepare test release was not signaled")
+            return ProviderTurnResult(
+                message=AgentMessage(
+                    role="agent",
+                    content=json.dumps({
+                        "highlights": [{
+                            "item_id": str(item.id),
+                            "text": "The meeting begins at 10:00.",
+                        }],
+                    }),
+                )
+            )
+
+        service = BriefingSpeechService(
+            self.session_store,
+            partition_getter=lambda: self.partition,
+            voice_settings_reader=lambda: self.voice_settings,
+            user_designation_reader=lambda: designation,
+        )
+        try:
+            with (
+                patch(
+                    "core.briefings.speech.execute_single_call",
+                    side_effect=capture_execute_single_call,
+                ),
+                patch("core.speaker.synthesize_audio", return_value=([{
+                    "audio": b"prepared-audio",
+                    "content_type": "audio/wav",
+                    "engine": "pyttsx3",
+                    "duration_seconds": 1.0,
+                }], "pyttsx3")),
+            ):
+                _, already_ready = service.prepare(record.id)
+                self.assertFalse(already_ready)
+                self.assertTrue(generation_started.wait(timeout=3))
+                with service._lock:
+                    job = service._active
+                assert job is not None and job.future is not None
+                release_generation.set()
+                job.future.result(timeout=3)
+        finally:
+            release_generation.set()
+            service.close(timeout_seconds=2)
+
+        self.assertEqual(len(captured_prompts), 1)
+        payload = json.loads(
+            captured_prompts[0].rsplit("Speech input JSON:\n", 1)[1]
+        )
+        self.assertEqual(payload["user_designation"], designation)
+
     def test_speech_generation_handles_deep_gemini_artifact_with_exact_numbers(
         self,
     ) -> None:
@@ -1570,7 +1712,7 @@ class BriefingSessionApiTests(unittest.TestCase):
         generation_started = threading.Event()
         release_generation = threading.Event()
 
-        def timeout_generation(*_args):
+        def timeout_generation(*_args, **_kwargs):
             generation_started.set()
             if not release_generation.wait(timeout=3):
                 raise TimeoutError("speech deadline test release was not signaled")
@@ -1615,7 +1757,7 @@ class BriefingSessionApiTests(unittest.TestCase):
         generation_started = threading.Event()
         release_generation = threading.Event()
 
-        def blocked_generation(*_args):
+        def blocked_generation(*_args, **_kwargs):
             generation_started.set()
             if not release_generation.wait(timeout=3):
                 raise TimeoutError("deleted-session preparation release was not signaled")
@@ -1794,12 +1936,15 @@ class BriefingSessionApiTests(unittest.TestCase):
             provider="openrouter", system_instruction="Selected catalog profile."
         )
 
-        def generate_with_fake_provider(artifact, configuration, cancellation_event):
+        def generate_with_fake_provider(
+            artifact, configuration, cancellation_event, **kwargs
+        ):
             return _generate_speech_script(
                 artifact,
                 configuration,
                 cancellation_event,
                 provider_factory=lambda _profile, _key: provider,
+                **kwargs,
             )
 
         with (

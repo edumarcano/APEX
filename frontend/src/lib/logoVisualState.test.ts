@@ -53,12 +53,18 @@ describe('resolveLogoVisualColors', () => {
     expect(resolveLogoVisualColors({ ...BASE, activity })).toEqual({ atmosphere: expected, logo: expected })
   })
 
-  it('keeps the completed and playback logo glow orange for a resident local model while the nebula follows the activity', () => {
+  it('keeps logo and nebula orange for a resident local model across briefing and speech activity', () => {
     expect(resolveLogoVisualColors({ ...BASE, activity: 'briefing_ready', isLocalModelLoaded: true })).toEqual({
-      atmosphere: '15, 77, 184', logo: '249, 115, 22',
+      atmosphere: '249, 115, 22', logo: '249, 115, 22',
     })
     expect(resolveLogoVisualColors({ ...BASE, activity: 'speech_playing', isLocalModelLoaded: true })).toEqual({
-      atmosphere: '34, 211, 238', logo: '249, 115, 22',
+      atmosphere: '249, 115, 22', logo: '249, 115, 22',
+    })
+  })
+
+  it('keeps orange glows while a resident local model is active during a Cortex query', () => {
+    expect(resolveLogoVisualColors({ ...BASE, activity: 'briefing_ready', isLocalModelLoaded: true, isCortexQuerying: true })).toEqual({
+      atmosphere: '249, 115, 22', logo: '249, 115, 22',
     })
   })
 
