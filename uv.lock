@@ -46,7 +46,7 @@ wheels = [
 
 [[package]]
 name = "apex"
-version = "2.0.0b5"
+version = "2.0.0b6"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },

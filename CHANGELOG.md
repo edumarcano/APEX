@@ -2,6 +2,81 @@
 
 ---
 
+## v2.0.0-beta.6 - Cortex: Adaptive Briefings & Attention
+
+**Released:** September 29, 2026
+
+This release rebuilds briefings around a unified, saved-session engine using the selected Apex Agent model, introduces Daily, Catch Up, and Deep briefing profiles, and adds grounded speech synthesis from saved canonical artifacts. It decouples the former Home view into dedicated Overview and Briefing workspaces, retitles external activity intake to Reports, and removes the legacy trigger pipeline and SQLite briefing table.
+
+### What's New
+
+- Replaced the previous Flash, Focused, and Structured briefing pipeline with a unified, saved-session engine that generates briefings with the selected Apex Agent model.
+- Added three built-in briefing profiles:
+  - **Daily**: General orientation summarizing calendar, reminders, weather, news, markets, and relevant context.
+  - **Catch Up**: History-aware briefing that compares current source observations with previously presented sessions to highlight only new changes and unaddressed items.
+  - **Deep**: Bounded investigation allowing the model to use read-only Apex Agent tools to deeply explore anomalies and topics with captured evidence.
+- Added grounded speech synthesis for completed briefings: spoken highlights are prepared from the saved canonical artifact, address the operator by their configured local designation, and cache audio chunks for instant playback.
+- Decoupled Home into dedicated top-level workspaces in the HUD:
+  - **Overview**: Centralized telemetry dashboard with a centered `Collect Telemetry` action, connector health status, and quick refresh.
+  - **Briefing**: Dedicated workspace for profile selection, session generation, streaming previews, evidence inspection, and speech playback.
+  - **Reports**: Renamed from Activity Inbox with a cyan accent and dedicated report-folder intake for external tool summaries.
+  - **Launch**: Fast entry screen accessible from startup or by clicking the APEX header badge while preserving background workspace state.
+- Added live streaming preview for daily briefing synthesis, showing formatted sections as the model streams before final artifact validation.
+- Added session repeat to re-run a briefing using the parameters of the most recent session.
+- Added conversation lifecycle cleanup: archived Cortex conversations and their linked briefing sessions, runs, and retrieval records are automatically deleted after 30 days by default (configurable from 14 to 90 days).
+- Added contextual APEX logo visual states showing stage-specific glyph text, color pulses, and shell effects during collection, model loading, and speech playback.
+- Updated `apex briefing` CLI commands to work with saved briefing sessions via `--profile daily|catch-up|deep`.
+- Added the read-only `get_briefing_history` tool for Apex Agent to query recent completed briefing sessions.
+
+### Architecture Changes
+
+- Consolidated briefing execution under a single bounded, model-agnostic workflow, replacing separate Flash, Focused, and Structured code paths.
+- Stored briefing sessions, turns, and canonical artifacts in partitioned SQLite tables (`briefing_sessions`, `briefing_turns`, `briefing_artifacts`). Completed sessions retain immutable evidence snapshots and first-presentation timestamps.
+- Grounded speech generation on completed briefing artifacts: speech models receive only the saved artifact text and item references, with validation verifying that numbers, dates, and claims match the source artifact without introducing unverified material.
+- Replaced the activity mailbox poller and settings with `activity_report_folder`.
+- Transactionally dropped the legacy SQLite `briefings` table during startup migration without migrating old unpartitioned history.
+- Decoupled workspace tab navigation from backend activation: opening a workspace no longer triggers automatic telemetry refreshes or model queries.
+- Bounded Cortex conversation retention to an automated background sweep that cleans up archived threads, messages, runs, briefing links, and retrieval entries in small transactional batches.
+
+### API Changes
+
+- Added briefing profile and session endpoints:
+  - `GET /api/v1/briefing-profiles`: Returns available built-in briefing profiles.
+  - `POST /api/v1/briefing-sessions`: Creates and starts a new briefing session.
+  - `GET /api/v1/briefing-sessions`: Lists saved briefing sessions for the active partition.
+  - `GET /api/v1/briefing-sessions/{session_id}`: Retrieves session status, configuration, evidence references, and canonical artifact.
+  - `GET /api/v1/briefing-sessions/{session_id}/evidence/{evidence_id}`: Retrieves an immutable evidence snapshot captured during the session.
+  - `POST /api/v1/briefing-sessions/{session_id}/presented`: Records the first-presentation timestamp for a completed session.
+  - `POST /api/v1/briefing-sessions/{session_id}/cancel`: Cancels an active briefing session.
+  - `POST /api/v1/briefing-sessions/{session_id}/repeat`: Starts a new session repeating the configuration of a previous session.
+  - `GET /api/v1/briefing-sessions/{session_id}/speech`: Retrieves current speech preparation and playback status.
+  - `POST /api/v1/briefing-sessions/{session_id}/speech/prepare`: Prepares and synthesizes spoken highlights from the saved artifact.
+  - `POST /api/v1/briefing-sessions/{session_id}/speech/play`: Begins local playback of prepared audio chunks.
+  - `POST /api/v1/briefing-sessions/{session_id}/speech/stop`: Stops active audio playback.
+- Added `briefing.stage` and `briefing.preview` Server-Sent Events to `GET /api/v1/cortex/runs/{run_id}/events`.
+- Replaced activity mailbox routes with `/api/v1/activity/report-folder/status` and `/api/v1/activity/report-folder/scan`.
+- Removed retired legacy endpoints: `/api/v1/trigger`, `/api/v1/briefings/generate`, `/api/v1/briefings/status`, and legacy briefing history endpoints.
+- Bumped settings schema version to 24, removing obsolete briefing mode settings and renaming activity mailbox to `activity_report_folder`.
+
+### Frontend Changes
+
+- Replaced the single Home dashboard with independent `OverviewView` and `BriefingView` workspaces, adding `WorkspaceTabs` to the header navigation.
+- Added `BriefingView` with profile cards, model and reasoning controls, streaming draft cards, evidence rail, and audio player controls.
+- Added `OverviewView` with centered preflight collection action, connector health status indicators, and independent telemetry cards.
+- Added `LaunchView` providing quick entry into all peer workspaces.
+- Combined CPU, RAM, and Disk telemetry into a connector-style system metrics pill in the header.
+- Renamed the Inbox workspace to Reports with a cyan accent and updated activity hooks (`useActivityReports`, `useActivityReportFolderStatus`).
+- Updated the vector logo component (`VoiceSignalGlyph`) with contextual states for telemetry collection, local model loading, briefing generation, and speech playback.
+- Added independent scroll containers to the Cortex conversation list and chat viewport.
+
+### Documentation Updates
+
+- Updated architecture, API, CLI, configuration, decisions, design system, and getting-started documentation for the saved-session briefing engine, speech synthesis, Overview/Briefing workspace separation, and report folder configuration.
+- Refreshed interface screenshots for Overview, Briefing, Cortex, and Launch.
+- Shortened the beta.6 objective and marked the milestone complete in `docs/roadmap.md`.
+
+---
+
 ## v2.0.0-beta.5 - Context Vault & Sharing
 
 **Released:** September 25, 2026
