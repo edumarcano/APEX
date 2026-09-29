@@ -237,6 +237,7 @@ export default function App(): ReactElement {
   const [reminderActionError, setReminderActionError] = useState<string | null>(null)
   const assistantRuntimeRef = useRef<ApexAssistantRuntimeHandle | null>(null)
   const [assistantRunning, setAssistantRunning] = useState(false)
+  const [assistantActivityLabel, setAssistantActivityLabel] = useState<string | null>(null)
   const [assistantRunningAgent, setAssistantRunningAgent] = useState<AgentKey | null>(null)
   const [assistantConversationId, setAssistantConversationId] = useState<string | null>(null)
   const [assistantConversationPreferences, setAssistantConversationPreferences] = useState<{
@@ -1548,6 +1549,7 @@ export default function App(): ReactElement {
       activeTtsEngine: resolvedTtsEngine,
       systemLoadThrottled: resolvedSystemThrottled,
       isCortexQuerying,
+      cortexActivityLabel: assistantActivityLabel,
       isLocalModelLoading,
       loadingDisplayName,
       isTelemetryCollecting,
@@ -1688,6 +1690,8 @@ export default function App(): ReactElement {
           runtimeRef={assistantRuntimeRef}
           onConversationChange={handleAssistantConversationChange}
           onRunningChange={handleAssistantRunningChange}
+          onActivityChange={setAssistantActivityLabel}
+          toolLabels={toolCatalogState.catalog?.tools ?? []}
           onResponseChange={handleAssistantResponseChange}
         >
         {isLaunch ? <LaunchView

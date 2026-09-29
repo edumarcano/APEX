@@ -38,15 +38,17 @@ describe('VoiceSignalGlyph', () => {
     expect(screen.getByText('Ready')).toBeVisible()
   })
 
-  it('renders working state when querying Cortex', () => {
+  it('renders the current Agent step with the purple query state', () => {
     render(
       <VoiceSignalGlyph
         status="idle"
         isSpeaking={false}
         isCortexQuerying={true}
+        cortexActivityLabel="Checking your calendar"
       />,
     )
-    expect(screen.getByText('Working')).toBeVisible()
+    expect(screen.getByText('Checking your calendar')).toBeVisible()
+    expect(screen.getByText('Checking your calendar').closest('[data-signal-tone]')).toHaveAttribute('data-signal-tone', 'purple')
   })
 
   it.each([
@@ -75,7 +77,7 @@ describe('VoiceSignalGlyph', () => {
     expect(screen.getByText('Synthesizing')).toBeVisible()
 
     rerender(
-      <VoiceSignalGlyph status="loading" isSpeaking={false} isCortexQuerying activity="synthesizing" isLocalModelLoading loadingDisplayName="Gemma 4 E2B" />,
+      <VoiceSignalGlyph status="loading" isSpeaking={false} isCortexQuerying cortexActivityLabel="Checking your calendar" activity="synthesizing" isLocalModelLoading loadingDisplayName="Gemma 4 E2B" />,
     )
     expect(screen.getByText('Loading Gemma 4 E2B')).toBeVisible()
   })

@@ -29,7 +29,6 @@ import { CortexToolCards } from './CortexToolCards'
 import { CortexActions } from './CortexActions'
 import { CortexContext } from './CortexContext'
 import { CortexActivity } from './CortexActivity'
-import { CortexActiveRunStrip } from './CortexActiveRunStrip'
 import { type ApexLogoProps } from './ApexLogo'
 import { ModelSelector } from './ModelSelector'
 import { ApexAssistantThread, ApexConversationRail, type ApexAssistantComposerProps, type ApexAssistantRunConfig } from './ApexAssistantRuntime'
@@ -349,7 +348,7 @@ export function AssistantResponseDisplay({
     <ContextUsed references={response.context_references} onOpenRecord={onOpenRecord} />
     <MapsGroundingSources citations={metadata?.citations ?? []} />
     <GoogleSearchSuggestions grounding={metadata?.grounding ?? null} />
-    <TraceList trace={response.tool_trace ?? []} />
+    {!Array.isArray(rawMetadata.activity_steps) || rawMetadata.activity_steps.length === 0 ? <TraceList trace={response.tool_trace ?? []} /> : null}
     {response.tool_outputs && response.tool_outputs.length > 0 ? <CortexToolCards toolOutputs={response.tool_outputs} /> : null}
   </>
 }
@@ -418,7 +417,6 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
   const [compactPanel, setCompactPanel] = useState<'conversations' | 'inspector' | null>(null)
   const [inspectorTab, setInspectorTab] = useState<typeof INSPECTOR_TABS[number]>('controls')
   const runsState = useCortexRuns({ pollingEnabled: true })
-  const activeRun = runsState.activeRuns[0] ?? null
   const { refreshRuns } = runsState
 
   useEffect(() => {
@@ -520,18 +518,6 @@ export function CortexWorkspace(props: CortexWorkspaceProps): ReactElement {
             composer={assistantComposer}
             disabled={interactionDisabled || !props.selectionReady}
             logoProps={props.logoProps}
-            activeRunSlot={
-              activeRun ? (
-                <CortexActiveRunStrip
-                  run={activeRun}
-                  agentName={assistantComposer?.activeAgentName ?? 'Agent'}
-                  onInspect={() => {
-                    setInspectorTab('activity')
-                    if (compactLayout) setCompactPanel('inspector')
-                  }}
-                />
-              ) : null
-            }
           />
         ) : (
           <footer className="border-t border-white/10 p-4 text-sm text-zinc-500">Agent queries are disabled in Settings.</footer>

@@ -109,3 +109,20 @@ export interface RunEvent {
   timestamp: string
   payload: Record<string, unknown>
 }
+
+export type RunActivityStepType =
+  | 'model.started'
+  | 'model.completed'
+  | 'tool.started'
+  | 'tool.completed'
+  | 'action.proposed'
+  | 'retry.updated'
+  | 'response.started'
+  | 'run.completed'
+
+export interface RunActivityStep {
+  sequence: number
+  timestamp: string
+  type: RunActivityStepType
+  payload: Record<string, unknown>
+}

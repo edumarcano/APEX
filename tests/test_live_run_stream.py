@@ -147,6 +147,53 @@ class LiveRunStreamTests(unittest.TestCase):
         self.assertNotIn("arguments", encoded)
         self.assertNotIn("result", encoded)
 
+    def test_activity_snapshot_and_completion_keep_only_bounded_safe_steps(self) -> None:
+        buffer = RunEventBuffer(_record(), limit=2)
+        buffer.publish("model.started", {"turn": 1, "prompt": "private prompt"})
+        buffer.publish("tool.started", {
+            "name": "get_active_reminders", "origin": "apex",
+            "arguments": {"token": "private token"},
+        })
+        buffer.publish("tool.completed", {
+            "name": "get_active_reminders", "origin": "apex", "status": "ok",
+            "duration_ms": 12.5, "result": "private result",
+        })
+        buffer.publish("response.delta", {"text": "private provisional answer"})
+        buffer.publish("model.completed", {"turn": 1})
+        buffer.publish("response.reset", {})
+        buffer.publish("usage.updated", {"retries_count": 1})
+        buffer.publish("response.completed", {"answer": "private final answer"})
+
+        snapshot = buffer.snapshot().payload
+        steps = snapshot["activity_steps"]
+        self.assertTrue(buffer.replay(0)[1])
+        self.assertEqual([step["type"] for step in steps], [
+            "model.started", "tool.started", "tool.completed", "model.completed",
+            "retry.updated", "response.started",
+        ])
+        self.assertEqual(steps[2]["payload"]["duration_ms"], 12.5)
+        self.assertNotIn("private", str(steps))
+        terminal = buffer.activity_steps_for_completion("failed", "provider_error")
+        self.assertEqual(terminal[-1]["payload"], {"status": "failed", "stop_reason": "provider_error"})
+        self.assertFalse(any(step["type"] == "run.completed" for step in buffer.activity_steps()))
+
+        for turn in range(70):
+            buffer.publish("model.started", {"turn": turn + 2})
+        self.assertEqual(len(buffer.snapshot().payload["activity_steps"]), 64)
+        self.assertEqual(len(buffer.activity_steps_for_completion("completed")), 64)
+
+    def test_provider_tool_duration_remains_in_event_but_not_activity_history(self) -> None:
+        buffer = RunEventBuffer(_record(), limit=2)
+        event = buffer.publish("tool.completed", {
+            "name": "google_search", "origin": "provider", "status": "ok",
+            "duration_ms": 245.0, "result": "private provider result",
+        })
+
+        self.assertEqual(event.payload["duration_ms"], 245.0)
+        activity = buffer.activity_steps()[0]["payload"]
+        self.assertNotIn("duration_ms", activity)
+        self.assertNotIn("private", str(activity))
+
     def test_last_event_id_requires_non_negative_integer(self) -> None:
         self.assertEqual(_parse_last_event_id(None), 0)
         self.assertEqual(_parse_last_event_id("12"), 12)
