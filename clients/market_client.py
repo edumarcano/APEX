@@ -8,6 +8,7 @@ import math
 import os
 import sys
 import threading
+import time
 from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -29,6 +30,8 @@ _CACHE_VERSION = 3
 _ALPHA_VANTAGE_BASE = "https://www.alphavantage.co/query"
 _REQUEST_TIMEOUT_SECONDS = 10.0
 _MAX_FAILURE_BACKOFF_DAYS = 8
+_RATE_LIMIT_COOLDOWN_SECONDS = 60
+_REQUEST_SPACING_SECONDS = 1.2
 _DISPLAY_HISTORY_LENGTH = 20
 _MAX_HISTORY_LENGTH = 100
 
@@ -42,6 +45,10 @@ def _cache_path() -> Path:
 
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _sleep(seconds: float) -> None:
+    time.sleep(seconds)
 
 
 def _iso_utc(dt: datetime | None = None) -> str:
@@ -70,6 +77,7 @@ def _empty_cache() -> dict[str, Any]:
     return {
         "version": _CACHE_VERSION,
         "provider_next_attempt_date": None,
+        "provider_retry_after": None,
         "collection_revision": 0,
         "symbols": {},
     }
@@ -126,6 +134,7 @@ def _read_cache() -> dict[str, Any]:
     raw_symbols = raw.get("symbols") if isinstance(raw.get("symbols"), dict) else {}
     symbols = {symbol: _normalize_cache_entry(entry) for symbol, entry in raw_symbols.items() if isinstance(symbol, str)}
     revision = raw.get("collection_revision")
+    retry_after = _parse_iso(raw.get("provider_retry_after"))
     return {
         "version": _CACHE_VERSION,
         "provider_next_attempt_date": (
@@ -133,6 +142,7 @@ def _read_cache() -> dict[str, Any]:
             if _parse_date(raw.get("provider_next_attempt_date")) is not None
             else None
         ),
+        "provider_retry_after": _iso_utc(retry_after) if retry_after is not None else None,
         "collection_revision": revision if isinstance(revision, int) and revision >= 0 else 0,
         "symbols": symbols,
     }
@@ -185,6 +195,11 @@ def _backoff_active(entry: dict[str, Any], today: date | None = None) -> bool:
 def _provider_backoff_active(cache: dict[str, Any], today: date | None = None) -> bool:
     next_attempt = _parse_date(cache.get("provider_next_attempt_date"))
     return next_attempt is not None and (today or _utc_today()) < next_attempt
+
+
+def _provider_cooldown_active(cache: dict[str, Any], now: datetime) -> bool:
+    retry_after = _parse_iso(cache.get("provider_retry_after"))
+    return retry_after is not None and now < retry_after
 
 
 def _record_failure(entry: dict[str, Any], reason_code: str, today: date) -> None:
@@ -254,6 +269,9 @@ def _alpha_vantage_get(params: dict[str, str]) -> tuple[dict[str, Any] | None, s
     provider_message = note if isinstance(note, str) else information if isinstance(information, str) else ""
     normalized_message = provider_message.casefold()
     if provider_message:
+        # Alpha Vantage burst notices also cite the daily quota, so they must be matched first.
+        if any(fragment in normalized_message for fragment in ("per second", "sparingly", "burst")):
+            return None, "rate_limited"
         if "25 requests per day" in normalized_message or "daily" in normalized_message and "limit" in normalized_message:
             return None, "daily_rate_limit"
         if any(fragment in normalized_message for fragment in ("rate limit", "call frequency", "api call volume")):
@@ -475,6 +493,8 @@ def refresh_market_data() -> dict[str, Any]:
         reason_code = "ok"
         today = _utc_today()
         provider_backoff = _provider_backoff_active(cache, today)
+        cooldown_active = _provider_cooldown_active(cache, _now_utc())
+        requested = False
         for symbol in symbols:
             entry = entries.get(symbol)
             if not isinstance(entry, dict):
@@ -484,6 +504,9 @@ def refresh_market_data() -> dict[str, Any]:
                 continue
             if provider_backoff:
                 reason_code = "provider_backoff"
+                continue
+            if cooldown_active:
+                reason_code = "rate_limited"
                 continue
             previous_attempt_date = entry.get("last_attempt_date")
             entry["last_attempt_date"] = today.isoformat()
@@ -495,7 +518,22 @@ def refresh_market_data() -> dict[str, Any]:
                 reason_code = "cache_write_error"
                 continue
             persisted_cache = deepcopy(cache)
+            if requested:
+                _sleep(_REQUEST_SPACING_SECONDS)
+            requested = True
             payload, error = _alpha_vantage_get({"function": "TIME_SERIES_DAILY", "symbol": symbol, "apikey": api_key})
+            if error == "rate_limited":
+                reason_code = error
+                if previous_attempt_date is None:
+                    entry.pop("last_attempt_date", None)
+                else:
+                    entry["last_attempt_date"] = previous_attempt_date
+                entry["last_error_code"] = error
+                cache["provider_retry_after"] = _iso_utc(
+                    _now_utc() + timedelta(seconds=_RATE_LIMIT_COOLDOWN_SECONDS)
+                )
+                cooldown_active = True
+                break
             if error:
                 reason_code = error
                 _record_failure(entry, error, today)
@@ -507,7 +545,6 @@ def refresh_market_data() -> dict[str, Any]:
                     "invalid_json",
                     "invalid_payload",
                     "provider_error",
-                    "rate_limited",
                     "timeout",
                 }:
                     cache["provider_next_attempt_date"] = (today + timedelta(days=1)).isoformat()
@@ -522,6 +559,8 @@ def refresh_market_data() -> dict[str, Any]:
             fetched_live.add(symbol)
         if not provider_backoff:
             cache["provider_next_attempt_date"] = None
+        if not cooldown_active:
+            cache["provider_retry_after"] = None
         cache["collection_revision"] += 1
         if not _write_cache(cache):
             snapshot = _build_snapshot(persisted_cache, symbols, reason_code="cache_write_error")
