@@ -55,7 +55,7 @@ def list_briefing_profiles() -> list[BriefingProfileSummary]:
     summary="Generate a saved briefing session for an available profile",
 )
 def generate_briefing_session(
-    body: BriefingSessionGenerateRequest,
+    body: BriefingGenerationRequest,
     response: Response,
 ) -> BriefingSessionSummary:
     """Admit a run for an available built-in profile and return its durable session and conversation IDs."""
@@ -65,9 +65,8 @@ def generate_briefing_session(
             detail=briefing_models.UNAVAILABLE_BRIEFING_PROFILE_REASON,
         )
     try:
-        result = get_briefing_service().start(
-            BriefingGenerationRequest(**body.model_dump())
-        )
+        request = body
+        result = get_briefing_service().start(request)
     except BriefingModelConfigurationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     except RunCapacityError:

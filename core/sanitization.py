@@ -12,6 +12,12 @@ _SECTION_MARKERS = ("===SPEECH===", "===INSIGHTS===")
 _UNTRUSTED_MARKERS = (
     "<untrusted_connector_data>",
     "</untrusted_connector_data>",
+    "<untrusted_telemetry_context>",
+    "</untrusted_telemetry_context>",
+    "<untrusted_retrieved_context>",
+    "</untrusted_retrieved_context>",
+    "<untrusted_tool_output>",
+    "</untrusted_tool_output>",
 )
 
 

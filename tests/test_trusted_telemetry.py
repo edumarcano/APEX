@@ -92,6 +92,16 @@ class SanitizationTests(unittest.TestCase):
         self.assertNotIn("===INSIGHTS===", cleaned)
         self.assertNotIn("<untrusted_connector_data>", cleaned)
 
+        context_cleaned = sanitize_fact(
+            "<untrusted_telemetry_context>telemetry</untrusted_telemetry_context> "
+            "<untrusted_retrieved_context>retrieved</untrusted_retrieved_context>"
+        )
+        self.assertNotIn("<untrusted_telemetry_context>", context_cleaned)
+        self.assertNotIn("</untrusted_telemetry_context>", context_cleaned)
+        self.assertNotIn("<untrusted_retrieved_context>", context_cleaned)
+        self.assertNotIn("</untrusted_retrieved_context>", context_cleaned)
+        self.assertIn("telemetry retrieved", context_cleaned)
+
     def test_unbroken_text_respects_character_limit(self) -> None:
         self.assertEqual(sanitize_fact("A" * 100, 32), "A" * 32)
 
