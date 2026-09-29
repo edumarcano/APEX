@@ -50,3 +50,10 @@
 - Launcher, dependency, environment, or configuration work must follow `docs/agent-guidance/infrastructure.md`.
 - Reusable procedures live in `.agents/skills/`; use the smallest relevant skill instead of loading unrelated workflows.
 
+## Cursor Cloud specific instructions
+
+- Run Python through `uv run`. The image `python3` is 3.12 and does not satisfy `requires-python == 3.14.*`. The environment install provides `uv` and CPython 3.14.
+- Use `node` and `npm` from `PATH`. They are Node.js 24. `/exec-daemon/node` is v22.14, which is older than the `@lobehub/ui` engine requirement (`>=22.22.0`).
+- Leave `DEMO_MODE` unset in `.env` when running the test suite. Tests load `.env`, and demo mode changes briefing and connector behavior. For a credential-free HUD, start one process with `DEMO_MODE=true uv run python launcher.py`. That serves the API on `127.0.0.1:8000` and the compiled HUD on `127.0.0.1:5500`.
+- The launcher serves `dist/`. After frontend changes, run `npm run build` from `frontend/` before using the launcher.
+
