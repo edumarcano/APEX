@@ -350,10 +350,8 @@ export function AssistantResponseDisplay({
     <ContextUsed references={response.context_references} onOpenRecord={onOpenRecord} />
     <MapsGroundingSources citations={metadata?.citations ?? []} />
     <GoogleSearchSuggestions grounding={metadata?.grounding ?? null} />
-    <TraceList trace={response.tool_trace ?? []} />
-    <CompactToolResults toolOutputs={response.tool_outputs ?? []} />
     {!Array.isArray(rawMetadata.activity_steps) || rawMetadata.activity_steps.length === 0 ? <TraceList trace={response.tool_trace ?? []} /> : null}
-    {response.tool_outputs && response.tool_outputs.length > 0 ? <CortexToolCards toolOutputs={response.tool_outputs} /> : null}
+    <CompactToolResults toolOutputs={response.tool_outputs ?? []} />
   </>
 }
 
