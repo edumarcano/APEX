@@ -17,13 +17,13 @@ APEX opens on Launch, which provides access to four peer workspaces: Overview sh
 <p align="center">
   <img
   src="docs/assets/apex-home.png"
-  alt="APEX Briefing workspace delivering a briefing with static, non-personal demo telemetry"
+  alt="APEX Overview HUD with live demo telemetry and central status mark"
   width="900"
 >
 </p>
 
 <p align="center">
-  <em>The Briefing workspace delivering a briefing with static, non-personal demo telemetry.</em>
+  <em>The Overview HUD showing telemetry cards, status, and system health in demo mode.</em>
 </p>
 
 ## What APEX does
@@ -36,6 +36,18 @@ APEX collects enabled weather, calendar, email, news, sports, reminder, and mark
 
 Briefing creates Daily, Catch Up, and Deep sessions with the selected Apex Agent model. Each session saves a canonical artifact and evidence in the active local partition, and opens a linked Cortex conversation for follow-up. Catch Up compares current sources with the last presented complete session; Deep can investigate with a bounded set of read-only tools. The HUD never silently changes the selected model. Demo mode uses fixed Daily and Catch Up fixtures without contacting a provider.
 
+<p align="center">
+  <img
+  src="docs/assets/apex-briefing.png"
+  alt="APEX Briefing workspace showing session setup and live telemetry context"
+  width="900"
+>
+</p>
+
+<p align="center">
+  <em>The Briefing workspace with session setup, repeat controls, and active telemetry context.</em>
+</p>
+
 ### Operates the Apex Agent
 
 Agent queries can use approved read tools for live data, briefing history, Gmail, Microsoft To Do, personal context, and optional MCP (Model Context Protocol) providers. Reads run directly. Supported native writes create action proposals that require local approval and verification before they are considered complete.
@@ -47,13 +59,13 @@ After a Microsoft To Do list is selected, its incomplete tasks become the Overvi
 <p align="center">
   <img
   src="docs/assets/apex-cortex.png"
-  alt="APEX Cortex workspace showing a persistent conversation, briefing-history tool result, model controls, and personal context settings"
+  alt="APEX Cortex workspace showing conversation interface, prompt chips, model controls, and telemetry context"
   width="900"
 >
 </p>
 
 <p align="center">
-  <em>The Cortex workspace using the Apex Agent to review persisted briefing history, with conversation, model, tool, and personal context controls available alongside the chat.</em>
+  <em>The Cortex workspace with prompt chips, model configuration, tool selection, and personal context controls available alongside the chat.</em>
 </p>
 
 ### Shares selected context through a vault
