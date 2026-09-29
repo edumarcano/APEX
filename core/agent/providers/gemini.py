@@ -147,7 +147,7 @@ def _content_to_agent_message(content: types.Content) -> AgentMessage:
     tool_calls: list[ToolCall] = []
 
     for part in content.parts or []:
-        if part.text and not getattr(part, "thought", False):
+        if part.text and getattr(part, "thought", False) is not True:
             text_segments.append(part.text)
         if part.function_call is not None:
             function_call = part.function_call
@@ -448,7 +448,7 @@ class GeminiProvider:
                         for part in getattr(content, "parts", None) or []:
                             if (
                                 getattr(part, "text", None)
-                                and not getattr(part, "thought", False)
+                                and getattr(part, "thought", False) is not True
                             ):
                                 text = str(part.text)
                                 text_parts.append(text)
