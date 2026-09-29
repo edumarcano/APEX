@@ -17,7 +17,7 @@ from core.agent.local_runtime.execution import admit_local_model
 from core.agent.loop import is_local_profile
 from core.agent.model_catalog import model_has_credentials
 from core.agent.providers.factory import create_provider
-from core.agent.providers.contract import ProviderTurnResult
+from core.agent.providers.contract import ProviderStreamObserver, ProviderTurnResult
 from core.agent.types import AgentMessage
 from core.briefings.models import (
     MAX_ARTIFACT_BYTES,
@@ -59,6 +59,7 @@ def execute_single_call(
     output_schema: dict[str, Any],
     control: RunExecutionControl,
     provider_factory: ProviderFactory = create_provider,
+    stream_observer: ProviderStreamObserver | None = None,
 ) -> ProviderTurnResult:
     """Run exactly one catalog-selected model call with no tools or fallback."""
     model_configuration = configuration.model
@@ -114,6 +115,7 @@ def execute_single_call(
                 [],
                 concrete_profile,
                 execution_control=control,
+                stream_observer=stream_observer,
                 output_schema=output_schema,
                 output_token_limit=output_token_limit,
             )

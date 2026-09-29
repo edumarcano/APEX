@@ -26,6 +26,7 @@ RunEventType = Literal[
     "usage.updated",
     "runtime.updated",
     "briefing.stage",
+    "briefing.preview",
     "run.completed",
 ]
 
@@ -51,6 +52,7 @@ class RunEventBuffer:
         self._events: deque[RunEvent] = deque(maxlen=limit)
         self._answer = ""
         self._briefing_stage: dict[str, str] | None = None
+        self._briefing_preview: list[dict[str, Any]] = []
         self._activity_steps: deque[dict[str, Any]] = deque(maxlen=64)
         self._last_retry_count = 0
         self._response_started = False
@@ -104,6 +106,13 @@ class RunEventBuffer:
                 state = event.payload.get("state")
                 if isinstance(stage, str) and isinstance(state, str):
                     self._briefing_stage = {"stage": stage, "state": state}
+            elif event_type == "briefing.preview":
+                self._briefing_preview = [
+                    {**section, "items": [dict(item) for item in section["items"]]}
+                    for section in event.payload.get("sections", [])
+                ]
+            elif event_type == "run.completed" and event.payload.get("status") != "completed":
+                self._briefing_preview = []
             if event_type != "response.delta":
                 self._record_activity(event)
             self._events.append(event)
@@ -122,6 +131,10 @@ class RunEventBuffer:
                     "run": self._record.model_dump(mode="json"),
                     "answer": self._answer,
                     "briefing_stage": dict(self._briefing_stage) if self._briefing_stage else None,
+                    "briefing_preview": [
+                        {**section, "items": [dict(item) for item in section["items"]]}
+                        for section in self._briefing_preview
+                    ],
                     "activity_steps": self._copy_activity_steps(),
                 },
             )
@@ -305,7 +318,7 @@ class RunEventRegistry:
             run_id=record.id,
             type="run.snapshot",
             timestamp=datetime.now(timezone.utc),
-            payload={"run": record.model_dump(mode="json"), "answer": "", "activity_steps": []},
+            payload={"run": record.model_dump(mode="json"), "answer": "", "activity_steps": [], "briefing_preview": []},
         )
 
 
@@ -324,6 +337,7 @@ def _safe_payload(event_type: RunEventType, payload: dict[str, Any]) -> dict[str
             "run": run if isinstance(run, dict) else {},
             "answer": _text(payload.get("answer")),
             "briefing_stage": safe_stage,
+            "briefing_preview": _safe_briefing_preview(payload.get("briefing_preview")),
             "activity_steps": _safe_activity_steps(payload.get("activity_steps")),
         }
     if event_type == "run.status":
@@ -345,6 +359,11 @@ def _safe_payload(event_type: RunEventType, payload: dict[str, Any]) -> dict[str
             "stage": stage if stage in stages else "preparing",
             "state": state if state in states else "started",
         }
+    if event_type == "briefing.preview":
+        if payload.get("reset") is True:
+            return {"reset": True, "sections": []}
+        sections = _safe_briefing_preview(payload.get("sections"))
+        return {"reset": False, "sections": sections}
     if event_type == "response.completed":
         return {"answer": _text(payload.get("answer"))}
     if event_type == "tool.started":
@@ -378,6 +397,35 @@ def _safe_payload(event_type: RunEventType, payload: dict[str, Any]) -> dict[str
             else None
         ),
     }
+
+
+def _safe_briefing_preview(value: object) -> list[dict[str, Any]]:
+    """Validate the bounded text-only preview at the public event boundary."""
+    if not isinstance(value, list) or len(value) > 12:
+        return []
+    categories = {"observation", "accepted_context", "pending_review", "external_report", "analysis", "suggestion"}
+    sections: list[dict[str, Any]] = []
+    total_chars = 0
+    for section in value:
+        if not isinstance(section, dict):
+            return []
+        title, items = section.get("title"), section.get("items")
+        if not isinstance(title, str) or not 0 < len(title) <= 160 or not isinstance(items, list) or len(items) > 32:
+            return []
+        safe_items: list[dict[str, str]] = []
+        total_chars += len(title)
+        for item in items:
+            if not isinstance(item, dict):
+                return []
+            category, item_title, body = item.get("category"), item.get("title"), item.get("body")
+            if (not isinstance(category, str) or category not in categories
+                    or not isinstance(item_title, str) or not 0 < len(item_title) <= 200
+                    or not isinstance(body, str) or not 0 < len(body) <= 3_000):
+                return []
+            total_chars += len(item_title) + len(body)
+            safe_items.append({"category": category, "title": item_title, "body": body})
+        sections.append({"title": title, "items": safe_items})
+    return sections if total_chars <= 12_000 else []
 
 
 def _safe_activity_steps(value: object) -> list[dict[str, Any]]:

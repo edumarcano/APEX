@@ -679,7 +679,7 @@ Each event uses the following JSON envelope:
 }
 ```
 
-The closed event types are `run.snapshot`, `run.status`, `briefing.stage`, `model.started`,
+The closed event types are `run.snapshot`, `run.status`, `briefing.stage`, `briefing.preview`, `model.started`,
 `model.completed`, `response.delta`, `response.reset`, `response.completed`,
 `tool.started`, `tool.completed`, `action.proposed`, `usage.updated`,
 `runtime.updated`, and `run.completed`. `run.snapshot` includes `activity_steps`,
@@ -692,6 +692,14 @@ text after a late tool call.
 payload for briefing progress. Valid stages include `preparing`, `collecting`,
 `selecting`, `investigating`, `synthesizing`, and `persisting`; state is
 `started`, `completed`, `failed`, or `cancelled`.
+
+`briefing.preview` carries at most 12 completed, individually validated synthesis
+sections as plain title, category, and body text. It omits evidence identifiers
+and source links. A payload with `reset: true` discards the preview before a
+repair attempt or provider stream rewrite. Failed and cancelled terminal events
+clear it. `run.snapshot` includes the current preview while its process-local
+buffer is retained. A successful run keeps its preview until the caller loads
+the canonical saved artifact.
 
 The stream replays events after the supplied cursor. If that cursor is older
 than the run's bounded replay buffer, APEX sends a fresh `run.snapshot`

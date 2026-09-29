@@ -47,6 +47,34 @@ def _record(*, status: str = "running") -> RunRecord:
 
 
 class LiveRunStreamTests(unittest.TestCase):
+    def test_briefing_preview_events_are_bounded_and_replayed_in_snapshots(self) -> None:
+        buffer = RunEventBuffer(_record(), limit=8)
+        section = {"title": "Today", "items": [{
+            "category": "observation", "title": "Weather", "body": "Clear.",
+            "evidence_ids": ["private-id"], "html": "<script>bad</script>",
+        }]}
+        event = buffer.publish("briefing.preview", {"sections": [section], "raw_json": "private"})
+
+        self.assertEqual(event.payload, {"reset": False, "sections": [{
+            "title": "Today", "items": [{
+                "category": "observation", "title": "Weather", "body": "Clear.",
+            }],
+        }]})
+        snapshot = buffer.snapshot().payload
+        self.assertEqual(snapshot["briefing_preview"], event.payload["sections"])
+        self.assertNotIn("private-id", str(snapshot))
+
+        malformed = buffer.publish("briefing.preview", {"sections": [{
+            "title": "Today", "items": [{"category": [], "title": "Bad", "body": "Malformed."}],
+        }]})
+        self.assertEqual(malformed.payload, {"reset": False, "sections": []})
+
+        reset = buffer.publish("briefing.preview", {"reset": True})
+        self.assertEqual(reset.payload, {"reset": True, "sections": []})
+        buffer.publish("briefing.preview", {"sections": [section]})
+        buffer.publish("run.completed", {"status": "failed", "stop_reason": "provider_error"})
+        self.assertEqual(buffer.snapshot().payload["briefing_preview"], [])
+
     def test_replay_is_ordered_and_snapshot_keeps_visible_answer(self) -> None:
         record = _record()
         buffer = RunEventBuffer(record, limit=8)

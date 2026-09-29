@@ -1754,6 +1754,7 @@ export default function App(): ReactElement {
               ready: dailyConversationReady === dailySessions.activeSession?.conversation_id && assistantConversationId === dailySessions.activeSession?.conversation_id,
               canFollowUp: Boolean(agentQueriesEnabled) && !demoModeActive,
               session: dailySessions.activeSession,
+              previewSections: dailySessions.preview?.sessionId === dailySessions.activeSession?.id ? dailySessions.preview?.sections : undefined,
               isLoadingSession: dailySessions.isLoadingSession,
               evidence: briefingEvidence,
               onMarkPresented: dailySessions.markPresented,

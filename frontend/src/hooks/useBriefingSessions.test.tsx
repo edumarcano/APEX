@@ -105,6 +105,44 @@ describe('useBriefingSessions', () => {
     expect(requested.filter((url) => url.includes('/evidence/'))).toHaveLength(1)
   })
 
+  it('renders only the bounded preview event and clears it on a repair reset', async () => {
+    const runningSummary = { ...summary, run_status: 'running' as const }
+    const preview = [{ title: 'Today', items: [{ category: 'observation', title: 'Weather', body: 'Clear.' }] }]
+    const events = [
+      { sequence: 1, run_id: summary.run_id, type: 'run.snapshot', timestamp: summary.created_at, payload: { briefing_preview: preview, run: { status: 'running' }, answer: '', activity_steps: [] } },
+      { sequence: 2, run_id: summary.run_id, type: 'briefing.preview', timestamp: summary.created_at, payload: { reset: true, sections: [] } },
+      { sequence: 3, run_id: summary.run_id, type: 'run.completed', timestamp: summary.created_at, payload: { status: 'failed' } },
+    ]
+    const encoder = new TextEncoder()
+    let releaseTerminal!: () => void
+    const terminalGate = new Promise<void>((resolve) => { releaseTerminal = resolve })
+    const streamBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const frame = (event: typeof events[number]): Uint8Array => encoder.encode(`id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+        controller.enqueue(frame(events[0]!))
+        void terminalGate.then(() => {
+          controller.enqueue(frame(events[1]!))
+          controller.enqueue(frame(events[2]!))
+          controller.close()
+        })
+      },
+    })
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url === API_ENDPOINTS.briefingSessions({ limit: 50 })) return response([runningSummary])
+      if (url === API_ENDPOINTS.briefingSession(sessionId)) return response(detail('running'))
+      if (url === API_ENDPOINTS.cortexRunEvents(summary.run_id)) return new Response(streamBody, { headers: { 'Content-Type': 'text/event-stream' } })
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const { result, unmount } = renderHook(() => useBriefingSessions())
+    await waitFor(() => expect(result.current.sessions).toHaveLength(1))
+    await act(async () => { await result.current.openSession(sessionId) })
+    await waitFor(() => expect(result.current.preview?.sections).toEqual(preview))
+    await act(async () => { releaseTerminal() })
+    await waitFor(() => expect(result.current.preview).toBeNull())
+    unmount()
+  })
+
   it('loads the newest saved detail for Repeat without changing the displayed session selection', async () => {
     const newestId = '00000000-0000-4000-8000-000000000099'
     const newestSummary: BriefingSessionSummary = {
