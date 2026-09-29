@@ -138,6 +138,9 @@ describe('CompactModelSelector', () => {
     />)
 
     await user.click(screen.getByRole('button', { name: /model: gemini, reasoning low/i }))
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByRole('option', { name: /gemini/i }))
+    })
     const reasoningToggle = screen.getByRole('button', { name: 'Reasoning, currently Low' })
     const menuScrollContainer = screen.getByRole('listbox', { name: /select model/i }).parentElement
     expect(menuScrollContainer).not.toBeNull()
@@ -145,14 +148,10 @@ describe('CompactModelSelector', () => {
 
     await user.click(reasoningToggle)
 
-    await waitFor(() => {
-      expect(menuScrollContainer).toHaveProperty('scrollTop', 360)
-    })
+    expect(menuScrollContainer).toHaveProperty('scrollTop', 360)
     const reasoningChoices = screen.getByRole('group', { name: 'Reasoning effort' })
     expect(within(reasoningChoices).getByRole('button', { name: 'High' })).toBeInTheDocument()
-    await waitFor(() => {
-      expect(document.activeElement).toBe(reasoningToggle)
-    })
+    expect(document.activeElement).toBe(reasoningToggle)
   })
 
   it('offers local reasoning modes and disables both selectors while the thread is running', async () => {
