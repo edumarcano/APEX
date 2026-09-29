@@ -229,7 +229,7 @@ Returns `404` before the first successful snapshot or after a process restart.
 
 Refreshes all enabled connectors or a selected subset.
 
-Market participates in this lifecycle and in Sync Health. Each symbol can make at most one Alpha Vantage request per UTC calendar day. Successful results remain fresh cached data for that day even when the latest trading close is older, such as on weekends. Failed symbols wait until a later UTC date according to their failure backoff. Briefing profiles can use the bounded Market snapshot.
+Market participates in this lifecycle and in Sync Health. Each symbol can make at most one Alpha Vantage request per UTC calendar day after a successful response. Successful results remain fresh cached data for that day even when the latest trading close is older, such as on weekends. Temporary provider throttling retries after a short same-day cooldown, and daily quota exhaustion waits for the next UTC day. Other failed symbols wait until a later UTC date according to their failure backoff. Briefing profiles can use the bounded Market snapshot.
 
 Calendar reads every selected calendar independently and merges successful results in start-time order. If one selected calendar fails, the snapshot keeps events from the others and reports `degraded` with `partial_failure`; no selected calendars reports `unavailable` with `no_calendars_selected`. The calendar data includes selected, successful, and failed counts plus a truncation flag.
 

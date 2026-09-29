@@ -47,6 +47,11 @@ def _history_entry(*, fetched_at: datetime = _NOW) -> dict[str, object]:
 
 
 class MarketClientTests(unittest.TestCase):
+    def setUp(self) -> None:
+        patcher = mock.patch.object(market_client, "_sleep")
+        self.sleep = patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_unconfigured_market_is_unavailable_without_provider_call(self) -> None:
         with mock.patch.object(market_client, "DEMO_MODE", False), mock.patch.object(market_client, "get_settings_store", return_value=_store(["SPY"])), mock.patch.dict(market_client.os.environ, {}, clear=True), mock.patch.object(market_client, "_alpha_vantage_get") as provider:
             response = market_client.refresh_market_data()
@@ -130,10 +135,24 @@ class MarketClientTests(unittest.TestCase):
         self.assertEqual(entry["last_attempt_date"], "2026-09-10")
         self.assertEqual(entry["next_attempt_date"], "2026-09-12")
 
-    def test_provider_failure_defers_unattempted_symbols_until_next_day(self) -> None:
+    def test_daily_rate_limit_defers_unattempted_symbols_until_next_day(self) -> None:
+        cache = market_client._empty_cache()
+        provider = mock.Mock(return_value=(None, "daily_rate_limit"))
+        current = [_NOW]
+        with mock.patch.object(market_client, "DEMO_MODE", False), mock.patch.object(market_client, "_now_utc", side_effect=lambda: current[0]), mock.patch.object(market_client, "_read_cache", return_value=cache), mock.patch.object(market_client, "_write_cache"), mock.patch.object(market_client, "get_settings_store", return_value=_store(["SPY", "NVDA"])), mock.patch.dict(market_client.os.environ, {"ALPHA_VANTAGE_API_KEY": "configured"}, clear=True), mock.patch.object(market_client, "_alpha_vantage_get", provider):
+            response = market_client.refresh_market_data()
+            market_client.refresh_market_data()
+        self.assertEqual(provider.call_count, 1)
+        self.assertEqual(response["reason_code"], "daily_rate_limit")
+        self.assertEqual(cache["provider_next_attempt_date"], "2026-09-10")
+        self.assertEqual(cache["symbols"]["SPY"]["last_attempt_date"], "2026-09-09")
+        self.assertNotIn("last_attempt_date", cache["symbols"]["NVDA"])
+
+    def test_provider_timeout_defers_unattempted_symbols_until_next_day(self) -> None:
         cache = market_client._empty_cache()
         provider = mock.Mock(return_value=(None, "timeout"))
-        with mock.patch.object(market_client, "DEMO_MODE", False), mock.patch.object(market_client, "_now_utc", return_value=_NOW), mock.patch.object(market_client, "_read_cache", return_value=cache), mock.patch.object(market_client, "_write_cache"), mock.patch.object(market_client, "get_settings_store", return_value=_store(["SPY", "NVDA"])), mock.patch.dict(market_client.os.environ, {"ALPHA_VANTAGE_API_KEY": "configured"}, clear=True), mock.patch.object(market_client, "_alpha_vantage_get", provider):
+        current = [_NOW]
+        with mock.patch.object(market_client, "DEMO_MODE", False), mock.patch.object(market_client, "_now_utc", side_effect=lambda: current[0]), mock.patch.object(market_client, "_read_cache", return_value=cache), mock.patch.object(market_client, "_write_cache"), mock.patch.object(market_client, "get_settings_store", return_value=_store(["SPY", "NVDA"])), mock.patch.dict(market_client.os.environ, {"ALPHA_VANTAGE_API_KEY": "configured"}, clear=True), mock.patch.object(market_client, "_alpha_vantage_get", provider):
             response = market_client.refresh_market_data()
             market_client.refresh_market_data()
         self.assertEqual(provider.call_count, 1)
@@ -141,6 +160,51 @@ class MarketClientTests(unittest.TestCase):
         self.assertEqual(cache["provider_next_attempt_date"], "2026-09-10")
         self.assertEqual(cache["symbols"]["SPY"]["last_attempt_date"], "2026-09-09")
         self.assertNotIn("last_attempt_date", cache["symbols"]["NVDA"])
+
+    def test_temporary_rate_limit_recovers_remaining_symbols_after_cooldown(self) -> None:
+        symbols = ["S1", "S2", "S3", "S4", "S5", "S6"]
+        cache = market_client._empty_cache()
+        provider = mock.Mock(side_effect=[(_daily_payload(), None), (None, "rate_limited")] + [(_daily_payload(), None)] * 5)
+        current = [_NOW]
+        with mock.patch.object(market_client, "DEMO_MODE", False), mock.patch.object(market_client, "_now_utc", side_effect=lambda: current[0]), mock.patch.object(market_client, "_read_cache", return_value=cache), mock.patch.object(market_client, "_write_cache"), mock.patch.object(market_client, "get_settings_store", return_value=_store(symbols)), mock.patch.dict(market_client.os.environ, {"ALPHA_VANTAGE_API_KEY": "configured"}, clear=True), mock.patch.object(market_client, "_alpha_vantage_get", provider):
+            first = market_client.refresh_market_data()
+            self.assertEqual(provider.call_count, 2)
+            self.assertIsNone(cache["provider_next_attempt_date"])
+            throttled = cache["symbols"]["S2"]
+            self.assertEqual(throttled["last_error_code"], "rate_limited")
+            self.assertEqual(throttled.get("consecutive_failures", 0), 0)
+            self.assertNotIn("next_attempt_date", throttled)
+            self.assertNotIn("last_attempt_date", throttled)
+            current[0] = _NOW + timedelta(seconds=market_client._RATE_LIMIT_COOLDOWN_SECONDS + 1)
+            second = market_client.refresh_market_data()
+        requested = [call.args[0]["symbol"] for call in provider.call_args_list]
+        self.assertEqual(first["reason_code"], "rate_limited")
+        self.assertEqual(requested, ["S1", "S2", "S2", "S3", "S4", "S5", "S6"])
+        self.assertEqual(second["status"], "healthy")
+        self.assertEqual(second["reason_code"], "ok")
+        self.assertIsNone(cache["provider_retry_after"])
+        self.assertTrue(all(t["status"] == "healthy" for t in second["tickers"]))
+
+    def test_rate_limit_cooldown_skips_provider_requests(self) -> None:
+        cache = market_client._empty_cache()
+        cache["provider_retry_after"] = market_client._iso_utc(_NOW + timedelta(seconds=30))
+        provider = mock.Mock()
+        current = [_NOW]
+        with mock.patch.object(market_client, "DEMO_MODE", False), mock.patch.object(market_client, "_now_utc", side_effect=lambda: current[0]), mock.patch.object(market_client, "_read_cache", return_value=cache), mock.patch.object(market_client, "_write_cache"), mock.patch.object(market_client, "get_settings_store", return_value=_store(["SPY"])), mock.patch.dict(market_client.os.environ, {"ALPHA_VANTAGE_API_KEY": "configured"}, clear=True), mock.patch.object(market_client, "_alpha_vantage_get", provider):
+            response = market_client.refresh_market_data()
+        provider.assert_not_called()
+        self.assertEqual(response["reason_code"], "rate_limited")
+        self.assertNotIn("last_attempt_date", cache["symbols"]["SPY"])
+
+    def test_requests_are_paced_only_between_provider_calls(self) -> None:
+        cache = market_client._empty_cache()
+        cache["symbols"]["S2"] = _history_entry()
+        provider = mock.Mock(return_value=(_daily_payload(), None))
+        current = [_NOW]
+        with mock.patch.object(market_client, "DEMO_MODE", False), mock.patch.object(market_client, "_now_utc", side_effect=lambda: current[0]), mock.patch.object(market_client, "_read_cache", return_value=cache), mock.patch.object(market_client, "_write_cache"), mock.patch.object(market_client, "get_settings_store", return_value=_store(["S1", "S2", "S3"])), mock.patch.dict(market_client.os.environ, {"ALPHA_VANTAGE_API_KEY": "configured"}, clear=True), mock.patch.object(market_client, "_alpha_vantage_get", provider):
+            market_client.refresh_market_data()
+        self.assertEqual(provider.call_count, 2)
+        self.sleep.assert_called_once_with(market_client._REQUEST_SPACING_SECONDS)
 
     def test_provider_request_requires_persisted_attempt_date(self) -> None:
         cache = market_client._empty_cache()
