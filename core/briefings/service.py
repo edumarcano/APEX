@@ -281,6 +281,8 @@ class BriefingService:
                 )
                 response_metadata = {"error_code": error.code if error else "internal_error"}
 
+            response_metadata["activity_steps"] = self.coordinator.events.activity_steps_for_completion(handle.run_id, status, stop_reason)
+
             with self.store.transaction() as connection:
                 if success:
                     assert isinstance(response, BriefingExecutionResult)

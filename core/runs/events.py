@@ -26,6 +26,7 @@ RunEventType = Literal[
     "usage.updated",
     "runtime.updated",
     "briefing.stage",
+    "briefing.preview",
     "run.completed",
 ]
 
@@ -51,6 +52,10 @@ class RunEventBuffer:
         self._events: deque[RunEvent] = deque(maxlen=limit)
         self._answer = ""
         self._briefing_stage: dict[str, str] | None = None
+        self._briefing_preview: list[dict[str, Any]] = []
+        self._activity_steps: deque[dict[str, Any]] = deque(maxlen=64)
+        self._last_retry_count = 0
+        self._response_started = False
         self._sequence = 0
         self._terminal = False
         self._condition = threading.Condition()
@@ -81,15 +86,35 @@ class RunEventBuffer:
             )
             if event_type == "response.delta":
                 self._answer += str(event.payload.get("text", ""))
+                if not self._response_started:
+                    self._response_started = True
+                    self._append_activity_step(event, "response.started", {})
             elif event_type == "response.reset":
                 self._answer = ""
+                self._response_started = False
+                for index in range(len(self._activity_steps) - 1, -1, -1):
+                    if self._activity_steps[index]["type"] == "response.started":
+                        del self._activity_steps[index]
+                        break
             elif event_type == "response.completed":
                 self._answer = str(event.payload.get("answer", ""))
+                if not self._response_started:
+                    self._response_started = True
+                    self._append_activity_step(event, "response.started", {})
             elif event_type == "briefing.stage":
                 stage = event.payload.get("stage")
                 state = event.payload.get("state")
                 if isinstance(stage, str) and isinstance(state, str):
                     self._briefing_stage = {"stage": stage, "state": state}
+            elif event_type == "briefing.preview":
+                self._briefing_preview = [
+                    {**section, "items": [dict(item) for item in section["items"]]}
+                    for section in event.payload.get("sections", [])
+                ]
+            elif event_type == "run.completed" and event.payload.get("status") != "completed":
+                self._briefing_preview = []
+            if event_type != "response.delta":
+                self._record_activity(event)
             self._events.append(event)
             self._condition.notify_all()
             return event
@@ -106,8 +131,84 @@ class RunEventBuffer:
                     "run": self._record.model_dump(mode="json"),
                     "answer": self._answer,
                     "briefing_stage": dict(self._briefing_stage) if self._briefing_stage else None,
+                    "briefing_preview": [
+                        {**section, "items": [dict(item) for item in section["items"]]}
+                        for section in self._briefing_preview
+                    ],
+                    "activity_steps": self._copy_activity_steps(),
                 },
             )
+
+    def activity_steps(self) -> list[dict[str, Any]]:
+        """Return a safe copy of the bounded execution timeline."""
+        with self._condition:
+            return self._copy_activity_steps()
+
+    def _copy_activity_steps(self) -> list[dict[str, Any]]:
+        return [{**step, "payload": dict(step["payload"])} for step in self._activity_steps]
+
+    def activity_steps_for_completion(self, status: str, stop_reason: str | None = None) -> list[dict[str, Any]]:
+        """Build a terminal history for message finalization without changing live state."""
+        with self._condition:
+            steps = self._copy_activity_steps()
+            if status != "completed":
+                # Stopped runs publish response.reset after durable finalization.
+                # Exclude the provisional writing marker here so stored history
+                # matches the live timeline after that reset is delivered.
+                for index in range(len(steps) - 1, -1, -1):
+                    if steps[index]["type"] == "response.started":
+                        del steps[index]
+                        break
+            sequence = self._sequence + (1 if status == "completed" else 2)
+            steps.append({
+                "sequence": sequence,
+                "timestamp": self._now().isoformat().replace("+00:00", "Z"),
+                "type": "run.completed",
+                "payload": _selected({"status": status, "stop_reason": stop_reason}, "status", "stop_reason"),
+            })
+            return steps[-64:]
+
+    def _record_activity(self, event: RunEvent) -> None:
+        if event.type == "usage.updated":
+            retries = event.payload.get("retries_count")
+            if not isinstance(retries, int):
+                return
+            if retries <= self._last_retry_count:
+                return
+            self._last_retry_count = retries
+            self._append_activity_step(event, "retry.updated", {"retries_count": retries})
+            return
+        if event.type not in {
+            "model.started", "model.completed", "tool.started", "tool.completed",
+            "action.proposed", "run.completed",
+        }:
+            return
+        self._append_activity_step(event, event.type, event.payload)
+
+    def _append_activity_step(self, event: RunEvent, step_type: str, payload: dict[str, Any]) -> None:
+        if step_type == "run.completed" and any(
+            step.get("type") == "run.completed" for step in self._activity_steps
+        ):
+            return
+        allowed = {
+            "model.started": ("turn",),
+            "model.completed": ("turn", "provider_ms"),
+            "tool.started": ("name", "origin"),
+            "tool.completed": ("name", "origin", "status", "duration_ms"),
+            "action.proposed": ("status", "risk"),
+            "retry.updated": ("retries_count",),
+            "response.started": (),
+            "run.completed": ("status", "stop_reason"),
+        }
+        safe_payload = _selected(payload, *allowed.get(step_type, ()))
+        if step_type == "tool.completed" and safe_payload.get("origin") == "provider":
+            safe_payload.pop("duration_ms", None)
+        self._activity_steps.append({
+            "sequence": event.sequence,
+            "timestamp": event.timestamp.isoformat().replace("+00:00", "Z"),
+            "type": step_type,
+            "payload": safe_payload,
+        })
 
     def replay(self, after: int) -> tuple[list[RunEvent], bool, bool]:
         """Return events after a cursor, reporting when that cursor has expired."""
@@ -168,6 +269,14 @@ class RunEventRegistry:
                 self._terminal.move_to_end(run_id)
             return buffer
 
+    def activity_steps(self, run_id: UUID) -> list[dict[str, Any]]:
+        buffer = self.get(run_id)
+        return buffer.activity_steps() if buffer is not None else []
+
+    def activity_steps_for_completion(self, run_id: UUID, status: str, stop_reason: str | None = None) -> list[dict[str, Any]]:
+        buffer = self.get(run_id)
+        return buffer.activity_steps_for_completion(status, stop_reason) if buffer is not None else []
+
     def publish(
         self,
         run_id: UUID,
@@ -209,7 +318,7 @@ class RunEventRegistry:
             run_id=record.id,
             type="run.snapshot",
             timestamp=datetime.now(timezone.utc),
-            payload={"run": record.model_dump(mode="json"), "answer": ""},
+            payload={"run": record.model_dump(mode="json"), "answer": "", "activity_steps": [], "briefing_preview": []},
         )
 
 
@@ -228,6 +337,8 @@ def _safe_payload(event_type: RunEventType, payload: dict[str, Any]) -> dict[str
             "run": run if isinstance(run, dict) else {},
             "answer": _text(payload.get("answer")),
             "briefing_stage": safe_stage,
+            "briefing_preview": _safe_briefing_preview(payload.get("briefing_preview")),
+            "activity_steps": _safe_activity_steps(payload.get("activity_steps")),
         }
     if event_type == "run.status":
         return _selected(payload, "status", "stop_reason")
@@ -248,6 +359,11 @@ def _safe_payload(event_type: RunEventType, payload: dict[str, Any]) -> dict[str
             "stage": stage if stage in stages else "preparing",
             "state": state if state in states else "started",
         }
+    if event_type == "briefing.preview":
+        if payload.get("reset") is True:
+            return {"reset": True, "sections": []}
+        sections = _safe_briefing_preview(payload.get("sections"))
+        return {"reset": False, "sections": sections}
     if event_type == "response.completed":
         return {"answer": _text(payload.get("answer"))}
     if event_type == "tool.started":
@@ -281,6 +397,69 @@ def _safe_payload(event_type: RunEventType, payload: dict[str, Any]) -> dict[str
             else None
         ),
     }
+
+
+def _safe_briefing_preview(value: object) -> list[dict[str, Any]]:
+    """Validate the bounded text-only preview at the public event boundary."""
+    if not isinstance(value, list) or len(value) > 12:
+        return []
+    categories = {"observation", "accepted_context", "pending_review", "external_report", "analysis", "suggestion"}
+    sections: list[dict[str, Any]] = []
+    total_chars = 0
+    for section in value:
+        if not isinstance(section, dict):
+            return []
+        title, items = section.get("title"), section.get("items")
+        if not isinstance(title, str) or not 0 < len(title) <= 160 or not isinstance(items, list) or len(items) > 32:
+            return []
+        safe_items: list[dict[str, str]] = []
+        total_chars += len(title)
+        for item in items:
+            if not isinstance(item, dict):
+                return []
+            category, item_title, body = item.get("category"), item.get("title"), item.get("body")
+            if (not isinstance(category, str) or category not in categories
+                    or not isinstance(item_title, str) or not 0 < len(item_title) <= 200
+                    or not isinstance(body, str) or not 0 < len(body) <= 3_000):
+                return []
+            total_chars += len(item_title) + len(body)
+            safe_items.append({"category": category, "title": item_title, "body": body})
+        sections.append({"title": title, "items": safe_items})
+    return sections if total_chars <= 12_000 else []
+
+
+def _safe_activity_steps(value: object) -> list[dict[str, Any]]:
+    """Validate snapshot activity independently at the public wire boundary."""
+    if not isinstance(value, list):
+        return []
+    allowed = {
+        "model.started": ("turn",),
+        "model.completed": ("turn", "provider_ms"),
+        "tool.started": ("name", "origin"),
+        "tool.completed": ("name", "origin", "status", "duration_ms"),
+        "action.proposed": ("status", "risk"),
+        "retry.updated": ("retries_count",),
+        "response.started": (),
+        "run.completed": ("status", "stop_reason"),
+    }
+    safe: list[dict[str, Any]] = []
+    for item in value[-64:]:
+        if not isinstance(item, dict):
+            continue
+        step_type = item.get("type")
+        payload = item.get("payload")
+        if step_type not in allowed or not isinstance(payload, dict):
+            continue
+        seq, timestamp = item.get("sequence"), item.get("timestamp")
+        if not isinstance(seq, int) or not isinstance(timestamp, str):
+            continue
+        safe.append({
+            "sequence": seq,
+            "timestamp": timestamp,
+            "type": step_type,
+            "payload": _selected(payload, *allowed[step_type]),
+        })
+    return safe
 
 
 def _selected(payload: dict[str, Any], *keys: str) -> dict[str, Any]:

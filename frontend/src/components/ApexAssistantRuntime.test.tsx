@@ -2,7 +2,8 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { ApexAssistantRuntime, ApexAssistantThread, ApexConversationRail, type ApexAssistantRuntimeHandle } from './ApexAssistantRuntime'
+import { ActivityTimeline, ApexAssistantRuntime, ApexAssistantThread, ApexConversationRail, activityStepLabel, type ApexAssistantRuntimeHandle } from './ApexAssistantRuntime'
+import type { RunActivityStep } from '../types/runs'
 
 const conversationId = '00000000-0000-4000-8000-000000000001'
 const summary = {
@@ -75,6 +76,167 @@ afterEach(() => {
 })
 
 describe('ApexAssistantRuntime', () => {
+  it('uses readable tool labels and keeps provider searches as completed activity', () => {
+    const step = (type: RunActivityStep['type'], payload: Record<string, unknown>): RunActivityStep => ({
+      sequence: 1, timestamp: '2026-09-28T12:00:00Z', type, payload,
+    })
+    expect(activityStepLabel(step('tool.started', { name: 'get_active_reminders', origin: 'apex' }))).toBe('Reading active reminders')
+    expect(activityStepLabel(step('tool.started', { name: 'connected_lookup', origin: 'apex' }), { connected_lookup: 'Project records' })).toBe('Using Project records')
+    expect(activityStepLabel(step('tool.started', { name: 'unknown', origin: 'apex' }))).toBe('Using a tool')
+    expect(activityStepLabel(step('tool.completed', { name: 'google_search', origin: 'provider' }))).toBe('Used Google Search')
+    expect(activityStepLabel(step('model.started', { turn: 2 }))).toBe('Reviewing results')
+  })
+
+  it('shows durations for APEX tools but not provider hosted tools', () => {
+    const step = (sequence: number, name: string, origin: string, duration: number): RunActivityStep => ({
+      sequence,
+      timestamp: '2026-09-28T12:00:00Z',
+      type: 'tool.completed',
+      payload: { name, origin, status: 'ok', duration_ms: duration },
+    })
+    render(<ActivityTimeline steps={[
+      step(1, 'google_search', 'provider', 245),
+      step(2, 'get_active_reminders', 'apex', 1220),
+    ]} />)
+
+    expect(screen.getByText('1.2s')).toBeInTheDocument()
+    expect(screen.queryByText('0.2s')).not.toBeInTheDocument()
+  })
+
+  it('lets a live activity disclosure stay collapsed or open as steps change', async () => {
+    const first: RunActivityStep = { sequence: 1, timestamp: '2026-09-28T12:00:00Z', type: 'model.started', payload: { turn: 1 } }
+    const second: RunActivityStep = { sequence: 2, timestamp: '2026-09-28T12:00:01Z', type: 'tool.started', payload: { name: 'get_active_reminders', origin: 'apex' } }
+    const user = userEvent.setup()
+    const { rerender } = render(<ActivityTimeline steps={[first]} collapsed />)
+    const disclosure = screen.getByText('Activity').closest('details')
+    expect(disclosure).not.toHaveAttribute('open')
+    await user.click(screen.getByText('Activity'))
+    expect(disclosure).toHaveAttribute('open')
+    rerender(<ActivityTimeline steps={[first, second]} collapsed />)
+    expect(disclosure).toHaveAttribute('open')
+    expect(screen.getByText('Reading active reminders')).toBeVisible()
+    await user.click(screen.getByText('Activity'))
+    expect(disclosure).not.toHaveAttribute('open')
+  })
+
+  it('restores a completed message activity disclosure from conversation history', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const userId = '00000000-0000-4000-8000-000000000040'
+    const agentId = '00000000-0000-4000-8000-000000000041'
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([summary])
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}`)) return response({ ...summary, active_leaf_message_id: agentId, messages: [
+        { id: userId, parent_message_id: null, role: 'user', content: 'Prompt', status: 'completed', created_at: '2026-09-28T12:00:00Z', response_metadata: null },
+        { id: agentId, parent_message_id: userId, role: 'agent', content: 'Saved answer', status: 'completed', created_at: '2026-09-28T12:00:01Z', response_metadata: { activity_steps: [
+          { sequence: 1, timestamp: '2026-09-28T12:00:00Z', type: 'tool.completed', payload: { name: 'google_search', origin: 'provider', status: 'ok' } },
+          { sequence: 2, timestamp: '2026-09-28T12:00:01Z', type: 'run.completed', payload: { status: 'completed' } },
+        ] } },
+      ] })
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    render(<ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}><ApexAssistantThread /></ApexAssistantRuntime>)
+    await waitFor(() => expect(screen.getByText('Saved answer')).toBeInTheDocument())
+    const disclosure = screen.getByText('Activity').closest('details')
+    expect(disclosure).not.toHaveAttribute('open')
+    await userEvent.setup().click(screen.getByText('Activity'))
+    expect(screen.getByText('Used Google Search')).toBeVisible()
+  })
+
+  it('tracks the submitted run and removes provisional response activity after reset', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const runId = '00000000-0000-4000-8000-000000000099'
+    let controller!: ReadableStreamDefaultController<Uint8Array>
+    const stream = new Response(new ReadableStream<Uint8Array>({ start(value) { controller = value } }), {
+      headers: { 'Content-Type': 'text/event-stream' },
+    })
+    const encoder = new TextEncoder()
+    const send = (sequence: number, type: string, payload: Record<string, unknown>) => {
+      controller.enqueue(encoder.encode(`id: ${sequence}\nevent: ${type}\ndata: ${JSON.stringify(payload)}\n\n`))
+    }
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([summary])
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}`)) return response({ ...summary, active_leaf_message_id: null, messages: [] })
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}/runs`)) return response(mockRunRecord(), 202)
+      if (url.endsWith(`/api/v1/cortex/runs/${runId}/events`)) return stream
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const onActivityChange = vi.fn()
+    render(<ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }} beforeRun={async () => true} onActivityChange={onActivityChange}><ApexAssistantThread /></ApexAssistantRuntime>)
+    const user = userEvent.setup()
+    await waitFor(() => expect(screen.getByPlaceholderText('Ask APEX…')).toBeInTheDocument())
+    await user.type(screen.getByPlaceholderText('Ask APEX…'), 'Show my calendar')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() => expect(document.querySelector('[data-run-id]')).toHaveAttribute('data-run-id', runId))
+    send(1, 'model.started', { turn: 1 })
+    await waitFor(() => expect(onActivityChange).toHaveBeenCalledWith('Thinking'))
+    send(2, 'response.delta', { text: 'Draft' })
+    await waitFor(() => expect(onActivityChange).toHaveBeenCalledWith('Writing response'))
+    send(3, 'model.completed', { turn: 1 })
+    send(4, 'response.reset', {})
+    await waitFor(() => expect(screen.queryByText('Writing response')).not.toBeInTheDocument())
+    await user.click(screen.getByText('Activity'))
+    expect(screen.queryByText('Writing response')).not.toBeInTheDocument()
+    send(5, 'tool.started', { name: 'get_upcoming_calendar_events', origin: 'apex' })
+    await waitFor(() => expect(onActivityChange).toHaveBeenCalledWith('Checking your calendar'))
+    send(6, 'tool.completed', { name: 'get_upcoming_calendar_events', origin: 'apex', status: 'ok', duration_ms: 24 })
+    send(7, 'model.started', { turn: 2 })
+    await waitFor(() => expect(onActivityChange).toHaveBeenCalledWith('Reviewing results'))
+    send(8, 'response.delta', { text: 'Final answer' })
+    send(9, 'run.completed', { status: 'completed' })
+    controller.close()
+    await waitFor(() => expect(screen.getByText('Final answer')).toBeInTheDocument())
+  })
+
+  it('clears streamed text when a resync snapshot has an empty answer', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const runId = '00000000-0000-4000-8000-000000000099'
+    let controller!: ReadableStreamDefaultController<Uint8Array>
+    const stream = new Response(new ReadableStream<Uint8Array>({ start(value) { controller = value } }), {
+      headers: { 'Content-Type': 'text/event-stream' },
+    })
+    const encoder = new TextEncoder()
+    const send = (sequence: number, type: string, payload: Record<string, unknown>) => {
+      controller.enqueue(encoder.encode(`id: ${sequence}\nevent: ${type}\ndata: ${JSON.stringify(payload)}\n\n`))
+    }
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([summary])
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}`)) return response({ ...summary, active_leaf_message_id: null, messages: [] })
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}/runs`)) return response(mockRunRecord(), 202)
+      if (url.endsWith(`/api/v1/cortex/runs/${runId}/events`)) return stream
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+    render(
+      <ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }} beforeRun={async () => true}>
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+    await waitFor(() => expect(screen.getByPlaceholderText('Ask APEX…')).toBeInTheDocument())
+    await user.type(screen.getByPlaceholderText('Ask APEX…'), 'Resync this response')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() => expect(document.querySelector('[data-run-id]')).toHaveAttribute('data-run-id', runId))
+
+    send(1, 'run.snapshot', { run: mockRunRecord(), answer: 'Stale provisional answer', activity_steps: [
+      { sequence: 1, timestamp: '2026-09-28T12:00:00Z', type: 'response.started', payload: {} },
+      { sequence: 2, timestamp: '2026-09-28T12:00:01Z', type: 'model.completed', payload: { turn: 1 } },
+    ] })
+    await waitFor(() => expect(screen.getByText('Stale provisional answer')).toBeInTheDocument())
+    await user.click(screen.getByText('Activity'))
+    expect(screen.getAllByText('Writing response')).toHaveLength(1)
+    send(2, 'response.completed', { answer: 'Stale provisional answer' })
+    expect(screen.getAllByText('Writing response')).toHaveLength(1)
+    send(3, 'run.snapshot', { run: mockRunRecord(), answer: '', activity_steps: [] })
+    await waitFor(() => expect(screen.queryByText('Stale provisional answer')).not.toBeInTheDocument())
+    send(4, 'run.completed', { status: 'failed' })
+    controller.close()
+  })
+
   it.each([
     { label: 'short', clientHeight: 100, scrollHeight: 100, shouldScroll: false },
     { label: 'long', clientHeight: 100, scrollHeight: 300, shouldScroll: true },
@@ -171,7 +333,7 @@ describe('ApexAssistantRuntime', () => {
     expect(fetchMock).toHaveBeenCalled()
   })
 
-  it('hides the in-flight Agent card and uses one Apex prefix in the working label', async () => {
+  it('hides the in-flight Agent card and shows one compact preparation label', async () => {
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
     let resolveTurn: (value: Response) => void = () => undefined
     const turnResponse = new Promise<Response>((resolve) => { resolveTurn = resolve })
@@ -213,8 +375,8 @@ describe('ApexAssistantRuntime', () => {
     await waitFor(() => expect(screen.getByText('APEX is ready. Start a session with a focused question.')).toBeInTheDocument())
     await user.type(screen.getByPlaceholderText('Ask APEX…'), 'Keep this request running')
     await user.click(screen.getByRole('button', { name: 'Send' }))
-    await waitFor(() => expect(screen.getByText('Apex Agent working')).toBeInTheDocument())
-    expect(screen.queryByText('Apex Apex Agent working')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('Queued')).toBeInTheDocument())
+    expect(screen.queryByText('Apex Agent working')).not.toBeInTheDocument()
     resolveTurn(sseResponse([
       { sequence: 1, type: 'response.delta', payload: { text: 'Finished.' } },
       { sequence: 2, type: 'run.completed', payload: { status: 'completed' } },
@@ -683,7 +845,7 @@ describe('ApexAssistantRuntime', () => {
       throw new Error(`Unexpected request: ${url}`)
     })
     render(<ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }} onRunningChange={onRunningChange}><ApexAssistantThread /></ApexAssistantRuntime>)
-    await waitFor(() => expect(screen.getByText('Agent working')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Preparing request')).toBeInTheDocument())
     expect(onRunningChange).toHaveBeenCalledWith(true, 'apex')
     expect(screen.getByPlaceholderText('Ask APEX…')).toBeDisabled()
   })

@@ -10,6 +10,7 @@ export interface VoiceSignalGlyphProps {
   activeTtsEngine?: TtsEngine
   systemLoadThrottled?: boolean
   isCortexQuerying?: boolean
+  cortexActivityLabel?: string | null
   isLocalModelLoading?: boolean
   loadingDisplayName?: string | null
   isTelemetryCollecting?: boolean
@@ -55,6 +56,7 @@ function resolveSignalState(
   loadingDisplayName: string | null,
   isCortexQuerying: boolean,
   isTelemetryCollecting: boolean = false,
+  cortexActivityLabel: string | null = null,
 ): SignalState {
   if (isLocalModelLoading) {
     const name = loadingDisplayName?.trim() || 'local model'
@@ -82,7 +84,7 @@ function resolveSignalState(
   }
 
   if (isCortexQuerying) {
-    return { label: 'Working', tone: 'purple', isActive: true }
+    return { label: cortexActivityLabel?.trim() || 'Preparing request', tone: 'purple', isActive: true }
   }
 
   if (isTelemetryCollecting) {
@@ -164,6 +166,7 @@ export function VoiceSignalGlyph({
   activeTtsEngine = 'google',
   systemLoadThrottled = false,
   isCortexQuerying = false,
+  cortexActivityLabel = null,
   isLocalModelLoading = false,
   loadingDisplayName = null,
   isTelemetryCollecting = false,
@@ -177,6 +180,7 @@ export function VoiceSignalGlyph({
     loadingDisplayName,
     isCortexQuerying,
     isTelemetryCollecting,
+    cortexActivityLabel,
   )
   const toneClasses = resolveToneClasses(signalState.tone)
   const showFlow = signalState.isActive

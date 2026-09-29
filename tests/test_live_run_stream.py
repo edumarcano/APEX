@@ -8,7 +8,7 @@ import threading
 import unittest
 from uuid import uuid4
 
-from fastapi import Request
+from core.agent.capabilities import CapabilityDescriptor
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderStreamEvent, ProviderTurnResult
 from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
@@ -17,6 +17,7 @@ from core.api.routers.cortex import (
     _parse_last_event_id,
     stream_cortex_run_events,
 )
+from fastapi import Request
 from core.runs.coordinator import set_run_coordinator
 from core.runs.events import RunEventBuffer, RunEventRegistry
 from core.runs.models import RunLimitSnapshot, RunRecord
@@ -46,6 +47,34 @@ def _record(*, status: str = "running") -> RunRecord:
 
 
 class LiveRunStreamTests(unittest.TestCase):
+    def test_briefing_preview_events_are_bounded_and_replayed_in_snapshots(self) -> None:
+        buffer = RunEventBuffer(_record(), limit=8)
+        section = {"title": "Today", "items": [{
+            "category": "observation", "title": "Weather", "body": "Clear.",
+            "evidence_ids": ["private-id"], "html": "<script>bad</script>",
+        }]}
+        event = buffer.publish("briefing.preview", {"sections": [section], "raw_json": "private"})
+
+        self.assertEqual(event.payload, {"reset": False, "sections": [{
+            "title": "Today", "items": [{
+                "category": "observation", "title": "Weather", "body": "Clear.",
+            }],
+        }]})
+        snapshot = buffer.snapshot().payload
+        self.assertEqual(snapshot["briefing_preview"], event.payload["sections"])
+        self.assertNotIn("private-id", str(snapshot))
+
+        malformed = buffer.publish("briefing.preview", {"sections": [{
+            "title": "Today", "items": [{"category": [], "title": "Bad", "body": "Malformed."}],
+        }]})
+        self.assertEqual(malformed.payload, {"reset": False, "sections": []})
+
+        reset = buffer.publish("briefing.preview", {"reset": True})
+        self.assertEqual(reset.payload, {"reset": True, "sections": []})
+        buffer.publish("briefing.preview", {"sections": [section]})
+        buffer.publish("run.completed", {"status": "failed", "stop_reason": "provider_error"})
+        self.assertEqual(buffer.snapshot().payload["briefing_preview"], [])
+
     def test_replay_is_ordered_and_snapshot_keeps_visible_answer(self) -> None:
         record = _record()
         buffer = RunEventBuffer(record, limit=8)
@@ -147,6 +176,53 @@ class LiveRunStreamTests(unittest.TestCase):
         self.assertNotIn("arguments", encoded)
         self.assertNotIn("result", encoded)
 
+    def test_activity_snapshot_and_completion_keep_only_bounded_safe_steps(self) -> None:
+        buffer = RunEventBuffer(_record(), limit=2)
+        buffer.publish("model.started", {"turn": 1, "prompt": "private prompt"})
+        buffer.publish("tool.started", {
+            "name": "get_active_reminders", "origin": "apex",
+            "arguments": {"token": "private token"},
+        })
+        buffer.publish("tool.completed", {
+            "name": "get_active_reminders", "origin": "apex", "status": "ok",
+            "duration_ms": 12.5, "result": "private result",
+        })
+        buffer.publish("response.delta", {"text": "private provisional answer"})
+        buffer.publish("model.completed", {"turn": 1})
+        buffer.publish("response.reset", {})
+        buffer.publish("usage.updated", {"retries_count": 1})
+        buffer.publish("response.completed", {"answer": "private final answer"})
+
+        snapshot = buffer.snapshot().payload
+        steps = snapshot["activity_steps"]
+        self.assertTrue(buffer.replay(0)[1])
+        self.assertEqual([step["type"] for step in steps], [
+            "model.started", "tool.started", "tool.completed", "model.completed",
+            "retry.updated", "response.started",
+        ])
+        self.assertEqual(steps[2]["payload"]["duration_ms"], 12.5)
+        self.assertNotIn("private", str(steps))
+        terminal = buffer.activity_steps_for_completion("failed", "provider_error")
+        self.assertEqual(terminal[-1]["payload"], {"status": "failed", "stop_reason": "provider_error"})
+        self.assertFalse(any(step["type"] == "run.completed" for step in buffer.activity_steps()))
+
+        for turn in range(70):
+            buffer.publish("model.started", {"turn": turn + 2})
+        self.assertEqual(len(buffer.snapshot().payload["activity_steps"]), 64)
+        self.assertEqual(len(buffer.activity_steps_for_completion("completed")), 64)
+
+    def test_provider_tool_duration_remains_in_event_but_not_activity_history(self) -> None:
+        buffer = RunEventBuffer(_record(), limit=2)
+        event = buffer.publish("tool.completed", {
+            "name": "google_search", "origin": "provider", "status": "ok",
+            "duration_ms": 245.0, "result": "private provider result",
+        })
+
+        self.assertEqual(event.payload["duration_ms"], 245.0)
+        activity = buffer.activity_steps()[0]["payload"]
+        self.assertNotIn("duration_ms", activity)
+        self.assertNotIn("private", str(activity))
+
     def test_last_event_id_requires_non_negative_integer(self) -> None:
         self.assertEqual(_parse_last_event_id(None), 0)
         self.assertEqual(_parse_last_event_id("12"), 12)
@@ -186,6 +262,104 @@ class LiveRunStreamTests(unittest.TestCase):
         self.assertEqual(response.answer, "done")
         self.assertEqual([event.kind for event in provider_events], ["text", "completed"])
         self.assertEqual([item[0] for item in activity], ["model.started", "model.completed", "response.completed"])
+
+    def test_loop_fails_empty_provider_turn_without_completing_response(self) -> None:
+        class Provider:
+            def generate_turn(
+                self,
+                _history,
+                _tools,
+                _profile,
+                system_instruction_override=None,
+                *,
+                execution_control=None,
+                stream_observer=None,
+                output_schema=None,
+            ):
+                del (
+                    system_instruction_override,
+                    execution_control,
+                    stream_observer,
+                    output_schema,
+                )
+                return ProviderTurnResult(message=AgentMessage(role="agent", content=None))
+
+        activity = []
+        response = run_agent_loop(
+            AgentQueryRequest(prompt="Test", agent="apex"),
+            Provider(),
+            build_local_profile(model="qwen3:1.7b"),
+            selected_tools=[],
+            activity_observer=lambda event_type, payload: activity.append((event_type, payload)),
+        )
+
+        self.assertTrue(response.answer.strip())
+        self.assertTrue(response.error)
+        self.assertNotIn("response.completed", [item[0] for item in activity])
+
+    def test_loop_accepts_tool_only_provider_turn(self) -> None:
+        class Provider:
+            calls = 0
+
+            def generate_turn(
+                self,
+                _history,
+                _tools,
+                _profile,
+                system_instruction_override=None,
+                *,
+                execution_control=None,
+                stream_observer=None,
+                output_schema=None,
+            ):
+                del (
+                    system_instruction_override,
+                    execution_control,
+                    stream_observer,
+                    output_schema,
+                )
+                self.calls += 1
+                if self.calls == 1:
+                    return ProviderTurnResult(
+                        message=AgentMessage(
+                            role="agent",
+                            content=None,
+                            tool_calls=[
+                                ToolCall(
+                                    id="call-1",
+                                    name="read_status",
+                                    arguments={},
+                                )
+                            ],
+                        )
+                    )
+                return ProviderTurnResult(
+                    message=AgentMessage(role="agent", content="Status is ready.")
+                )
+
+        provider = Provider()
+        descriptor = CapabilityDescriptor(
+            name="read_status",
+            title="Read status",
+            description="Read current status.",
+            input_schema={"type": "object", "properties": {}},
+            origin="native",
+            risk="read",
+            expose_to_agent=True,
+            expose_to_mcp_server=False,
+            expose_to_client_display=True,
+        )
+        response = run_agent_loop(
+            AgentQueryRequest(prompt="Check status", agent="apex"),
+            provider,
+            build_local_profile(model="qwen3:1.7b"),
+            tools_dispatcher=lambda _name, _arguments: "ready",
+            selected_tools=[descriptor],
+        )
+
+        self.assertEqual(provider.calls, 2)
+        self.assertEqual(response.answer, "Status is ready.")
+        self.assertIsNone(response.error)
 
     def test_loop_resets_provisional_text_before_following_a_tool_call(self) -> None:
         class Provider:

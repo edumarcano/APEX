@@ -455,6 +455,13 @@ def run_agent_loop(
                 last_model_content = model_message.content
 
             if not model_message.tool_calls:
+                if not (model_message.content or "").strip():
+                    return response(
+                        answer=(
+                            "The model returned no response content. Please try again."
+                        ),
+                        error="Provider returned no text or tool calls.",
+                    )
                 if activity_observer is not None:
                     activity_observer(
                         "response.completed",
