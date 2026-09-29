@@ -35,6 +35,8 @@ APEX
 
 **Lynx** is the default user-facing display name and prompt identity for the APEX Agent when no custom name is configured. A local display name preference (`agent_display_name`) may replace Lynx in visible HUD surfaces and prompt self-addressing, while the canonical role remains APEX Agent and the internal stable key remains `apex`.
 
+The name **Lynx** connects the product's deep-space aesthetic with its personal intelligence focus: it refers both to the northern constellation cataloged by Johannes Hevelius (chosen because its faint stars require keen sight to discern) and the animal known for acute observation and precision.
+
 The Agent identity, safety policy, and APEX-specific instructions stay consistent. Selecting a model changes execution characteristics such as provider or runtime, reasoning choices, local context limits, hosted capabilities, availability, and price. It does not select a different Agent.
 
 Overview, Briefing, and Cortex use the same singular **APEX Agent** role and shared model selection. Selecting a model never selects a different Agent. A local display name may replace Lynx as the visible name and the assistant's self-name in prompts; it is not a second Agent.
