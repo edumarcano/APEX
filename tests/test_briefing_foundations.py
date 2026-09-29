@@ -319,6 +319,9 @@ class BriefingSessionLifecycleTests(unittest.TestCase):
         self.assertEqual(agent_message.status, "completed")
         self.assertEqual(agent_message.content, render_artifact_text(saved.artifact))
         self.assertEqual(agent_message.response_metadata["briefing_session_id"], str(saved.id))
+        completion_step = agent_message.response_metadata["activity_steps"][-1]
+        self.assertEqual(completion_step["type"], "run.completed")
+        self.assertEqual(completion_step["payload"], {"status": "completed", "stop_reason": "end_turn"})
         self.assertTrue(run.evidence.answer_persisted)
 
     def test_deep_generator_persists_cited_investigator_result_and_limits(self) -> None:
@@ -734,6 +737,10 @@ class BriefingSessionLifecycleTests(unittest.TestCase):
         self.assertEqual(run.status, "cancelled")
         self.assertIsNone(saved.artifact)
         self.assertEqual(saved.evidence, [])
+        conversation = self.conversations.detail(saved.conversation_id, "production")
+        agent_message = next(message for message in conversation.messages if message.role == "agent")
+        completion_step = agent_message.response_metadata["activity_steps"][-1]
+        self.assertEqual(completion_step["payload"], {"status": "cancelled", "stop_reason": "operator_cancelled"})
 
     def test_snapshot_write_failure_rolls_back_artifact_message_and_run_success(self) -> None:
         original_save = self.session_store.save_completed_snapshot

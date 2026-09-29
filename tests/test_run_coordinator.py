@@ -15,7 +15,7 @@ from uuid import UUID, uuid4
 from unittest.mock import MagicMock, patch
 
 from core.agent.providers.contract import ProviderTurnResult
-from core.agent.types import AgentMessage, TokenUsage
+from core.agent.types import AgentMessage, AgentQueryResponse, TokenUsage
 from core.api.routers.cortex import (
     _resolved_turn_metadata,
     _submit_run,
@@ -549,6 +549,88 @@ class RunCoordinatorTests(unittest.TestCase):
         self.assertIsNone(record.limit_snapshot.max_total_tokens)
         if future is not None:
             future.result(timeout=2)
+
+    @patch("core.api.routers.cortex.get_knowledge_service")
+    @patch("core.api.routers.cortex.get_retrieval_service")
+    @patch("core.api.routers.cortex.is_dev_mode", return_value=True)
+    @patch("core.api.routers.cortex.query_agent")
+    @patch("core.api.routers.cortex.ContextAssembler")
+    def test_submitted_run_persists_safe_activity_on_success_failure_and_cancellation(
+        self, mock_assembler, mock_query, _dev_mode, _mock_retrieval, _mock_knowledge
+    ) -> None:
+        mock_assembler.return_value.assemble.return_value = MagicMock()
+        coordinator = CortexRunCoordinator(self.service, max_workers=1)
+        self.addCleanup(coordinator.close)
+        set_run_coordinator(coordinator)
+        self.addCleanup(set_run_coordinator, None)
+        set_run_service(self.service)
+        self.addCleanup(set_run_service, None)
+        conv_service = ConversationService(self.conversations, history_limit=20)
+        set_conversation_service(conv_service)
+        self.addCleanup(set_conversation_service, None)
+
+        def submit():
+            conversation = conv_service.create(
+                ConversationCreateRequest(title="Activity history", origin="hud", agent="apex")
+            )
+            payload = ConversationTurnRequest(
+                user_message_id=uuid4(), agent_message_id=uuid4(), prompt="Hello",
+                agent="apex", model_id="qwen3:1.7b",
+            )
+            record, future = _submit_run(conversation.id, payload)
+            self.assertIsNotNone(future)
+            return conversation.id, payload.agent_message_id, record, future
+
+        def observe_and_return(_request, **kwargs):
+            observe = kwargs["activity_observer"]
+            observe("model.started", {"turn": 1, "prompt": "private prompt"})
+            observe("tool.started", {
+                "name": "get_active_reminders", "origin": "apex",
+                "arguments": {"secret": "private argument"},
+            })
+            return AgentQueryResponse(answer="Done", agent_used={"key": "apex"})
+
+        mock_query.side_effect = observe_and_return
+        conversation_id, agent_id, _record, future = submit()
+        self.assertEqual(future.result(timeout=3).status, "completed")
+        completed = next(message for message in conv_service.detail(conversation_id).messages if message.id == agent_id)
+        success_steps = completed.response_metadata["activity_steps"]
+        self.assertEqual(success_steps[-1]["payload"]["status"], "completed")
+        self.assertEqual(success_steps[1]["payload"], {"name": "get_active_reminders", "origin": "apex"})
+        self.assertNotIn("private", str(success_steps))
+
+        def observe_and_fail(_request, **kwargs):
+            kwargs["activity_observer"]("model.started", {"turn": 1})
+            kwargs["activity_observer"]("response.delta", {"text": "private provisional answer"})
+            raise RuntimeError("private provider failure")
+
+        mock_query.side_effect = observe_and_fail
+        conversation_id, agent_id, _record, future = submit()
+        self.assertEqual(future.result(timeout=3).status, "failed")
+        failed = next(message for message in conv_service.detail(conversation_id).messages if message.id == agent_id)
+        self.assertEqual(failed.response_metadata["activity_steps"][-1]["payload"]["status"], "failed")
+        self.assertNotIn("response.started", [step["type"] for step in failed.response_metadata["activity_steps"]])
+        self.assertNotIn("private", str(failed.response_metadata["activity_steps"]))
+
+        entered = threading.Event()
+        release = threading.Event()
+
+        def observe_and_wait(_request, **kwargs):
+            kwargs["activity_observer"]("model.started", {"turn": 1})
+            kwargs["activity_observer"]("response.delta", {"text": "private provisional answer"})
+            entered.set()
+            self.assertTrue(release.wait(timeout=3))
+            return AgentQueryResponse(answer="Discarded", agent_used={"key": "apex"})
+
+        mock_query.side_effect = observe_and_wait
+        conversation_id, agent_id, record, future = submit()
+        self.assertTrue(entered.wait(timeout=3))
+        coordinator.cancel(record.id)
+        release.set()
+        self.assertEqual(future.result(timeout=3).status, "cancelled")
+        cancelled = next(message for message in conv_service.detail(conversation_id).messages if message.id == agent_id)
+        self.assertEqual(cancelled.response_metadata["activity_steps"][-1]["payload"]["status"], "cancelled")
+        self.assertNotIn("response.started", [step["type"] for step in cancelled.response_metadata["activity_steps"]])
 
     def test_legacy_token_ceiling_does_not_stop_cumulative_usage_accounting(self) -> None:
         legacy_limits = RunLimitSnapshot(

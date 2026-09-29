@@ -4,7 +4,7 @@ import type { ComponentProps } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApexAssistantRuntime } from './ApexAssistantRuntime'
-import { CortexWorkspace, ResponseMetrics } from './CortexWorkspace'
+import { AssistantResponseDisplay, CortexWorkspace, ResponseMetrics } from './CortexWorkspace'
 import type { AgentQueryMetadata } from '../lib/cortexResponse'
 import type { CortexAgent, ModelCatalogEntry, ToolCatalog } from '../types/telemetry'
 
@@ -25,6 +25,16 @@ function renderWorkspace(overrides: Partial<ComponentProps<typeof CortexWorkspac
 describe('CortexWorkspace', () => {
   beforeEach(() => vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify([]), { status: 200 })))
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
+
+  it('keeps the legacy tool trace for older answers and avoids duplicating a new activity history', () => {
+    const metadata = { tool_trace: [{ name: 'get_active_reminders', status: 'ok', duration_ms: 12 }] }
+    const { rerender } = render(<AssistantResponseDisplay text="Done" rawMetadata={metadata} onOpenRecord={vi.fn()} />)
+    expect(screen.getByLabelText('Tool trace')).toBeInTheDocument()
+    rerender(<AssistantResponseDisplay text="Done" rawMetadata={{ ...metadata, activity_steps: [
+      { sequence: 1, timestamp: '2026-09-28T12:00:00Z', type: 'tool.completed', payload: { name: 'get_active_reminders', origin: 'apex' } },
+    ] }} onOpenRecord={vi.fn()} />)
+    expect(screen.queryByLabelText('Tool trace')).not.toBeInTheDocument()
+  })
 
   it('identifies the singular Apex Agent and groups its selectable models', async () => {
     const user = userEvent.setup()

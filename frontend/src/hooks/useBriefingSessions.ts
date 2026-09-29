@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { API_ENDPOINTS } from '../lib/api'
+import { streamRunEvents } from '../lib/cortexStream'
+import type { BriefingPreviewSection } from '../types/runs'
 import type {
   BriefingEvidence,
   BriefingProfileId,
@@ -22,6 +24,7 @@ type HookState = {
   selectedSessionId: string | null
   activeSession: BriefingSessionDetail | null
   activeRunDetail: BriefingSessionDetail | null
+  preview: { sessionId: string; sections: BriefingPreviewSection[] } | null
   latestSession: BriefingSessionDetail | null
   latestError: string | null
   evidenceById: Record<string, BriefingEvidence>
@@ -40,6 +43,28 @@ function errorMessage(body: unknown, fallback: string): string {
     if (typeof detail === 'string') return detail
   }
   return fallback
+}
+
+function parsePreviewSections(value: unknown): BriefingPreviewSection[] {
+  if (!Array.isArray(value) || value.length > 12) return []
+  const sections: BriefingPreviewSection[] = []
+  let totalChars = 0
+  for (const candidate of value) {
+    if (!candidate || typeof candidate !== 'object') return []
+    const section = candidate as { title?: unknown; items?: unknown }
+    if (typeof section.title !== 'string' || !section.title.length || section.title.length > 160 || !Array.isArray(section.items) || section.items.length > 32) return []
+    const items: BriefingPreviewSection['items'] = []
+    for (const itemValue of section.items) {
+      if (!itemValue || typeof itemValue !== 'object') return []
+      const item = itemValue as { category?: unknown; title?: unknown; body?: unknown }
+      if (typeof item.category !== 'string' || typeof item.title !== 'string' || !item.title.length || item.title.length > 200 || typeof item.body !== 'string' || !item.body.length || item.body.length > 3000) return []
+      totalChars += item.title.length + item.body.length
+      items.push({ category: item.category, title: item.title, body: item.body })
+    }
+    totalChars += section.title.length
+    sections.push({ title: section.title, items })
+  }
+  return totalChars <= 12_000 ? sections : []
 }
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -105,6 +130,7 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [activeSession, setActiveSession] = useState<BriefingSessionDetail | null>(null)
   const [activeRunDetail, setActiveRunDetail] = useState<BriefingSessionDetail | null>(null)
+  const [preview, setPreview] = useState<HookState['preview']>(null)
   const [latestSession, setLatestSession] = useState<BriefingSessionDetail | null>(null)
   const [latestError, setLatestError] = useState<string | null>(null)
   const [evidenceById, setEvidenceById] = useState<Record<string, BriefingEvidence>>({})
@@ -115,6 +141,9 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
   const [isLoadingLatestSession, setIsLoadingLatestSession] = useState(true)
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const activeSessionId = activeSession?.id
+  const activeSessionRunId = activeSession?.run_id
+  const activeSessionRunStatus = activeSession?.run_status
   const sessionListSequence = useRef(0)
   const loadSequence = useRef(0)
   const latestLoadSequence = useRef(0)
@@ -210,6 +239,7 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
   const openSession = useCallback(async (sessionId: string): Promise<BriefingSessionDetail> => {
     const sequence = ++loadSequence.current
     if (selectedSessionRef.current !== sessionId) {
+      setPreview(null)
       evidenceLoadedRef.current.clear()
       setActiveSession(null)
       setEvidenceById({})
@@ -226,6 +256,8 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
         visibleSessionIdsRef.current.has(sessionId) || pendingAdmissionIdsRef.current.has(sessionId)
       )) {
         setActiveSession(detail)
+        if (detail.artifact) setPreview((current) => current?.sessionId === detail.id ? null : current)
+        else if (!ACTIVE_STATUSES.has(detail.run_status)) setPreview((current) => current?.sessionId === detail.id ? null : current)
         setActiveRunDetail((current) => {
           if (ACTIVE_STATUSES.has(detail.run_status)) return detail
           return current?.id === detail.id ? null : current
@@ -371,11 +403,40 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
   }, [])
 
   useEffect(() => {
+    if (activeSessionId && activeSessionRunStatus && !ACTIVE_STATUSES.has(activeSessionRunStatus) && activeSessionRunStatus !== 'completed') {
+      setPreview((current) => current?.sessionId === activeSessionId ? null : current)
+    }
+  }, [activeSessionId, activeSessionRunStatus])
+
+  useEffect(() => {
     const session = activeSession
     if (!session || !ACTIVE_STATUSES.has(session.run_status)) return undefined
     const timeout = window.setTimeout(() => { void openSession(session.id).catch(() => undefined) }, 900)
     return () => window.clearTimeout(timeout)
   }, [activeSession, openSession])
+
+  useEffect(() => {
+    if (!activeSessionId || !activeSessionRunId || !activeSessionRunStatus || !ACTIVE_STATUSES.has(activeSessionRunStatus)) return undefined
+    const controller = new AbortController()
+    void (async () => {
+      for await (const event of streamRunEvents(activeSessionRunId, { signal: controller.signal })) {
+        if (controller.signal.aborted) return
+        if (event.type === 'run.snapshot') {
+          const sections = parsePreviewSections(event.payload.briefing_preview)
+          setPreview(sections.length ? { sessionId: activeSessionId, sections } : null)
+        } else if (event.type === 'briefing.preview') {
+          if (event.payload.reset === true) setPreview(null)
+          else {
+            const sections = parsePreviewSections(event.payload.sections)
+            setPreview(sections.length ? { sessionId: activeSessionId, sections } : null)
+          }
+        } else if (event.type === 'run.completed' && event.payload.status !== 'completed') {
+          setPreview(null)
+        }
+      }
+    })().catch(() => undefined)
+    return () => controller.abort()
+  }, [activeSessionId, activeSessionRunId, activeSessionRunStatus])
 
   const unselectedActiveSessionKey = sessions
     .filter((session) => ACTIVE_STATUSES.has(session.run_status) && session.id !== selectedSessionId)
@@ -406,6 +467,7 @@ export function useBriefingSessions(): UseBriefingSessionsResult {
     selectedSessionId,
     activeSession,
     activeRunDetail,
+    preview,
     latestSession,
     latestError,
     evidenceById,

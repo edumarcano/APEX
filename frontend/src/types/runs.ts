@@ -100,6 +100,7 @@ export type RunEventType =
   | 'action.proposed'
   | 'usage.updated'
   | 'runtime.updated'
+  | 'briefing.preview'
   | 'run.completed'
 
 export interface RunEvent {
@@ -107,5 +108,27 @@ export interface RunEvent {
   run_id: string
   type: RunEventType
   timestamp: string
+  payload: Record<string, unknown>
+}
+
+export interface BriefingPreviewSection {
+  title: string
+  items: Array<{ category: string; title: string; body: string }>
+}
+
+export type RunActivityStepType =
+  | 'model.started'
+  | 'model.completed'
+  | 'tool.started'
+  | 'tool.completed'
+  | 'action.proposed'
+  | 'retry.updated'
+  | 'response.started'
+  | 'run.completed'
+
+export interface RunActivityStep {
+  sequence: number
+  timestamp: string
+  type: RunActivityStepType
   payload: Record<string, unknown>
 }

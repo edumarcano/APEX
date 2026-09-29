@@ -32,6 +32,69 @@ function response(body: unknown): Response {
 afterEach(() => vi.restoreAllMocks())
 
 describe('BriefingView', () => {
+  it('shows plain provisional text while opening and replaces it with the canonical artifact', () => {
+    const session: BriefingSessionDetail = {
+      id: '00000000-0000-4000-8000-000000000212',
+      conversation_id: conversationId,
+      opening_message_id: '00000000-0000-4000-8000-000000000213',
+      run_id: 'preview-run',
+      run_status: 'completed',
+      run_error_code: null,
+      configuration: {
+        profile: { id: 'daily', label: 'Daily', purpose: 'Current information.', definition_version: 1 },
+        model: { model_id: 'provider/model-a', provider: 'openrouter', runtime: 'cloud', reasoning: 'medium', context_window: null, local_reasoning_mode: null },
+        origin: 'hud', execution_kind: 'model',
+      },
+      artifact: null,
+      evidence_count: 0,
+      evidence_ids: [],
+      created_at: '2026-09-27T10:00:00Z',
+      presented_at: null,
+      speech_status: 'not_requested',
+    }
+    const conversation: BriefingViewConversation = {
+      ready: false,
+      canFollowUp: false,
+      session,
+      previewSections: [{ title: 'Today', items: [{ category: 'observation', title: 'Weather', body: '<img src="https://example.invalid/x"> provisional text' }] }],
+      isLoadingSession: false,
+      evidence: { evidenceById: {}, loadingIds: [], errors: {}, onLoadEvidence: vi.fn(async () => undefined) },
+      onMarkPresented: vi.fn(async () => undefined),
+      onOpenConversation: vi.fn(),
+    }
+    const props = {
+      phase: 'workspace' as const,
+      identity: {} as HudIdentityProps,
+      telemetry: {} as HudTelemetryData,
+      controls: {} as BriefingProfilePanelProps,
+      conversation,
+      telemetryCollection: { hasUsableSnapshot: false, state: 'idle' as const, error: null, disabled: false, onCollect: vi.fn() },
+    }
+    const view = render(<BriefingView {...props} />)
+    expect(screen.getByText('Draft preview · provisional')).toBeInTheDocument()
+    expect(screen.getByText('<img src="https://example.invalid/x"> provisional text')).toBeInTheDocument()
+    expect(document.querySelector('img')).toBeNull()
+    expect(screen.getByText('This briefing conversation is not open yet.')).toBeInTheDocument()
+
+    view.rerender(<BriefingView {...props} conversation={{ ...conversation, session: {
+      ...session,
+      artifact: {
+        schema_version: 1,
+        session_id: session.id,
+        created_at: session.created_at,
+        sections: [{ id: 'canonical-section', title: 'Today', items: [{
+          id: 'canonical-item', category: 'observation', title: 'Canonical weather', body: 'Verified final body.', evidence_ids: [], record_references: [],
+        }] }],
+        coverage: [],
+        limitations: [],
+      },
+    } }} />)
+    expect(screen.queryByText('Draft preview · provisional')).not.toBeInTheDocument()
+    expect(screen.getByTestId('briefing-artifact')).toBeInTheDocument()
+    expect(screen.getByText('Canonical weather')).toBeInTheDocument()
+    expect(screen.queryByText('<img src="https://example.invalid/x"> provisional text')).not.toBeInTheDocument()
+  })
+
   it('passes shared model and tool controls into a ready saved conversation composer', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input)

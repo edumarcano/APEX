@@ -1176,6 +1176,8 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
             if response is None
             else response.model_dump(mode="json", exclude={"answer", "session_id"})
         )
+        terminal_status = "completed" if message_status == "completed" else "cancelled" if message_status == "interrupted" else "failed"
+        response_data["activity_steps"] = coordinator.events.activity_steps_for_completion(record.id, terminal_status)
         completed = service.finalize(
             conversation_id,
             agent_message.id,

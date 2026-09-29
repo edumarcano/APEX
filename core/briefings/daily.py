@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
+from core.agent.providers.contract import ProviderStreamEvent
 from core.briefings.daily_inputs import (
     CORE_BRIEFING_SOURCES,
     SOURCE_SCOPES,
@@ -21,6 +22,7 @@ from core.briefings.daily_inputs import (
     _telemetry_inputs,
 )
 from core.briefings.execution import InvalidBriefingModelOutputError, execute_single_call
+from core.briefings.preview import BriefingPreviewParser
 from core.briefings.history import compare_history
 from core.briefings.investigation import (
     MAX_DEEP_TOOL_RESULTS,
@@ -518,8 +520,12 @@ def _synthesize(
     repair_feedback = ""
     failure_stage = "draft_validation"
     attempt_failures: list[tuple[str, tuple[str, ...]]] = []
+    preview_parser = BriefingPreviewParser()
     for attempt in range(2):
         control.check_cancelled()
+        if attempt:
+            preview_parser.reset()
+            control.publish_activity("briefing.preview", {"reset": True, "sections": []})
         prompt = base_prompt
         if attempt:
             prompt = _build_repair_prompt(
@@ -536,6 +542,9 @@ def _synthesize(
                 prompt=prompt,
                 output_schema=output_schema,
                 control=control,
+                stream_observer=lambda event: _observe_briefing_preview(
+                    event, preview_parser, control, usable_evidence
+                ),
             )
             raw = result.message.content or ""
             failure_stage = "draft_validation"
@@ -596,6 +605,30 @@ def _synthesize(
                 error_code="invalid_model_output",
             ) from None
     raise BriefingExecutionError("The selected model could not produce a valid briefing.")
+
+
+def _publish_briefing_preview(
+    fragment: str,
+    parser: BriefingPreviewParser,
+    control: RunExecutionControl,
+    evidence: list[BriefingEvidence],
+) -> None:
+    sections = parser.feed(fragment, evidence)
+    if sections:
+        control.publish_activity("briefing.preview", {"sections": sections})
+
+
+def _observe_briefing_preview(
+    event: ProviderStreamEvent,
+    parser: BriefingPreviewParser,
+    control: RunExecutionControl,
+    evidence: list[BriefingEvidence],
+) -> None:
+    if event.kind == "reset":
+        parser.reset()
+        control.publish_activity("briefing.preview", {"reset": True, "sections": []})
+    elif event.kind == "text" and event.text:
+        _publish_briefing_preview(event.text, parser, control, evidence)
 
 
 def _synthesis_output_schema() -> dict[str, Any]:

@@ -576,6 +576,11 @@ APEX owns Cortex conversation history in `apex_memory.db`. Conversations contain
 `GET /api/v1/cortex/conversations` lists the current server-derived partition. `POST /api/v1/cortex/conversations` creates a `hud` or `cli` conversation. `GET` and `PATCH /api/v1/cortex/conversations/{conversation_id}` read or update title, archive state, active branch, and saved Agent/tool state.
 
 `POST /api/v1/cortex/conversations/{conversation_id}/turns` runs one Cortex Engine turn. Clients send generated user and Agent message UUIDs, an optional parent ID, and the current turn inputs.
+Finalized Agent messages may include `response_metadata.activity_steps`, a bounded
+chronological list of observable model, tool, retry, action, response-start, and
+terminal events. It contains no prompts, response text, tool arguments or results,
+or provider reasoning. Existing `tool_trace` metadata remains available for older
+messages and detailed tool outcomes.
 
 ```json
 {
@@ -674,10 +679,12 @@ Each event uses the following JSON envelope:
 }
 ```
 
-The closed event types are `run.snapshot`, `run.status`, `briefing.stage`, `model.started`,
+The closed event types are `run.snapshot`, `run.status`, `briefing.stage`, `briefing.preview`, `model.started`,
 `model.completed`, `response.delta`, `response.reset`, `response.completed`,
 `tool.started`, `tool.completed`, `action.proposed`, `usage.updated`,
-`runtime.updated`, and `run.completed`. Response text is provisional until
+`runtime.updated`, and `run.completed`. `run.snapshot` includes `activity_steps`,
+a maximum of 64 sanitized timeline entries with event sequence, timestamp, type,
+and allowlisted fields. Response text is provisional until
 `response.completed`; `response.reset` tells a client to discard provisional
 text after a late tool call.
 
@@ -685,6 +692,14 @@ text after a late tool call.
 payload for briefing progress. Valid stages include `preparing`, `collecting`,
 `selecting`, `investigating`, `synthesizing`, and `persisting`; state is
 `started`, `completed`, `failed`, or `cancelled`.
+
+`briefing.preview` carries at most 12 completed, individually validated synthesis
+sections as plain title, category, and body text. It omits evidence identifiers
+and source links. A payload with `reset: true` discards the preview before a
+repair attempt or provider stream rewrite. Failed and cancelled terminal events
+clear it. `run.snapshot` includes the current preview while its process-local
+buffer is retained. A successful run keeps its preview until the caller loads
+the canonical saved artifact.
 
 The stream replays events after the supplied cursor. If that cursor is older
 than the run's bounded replay buffer, APEX sends a fresh `run.snapshot`
@@ -695,7 +710,9 @@ a durable snapshot with no replayed answer text. Comment heartbeats keep an
 active stream open, and the stream closes after its terminal event. Closing a
 client connection never cancels the run.
 
-Live events are process-local and are not written to the run ledger. They do
+Live event replay is process-local and is not written to the run ledger. Finalized
+conversation messages retain their sanitized `activity_steps` in existing response
+metadata. The timeline does
 not include prompts, provider reasoning or payloads, tool arguments/results,
 action targets, citations, or raw errors.
 

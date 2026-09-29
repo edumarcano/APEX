@@ -25,6 +25,7 @@ import { createAssistantStream } from 'assistant-stream'
 import { API_ENDPOINTS } from '../lib/api'
 import { streamRunEvents } from '../lib/cortexStream'
 import type { RunRecord } from '../types/runs'
+import type { RunActivityStep, RunActivityStepType } from '../types/runs'
 import type { AgentKey, CloudEffort, LocalReasoningMode, ModelCatalogEntry } from '../types/telemetry'
 import { CortexErrorFeedback, CortexQueryRim } from './AgentQueryBar'
 import { ToolsSelector, type ToolsSelectorProps } from './ToolsSelector'
@@ -108,7 +109,96 @@ type Props = {
   onConversationChange?: (conversation: ConversationSummary | null) => void
   onRunningChange?: (running: boolean, agent: AgentKey | null) => void
   onResponseChange?: (response: Record<string, unknown> | null, error: string | null) => void
+  onActivityChange?: (label: string | null) => void
+  toolLabels?: Array<{ name: string; label: string }>
   runtimeRef?: React.MutableRefObject<ApexAssistantRuntimeHandle | null>
+}
+
+type AssistantActivityView = { runId: string | null; status: string | null; steps: RunActivityStep[] }
+const AssistantActivityContext = createContext<AssistantActivityView>({ runId: null, status: null, steps: [] })
+const AssistantToolLabelsContext = createContext<Array<{ name: string; label: string }>>([])
+const EMPTY_TOOL_LABELS: Array<{ name: string; label: string }> = []
+export function useApexAssistantActivity(): AssistantActivityView {
+  return useContext(AssistantActivityContext)
+}
+
+const NATIVE_TOOL_LABELS: Record<string, { active: string; done: string }> = {
+  get_upcoming_calendar_events: { active: 'Checking your calendar', done: 'Checked your calendar' },
+  get_active_reminders: { active: 'Reading active reminders', done: 'Read active reminders' },
+  get_weather_forecast: { active: 'Checking the weather', done: 'Checked the weather' },
+  search_gmail: { active: 'Searching email', done: 'Searched email' },
+  get_gmail_message: { active: 'Reading email', done: 'Read email' },
+  search_apex_docs: { active: 'Searching APEX documentation', done: 'Searched APEX documentation' },
+  list_microsoft_todo_tasks: { active: 'Checking To Do tasks', done: 'Checked To Do tasks' },
+}
+
+export function activityStepLabel(step: RunActivityStep, toolLabels: Record<string, string> = {}): string {
+  const payload = step.payload
+  switch (step.type) {
+    case 'model.started': return typeof payload.turn === 'number' && payload.turn > 1 ? 'Reviewing results' : 'Thinking'
+    case 'model.completed': return 'Model turn completed'
+    case 'tool.started': {
+      const name = typeof payload.name === 'string' ? payload.name : ''
+      if (payload.origin === 'provider') return 'Searching with provider tools'
+      return NATIVE_TOOL_LABELS[name]?.active ?? (toolLabels[name] ? `Using ${toolLabels[name]}` : 'Using a tool')
+    }
+    case 'tool.completed': {
+      const name = typeof payload.name === 'string' ? payload.name.toLowerCase() : ''
+      if (payload.origin === 'provider' && /google.*search|search.*google/.test(name)) return 'Used Google Search'
+      if (payload.origin === 'provider' && /google.*maps|maps.*google/.test(name)) return 'Used Google Maps'
+      if (payload.origin === 'provider') return 'Used a provider tool'
+      return NATIVE_TOOL_LABELS[name]?.done ?? (toolLabels[name] ? `Used ${toolLabels[name]}` : 'Tool completed')
+    }
+    case 'action.proposed': return 'Proposed an action for approval'
+    case 'retry.updated': return 'Retrying the request'
+    case 'response.started': return 'Writing response'
+    case 'run.completed': return payload.status === 'completed' ? 'Completed' : payload.status === 'cancelled' ? 'Cancelled' : 'Stopped'
+  }
+}
+
+function activityStepFromEvent(event: { sequence: number; timestamp: string; type: string; payload: Record<string, unknown> }): RunActivityStep | null {
+  const fields: Partial<Record<string, string[]>> = {
+    'model.started': ['turn'], 'model.completed': ['turn', 'provider_ms'],
+    'tool.started': ['name', 'origin'], 'tool.completed': ['name', 'origin', 'status', 'duration_ms'],
+    'action.proposed': ['status', 'risk'], 'usage.updated': ['retries_count'],
+  }
+  const payload: Record<string, unknown> = {}
+  if (event.type === 'usage.updated') {
+    if (typeof event.payload.retries_count !== 'number') return null
+    payload.retries_count = event.payload.retries_count
+    return { sequence: event.sequence, timestamp: event.timestamp, type: 'retry.updated', payload }
+  }
+  if (!(event.type in fields)) return null
+  for (const field of fields[event.type] ?? []) {
+    const value = event.payload[field]
+    if (typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))) payload[field] = value
+  }
+  return { sequence: event.sequence, timestamp: event.timestamp, type: event.type as RunActivityStepType, payload }
+}
+
+const ACTIVITY_STEP_TYPES: ReadonlySet<string> = new Set([
+  'model.started', 'model.completed', 'tool.started', 'tool.completed',
+  'action.proposed', 'retry.updated', 'response.started', 'run.completed',
+])
+
+function safeActivitySteps(value: unknown): RunActivityStep[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((step): step is RunActivityStep => Boolean(
+    step && typeof step === 'object' && ACTIVITY_STEP_TYPES.has(step.type) &&
+    Number.isInteger(step.sequence) && step.sequence >= 0 && typeof step.timestamp === 'string' &&
+    step.payload && typeof step.payload === 'object' && !Array.isArray(step.payload),
+  )).slice(-64)
+}
+
+export function ActivityTimeline({ steps, toolLabels = [], collapsed = false }: { steps: unknown; toolLabels?: Array<{ name: string; label: string }>; collapsed?: boolean }): ReactNode {
+  const [open, setOpen] = useState(!collapsed)
+  const safeSteps = safeActivitySteps(steps)
+  if (!safeSteps.length) return null
+  const labels = Object.fromEntries(toolLabels.map((tool) => [tool.name, tool.label]))
+  return <details className="mt-2 rounded-lg border border-white/10 bg-black/10" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+    <summary className="cursor-pointer select-none px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-500 hover:text-zinc-300">Activity</summary>
+    <ol className="space-y-1 border-t border-white/10 px-3 py-2" aria-label="Agent activity steps">{safeSteps.map((step, index) => <li key={`${step.sequence}-${step.type}-${index}`} className="flex items-center justify-between gap-3 text-xs text-zinc-400"><span>{activityStepLabel(step, labels)}</span>{step.payload.origin !== 'provider' && typeof step.payload.duration_ms === 'number' ? <time className="shrink-0 font-mono text-[10px] text-zinc-600">{Math.max(0, step.payload.duration_ms / 1000).toFixed(1)}s</time> : null}</li>)}</ol>
+  </details>
 }
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -471,13 +561,16 @@ function ApexAssistantController({ runtimeRef, branchPersistRef, getActiveRemote
   return null
 }
 
-export function ApexAssistantRuntime({ config, children, beforeRun, onConversationChange, onRunningChange, onResponseChange, runtimeRef }: Props): ReactNode {
+export function ApexAssistantRuntime({ config, children, beforeRun, onConversationChange, onRunningChange, onResponseChange, onActivityChange, toolLabels = EMPTY_TOOL_LABELS, runtimeRef }: Props): ReactNode {
   const configRef = useRef(config)
   const pendingPromptRef = useRef<string | null>(null)
   const beforeRunRef = useRef(beforeRun)
   const onConversationChangeRef = useRef(onConversationChange)
   const onRunningChangeRef = useRef(onRunningChange)
   const onResponseChangeRef = useRef(onResponseChange)
+  const onActivityChangeRef = useRef(onActivityChange)
+  const toolLabelsRef = useRef(toolLabels)
+  const [activityView, setActivityView] = useState<AssistantActivityView>({ runId: null, status: null, steps: [] })
   const pendingTurnRef = useRef<{ conversationId: string; agent: AgentKey } | null>(null)
   const [pendingTurnRevision, setPendingTurnRevision] = useState(0)
   const launchTurnRef = useRef(false)
@@ -489,11 +582,15 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
     configRef.current = config
   }, [config])
   useEffect(() => {
+    toolLabelsRef.current = toolLabels
+  }, [toolLabels])
+  useEffect(() => {
     beforeRunRef.current = beforeRun
     onConversationChangeRef.current = onConversationChange
     onRunningChangeRef.current = onRunningChange
     onResponseChangeRef.current = onResponseChange
-  }, [beforeRun, onConversationChange, onRunningChange, onResponseChange])
+    onActivityChangeRef.current = onActivityChange
+  }, [beforeRun, onActivityChange, onConversationChange, onRunningChange, onResponseChange])
   const threadIds = useRef(new Map<string, Map<string, string>>())
   const getThreadIds = useCallback((remoteId: string): Map<string, string> => {
     let map = threadIds.current.get(remoteId)
@@ -684,6 +781,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
   const runtimeHook = useCallback(() => {
     const model: ChatModelAdapter = {
       async *run(options) {
+        let submittedRunId: string | null = null
         const localThreadId = options.unstable_threadId
         const remoteId = (localThreadId && uuidPattern.test(localThreadId) ? localThreadId : undefined)
           ?? (localThreadId ? remoteByLocal.current.get(localThreadId) : undefined)
@@ -735,6 +833,17 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
               snapshot_id: current.snapshotId,
             }),
           })
+          submittedRunId = runRecord.id
+          const toolLabelsByName = Object.fromEntries(toolLabelsRef.current.map((tool) => [tool.name, tool.label]))
+          let liveSteps: RunActivityStep[] = []
+          let retryCount = 0
+          let writingResponse = false
+          const setLiveActivity = (status: string | null, nextSteps = liveSteps): void => {
+            liveSteps = nextSteps.slice(-64)
+            setActivityView({ runId: runRecord.id, status, steps: liveSteps })
+            onActivityChangeRef.current?.(status)
+          }
+          setLiveActivity('Queued', [])
 
           const abortHandler = (): void => {
             const isExplicitStop = (options.abortSignal.reason as { detach?: boolean } | undefined)?.detach !== true
@@ -761,7 +870,27 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
               signal: options.abortSignal,
               onExhausted: (error) => { streamObservation.error = error },
             })) {
-              if (event.type === 'response.delta') {
+              if (event.type === 'run.snapshot') {
+                liveSteps = safeActivitySteps(event.payload?.activity_steps)
+                const last = liveSteps.at(-1)
+                const run = event.payload?.run as { status?: string } | undefined
+                retryCount = Math.max(0, ...liveSteps.filter((step) => step.type === 'retry.updated').map((step) => Number(step.payload.retries_count) || 0))
+                const answer = typeof event.payload?.answer === 'string' ? event.payload.answer : ''
+                writingResponse = liveSteps.some((step) => step.type === 'response.started')
+                const label = last ? activityStepLabel(last, toolLabelsByName) : run?.status === 'running' ? 'Preparing request' : 'Queued'
+                setLiveActivity(label, liveSteps)
+                cumulativeAnswer = answer
+                if (cumulativeAnswer !== lastYieldedAnswer) {
+                  lastYieldedAnswer = cumulativeAnswer
+                  lastYieldTime = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+                  yield { content: [{ type: 'text' as const, text: cumulativeAnswer }], metadata: streamingMetadata }
+                }
+              } else if (event.type === 'response.delta') {
+                if (!writingResponse) {
+                  writingResponse = true
+                  const step: RunActivityStep = { sequence: event.sequence, timestamp: event.timestamp, type: 'response.started', payload: {} }
+                  setLiveActivity('Writing response', [...liveSteps, step])
+                }
                 const text = typeof event.payload?.text === 'string' ? event.payload.text : ''
                 cumulativeAnswer += text
                 const now = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
@@ -774,6 +903,11 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
                   }
                 }
               } else if (event.type === 'response.reset') {
+                writingResponse = false
+                const provisionalIndex = liveSteps.map((step) => step.type).lastIndexOf('response.started')
+                if (provisionalIndex >= 0) liveSteps = liveSteps.filter((_, index) => index !== provisionalIndex)
+                const previous = liveSteps.at(-1)
+                setLiveActivity(previous ? activityStepLabel(previous, toolLabelsByName) : 'Preparing request', liveSteps)
                 cumulativeAnswer = ''
                 lastYieldedAnswer = ''
                 lastYieldTime = 0
@@ -782,6 +916,11 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
                   metadata: streamingMetadata,
                 }
               } else if (event.type === 'response.completed') {
+                if (!writingResponse) {
+                  writingResponse = true
+                  const step: RunActivityStep = { sequence: event.sequence, timestamp: event.timestamp, type: 'response.started', payload: {} }
+                  setLiveActivity('Writing response', [...liveSteps, step])
+                }
                 const answer = typeof event.payload?.answer === 'string' ? event.payload.answer : ''
                 cumulativeAnswer = answer
                 lastYieldedAnswer = cumulativeAnswer
@@ -790,25 +929,29 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
                   content: [{ type: 'text' as const, text: cumulativeAnswer }],
                   metadata: streamingMetadata,
                 }
-              } else if (event.type === 'run.snapshot') {
-                const answer = typeof event.payload?.answer === 'string' ? event.payload.answer : ''
-                if (answer) {
-                  cumulativeAnswer = answer
+              } else {
+                const step = activityStepFromEvent(event)
+                if (step) {
+                  if (step.type === 'retry.updated' && typeof step.payload.retries_count === 'number' && step.payload.retries_count <= retryCount) {
+                    // Retry counters are also repeated in routine usage updates.
+                  } else {
+                    if (step.type === 'retry.updated' && typeof step.payload.retries_count === 'number') retryCount = step.payload.retries_count
+                    setLiveActivity(activityStepLabel(step, toolLabelsByName), [...liveSteps, step])
+                  }
+                }
+                if (event.type === 'run.status') {
+                  const status = event.payload?.status
+                  if (status === 'running' && liveSteps.length === 0) setLiveActivity('Preparing request')
+                }
+                if (event.type === 'run.completed') {
+                  const status = event.payload?.status
+                  const terminal = { sequence: event.sequence, timestamp: event.timestamp, type: 'run.completed' as const, payload: { status } }
+                  setLiveActivity(status === 'completed' ? 'Completed' : status === 'cancelled' ? 'Cancelled' : 'Stopped', [...liveSteps, terminal])
                 }
                 if (cumulativeAnswer !== lastYieldedAnswer) {
                   lastYieldedAnswer = cumulativeAnswer
                   lastYieldTime = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
-                  yield {
-                    content: [{ type: 'text' as const, text: cumulativeAnswer }],
-                    metadata: streamingMetadata,
-                  }
-                }
-              } else if (cumulativeAnswer !== lastYieldedAnswer) {
-                lastYieldedAnswer = cumulativeAnswer
-                lastYieldTime = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
-                yield {
-                  content: [{ type: 'text' as const, text: cumulativeAnswer }],
-                  metadata: streamingMetadata,
+                  yield { content: [{ type: 'text' as const, text: cumulativeAnswer }], metadata: streamingMetadata }
                 }
               }
             }
@@ -873,8 +1016,16 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
         } catch (error) {
           const message = error instanceof Error ? error.message : 'APEX request failed.'
           onResponseChangeRef.current?.(null, message)
+          setActivityView({ runId: null, status: null, steps: [] })
+          onActivityChangeRef.current?.(null)
           throw error
-        } finally { finishTurn() }
+        } finally {
+          finishTurn()
+          if (submittedRunId) {
+            setActivityView((view) => view.runId === submittedRunId ? { ...view, status: null } : view)
+            onActivityChangeRef.current?.(null)
+          }
+        }
       },
     }
     // assistant-ui invokes this callback as a hook host for each active thread.
@@ -927,7 +1078,7 @@ export function ApexAssistantRuntime({ config, children, beforeRun, onConversati
     reloadThreads,
     threadListError,
   }), [branchPersistenceError, composerContext, reloadThreads, threadListError])
-  return <AssistantRuntimeProvider runtime={runtime}><ApexAssistantComposerContext.Provider value={runtimeContext}><ApexAssistantController branchPersistRef={branchPersistRef} forceHistoryReloadRef={forceHistoryReloadRef} getActiveRemoteId={getActiveRemoteId} getThreadIds={getThreadIds} onBranchPersistenceError={setBranchPersistenceError} prepareConversationForOpen={prepareConversationForOpen} runtimeRef={runtimeRef} />{children}</ApexAssistantComposerContext.Provider></AssistantRuntimeProvider>
+  return <AssistantToolLabelsContext.Provider value={toolLabels}><AssistantActivityContext.Provider value={activityView}><AssistantRuntimeProvider runtime={runtime}><ApexAssistantComposerContext.Provider value={runtimeContext}><ApexAssistantController branchPersistRef={branchPersistRef} forceHistoryReloadRef={forceHistoryReloadRef} getActiveRemoteId={getActiveRemoteId} getThreadIds={getThreadIds} onBranchPersistenceError={setBranchPersistenceError} prepareConversationForOpen={prepareConversationForOpen} runtimeRef={runtimeRef} />{children}</ApexAssistantComposerContext.Provider></AssistantRuntimeProvider></AssistantActivityContext.Provider></AssistantToolLabelsContext.Provider>
 }
 
 export function ApexAssistantError(): ReactNode {
@@ -1028,6 +1179,7 @@ function ApexAssistantMessage(): ReactNode {
   const messageRef = useRef<HTMLDivElement>(null)
   const aui = useAui()
   const { renderAgent, composer } = useContext(ApexAssistantPresentationContext)
+  const toolLabels = useContext(AssistantToolLabelsContext)
   const context = useContext(ApexAssistantComposerContext)
   const role = useAuiState((state) => state.message.role)
   const isLast = useAuiState((state) => state.message.isLast)
@@ -1072,6 +1224,7 @@ function ApexAssistantMessage(): ReactNode {
       ? 'max-w-[85%] rounded-2xl rounded-br-md border border-[#0F4DB8]/35 bg-[#0F4DB8]/15 px-4 py-3 text-sm text-white'
       : 'rounded-2xl rounded-bl-md border border-white/10 bg-zinc-900/80 px-4 py-3 text-sm leading-relaxed text-zinc-200'}>
       {role === 'assistant' ? renderAgent?.(text, metadata) ?? <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown> : text}
+      {role === 'assistant' ? <ActivityTimeline steps={metadata.activity_steps} toolLabels={toolLabels} collapsed /> : null}
       {role === 'assistant' && status?.type === 'incomplete' ? <ApexAssistantError /> : null}
       <div className="mt-2 flex items-center gap-2 font-mono text-[10px] text-zinc-500">
         <button type="button" onClick={() => void navigator.clipboard?.writeText(text)} className="hover:text-white">Copy</button>
@@ -1088,13 +1241,15 @@ export function ApexAssistantThread({ disabled = false, renderAgent, composer, l
   const running = useAuiState((state) => state.thread.isRunning)
   const isEmpty = useAuiState((state) => state.thread.isEmpty)
   const context = useContext(ApexAssistantComposerContext)
+  const activity = useApexAssistantActivity()
+  const toolLabels = useContext(AssistantToolLabelsContext)
   const presentation = useMemo(() => ({ renderAgent, composer }), [composer, renderAgent])
   const messageComponents = useMemo(() => ({ Message: ApexAssistantMessage }), [])
   return <ApexAssistantPresentationContext.Provider value={presentation}><ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">
     <ThreadPrimitive.Viewport data-cortex-thread-viewport="" className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 scrollbar-thin" autoScroll={false}>
       <ThreadPrimitive.Empty><div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-white/10 px-6 py-8 text-center"><p className="font-mono text-xs uppercase tracking-widest text-zinc-500">APEX is ready. Start a session with a focused question.</p><div className="mt-4 flex max-w-xl flex-wrap justify-center gap-2">{OPERATION_PROMPT_CHIPS.map((chip) => <ThreadPrimitive.Suggestion key={chip.label} prompt={chip.query} send={false} className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-300 transition-colors hover:border-[#0F4DB8]/50 hover:bg-[#0F4DB8]/15 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF]">{chip.label}</ThreadPrimitive.Suggestion>)}</div>{logoProps ? <div data-slot="cortex-chat-logo" className="mt-6 flex items-center justify-center filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]"><ApexLogo {...logoProps} className="size-40 sm:size-48" /></div> : null}</div></ThreadPrimitive.Empty>
       <ThreadPrimitive.Messages components={messageComponents} />
-      {running ? (activeRunSlot ?? <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-[#D8B4FE]" aria-live="polite"><span className="inline-block size-2 animate-pulse rounded-full bg-[#C084FC]" aria-hidden />{composer?.activeAgentName ?? 'Agent'} working</div>) : null}
+      {running ? <div className="space-y-1" data-run-id={activity.runId ?? undefined}><div className="flex items-center gap-2 font-mono text-xs tracking-wider text-[#D8B4FE]" aria-live="polite"><span className="inline-block size-2 animate-pulse rounded-full bg-[#C084FC] motion-reduce:animate-none" aria-hidden />{activity.status ?? 'Preparing request'}</div>{activeRunSlot}{activity.steps.length ? <ActivityTimeline steps={activity.steps} toolLabels={toolLabels} collapsed /> : null}</div> : null}
       {!isEmpty && logoProps ? <div data-slot="cortex-chat-logo" className="my-8 flex items-center justify-center filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]"><ApexLogo {...logoProps} className="size-40 sm:size-48" /></div> : null}
     </ThreadPrimitive.Viewport>
     {context?.branchPersistenceError ? <p className="border-t border-red-500/20 bg-red-950/20 px-4 py-2 text-xs text-red-200" role="alert">{context.branchPersistenceError}</p> : null}

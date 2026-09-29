@@ -6,6 +6,7 @@ import { useCompactLayout } from '../../hooks/useCompactLayout'
 import type { BriefingLayoutPhase } from '../../hooks/useWorkspaceView'
 import { parseAgentQueryResponse } from '../../lib/cortexResponse'
 import type { BriefingSessionDetail } from '../../types/briefings'
+import type { BriefingPreviewSection } from '../../types/runs'
 import { ApexAssistantThread, type ApexAssistantComposerProps } from '../ApexAssistantRuntime'
 import { AgentResponseName } from '../AgentResponseName'
 import { CompactToolResults } from '../CompactToolResults'
@@ -20,6 +21,7 @@ export type BriefingViewConversation = {
   ready: boolean
   canFollowUp: boolean
   session: BriefingSessionDetail | null
+  previewSections?: BriefingPreviewSection[]
   isLoadingSession: boolean
   evidence: Omit<BriefingEvidenceState, 'sessionId'>
   onMarkPresented: (sessionId: string) => Promise<void>
@@ -62,7 +64,10 @@ function BriefingConversation({ conversation }: { conversation: BriefingViewConv
     return <BriefingAgentMessage text={text} metadata={metadata} agentDisplayName={agentDisplayName} />
   }, [agentDisplayName, evidence, isLoadingSession, onMarkPresented, session])
   if (!session) return <div className="flex min-h-0 flex-1 items-center justify-center p-5 text-xs text-zinc-500">Open a saved briefing to continue its conversation.</div>
+  const showPreview = !session.artifact && conversation.previewSections?.length
   return <section className="flex min-h-0 flex-1 flex-col" aria-label="Briefing conversation">
+    {showPreview ? <BriefingDraftPreview sections={conversation.previewSections!} /> : null}
+    {session.artifact && !conversation.ready ? <div className="min-h-0 flex-1 overflow-y-auto p-4"><BriefingArtifactMessage session={session} isLoadingSession={isLoadingSession} evidence={evidence} onMarkPresented={onMarkPresented} /></div> : null}
     {conversation.ready ? (
       <ApexAssistantThread disabled={!conversation.canFollowUp} renderAgent={renderAgent} composer={conversation.composer} />
     ) : (
@@ -72,6 +77,19 @@ function BriefingConversation({ conversation }: { conversation: BriefingViewConv
       </div>
     )}
   </section>
+}
+
+function BriefingDraftPreview({ sections }: { sections: BriefingPreviewSection[] }): ReactElement {
+  return <div className="max-h-[45%] shrink-0 overflow-y-auto border-b border-purple-300/20 bg-purple-950/20 px-4 py-3" aria-label="Briefing draft preview">
+    <p className="mb-2 font-mono text-[10px] uppercase tracking-wider text-purple-200" role="status">Draft preview · provisional</p>
+    {sections.map((section, sectionIndex) => <section key={`${sectionIndex}-${section.title}`} className="mb-3 last:mb-0">
+      <h3 className="mb-1 font-display text-xs text-purple-100">{section.title}</h3>
+      {section.items.map((item, itemIndex) => <article key={`${itemIndex}-${item.title}`} className="mb-2 last:mb-0 text-xs text-zinc-200">
+        <p className="font-semibold">{item.title}</p>
+        <p className="whitespace-pre-wrap">{item.body}</p>
+      </article>)}
+    </section>)}
+  </div>
 }
 
 export function BriefingView(props: BriefingViewProps): ReactElement {
