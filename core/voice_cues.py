@@ -10,7 +10,14 @@ VoiceCueName = Literal[
     "activation_loading",
     "activation_refresh_failed",
     "activation_no_fresh_telemetry",
+    "briefing_generating",
+    "briefing_ready",
+    "briefing_failed",
+    "highlights_ready",
+    "highlights_failed",
 ]
+
+_PROFILE_LABELS = {"daily": "Daily", "catch_up": "Catch Up", "deep": "Deep"}
 
 
 def _salutation(now: datetime) -> str:
@@ -31,6 +38,7 @@ def format_voice_cue(
     *,
     user_designation: str | None = None,
     now: datetime | None = None,
+    briefing_profile: str | None = None,
 ) -> str:
     """Format one public cue from local time, saved designation, and mode."""
     local_now = now or datetime.now()
@@ -45,5 +53,17 @@ def format_voice_cue(
         return "I couldn’t refresh your Overview telemetry just now. Please try again."
     if cue == "activation_no_fresh_telemetry":
         return "I couldn’t find an available telemetry source for your Overview. Please try again."
+
+    if cue == "briefing_generating":
+        label = _PROFILE_LABELS.get(briefing_profile or "")
+        return f"I’m preparing your {label} briefing." if label else "I’m preparing your briefing."
+    if cue == "briefing_ready":
+        return "Your briefing is ready."
+    if cue == "briefing_failed":
+        return "I couldn’t finish your briefing. Please try again."
+    if cue == "highlights_ready":
+        return "Your spoken highlights are ready."
+    if cue == "highlights_failed":
+        return "I couldn’t prepare your spoken highlights. Please try again."
 
     raise ValueError(f"Unsupported voice cue: {cue!r}")

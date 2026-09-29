@@ -42,7 +42,7 @@ import { useTelemetrySnapshot, type RefreshAllOutcome } from './hooks/useTelemet
 import { useToolCatalog } from './hooks/useToolCatalog'
 import { useToolPreflight } from './hooks/useToolPreflight'
 import { API_ENDPOINTS } from './lib/api'
-import { requestVoiceCue } from './lib/voiceCues'
+import { requestVoiceCue, willCollectFreshTelemetry } from './lib/voiceCues'
 import { resolveAttentionStaggerMs, resolveTelemetryAttentionTier } from './lib/attentionTier'
 import { resolveActiveBriefingActivity, resolveBriefingLogoActivity, resolveBriefingVisualState } from './lib/briefingVisualState'
 import { resolveCalendarTelemetry } from './lib/calendarTelemetry'
@@ -65,6 +65,7 @@ import type {
   ModelCatalogEntry,
   TelemetrySnapshot,
 } from './types/telemetry'
+import type { BriefingSessionStatus } from './types/briefings'
 import type { ContextReview } from './types/context'
 import type {
   CloudHostedToolsSettings,
@@ -77,6 +78,7 @@ function sameToolNames(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((name) => right.includes(name))
 }
 
+const BRIEFING_ACTIVE_STATUSES: ReadonlySet<BriefingSessionStatus> = new Set(['queued', 'running', 'cancelling'])
 const TELEMETRY_FRESHNESS_WINDOW_MS = 5 * 60 * 1000
 
 function hasUsableTelemetry(snapshot: TelemetrySnapshot | null): boolean {
@@ -319,7 +321,11 @@ export default function App(): ReactElement {
     currentSelectedSession.run_status === 'completed' && currentSelectedSession.artifact
     ? currentSelectedSession
     : null
-  const briefingSpeech = useBriefingSpeech(selectedCompletedBriefing?.id ?? null, voiceMode)
+  const announceHighlightsOutcome = useCallback((outcome: 'ready' | 'failed'): void => {
+    if (voiceMode !== 'automatic') return
+    void requestVoiceCue(outcome === 'ready' ? 'highlights_ready' : 'highlights_failed')
+  }, [voiceMode])
+  const briefingSpeech = useBriefingSpeech(selectedCompletedBriefing?.id ?? null, voiceMode, announceHighlightsOutcome)
   const {
     openSession: openDailySession,
     generate: generateBriefing,
@@ -834,8 +840,10 @@ export default function App(): ReactElement {
     setOverviewState('collecting')
     activate()
     onActivated?.()
+    // The reuse check must finish first; a live refresh would make the snapshot look reusable.
+    const announceCollection = voiceMode === 'automatic' && await willCollectFreshTelemetry()
     const refreshPromise = telemetry.refreshAllWithOutcome({ force: false })
-    const initialCuePromise = voiceMode === 'automatic'
+    const initialCuePromise = announceCollection
       ? requestVoiceCue('activation_loading')
       : Promise.resolve()
     const [outcome] = await Promise.all([refreshPromise, initialCuePromise])
@@ -894,6 +902,25 @@ export default function App(): ReactElement {
     }
   }, [openDailySession, openDailyConversation, selectHudPeer])
 
+  const briefingCueSessionsRef = useRef(new Set<string>())
+  const announceBriefingOutcome = useCallback((status: BriefingSessionStatus): void => {
+    if (status === 'completed') void requestVoiceCue('briefing_ready')
+    else if (status === 'failed' || status === 'interrupted') void requestVoiceCue('briefing_failed')
+  }, [])
+  const dailySessionList = dailySessions.sessions
+  useEffect(() => {
+    // Only sessions started in this page session are announced, once, when they leave an active status.
+    if (voiceMode !== 'automatic') {
+      briefingCueSessionsRef.current.clear()
+      return
+    }
+    for (const session of dailySessionList) {
+      if (!briefingCueSessionsRef.current.has(session.id) || BRIEFING_ACTIVE_STATUSES.has(session.run_status)) continue
+      briefingCueSessionsRef.current.delete(session.id)
+      announceBriefingOutcome(session.run_status)
+    }
+  }, [announceBriefingOutcome, dailySessionList, voiceMode])
+
   const performBriefingGeneration = useCallback(async (draft: BriefingSetupDraft): Promise<void> => {
     if (hasActiveDailySession) throw new Error('A briefing is already running.')
     if (!agentQueriesEnabled && !demoModeActive) throw new Error(`Briefings are disabled in ${agentDisplayName} settings.`)
@@ -930,6 +957,14 @@ export default function App(): ReactElement {
     selectHudPeer('briefing')
     setDailyConversationReady(null)
     const summary = await generateBriefing(draft.profileId, generationOptions)
+    if (voiceMode === 'automatic') {
+      if (BRIEFING_ACTIVE_STATUSES.has(summary.run_status)) {
+        briefingCueSessionsRef.current.add(summary.id)
+        void requestVoiceCue('briefing_generating', { briefingProfile: draft.profileId })
+      } else {
+        announceBriefingOutcome(summary.run_status)
+      }
+    }
     workspaceView.setProfileId(draft.profileId)
     dailyOpeningSessionsRef.current.set(summary.id, sequence)
     void openDailyConversation(summary.conversation_id, summary.run_status === 'completed' ? summary.id : undefined, sequence)
@@ -944,12 +979,14 @@ export default function App(): ReactElement {
     demoModeActive,
     fullModelCatalog,
     generateBriefing,
+    announceBriefingOutcome,
     hasActiveDailySession,
     workspaceView,
     openDailyConversation,
     preflight,
     saveBriefingModelSettings,
     selectHudPeer,
+    voiceMode,
   ])
 
   const startBriefing = useCallback(async (draft: BriefingSetupDraft): Promise<void> => {
@@ -1751,6 +1788,7 @@ export default function App(): ReactElement {
               speechControl: selectedCompletedBriefing ? <BriefingSpeechControl
                 {...briefingSpeech}
                 voiceMode={voiceMode}
+                agentDisplayName={agentDisplayName}
               /> : null,
             }}
             briefingConversation={{

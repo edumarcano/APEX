@@ -110,6 +110,26 @@ describe('BriefingProfilePanel', () => {
     expect(within(dialog).queryByText('Apex Agent')).not.toBeInTheDocument()
   })
 
+  it('names APEX or the agent as the actor in running briefing status', () => {
+    const running = session({ id: 'run-session', run_status: 'running' })
+    const props = baseProps({ agentDisplayName: 'Commander', selectedSessionId: 'run-session', activeSession: running })
+    const { rerender } = render(<BriefingProfilePanel {...props} />)
+    expect(screen.getByText(/^Commander is preparing your Catch Up briefing/)).toBeInTheDocument()
+
+    const deep = (stage: 'collecting' | 'investigating' | 'synthesizing' | null) => session({
+      id: 'run-session',
+      run_status: 'running',
+      configuration: { ...running.configuration, profile: { ...running.configuration.profile, id: 'deep', label: 'Deep' } },
+      active_stage: stage ? { stage, state: 'started' } : null,
+    })
+    rerender(<BriefingProfilePanel {...props} activeSession={deep(null)} />)
+    expect(screen.getByText(/^APEX is collecting the briefing snapshot/)).toBeInTheDocument()
+    rerender(<BriefingProfilePanel {...props} activeSession={deep('investigating')} />)
+    expect(screen.getByText(/^Commander is checking your connected sources/)).toBeInTheDocument()
+    rerender(<BriefingProfilePanel {...props} activeSession={deep('synthesizing')} />)
+    expect(screen.getByText(/^Commander is preparing your evidence-backed briefing/)).toBeInTheDocument()
+  })
+
   it('opens accessible setup and submits the selected profile and reasoning draft', async () => {
     const user = userEvent.setup()
     const onGenerate = vi.fn().mockResolvedValue(undefined)

@@ -86,6 +86,17 @@ class TelemetrySnapshot(BaseModel):
         return out
 
 
+class TelemetryReuseResponse(BaseModel):
+    """Whether a normal full refresh would return the current snapshot unchanged."""
+
+    reusable: bool = Field(
+        description=(
+            "True when a non-forced full refresh would reuse the current snapshot "
+            "without connector calls."
+        ),
+    )
+
+
 class TelemetryRefreshRequest(BaseModel):
     """Optional connector filter and force flag for telemetry refresh."""
 
