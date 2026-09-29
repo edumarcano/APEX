@@ -59,6 +59,29 @@ class BriefingModelResolutionTests(unittest.TestCase):
         self.assertEqual(configuration.model.context_window, 1_310_720)
         self.assertEqual(configuration.model.reasoning, "high")
         self.assertEqual(configuration.profile.id, "deep")
+        self.assertEqual(configuration.model.output_token_limit, 16384)
+
+    def test_cloud_models_receive_16k_output_limit_while_local_stay_bounded(self) -> None:
+        cloud_req = BriefingGenerationRequest(
+            idempotency_key=uuid4(),
+            profile_id="deep",
+            model_id="deepseek/deepseek-v4-flash-0731",
+        )
+        local_req = BriefingGenerationRequest(
+            idempotency_key=uuid4(),
+            profile_id="daily",
+            model_id="gemma-4-E2B-Q4_K_M.gguf",
+        )
+        with (
+            patch("core.briefings.runtime.get_settings_store", return_value=SimpleNamespace(get_snapshot=lambda: self.settings)),
+            patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}),
+            patch("core.briefings.runtime.get_local_runtime_backend", return_value=SimpleNamespace(enabled=True)),
+        ):
+            cloud_conf = resolve_briefing_configuration(cloud_req)
+            local_conf = resolve_briefing_configuration(local_req)
+
+        self.assertEqual(cloud_conf.model.output_token_limit, 16384)
+        self.assertEqual(local_conf.model.output_token_limit, 4096)
 
     def test_unknown_or_hidden_model_is_rejected_without_substitution(self) -> None:
         unknown = BriefingGenerationRequest(

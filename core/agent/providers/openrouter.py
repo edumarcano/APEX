@@ -110,7 +110,12 @@ class OpenRouterProvider:
             "extra_body": dict(OPENROUTER_PRIVACY_POLICY),
         }
         if output_token_limit is not None:
-            request["max_tokens"] = output_token_limit
+            resolved_max_tokens = output_token_limit
+            if profile.reasoning_effort and profile.reasoning_effort != "none":
+                # On OpenRouter, reasoning tokens count toward top-level max_tokens.
+                # Provide sufficient headroom so that reasoning does not starve the visible output limit.
+                resolved_max_tokens = max(resolved_max_tokens, 16384)
+            request["max_tokens"] = resolved_max_tokens
         if tools:
             request["tools"] = [descriptor_to_openai_schema(tool) for tool in tools]
         if profile.reasoning_effort is not None:
@@ -143,6 +148,7 @@ class OpenRouterProvider:
             ttft_ms: float | None = None
             tool_state: dict[int, dict[str, Any]] = {}
             usage: Any = None
+            finish_reason: str | None = None
             try:
                 for raw in stream:
                     if execution_control is not None:
@@ -152,7 +158,11 @@ class OpenRouterProvider:
                     choices = chunk.get("choices")
                     if not isinstance(choices, list) or not choices:
                         continue
-                    delta = _as_dict(_as_dict(choices[0]).get("delta"))
+                    first_choice = _as_dict(choices[0])
+                    chunk_finish = first_choice.get("finish_reason")
+                    if isinstance(chunk_finish, str) and chunk_finish:
+                        finish_reason = chunk_finish
+                    delta = _as_dict(first_choice.get("delta"))
                     content = delta.get("content")
                     if isinstance(content, str):
                         text_parts.append(content)
@@ -174,11 +184,17 @@ class OpenRouterProvider:
                             state["name"] = fn["name"]
                         if isinstance(fn.get("arguments"), str):
                             state["arguments"] += fn["arguments"]
+                if finish_reason == "length":
+                    _LOGGER.warning(
+                        "[AGENT][OPENROUTER] Generation truncated by length limit "
+                        "(finish_reason=length, model=%s)",
+                        profile.api_model,
+                    )
                 result = type("StreamResponse", (), {})()
                 result.choices = [{"message": {"content": "".join(text_parts), "tool_calls": [
                     {"id": value.get("id") or f"call_{index}", "function": {"name": value.get("name", ""), "arguments": value.get("arguments", "")}}
                     for index, value in sorted(tool_state.items())
-                ]}}]
+                ]}, "finish_reason": finish_reason}]
                 result.model = profile.api_model
                 result.usage = usage
                 result._stream_measurements = {"ttft_ms": ttft_ms} if ttft_ms is not None else {}
