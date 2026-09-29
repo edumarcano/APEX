@@ -138,6 +138,92 @@ class Branch3StreamingTests(unittest.TestCase):
         config = client.models.generate_content_stream.call_args.kwargs["config"]
         self.assertIsNotNone(config.http_options)
 
+    @patch("core.agent.providers.gemini.genai.Client")
+    def test_gemini_empty_stream_logs_only_sanitized_finish_reason(self, client_cls):
+        candidate = SimpleNamespace(
+            content=SimpleNamespace(parts=[
+                SimpleNamespace(
+                    text="private reasoning",
+                    thought=True,
+                    function_call=None,
+                )
+            ]),
+            finish_reason=SimpleNamespace(name="SAFETY"),
+        )
+        chunk = SimpleNamespace(
+            candidates=[candidate],
+            usage_metadata=SimpleNamespace(
+                prompt_token_count=2,
+                candidates_token_count=1,
+                total_token_count=3,
+            ),
+        )
+        client = Mock()
+        client.models.generate_content_stream.return_value = _Stream([chunk])
+        client_cls.return_value = client
+        profile = GeminiModelProfile(
+            display_name="Gemini", api_model="gemini", stability="stable",
+            thinking_level="low", system_instruction="",
+        )
+        events = []
+
+        with self.assertLogs("core.agent.providers.gemini", level="WARNING") as logs:
+            result = GeminiProvider("key").generate_turn(
+                [AgentMessage(role="user", content="private prompt")], [], profile,
+                stream_observer=events.append,
+            )
+
+        self.assertIsNone(result.message.content)
+        self.assertFalse(result.message.tool_calls)
+        self.assertIn("finish_reason=SAFETY", logs.output[0])
+        self.assertNotIn("private prompt", logs.output[0])
+        self.assertNotIn("private reasoning", repr(result))
+        self.assertNotIn("private reasoning", repr(events))
+
+    @patch("core.agent.providers.gemini.genai.Client")
+    def test_gemini_stream_omits_thought_text_from_answer_and_deltas(self, client_cls):
+        chunk = SimpleNamespace(
+            candidates=[
+                SimpleNamespace(
+                    content=SimpleNamespace(
+                        parts=[
+                            SimpleNamespace(
+                                text="private reasoning",
+                                thought=True,
+                                function_call=None,
+                            ),
+                            SimpleNamespace(
+                                text="visible answer",
+                                thought=False,
+                                function_call=None,
+                            ),
+                        ]
+                    )
+                )
+            ]
+        )
+        client = Mock()
+        client.models.generate_content_stream.return_value = _Stream([chunk])
+        client_cls.return_value = client
+        profile = GeminiModelProfile(
+            display_name="Gemini", api_model="gemini", stability="stable",
+            thinking_level="low", system_instruction="",
+        )
+        events = []
+
+        result = GeminiProvider("key").generate_turn(
+            [AgentMessage(role="user", content="x")], [], profile,
+            stream_observer=events.append,
+        )
+
+        self.assertEqual(result.message.content, "visible answer")
+        self.assertEqual(
+            [event.text for event in events if event.kind == "text"],
+            ["visible answer"],
+        )
+        self.assertNotIn("private reasoning", repr(result))
+        self.assertNotIn("private reasoning", repr(events))
+
     def test_catalog_capabilities_are_provider_truthful(self):
         self.assertEqual(_profile_to_catalog_entry(ALL_MODEL_PROFILES["gemini-3.7-flash"]).streaming, "native")
         self.assertEqual(_profile_to_catalog_entry(ALL_MODEL_PROFILES["qwen3:1.7b"]).streaming, "completed_turn")

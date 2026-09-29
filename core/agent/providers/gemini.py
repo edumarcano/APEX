@@ -1,4 +1,5 @@
 import base64
+import logging
 import time
 from types import SimpleNamespace
 from typing import Any
@@ -32,6 +33,46 @@ from core.agent.types import (
 )
 
 GEMINI_REQUEST_TIMEOUT_SECONDS = 120.0
+_LOGGER = logging.getLogger(__name__)
+_GEMINI_FINISH_REASONS = frozenset(
+    {
+        "FINISH_REASON_UNSPECIFIED",
+        "STOP",
+        "MAX_TOKENS",
+        "SAFETY",
+        "RECITATION",
+        "LANGUAGE",
+        "OTHER",
+        "BLOCKLIST",
+        "PROHIBITED_CONTENT",
+        "SPII",
+        "MALFORMED_FUNCTION_CALL",
+        "IMAGE_SAFETY",
+        "UNEXPECTED_TOOL_CALL",
+        "NO_IMAGE",
+        "IMAGE_PROHIBITED_CONTENT",
+        "IMAGE_RECITATION",
+        "IMAGE_OTHER",
+    }
+)
+
+
+def _gemini_finish_reason(response: Any) -> str:
+    """Return a bounded enum-like finish reason without provider payload text."""
+    candidates = getattr(response, "candidates", None) or []
+    if not candidates:
+        return "unknown"
+    reason = getattr(candidates[0], "finish_reason", None)
+    if reason is None:
+        return "unknown"
+    reason_name = getattr(reason, "name", None)
+    normalized = reason_name if isinstance(reason_name, str) else str(reason)
+    if "." in normalized:
+        normalized = normalized.rsplit(".", 1)[-1]
+    normalized = normalized.upper()
+    if normalized in _GEMINI_FINISH_REASONS:
+        return normalized
+    return "unknown"
 
 
 def _merge_fragmented_json(existing: dict[str, Any], fragment: str) -> dict[str, Any]:
@@ -106,7 +147,7 @@ def _content_to_agent_message(content: types.Content) -> AgentMessage:
     tool_calls: list[ToolCall] = []
 
     for part in content.parts or []:
-        if part.text:
+        if part.text and not getattr(part, "thought", False):
             text_segments.append(part.text)
         if part.function_call is not None:
             function_call = part.function_call
@@ -391,6 +432,7 @@ class GeminiProvider:
             text_parts: list[str] = []
             tool_parts: dict[str, dict[str, Any]] = {}
             chunks: list[Any] = []
+            last_candidates: Any = None
             stream_started = time.perf_counter()
             ttft_ms: float | None = None
             try:
@@ -398,10 +440,16 @@ class GeminiProvider:
                     if execution_control is not None:
                         execution_control.before_provider_attempt()
                     chunks.append(chunk)
-                    for candidate in getattr(chunk, "candidates", None) or []:
+                    chunk_candidates = getattr(chunk, "candidates", None) or []
+                    if chunk_candidates:
+                        last_candidates = chunk_candidates
+                    for candidate in chunk_candidates:
                         content = getattr(candidate, "content", None)
                         for part in getattr(content, "parts", None) or []:
-                            if getattr(part, "text", None):
+                            if (
+                                getattr(part, "text", None)
+                                and not getattr(part, "thought", False)
+                            ):
                                 text = str(part.text)
                                 text_parts.append(text)
                                 if ttft_ms is None:
@@ -442,7 +490,7 @@ class GeminiProvider:
                 if chunks:
                     result = chunks[-1]
                     return SimpleNamespace(
-                        candidates=getattr(result, "candidates", None),
+                        candidates=last_candidates,
                         usage_metadata=getattr(result, "usage_metadata", None),
                         model_version=getattr(result, "model_version", None),
                         model=getattr(result, "model", None),
@@ -507,6 +555,11 @@ class GeminiProvider:
         )
         if grounded_content != message.content:
             message = message.model_copy(update={"content": grounded_content})
+        if not (message.content or "").strip() and not message.tool_calls:
+            _LOGGER.warning(
+                "Gemini returned no visible text or tool calls: finish_reason=%s",
+                _gemini_finish_reason(response),
+            )
         if provider_tool_events:
             share = round(provider_ms / len(provider_tool_events), 2)
             for event in provider_tool_events:

@@ -8,7 +8,7 @@ import threading
 import unittest
 from uuid import uuid4
 
-from fastapi import Request
+from core.agent.capabilities import CapabilityDescriptor
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderStreamEvent, ProviderTurnResult
 from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
@@ -17,6 +17,7 @@ from core.api.routers.cortex import (
     _parse_last_event_id,
     stream_cortex_run_events,
 )
+from fastapi import Request
 from core.runs.coordinator import set_run_coordinator
 from core.runs.events import RunEventBuffer, RunEventRegistry
 from core.runs.models import RunLimitSnapshot, RunRecord
@@ -233,6 +234,104 @@ class LiveRunStreamTests(unittest.TestCase):
         self.assertEqual(response.answer, "done")
         self.assertEqual([event.kind for event in provider_events], ["text", "completed"])
         self.assertEqual([item[0] for item in activity], ["model.started", "model.completed", "response.completed"])
+
+    def test_loop_fails_empty_provider_turn_without_completing_response(self) -> None:
+        class Provider:
+            def generate_turn(
+                self,
+                _history,
+                _tools,
+                _profile,
+                system_instruction_override=None,
+                *,
+                execution_control=None,
+                stream_observer=None,
+                output_schema=None,
+            ):
+                del (
+                    system_instruction_override,
+                    execution_control,
+                    stream_observer,
+                    output_schema,
+                )
+                return ProviderTurnResult(message=AgentMessage(role="agent", content=None))
+
+        activity = []
+        response = run_agent_loop(
+            AgentQueryRequest(prompt="Test", agent="apex"),
+            Provider(),
+            build_local_profile(model="qwen3:1.7b"),
+            selected_tools=[],
+            activity_observer=lambda event_type, payload: activity.append((event_type, payload)),
+        )
+
+        self.assertTrue(response.answer.strip())
+        self.assertTrue(response.error)
+        self.assertNotIn("response.completed", [item[0] for item in activity])
+
+    def test_loop_accepts_tool_only_provider_turn(self) -> None:
+        class Provider:
+            calls = 0
+
+            def generate_turn(
+                self,
+                _history,
+                _tools,
+                _profile,
+                system_instruction_override=None,
+                *,
+                execution_control=None,
+                stream_observer=None,
+                output_schema=None,
+            ):
+                del (
+                    system_instruction_override,
+                    execution_control,
+                    stream_observer,
+                    output_schema,
+                )
+                self.calls += 1
+                if self.calls == 1:
+                    return ProviderTurnResult(
+                        message=AgentMessage(
+                            role="agent",
+                            content=None,
+                            tool_calls=[
+                                ToolCall(
+                                    id="call-1",
+                                    name="read_status",
+                                    arguments={},
+                                )
+                            ],
+                        )
+                    )
+                return ProviderTurnResult(
+                    message=AgentMessage(role="agent", content="Status is ready.")
+                )
+
+        provider = Provider()
+        descriptor = CapabilityDescriptor(
+            name="read_status",
+            title="Read status",
+            description="Read current status.",
+            input_schema={"type": "object", "properties": {}},
+            origin="native",
+            risk="read",
+            expose_to_agent=True,
+            expose_to_mcp_server=False,
+            expose_to_client_display=True,
+        )
+        response = run_agent_loop(
+            AgentQueryRequest(prompt="Check status", agent="apex"),
+            provider,
+            build_local_profile(model="qwen3:1.7b"),
+            tools_dispatcher=lambda _name, _arguments: "ready",
+            selected_tools=[descriptor],
+        )
+
+        self.assertEqual(provider.calls, 2)
+        self.assertEqual(response.answer, "Status is ready.")
+        self.assertIsNone(response.error)
 
     def test_loop_resets_provisional_text_before_following_a_tool_call(self) -> None:
         class Provider:
