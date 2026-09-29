@@ -550,7 +550,7 @@ def _synthesize(
             failure_stage = "draft_validation"
             validation_phase = "draft_json"
             try:
-                parsed = BriefingDraft.model_validate_json(raw)
+                parsed = BriefingDraft.model_validate_json(_sanitize_json_content(raw))
                 validation_phase = "empty_result"
                 if not any(section.items for section in parsed.sections) and usable_evidence:
                     if not any(len(limit.strip()) >= 16 for limit in parsed.limitations):
@@ -881,6 +881,16 @@ def _bounded_json_string(value: str, byte_limit: int) -> str:
 
 def _truncate_utf8(value: str, byte_limit: int) -> str:
     return value.encode("utf-8")[:byte_limit].decode("utf-8", errors="ignore")
+
+
+def _sanitize_json_content(raw: str) -> str:
+    """Extract raw JSON text from markdown code fences or surrounding whitespace."""
+    text = raw.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if len(lines) >= 2 and lines[0].startswith("```") and lines[-1].strip() == "```":
+            return "\n".join(lines[1:-1]).strip()
+    return text
 
 
 def _attach_canonical_references(

@@ -91,6 +91,49 @@ class OpenRouterProviderTests(unittest.TestCase):
         self.assertEqual(result.message.content, "bounded")
 
     @mock.patch("core.agent.providers.openrouter.OpenAI")
+    def test_reasoning_models_receive_headroom_for_max_tokens(
+        self, client_cls: mock.Mock
+    ) -> None:
+        response = mock.Mock()
+        response.model_dump.return_value = {
+            "model": "deepseek/deepseek-v4-flash-0731",
+            "choices": [{"message": {"content": "bounded"}}],
+        }
+        client_cls.return_value.chat.completions.create.return_value = response
+
+        OpenRouterProvider("secret").generate_turn(
+            [AgentMessage(role="user", content="hello")],
+            [],
+            self._profile("high"),
+            output_token_limit=4096,
+        )
+
+        request = client_cls.return_value.chat.completions.create.call_args.kwargs
+        self.assertEqual(request["max_tokens"], 16384)
+
+    @mock.patch("core.agent.providers.openrouter.OpenAI")
+    def test_stream_finish_reason_length_logs_warning(
+        self, client_cls: mock.Mock
+    ) -> None:
+        chunk = {
+            "choices": [{
+                "delta": {"content": "partial text"},
+                "finish_reason": "length",
+            }],
+        }
+        client_cls.return_value.chat.completions.create.return_value = [chunk]
+
+        with self.assertLogs("core.agent.providers.openrouter", level="WARNING") as logs:
+            result = OpenRouterProvider("secret").generate_turn(
+                [AgentMessage(role="user", content="hello")],
+                [],
+                self._profile("none"),
+            )
+
+        self.assertEqual(result.message.content, "partial text")
+        self.assertTrue(any("finish_reason=length" in line for line in logs.output))
+
+    @mock.patch("core.agent.providers.openrouter.OpenAI")
     def test_all_reasoning_efforts_are_sent_inside_extra_body(self, client_cls: mock.Mock) -> None:
         response = mock.Mock()
         response.model_dump.return_value = {

@@ -1013,6 +1013,17 @@ class DailyInputTests(unittest.TestCase):
         self.assertIn(json.dumps(initial_response, ensure_ascii=False), repair_prompt)
         self.assertIn("empty result with usable evidence needs a specific limitation", repair_prompt)
 
+    def test_briefing_synthesis_accepts_markdown_code_fenced_json(self) -> None:
+        from core.briefings.daily import _sanitize_json_content
+
+        fenced = '```json\n{"sections":[],"limitations":[]}\n```'
+        unfenced = '{"sections":[],"limitations":[]}'
+        fenced_no_lang = '```\n{"sections":[],"limitations":[]}\n```'
+
+        self.assertEqual(_sanitize_json_content(fenced), unfenced)
+        self.assertEqual(_sanitize_json_content(fenced_no_lang), unfenced)
+        self.assertEqual(_sanitize_json_content(unfenced), unfenced)
+
 
 if __name__ == "__main__":
     unittest.main()

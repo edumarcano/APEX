@@ -175,6 +175,12 @@ def resolve_briefing_configuration(
                 "The selected local model has no supported runtime."
             )
 
+    output_token_limit = (
+        MAX_OUTPUT_TOKENS
+        if profile.runtime == "cloud" and (context_window or 0) >= 65_536
+        else min(4096, MAX_OUTPUT_TOKENS)
+    )
+
     configuration = BriefingGenerationConfiguration(
         profile=BUILTIN_BRIEFING_PROFILES[request.profile_id],
         model=BriefingModelConfiguration(
@@ -188,7 +194,7 @@ def resolve_briefing_configuration(
             max_retries=CORTEX_RUNS_MAX_RETRIES,
             max_model_turns=CORTEX_RUNS_MAX_MODEL_TURNS,
             max_tool_calls=CORTEX_RUNS_MAX_TOOL_CALLS,
-            output_token_limit=min(4096, MAX_OUTPUT_TOKENS),
+            output_token_limit=output_token_limit,
         ),
         origin=request.origin,
         execution_kind="model",
