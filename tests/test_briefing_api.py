@@ -889,6 +889,24 @@ class BriefingSessionApiTests(unittest.TestCase):
         ])
         validate_speech_script(script, artifact, user_designation="Agent 47")
 
+    def test_validate_speech_script_does_not_strip_designation_inside_other_tokens(
+        self,
+    ) -> None:
+        artifact = self._artifact_with_items([
+            ("observation", "Inventory", "The shelf holds 3 units."),
+        ])
+        item = artifact.sections[0].items[0]
+        script = BriefingSpeechScript(highlights=[
+            BriefingSpeechHighlight(
+                item_id=item.id,
+                text="The shelf holds 347 units.",
+            ),
+        ])
+        with self.assertRaisesRegex(
+            BriefingSpeechValidationError, "script_numeric_fact_mismatch"
+        ):
+            validate_speech_script(script, artifact, user_designation="47")
+
     def test_validate_speech_script_still_rejects_numeric_drift_beyond_designation(
         self,
     ) -> None:

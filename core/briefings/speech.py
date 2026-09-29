@@ -200,15 +200,15 @@ def speech_output_schema() -> dict[str, object]:
 
 
 def _spoken_for_fact_validation(spoken: str, user_designation: str) -> str:
-    """Remove saved user designation from spoken text before numeric/date checks."""
+    """Remove whole-token user designation from spoken text before numeric/date checks."""
     if not user_designation:
         return spoken
-    return re.sub(
-        re.escape(user_designation),
-        "",
-        spoken,
-        flags=re.IGNORECASE,
+    pattern = (
+        r"(?<![A-Za-z0-9])"
+        + re.escape(user_designation)
+        + r"(?![A-Za-z0-9])"
     )
+    return re.sub(pattern, " ", spoken, flags=re.IGNORECASE)
 
 
 def validate_speech_script(
