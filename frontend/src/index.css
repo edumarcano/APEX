@@ -259,56 +259,6 @@
   }
 }
 
-/* Distorted Gaseous Light Fields */
-.bg-nebula-swirl-1 {
-  background-image: radial-gradient(ellipse at 45% 45%, rgba(var(--atmosphere-glow-color), 0.28) 0%, rgba(var(--atmosphere-glow-color), 0.08) 50%, rgba(0, 0, 0, 0) 80%);
-  will-change: transform, background-image;
-}
-
-.bg-nebula-swirl-2 {
-  background-image: radial-gradient(ellipse at 55% 55%, rgba(var(--atmosphere-glow-color), 0.22) 0%, rgba(var(--atmosphere-glow-color), 0.05) 55%, rgba(0, 0, 0, 0) 90%);
-  will-change: transform, background-image;
-}
-
-.bg-atmosphere-vignette {
-  background-image: radial-gradient(circle at center, rgba(0, 0, 0, 0) 50%, rgba(0, 0, 0, 0.92) 100%) !important;
-}
-
-/* Counter-Swirl Physics Keyframes */
-@keyframes nebulaSpinClockwise {
-  0% {
-    transform: scaleX(1.7) scaleY(0.7) rotate(0deg) translate3d(0, 0, 0);
-  }
-  50% {
-    transform: scaleX(1.5) scaleY(0.8) rotate(180deg) translate3d(4%, -2%, 0);
-  }
-  100% {
-    transform: scaleX(1.7) scaleY(0.7) rotate(360deg) translate3d(0, 0, 0);
-  }
-}
-
-@keyframes nebulaSpinCounter {
-  0% {
-    transform: scaleX(0.7) scaleY(1.6) rotate(360deg) translate3d(0, 0, 0);
-  }
-  50% {
-    transform: scaleX(0.8) scaleY(1.4) rotate(180deg) translate3d(-3%, 3%, 0);
-  }
-  100% {
-    transform: scaleX(0.7) scaleY(1.6) rotate(0deg) translate3d(0, 0, 0);
-  }
-}
-
-/* High-Performance Animation Handles */
-.animate-nebula-spin-clockwise {
-  animation: nebulaSpinClockwise 32s cubic-bezier(0.445, 0.05, 0.55, 0.95) infinite;
-  backface-visibility: hidden;
-}
-
-.animate-nebula-spin-counter {
-  animation: nebulaSpinCounter 24s cubic-bezier(0.445, 0.05, 0.55, 0.95) infinite;
-  backface-visibility: hidden;
-}
 
 @keyframes signalFlowLeft {
   0%,
@@ -604,8 +554,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-nebula-spin-clockwise,
-  .animate-nebula-spin-counter,
   .animate-signal-flow-left,
   .animate-signal-flow-right,
   .animate-speech-wave-bar {

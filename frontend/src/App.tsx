@@ -1663,20 +1663,11 @@ export default function App(): ReactElement {
         '--logo-glow-color': logoGlowColor,
       } as CSSProperties}
     >
-      <CelestialBackground />
-
-      <div
-        className="absolute inset-0 z-[var(--z-reactive-glow)] pointer-events-none overflow-hidden"
-      >
-        {/* Layer 1: Horizontal Drifting Nebula (Clockwise Swirl) */}
-        <div className="absolute top-[-30%] left-[-30%] h-[160%] w-[160%] opacity-40 bg-nebula-swirl-1 animate-nebula-spin-clockwise" />
-
-        {/* Layer 2: Vertical Drifting Aurora (Counter-Clockwise Swirl) */}
-        <div className="absolute bottom-[-30%] right-[-30%] h-[160%] w-[160%] opacity-35 bg-nebula-swirl-2 animate-nebula-spin-counter" />
-
-        {/* Layer 3: Vignette Edge Contrast Mask */}
-        <div className="absolute inset-0 bg-atmosphere-vignette" />
-      </div>
+      <CelestialBackground
+        isLaunch={isLaunch}
+        workspace={workspace}
+        atmosphereGlowColor={atmosphereGlowColor}
+      />
 
       <div className={`hud-main-shell relative z-[var(--z-bento-hud)] flex h-full min-h-0 flex-1 flex-col overflow-visible xl:overflow-hidden ${isOverviewCentered ? 'hud-main-shell--overview-center' : ''}`}>
         {!isLaunch ? <header className="hud-header hud-header--workspace relative pointer-events-none mb-4 flex h-20 w-full shrink-0 select-none flex-nowrap items-center">
