@@ -106,7 +106,9 @@ The beta.6 schema is the supported upgrade floor. Startup validates core persist
 
 **Trade-off.** Provider health appears in its own runtime surface rather than readiness.
 
-### Write UTC while preserving legacy timestamp reads
+### Write UTC while preserving legacy timestamp reads (superseded)
+
+**Status: Superseded by Stable persistence cleanup.** The legacy cooldown reader and its timestamp parser have been retired. Existing rows in the old `runs` table remain untouched; this parser is not a current run-record compatibility path.
 
 **Decision.** New timestamps are timezone-aware UTC. Legacy timezone-naive run values are interpreted as local wall-clock time.
 

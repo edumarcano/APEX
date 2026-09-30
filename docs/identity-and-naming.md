@@ -45,7 +45,7 @@ Overview, Briefing, and Cortex use the same singular **APEX Agent** role and sha
 
 **Daily**, **Catch Up**, and **Deep** are profiles for the single briefing-session engine. Daily provides orientation, Catch Up compares source evidence with the last presented complete session, and Deep adds bounded read-only investigation when needed. Each profile uses the selected APEX Agent model and never silently substitutes another model. Sessions retain the selected model, canonical artifact, evidence, and a linked Cortex conversation.
 
-The beta.6 cutover removed legacy briefing rows from databases initialized at the time; current initialization leaves any remaining `briefings` table untouched. Saved sessions use the current Daily, Catch Up, and Deep profiles. Retired Flash, Focused, and Structured preferences are ignored rather than migrated. See [Architecture](architecture.md#briefing-routes) for the current database compatibility policy.
+Saved sessions use the current Daily, Catch Up, and Deep profiles. See [Architecture](architecture.md#persistence-compatibility) for the database compatibility policy and [Configuration](configuration.md#briefing-profiles) for handling of retired preferences.
 
 ## APEX and the logo
 

@@ -12,6 +12,8 @@ APEX is a local-first personal intelligence HUD. FastAPI serves the backend, Rea
 - **APEX Agent** is the single native personal operations assistant. It understands APEX briefings, trusted context, connected services, and APEX tools.
 - **Cortex Engine** executes bounded model turns and tool loops. It is model-routed, not Agent-routed.
 
+Launch and Overview load with the app shell; Settings loads on first open, while Briefing, Cortex, and Reports load when selected. The shared `ApexAssistantRuntime` and app-level state owners remain mounted as those workspace presentations load. Loading and retry states stay within the requested workspace, so navigating between views does not discard conversation drafts, history, or active work. See the [frontend guide](../frontend/README.md#presentation-loading) for loading ownership and the production loading check.
+
 The selected model determines cloud versus local execution, provider/runtime, model limits, pricing, availability, supported reasoning and context controls, and hosted tools. The stable Agent identity is always `apex`.
 
 ## Request flow
@@ -100,7 +102,7 @@ The [Context vault guide](context-vault.md) covers selection, sharing, and clean
 
 ## Market telemetry
 
-Market participates in both Overview telemetry and briefing evidence collection. Telemetry refreshes it in the normal sequential connector lifecycle and records its health in the shared snapshot. The Market client owns Alpha Vantage access, a versioned file-backed cache, and per-symbol daily request gates; the Market route only reads that cache. A symbol can make at most one request per UTC calendar day. Repeated failures back off for 1, 2, 4, then up to 8 days, while provider-wide transport, authentication, or rate failures defer remaining requests until the next UTC day. Daily OHLCV history stays in the Market display projection, while briefing evidence captures bounded ticker snapshots and price moves for synthesis and Catch Up comparison without chart payload overhead. Overview updates its card only after collection.
+Market participates in both Overview telemetry and briefing evidence collection. Telemetry refreshes it in the normal sequential connector lifecycle and records its health in the shared snapshot. The Market client owns Alpha Vantage access, a versioned file-backed cache, and per-symbol daily request gates; the Market route only reads that cache. A successful symbol fetch is limited to once per UTC calendar day. Temporary provider throttling uses a short same-day cooldown, daily quota exhaustion defers requests until the next UTC day, and other symbol failures use exponential date-based backoff up to eight days. Daily OHLCV history stays in the Market display projection, while briefing evidence captures bounded ticker snapshots and price moves for synthesis and Catch Up comparison without chart payload overhead. Overview updates its card only after collection.
 
 ## Local runtime coordination
 
@@ -114,7 +116,7 @@ Cortex runs execute asynchronously through the `CortexRunCoordinator`. A run car
 - **Durable run ledger:** SQLite records run metadata in the `cortex_runs` table partitioned by `production` and `sandbox`. Records capture limits, token totals, turn/tool counts, timings, stop reasons, and completion evidence. Message text stays in conversation persistence rather than being duplicated in the ledger. On startup, unfinished runs are safely finalized as `interrupted`.
 - **Live streaming:** Process-local Server-Sent Events stream live status, deltas, tool activity, and runtime measurements. Streams support reconnect replay from bounded in-memory buffers; disconnecting a client does not cancel the underlying run.
 - **Cooperative cancellation:** Active runs poll for cancellation at turn and tool boundaries, writing a cancellation marker and finalizing as `cancelled`.
-- **Shutdown ownership:** Application shutdown first closes run admission and signals active runs, then drains the retrieval warmup, managed llama.cpp startup, and idle-model monitor before releasing conversation, run, retrieval, connector, and action dependencies. One bounded shutdown window reports failure and leaves those dependencies open if a run worker or application-owned task remains active.
+- **Shutdown ownership:** Application shutdown signals briefing-speech cancellation and closes run admission, then drains active Cortex runs and application-owned tasks before draining the speech worker and releasing conversation, run, retrieval, connector, and action dependencies. One bounded shutdown window reports failure and leaves those dependencies open if a Cortex run, speech worker, or application-owned task remains active.
 
 ## Distributed tracing
 
@@ -126,6 +128,6 @@ Briefing's Daily, Catch Up, and Deep actions create durable sessions and use the
 
 The canonical briefing API consists of `GET /api/v1/briefing-profiles` and the `/api/v1/briefing-sessions` routes. The CLI uses the same asynchronous session API and marks its constrained origin as `cli`; it does not call services or SQLite directly. The Agent's `get_briefing_history` tool queries at most five newest completed artifact-backed sessions from the active partition in one joined read and returns bounded canonical content, profile/model identity, timestamps, presentation status, and limitations. Failed or incomplete sessions are skipped before applying the limit. The old transcript-based pipeline, mode settings, routes, and status poll are retired.
 
-The beta.6 database schema is the supported upgrade floor. A fresh database is bootstrapped to the current schema. Before startup performs any bootstrap or recovery, APEX checks core persistence versions and required table shapes through a read-only connection. An unsupported core schema stops startup without rewriting data or deleting tables. A database with an unsupported retrieval schema can still start with retrieval disabled for that run; canonical knowledge writes continue without derived retrieval synchronization. APEX does not automatically migrate older database schemas.
+## Persistence compatibility
 
-The beta.6 cutover dropped the retired SQLite `briefings` table. Current initialization leaves any such table untouched and does not copy its rows or preferences into the saved-session system.
+The beta.6 database schema is the supported upgrade floor. A fresh database is bootstrapped to the current schema. Before startup performs any bootstrap or recovery, APEX checks core persistence versions and required table shapes through a read-only connection. An unsupported core schema stops startup without rewriting data or deleting tables. A database with an unsupported retrieval schema can still start with retrieval disabled for that run; canonical knowledge writes continue without derived retrieval synchronization. APEX does not automatically migrate older database schemas. Current initialization leaves any residual retired `briefings` table untouched. See [Configuration](configuration.md#briefing-profiles) for the ignored legacy preference behavior and [Privacy](privacy.md#briefings) for local storage implications.
