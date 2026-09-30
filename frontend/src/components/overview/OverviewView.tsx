@@ -60,7 +60,7 @@ export function OverviewView({ identity, telemetry, state, error, onCollect, onR
     >
       {hasGrid ? (
         <div className="flex h-full w-full min-h-0 flex-1 flex-col justify-between" data-slot="home-identity" data-logo-size="overview">
-          <header className="flex w-full items-center justify-between">
+          <header className="flex w-full shrink-0 items-center justify-between pb-1">
             <span
               className={[
                 'font-orbitron text-[9px] font-semibold uppercase tracking-[0.2em] transition-colors duration-700 sm:text-[10px]',
@@ -80,13 +80,13 @@ export function OverviewView({ identity, telemetry, state, error, onCollect, onR
               <RefreshCw className={`size-3.5 motion-reduce:animate-none ${state === 'collecting' || telemetry.isRefreshingAll ? 'animate-spin' : ''}`} strokeWidth={2} aria-hidden />
             </button>
           </header>
-          <div className="my-auto flex min-h-0 flex-1 items-center justify-center py-2 filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]">
+          <div className="my-auto flex min-h-0 flex-1 items-center justify-center px-2 py-1 filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]">
             <ApexLogo
               {...identity.logoProps}
-              className="h-44 w-auto sm:h-52 xl:h-64 transition-[height,width] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+              className="h-full w-auto max-h-full max-w-full aspect-[5208/5420] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
             />
           </div>
-          <div className="mt-auto flex w-full justify-center">
+          <div className="flex w-full shrink-0 justify-center pt-1">
             <VoiceSignalGlyph {...identity.glyphProps} hideLabel />
           </div>
         </div>
