@@ -38,8 +38,10 @@ const appMocks = vi.hoisted(() => ({
   collectionStarted: true,
   noModels: false,
   settingsPanelApplied: null as unknown,
-  marketSymbols: null as string[] | null,
+  marketSymbols: null as readonly string[] | null,
   marketEnabled: false,
+  marketHookEnabled: false,
+  marketHookRevision: null as number | null,
   telemetrySnapshot: null as TelemetrySnapshot | null,
   telemetryRefreshingAll: false,
   telemetryRefreshingConnectors: new Set<string>(),
@@ -334,7 +336,9 @@ vi.mock('./hooks/useCortex', () => ({
   }),
 }))
 vi.mock('./hooks/useMarketData', () => ({
-  useMarketData: (_enabled: boolean, _revision: number | null, symbols: string[] | null) => {
+  useMarketData: (enabled: boolean, revision: number | null, symbols: readonly string[] | null) => {
+    appMocks.marketHookEnabled = enabled
+    appMocks.marketHookRevision = revision
     appMocks.marketSymbols = symbols
     return { data: null, isLoading: false }
   },
@@ -560,6 +564,78 @@ describe('App deferred settings panel', () => {
   })
 })
 
+describe('App cached Market eligibility', () => {
+  afterEach(() => {
+    appMocks.collectionStarted = true
+    appMocks.marketEnabled = false
+    appMocks.marketHookEnabled = false
+    appMocks.marketHookRevision = null
+    appMocks.telemetrySnapshot = null
+    appMocks.startCollection.mockClear()
+    appMocks.refreshAll.mockClear()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('reads published Market revisions after header refresh without starting collection', async () => {
+    appMocks.collectionStarted = false
+    appMocks.marketEnabled = true
+    appMocks.telemetrySnapshot = telemetrySnapshotWithMarketRevision(undefined)
+    appMocks.startCollection.mockClear()
+    appMocks.refreshAll.mockClear()
+    stubMarketAppFetch()
+    const user = userEvent.setup()
+    const { rerender } = renderOverviewApp()
+
+    expect(appMocks.marketHookEnabled).toBe(true)
+    expect(appMocks.marketHookRevision).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Refresh checks' }))
+    expect(appMocks.refreshAll).toHaveBeenCalledWith({ force: false })
+    expect(appMocks.startCollection).not.toHaveBeenCalled()
+
+    appMocks.telemetrySnapshot = telemetrySnapshotWithMarketRevision(0)
+    rerender(<App />)
+    expect(appMocks.marketHookEnabled).toBe(true)
+    expect(appMocks.marketHookRevision).toBe(0)
+    expect(appMocks.startCollection).not.toHaveBeenCalled()
+
+    appMocks.telemetrySnapshot = telemetrySnapshotWithMarketRevision(2)
+    rerender(<App />)
+    expect(appMocks.marketHookEnabled).toBe(true)
+    expect(appMocks.marketHookRevision).toBe(2)
+    expect(appMocks.startCollection).not.toHaveBeenCalled()
+  })
+
+  it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, undefined])(
+    'does not publish an invalid Market revision (%s)', (revision) => {
+      appMocks.collectionStarted = false
+      appMocks.marketEnabled = true
+      appMocks.telemetrySnapshot = telemetrySnapshotWithMarketRevision(revision)
+      stubMarketAppFetch()
+
+      render(<App />)
+
+      expect(appMocks.marketHookEnabled).toBe(true)
+      expect(appMocks.marketHookRevision).toBeNull()
+      expect(appMocks.startCollection).not.toHaveBeenCalled()
+    },
+  )
+
+  it('keeps cached Market reads disabled when the connector is disabled', () => {
+    appMocks.collectionStarted = false
+    appMocks.marketEnabled = false
+    appMocks.telemetrySnapshot = telemetrySnapshotWithMarketRevision(0)
+    stubMarketAppFetch()
+
+    render(<App />)
+
+    expect(appMocks.marketHookEnabled).toBe(false)
+    expect(appMocks.marketHookRevision).toBe(0)
+    expect(appMocks.startCollection).not.toHaveBeenCalled()
+  })
+})
+
 function usableTelemetrySnapshot(): TelemetrySnapshot {
   const collectedAt = new Date().toISOString()
   return {
@@ -575,6 +651,31 @@ function usableTelemetrySnapshot(): TelemetrySnapshot {
     connector_health: [],
     failed_connectors: [],
   }
+}
+
+function telemetrySnapshotWithMarketRevision(revision: unknown): TelemetrySnapshot {
+  const snapshot = usableTelemetrySnapshot()
+  return {
+    ...snapshot,
+    modules: {
+      ...snapshot.modules,
+      market: {
+        name: 'market', status: 'healthy', freshness: 'fresh_cache', reason_code: 'ok',
+        observed_at: snapshot.collected_at, display_text: 'Market data is available.',
+        data: revision === undefined ? {} : { collection_revision: revision },
+      },
+    },
+  }
+}
+
+function stubMarketAppFetch(): void {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+    const url = new URL(String(input))
+    if (url.pathname.endsWith('/briefing-sessions') || url.pathname.endsWith('/cortex/conversations')) {
+      return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+    return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }))
 }
 
 async function collectOverview(user: ReturnType<typeof userEvent.setup>): Promise<void> {

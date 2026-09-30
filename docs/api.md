@@ -568,11 +568,11 @@ Updates title, archive state, active branch, or saved Agent/tool-selection state
 
 Permanently deletes an archived conversation and its stored message tree. The
 conversation must belong to the current server-derived partition and must not
-have a pending turn or active run. Active conversations cannot be deleted; archive them first.
+have a pending turn or active run. Active conversations cannot be deleted; archive them first. The route returns `409 Conflict` while retrieval persistence has an unsupported schema, preserving both conversation history and derived retrieval records until a compatible schema is available.
 
 ### Cortex turns
 
-APEX owns Cortex conversation history in `apex_memory.db`. Conversations contain a tree of user and Agent messages, an active branch, Agent/tool selection state, timestamps, and archive state. HUD scratch threads remain browser-local until their first accepted turn; archived conversations can be permanently deleted through the archived-only DELETE route. A background sweep also deletes archived conversations after the configured retention period, measured from when they were archived. Repeating Archive does not extend that period; restoring and later archiving starts a new period. A pending turn or active run postpones automatic deletion until a later sweep.
+APEX owns Cortex conversation history in `apex_memory.db`. Conversations contain a tree of user and Agent messages, an active branch, Agent/tool selection state, timestamps, and archive state. HUD scratch threads remain browser-local until their first accepted turn; archived conversations can be permanently deleted through the archived-only DELETE route. A background sweep also deletes archived conversations after the configured retention period, measured from when they were archived. Repeating Archive does not extend that period; restoring and later archiving starts a new period. A pending turn or active run postpones automatic deletion until a later sweep. An unsupported retrieval schema also postpones deletion: the route returns `409 Conflict`, and the maintenance worker logs the failed sweep and retries on its next scheduled pass.
 
 `GET /api/v1/cortex/conversations` lists the current server-derived partition. `POST /api/v1/cortex/conversations` creates a `hud` or `cli` conversation. `GET` and `PATCH /api/v1/cortex/conversations/{conversation_id}` read or update title, archive state, active branch, and saved Agent/tool state.
 

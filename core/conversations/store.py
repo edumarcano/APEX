@@ -494,6 +494,22 @@ class ConversationStore:
     def _delete_archived_conversation(
         conn: sqlite3.Connection, conversation_id: str, partition: str
     ) -> None:
+        # Import locally to keep the conversation store independent of the
+        # retrieval service package during module initialization.
+        from core.retrieval.store import (
+            RetrievalSchemaCompatibilityError,
+            RetrievalStore,
+        )
+
+        try:
+            RetrievalStore.validate_schema(conn)
+        except RetrievalSchemaCompatibilityError as exc:
+            # Check before deleting messages: retrieval cleanup triggers fire
+            # from that DELETE and must not touch an unsupported schema.
+            raise ConversationConflictError(
+                "Conversation deletion is unavailable while retrieval persistence has an unsupported schema."
+            ) from exc
+
         conn.execute(
             "DELETE FROM conversation_messages WHERE conversation_id = ?",
             (conversation_id,),

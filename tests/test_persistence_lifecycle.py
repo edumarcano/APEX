@@ -5,13 +5,17 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 import tempfile
+import threading
 import unittest
 from contextlib import ExitStack, closing
 from pathlib import Path
 from unittest import mock
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from core.conversations.store import ConversationStore
+from core.conversations.retention import purge_expired_archived_conversations
 from core.knowledge import get_knowledge_service
 from core.retrieval import get_retrieval_service
 from core.retrieval.service import RetrievalService
@@ -71,10 +75,26 @@ class PersistenceLifecycleTests(unittest.TestCase):
         from core.api.app import app
         from core.mcp.models import McpRuntimeConfig
 
+        conversations = ConversationStore(self.path)
+        conversations.initialize()
+        conversation_id = uuid4()
+        conversations.create(
+            conversation_id=conversation_id, title="Expired archive",
+            partition="production", origin="hud", agent="apex",
+            selected_tool_names=None, tool_profile_id=None,
+        )
+        conversations.patch(conversation_id, "production", {"archived": True})
+        with closing(sqlite3.connect(self.path)) as conn, conn:
+            conn.execute(
+                "UPDATE conversations SET archived_at = '2000-01-01T00:00:00+00:00' WHERE id = ?",
+                (str(conversation_id),),
+            )
+        conversations.close()
+
         with closing(sqlite3.connect(self.path)) as conn:
             with conn:
                 conn.execute(
-                    "CREATE TABLE schema_versions(domain TEXT PRIMARY KEY, version INTEGER NOT NULL)"
+                    "CREATE TABLE IF NOT EXISTS schema_versions(domain TEXT PRIMARY KEY, version INTEGER NOT NULL)"
                 )
                 conn.execute(
                     "INSERT INTO schema_versions(domain, version) VALUES ('retrieval', 999)"
@@ -94,6 +114,16 @@ class PersistenceLifecycleTests(unittest.TestCase):
 
         async def wait_for_report_shutdown(_folder, stop_event):
             await stop_event.wait()
+
+        retention_sweep_finished = threading.Event()
+
+        async def run_real_retention_sweep(store, *, retention_days, stop_event):
+            try:
+                return await purge_expired_archived_conversations(
+                    store, retention_days=retention_days, stop_event=stop_event
+                )
+            finally:
+                retention_sweep_finished.set()
 
         original_initialize = RetrievalStore.initialize
         initialize_calls: list[RetrievalStore] = []
@@ -129,14 +159,15 @@ class PersistenceLifecycleTests(unittest.TestCase):
             stack.enter_context(mock.patch("core.api.app.ReminderService"))
             stack.enter_context(mock.patch("core.api.app.get_settings_store", return_value=mock.Mock()))
             stack.enter_context(mock.patch("core.api.app.ContextVaultRuntime", return_value=context_vault))
-            stack.enter_context(mock.patch("core.api.app.purge_expired_archived_conversations", new=mock.AsyncMock(return_value=0)))
+            stack.enter_context(mock.patch("core.api.app.purge_expired_archived_conversations", new=run_real_retention_sweep))
             stack.enter_context(mock.patch("core.api.app.run_activity_report_folder_poller", new=wait_for_report_shutdown))
             stack.enter_context(mock.patch("core.api.app.speaker.initialize"))
             stack.enter_context(mock.patch("core.api.app.speaker.shutdown"))
             stack.enter_context(mock.patch.object(RetrievalStore, "initialize", autospec=True, side_effect=track_initialize))
             stack.enter_context(mock.patch.object(RetrievalService, "prepare", autospec=True, side_effect=track_prepare))
 
-            with TestClient(app):
+            with TestClient(app) as client:
+                self.assertTrue(retention_sweep_finished.wait(timeout=10))
                 retrieval = get_retrieval_service()
                 status = retrieval.status()
                 self.assertFalse(status.enabled)
@@ -157,6 +188,11 @@ class PersistenceLifecycleTests(unittest.TestCase):
                 )
                 self.assertEqual(record.text, "Jordan prefers quiet mornings")
 
+                deletion = client.delete(
+                    f"/api/v1/cortex/conversations/{conversation_id}"
+                )
+                self.assertEqual(deletion.status_code, 409)
+
                 self.assertEqual(initialize_calls, [])
                 self.assertEqual(prepare_calls, [])
                 with closing(sqlite3.connect(self.path)) as conn:
@@ -171,6 +207,11 @@ class PersistenceLifecycleTests(unittest.TestCase):
                     self.assertEqual(
                         conn.execute("SELECT count(*) FROM retrieval_items").fetchone()[0],
                         1,
+                    )
+                    self.assertIsNotNone(
+                        conn.execute(
+                            "SELECT 1 FROM conversations WHERE id = ?", (str(conversation_id),)
+                        ).fetchone()
                     )
 
 

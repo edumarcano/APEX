@@ -20,6 +20,27 @@ describe('useMarketData', () => {
     expect(result.current).toEqual({ data: null, isLoading: false })
   })
 
+  it('does not fetch a published revision when Market is disabled', () => {
+    const { result } = renderHook(() => useMarketData(false, 1))
+    expect(fetch).not.toHaveBeenCalled()
+    expect(result.current).toEqual({ data: null, isLoading: false })
+  })
+
+  it('loads when the published revision changes from missing to zero', async () => {
+    const { result, rerender } = renderHook(
+      ({ revision }) => useMarketData(true, revision),
+      { initialProps: { revision: null as number | null } },
+    )
+    expect(fetch).not.toHaveBeenCalled()
+    expect(result.current).toEqual({ data: null, isLoading: false })
+
+    rerender({ revision: 0 })
+    await act(async () => { await Promise.resolve() })
+
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(result.current.data?.collection_revision).toBe(1)
+  })
+
   it('loads once for each telemetry collection revision without polling', async () => {
     const { rerender } = renderHook(({ revision }) => useMarketData(true, revision), { initialProps: { revision: 1 } })
     await act(async () => { await Promise.resolve() })

@@ -279,11 +279,14 @@ export default function App(): ReactElement {
     setHasCollectedTelemetry(true)
   }, [hasCollectedTelemetry, telemetry.snapshot])
   const [marketSymbols, setMarketSymbols] = useState<readonly string[] | null>(null)
-  const marketRevision = typeof telemetry.snapshot?.modules.market?.data.collection_revision === 'number'
-    ? telemetry.snapshot.modules.market.data.collection_revision
+  const publishedMarketRevision = telemetry.snapshot?.modules.market?.data.collection_revision
+  const marketRevision = typeof publishedMarketRevision === 'number'
+    && Number.isInteger(publishedMarketRevision)
+    && publishedMarketRevision >= 0
+    ? publishedMarketRevision
     : null
   const { data: marketData, isLoading: isMarketDisplayLoading } = useMarketData(
-    marketEnabled && collectionStarted,
+    marketEnabled,
     marketRevision,
     marketSymbols,
   )
