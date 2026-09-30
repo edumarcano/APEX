@@ -39,7 +39,11 @@ from core.briefings.models import (
 from core.briefings.daily import generate_briefing_generation
 from core.briefings.context import saved_briefing_followup_context
 from core.briefings.service import BriefingGenerationOutput, BriefingHistoryContext, BriefingService, BriefingSessionQueries
-from core.briefings.store import BriefingSessionConflictError, BriefingSessionStore
+from core.briefings.store import (
+    BriefingSessionConflictError,
+    BriefingSessionStore,
+    BriefingSessionStoreError,
+)
 from core.context import ContextPolicy
 from core.conversations.store import ConversationStore
 from core.conversations.models import ConversationTurnRequest
@@ -52,8 +56,8 @@ from core.settings.store import RuntimeSettingsStore
 from core.telemetry.models import TelemetryModuleEntry, TelemetrySnapshot
 
 
-class BriefingSessionSchemaMigrationTests(unittest.TestCase):
-    def test_v1_row_survives_history_column_upgrade_and_remains_readable(self) -> None:
+class BriefingSessionSchemaCompatibilityTests(unittest.TestCase):
+    def test_current_row_history_remains_readable_and_old_marker_rejects_without_writes(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "apex_memory.db"
             conversations = ConversationStore(db_path)
@@ -135,47 +139,46 @@ class BriefingSessionSchemaMigrationTests(unittest.TestCase):
                 )
 
             created_at_text = created_at.isoformat().replace("+00:00", "Z")
+            session_store.initialize()
+            history_json = json.dumps({
+                "schema_version": 1,
+                "selection": {
+                    "schema_version": 1,
+                    "captured_at": created_at_text,
+                    "session_ids": [],
+                },
+                "comparison": None,
+            })
             with closing(sqlite3.connect(db_path)) as connection, connection:
-                connection.execute(
-                    """CREATE TABLE briefing_sessions (
-                        id TEXT PRIMARY KEY NOT NULL,
-                        partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')),
-                        idempotency_key TEXT NOT NULL,
-                        conversation_id TEXT NOT NULL UNIQUE REFERENCES conversations(id) ON DELETE CASCADE,
-                        opening_message_id TEXT NOT NULL UNIQUE REFERENCES conversation_messages(id) ON DELETE CASCADE,
-                        run_id TEXT NOT NULL UNIQUE REFERENCES cortex_runs(id) ON DELETE CASCADE,
-                        profile_id TEXT NOT NULL CHECK(profile_id IN ('daily', 'catch_up', 'deep')),
-                        created_at TEXT NOT NULL,
-                        presented_at TEXT,
-                        request_json TEXT NOT NULL CHECK(json_valid(request_json)),
-                        configuration_json TEXT NOT NULL CHECK(json_valid(configuration_json)),
-                        artifact_json TEXT CHECK(artifact_json IS NULL OR json_valid(artifact_json)),
-                        evidence_json TEXT CHECK(evidence_json IS NULL OR json_valid(evidence_json)),
-                        UNIQUE(partition, idempotency_key)
-                    )"""
-                )
-                connection.execute(
-                    "INSERT INTO schema_versions(domain, version) VALUES ('briefing_sessions', 1)"
-                )
                 connection.execute(
                     """INSERT INTO briefing_sessions (
                         id, partition, idempotency_key, conversation_id, opening_message_id,
                         run_id, profile_id, created_at, presented_at, request_json,
-                        configuration_json, artifact_json, evidence_json
-                    ) VALUES (?, 'production', ?, ?, ?, ?, 'daily', ?, ?, ?, ?, ?, ?)""",
+                        configuration_json, history_json, artifact_json, evidence_json
+                    ) VALUES (?, 'production', ?, ?, ?, ?, 'daily', ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         str(session_id), str(request.idempotency_key), str(conversation_id),
                         str(opening_message_id), str(run_id), created_at_text,
                         created_at_text, json.dumps(request.model_dump(mode="json")),
-                        json.dumps(configuration.model_dump(mode="json")),
+                        json.dumps(configuration.model_dump(mode="json")), history_json,
                         json.dumps(artifact.model_dump(mode="json")),
                         json.dumps([
                             item.model_dump(mode="json") for item in output.evidence
                         ]),
                     ),
                 )
+                saved_row = connection.execute(
+                    "SELECT request_json, configuration_json, history_json, artifact_json, evidence_json "
+                    "FROM briefing_sessions WHERE id = ?", (str(session_id),)
+                ).fetchone()
+                connection.execute(
+                    "UPDATE schema_versions SET version = 1 WHERE domain = 'briefing_sessions'"
+                )
 
-            session_store.initialize()
+            with self.assertRaisesRegex(
+                BriefingSessionStoreError, "Unsupported briefing_sessions persistence schema"
+            ):
+                session_store.initialize()
 
             with closing(sqlite3.connect(db_path)) as connection, connection:
                 columns = {
@@ -185,12 +188,20 @@ class BriefingSessionSchemaMigrationTests(unittest.TestCase):
                 version = connection.execute(
                     "SELECT version FROM schema_versions WHERE domain = 'briefing_sessions'"
                 ).fetchone()[0]
+                preserved_row = connection.execute(
+                    "SELECT request_json, configuration_json, history_json, artifact_json, evidence_json "
+                    "FROM briefing_sessions WHERE id = ?", (str(session_id),)
+                ).fetchone()
             restored = session_store.get(session_id, "production")
 
             self.assertIn("history_json", columns)
-            self.assertEqual(version, 2)
+            self.assertEqual(version, 1)
+            self.assertEqual(tuple(preserved_row), tuple(saved_row))
             self.assertEqual(restored.request.profile_id, "daily")
-            self.assertIsNone(restored.history)
+            self.assertIsNotNone(restored.history)
+            assert restored.history is not None
+            self.assertEqual(restored.history.selection.session_ids, [])
+            self.assertEqual(restored.history.selection.captured_at, created_at)
             self.assertIsNotNone(restored.artifact)
             assert restored.artifact is not None
             self.assertEqual(restored.artifact.sections[0].items[0].title, "Planning meeting")
