@@ -163,6 +163,9 @@ class ConversationStoreTests(unittest.TestCase):
             self._begin()
 
     def test_delete_removes_archived_conversation_and_message_tree(self) -> None:
+        retrieval_store = RetrievalStore(self.store._db_path)
+        retrieval_store.initialize()
+        self.addCleanup(retrieval_store.close)
         user, agent, _, _ = self._begin(prompt="Remove me")
         self.store.finalize(
             conversation_id=self.conversation_id,
@@ -171,12 +174,227 @@ class ConversationStoreTests(unittest.TestCase):
             status="completed",
             response_metadata={},
         )
+        timestamp = utc_now_iso()
+        linked_id = retrieval_store.upsert_item(
+            RetrievalItem(
+                namespace="conversation", source_type="message", source_id=str(user.id),
+                partition="production", conversation_id=str(self.conversation_id),
+                message_id=str(user.id), role="user", timestamp=timestamp,
+                locator=f"conversation/{self.conversation_id}/message/{user.id}",
+                content_hash="linked-delete-test", text="Remove linked message",
+            )
+        )
+        orphan_id = retrieval_store.upsert_item(
+            RetrievalItem(
+                namespace="conversation", source_type="summary", source_id="orphan",
+                partition="production", conversation_id=str(self.conversation_id),
+                message_id=None, role=None, timestamp=timestamp,
+                locator=f"conversation/{self.conversation_id}/summary",
+                content_hash="orphan-delete-test", text="Remove conversation summary",
+            )
+        )
+        retained_id = retrieval_store.upsert_item(
+            RetrievalItem(
+                namespace="conversation", source_type="summary", source_id="retained",
+                partition="production", conversation_id=None, message_id=None,
+                role=None, timestamp=timestamp, locator="conversation/retained",
+                content_hash="retained-delete-test", text="Keep unrelated summary",
+            )
+        )
+        for item_id in (linked_id, orphan_id, retained_id):
+            retrieval_store.upsert_embedding(item_id, "test-model", [1.0, 0.0])
         self.store.patch(self.conversation_id, "production", {"archived": True})
         self.store.delete(self.conversation_id, "production")
+        self.assertEqual(retrieval_store.counts(), (1, 1))
+        with retrieval_store._connection() as conn:
+            self.assertEqual(
+                conn.execute(
+                    "SELECT item_id FROM retrieval_items_fts ORDER BY item_id"
+                ).fetchall(),
+                [(retained_id,)],
+            )
         with self.assertRaises(Exception):
             self.store.detail(self.conversation_id, "production")
         with self.assertRaises(Exception):
             self.store.detail(self.conversation_id, "sandbox")
+
+    def test_delete_remains_available_when_retrieval_domain_is_absent(self) -> None:
+        self.store.patch(self.conversation_id, "production", {"archived": True})
+        with self.store._connection() as conn:
+            self.assertIsNone(
+                conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'retrieval_items'"
+                ).fetchone()
+            )
+
+        self.store.delete(self.conversation_id, "production")
+        with self.assertRaises(Exception):
+            self.store.detail(self.conversation_id, "production")
+
+    def test_unsupported_retrieval_schema_blocks_manual_and_automatic_deletion(self) -> None:
+        for has_conversation_id in (False, True):
+            for deletion_path in ("manual", "retention"):
+                with self.subTest(
+                    has_conversation_id=has_conversation_id, deletion_path=deletion_path
+                ):
+                    with tempfile.TemporaryDirectory() as temp_dir:
+                        store = ConversationStore(Path(temp_dir) / "apex_memory.db")
+                        store.initialize()
+                        conversation_id = uuid4()
+                        store.create(
+                            conversation_id=conversation_id, title="Preserve me",
+                            partition="production", origin="hud", agent="apex",
+                            selected_tool_names=None, tool_profile_id=None,
+                        )
+                        user, agent, _, _ = store.begin_turn(
+                            conversation_id=conversation_id, partition="production",
+                            user_id=uuid4(), agent_id=uuid4(), parent_id=None,
+                            prompt="Keep this message", agent="apex", request_metadata={},
+                            selected_tool_names=None, tool_profile_id=None, history_limit=6,
+                        )
+                        store.finalize(
+                            conversation_id=conversation_id, agent_id=agent.id,
+                            answer="Keep this answer", status="completed",
+                            response_metadata={},
+                        )
+                        store.patch(conversation_id, "production", {"archived": True})
+                        archived_at = datetime(2000, 1, 1, tzinfo=timezone.utc)
+                        with closing(sqlite3.connect(store._db_path)) as conn, conn:
+                            conn.execute(
+                                "UPDATE conversations SET archived_at = ? WHERE id = ?",
+                                (archived_at.isoformat(), str(conversation_id)),
+                            )
+                            conn.execute(
+                                "INSERT INTO schema_versions(domain, version) VALUES ('retrieval', 999)"
+                            )
+                            if has_conversation_id:
+                                conn.execute(
+                                    "CREATE TABLE retrieval_items(id TEXT PRIMARY KEY, conversation_id TEXT, text TEXT)"
+                                )
+                                conn.execute(
+                                    "INSERT INTO retrieval_items VALUES ('preserved', ?, 'private derived text')",
+                                    (str(conversation_id),),
+                                )
+                            else:
+                                conn.execute(
+                                    "CREATE TABLE retrieval_items(id TEXT PRIMARY KEY, text TEXT)"
+                                )
+                                conn.execute(
+                                    "INSERT INTO retrieval_items VALUES ('preserved', 'private derived text')"
+                                )
+
+                        with store._connection() as conn:
+                            before = (
+                                conn.execute(
+                                    "SELECT id, archived_at FROM conversations WHERE id = ?",
+                                    (str(conversation_id),),
+                                ).fetchall(),
+                                conn.execute(
+                                    "SELECT id, content, status FROM conversation_messages WHERE conversation_id = ? ORDER BY id",
+                                    (str(conversation_id),),
+                                ).fetchall(),
+                                conn.execute("SELECT * FROM retrieval_items").fetchall(),
+                                conn.execute(
+                                    "SELECT domain, version FROM schema_versions WHERE domain = 'retrieval'"
+                                ).fetchall(),
+                            )
+                        with self.assertRaises(ConversationConflictError):
+                            if deletion_path == "manual":
+                                store.delete(conversation_id, "production")
+                            else:
+                                asyncio.run(
+                                    purge_expired_archived_conversations(
+                                        store, retention_days=30, stop_event=asyncio.Event()
+                                    )
+                                )
+                        with store._connection() as conn:
+                            after = (
+                                conn.execute(
+                                    "SELECT id, archived_at FROM conversations WHERE id = ?",
+                                    (str(conversation_id),),
+                                ).fetchall(),
+                                conn.execute(
+                                    "SELECT id, content, status FROM conversation_messages WHERE conversation_id = ? ORDER BY id",
+                                    (str(conversation_id),),
+                                ).fetchall(),
+                                conn.execute("SELECT * FROM retrieval_items").fetchall(),
+                                conn.execute(
+                                    "SELECT domain, version FROM schema_versions WHERE domain = 'retrieval'"
+                                ).fetchall(),
+                            )
+                        self.assertEqual(after, before)
+                        store.close()
+
+    def test_unsupported_retrieval_validation_precedes_message_delete_triggers(self) -> None:
+        for deletion_path in ("manual", "retention"):
+            with self.subTest(deletion_path=deletion_path):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    store = ConversationStore(Path(temp_dir) / "apex_memory.db")
+                    store.initialize()
+                    retrieval_store = RetrievalStore(store._db_path)
+                    retrieval_store.initialize()
+                    conversation_id = uuid4()
+                    store.create(
+                        conversation_id=conversation_id, title="Trigger guard",
+                        partition="production", origin="hud", agent="apex",
+                        selected_tool_names=None, tool_profile_id=None,
+                    )
+                    user, agent, _, _ = store.begin_turn(
+                        conversation_id=conversation_id, partition="production",
+                        user_id=uuid4(), agent_id=uuid4(), parent_id=None,
+                        prompt="Keep trigger-linked text", agent="apex", request_metadata={},
+                        selected_tool_names=None, tool_profile_id=None, history_limit=6,
+                    )
+                    store.finalize(
+                        conversation_id=conversation_id, agent_id=agent.id,
+                        answer="Keep it", status="completed", response_metadata={},
+                    )
+                    retrieval_id = retrieval_store.upsert_item(
+                        RetrievalItem(
+                            namespace="conversation", source_type="message", source_id=str(user.id),
+                            partition="production", conversation_id=str(conversation_id),
+                            message_id=str(user.id), role="user", timestamp=utc_now_iso(),
+                            locator=f"conversation/{conversation_id}/message/{user.id}",
+                            content_hash="trigger-guard", text="private retrieval text",
+                        )
+                    )
+                    store.patch(conversation_id, "production", {"archived": True})
+                    with closing(sqlite3.connect(store._db_path)) as conn, conn:
+                        conn.execute(
+                            "UPDATE conversations SET archived_at = '2000-01-01T00:00:00+00:00' WHERE id = ?",
+                            (str(conversation_id),),
+                        )
+                        conn.execute(
+                            "UPDATE schema_versions SET version = 999 WHERE domain = 'retrieval'"
+                        )
+                        conn.execute(
+                            """CREATE TRIGGER abort_message_delete BEFORE DELETE ON conversation_messages
+                            BEGIN SELECT RAISE(ABORT, 'message deletion reached'); END"""
+                        )
+
+                    with self.assertRaises(ConversationConflictError) as raised:
+                        if deletion_path == "manual":
+                            store.delete(conversation_id, "production")
+                        else:
+                            asyncio.run(
+                                purge_expired_archived_conversations(
+                                    store, retention_days=30, stop_event=asyncio.Event()
+                                )
+                            )
+                    self.assertNotIn("message deletion reached", str(raised.exception))
+                    with store._connection() as conn:
+                        self.assertIsNotNone(
+                            conn.execute(
+                                "SELECT 1 FROM conversation_messages WHERE id = ?", (str(user.id),)
+                            ).fetchone()
+                        )
+                        self.assertIsNotNone(
+                            conn.execute(
+                                "SELECT 1 FROM retrieval_items WHERE id = ?", (retrieval_id,)
+                            ).fetchone()
+                        )
+                    retrieval_store.close()
+                    store.close()
 
     def test_delete_rejects_active_and_pending_conversations(self) -> None:
         with self.assertRaises(ConversationConflictError):
@@ -472,7 +690,7 @@ class ConversationStoreTests(unittest.TestCase):
                     now,
                 ),
             )
-        retrieval_store.upsert_item(
+        message_retrieval_id = retrieval_store.upsert_item(
             RetrievalItem(
                 namespace="conversation",
                 source_type="message",
@@ -487,6 +705,29 @@ class ConversationStoreTests(unittest.TestCase):
                 text=user.content,
             )
         )
+        related_id = retrieval_store.upsert_item(
+            RetrievalItem(
+                namespace="conversation", source_type="summary", source_id="retention-orphan",
+                partition="production", conversation_id=str(self.conversation_id),
+                message_id=None, role=None, timestamp=now,
+                locator=f"conversation/{self.conversation_id}/summary",
+                content_hash="retention-orphan", text="Remove archived summary",
+            )
+        )
+        unrelated_id = retrieval_store.upsert_item(
+            RetrievalItem(
+                namespace="conversation", source_type="summary", source_id="retention-unrelated",
+                partition="production", conversation_id=None, message_id=None,
+                role=None, timestamp=now, locator="conversation/unrelated",
+                content_hash="retention-unrelated", text="Keep unrelated summary",
+            )
+        )
+        for item_id in (
+            message_retrieval_id,
+            related_id,
+            unrelated_id,
+        ):
+            retrieval_store.upsert_embedding(item_id, "test-model", [1.0, 0.0])
         self.store.patch(self.conversation_id, "production", {"archived": True})
         self._set_archived_at(
             self.conversation_id,
@@ -504,7 +745,14 @@ class ConversationStoreTests(unittest.TestCase):
             ),
             1,
         )
-        self.assertEqual(retrieval_store.counts(), (0, 0))
+        self.assertEqual(retrieval_store.counts(), (1, 1))
+        with retrieval_store._connection() as conn:
+            self.assertEqual(
+                conn.execute(
+                    "SELECT item_id FROM retrieval_items_fts ORDER BY item_id"
+                ).fetchall(),
+                [(unrelated_id,)],
+            )
         with self.assertRaises(Exception):
             run_store.get_run(run.id, partition="production")
         with self.assertRaises(Exception):
