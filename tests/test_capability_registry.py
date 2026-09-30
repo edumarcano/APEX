@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import unittest
-import time
+import threading
 from unittest import mock
 
 from core.agent.capabilities import (
@@ -311,6 +311,19 @@ class CapabilityRegistryTests(unittest.TestCase):
 
     def test_sync_timeout_returns_without_waiting_for_handler(self) -> None:
         clear_capability_registry_for_tests()
+        handler_started = threading.Event()
+        release_handler = threading.Event()
+        handler_finished = threading.Event()
+        invoke_finished = threading.Event()
+        outcome: list[Exception] = []
+
+        def slow_handler() -> str:
+            handler_started.set()
+            if not release_handler.wait(timeout=5.0):
+                raise TimeoutError("test handler release watchdog expired")
+            handler_finished.set()
+            return "late"
+
         register_capability(
             CapabilityDescriptor(
                 name="slow",
@@ -328,16 +341,33 @@ class CapabilityRegistryTests(unittest.TestCase):
                 expose_to_client_display=False,
                 timeout_seconds=0.05,
             ),
-            lambda: time.sleep(0.25),
+            slow_handler,
         )
 
-        started = time.perf_counter()
-        with self.assertRaises(CapabilityError) as raised:
-            invoke_capability("slow", {})
-        elapsed = time.perf_counter() - started
+        def invoke() -> None:
+            try:
+                invoke_capability("slow", {})
+            except Exception as exc:
+                outcome.append(exc)
+            else:
+                outcome.append(AssertionError("capability invocation did not time out"))
+            finally:
+                invoke_finished.set()
 
-        self.assertEqual(raised.exception.category, CapabilityErrorCategory.TIMEOUT)
-        self.assertLess(elapsed, 0.15)
+        caller = threading.Thread(target=invoke)
+        try:
+            caller.start()
+            self.assertTrue(handler_started.wait(timeout=1.0))
+            self.assertTrue(invoke_finished.wait(timeout=1.0))
+            self.assertFalse(handler_finished.is_set())
+            self.assertEqual(len(outcome), 1)
+            self.assertIsInstance(outcome[0], CapabilityError)
+            self.assertEqual(outcome[0].category, CapabilityErrorCategory.TIMEOUT)
+        finally:
+            release_handler.set()
+            caller.join(timeout=1.0)
+            self.assertFalse(caller.is_alive())
+            self.assertTrue(handler_finished.wait(timeout=1.0))
 
     def test_invoke_handler_exception_is_upstream_failure(self) -> None:
         clear_capability_registry_for_tests()
