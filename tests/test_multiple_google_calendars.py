@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import tempfile
 import unittest
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest import mock
 
 from fastapi import HTTPException
@@ -11,8 +14,8 @@ from clients.calendar_client import fetch_selected_calendar_events, list_readabl
 from core.api.routers.system import get_google_calendar_choices
 from core.connectors.collect import _calendar_data, collect_calendar
 from core.settings import CalendarSettings, FeaturesSettings, ModulesSettings, SettingsPatch
-from core.settings.models import CalendarPatch, RuntimeSettingsSnapshot
-from core.settings.normalize import apply_patch_to_snapshot
+from core.settings.models import CalendarPatch
+from core.settings.store import RuntimeSettingsStore
 from core.telemetry.collector import collect_connector_results
 
 
@@ -200,10 +203,17 @@ class MultipleGoogleCalendarsTests(unittest.TestCase):
         self.assertNotIn("revision", result.events[0])
 
     def test_explicit_empty_selection_remains_empty_when_applied(self) -> None:
-        snapshot = apply_patch_to_snapshot(
-            RuntimeSettingsSnapshot(),
-            SettingsPatch(calendar=CalendarPatch(selected_calendar_ids=[], show_calendar_names=False)),
-        )
+        with tempfile.TemporaryDirectory(prefix="apex_empty_calendar_patch_") as directory:
+            root = Path(directory)
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps({"features": {"calendar": True}}), encoding="utf-8")
+            store = RuntimeSettingsStore(
+                config_path=config_path,
+                local_config_path=root / "config.local.json",
+            )
+            snapshot = store.apply_patch(
+                SettingsPatch(calendar=CalendarPatch(selected_calendar_ids=[], show_calendar_names=False))
+            )
         self.assertEqual(snapshot.calendar.selected_calendar_ids, ())
         self.assertFalse(snapshot.calendar.show_calendar_names)
 

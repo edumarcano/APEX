@@ -68,8 +68,3 @@ class SyncHealthReport(BaseModel):
     sync_health_score: float
     connector_health: list[ConnectorHealthEntry] = Field(default_factory=list)
     failed_connectors: list[str] = Field(default_factory=list)
-
-    @property
-    def confidence_score(self) -> float:
-        """Compatibility alias for legacy digest consumers."""
-        return self.sync_health_score

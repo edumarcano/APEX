@@ -30,7 +30,6 @@ RunStopReason = Literal[
     "end_turn",
     "operator_cancelled",
     "max_elapsed_seconds",
-    "max_total_tokens",
     "max_retries",
     "max_model_turns",
     "max_tool_calls",
@@ -49,7 +48,6 @@ TraceId = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{32}$")]
 
 RunErrorCode = Literal[
     "timeout",
-    "token_limit",
     "turn_limit",
     "tool_limit",
     "retry_limit",
@@ -66,7 +64,6 @@ RunErrorCode = Literal[
 
 SAFE_ERROR_MESSAGES: dict[str, str] = {
     "timeout": "Run exceeded maximum elapsed time limit.",
-    "token_limit": "Run exceeded maximum token budget.",
     "turn_limit": "Run reached maximum model turn limit.",
     "tool_limit": "Run reached maximum tool execution limit.",
     "retry_limit": "Run exhausted provider retry attempts.",

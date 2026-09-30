@@ -65,11 +65,6 @@ def disabled_result(name: str) -> ConnectorResult:
     )
 
 
-def empty_results() -> dict[str, ConnectorResult]:
-    """Return a full module map of disabled stubs."""
-    return {name: disabled_result(name) for name in CONNECTOR_NAMES}
-
-
 def collect_connector_results(
     *,
     features: FeaturesSettings,

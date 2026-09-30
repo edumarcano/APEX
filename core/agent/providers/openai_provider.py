@@ -11,20 +11,6 @@ from core.agent.providers.responses_api import (
 )
 from core.agent.types import AgentMessage
 
-# Internal-only default profile for adapter tests. Not registered in the public roster.
-OPENAI_INTERNAL_PROFILES: dict[str, ResponsesModelProfile] = {
-    "openai_default": ResponsesModelProfile(
-        provider="openai",
-        display_name="OpenAI Default",
-        api_model="gpt-5.6-luna",
-        max_tool_turns=4,
-        max_tool_calls=6,
-        system_instruction="",
-        reasoning_effort="medium",
-    ),
-}
-
-
 class OpenAIProvider:
     """OpenAI Responses API adapter."""
 

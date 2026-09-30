@@ -96,30 +96,16 @@ def _utc_today() -> date:
     return _now_utc().date()
 
 
-def _date_from_timestamp(raw: object) -> str | None:
-    parsed = _parse_iso(raw)
-    return parsed.date().isoformat() if parsed is not None else None
-
-
 def _normalize_cache_entry(raw: object) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {}
     entry = dict(raw)
-    successful_date = _parse_date(entry.get("last_successful_fetch_date"))
-    if successful_date is None:
-        derived = _date_from_timestamp(entry.get("market_fetched_at"))
-        if derived is not None:
-            entry["last_successful_fetch_date"] = derived
-    attempt_date = _parse_date(entry.get("last_attempt_date"))
-    if attempt_date is None and _parse_date(entry.get("last_successful_fetch_date")) is not None:
-        entry["last_attempt_date"] = entry["last_successful_fetch_date"]
     failures = entry.get("consecutive_failures")
     entry["consecutive_failures"] = failures if isinstance(failures, int) and failures >= 0 else 0
     if _parse_date(entry.get("next_attempt_date")) is None:
         entry.pop("next_attempt_date", None)
     if not isinstance(entry.get("last_error_code"), str):
         entry.pop("last_error_code", None)
-    entry.pop("cooldown_until", None)
     return entry
 
 

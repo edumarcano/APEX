@@ -162,7 +162,7 @@ class BenchmarkUtilityTests(unittest.TestCase):
             reasoning="none",
             profile=profile,
             agent_key="apex",
-            tool_projection_agent="apex",
+            tool_projection_model_id="gemma-4-E2B-Q4_K_M.gguf",
         )
         runner = benchmark.BenchmarkRunner.__new__(benchmark.BenchmarkRunner)
         runner._allowed_refs = frozenset({first, second})
@@ -220,7 +220,7 @@ class BenchmarkUtilityTests(unittest.TestCase):
             reasoning="none",
             profile=profile,
             agent_key="apex",
-            tool_projection_agent="apex",
+            tool_projection_model_id=benchmark.DEFAULT_LOCAL_MODEL,
         )
         runner = benchmark.BenchmarkRunner.__new__(benchmark.BenchmarkRunner)
         runner.resource_recovery_timeout_seconds = 5.0
@@ -265,7 +265,7 @@ class BenchmarkUtilityTests(unittest.TestCase):
             reasoning="none",
             profile=profile,
             agent_key="apex",
-            tool_projection_agent="apex",
+            tool_projection_model_id=benchmark.DEFAULT_LOCAL_MODEL,
         )
         runner = benchmark.BenchmarkRunner.__new__(benchmark.BenchmarkRunner)
         runner._prepare_configuration = mock.Mock(
@@ -334,7 +334,7 @@ class BenchmarkUtilityTests(unittest.TestCase):
             reasoning="none",
             profile=SimpleNamespace(),
             agent_key="apex",
-            tool_projection_agent="apex",
+            tool_projection_model_id=benchmark.DEFAULT_LOCAL_MODEL,
         )
         runner = benchmark.BenchmarkRunner.__new__(benchmark.BenchmarkRunner)
         runner.configurations = (configuration,)

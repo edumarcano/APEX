@@ -661,9 +661,8 @@ def _fit_evidence_to_context(
     synthesis_limits = synthesis_limits if synthesis_limits is not None else set()
     original_evidence = list(evidence)
     profile = get_visible_model_profile(model.model_id)
-    from core.agent.catalog import build_concrete_agent
-    concrete = build_concrete_agent(
-        "apex",
+    from core.agent.catalog import build_provider_profile
+    concrete = build_provider_profile(
         native_effort=model.reasoning,  # type: ignore[arg-type]
         local_context_window=model.context_window,
         local_reasoning_mode=model.local_reasoning_mode,

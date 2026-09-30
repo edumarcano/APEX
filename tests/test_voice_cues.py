@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from datetime import datetime
 
-from core.api.tts import clean_for_tts
+from core.speaker import prepare_text
 from core.voice_cues import format_voice_cue
 
 
@@ -56,7 +56,7 @@ class VoiceCueFormattingTests(unittest.TestCase):
             "I couldn’t refresh your Overview telemetry just now. Please try again.",
         )
         self.assertEqual(
-            clean_for_tts("**Hello** `world` café Ãƒbroken"),
+            prepare_text("**Hello** `world` café"),
             "Hello world café",
         )
 

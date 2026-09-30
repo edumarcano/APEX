@@ -42,17 +42,6 @@ def get_power_state() -> PowerState:
     return "plugged" if battery.power_plugged else "battery"
 
 
-def check_power() -> bool:
-    """
-    Checks if the computer is plugged in.
-
-    Returns:
-        bool: True if plugged in. False when on battery. Desktops with no
-        battery sensor return True (unknown is not treated as unplugged).
-    """
-    return get_power_state() != "battery"
-
-
 def _bytes_to_gb(value: int | float) -> float:
     """Convert byte count to gigabytes rounded to one decimal place."""
     return round(float(value) / (1024**3), 1)

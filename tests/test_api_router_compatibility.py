@@ -5,7 +5,9 @@ from __future__ import annotations
 import importlib
 import runpy
 import unittest
+from types import SimpleNamespace
 from unittest import mock
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -13,7 +15,7 @@ from core.agent.types import AgentQueryResponse
 from core.api import app
 from core.api.models import (
     CortexAgentResponse,
-    CloudAgentVerificationResponse,
+    CloudModelVerificationResponse,
     LocalLoadResponse,
     LocalUnloadResponse,
 )
@@ -41,6 +43,57 @@ class ApiPackageCompatibilityTests(unittest.TestCase):
 class ExtractedRouterHttpTests(unittest.TestCase):
     def setUp(self) -> None:
         self.client = TestClient(app, raise_server_exceptions=True)
+
+    def test_conversation_projection_keeps_canonical_diagnostics_and_old_json(self) -> None:
+        from core.api.routers.cortex import _turn_result
+
+        saved_metadata = {
+            "resolved_tool_selection": {
+                "requested_tool_names": ["get_active_reminders"],
+                "offered_tool_names": ["get_active_reminders"],
+                "rejected_tool_names": [],
+                "selected_schema_tokens": 12,
+                "active_profile_id": "personal_ops",
+                "active_profile_name": "Personal Ops",
+                "rejected_tools": [],
+            },
+            "requested_tool_names": ["get_active_reminders"],
+            "offered_tool_names": ["get_active_reminders"],
+            "rejected_tool_names": [],
+            "selected_schema_tokens": 12,
+            "active_tool_profile_id": "personal_ops",
+            "active_tool_profile_name": "Personal Ops",
+            "session_id": "retired-temporary-id",
+            "metadata": {"retired": True},
+            "tool_trace": [{"name": "get_active_reminders", "status": "ok"}],
+            "activity_steps": [{"sequence": 1, "type": "run.started"}],
+        }
+        original_metadata = dict(saved_metadata)
+        user = SimpleNamespace(id=uuid4())
+        agent = SimpleNamespace(
+            id=uuid4(),
+            status="completed",
+            content="Done.",
+            response_metadata=saved_metadata,
+        )
+
+        result = _turn_result(uuid4(), user, agent)
+        body = result.model_dump(mode="json")
+
+        self.assertEqual(agent.response_metadata, original_metadata)
+        self.assertEqual(body["resolved_tool_selection"], saved_metadata["resolved_tool_selection"])
+        self.assertEqual(body["tool_trace"], saved_metadata["tool_trace"])
+        for field in (
+            "requested_tool_names",
+            "offered_tool_names",
+            "rejected_tool_names",
+            "selected_schema_tokens",
+            "active_tool_profile_id",
+            "active_tool_profile_name",
+            "session_id",
+            "metadata",
+        ):
+            self.assertNotIn(field, body)
 
     def test_retired_briefing_routes_are_absent_from_the_api_contract(self) -> None:
         paths = app.openapi()["paths"]
@@ -257,13 +310,13 @@ class ExtractedRouterHttpTests(unittest.TestCase):
         self.assertEqual(response.json(), {"status": "success", "model_id": "gemma-4-E2B-Q4_K_M.gguf"})
         load.assert_called_once_with("gemma-4-E2B-Q4_K_M.gguf")
 
-        verification = CloudAgentVerificationResponse(
+        verification = CloudModelVerificationResponse(
             model_id="deepseek/deepseek-v4-flash-0731",
             status="verified",
             checked_at="2026-08-02T12:00:00Z",
         )
         with mock.patch(
-            "core.api.routers.cortex.verify_cloud_agent_endpoint",
+            "core.api.routers.cortex.verify_cloud_model_endpoint",
             return_value=verification,
         ) as verify:
             response = self.client.post("/api/v1/cortex/models/verify", json={"model_id": "deepseek/deepseek-v4-flash-0731"})

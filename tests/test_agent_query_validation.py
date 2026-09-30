@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.model_catalog import get_model_profile
-from core.agent.tool_policies import filter_agent_capabilities, hosted_tools_for_agent
+from core.agent.tool_policies import filter_agent_capabilities, hosted_tools_for_model
 from core.agent.types import (
     AgentMessage,
     AgentQueryRequest,
@@ -109,7 +109,7 @@ class SandboxPolicyTests(unittest.TestCase):
                     "disable_telemetry_context": kwargs.get("disable_telemetry_context"),
                 }
             )
-            return AgentQueryResponse(answer="ok", agent_used={}, session_id=None)
+            return AgentQueryResponse(answer="ok", agent_used={})
 
         ask_apex = mock.Mock()
         ask_apex.enabled = True
@@ -134,7 +134,7 @@ class SandboxPolicyTests(unittest.TestCase):
                 "core.api.cortex.resolve_selected_tools",
                 return_value=mock.Mock(failures=[], descriptors=[], diagnostics=mock.Mock()),
             ),
-            mock.patch("core.api.cortex.agent_has_credentials", return_value=True),
+            mock.patch("core.api.cortex.model_has_credentials", return_value=True),
         ):
             snapshot = store_mock.return_value.get_snapshot.return_value
             snapshot.ask_apex = ask_apex
@@ -167,7 +167,7 @@ class SandboxPolicyTests(unittest.TestCase):
                     "disable_telemetry_context": kwargs.get("disable_telemetry_context"),
                 }
             )
-            return AgentQueryResponse(answer="ok", agent_used={}, session_id=None)
+            return AgentQueryResponse(answer="ok", agent_used={})
 
         ask_apex = mock.Mock()
         ask_apex.enabled = True
@@ -251,30 +251,24 @@ class SandboxPolicyTests(unittest.TestCase):
         )
 
     def test_hosted_tool_policy_matches_selected_models_and_toggles(self) -> None:
-        with mock.patch(
-            "core.agent.catalog.resolve_selected_model_profile"
-        ) as resolve_profile:
-            resolve_profile.return_value = get_model_profile("gemini-3.7-flash")
-            self.assertEqual(
-                hosted_tools_for_agent(
-                    "apex", google_search_enabled=True
-                ),
-                frozenset({"google_search", "google_maps"}),
-            )
-            self.assertEqual(
-                hosted_tools_for_agent(
-                    "apex", google_search_enabled=False
-                ),
-                frozenset({"google_maps"}),
-            )
-            self.assertEqual(
-                hosted_tools_for_agent(
-                    "apex",
-                    google_search_enabled=False,
-                    google_maps_enabled=False,
-                ),
-                frozenset(),
-            )
+        profile = get_model_profile("gemini-3.7-flash")
+        assert profile is not None
+        self.assertEqual(
+            hosted_tools_for_model(profile, google_search_enabled=True),
+            frozenset({"google_search", "google_maps"}),
+        )
+        self.assertEqual(
+            hosted_tools_for_model(profile, google_search_enabled=False),
+            frozenset({"google_maps"}),
+        )
+        self.assertEqual(
+            hosted_tools_for_model(
+                profile,
+                google_search_enabled=False,
+                google_maps_enabled=False,
+            ),
+            frozenset(),
+        )
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import requests
 
-from core.agent.catalog import agent_key_for_local_model_ref
+from core.agent.catalog import model_id_for_local_model_ref
 from core.agent.local_runtime.contract import LocalModelRef
 from core.agent.providers import llama_cpp_lifecycle as lifecycle
 from core.agent.providers.llama_cpp_lifecycle import (
@@ -210,7 +210,7 @@ class LlamaCppLifecycleTests(unittest.TestCase):
             snapshot = self.backend.get_status_snapshot(force_refresh=True)
         self.assertEqual(snapshot["installed_models"], ["other-gguf-alias"])
         self.assertIsNone(
-            agent_key_for_local_model_ref(
+            model_id_for_local_model_ref(
                 LocalModelRef(provider="llama_cpp", model="other-gguf-alias")
             )
         )

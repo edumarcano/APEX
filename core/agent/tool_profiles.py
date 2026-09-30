@@ -159,14 +159,7 @@ def default_profile_for_runtime(runtime: str) -> ToolProfile:
     return _BUILT_IN_BY_ID["all_allowed"]
 
 
-def default_profile_for_agent(agent_key: str) -> ToolProfile:
-    """Compatibility wrapper for the sole public APEX Agent."""
-    from core.agent.catalog import resolve_selected_model_profile
-    return default_profile_for_runtime(resolve_selected_model_profile().runtime)
-
-
 def resolve_profile_names(
-    agent_key: str,
     profile_id: str,
     *,
     available_names: set[str] | None = None,
@@ -185,16 +178,3 @@ def resolve_profile_names(
     else:
         names = list(profile.tool_names)
     return list(dict.fromkeys(name.strip() for name in names if name.strip()))
-
-
-def default_profile_names(
-    agent_key: str,
-    *,
-    available_names: set[str] | None = None,
-) -> tuple[ToolProfile, list[str]]:
-    profile = default_profile_for_agent(agent_key)
-    return profile, resolve_profile_names(
-        agent_key,
-        profile.id,
-        available_names=available_names,
-    )

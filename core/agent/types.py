@@ -303,25 +303,25 @@ class AgentQueryRequest(BaseModel):
             "Rejected for local models."
         ),
     )
-    session_id: Optional[str] = Field(
-        default=None, description="Optional temporary session grouping identifier."
-    )
     history: List[AgentMessage] = Field(
         default_factory=list,
-        description="Recent conversation history for the session.",
+        description=(
+            "Optional recent conversation history supplied for a direct query. "
+            "Maintained conversation turns load bounded history from persistence."
+        ),
     )
     history_partition: Literal["production", "sandbox"] = Field(
         default="production",
         description=(
-            "Browser-owned history partition. Sandbox history is accepted only "
-            "when explicitly marked as sandbox history."
+            "Execution partition for direct query history. Maintained conversation "
+            "turns derive the partition from the server-owned conversation."
         ),
     )
     selected_tool_names: list[str] = Field(
         default_factory=list,
         description=(
             "Explicit stable capability names to expose for this turn. An empty "
-            "list means no tools. When omitted, the active Agent default profile "
+            "list means no tools. When omitted, the runtime default profile "
             "is resolved."
         ),
     )
@@ -363,10 +363,6 @@ class AgentQueryResponse(BaseModel):
         default_factory=list,
         description="Structured outputs of whitelisted tools executed.",
     )
-    session_id: Optional[str] = Field(
-        default=None,
-        description="Active temporary session grouping identifier.",
-    )
     error: Optional[str] = Field(
         default=None, description="Detailed error diagnostics, if any."
     )
@@ -374,12 +370,6 @@ class AgentQueryResponse(BaseModel):
         default_factory=ToolSelectionDiagnostics,
         description="Exact requested, offered, rejected, and estimated tool selection.",
     )
-    requested_tool_names: list[str] = Field(default_factory=list)
-    offered_tool_names: list[str] = Field(default_factory=list)
-    rejected_tool_names: list[str] = Field(default_factory=list)
-    selected_schema_tokens: int = Field(default=0, ge=0)
-    active_tool_profile_id: str | None = None
-    active_tool_profile_name: str | None = None
     local_context_usage: LocalContextUsage | None = Field(
         default=None,
         description="Local model prompt-window usage; null for cloud models.",

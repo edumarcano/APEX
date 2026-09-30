@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from core.agent.catalog import build_concrete_agent, resolve_effort
+from core.agent.catalog import build_provider_profile, resolve_effort
 from core.agent.model_catalog import get_model_profile
 from core.settings.models import AgentSettings, CloudHostedToolsSettings, CloudSettings, LocalSettings
 
@@ -60,8 +60,7 @@ def build_local_profile(
     profile = get_model_profile(model)
     assert profile is not None
     native = resolve_effort(profile, None)
-    return build_concrete_agent(
-        "apex",
+    return build_provider_profile(
         native_effort=native,
         local_context_window=context_window,
         local_reasoning_mode=reasoning_mode,  # type: ignore[arg-type]
@@ -77,8 +76,7 @@ def build_cloud_profile(
     profile = get_model_profile(model)
     assert profile is not None
     native = resolve_effort(profile, effort)  # type: ignore[arg-type]
-    return build_concrete_agent(
-        "apex",
+    return build_provider_profile(
         native_effort=native,
         model_id=model,
     )

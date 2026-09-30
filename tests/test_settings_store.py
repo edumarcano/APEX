@@ -205,6 +205,32 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertFalse(hasattr(settings, "briefing"))
         self.assertEqual(json.loads(self.local_path.read_text(encoding="utf-8")), original)
 
+        store.apply_patch(SettingsPatch(user_designation="Operator"))
+        saved = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["briefing"], original["briefing"])
+        self.assertEqual(saved["user_designation"], "Operator")
+
+    def test_legacy_agent_tool_defaults_are_not_used_as_runtime_defaults(self) -> None:
+        _write_json(self.local_path, {
+            "tool_profiles": {"default_profile_by_agent": {"apex": "custom"}},
+        })
+
+        settings = self._store().get_snapshot().tool_profiles
+
+        self.assertEqual(settings.default_profile_by_runtime, {})
+        self.assertTrue(self._store().local_override_active)
+
+    def test_unsupported_engine_uses_the_normal_invalid_engine_path(self) -> None:
+        issues = NormalizationIssues()
+        normalized = normalize_layer(
+            {"tts_settings": {"primary_tts": "unsupported"}},
+            layer_name="config.local.json",
+            issues=issues,
+        )
+
+        self.assertNotIn("tts_settings", normalized)
+        self.assertTrue(any("not a valid engine" in item for item in issues.errors))
+
     def test_persistence_failure_keeps_the_published_snapshot_unchanged(self) -> None:
         store = self._store()
         before = store.get_snapshot()

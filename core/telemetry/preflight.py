@@ -18,13 +18,12 @@ from core.agent.local_runtime.coordinator import (
 )
 from core.agent.local_runtime.registry import get_local_runtime_backend
 from core.agent.catalog import (
-    agent_has_credentials,
-    build_concrete_agent,
+    build_provider_profile,
     local_context_window_for_model,
     local_reasoning_mode_for_model,
     resolve_model_selection,
 )
-from core.agent.model_catalog import get_model_profile
+from core.agent.model_catalog import get_model_profile, model_has_credentials
 from core.config import ENV_PATH, is_dev_mode
 from core.settings import get_settings_store
 from core.connectors.models import CONNECTOR_NAMES, EXTERNAL_CONNECTOR_NAMES
@@ -138,8 +137,7 @@ def _evaluate_local_model_blockers(
     if profile is None or profile.runtime != "local":
         blockers.append(_blocker("invalid_input", f"Unknown local model: {model_id!r}"))
         return blockers, False
-    agent = build_concrete_agent(
-        "apex",
+    agent = build_provider_profile(
         native_effort=None,
         local_context_window=(
             context_window
@@ -208,7 +206,7 @@ def _cloud_credential_blockers(
 
     profile = get_model_profile(model_id) if model_id else None
     if profile is not None and profile.runtime == "cloud":
-        if agent_has_credentials("apex", profile):
+        if model_has_credentials(profile):
             return []
         env_name = profile.credential_env or "required credentials"
         return [
@@ -350,8 +348,7 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         warnings.append(_warning("rapid_connector_refresh"))
 
     if local_model and model_id is not None:
-        profile = build_concrete_agent(
-            "apex",
+        profile = build_provider_profile(
             native_effort=None,
             local_context_window=(
                 local_context_window_for_model(model_id)

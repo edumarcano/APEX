@@ -109,21 +109,6 @@ def project_descriptor_for_model(
     return projected
 
 
-def project_descriptor_for_agent(
-    agent_key: str,
-    descriptor: CapabilityDescriptor,
-) -> CapabilityDescriptor:
-    """Compatibility wrapper for callers that use the saved selection."""
-    if agent_key != "apex":
-        raise ValueError(f"Unknown Agent key: {agent_key!r}")
-    from core.agent.catalog import resolve_selected_model_profile
-
-    return project_descriptor_for_model(
-        resolve_selected_model_profile().model_id,
-        descriptor,
-    )
-
-
 def estimate_json_tokens(
     payload: Any,
     *,

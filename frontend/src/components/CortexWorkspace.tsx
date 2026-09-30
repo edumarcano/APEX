@@ -81,7 +81,7 @@ interface CortexWorkspaceProps {
   verifyingCloudModel?: string | null
   onLoadLocalModel: (modelId: string) => Promise<boolean>
   onUnloadLocalModel: () => Promise<boolean>
-  onVerifyCloudAgent: (modelId: string) => Promise<boolean>
+  onVerifyCloudModel: (modelId: string) => Promise<boolean>
   snapshotAttached: boolean
   snapshotAvailable: boolean
   personalContextEnabled?: boolean
@@ -558,7 +558,7 @@ function RuntimeControls({
         disabled={controlsDisabled}
         isQuerying={props.isQuerying}
         verifyingModelId={props.verifyingCloudModel}
-        onVerify={props.onVerifyCloudAgent}
+        onVerify={props.onVerifyCloudModel}
         agentDisplayName={agentDisplayName}
       />
       {!isLocal && reasoningOptions.length > 0 ? <section className="space-y-2"><label htmlFor="cortex-effort" className="font-orbitron text-[10px] uppercase tracking-[0.16em] text-zinc-500">Reasoning effort</label><select id="cortex-effort" value={props.cloudEffort} disabled={controlsDisabled} onChange={(event) => props.onEffortChange(event.target.value as CloudEffort)} className="w-full rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-[#7EB3FF]">{reasoningOptions.map((effort) => <option key={effort} value={effort}>{formatReasoningLabel(effort)}</option>)}</select></section> : null}

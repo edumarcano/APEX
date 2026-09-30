@@ -127,12 +127,6 @@ class ConversationTurnResult(BaseModel):
     tool_outputs: list[dict[str, Any]] = Field(default_factory=list)
     error: str | None = None
     resolved_tool_selection: dict[str, Any] = Field(default_factory=dict)
-    requested_tool_names: list[str] = Field(default_factory=list)
-    offered_tool_names: list[str] = Field(default_factory=list)
-    rejected_tool_names: list[str] = Field(default_factory=list)
-    selected_schema_tokens: int = 0
-    active_tool_profile_id: str | None = None
-    active_tool_profile_name: str | None = None
     local_context_usage: dict[str, Any] | None = None
     resolved_model: str | None = None
     usage: dict[str, Any] | None = None
@@ -140,4 +134,3 @@ class ConversationTurnResult(BaseModel):
     cost_estimate: dict[str, Any] | None = None
     context_usage: dict[str, Any] | None = None
     context_references: list[dict[str, Any]] = Field(default_factory=list)
-    metadata: dict[str, Any] | None = None

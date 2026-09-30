@@ -247,7 +247,7 @@ class BriefingSingleCallTests(unittest.TestCase):
             ),
             patch("core.briefings.execution.model_has_credentials", return_value=True),
             patch(
-                "core.briefings.execution.build_concrete_agent",
+                "core.briefings.execution.build_provider_profile",
                 return_value=SimpleNamespace(system_instruction="Safe briefing system instruction."),
             ),
             patch("core.briefings.execution.is_local_profile", return_value=False),

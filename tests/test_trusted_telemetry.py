@@ -42,14 +42,13 @@ class SyncHealthScoringTests(unittest.TestCase):
             }
         )
         self.assertEqual(report.sync_health_score, 62.5)
-        self.assertEqual(report.confidence_score, 62.5)
         self.assertEqual(report.failed_connectors, ["email"])
         self.assertEqual(
             [entry.name for entry in report.connector_health],
             ["weather", "news", "email", "reminders"],
         )
 
-    def test_sports_failures_map_to_the_connector_group(self) -> None:
+    def test_sports_failures_keep_independent_connector_names(self) -> None:
         report = compute_sync_health(
             {
                 "f1": _result("f1", "unavailable", reason_code="provider_error"),
@@ -57,7 +56,7 @@ class SyncHealthScoringTests(unittest.TestCase):
                 "reminders": _result("reminders", "healthy"),
             }
         )
-        self.assertEqual(report.failed_connectors, ["sports"])
+        self.assertEqual(report.failed_connectors, ["f1", "football"])
         self.assertEqual(
             {entry.name for entry in report.connector_health},
             {"f1", "football", "reminders"},

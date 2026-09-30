@@ -502,14 +502,7 @@ class GeminiProvider:
                         _stream_tool_calls=normalized_tool_calls,
                         _stream_measurements={"ttft_ms": ttft_ms} if ttft_ms is not None else {},
                     )
-                # Lightweight test fakes often implement only the completed
-                # endpoint; retain that compatibility while native streaming
-                # remains the first production path.
-                if type(stream).__name__ not in {"MagicMock", "Mock"}:
-                    raise ValueError("Gemini native stream returned no chunks.")
-                return self.client.models.generate_content(
-                    model=profile.api_model, contents=contents, config=config
-                )
+                raise ValueError("Gemini native stream returned no chunks.")
             finally:
                 close = getattr(stream, "close", None)
                 if callable(close):

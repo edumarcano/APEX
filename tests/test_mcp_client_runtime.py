@@ -10,7 +10,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 from fastmcp import Client, FastMCP
@@ -922,20 +922,16 @@ class McpClientRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
 class McpStatusRouteTests(unittest.TestCase):
     def setUp(self) -> None:
+        from core.api.app import app
+
         set_mcp_manager(None)
+        self.client = TestClient(app, raise_server_exceptions=True)
 
     def tearDown(self) -> None:
         set_mcp_manager(None)
 
     def test_status_route_returns_disabled_without_manager(self) -> None:
-        from core.api.app import app
-
-        with patch("core.api.app.any_local_runtime_enabled", return_value=False), patch(
-            "core.api.app.load_mcp_config",
-            return_value=McpRuntimeConfig(enabled=False, servers={}),
-        ), patch("core.api.app.configure_logging"):
-            with TestClient(app) as client:
-                response = client.get("/api/v1/mcp/status")
+        response = self.client.get("/api/v1/mcp/status")
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertFalse(body["enabled"])
@@ -944,16 +940,22 @@ class McpStatusRouteTests(unittest.TestCase):
         self.assertEqual(body, empty_mcp_status().model_dump())
 
     def test_ready_probe_does_not_require_mcp(self) -> None:
-        from core.api.app import app
-
-        with patch("core.api.app.any_local_runtime_enabled", return_value=False), patch(
-            "core.api.app.load_mcp_config",
-            return_value=McpRuntimeConfig(enabled=False, servers={}),
-        ), patch("core.api.app.configure_logging"):
-            with TestClient(app) as client:
-                response = client.get("/api/v1/health/ready")
+        settings = Mock()
+        with (
+            patch(
+                "core.api.routers.system.get_settings_store",
+                return_value=settings,
+            ) as get_settings,
+            patch("core.api.routers.system.database.probe_db") as probe_db,
+            patch("core.api.routers.system.get_mcp_manager") as get_mcp_manager,
+        ):
+            response = self.client.get("/api/v1/health/ready")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "ready")
+        get_settings.assert_called_once_with()
+        settings.get_snapshot.assert_called_once_with()
+        probe_db.assert_called_once_with()
+        get_mcp_manager.assert_not_called()
 
 
 if __name__ == "__main__":

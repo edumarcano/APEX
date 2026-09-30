@@ -166,7 +166,7 @@ def run_demo_agent_query(
     """Return deterministic Agent responses when ``DEMO_MODE`` is active."""
     from core.agent.catalog import (
         AGENT_SPECS,
-        build_concrete_agent,
+        build_provider_profile,
         build_agent_used_metadata,
         is_agent_visible,
     )
@@ -178,8 +178,7 @@ def run_demo_agent_query(
             detail=f"Agent {agent_key!r} is not available.",
         )
 
-    agent = build_concrete_agent(
-        agent_key,
+    agent = build_provider_profile(
         native_effort=resolved_effort,
         model_id=model_profile.model_id,
     )
@@ -207,25 +206,6 @@ def run_demo_agent_query(
         ),
         tool_trace=selected_response["tool_trace"],
         tool_outputs=selected_response.get("tool_outputs", []),
-        session_id=payload.session_id,
         error=None,
         resolved_tool_selection=tool_selection or ToolSelectionDiagnostics(),
-        requested_tool_names=(
-            tool_selection.requested_tool_names if tool_selection is not None else []
-        ),
-        offered_tool_names=(
-            tool_selection.offered_tool_names if tool_selection is not None else []
-        ),
-        rejected_tool_names=(
-            tool_selection.rejected_tool_names if tool_selection is not None else []
-        ),
-        selected_schema_tokens=(
-            tool_selection.selected_schema_tokens if tool_selection is not None else 0
-        ),
-        active_tool_profile_id=(
-            tool_selection.active_profile_id if tool_selection is not None else None
-        ),
-        active_tool_profile_name=(
-            tool_selection.active_profile_name if tool_selection is not None else None
-        ),
     )

@@ -262,14 +262,6 @@ export interface AgentInitialSelection {
   sandboxMode?: boolean
 }
 
-export interface DigestPayload {
-  insights: string[]
-  sync_health_score?: number
-  confidence_score?: number
-  failed_connectors?: string[]
-  connector_health?: ConnectorHealthEntry[]
-}
-
 export type ConnectorHealthStatus = 'healthy' | 'degraded' | 'unavailable' | 'disabled'
 export type ConnectorFreshness = 'live' | 'fresh_cache' | 'stale' | 'none'
 
@@ -347,8 +339,6 @@ export interface PreflightRequest {
   force?: boolean
   involves_cloud?: boolean
   acknowledged_warnings?: string[]
-  /** Accepted by older servers; ignored by the current preflight contract. */
-  cloud_disclosure_acknowledged?: boolean
 }
 
 export interface PreflightResponse {

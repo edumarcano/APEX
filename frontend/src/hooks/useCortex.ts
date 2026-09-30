@@ -16,7 +16,7 @@ export interface UseCortexResult {
   refreshAgentsStatus: () => Promise<void>
   unloadLocalModel: () => Promise<boolean>
   loadLocalModel: (modelId?: string) => Promise<boolean>
-  verifyCloudAgent: (modelId: string) => Promise<boolean>
+  verifyCloudModel: (modelId: string) => Promise<boolean>
 }
 
 function parseCortexAgent(body: unknown): CortexAgent | null {
@@ -102,7 +102,7 @@ export function useCortex(agentsPollingEnabled = false): UseCortexResult {
     } finally { setIsLocalModelActionPending(false) }
   }, [cortexAgent, isLocalModelActionPending, refreshAgentsStatus])
 
-  const verifyCloudAgent = useCallback(async (modelId: string): Promise<boolean> => {
+  const verifyCloudModel = useCallback(async (modelId: string): Promise<boolean> => {
     if (verifyingCloudModel) return false
     setVerifyingCloudModel(modelId)
     try {
@@ -122,6 +122,6 @@ export function useCortex(agentsPollingEnabled = false): UseCortexResult {
     refreshAgentsStatus,
     unloadLocalModel,
     loadLocalModel,
-    verifyCloudAgent,
+    verifyCloudModel,
   }
 }

@@ -70,7 +70,6 @@ EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
         "context_vault",
         "ask_apex",
         "tool_profiles",
-        "briefing",
         "tts_settings",
         "mcp",
         "llama_cpp",
@@ -124,7 +123,6 @@ def normalize_layer(
     Normalize a single config layer for editable settings.
 
     - Validate the current ask_apex shape and reject stale Agent/provider/runtime keys.
-    - Map legacy TTS engine ``piper`` to ``pyttsx3``.
     - Warn and drop unknown keys under editable sections.
     """
     if not isinstance(raw, dict):
@@ -204,10 +202,6 @@ def normalize_layer(
             tool_profiles = _normalize_tool_profiles(value, layer_name, issues)
             if tool_profiles:
                 normalized["tool_profiles"] = tool_profiles
-        elif key == "briefing":
-            # Retired legacy preferences are deliberately inert; no mode or
-            # model preference is inferred from an old local configuration.
-            continue
         elif key == "tts_settings":
             tts = _normalize_tts_settings(value, layer_name, issues)
             if tts:
@@ -863,7 +857,7 @@ def _record_unsupported_agent_fields(
 def _normalize_tool_profiles(
     value: Any, layer_name: str, errors: NormalizationIssues | None
 ) -> dict[str, Any]:
-    """Normalize non-secret saved tool selections and Agent defaults."""
+    """Normalize saved tool selections and runtime defaults."""
     if not isinstance(value, dict):
         _record_error(errors, "tool_profiles must be a JSON object")
         _LOGGER.warning(
@@ -927,7 +921,7 @@ def _normalize_tool_profiles(
                 )
             result["custom_profiles"] = profiles
 
-    defaults_raw = value.get("default_profile_by_runtime", value.get("default_profile_by_agent", {}))
+    defaults_raw = value.get("default_profile_by_runtime", {})
     if defaults_raw is not None:
         if not isinstance(defaults_raw, dict):
             _record_error(
@@ -946,7 +940,7 @@ def _normalize_tool_profiles(
                 else:
                     _record_error(
                         errors,
-                        "tool profile defaults must map Agent names to profile IDs",
+                        "tool profile defaults must map runtime names to profile IDs",
                     )
             result["default_profile_by_runtime"] = defaults
     return result
@@ -1020,12 +1014,6 @@ def _coerce_engine(
             )
         return None
     normalized = raw.strip().lower()
-    if normalized == "piper":
-        _LOGGER.warning(
-            "tts_settings.primary_tts='piper' in %s is deprecated; using 'pyttsx3'.",
-            layer_name,
-        )
-        return "pyttsx3"
     if normalized in VALID_VOICE_ENGINES:
         return normalized
     _record_error(errors, "tts_settings.primary_tts is not a valid engine")
@@ -1145,7 +1133,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
                 }
             )
         )
-    defaults_raw = tool_profiles_raw.get("default_profile_by_runtime", tool_profiles_raw.get("default_profile_by_agent", {}))
+    defaults_raw = tool_profiles_raw.get("default_profile_by_runtime", {})
     default_profile_by_runtime = (
         {
             str(runtime).strip().lower(): str(profile_id).strip().lower()
@@ -1270,53 +1258,6 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         microsoft_todo=microsoft_todo,
         activity_report_folder=activity_report_folder,
     )
-
-
-def snapshot_to_ondisk(snapshot: RuntimeSettingsSnapshot) -> dict[str, Any]:
-    """Serialize a snapshot to on-disk editable section keys."""
-    return {
-        "user_designation": snapshot.user_designation,
-        "agent_display_name": snapshot.agent_display_name,
-        "features": snapshot.features.model_dump(),
-        "modules": snapshot.modules.model_dump(),
-        "calendar": snapshot.calendar.model_dump(),
-        "context_vault": snapshot.context_vault.model_dump(mode="json"),
-        "ask_apex": {
-            "enabled": snapshot.ask_apex.enabled,
-            "selected_model": snapshot.ask_apex.selected_model,
-            "sandbox_mode": snapshot.ask_apex.sandbox_mode,
-            "cloud": snapshot.ask_apex.cloud.model_dump(),
-            "local": snapshot.ask_apex.local.model_dump(),
-        },
-        "tool_profiles": snapshot.tool_profiles.model_dump(),
-        "tts_settings": {
-            "primary_tts": snapshot.voice.engine,
-            "voice_gender": snapshot.voice.gender,
-            "voice_mode": snapshot.voice.mode,
-        },
-        "mcp": snapshot.mcp.model_dump(),
-        "llama_cpp": snapshot.llama_cpp.model_dump(),
-        "microsoft_todo": snapshot.microsoft_todo.model_dump(),
-        "activity_report_folder": snapshot.activity_report_folder.model_dump(),
-    }
-
-
-def apply_patch_to_snapshot(
-    snapshot: RuntimeSettingsSnapshot,
-    patch: SettingsPatch,
-) -> RuntimeSettingsSnapshot:
-    """Merge a strict dirty-field patch onto a snapshot and return a new snapshot."""
-    data = snapshot.model_dump()
-    patch_data = patch.model_dump(exclude_none=True)
-    if "user_designation" in patch_data:
-        patch_data["user_designation"] = " ".join(
-            patch_data["user_designation"].split()
-        )
-    if "agent_display_name" in patch_data:
-        patch_data["agent_display_name"] = " ".join(
-            patch_data["agent_display_name"].split()
-        )
-    return RuntimeSettingsSnapshot.model_validate(recursive_overlay(data, patch_data))
 
 
 def patch_to_ondisk(patch: SettingsPatch) -> dict[str, Any]:

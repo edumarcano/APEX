@@ -596,7 +596,7 @@ class TelemetryApiTests(unittest.TestCase):
         )
         self.assertFalse(payload["can_proceed"])
 
-    def test_preflight_legacy_cloud_acknowledgement_is_accepted_and_ignored(self) -> None:
+    def test_preflight_unknown_cloud_acknowledgement_uses_extra_input_policy(self) -> None:
         with mock.patch("core.telemetry.preflight.is_dev_mode", return_value=True), mock.patch(
             "core.telemetry.preflight.config.DEMO_MODE", False
         ):
@@ -608,6 +608,7 @@ class TelemetryApiTests(unittest.TestCase):
                     "cloud_disclosure_acknowledged": True,
                 },
             )
+        self.assertEqual(response.status_code, 200)
         codes = {item["code"] for item in response.json()["warnings"]}
         self.assertNotIn("cloud_data_disclosure", codes)
 
@@ -823,7 +824,6 @@ class PowerStateTests(unittest.TestCase):
 
         with mock.patch("core.scanner.psutil.sensors_battery", return_value=None):
             self.assertEqual(scanner.get_power_state(), "unknown")
-            self.assertTrue(scanner.check_power())
 
     def test_on_battery_detected(self) -> None:
         from core import scanner
@@ -831,7 +831,6 @@ class PowerStateTests(unittest.TestCase):
         battery = mock.Mock(power_plugged=False)
         with mock.patch("core.scanner.psutil.sensors_battery", return_value=battery):
             self.assertEqual(scanner.get_power_state(), "battery")
-            self.assertFalse(scanner.check_power())
 
 
 if __name__ == "__main__":

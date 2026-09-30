@@ -164,8 +164,6 @@ class PreflightRequest(BaseModel):
     force: bool = False
     involves_cloud: bool = False
     acknowledged_warnings: list[str] = Field(default_factory=list)
-    # Accepted from older clients but no longer changes preflight behavior.
-    cloud_disclosure_acknowledged: bool = False
 
 
 class PreflightResponse(BaseModel):

@@ -108,7 +108,7 @@ returned status has a sanitized error.
 Disabling exports retains generated files. Commands accept `--json` for
 machine-readable output, including failure status.
 
-`briefing` creates a `cli`-origin session through `POST /api/v1/briefing-sessions`, then polls that session detail until it completes, fails, is cancelled, or is interrupted. It does not refresh connectors separately, mark the artifact as presented, or prepare or play speech. The default profile is `daily`; `--profile` accepts `daily`, `catch-up`, or `deep`. If `--model` is omitted, the CLI reads `ask_apex.selected_model` from saved Runtime Settings. Use `--json` for the complete terminal session detail; human output shows profile, model, status, canonical sections, and limitations. `--mode` is retired and returns a parser error directing callers to `--profile`.
+`briefing` creates a `cli`-origin session through `POST /api/v1/briefing-sessions`, then polls that session detail until it completes, fails, is cancelled, or is interrupted. It does not refresh connectors separately, mark the artifact as presented, or prepare or play speech. The default profile is `daily`; `--profile` accepts `daily`, `catch-up`, or `deep`. If `--model` is omitted, the CLI reads `ask_apex.selected_model` from saved Runtime Settings. Use `--json` for the complete terminal session detail; human output shows profile, model, status, canonical sections, and limitations.
 
 For Context vault setup and sharing, see the [Context vault guide](context-vault.md).
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import threading
 import unittest
 from unittest import mock
 
@@ -12,9 +11,9 @@ from core.agent.capabilities import get_capability_descriptor
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.model_catalog import get_model_profile
-from core.agent.catalog import build_concrete_agent, resolve_effort
+from core.agent.catalog import build_provider_profile, resolve_effort
 from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
-from core.runtime_logging import bind_run_id_context, get_run_id, run_id_scope
+from core.runtime_logging import get_run_id, run_id_scope
 
 
 class RunIdPropagationTests(unittest.TestCase):
@@ -39,20 +38,6 @@ class RunIdPropagationTests(unittest.TestCase):
         with run_id_scope("log-run"):
             self.assertTrue(RunIdFilter().filter(record))
             self.assertEqual(getattr(record, "run_id"), "log-run")
-
-    def test_bound_run_id_context_reaches_worker_thread(self) -> None:
-        observed: list[str | None] = []
-
-        with run_id_scope("thread-run"):
-            worker = threading.Thread(
-                target=bind_run_id_context(lambda: observed.append(get_run_id()))
-            )
-            worker.start()
-            worker.join(timeout=5)
-
-        self.assertFalse(worker.is_alive())
-        self.assertEqual(observed, ["thread-run"])
-
 
 class StableAgentErrorTests(unittest.TestCase):
     def test_provider_error_payloads_are_replaced_with_stable_messages(self) -> None:
@@ -143,8 +128,7 @@ class StableAgentErrorTests(unittest.TestCase):
         def failing_dispatcher(_name: str, _arguments: dict[str, object]) -> object:
             raise RuntimeError("private-dispatcher-detail")
 
-        cloud_profile = build_concrete_agent(
-            "apex",
+        cloud_profile = build_provider_profile(
             native_effort=resolve_effort(
                 get_model_profile("gemini-3.7-flash"), None
             ),

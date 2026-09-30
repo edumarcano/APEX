@@ -338,18 +338,29 @@ class MarketClientTests(unittest.TestCase):
         self.assertEqual(response["reason_code"], "invalid_symbol")
         self.assertEqual(response["tickers"][1]["next_attempt_date"], "2026-09-10")
 
-    def test_cache_v2_migration_preserves_history_and_derives_daily_gate(self) -> None:
+    def test_current_cache_keeps_canonical_fields_and_rejects_malformed_metadata(self) -> None:
         cache_file = mock.mock_open(
-            read_data='{"version":2,"collection_revision":7,"symbols":{"SPY":{"price":103,"market_fetched_at":"2026-09-09T13:00:00+00:00","history":[]}}}'
+            read_data=(
+                '{"version":3,"collection_revision":7,"provider_next_attempt_date":"invalid",'
+                '"provider_retry_after":"invalid","symbols":{"SPY":{'
+                '"price":103,"market_fetched_at":"2026-09-09T13:00:00+00:00","history":[],'
+                '"last_successful_fetch_date":"invalid-success-date","last_attempt_date":"invalid-attempt-date",'
+                '"next_attempt_date":"invalid","consecutive_failures":-1,"last_error_code":7}}}'
+            )
         )
         with mock.patch("pathlib.Path.open", cache_file):
             cache = market_client._read_cache()
         self.assertEqual(cache["version"], 3)
         self.assertEqual(cache["collection_revision"], 7)
+        self.assertIsNone(cache["provider_next_attempt_date"])
+        self.assertIsNone(cache["provider_retry_after"])
         self.assertEqual(cache["symbols"]["SPY"]["price"], 103)
         self.assertEqual(cache["symbols"]["SPY"]["history"], [])
-        self.assertEqual(cache["symbols"]["SPY"]["last_successful_fetch_date"], "2026-09-09")
-        self.assertEqual(cache["symbols"]["SPY"]["last_attempt_date"], "2026-09-09")
+        self.assertEqual(cache["symbols"]["SPY"]["last_successful_fetch_date"], "invalid-success-date")
+        self.assertEqual(cache["symbols"]["SPY"]["last_attempt_date"], "invalid-attempt-date")
+        self.assertNotIn("next_attempt_date", cache["symbols"]["SPY"])
+        self.assertEqual(cache["symbols"]["SPY"]["consecutive_failures"], 0)
+        self.assertNotIn("last_error_code", cache["symbols"]["SPY"])
 
     def test_demo_returns_valid_history_without_credentials(self) -> None:
         with mock.patch.object(market_client, "DEMO_MODE", True), mock.patch.object(market_client, "get_settings_store", return_value=_store([])), mock.patch.object(market_client, "_alpha_vantage_get") as provider:

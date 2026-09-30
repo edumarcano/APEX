@@ -16,7 +16,7 @@ Runtime Settings persist the editable parts of the resolved configuration. Schem
 }
 ```
 
-Current default model mapping is `apex` -> `deepseek/deepseek-v4-flash-0731`; `selected_model` is authoritative. Selecting a cloud or local model remembers that choice and its controls in the matching runtime section. Cloud and local personal-context preferences are independent. Cloud tool profiles default to All APEX Tools; local profiles default to No APEX Tools.
+Current default model mapping is `apex` -> `deepseek/deepseek-v4-flash-0731`; `selected_model` is authoritative. Selecting a cloud or local model remembers that choice and its controls in the matching runtime section. Cloud and local personal-context preferences are independent. `tool_profiles.default_profile_by_runtime` selects the default tool profile for cloud and local requests. Fresh defaults are All APEX Tools for cloud and No APEX Tools for local; a per-turn model override uses its own runtime's default without changing saved settings.
 
 Optional `user_designation` and `agent_display_name` are machine-local personalization fields stored only in `config.local.json`. An empty `agent_display_name` keeps the default visible name Lynx.
 
@@ -34,7 +34,7 @@ The publisher includes only active production records without a pending challeng
 
 When exports are enabled, one worker in the main API process reconciles them at startup and after committed production knowledge or selection changes. Filesystem work runs off the async request loop; manual refreshes share the same serialized publisher. A revision change during a refresh leaves the export dirty and starts another reconciliation. Failures keep dirty state and retry a bounded number of times, then wait for another change or manual refresh. Status reports local publication only; it does not claim that Drive copied the files or that Obsidian or Gemini indexed them.
 
-Use `GET /api/v1/cortex/vault` and `POST /api/v1/cortex/vault/preview` to inspect the current selection. The older `/api/v1/cortex/context-vault` read routes remain available. `POST /api/v1/cortex/vault/refresh` refreshes now. Disable exports before `DELETE /api/v1/cortex/vault/copies`; the route returns `409 Conflict` while exports are enabled, then removes only files tracked as APEX-owned. Disabling exports retains the existing files. Deselecting records while enabled removes their managed copies on refresh. Changing `APEX_CONTEXT_VAULT_PATH` on restart leaves copies at the previous root and reports that destination for deliberate cleanup, even while exports are disabled. Demo and development sandbox sessions cannot publish to the production vault.
+Use `GET /api/v1/cortex/vault` and `POST /api/v1/cortex/vault/preview` to inspect the current selection. `POST /api/v1/cortex/vault/refresh` refreshes now. Disable exports before `DELETE /api/v1/cortex/vault/copies`; the route returns `409 Conflict` while exports are enabled, then removes only files tracked as APEX-owned. Disabling exports retains the existing files. Deselecting records while enabled removes their managed copies on refresh. Changing `APEX_CONTEXT_VAULT_PATH` on restart leaves copies at the previous root and reports that destination for deliberate cleanup, even while exports are disabled. Demo and development sandbox sessions cannot publish to the production vault.
 
 The `apex context vault` CLI exposes status, preview, configuration, refresh, and managed-copy removal. Local publication completion does not indicate that another application or cloud sync service has copied or indexed the files.
 
@@ -145,7 +145,7 @@ Configure llama.cpp aliases with one preset per exposed context size. A tracked 
 
 `max_concurrent_runs` limits active execution slots before the API returns `429`. `event_replay_limit` sets the in-memory event buffer size per run for Server-Sent Events reconnects. `shutdown_drain_seconds` bounds the full application shutdown window for cancelled run workers and application-owned startup tasks; if either remains active, APEX reports shutdown failure and leaves their dependencies open. The remaining fields define the immutable stop-limit snapshot applied to each run.
 
-`total_tokens` remains cumulative usage accounting for every provider turn. It does not stop a run: multi-turn requests may resend conversation context, while the provider's context-window checks still protect each individual request. Previous `max_total_tokens` configuration values are ignored after beta.3, and old run records retain their recorded ceiling for history inspection.
+`total_tokens` remains cumulative usage accounting for every provider turn. It does not stop a run: multi-turn requests may resend conversation context, while the provider's context-window checks still protect each individual request. Historical run snapshots retain their recorded token ceiling for history inspection; new snapshots have no cumulative-token limit.
 
 ## Archived conversation retention
 

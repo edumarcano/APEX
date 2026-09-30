@@ -45,8 +45,8 @@ from core.agent.types import (
 import core.agent.tools as _native_agent_tools  # noqa: F401
 from core.tracing import trace_provider_turn, trace_tool_execution
 
-AgentModelProfile = GeminiModelProfile | OllamaModelProfile | ProviderProfile
-P = TypeVar("P", bound=AgentModelProfile, contravariant=True)
+ProviderModelProfile = GeminiModelProfile | OllamaModelProfile | ProviderProfile
+P = TypeVar("P", bound=ProviderModelProfile, contravariant=True)
 
 ToolsDispatcher = Callable[[str, dict[str, Any]], Any]
 
@@ -115,7 +115,7 @@ def default_tools_dispatcher(name: str, arguments: dict[str, Any]) -> Any:
 
 
 def build_agent_failure_details(
-    profile: AgentModelProfile,
+    profile: ProviderModelProfile,
     exc: Exception,
 ) -> tuple[str, str]:
     """Return the sanitized provider-specific failure response."""
@@ -288,37 +288,8 @@ def run_agent_loop(
             agent_used=profile.model_dump(),
             tool_trace=tool_trace,
             tool_outputs=tool_outputs,
-            session_id=request.session_id,
             error=error,
             resolved_tool_selection=tool_selection or ToolSelectionDiagnostics(),
-            requested_tool_names=(
-                tool_selection.requested_tool_names
-                if tool_selection is not None
-                else []
-            ),
-            offered_tool_names=(
-                tool_selection.offered_tool_names if tool_selection is not None else []
-            ),
-            rejected_tool_names=(
-                tool_selection.rejected_tool_names
-                if tool_selection is not None
-                else []
-            ),
-            selected_schema_tokens=(
-                tool_selection.selected_schema_tokens
-                if tool_selection is not None
-                else 0
-            ),
-            active_tool_profile_id=(
-                tool_selection.active_profile_id
-                if tool_selection is not None
-                else None
-            ),
-            active_tool_profile_name=(
-                tool_selection.active_profile_name
-                if tool_selection is not None
-                else None
-            ),
             local_context_usage=context_usage,
             resolved_model=resolved_model,
             usage=aggregated_usage,

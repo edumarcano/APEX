@@ -1,7 +1,8 @@
 """OpenAI-compatible Responses API adapter.
 
-Browser-owned history remains authoritative. Providers always send
-``store=False`` and never persist provider response IDs across browser turns.
+APEX's durable conversation store owns maintained turns. Providers send the
+bounded APEX history with ``store=False`` and never persist provider response
+IDs across turns.
 Custom APEX function tools are supported. General provider web search remains
 forbidden.
 """
@@ -136,7 +137,7 @@ def _messages_to_responses_input(
                 items.extend(message.provider_output_items)
                 continue
             # Fallback reconstruction when opaque items are unavailable
-            # (e.g. browser-trimmed history without provider payloads).
+            # (for example, bounded APEX history without provider payloads).
             if message.content:
                 items.append(
                     {
@@ -454,11 +455,6 @@ class ResponsesApiProvider:
 
         def _consume() -> Any:
             stream = _create()
-            # Compatibility with lightweight fakes and providers that return a
-            # completed response despite stream=True.
-            completed_output = getattr(stream, "output", None)
-            if isinstance(completed_output, list) and completed_output:
-                return stream
             text_parts: list[str] = []
             stream_started = time.perf_counter()
             ttft_ms: float | None = None

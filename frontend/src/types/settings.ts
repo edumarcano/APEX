@@ -133,8 +133,6 @@ export interface ToolProfileSettings {
 export interface ToolProfilesSettings {
   custom_profiles: ToolProfileSettings[]
   default_profile_by_runtime: Record<string, string>
-  /** @deprecated Transitional field for legacy fixture parsing. */
-  default_profile_by_agent?: Record<string, string>
 }
 
 export interface VoiceSettings {
@@ -237,8 +235,6 @@ export interface AgentSettingsPatch {
 export interface ToolProfilesPatch {
   custom_profiles?: ToolProfileSettings[]
   default_profile_by_runtime?: Record<string, string>
-  /** @deprecated Legacy fields are rejected by the backend. */
-  default_profile_by_agent?: Record<string, string>
 }
 
 export interface VoicePatch {

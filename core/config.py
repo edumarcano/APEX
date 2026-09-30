@@ -36,7 +36,6 @@ __all__ = [
     "OLLAMA_HOST",
     "OLLAMA_IDLE_UNLOAD_MINUTES",
     "OLLAMA_MANUAL_UNLOAD_ENABLED",
-    "OLLAMA_SINGLE_LOADED_MODEL",
     "LLAMA_CPP_ENABLED",
     "LLAMA_CPP_HOST",
     "LLAMA_CPP_IDLE_UNLOAD_MINUTES",
@@ -440,10 +439,6 @@ try:
         min_value=30,
         max_value=3600,
     )
-    if "max_total_tokens" in _cortex_runs_cfg:
-        _LOGGER.warning(
-            'Config key "cortex_runs.max_total_tokens" no longer stops Cortex runs and is ignored; remove it from config.json.'
-        )
     CORTEX_RUNS_MAX_RETRIES: Final[int] = _parse_config_int(
         _cortex_runs_cfg.get("max_retries"),
         key="cortex_runs.max_retries",
@@ -552,13 +547,6 @@ try:
         min_value=1,
         max_value=60,
     )
-    # Parsed for forward compatibility; the Ollama backend always enforces a
-    # single loaded model regardless of this flag today.
-    OLLAMA_SINGLE_LOADED_MODEL: Final[bool] = _parse_config_bool(
-        _ollama_cfg.get("single_loaded_model"),
-        key="ollama.single_loaded_model",
-        default=True,
-    )
     OLLAMA_MANUAL_UNLOAD_ENABLED: Final[bool] = _parse_config_bool(
         _ollama_cfg.get("manual_unload_enabled"),
         key="ollama.manual_unload_enabled",
@@ -594,7 +582,6 @@ except Exception as exc:
     OLLAMA_ENABLED = True
     OLLAMA_HOST = "http://localhost:11434"
     OLLAMA_IDLE_UNLOAD_MINUTES = 5
-    OLLAMA_SINGLE_LOADED_MODEL = True
     OLLAMA_MANUAL_UNLOAD_ENABLED = True
     OLLAMA_RESOURCE_GATES = {
         "qwen3:1.7b": (_DEFAULT_QWEN_17B_RAM, _DEFAULT_QWEN_17B_CPU),

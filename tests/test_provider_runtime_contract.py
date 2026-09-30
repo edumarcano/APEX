@@ -11,11 +11,9 @@ from openai import APIStatusError
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.catalog import (
     AGENT_SPECS,
-    agent_key_for_local_model_ref,
-    build_concrete_agent,
+    model_id_for_local_model_ref,
+    build_provider_profile,
     known_local_model_refs,
-    local_model_ref_for_agent,
-    local_model_refs_for_agent,
     resolve_effort,
 )
 from core.agent.local_runtime.contract import LocalModelProfile, LocalModelRef
@@ -36,7 +34,8 @@ from core.agent.providers.contract import (
 )
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.ollama import OllamaProvider
-from core.agent.providers.openai_provider import OPENAI_INTERNAL_PROFILES, OpenAIProvider
+from core.agent.providers.openai_provider import OpenAIProvider
+from tests.support.provider_fixtures import OPENAI_INTERNAL_PROFILES, response_event_stream
 from core.agent.providers.responses_api import (
     assert_no_forbidden_native_tools,
     _messages_to_responses_input,
@@ -53,8 +52,7 @@ def _concrete_profile(model_id: str = "gpt-5.6-luna"):
     model_profile = get_model_profile(model_id)
     assert model_profile is not None
     native = resolve_effort(model_profile, None)
-    return build_concrete_agent(
-        "apex",
+    return build_provider_profile(
         native_effort=native,
         local_reasoning_mode=(
             "none"
@@ -112,8 +110,7 @@ class ProviderContractTests(unittest.TestCase):
                 )
                 self.assertIn(profile.reasoning_mode, profile.supported_reasoning_modes)
                 for context_window in profile.allowed_context_windows:
-                    selected = build_concrete_agent(
-                        "apex",
+                    selected = build_provider_profile(
                         native_effort=None,
                         local_context_window=context_window,
                         local_reasoning_mode=profile.reasoning_mode,
@@ -144,19 +141,18 @@ class ProviderContractTests(unittest.TestCase):
             self.assertTrue(refs)
             selected = next(iter(refs))
             self.assertEqual(selected.provider, profile.provider)
-            self.assertEqual(agent_key_for_local_model_ref(selected), "apex")
+            self.assertEqual(model_id_for_local_model_ref(selected), profile.api_model)
 
         known = known_local_model_refs()
         self.assertTrue(known)
         self.assertIsNone(
-            agent_key_for_local_model_ref(
+            model_id_for_local_model_ref(
                 LocalModelRef(provider="ollama", model="unknown-model")
             )
         )
 
     def test_local_reasoning_mode_reaches_llama_cpp_profile(self) -> None:
-        focused = build_concrete_agent(
-            "apex",
+        focused = build_provider_profile(
             native_effort=None,
             local_reasoning_mode="focused",
             model_id="gemma-4-E2B-Q4_K_M.gguf",
@@ -166,8 +162,7 @@ class ProviderContractTests(unittest.TestCase):
     def test_focused_llama_profiles_reserve_completion_headroom(self) -> None:
         for model_id in ("gemma-4-E2B-Q4_K_M.gguf", "gemma-4-E4B-Q4_K_M.gguf", "Qwen3.5-4B-Q4_K_M.gguf"):
             with self.subTest(model=model_id):
-                profile = build_concrete_agent(
-                    "apex",
+                profile = build_provider_profile(
                     native_effort=None,
                     local_reasoning_mode="focused",
                     model_id=model_id,
@@ -693,19 +688,19 @@ class RetryHelperTests(unittest.TestCase):
         mock_part.function_call = None
         mock_candidate = MagicMock()
         mock_candidate.content.parts = [mock_part]
-        mock_response = MagicMock()
-        mock_response.candidates = [mock_candidate]
-        mock_response.usage_metadata = MagicMock(
+        mock_chunk = MagicMock()
+        mock_chunk.candidates = [mock_candidate]
+        mock_chunk.usage_metadata = MagicMock(
             prompt_token_count=11,
             candidates_token_count=3,
             total_token_count=14,
             cached_content_token_count=None,
             thoughts_token_count=None,
         )
-        mock_response.model_version = "gemini-3.7-flash"
-        mock_client.models.generate_content.side_effect = [
+        mock_chunk.model_version = "gemini-3.7-flash"
+        mock_client.models.generate_content_stream.side_effect = [
             APIError(429, {"error": {"message": "rate limited"}}),
-            mock_response,
+            [mock_chunk],
         ]
 
         result = GeminiProvider(api_key="test").generate_turn(
@@ -719,11 +714,8 @@ class RetryHelperTests(unittest.TestCase):
         assert result.usage is not None
         self.assertEqual(result.usage.input_tokens, 11)
         self.assertEqual(result.usage.output_tokens, 3)
-        self.assertIsNone(
-            mock_client.models.generate_content_stream.call_args.kwargs[
-                "config"
-            ].max_output_tokens
-        )
+        request = mock_client.models.generate_content_stream.call_args.kwargs
+        self.assertIsNone(request["config"].max_output_tokens)
 
     @patch("core.agent.providers.gemini.genai.Client")
     def test_explicit_output_limit_reaches_gemini_generation_config(
@@ -867,20 +859,13 @@ class ResponsesAdapterTests(unittest.TestCase):
     ) -> None:
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
-        mock_response = MagicMock()
-        mock_response.output = [
-            {
-                "type": "message",
-                "content": [{"type": "output_text", "text": "Hello from OpenAI"}],
-            }
-        ]
-        mock_response.model = "gpt-5.6-luna"
-        mock_response.usage = {
-            "input_tokens": 12,
-            "output_tokens": 4,
-            "total_tokens": 16,
-        }
-        mock_client.responses.create.return_value = mock_response
+        mock_client.responses.create.return_value = iter(response_event_stream(
+            text="Hello from OpenAI",
+            usage={"input_tokens": 12, "output_tokens": 4, "total_tokens": 16},
+            output=[{"type": "message", "content": [
+                {"type": "output_text", "text": "Hello from OpenAI"}
+            ]}],
+        ))
 
         result = OpenAIProvider(api_key="test").generate_turn(
             [AgentMessage(role="user", content="Hi")],
@@ -902,16 +887,12 @@ class ResponsesAdapterTests(unittest.TestCase):
     ) -> None:
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
-        mock_response = MagicMock()
-        mock_response.output = [
-            {
-                "type": "message",
-                "content": [{"type": "output_text", "text": "Bounded answer"}],
-            }
-        ]
-        mock_response.model = "gpt-5.6-luna"
-        mock_response.usage = None
-        mock_client.responses.create.return_value = mock_response
+        mock_client.responses.create.return_value = iter(response_event_stream(
+            text="Bounded answer",
+            output=[{"type": "message", "content": [
+                {"type": "output_text", "text": "Bounded answer"}
+            ]}],
+        ))
 
         OpenAIProvider(api_key="test").generate_turn(
             [AgentMessage(role="user", content="Hi")],
@@ -929,17 +910,15 @@ class ResponsesAdapterTests(unittest.TestCase):
     ) -> None:
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
-        mock_response = MagicMock()
-        mock_response.output = [
-            {"type": "mcp_call", "name": "weather", "status": "completed"},
-            {
-                "type": "message",
-                "content": [{"type": "output_text", "text": "Done"}],
-            },
-        ]
-        mock_response.model = "gpt-5.6-luna"
-        mock_response.usage = None
-        mock_client.responses.create.return_value = mock_response
+        mock_client.responses.create.return_value = iter(response_event_stream(
+            text="Done",
+            output=[
+                {"type": "mcp_call", "name": "weather", "status": "completed"},
+                {"type": "message", "content": [
+                    {"type": "output_text", "text": "Done"}
+                ]},
+            ],
+        ))
 
         result = OpenAIProvider(api_key="test").generate_turn(
             [AgentMessage(role="user", content="Hi")],

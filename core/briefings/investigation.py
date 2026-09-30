@@ -16,7 +16,7 @@ from core.agent.capabilities import (
     get_capability_descriptor,
     invoke_read_only_capability,
 )
-from core.agent.catalog import build_concrete_agent
+from core.agent.catalog import build_provider_profile
 from core.agent.local_runtime.execution import (
     LocalModelAdmissionError,
     admit_local_model,
@@ -420,8 +420,7 @@ def investigate_deep(
 
 
 def _build_agent_profile(configuration: BriefingGenerationConfiguration):
-    return build_concrete_agent(
-        "apex",
+    return build_provider_profile(
         native_effort=configuration.model.reasoning,  # type: ignore[arg-type]
         local_context_window=configuration.model.context_window,
         local_reasoning_mode=configuration.model.local_reasoning_mode,

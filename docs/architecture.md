@@ -27,6 +27,8 @@ Overview, Briefing, or Cortex
 
 Conversation storage owns prompts and answers. Turn request metadata records the resolved model, provider, runtime, effective controls, and accepted partition so idempotent replay distinguishes executions that use the same APEX Agent identity. An accepted asynchronous run keeps those execution choices through completion even if later settings changes affect subsequent requests.
 
+Provider profiles, tool defaults, hosted capabilities, and schema projections follow the effective request model, including an explicit override. Gemini, OpenAI Responses, and llama.cpp consume native streams even without a live UI observer. Stream cleanup and bounded retries remain provider-owned; Gemini can recover an empty non-structured STOP result with one bounded unary call. OpenAI requests use `store=False` and carry bounded APEX history rather than relying on provider-owned conversation state.
+
 ## Tool and action boundary
 
 Tool exposure is the intersection of user selection, APEX Agent policy, runtime availability, sandbox restrictions, risk controls, and MCP allowlists. An empty selection means no APEX-managed tools. Provider-hosted grounding is separate from APEX and MCP tool schemas.

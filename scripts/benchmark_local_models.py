@@ -42,7 +42,7 @@ from core.agent.capabilities import (
     get_capability_descriptor,
 )
 from core.agent.catalog import (
-    build_concrete_agent,
+    build_provider_profile,
     compose_agent_system_instruction,
     known_local_model_refs,
     local_reasoning_modes_for_model,
@@ -78,7 +78,7 @@ from core.agent.providers.ollama_models import OLLAMA_RUNTIME_CONFIGS
 from core.agent.tool_schemas import (
     descriptor_to_openai_schema,
     estimate_json_tokens,
-    project_descriptor_for_agent,
+    project_descriptor_for_model,
 )
 from core.agent.types import (
     AgentQueryRequest,
@@ -134,7 +134,7 @@ class BenchmarkConfiguration:
     reasoning: str
     profile: LocalModelProfile
     agent_key: str | None
-    tool_projection_agent: str
+    tool_projection_model_id: str
 
     @property
     def runtime_ref(self) -> LocalModelRef:
@@ -521,8 +521,7 @@ def _build_registered_configuration(
         raise ValueError(
             f"Model {model_id!r} does not support reasoning mode {reasoning!r}."
         )
-    profile = build_concrete_agent(
-        "apex",
+    profile = build_provider_profile(
         native_effort=None,
         local_context_window=context,
         local_reasoning_mode=reasoning,  # type: ignore[arg-type]
@@ -537,7 +536,7 @@ def _build_registered_configuration(
         reasoning=profile.reasoning_mode,
         profile=profile,
         agent_key="apex",
-        tool_projection_agent="apex",
+        tool_projection_model_id=model_id,
     )
 
 
@@ -586,7 +585,7 @@ def _build_candidate_configuration(
         reasoning=profile.reasoning_mode,
         profile=profile,
         agent_key="apex",
-        tool_projection_agent="apex",
+        tool_projection_model_id=DEFAULT_LOCAL_MODEL,
     )
 
 
@@ -1111,14 +1110,14 @@ class BenchmarkRunner:
         self,
         case: Mapping[str, Any],
         *,
-        agent_key: str,
+        model_id: str,
     ) -> list[CapabilityDescriptor]:
         descriptors: list[CapabilityDescriptor] = []
         for name in case.get("tools", []):
             descriptor = get_capability_descriptor(name)
             if descriptor is None:
                 raise ValueError(f"Capability {name!r} is not registered.")
-            descriptors.append(project_descriptor_for_agent(agent_key, descriptor))
+            descriptors.append(project_descriptor_for_model(model_id, descriptor))
         return descriptors
 
     def _system_instruction(
@@ -1414,7 +1413,7 @@ class BenchmarkRunner:
             for case in self.cases["tool_cases"]:
                 descriptors = self._descriptors_for_case(
                     case,
-                    agent_key=configuration.tool_projection_agent,
+                    model_id=configuration.tool_projection_model_id,
                 )
                 dispatcher = FixtureDispatcher(case, descriptors)
                 response, elapsed = self._execute_query(

@@ -24,22 +24,18 @@ from core.agent.prompting import (
 from core.agent.tool_schemas import descriptor_to_openai_schema, estimate_json_tokens
 from core.agent.catalog import (
     AGENT_SPECS,
-    AgentModelProfile,
-    build_concrete_agent,
+    ProviderModelProfile,
+    build_provider_profile,
     build_agent_used_metadata,
     compose_agent_system_instruction,
     credential_missing_error,
     credential_missing_message,
     is_agent_visible,
     is_sandbox_query,
-    agent_has_credentials,
-    local_context_window_for_agent,
     local_context_window_for_model,
-    local_reasoning_mode_for_agent,
     local_reasoning_mode_for_model,
     local_reasoning_modes_for_model,
     resolve_effort,
-    resolve_effort_for_agent,
     resolve_selected_model_profile,
 )
 from core.agent.model_catalog import (
@@ -56,7 +52,7 @@ from core.agent.providers.cloud_verification import (
     cloud_status,
     record_cloud_request_failure,
     record_cloud_request_success,
-    verify_cloud_agent,
+    verify_cloud_model,
 )
 from core.agent.providers.factory import create_provider
 from core.agent.local_runtime.contract import LocalModelProfile, LocalModelRef, SystemVitals
@@ -90,7 +86,7 @@ from core.agent.types import (
 from core.api.demo import run_demo_agent_query
 from core.api.models import (
     AgentModelCatalogEntry,
-    CloudAgentVerificationResponse,
+    CloudModelVerificationResponse,
     LocalLoadResponse,
     LocalLoadedModelStatus,
     LocalUnloadResponse,
@@ -368,8 +364,7 @@ def build_model_catalog() -> list[AgentModelCatalogEntry]:
             entries.append(entry)
             continue
 
-        profile = build_concrete_agent(
-            "apex",
+        profile = build_provider_profile(
             native_effort=None,
             local_context_window=local_context_window_for_model(model_profile.model_id),
             local_reasoning_mode=local_reasoning_mode_for_model(model_profile.model_id),
@@ -447,7 +442,7 @@ def _loaded_model_status(loaded_model: dict[str, Any]) -> LocalLoadedModelStatus
     )
 
 
-def verify_cloud_agent_endpoint(model_id: str) -> CloudAgentVerificationResponse:
+def verify_cloud_model_endpoint(model_id: str) -> CloudModelVerificationResponse:
     """Force one non-generative model-access check for a cloud model."""
     if DEMO_MODE:
         raise HTTPException(
@@ -471,7 +466,7 @@ def verify_cloud_agent_endpoint(model_id: str) -> CloudAgentVerificationResponse
             detail="Configure this Agent's provider credentials before verification.",
         )
     try:
-        result = verify_cloud_agent(model_id)
+        result = verify_cloud_model(model_id)
     except RuntimeError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -482,7 +477,7 @@ def verify_cloud_agent_endpoint(model_id: str) -> CloudAgentVerificationResponse
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cloud verification cannot run for this Agent.",
         ) from exc
-    return CloudAgentVerificationResponse(
+    return CloudModelVerificationResponse(
         model_id=model_id,
         status=result.status,
         reason=result.reason,
@@ -571,8 +566,7 @@ def load_local_model_endpoint(model_id: str) -> LocalLoadResponse:
             detail="Only configured local models can be pre-warmed.",
         )
 
-    profile = build_concrete_agent(
-        "apex",
+    profile = build_provider_profile(
         native_effort=None,
         local_context_window=local_context_window_for_model(model_id),
         local_reasoning_mode=local_reasoning_mode_for_model(model_id),
@@ -676,6 +670,7 @@ def _prepare_agent_payload(
     )
     prepared = payload.model_copy(
         update={
+            "model_id": selected_model,
             "history": _trim_agent_history(
                 payload.history, max_history
             )
@@ -740,13 +735,13 @@ def _build_telemetry_context(
     )
 
 
-def _create_provider(profile: AgentModelProfile, api_key: str):
+def _create_provider(profile: ProviderModelProfile, api_key: str):
     return create_provider(profile, api_key)
 
 
 def _execute_agent_turn(
     payload: AgentQueryRequest,
-    profile: AgentModelProfile,
+    profile: ProviderModelProfile,
     *,
     agent_key: str,
     api_key: str | None,
@@ -825,7 +820,6 @@ def _execute_agent_turn(
         )
         if not is_local_profile(profile):
             record_cloud_request_success(
-                agent_key,
                 provider=profile.provider,
                 model=profile.api_model,
             )
@@ -854,7 +848,6 @@ def _execute_agent_turn(
             raise
         if not is_local_profile(profile):
             record_cloud_request_failure(
-                agent_key,
                 exc,
                 provider=profile.provider,
                 model=profile.api_model,
@@ -877,17 +870,10 @@ def _execute_agent_turn(
                 model_stability=getattr(profile, "stability", None),
                 hosted_tools=getattr(profile, "hosted_tools", None),
             ),
-            session_id=payload.session_id,
             error=error_detail,
         )
         if tool_selection is not None:
             response.resolved_tool_selection = tool_selection
-            response.requested_tool_names = tool_selection.requested_tool_names
-            response.offered_tool_names = tool_selection.offered_tool_names
-            response.rejected_tool_names = tool_selection.rejected_tool_names
-            response.selected_schema_tokens = tool_selection.selected_schema_tokens
-            response.active_tool_profile_id = tool_selection.active_profile_id
-            response.active_tool_profile_name = tool_selection.active_profile_name
         return response
 
 
@@ -913,7 +899,7 @@ def _selection_failure_detail(selection: ResolvedToolSelection) -> dict[str, Any
 
 def _estimate_agent_request(
     payload: AgentQueryRequest,
-    profile: AgentModelProfile,
+    profile: ProviderModelProfile,
     selection: ResolvedToolSelection,
     *,
     agent_key: str,
@@ -1051,21 +1037,20 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
     local_context = (
         payload.context_window
         if payload.context_window is not None
-        else local_context_window_for_agent(agent_key)
+        else local_context_window_for_model(model_profile.model_id)
     )
     local_reasoning = (
         payload.local_reasoning_mode
         if payload.local_reasoning_mode is not None
-        else local_reasoning_mode_for_agent(agent_key)
+        else local_reasoning_mode_for_model(model_profile.model_id)
     )
-    profile = build_concrete_agent(
-        agent_key,
+    profile = build_provider_profile(
         native_effort=resolved_effort,
         local_context_window=local_context,
         local_reasoning_mode=local_reasoning,
         google_search_enabled=google_search,
         google_maps_enabled=google_maps,
-        model_id=payload.model_id,
+        model_id=model_profile.model_id,
         agent_display_name=get_settings_store().get_snapshot().agent_display_name,
     )
     history: list[AgentMessage] = []
@@ -1084,7 +1069,7 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
     query_payload_kwargs: dict[str, Any] = {
         "prompt": payload.prompt,
         "agent": agent_key,
-        "model_id": payload.model_id,
+        "model_id": model_profile.model_id,
         "effort": payload.effort,
         "context_window": payload.context_window,
         "local_reasoning_mode": payload.local_reasoning_mode,
@@ -1101,7 +1086,7 @@ def build_tool_preflight(payload: ToolPreflightRequest) -> ToolPreflightResponse
     query_payload = _prepare_agent_payload(
         AgentQueryRequest(**query_payload_kwargs),
         agent_key=agent_key,
-        model_id=payload.model_id,
+        model_id=model_profile.model_id,
     )
     selection = resolve_selected_tools(
         agent_key,
@@ -1146,6 +1131,7 @@ def query_agent(
 
     agent_key = payload.agent
     model_profile = _resolve_and_validate_model_profile(agent_key, payload.model_id)
+    payload = payload.model_copy(update={"model_id": model_profile.model_id})
 
     if model_profile.runtime == "local" and payload.effort is not None:
         raise HTTPException(
@@ -1166,28 +1152,27 @@ def query_agent(
     local_context = (
         payload.context_window
         if payload.context_window is not None
-        else local_context_window_for_agent(agent_key)
+        else local_context_window_for_model(model_profile.model_id)
     )
     local_reasoning = (
         payload.local_reasoning_mode
         if payload.local_reasoning_mode is not None
-        else local_reasoning_mode_for_agent(agent_key)
+        else local_reasoning_mode_for_model(model_profile.model_id)
     )
-    profile = build_concrete_agent(
-        agent_key,
+    profile = build_provider_profile(
         native_effort=resolved_effort,
         local_context_window=local_context,
         local_reasoning_mode=local_reasoning,
         google_search_enabled=google_search,
         google_maps_enabled=google_maps,
-        model_id=payload.model_id,
+        model_id=model_profile.model_id,
         agent_display_name=settings.agent_display_name,
     )
     selection = resolve_selected_tools(
         agent_key,
         _explicit_selection_names(payload),
         tool_profile_id=payload.tool_profile_id,
-        model_id=payload.model_id,
+        model_id=model_profile.model_id,
         execution_partition=execution_partition,
     )
     if selection.failures:
@@ -1204,11 +1189,9 @@ def query_agent(
             tool_selection=selection.diagnostics,
         )
 
-    if model_profile.credential_env and not agent_has_credentials(
-        agent_key, model_profile
-    ):
+    if model_profile.credential_env and not model_has_credentials(model_profile):
         return AgentQueryResponse(
-            answer=credential_missing_message(agent_key, model_profile),
+            answer=credential_missing_message(model_profile.model_id, model_profile),
             agent_used=build_agent_used_metadata(
                 agent_key,
                 provider=profile.provider,
@@ -1220,15 +1203,14 @@ def query_agent(
                 model_stability=getattr(profile, "stability", None),
                 hosted_tools=getattr(profile, "hosted_tools", None),
             ),
-            session_id=payload.session_id,
-            error=credential_missing_error(agent_key, model_profile),
+            error=credential_missing_error(model_profile.model_id, model_profile),
             **selection_as_response_fields(selection),
         )
 
     payload = _prepare_agent_payload(
         payload,
         agent_key=agent_key,
-        model_id=payload.model_id,
+        model_id=model_profile.model_id,
         execution_partition=execution_partition,
     )
 
