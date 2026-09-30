@@ -88,10 +88,6 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | POST | `/api/v1/cortex/vault/preview` | Preview selected production records and per-scope generated-note changes |
 | POST | `/api/v1/cortex/vault/refresh` | Serialize a manual local export refresh |
 | DELETE | `/api/v1/cortex/vault/copies` | Remove managed files after export is disabled (409 while enabled) |
-| GET | `/api/v1/cortex/context-vault` | Compatibility alias for vault status |
-| POST | `/api/v1/cortex/context-vault/preview` | Compatibility alias for vault preview |
-| POST | `/api/v1/cortex/context-vault/refresh` | Compatibility alias for vault refresh |
-| DELETE | `/api/v1/cortex/context-vault/copies` | Compatibility alias for managed-copy removal |
 | POST | `/api/v1/cortex/context/actions` | Propose an approval-gated context reconciliation operation |
 | GET | `/api/v1/cortex/retrieval/status` | Show local retrieval readiness and indexing state |
 | POST | `/api/v1/cortex/retrieval/prepare` | Explicitly prepare the local embedding model and backfill vectors |
@@ -222,7 +218,7 @@ Returns current CPU, memory, disk, and network diagnostics for the HUD. This pol
 
 ### GET `/api/v1/telemetry/latest`
 
-Returns the current process-local `TelemetrySnapshot`. Each module reports typed status, freshness, reason, observation time, display text, and structured data.
+Returns the current process-local `TelemetrySnapshot`. Each module reports typed status, freshness, reason, observation time, display text, and structured data. `failed_connectors` identifies unavailable modules by their canonical names, including independent `f1` and `football` entries. The HUD combines those two modules for the Sports status row.
 
 Returns `404` before the first successful snapshot or after a process restart.
 
@@ -264,7 +260,7 @@ Evaluates warnings and non-overridable blockers for one intended operation witho
 }
 ```
 
-Warnings can cover configured-network mismatch, battery use, rapid refresh, and elevated local resource use. Blockers are reserved for conditions that prevent the selected work, including missing required credentials, unavailable models, local inference contention, failed resource gates, invalid input, or broken local configuration/database state. The legacy `cloud_disclosure_acknowledged` input remains accepted but has no effect.
+Warnings can cover configured-network mismatch, battery use, rapid refresh, and elevated local resource use. Blockers are reserved for conditions that prevent the selected work, including missing required credentials, unavailable models, local inference contention, failed resource gates, invalid input, or broken local configuration/database state.
 
 Calling an operation endpoint directly skips advisory acknowledgement; operation-specific hard failures still apply.
 
@@ -607,7 +603,9 @@ messages and detailed tool outcomes.
 
 `snapshot_id` is optional explicit current telemetry context; when absent, APEX injects no telemetry context. A stale snapshot ID is omitted rather than replaced with the latest data. A briefing session owns its linked Cortex conversation and canonical opening artifact; callers continue that session by using the returned conversation ID, not by attaching a legacy briefing ID. The server derives `sandbox` only when both `DEV_MODE` and the saved sandbox setting are active; clients cannot select or cross partitions. Snapshot context is included only when its ID matches the process-current telemetry snapshot.
 
-The effective exposure is `selected tools ∩ APEX Agent policy ∩ runtime availability ∩ persistent MCP allowlists`. An explicit empty `selected_tool_names` list means `No APEX Tools`; omitted selection preserves runtime defaults of All APEX Tools for cloud and No APEX Tools for local. Invalid, unauthorized, disconnected, risk-rejected, or unavailable selected names are returned as structured per-tool failures. Cloud models can receive approved APEX capabilities and optional provider-hosted grounding where supported. `effort` is accepted only for models with reasoning levels. Responses contain APEX Agent and resolved model metadata, tool trace, usage, timing, and cost evidence.
+The effective exposure is `selected tools ∩ APEX Agent policy ∩ runtime availability ∩ persistent MCP allowlists`. An explicit empty `selected_tool_names` list means `No APEX Tools`; omitted selection uses the configured default profile for the effective request model's runtime, including a turn-specific model override. Fresh defaults are All APEX Tools for cloud and No APEX Tools for local. Invalid, unauthorized, disconnected, risk-rejected, or unavailable selected names are returned as structured per-tool failures. Cloud models can receive approved APEX capabilities and optional provider-hosted grounding where supported. `effort` is accepted only for models with reasoning levels. Responses contain APEX Agent and resolved model metadata, tool trace, usage, timing, and cost evidence.
+
+Turn responses expose flat fields and one `resolved_tool_selection` object containing requested, offered, and rejected tools, schema-token estimates, and active-profile diagnostics. They do not duplicate those diagnostics at the top level or wrap response fields in a `metadata` envelope. Saved messages retain their durable `response_metadata`, including historical tool traces and activity. Conversation IDs own turn history; query payloads have no temporary `session_id` grouping field.
 
 - `400` — selected tools are invalid, outside policy, or unavailable.
 - A provider-authoritative local context overflow is returned as an actionable
@@ -771,7 +769,7 @@ The [Context vault guide](context-vault.md) covers setup, generated files, and s
 
 Context record responses include the persisted `sensitive` flag. `PATCH /api/v1/cortex/context/{record_id}/sensitivity` accepts `sensitive` and the observed `expected_updated_at`; a stale revision returns `409`. Each change is recorded in append-only knowledge history. Sensitivity is carried forward by corrections and conflict resolution when any affected predecessor is sensitive; clearing it requires this explicit revision-checked operation.
 
-`GET /api/v1/cortex/vault` reports saved global and per-scope settings plus local export state: current and exported knowledge revisions, dirty and in-progress state, attempt and file counts, timestamps, sanitized errors, destination, and any old roots whose copies were retained. `/api/v1/cortex/context-vault` remains an alias for compatibility.
+`GET /api/v1/cortex/vault` reports saved global and per-scope settings plus local export state: current and exported knowledge revisions, dirty and in-progress state, attempt and file counts, timestamps, sanitized errors, destination, and any old roots whose copies were retained.
 
 `POST /api/v1/cortex/vault/preview` accepts either `{ "scope_id": "<stable-scope-id>" }` for a saved scope or `{ "candidate_scope": { "id": "<stable-scope-id>", "name": "Project", "enabled": false, "selected_entity_ids": [], "record_ids": [], "excluded_record_ids": [], "include_sensitive": false } }` for a draft. Candidate previews read the same complete production snapshot without saving settings and evaluate records as if the global vault and scope were enabled; `hypothetical_enabled` distinguishes that result from current settings. The response returns matching production records, eligibility, exclusion reasons, selection issues, projected stable paths, and `projection_changes` for files under that scope plus the shared root `index.md`. Each change has an `action` of `added`, `updated`, or `removed`.
 
