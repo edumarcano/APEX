@@ -688,19 +688,19 @@ class RetryHelperTests(unittest.TestCase):
         mock_part.function_call = None
         mock_candidate = MagicMock()
         mock_candidate.content.parts = [mock_part]
-        mock_response = MagicMock()
-        mock_response.candidates = [mock_candidate]
-        mock_response.usage_metadata = MagicMock(
+        mock_chunk = MagicMock()
+        mock_chunk.candidates = [mock_candidate]
+        mock_chunk.usage_metadata = MagicMock(
             prompt_token_count=11,
             candidates_token_count=3,
             total_token_count=14,
             cached_content_token_count=None,
             thoughts_token_count=None,
         )
-        mock_response.model_version = "gemini-3.7-flash"
-        mock_client.models.generate_content.side_effect = [
+        mock_chunk.model_version = "gemini-3.7-flash"
+        mock_client.models.generate_content_stream.side_effect = [
             APIError(429, {"error": {"message": "rate limited"}}),
-            mock_response,
+            [mock_chunk],
         ]
 
         result = GeminiProvider(api_key="test").generate_turn(
@@ -714,11 +714,8 @@ class RetryHelperTests(unittest.TestCase):
         assert result.usage is not None
         self.assertEqual(result.usage.input_tokens, 11)
         self.assertEqual(result.usage.output_tokens, 3)
-        self.assertIsNone(
-            mock_client.models.generate_content_stream.call_args.kwargs[
-                "config"
-            ].max_output_tokens
-        )
+        request = mock_client.models.generate_content_stream.call_args.kwargs
+        self.assertIsNone(request["config"].max_output_tokens)
 
     @patch("core.agent.providers.gemini.genai.Client")
     def test_explicit_output_limit_reaches_gemini_generation_config(
