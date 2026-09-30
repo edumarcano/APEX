@@ -236,7 +236,7 @@ class ActivityContextReviewTests(unittest.TestCase):
         conversations = SimpleNamespace()
         self.actions.register_handler(
             CAPABILITY_NAME,
-            executor=ContextCaptureExecutor(self.knowledge_store, conversations),
+            executor=ContextCaptureExecutor(self.knowledge_store),
             verifier=ContextCaptureVerifier(self.knowledge_store),
         )
         self.actions.register_handler(
@@ -579,7 +579,7 @@ class ActivityApiTests(unittest.TestCase):
             actions = ActionService(ActionStore(path))
             conversations = SimpleNamespace()
             actions.register_handler(
-                CAPABILITY_NAME, executor=ContextCaptureExecutor(knowledge_store, conversations),
+                CAPABILITY_NAME, executor=ContextCaptureExecutor(knowledge_store),
                 verifier=ContextCaptureVerifier(knowledge_store),
             )
             actions.register_handler(

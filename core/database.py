@@ -1,21 +1,16 @@
-"""SQLite persistence for runs, reminders, and actions."""
+"""SQLite persistence for reminders and actions."""
 
 from __future__ import annotations
 
 import json
-import logging
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
 from typing import Any, Iterator
 
 from core.config import PROJECT_ROOT
-from core.connectors.models import utc_now_iso
+from core.persistence_schema import validate_table_columns
 
 DB_NAME = str(PROJECT_ROOT / "apex_memory.db")
-_LOGGER = logging.getLogger(__name__)
-
-
 @contextmanager
 def _connection() -> Iterator[sqlite3.Connection]:
     """Open a short-lived SQLite connection with WAL enabled."""
@@ -28,35 +23,15 @@ def _connection() -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
-def _parse_stored_timestamp(raw: str) -> datetime:
-    """
-    Parse a stored ISO timestamp into an aware datetime.
-
-    Timezone-aware UTC values are preserved. Legacy naive values are treated as
-    local wall-clock time so cooldown comparisons remain correct.
-    """
-    parsed = datetime.fromisoformat(raw)
-    if parsed.tzinfo is None:
-        local_tz = datetime.now().astimezone().tzinfo
-        return parsed.replace(tzinfo=local_tz)
-    return parsed
-
-
 def _init_db_schema(conn: sqlite3.Connection, *, include_actions: bool) -> None:
-    cursor = conn.cursor()
-    cursor.execute(
-        "CREATE TABLE IF NOT EXISTS runs "
-        "(id INTEGER PRIMARY KEY, timestamp TEXT)"
-    )
-    cursor.execute(
-        "CREATE TABLE IF NOT EXISTS reminders "
-        "(id INTEGER PRIMARY KEY, note TEXT, is_read INTEGER DEFAULT 0)"
+    validate_schema(conn, include_actions=include_actions)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS reminders ("
+        "id INTEGER PRIMARY KEY, note TEXT, is_read INTEGER DEFAULT 0, "
+        "sync_state TEXT DEFAULT 'pending', sync_action_id TEXT, "
+        "todo_list_id TEXT, todo_task_id TEXT)"
     )
     _initialize_reminder_schema(conn)
-    # This legacy table owned only the retired Flash / Focused / Structured
-    # transcript history. Keep the cutover transactional and repeatable; saved
-    # briefing_sessions live in their own table and are deliberately untouched.
-    cursor.execute("DROP TABLE IF EXISTS briefings")
     if include_actions:
         # Local import keeps the action domain independent of global database state.
         from core.actions.store import initialize_action_schema
@@ -72,11 +47,60 @@ def initialize_db(
     """Initialize local persistence; demo mode may deliberately skip action tables or use a shared connection."""
     if connection is not None:
         with connection:
+            connection.execute("BEGIN")
             _init_db_schema(connection, include_actions=include_actions)
         return
     with _connection() as conn:
         with conn:
+            conn.execute("BEGIN")
             _init_db_schema(conn, include_actions=include_actions)
+
+
+def validate_schema(
+    conn: sqlite3.Connection, *, include_actions: bool = True
+) -> None:
+    """Reject incomplete reminder or action tables before bootstrap writes."""
+    validate_table_columns(
+        conn,
+        table="reminders",
+        columns=(
+            "id", "note", "is_read", "sync_state", "sync_action_id", "todo_list_id", "todo_task_id",
+        ),
+    )
+    validate_table_columns(
+        conn,
+        table="microsoft_todo_reminder_cache",
+        columns=("list_id", "fetched_at", "tasks_json"),
+    )
+    if include_actions:
+        from core.actions.store import ActionStoreError
+
+        actions = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='actions'"
+        ).fetchone() is not None
+        events = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='action_events'"
+        ).fetchone() is not None
+        if actions != events:
+            raise ActionStoreError("Action persistence tables are incomplete.")
+        validate_table_columns(
+            conn,
+            table="actions",
+            columns=(
+                "action_id", "agent_key", "capability_name", "arguments_json", "target", "risk",
+                "summary", "proposed_at", "expires_at", "proposal_hash", "status", "version", "updated_at",
+            ),
+            error_type=ActionStoreError,
+        )
+        validate_table_columns(
+            conn,
+            table="action_events",
+            columns=(
+                "action_id", "sequence", "from_status", "to_status", "occurred_at", "actor",
+                "result_code", "evidence_json",
+            ),
+            error_type=ActionStoreError,
+        )
 
 
 def probe_db() -> None:
@@ -88,32 +112,6 @@ def probe_db() -> None:
     """
     with _connection() as conn:
         conn.execute("SELECT 1").fetchone()
-
-
-def get_last_run() -> datetime | None:
-    """
-    Retrieve the timestamp of the last run from the database.
-
-    Returns None when the runs table has no rows (no prior run logged).
-    Returned datetimes are timezone-aware.
-    """
-    with _connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT timestamp FROM runs ORDER BY id DESC LIMIT 1")
-        result = cursor.fetchone()
-    if not result:
-        return None
-    return _parse_stored_timestamp(result[0])
-
-
-def log_run() -> None:
-    """Log the current UTC timestamp to the database."""
-    with _connection() as conn:
-        with conn:
-            conn.execute(
-                "INSERT INTO runs (timestamp) VALUES (?)",
-                (utc_now_iso(),),
-            )
 
 
 def save_reminder(note: str) -> int:
@@ -137,21 +135,7 @@ def save_reminder(note: str) -> int:
 
 
 def _initialize_reminder_schema(conn: sqlite3.Connection) -> None:
-    """Apply the small additive reminder cutover migration without data loss."""
-    existing = {str(row[1]) for row in conn.execute("PRAGMA table_info(reminders)")}
-    for name, declaration in (
-        ("sync_state", "TEXT"),
-        ("sync_action_id", "TEXT"),
-        ("todo_list_id", "TEXT"),
-        ("todo_task_id", "TEXT"),
-    ):
-        if name not in existing:
-            conn.execute(f"ALTER TABLE reminders ADD COLUMN {name} {declaration}")
-    conn.execute(
-        "UPDATE reminders SET sync_state = CASE WHEN is_read = 1 THEN 'dismissed' "
-        "ELSE 'pending' END WHERE sync_state IS NULL "
-        "OR sync_state NOT IN ('pending', 'unknown', 'synced', 'dismissed')"
-    )
+    """Create current reminder sync support without transforming existing rows."""
     conn.execute(
         "CREATE TABLE IF NOT EXISTS microsoft_todo_reminder_cache ("
         "list_id TEXT PRIMARY KEY NOT NULL, fetched_at TEXT NOT NULL, "

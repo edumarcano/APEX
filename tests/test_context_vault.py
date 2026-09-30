@@ -351,103 +351,59 @@ class ContextVaultSelectionTests(unittest.TestCase):
         self.assertEqual(preview.selection_issues[0].replacement_entity_id, str(target.id))
         self.assertNotIn(str(record.id), {item.record_id for item in preview.records})
 
-    def test_legacy_pending_sensitive_capture_migrates_before_acceptance(self) -> None:
-        sensitive_record, review = self.store.submit_operator(
-            partition="production", values={"kind": "note", "text": "Private accepted claim."},
-            sensitive=True, idempotency_key="migration-sensitive",
+    def test_sensitive_pending_and_accepted_records_survive_restart(self) -> None:
+        _, pending_sensitive = self.store.submit_operator(
+            partition="production", values={"kind": "note", "text": "Private pending claim."},
+            sensitive=True, idempotency_key="restart-pending-sensitive",
         )
-        self.assertIsNone(sensitive_record)
-        assert review is not None
-        self.store.accept_review(review.id, partition="production")
+        assert pending_sensitive is not None
+        self.store.accept_review(pending_sensitive.id, partition="production")
+        accepted_sensitive = next(
+            item for item in self.store.list_records(partition="production", statuses=("active",))
+            if item.text == "Private pending claim."
+        )
         ordinary, ordinary_review = self.store.submit_operator(
             partition="production", values={"kind": "note", "text": "Ordinary accepted claim."},
-            sensitive=False, idempotency_key="migration-ordinary",
+            sensitive=False, idempotency_key="restart-ordinary",
         )
         self.assertIsNone(ordinary_review)
         assert ordinary is not None
-        _, pending_sensitive = self.store.submit_operator(
-            partition="production", values={"kind": "note", "text": "Private pending claim."},
-            sensitive=True, idempotency_key="migration-pending-sensitive",
+        _, still_pending = self.store.submit_operator(
+            partition="production", values={"kind": "note", "text": "Another private pending claim."},
+            sensitive=True, idempotency_key="restart-pending",
         )
-        assert pending_sensitive is not None
-        pending_ordinary = self.store.create_review(
-            partition="production", operation="capture",
-            proposal={"kind": "note", "text": "Ordinary pending claim.", "effective_at": None},
-            evidence={"source_kind": "manual", "locator": "manual/ordinary-pending", "original_text": "Ordinary pending claim."},
-            expected_revisions={}, reason_codes=("operator_review",),
+        assert still_pending is not None
+
+        before_payload = self.store.get_review(still_pending.id, partition="production")
+        self.store.close()
+        reopened = KnowledgeStore(self.path)
+        reopened.initialize()
+        self.store = reopened
+        self.knowledge = KnowledgeService(reopened)
+
+        self.assertTrue(reopened.get_record(accepted_sensitive.id, partition="production").record.sensitive)
+        self.assertFalse(reopened.get_record(ordinary.id, partition="production").record.sensitive)
+        restored = reopened.get_review(still_pending.id, partition="production")
+        self.assertEqual(restored.proposal, before_payload.proposal)
+        self.assertEqual(restored.evidence, before_payload.evidence)
+        self.assertTrue(restored.proposal["sensitive"])
+        self.assertTrue(restored.evidence["sensitive"])
+        reopened.accept_review(restored.id, partition="production")
+        accepted_pending = next(
+            item for item in reopened.list_records(partition="production", statuses=("active",))
+            if item.text == "Another private pending claim."
         )
+        self.assertTrue(accepted_pending.sensitive)
+        scope = ContextVaultScopeSettings(
+            id=uuid4(), name="Private pending", enabled=True, record_ids=(accepted_pending.id,),
+        )
+        preview = self._selection_service(self.knowledge, enabled=True, scopes=(scope,)).preview(scope.id)
+        self.assertEqual(preview.records[0].exclusion_reasons, ("sensitive",))
 
-        # Model a beta.4 database: the request's sensitivity was recorded only
-        # in reason_codes, and the record table predates the sensitive column.
-        conn = sqlite3.connect(self.path)
-        try:
-            for legacy_review in (pending_sensitive,):
-                row = conn.execute(
-                    "SELECT proposal_json,evidence_json FROM knowledge_reviews WHERE id=?",
-                    (str(legacy_review.id),),
-                ).fetchone()
-                proposal, evidence = json.loads(row[0]), json.loads(row[1])
-                proposal.pop("sensitive", None)
-                evidence.pop("sensitive", None)
-                conn.execute(
-                    "UPDATE knowledge_reviews SET proposal_json=?,evidence_json=? WHERE id=?",
-                    (json.dumps(proposal), json.dumps(evidence), str(legacy_review.id)),
-                )
-            with conn:
-                conn.execute("UPDATE schema_versions SET version=10 WHERE domain='knowledge'")
-                conn.execute("ALTER TABLE knowledge_records DROP COLUMN sensitive")
-        finally:
-            conn.close()
-
-        migrated = KnowledgeStore(self.path)
-        migrated.initialize()
-        try:
-            migrated_sensitive = next(
-                item for item in migrated.list_records(partition="production", statuses=("active",))
-                if item.text == "Private accepted claim."
-            )
-            migrated_ordinary = migrated.get_record(ordinary.id, partition="production").record
-            self.assertTrue(migrated_sensitive.sensitive)
-            self.assertFalse(migrated_ordinary.sensitive)
-
-            restored_review = migrated.get_review(pending_sensitive.id, partition="production")
-            self.assertTrue(restored_review.proposal["sensitive"])
-            self.assertTrue(restored_review.evidence["sensitive"])
-            migrated.accept_review(restored_review.id, partition="production")
-            accepted_pending = next(
-                item for item in migrated.list_records(partition="production", statuses=("active",))
-                if item.text == "Private pending claim."
-            )
-            self.assertTrue(accepted_pending.sensitive)
-
-            ordinary_review_after_migration = migrated.get_review(
-                pending_ordinary.id, partition="production",
-            )
-            self.assertNotIn("sensitive", ordinary_review_after_migration.proposal)
-            self.assertNotIn("sensitive", ordinary_review_after_migration.evidence)
-            migrated.accept_review(ordinary_review_after_migration.id, partition="production")
-            accepted_ordinary_pending = next(
-                item for item in migrated.list_records(partition="production", statuses=("active",))
-                if item.text == "Ordinary pending claim."
-            )
-            self.assertFalse(accepted_ordinary_pending.sensitive)
-
-            scope = ContextVaultScopeSettings(
-                id=uuid4(), name="Private pending", enabled=True,
-                record_ids=(accepted_pending.id,),
-            )
-            preview = self._selection_service(
-                KnowledgeService(migrated), enabled=True, scopes=(scope,),
-            ).preview(scope.id)
-            self.assertEqual(preview.eligible_count, 0)
-            self.assertEqual(preview.records[0].exclusion_reasons, ("sensitive",))
-        finally:
-            migrated.close()
-
-    def test_pending_sensitive_correction_survives_v11_migration_and_refresh(self) -> None:
+    def test_pending_sensitive_correction_survives_restart_and_refresh(self) -> None:
         target, target_review = self.store.submit_operator(
             partition="production", values={"kind": "note", "text": "Ordinary original claim."},
-            sensitive=False, idempotency_key="migration-correction-target",
+            sensitive=False, idempotency_key="restart-correction-target",
         )
         self.assertIsNone(target_review)
         assert target is not None
@@ -455,56 +411,34 @@ class ContextVaultSelectionTests(unittest.TestCase):
             partition="production", correction_record_id=str(target.id),
             expected_updated_at=target.updated_at,
             values={"kind": "note", "text": "Private corrected claim."},
-            sensitive=True, idempotency_key="migration-sensitive-correction",
+            sensitive=True, idempotency_key="restart-sensitive-correction",
         )
         assert review is not None
-
-        # Beta.5 already added the record column, but its v11 migration left
-        # legacy pending review payloads without their sensitivity markers.
-        conn = sqlite3.connect(self.path)
-        try:
-            row = conn.execute(
-                "SELECT proposal_json,evidence_json FROM knowledge_reviews WHERE id=?",
-                (str(review.id),),
-            ).fetchone()
-            proposal, evidence = json.loads(row[0]), json.loads(row[1])
-            proposal["capture"].pop("sensitive", None)
-            evidence.pop("sensitive", None)
-            with conn:
-                conn.execute(
-                    "UPDATE knowledge_reviews SET proposal_json=?,evidence_json=? WHERE id=?",
-                    (json.dumps(proposal), json.dumps(evidence), str(review.id)),
-                )
-                conn.execute("UPDATE schema_versions SET version=11 WHERE domain='knowledge'")
-        finally:
-            conn.close()
-
         self.store.close()
-        migrated = KnowledgeStore(self.path)
-        migrated.initialize()
-        self.store = migrated
-        self.knowledge = KnowledgeService(migrated)
-        restored = migrated.get_review(review.id, partition="production")
+        reopened = KnowledgeStore(self.path)
+        reopened.initialize()
+        self.store = reopened
+        self.knowledge = KnowledgeService(reopened)
+        restored = reopened.get_review(review.id, partition="production")
         self.assertTrue(restored.proposal["capture"]["sensitive"])
         self.assertTrue(restored.evidence["sensitive"])
 
-        changed = migrated.set_sensitive(
+        changed = reopened.set_sensitive(
             target.id, partition="production", sensitive=True,
             expected_updated_at=target.updated_at,
         )
-        current_target = migrated.set_sensitive(
+        current_target = reopened.set_sensitive(
             target.id, partition="production", sensitive=False,
             expected_updated_at=changed.updated_at,
         )
-        refreshed = migrated.refresh_review(review.id, partition="production")
-        self.assertEqual(migrated.get_review(review.id, partition="production").decision, "stale")
+        refreshed = reopened.refresh_review(review.id, partition="production")
+        self.assertEqual(reopened.get_review(review.id, partition="production").decision, "stale")
         self.assertTrue(refreshed.proposal["capture"]["sensitive"])
         self.assertTrue(refreshed.evidence["sensitive"])
         self.assertEqual(refreshed.proposal["expected_updated_at"], current_target.updated_at)
-
-        migrated.accept_review(refreshed.id, partition="production")
+        reopened.accept_review(refreshed.id, partition="production")
         corrected = next(
-            item for item in migrated.list_records(partition="production", statuses=("active",))
+            item for item in reopened.list_records(partition="production", statuses=("active",))
             if item.text == "Private corrected claim."
         )
         self.assertTrue(corrected.sensitive)
@@ -512,74 +446,49 @@ class ContextVaultSelectionTests(unittest.TestCase):
             id=uuid4(), name="Private correction", enabled=True, record_ids=(corrected.id,),
         )
         preview = self._selection_service(
-            KnowledgeService(migrated), enabled=True, scopes=(scope,),
+            KnowledgeService(reopened), enabled=True, scopes=(scope,),
         ).preview(scope.id)
-        self.assertEqual(preview.eligible_count, 0)
         self.assertEqual(preview.records[0].exclusion_reasons, ("sensitive",))
 
-    def test_v12_repairs_sensitive_review_accepted_while_schema_was_v11(self) -> None:
+    def test_reinitialization_preserves_review_payloads_and_history(self) -> None:
         ordinary, ordinary_review = self.store.submit_operator(
-            partition="production", values={"kind": "note", "text": "Existing ordinary claim."},
-            sensitive=False, idempotency_key="v11-existing-ordinary",
+            partition="production", values={"kind": "note", "text": "Ordinary accepted history."},
+            sensitive=False, idempotency_key="preserve-accepted-history",
         )
         self.assertIsNone(ordinary_review)
         assert ordinary is not None
         _, review = self.store.submit_operator(
-            partition="production", values={"kind": "note", "text": "Legacy accepted private claim."},
-            sensitive=True, idempotency_key="v11-accepted-sensitive",
+            partition="production", values={"kind": "note", "text": "Private pending claim."},
+            sensitive=True, idempotency_key="preserve-review-payload",
         )
         assert review is not None
-
-        # Reproduce beta.5's persisted state: the review's sensitivity marker
-        # is missing, acceptance creates an ordinary record, and the DB is v11.
+        before = self.store.get_review(review.id, partition="production")
+        before_history = self.store.get_record(ordinary.id, partition="production").history
         conn = sqlite3.connect(self.path)
         try:
-            row = conn.execute(
-                "SELECT proposal_json,evidence_json FROM knowledge_reviews WHERE id=?",
-                (str(review.id),),
+            raw_before = conn.execute(
+                "SELECT proposal_json,evidence_json FROM knowledge_reviews WHERE id=?", (str(review.id),),
             ).fetchone()
-            proposal, evidence = json.loads(row[0]), json.loads(row[1])
-            proposal.pop("sensitive", None)
-            evidence.pop("sensitive", None)
-            with conn:
-                conn.execute(
-                    "UPDATE knowledge_reviews SET proposal_json=?,evidence_json=? WHERE id=?",
-                    (json.dumps(proposal), json.dumps(evidence), str(review.id)),
-                )
-                conn.execute("UPDATE schema_versions SET version=11 WHERE domain='knowledge'")
         finally:
             conn.close()
+        self.store.initialize()
+        conn = sqlite3.connect(self.path)
+        try:
+            raw_after = conn.execute(
+                "SELECT proposal_json,evidence_json FROM knowledge_reviews WHERE id=?", (str(review.id),),
+            ).fetchone()
+        finally:
+            conn.close()
+        after = self.store.get_review(review.id, partition="production")
+        self.assertEqual(raw_after, raw_before)
+        self.assertEqual(after.proposal, before.proposal)
+        self.assertEqual(after.evidence, before.evidence)
+        self.assertEqual(self.store.get_record(ordinary.id, partition="production").history, before_history)
 
-        self.store.accept_review(review.id, partition="production")
-        accepted = next(
-            item for item in self.store.list_records(partition="production", statuses=("active",))
-            if item.text == "Legacy accepted private claim."
-        )
-        self.assertFalse(accepted.sensitive)
-
-        self.store.close()
-        migrated = KnowledgeStore(self.path)
-        migrated.initialize()
-        self.store = migrated
-        self.knowledge = KnowledgeService(migrated)
-        repaired = migrated.get_record(accepted.id, partition="production").record
-        self.assertTrue(repaired.sensitive)
-        self.assertFalse(migrated.get_record(ordinary.id, partition="production").record.sensitive)
-
-        scope = ContextVaultScopeSettings(
-            id=uuid4(), name="Legacy accepted private", enabled=True,
-            record_ids=(repaired.id,),
-        )
-        preview = self._selection_service(
-            self.knowledge, enabled=True, scopes=(scope,),
-        ).preview(scope.id)
-        self.assertEqual(preview.eligible_count, 0)
-        self.assertEqual(preview.records[0].exclusion_reasons, ("sensitive",))
-
-    def test_v12_preserves_explicit_sensitive_clear_after_review_acceptance(self) -> None:
+    def test_explicit_sensitive_clear_survives_restart(self) -> None:
         _, review = self.store.submit_operator(
             partition="production", values={"kind": "note", "text": "Cleared private claim."},
-            sensitive=True, idempotency_key="v11-cleared-sensitive",
+            sensitive=True, idempotency_key="restart-cleared-sensitive",
         )
         assert review is not None
         self.store.accept_review(review.id, partition="production")
@@ -587,36 +496,22 @@ class ContextVaultSelectionTests(unittest.TestCase):
             item for item in self.store.list_records(partition="production", statuses=("active",))
             if item.text == "Cleared private claim."
         )
-        self.assertTrue(record.sensitive)
-
-        # Beta.5 had backfilled this accepted review. A later operator decision
-        # in v11 must remain authoritative when v12 repeats that backfill.
-        conn = sqlite3.connect(self.path)
-        try:
-            with conn:
-                conn.execute("UPDATE schema_versions SET version=11 WHERE domain='knowledge'")
-        finally:
-            conn.close()
         cleared = self.store.set_sensitive(
             record.id, partition="production", sensitive=False,
             expected_updated_at=record.updated_at,
         )
         self.assertFalse(cleared.sensitive)
-
         self.store.close()
-        migrated = KnowledgeStore(self.path)
-        migrated.initialize()
-        self.store = migrated
-        self.knowledge = KnowledgeService(migrated)
-        current = migrated.get_record(record.id, partition="production").record
+        reopened = KnowledgeStore(self.path)
+        reopened.initialize()
+        self.store = reopened
+        self.knowledge = KnowledgeService(reopened)
+        current = reopened.get_record(record.id, partition="production").record
         self.assertFalse(current.sensitive)
-
         scope = ContextVaultScopeSettings(
             id=uuid4(), name="Explicitly cleared", enabled=True, record_ids=(current.id,),
         )
-        preview = self._selection_service(
-            self.knowledge, enabled=True, scopes=(scope,),
-        ).preview(scope.id)
+        preview = self._selection_service(self.knowledge, enabled=True, scopes=(scope,)).preview(scope.id)
         self.assertEqual(preview.eligible_count, 1)
         self.assertTrue(preview.records[0].eligible)
 

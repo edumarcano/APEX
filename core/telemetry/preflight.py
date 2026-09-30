@@ -305,7 +305,6 @@ def evaluate_preflight(request: PreflightRequest) -> PreflightResponse:
         blockers.append(_blocker("configuration_failure"))
 
     try:
-        database.initialize_db()
         database.probe_db()
     except (sqlite3.Error, OSError):
         _LOGGER.exception("Preflight database failure")

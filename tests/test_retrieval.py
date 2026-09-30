@@ -5,6 +5,7 @@ import sqlite3
 import struct
 import unittest
 from pathlib import Path
+from unittest import mock
 from uuid import uuid4
 
 import numpy as np
@@ -14,7 +15,7 @@ from core.conversations.store import ConversationStore
 from core.retrieval.embedding import EmbeddingError, FastEmbedAdapter
 from core.retrieval.models import RetrievalItem
 from core.retrieval.service import RetrievalBusyError, RetrievalService
-from core.retrieval.store import RetrievalStore
+from core.retrieval.store import RetrievalSchemaCompatibilityError, RetrievalStore
 
 
 class FakeEmbeddingAdapter:
@@ -190,6 +191,32 @@ class RetrievalTests(unittest.TestCase):
         status = service.status()
         self.assertEqual(status.state, "degraded")
         self.assertEqual(status.error_category, "retrieval_initialization_failed")
+
+    def test_unsupported_schema_disables_all_later_store_access(self) -> None:
+        store = mock.Mock(spec=RetrievalStore)
+        store.initialize.side_effect = RetrievalSchemaCompatibilityError(
+            "Unsupported retrieval persistence schema."
+        )
+        service = RetrievalService(store, adapter=FakeEmbeddingAdapter())
+
+        service.initialize()
+
+        status = service.status()
+        self.assertFalse(status.enabled)
+        self.assertEqual(status.error_category, "retrieval_initialization_failed")
+        self.assertEqual(service.search("alpha", namespace="conversation", partition="production"), [])
+        self.assertEqual(service.sync_namespace("docs", []), 0)
+        self.assertEqual(service.index_messages(()), 0)
+        self.assertEqual(service.reconcile(), 0)
+        self.assertEqual(service.prepare().mode, "disabled")
+        service._backfill_embeddings("fake:2:test")
+
+        store.initialize.assert_called_once_with()
+        store.counts.assert_not_called()
+        store.model_state.assert_not_called()
+        store.search_fts.assert_not_called()
+        store.sync_namespace.assert_not_called()
+        store.items_missing_embeddings.assert_not_called()
 
     def test_prepare_is_non_blocking_and_disabled_mode_writes_nothing(self) -> None:
         service = RetrievalService(self.store, adapter=FakeEmbeddingAdapter())

@@ -188,6 +188,26 @@ class TelemetryApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/telemetry/latest")
         self.assertEqual(response.status_code, 404)
 
+    def test_preflight_probes_database_without_initializing_schema(self) -> None:
+        from core.telemetry.preflight import evaluate_preflight
+
+        with mock.patch("core.telemetry.preflight.config.DEMO_MODE", False), mock.patch(
+            "core.telemetry.preflight.is_dev_mode", return_value=True
+        ), mock.patch(
+            "core.telemetry.preflight.get_settings_store", return_value=self.store
+        ), mock.patch(
+            "core.telemetry.preflight.database.initialize_db",
+            side_effect=AssertionError("preflight must not bootstrap persistence"),
+        ), mock.patch(
+            "core.telemetry.preflight.database.probe_db"
+        ) as probe, mock.patch(
+            "core.telemetry.preflight._effective_connector_names", return_value=set()
+        ):
+            response = evaluate_preflight(PreflightRequest(operation="activate"))
+
+        probe.assert_called_once_with()
+        self.assertTrue(response.can_proceed)
+
     def test_refresh_all_and_latest(self) -> None:
         weather = _result("weather", "healthy", display_text="70 sunny")
         news = _result("news", "healthy", display_text="headline")

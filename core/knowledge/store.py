@@ -14,6 +14,7 @@ from typing import Any, Callable, Iterator, Mapping, Sequence
 from uuid import UUID, uuid4
 
 from core.connectors.models import utc_now_iso
+from core.persistence_schema import validate_versioned_schema
 from core.knowledge.models import (
     ContextVaultRecordSnapshot,
     ContextVaultSelectionSnapshot,
@@ -26,7 +27,11 @@ from core.knowledge.models import (
     KnowledgeSource,
 )
 from core.retrieval.models import RetrievalItem
-from core.retrieval.store import sync_namespace_in_transaction
+from core.retrieval.store import (
+    RetrievalSchemaCompatibilityError,
+    RetrievalStore,
+    sync_namespace_in_transaction,
+)
 
 _KINDS = {"idea", "preference", "decision", "goal", "fact", "constraint", "note", "observation"}
 _STATUSES = {"active", "conflicting", "superseded", "retracted"}
@@ -100,10 +105,12 @@ class KnowledgeStore:
         *,
         connection: sqlite3.Connection | None = None,
         lock: threading.RLock | None = None,
+        retrieval_enabled: bool = True,
     ) -> None:
         self._db_path = str(db_path) if db_path is not None else None
         self._lock = lock or threading.RLock()
         self._owns_memory_connection = connection is None and db_path is None
+        self._retrieval_enabled = retrieval_enabled
         self._memory_connection = connection or (
             sqlite3.connect(":memory:", check_same_thread=False) if db_path is None else None
         )
@@ -192,45 +199,75 @@ class KnowledgeStore:
 
     def initialize(self) -> None:
         with self._connection() as conn:
-            conn.execute("PRAGMA foreign_keys=OFF")
+            self.validate_schema(conn)
             try:
-                conn.execute("BEGIN")
+                RetrievalStore.validate_schema(conn)
+            except RetrievalSchemaCompatibilityError:
+                self._retrieval_enabled = False
+            conn.execute("BEGIN")
+            try:
                 conn.execute(
                     "CREATE TABLE IF NOT EXISTS schema_versions ("
                     "domain TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL CHECK(version >= 1))"
                 )
-                row = conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()
-                version = int(row[0]) if row is not None else 0
-                if version > _KNOWLEDGE_SCHEMA_VERSION:
-                    raise KnowledgeStoreError("Knowledge schema is newer than this APEX build.")
                 self._create_schema(conn)
-                if "merged_into_entity_id" not in {str(column[1]) for column in conn.execute("PRAGMA table_info(entities)")}:
-                    conn.execute("ALTER TABLE entities ADD COLUMN merged_into_entity_id TEXT REFERENCES entities(id)")
-                if version < 4:
-                    self._migrate_to_v4(conn)
-                if version < _KNOWLEDGE_SCHEMA_VERSION or not self._has_review_schema(conn):
-                    self._migrate_to_v6(conn)
-                self._migrate_to_v8(conn)
-                self._migrate_to_v9(conn)
-                if version < 10:
-                    self._migrate_to_v10(conn)
-                if version < 11:
-                    self._migrate_to_v11(conn)
-                if version < 12:
-                    self._migrate_to_v12(conn)
-                self._create_context_vault_revision_triggers(conn)
-                if version <= _KNOWLEDGE_SCHEMA_VERSION:
+                for partition in _PARTITIONS:
                     conn.execute(
-                        "INSERT INTO schema_versions(domain, version) VALUES ('knowledge', ?) "
-                        "ON CONFLICT(domain) DO UPDATE SET version = excluded.version",
-                        (_KNOWLEDGE_SCHEMA_VERSION,),
+                        "INSERT INTO knowledge_partition_revisions(partition,revision) VALUES (?,0) "
+                        "ON CONFLICT(partition) DO NOTHING",
+                        (partition,),
                     )
+                self._create_context_vault_revision_triggers(conn)
+                conn.execute(
+                    "INSERT INTO schema_versions(domain, version) VALUES ('knowledge', ?) "
+                    "ON CONFLICT(domain) DO NOTHING",
+                    (_KNOWLEDGE_SCHEMA_VERSION,),
+                )
                 conn.commit()
             except Exception:
                 conn.rollback()
                 raise
-            finally:
-                conn.execute("PRAGMA foreign_keys=ON")
+
+    @staticmethod
+    def validate_schema(conn: sqlite3.Connection) -> None:
+        """Reject unsupported knowledge layouts without changing them."""
+        validate_versioned_schema(
+            conn,
+            domain="knowledge",
+            version=_KNOWLEDGE_SCHEMA_VERSION,
+            tables={
+                "knowledge_sources": (
+                    "id", "kind", "partition", "locator", "original_text", "content_hash",
+                    "created_at", "origin", "occurred_at",
+                ),
+                "entities": ("id", "name", "normalized_name", "created_at", "merged_into_entity_id"),
+                "entity_aliases": ("normalized_alias", "entity_id", "alias", "created_at"),
+                "knowledge_records": (
+                    "id", "partition", "kind", "text", "status", "subject_entity_id", "predicate",
+                    "object_entity_id", "object_value", "effective_at", "supersedes_record_id",
+                    "created_at", "updated_at", "sensitive",
+                ),
+                "knowledge_record_sources": ("record_id", "source_id", "action_id", "linked_at", "derivation"),
+                "knowledge_record_predecessors": (
+                    "record_id", "predecessor_record_id", "relation", "linked_at",
+                ),
+                "knowledge_history": (
+                    "id", "record_id", "operation", "actor", "reason_code", "related_record_id",
+                    "source_id", "action_id", "review_id", "created_at",
+                ),
+                "knowledge_action_effects": ("action_id", "record_id", "source_id", "outcome", "created_at"),
+                "knowledge_reconciliation_effects": ("action_id", "operation", "target_id", "outcome", "created_at"),
+                "knowledge_reviews": (
+                    "id", "partition", "operation", "proposal_json", "evidence_json",
+                    "expected_revisions_json", "reason_codes_json", "decision", "action_id",
+                    "decision_at", "created_at", "idempotency_key",
+                ),
+                "knowledge_review_actions": ("review_id", "action_id", "created_at"),
+                "knowledge_submission_keys": ("partition", "idempotency_key", "payload_hash", "action_id", "result_json"),
+                "knowledge_partition_revisions": ("partition", "revision"),
+            },
+            error_type=KnowledgeStoreError,
+        )
 
     @staticmethod
     def _create_schema(conn: sqlite3.Connection) -> None:
@@ -251,7 +288,8 @@ class KnowledgeStore:
                 id TEXT PRIMARY KEY NOT NULL,
                 name TEXT NOT NULL CHECK(length(trim(name)) > 0),
                 normalized_name TEXT NOT NULL UNIQUE,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                merged_into_entity_id TEXT REFERENCES entities(id)
             )""",
             """CREATE TABLE IF NOT EXISTS entity_aliases (
                 normalized_alias TEXT PRIMARY KEY NOT NULL,
@@ -348,12 +386,10 @@ class KnowledgeStore:
         )
         for statement in statements:
             conn.execute(statement)
-        columns = {str(column[1]) for column in conn.execute("PRAGMA table_info(knowledge_reviews)")}
-        if "idempotency_key" in columns:
-            conn.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_reviews_idempotency "
-                "ON knowledge_reviews(partition,idempotency_key) WHERE idempotency_key IS NOT NULL"
-            )
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_reviews_idempotency "
+            "ON knowledge_reviews(partition,idempotency_key) WHERE idempotency_key IS NOT NULL"
+        )
 
     @staticmethod
     def _create_context_vault_revision_triggers(conn: sqlite3.Connection) -> None:
@@ -421,234 +457,6 @@ class KnowledgeStore:
         )
         for statement in statements:
             conn.execute(statement)
-
-    @staticmethod
-    def _has_review_schema(conn: sqlite3.Connection) -> bool:
-        return conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='knowledge_reviews'"
-        ).fetchone() is not None
-
-    @staticmethod
-    def _migrate_to_v6(conn: sqlite3.Connection) -> None:
-        """Create review storage without inventing history for existing records."""
-        # _create_schema is intentionally idempotent; version-five development
-        # databases have the provenance layout but not necessarily this table.
-        KnowledgeStore._create_schema(conn)
-        columns = {str(column[1]) for column in conn.execute("PRAGMA table_info(knowledge_reviews)")}
-        if "idempotency_key" not in columns:
-            conn.execute("ALTER TABLE knowledge_reviews ADD COLUMN idempotency_key TEXT")
-        conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_reviews_idempotency "
-            "ON knowledge_reviews(partition,idempotency_key) WHERE idempotency_key IS NOT NULL"
-        )
-
-    @staticmethod
-    def _migrate_to_v8(conn: sqlite3.Connection) -> None:
-        columns = {str(column[1]) for column in conn.execute("PRAGMA table_info(knowledge_submission_keys)")}
-        if "result_json" not in columns:
-            conn.execute("ALTER TABLE knowledge_submission_keys ADD COLUMN result_json TEXT")
-        for partition in _PARTITIONS:
-            conn.execute(
-                "INSERT INTO knowledge_partition_revisions(partition,revision) VALUES (?,0) ON CONFLICT(partition) DO NOTHING",
-                (partition,),
-            )
-        conn.execute(
-            "INSERT OR IGNORE INTO knowledge_review_actions(review_id,action_id,created_at) "
-            "SELECT id,action_id,created_at FROM knowledge_reviews WHERE action_id IS NOT NULL"
-        )
-
-    @staticmethod
-    def _migrate_to_v9(conn: sqlite3.Connection) -> None:
-        """Scope review retry keys to their partition without losing attempts."""
-        indexes = conn.execute("PRAGMA index_list(knowledge_reviews)").fetchall()
-        has_global_retry_key = any(
-            bool(index[2])
-            and [str(column[2]) for column in conn.execute(f"PRAGMA index_info({index[1]})").fetchall()]
-            == ["idempotency_key"]
-            for index in indexes
-        )
-        if not has_global_retry_key:
-            return
-        conn.execute("ALTER TABLE knowledge_review_actions RENAME TO knowledge_review_actions_v8")
-        conn.execute("ALTER TABLE knowledge_reviews RENAME TO knowledge_reviews_v8")
-        conn.execute(
-            "CREATE TABLE knowledge_reviews ("
-            "id TEXT PRIMARY KEY NOT NULL,"
-            "partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')),"
-            "operation TEXT NOT NULL,"
-            "proposal_json TEXT NOT NULL CHECK(json_valid(proposal_json)),"
-            "evidence_json TEXT NOT NULL CHECK(json_valid(evidence_json)),"
-            "expected_revisions_json TEXT NOT NULL CHECK(json_valid(expected_revisions_json)),"
-            "reason_codes_json TEXT NOT NULL CHECK(json_valid(reason_codes_json)),"
-            "decision TEXT NOT NULL CHECK(decision IN ('pending', 'accepted', 'rejected', 'stale')),"
-            "action_id TEXT UNIQUE, decision_at TEXT, created_at TEXT NOT NULL, idempotency_key TEXT)"
-        )
-        conn.execute(
-            "INSERT INTO knowledge_reviews(id,partition,operation,proposal_json,evidence_json,expected_revisions_json,reason_codes_json,decision,action_id,decision_at,created_at,idempotency_key) "
-            "SELECT id,partition,operation,proposal_json,evidence_json,expected_revisions_json,reason_codes_json,decision,action_id,decision_at,created_at,idempotency_key FROM knowledge_reviews_v8"
-        )
-        conn.execute(
-            "CREATE TABLE knowledge_review_actions ("
-            "review_id TEXT NOT NULL REFERENCES knowledge_reviews(id),"
-            "action_id TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL,"
-            "PRIMARY KEY(review_id, action_id))"
-        )
-        conn.execute(
-            "INSERT INTO knowledge_review_actions(review_id,action_id,created_at) "
-            "SELECT review_id,action_id,created_at FROM knowledge_review_actions_v8"
-        )
-        conn.execute("DROP TABLE knowledge_review_actions_v8")
-        conn.execute("DROP TABLE knowledge_reviews_v8")
-        conn.execute(
-            "CREATE UNIQUE INDEX idx_knowledge_reviews_idempotency "
-            "ON knowledge_reviews(partition,idempotency_key) WHERE idempotency_key IS NOT NULL"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_knowledge_reviews_partition_pending "
-            "ON knowledge_reviews(partition, decision, created_at DESC)"
-        )
-
-    @staticmethod
-    def _migrate_to_v10(conn: sqlite3.Connection) -> None:
-        """Extend immutable source evidence without weakening the prior CHECK constraint."""
-        conn.execute("PRAGMA legacy_alter_table=ON")
-        try:
-            conn.execute("ALTER TABLE knowledge_sources RENAME TO knowledge_sources_v9")
-            conn.execute("""CREATE TABLE knowledge_sources (
-                id TEXT PRIMARY KEY NOT NULL,
-                kind TEXT NOT NULL CHECK(kind IN ('conversation_message', 'manual', 'external_activity')),
-                partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')),
-                locator TEXT NOT NULL,
-                original_text TEXT NOT NULL CHECK(length(trim(original_text)) > 0),
-                content_hash TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                origin TEXT NOT NULL DEFAULT 'unknown' CHECK(origin IN ('operator_input', 'connected_service', 'external_tool', 'unknown')),
-                occurred_at TEXT,
-                UNIQUE(kind, partition, locator, content_hash)
-            )""")
-            conn.execute(
-                "INSERT INTO knowledge_sources(id,kind,partition,locator,original_text,content_hash,created_at,origin,occurred_at) "
-                "SELECT id,kind,partition,locator,original_text,content_hash,created_at,origin,occurred_at FROM knowledge_sources_v9"
-            )
-            conn.execute("DROP TABLE knowledge_sources_v9")
-        finally:
-            conn.execute("PRAGMA legacy_alter_table=OFF")
-
-    @staticmethod
-    def _migrate_to_v4(conn: sqlite3.Connection) -> None:
-        source_columns = {str(column[1]) for column in conn.execute("PRAGMA table_info(knowledge_sources)")}
-        if "origin" not in source_columns:
-            conn.execute(
-                "ALTER TABLE knowledge_sources ADD COLUMN origin TEXT NOT NULL DEFAULT 'unknown' "
-                "CHECK(origin IN ('operator_input', 'connected_service', 'external_tool', 'unknown'))"
-            )
-        if "occurred_at" not in source_columns:
-            conn.execute("ALTER TABLE knowledge_sources ADD COLUMN occurred_at TEXT")
-        link_columns = {str(column[1]) for column in conn.execute("PRAGMA table_info(knowledge_record_sources)")}
-        if "derivation" not in link_columns:
-            conn.execute(
-                "ALTER TABLE knowledge_record_sources ADD COLUMN derivation TEXT NOT NULL DEFAULT 'unknown' "
-                "CHECK(derivation IN ('direct', 'model_interpretation', 'unknown'))"
-            )
-        now = utc_now_iso()
-        conn.execute(
-            "INSERT OR IGNORE INTO knowledge_record_predecessors(record_id,predecessor_record_id,relation,linked_at) "
-            "SELECT id,supersedes_record_id,'supersedes',created_at FROM knowledge_records WHERE supersedes_record_id IS NOT NULL"
-        )
-        for (record_id,) in conn.execute("SELECT id FROM knowledge_records").fetchall():
-            exists = conn.execute(
-                "SELECT 1 FROM knowledge_history WHERE record_id=? AND operation='baseline' AND reason_code='migration_baseline'",
-                (str(record_id),),
-            ).fetchone()
-            if exists is None:
-                conn.execute(
-                    "INSERT INTO knowledge_history(id,record_id,operation,actor,reason_code,related_record_id,source_id,action_id,review_id,created_at) "
-                    "VALUES (?, ?, 'baseline', 'system', 'migration_baseline', NULL, NULL, NULL, NULL, ?)",
-                    (str(uuid4()), str(record_id), now),
-                )
-
-    @staticmethod
-    def _migrate_to_v11(conn: sqlite3.Connection) -> None:
-        columns = {str(column[1]) for column in conn.execute("PRAGMA table_info(knowledge_records)")}
-        if "sensitive" not in columns:
-            conn.execute(
-                "ALTER TABLE knowledge_records ADD COLUMN sensitive INTEGER NOT NULL DEFAULT 0 "
-                "CHECK(sensitive IN (0, 1))"
-            )
-
-        KnowledgeStore._backfill_accepted_sensitive_reviews(conn)
-
-    @staticmethod
-    def _backfill_accepted_sensitive_reviews(conn: sqlite3.Connection) -> None:
-        """Mark only records linked to explicitly sensitive accepted reviews."""
-        sensitive_review_ids = []
-        for review_id, reason_codes_json in conn.execute(
-            "SELECT id,reason_codes_json FROM knowledge_reviews WHERE decision='accepted'"
-        ).fetchall():
-            try:
-                reason_codes = json.loads(str(reason_codes_json))
-            except (TypeError, ValueError):
-                continue
-            if isinstance(reason_codes, list) and "sensitive" in reason_codes:
-                sensitive_review_ids.append(str(review_id))
-        if sensitive_review_ids:
-            placeholders = ",".join("?" for _ in sensitive_review_ids)
-            conn.execute(
-                "UPDATE knowledge_records SET sensitive=1 WHERE sensitive=0 AND id IN ("
-                "SELECT accepted.record_id FROM ("
-                "SELECT record_id,MAX(created_at) AS accepted_at FROM knowledge_history "
-                "WHERE operation='review_accepted' AND review_id IN (" + placeholders + ") "
-                "GROUP BY record_id) AS accepted WHERE NOT EXISTS ("
-                "SELECT 1 FROM knowledge_history AS cleared WHERE cleared.record_id=accepted.record_id "
-                "AND cleared.operation='sensitivity_changed' AND cleared.reason_code='sensitive_disabled' "
-                "AND cleared.created_at > accepted.accepted_at))",
-                sensitive_review_ids,
-            )
-
-    @staticmethod
-    def _migrate_to_v12(conn: sqlite3.Connection) -> None:
-        """Restore legacy pending-review policy and repair v11 acceptances."""
-        # A pending beta.4 review could be accepted by beta.5 before this
-        # migration ran. Its acceptance history identifies the exact records
-        # to repair, just as it does during the initial sensitive-column migration.
-        KnowledgeStore._backfill_accepted_sensitive_reviews(conn)
-
-        rows = conn.execute(
-            "SELECT id,operation,proposal_json,evidence_json,reason_codes_json "
-            "FROM knowledge_reviews WHERE decision='pending'"
-        ).fetchall()
-        for review_id, operation, proposal_json, evidence_json, reason_codes_json in rows:
-            try:
-                reason_codes = json.loads(str(reason_codes_json))
-                proposal = json.loads(str(proposal_json))
-                evidence = json.loads(str(evidence_json))
-            except (TypeError, ValueError):
-                continue
-            if (
-                not isinstance(reason_codes, list)
-                or "sensitive" not in reason_codes
-                or not isinstance(proposal, dict)
-                or not isinstance(evidence, dict)
-            ):
-                continue
-            if str(operation) == "capture":
-                proposal["sensitive"] = True
-            elif str(operation) == "correct":
-                capture = proposal.get("capture")
-                if not isinstance(capture, dict):
-                    continue
-                capture["sensitive"] = True
-            else:
-                continue
-            evidence["sensitive"] = True
-            conn.execute(
-                "UPDATE knowledge_reviews SET proposal_json=?,evidence_json=? WHERE id=?",
-                (
-                    json.dumps(proposal, sort_keys=True, separators=(",", ":")),
-                    json.dumps(evidence, sort_keys=True, separators=(",", ":")),
-                    str(review_id),
-                ),
-            )
 
     @staticmethod
     def _source(row: Sequence[object]) -> KnowledgeSource:
@@ -2577,7 +2385,7 @@ class KnowledgeStore:
         return (self._record(row[:14]), self._source(row[14:23]), str(row[23])) if row else None
 
     def _sync_retrieval(self, conn: sqlite3.Connection) -> None:
-        if self._memory_connection is not None:
+        if not self._retrieval_enabled or self._memory_connection is not None:
             # DEMO_MODE has no shared durable retrieval database. Keep knowledge
             # process-local as well; the next process starts with a clean slate.
             return

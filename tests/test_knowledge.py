@@ -52,105 +52,81 @@ class KnowledgeStoreTests(unittest.TestCase):
         with self.assertRaises(KnowledgeStoreError):
             self.store.initialize()
 
-    def test_accepts_compatible_unreleased_v5_schema_without_downgrading(self) -> None:
+    def test_rejects_older_schema_without_rewriting_it(self) -> None:
         conn = sqlite3.connect(self.path)
         try:
             with conn:
-                conn.execute("UPDATE schema_versions SET version = 5 WHERE domain = 'knowledge'")
+                conn.execute("UPDATE schema_versions SET version = 11 WHERE domain = 'knowledge'")
+        finally:
+            conn.close()
+        with self.assertRaisesRegex(KnowledgeStoreError, "Unsupported knowledge persistence schema"):
+            self.store.initialize()
+        conn = sqlite3.connect(self.path)
+        try:
+            self.assertEqual(conn.execute("SELECT version FROM schema_versions WHERE domain='knowledge'").fetchone()[0], 11)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM knowledge_records").fetchone()[0], 0)
         finally:
             conn.close()
 
-    def test_v8_review_migration_preserves_attempts_and_scopes_retry_keys(self) -> None:
-        legacy_path = Path(self.temp_dir.name) / "review-v8.db"
-        RetrievalStore(legacy_path).initialize()
-        review_id = UUID(int=404)
-        conn = sqlite3.connect(legacy_path)
-        try:
-            with conn:
-                conn.execute("INSERT INTO schema_versions(domain,version) VALUES ('knowledge',8)")
-                conn.execute(
-                    "CREATE TABLE knowledge_reviews ("
-                    "id TEXT PRIMARY KEY NOT NULL, partition TEXT NOT NULL, operation TEXT NOT NULL, "
-                    "proposal_json TEXT NOT NULL, evidence_json TEXT NOT NULL, expected_revisions_json TEXT NOT NULL, "
-                    "reason_codes_json TEXT NOT NULL, decision TEXT NOT NULL, action_id TEXT UNIQUE, decision_at TEXT, "
-                    "created_at TEXT NOT NULL, idempotency_key TEXT UNIQUE)"
-                )
-                conn.execute(
-                    "CREATE TABLE knowledge_review_actions (review_id TEXT NOT NULL, action_id TEXT NOT NULL UNIQUE, "
-                    "created_at TEXT NOT NULL, PRIMARY KEY(review_id,action_id))"
-                )
-                conn.execute(
-                    "INSERT INTO knowledge_reviews VALUES (?, 'production', 'capture', ?, ?, '{}', '[\"sensitive\"]', "
-                    "'pending', 'old-action', NULL, '2026-09-10T00:00:00+00:00', 'shared-key')",
-                    (str(review_id), '{"kind":"note","text":"Legacy review.","effective_at":null}',
-                     '{"source_kind":"manual","original_text":"Legacy review."}'),
-                )
-                conn.execute(
-                    "INSERT INTO knowledge_review_actions VALUES (?, 'old-action', '2026-09-10T00:00:00+00:00')",
-                    (str(review_id),),
-                )
-        finally:
-            conn.close()
-        migrated = KnowledgeStore(legacy_path)
-        migrated.initialize()
-        self.assertEqual(migrated.get_review(review_id, partition="production").action_id, "old-action")
-        independent = migrated.create_review(
-            partition="sandbox", operation="capture",
-            proposal={"kind": "note", "text": "Sandbox review.", "effective_at": None},
-            evidence={"source_kind": "manual", "original_text": "Sandbox review."},
-            expected_revisions={}, reason_codes=("sensitive",), idempotency_key="shared-key",
-        )
-        self.assertEqual(independent.partition, "sandbox")
-        migrated.close()
-        self.store.initialize()
+    def test_rejects_incomplete_canonical_schema_without_rewriting_it(self) -> None:
         conn = sqlite3.connect(self.path)
         try:
-            self.assertEqual(conn.execute("SELECT version FROM schema_versions WHERE domain = 'knowledge'").fetchone()[0], 12)
+            with conn:
+                conn.execute("DROP TABLE knowledge_history")
+        finally:
+            conn.close()
+        with self.assertRaisesRegex(KnowledgeStoreError, "missing required tables"):
+            self.store.initialize()
+        conn = sqlite3.connect(self.path)
+        try:
+            self.assertIsNone(conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='knowledge_history'").fetchone())
+            self.assertEqual(conn.execute("SELECT version FROM schema_versions WHERE domain='knowledge'").fetchone()[0], 12)
         finally:
             conn.close()
 
-    def test_v9_source_migration_accepts_external_activity_evidence(self) -> None:
-        legacy_source = self._source("Preserve this linked source")
-        legacy_record = self.store.create_record(
-            partition="production", kind="note", text="Preserve this linked source.",
-            source_ids=[legacy_source.id],
+    def test_rejects_missing_version_marker_without_rewriting_data(self) -> None:
+        source = self._source("Keep this record while rejecting the schema.")
+        record = self.store.create_record(
+            partition="production", kind="note", text="Keep this record while rejecting the schema.",
+            source_ids=[source.id],
         )
-        self.store.close()
         conn = sqlite3.connect(self.path)
         try:
-            conn.execute("PRAGMA foreign_keys=OFF")
             with conn:
-                conn.execute("PRAGMA legacy_alter_table=ON")
-                conn.execute("ALTER TABLE knowledge_sources RENAME TO knowledge_sources_current")
-                conn.execute(
-                    "CREATE TABLE knowledge_sources ("
-                    "id TEXT PRIMARY KEY NOT NULL, "
-                    "kind TEXT NOT NULL CHECK(kind IN ('conversation_message', 'manual')), "
-                    "partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')), "
-                    "locator TEXT NOT NULL, original_text TEXT NOT NULL, content_hash TEXT NOT NULL, "
-                    "created_at TEXT NOT NULL, origin TEXT NOT NULL DEFAULT 'unknown', occurred_at TEXT, "
-                    "UNIQUE(kind, partition, locator, content_hash))"
-                )
-                conn.execute(
-                    "INSERT INTO knowledge_sources SELECT * FROM knowledge_sources_current"
-                )
-                conn.execute("DROP TABLE knowledge_sources_current")
-                conn.execute("PRAGMA legacy_alter_table=OFF")
-                conn.execute("UPDATE schema_versions SET version=9 WHERE domain='knowledge'")
-            conn.execute("PRAGMA foreign_keys=ON")
+                conn.execute("DELETE FROM schema_versions WHERE domain='knowledge'")
         finally:
             conn.close()
-        self.store = KnowledgeStore(self.path)
+        with self.assertRaisesRegex(KnowledgeStoreError, "no version marker"):
+            self.store.initialize()
+        self.assertEqual(self.store.get_record(record.id, partition="production").record.text,
+                         "Keep this record while rejecting the schema.")
+        conn = sqlite3.connect(self.path)
+        try:
+            self.assertIsNone(conn.execute("SELECT 1 FROM schema_versions WHERE domain='knowledge'").fetchone())
+        finally:
+            conn.close()
+
+    def test_unsupported_retrieval_schema_disables_knowledge_sync_for_instance(self) -> None:
+        conn = sqlite3.connect(self.path)
+        try:
+            with conn:
+                conn.execute("DELETE FROM schema_versions WHERE domain='retrieval'")
+        finally:
+            conn.close()
         self.store.initialize()
         source = self.store.create_source(
-            kind="external_activity", partition="production", locator="activity/report/findings/0",
-            original_text="External result", origin="external_tool",
+            kind="manual", partition="production", locator="manual/retrieval-disabled",
+            original_text="Knowledge writes remain available.",
         )
-        self.assertEqual((source.kind, source.origin), ("external_activity", "external_tool"))
-        self.assertEqual(
-            self.store.get_record(legacy_record.id, partition="production").sources[0].id,
-            legacy_source.id,
-        )
+        with patch(
+            "core.knowledge.store.sync_namespace_in_transaction",
+            side_effect=AssertionError("retrieval synchronization must be disabled"),
+        ):
+            record = self.store.create_record(
+                partition="production", kind="note", text="Knowledge remains available.",
+                source_ids=[source.id],
+            )
+        self.assertEqual(record.text, "Knowledge remains available.")
 
     def test_review_acceptance_is_durable_and_stale_snapshot_writes_nothing(self) -> None:
         review = self.store.create_review(
@@ -445,76 +421,43 @@ class KnowledgeStoreTests(unittest.TestCase):
         for predecessor in records[:2]:
             self.assertEqual(self.store.get_record(predecessor.id, partition="production").superseded_by, (selected.id,))
 
-    def test_v3_migration_preserves_records_and_marks_legacy_provenance_unknown(self) -> None:
-        legacy_path = Path(self.temp_dir.name) / "legacy.db"
-        original_id, replacement_id, source_id = UUID(int=101), UUID(int=102), UUID(int=103)
-        conn = sqlite3.connect(legacy_path)
+    def test_old_version_rejection_preserves_existing_history_and_effects(self) -> None:
+        source = self._source("Keep linked evidence.")
+        record, _, _ = self.store.apply_capture(
+            action_id="stable-capture", partition="production", source_kind="manual",
+            locator="manual/stable-capture", original_text=source.original_text,
+            kind="note", text=source.original_text, derivation="direct",
+        )
+        before = self.store.get_record(record.id, partition="production")
+        conn = sqlite3.connect(self.path)
         try:
             with conn:
-                conn.executescript("""
-                    CREATE TABLE schema_versions (domain TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL);
-                    CREATE TABLE knowledge_sources (id TEXT PRIMARY KEY, kind TEXT NOT NULL, partition TEXT NOT NULL, locator TEXT NOT NULL, original_text TEXT NOT NULL, content_hash TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(kind,partition,locator,content_hash));
-                    CREATE TABLE entities (id TEXT PRIMARY KEY, name TEXT NOT NULL, normalized_name TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL);
-                    CREATE TABLE entity_aliases (normalized_alias TEXT PRIMARY KEY, entity_id TEXT NOT NULL, alias TEXT NOT NULL, created_at TEXT NOT NULL);
-                    CREATE TABLE knowledge_records (id TEXT PRIMARY KEY, partition TEXT NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL, status TEXT NOT NULL, subject_entity_id TEXT, predicate TEXT, object_entity_id TEXT, object_value TEXT, effective_at TEXT, supersedes_record_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-                    CREATE TABLE knowledge_record_sources (record_id TEXT NOT NULL, source_id TEXT NOT NULL, action_id TEXT, linked_at TEXT NOT NULL, PRIMARY KEY(record_id,source_id));
-                    CREATE TABLE knowledge_action_effects (action_id TEXT PRIMARY KEY, record_id TEXT NOT NULL, source_id TEXT NOT NULL, outcome TEXT NOT NULL, created_at TEXT NOT NULL);
-                    CREATE TABLE knowledge_reconciliation_effects (action_id TEXT PRIMARY KEY, operation TEXT NOT NULL, target_id TEXT NOT NULL, outcome TEXT NOT NULL, created_at TEXT NOT NULL);
-                """)
-                conn.execute("INSERT INTO schema_versions VALUES ('knowledge', 3)")
-                conn.execute("INSERT INTO knowledge_sources VALUES (?, 'manual', 'production', 'manual/legacy', 'Original wording', 'digest', '2026-01-01T00:00:00+00:00')", (str(source_id),))
-                conn.execute("INSERT INTO knowledge_records VALUES (?, 'production', 'note', 'Original wording', 'superseded', NULL, NULL, NULL, NULL, NULL, NULL, '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')", (str(original_id),))
-                conn.execute("INSERT INTO knowledge_records VALUES (?, 'production', 'note', 'Replacement wording', 'active', NULL, NULL, NULL, NULL, NULL, ?, '2026-01-02T00:00:00+00:00', '2026-01-02T00:00:00+00:00')", (str(replacement_id), str(original_id)))
-                conn.execute("INSERT INTO knowledge_record_sources VALUES (?, ?, NULL, '2026-01-01T00:00:00+00:00')", (str(original_id), str(source_id)))
+                conn.execute("UPDATE schema_versions SET version=3 WHERE domain='knowledge'")
         finally:
             conn.close()
-        RetrievalStore(legacy_path).initialize()
-        legacy_store = KnowledgeStore(legacy_path)
-        legacy_store.initialize()
-        original = legacy_store.get_record(original_id, partition="production")
-        replacement = legacy_store.get_record(replacement_id, partition="production")
-        self.assertEqual(original.sources[0].id, source_id)
-        self.assertEqual(original.source_links[0].source.origin, "unknown")
-        self.assertEqual(original.source_links[0].derivation, "unknown")
-        self.assertEqual(replacement.predecessors, (original_id,))
-        self.assertEqual(original.superseded_by, (replacement_id,))
-        self.assertEqual(original.history[0].reason_code, "migration_baseline")
-        legacy_store.close()
+        with self.assertRaisesRegex(KnowledgeStoreError, "expected version 12"):
+            self.store.initialize()
+        after = self.store.get_record(record.id, partition="production")
+        self.assertEqual(after.record, before.record)
+        self.assertEqual(after.sources, before.sources)
+        self.assertEqual(after.history, before.history)
+        self.assertEqual(self.store.capture_effect("stable-capture")[2], "created")
 
-    def test_failed_v3_migration_rolls_back_schema_and_version(self) -> None:
-        class _FailingMigrationConnection(sqlite3.Connection):
+    def test_failed_fresh_bootstrap_rolls_back_schema_and_version(self) -> None:
+        class _FailingBootstrapConnection(sqlite3.Connection):
             def execute(self, sql, parameters=()):
-                if "INSERT INTO knowledge_history" in sql:
-                    raise sqlite3.OperationalError("injected migration failure")
+                if "CREATE TRIGGER IF NOT EXISTS context_vault_revision_records_insert" in sql:
+                    raise sqlite3.OperationalError("injected bootstrap failure")
                 return super().execute(sql, parameters)
 
-        legacy_path = Path(self.temp_dir.name) / "failed-migration.db"
-        conn = sqlite3.connect(legacy_path)
-        try:
-            with conn:
-                conn.executescript("""
-                    CREATE TABLE schema_versions (domain TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL);
-                    CREATE TABLE knowledge_sources (id TEXT PRIMARY KEY, kind TEXT NOT NULL, partition TEXT NOT NULL, locator TEXT NOT NULL, original_text TEXT NOT NULL, content_hash TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(kind,partition,locator,content_hash));
-                    CREATE TABLE entities (id TEXT PRIMARY KEY, name TEXT NOT NULL, normalized_name TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL);
-                    CREATE TABLE entity_aliases (normalized_alias TEXT PRIMARY KEY, entity_id TEXT NOT NULL, alias TEXT NOT NULL, created_at TEXT NOT NULL);
-                    CREATE TABLE knowledge_records (id TEXT PRIMARY KEY, partition TEXT NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL, status TEXT NOT NULL, subject_entity_id TEXT, predicate TEXT, object_entity_id TEXT, object_value TEXT, effective_at TEXT, supersedes_record_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-                    CREATE TABLE knowledge_record_sources (record_id TEXT NOT NULL, source_id TEXT NOT NULL, action_id TEXT, linked_at TEXT NOT NULL, PRIMARY KEY(record_id,source_id));
-                    CREATE TABLE knowledge_action_effects (action_id TEXT PRIMARY KEY, record_id TEXT NOT NULL, source_id TEXT NOT NULL, outcome TEXT NOT NULL, created_at TEXT NOT NULL);
-                    CREATE TABLE knowledge_reconciliation_effects (action_id TEXT PRIMARY KEY, operation TEXT NOT NULL, target_id TEXT NOT NULL, outcome TEXT NOT NULL, created_at TEXT NOT NULL);
-                """)
-                conn.execute("INSERT INTO schema_versions VALUES ('knowledge', 3)")
-                conn.execute("INSERT INTO knowledge_sources VALUES ('source', 'manual', 'production', 'manual/legacy', 'Original evidence', 'digest', '2026-01-01T00:00:00+00:00')")
-                conn.execute("INSERT INTO knowledge_records VALUES ('record', 'production', 'note', 'Original evidence', 'active', NULL, NULL, NULL, NULL, NULL, NULL, '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')")
-                conn.execute("INSERT INTO knowledge_record_sources VALUES ('record', 'source', NULL, '2026-01-01T00:00:00+00:00')")
-        finally:
-            conn.close()
-        failing = sqlite3.connect(legacy_path, factory=_FailingMigrationConnection)
+        failing = sqlite3.connect(":memory:", factory=_FailingBootstrapConnection)
         store = KnowledgeStore(None, connection=failing)
-        with self.assertRaises(sqlite3.OperationalError):
+        with self.assertRaisesRegex(sqlite3.OperationalError, "injected bootstrap failure"):
             store.initialize()
-        self.assertNotIn("origin", {column[1] for column in failing.execute("PRAGMA table_info(knowledge_sources)")})
-        self.assertEqual(failing.execute("SELECT version FROM schema_versions WHERE domain='knowledge'").fetchone()[0], 3)
-        self.assertEqual(failing.execute("SELECT original_text FROM knowledge_sources").fetchone()[0], "Original evidence")
+        self.assertEqual(
+            failing.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall(), [],
+        )
+        self.assertFalse(failing.in_transaction)
         failing.close()
 
     def test_sources_are_immutable_and_linked_to_records(self) -> None:

@@ -17,7 +17,12 @@ from core.conversations.models import ConversationMessage
 from core.conversations.store import ConversationStore
 from core.retrieval.embedding import EmbeddingAdapter, EmbeddingError, FastEmbedAdapter
 from core.retrieval.models import RetrievalHit, RetrievalItem, RetrievalStatus
-from core.retrieval.store import RetrievalStore, RetrievalStoreError, blob_to_vector
+from core.retrieval.store import (
+    RetrievalSchemaCompatibilityError,
+    RetrievalStore,
+    RetrievalStoreError,
+    blob_to_vector,
+)
 
 _LOGGER = logging.getLogger(__name__)
 _service: "RetrievalService | None" = None
@@ -67,6 +72,16 @@ class RetrievalService:
             self.store.initialize()
             self.reconcile()
             self.initialization_error = None
+        except RetrievalSchemaCompatibilityError as exc:
+            # An unsupported retrieval schema must remain untouched for this run.
+            # The domain is optional, so expose its existing initialization error
+            # while preventing every later service path from reaching the store.
+            self.enabled = False
+            self.initialization_error = "retrieval_initialization_failed"
+            _LOGGER.error(
+                "Retrieval schema is unsupported; retrieval is disabled for this run: %s",
+                exc,
+            )
         except Exception as exc:
             self.initialization_error = "retrieval_initialization_failed"
             _LOGGER.error(
@@ -142,6 +157,8 @@ class RetrievalService:
         return str(getattr(self.adapter, "fingerprint", f"{self.adapter.model_id}:{self.adapter.dimension}:{self.adapter.version}"))
 
     def _backfill_embeddings(self, fingerprint: str, *, namespace: str | None = None) -> None:
+        if not self.enabled:
+            return
         pending = self.store.items_missing_embeddings(fingerprint, namespace=namespace)
         for offset in range(0, len(pending), self.batch_size):
             batch = pending[offset : offset + self.batch_size]

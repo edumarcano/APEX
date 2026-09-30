@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 
 from core.activity.models import ActivityContextReviewLink, ActivityReport, ActivityReportContent, ActivitySubmissionReceipt
 from core.connectors.models import utc_now_iso
+from core.persistence_schema import validate_versioned_schema
 
 _SCHEMA_VERSION = 2
 _PARTITIONS = {"production", "sandbox"}
@@ -79,11 +80,9 @@ class ActivityStore:
     def initialize(self) -> None:
         with self._connection() as conn:
             try:
+                self.validate_schema(conn)
                 conn.execute("BEGIN")
                 conn.execute("CREATE TABLE IF NOT EXISTS schema_versions (domain TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL CHECK(version >= 1))")
-                existing = conn.execute("SELECT version FROM schema_versions WHERE domain = 'activity'").fetchone()
-                if existing is not None and int(existing[0]) > _SCHEMA_VERSION:
-                    raise ActivityStoreError("Activity schema is newer than this APEX build.")
                 conn.execute("""CREATE TABLE IF NOT EXISTS activity_reports (
                     id TEXT PRIMARY KEY NOT NULL,
                     partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')),
@@ -100,22 +99,40 @@ class ActivityStore:
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_activity_reports_partition_received ON activity_reports(partition, received_at DESC)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_activity_reports_client_partition ON activity_reports(client_id, partition, received_at DESC)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_activity_reports_disposition ON activity_reports(partition, disposition, received_at DESC)")
-                if existing is None or int(existing[0]) < 2:
-                    conn.execute("""CREATE TABLE IF NOT EXISTS activity_context_review_links (
-                        report_id TEXT NOT NULL REFERENCES activity_reports(id),
-                        partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')),
-                        finding_reference TEXT NOT NULL,
-                        proposal_hash TEXT NOT NULL,
-                        review_id TEXT NOT NULL UNIQUE,
-                        action_id TEXT NOT NULL UNIQUE,
-                        created_at TEXT NOT NULL,
-                        PRIMARY KEY(report_id, finding_reference, proposal_hash)
-                    )""")
+                conn.execute("""CREATE TABLE IF NOT EXISTS activity_context_review_links (
+                    report_id TEXT NOT NULL REFERENCES activity_reports(id),
+                    partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')),
+                    finding_reference TEXT NOT NULL,
+                    proposal_hash TEXT NOT NULL,
+                    review_id TEXT NOT NULL UNIQUE,
+                    action_id TEXT NOT NULL UNIQUE,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY(report_id, finding_reference, proposal_hash)
+                )""")
                 conn.execute("INSERT INTO schema_versions(domain, version) VALUES ('activity', ?) ON CONFLICT(domain) DO UPDATE SET version=excluded.version", (_SCHEMA_VERSION,))
                 conn.commit()
             except Exception:
                 conn.rollback()
                 raise
+
+    @staticmethod
+    def validate_schema(conn: sqlite3.Connection) -> None:
+        validate_versioned_schema(
+            conn,
+            domain="activity",
+            version=_SCHEMA_VERSION,
+            tables={
+                "activity_reports": (
+                    "id", "partition", "client_id", "client_display_name", "principal",
+                    "submission_key", "received_at", "disposition", "content_json", "content_hash",
+                ),
+                "activity_context_review_links": (
+                    "report_id", "partition", "finding_reference", "proposal_hash", "review_id",
+                    "action_id", "created_at",
+                ),
+            },
+            error_type=ActivityStoreError,
+        )
 
     @staticmethod
     def _report(row: sqlite3.Row | tuple[object, ...]) -> ActivityReport:

@@ -4,8 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from uuid import uuid4
 
-from core.actions import ActionService, ActionStore
+from core.actions import ActionService, ActionStore, ExecutionOutcome
 from core.knowledge.reconciliation import CAPABILITY_NAME, ContextReconciliationExecutor, ContextReconciliationVerifier
 from core.knowledge.store import KnowledgeStore
 from core.knowledge import KnowledgeService
@@ -43,27 +44,112 @@ class ContextReconciliationActionTests(unittest.TestCase):
         self.knowledge.close()
         self.tempdir.cleanup()
 
-    def test_retract_is_proposed_before_it_changes_the_record(self) -> None:
-        action = self.actions.propose(
-            agent_key="operator", capability_name=CAPABILITY_NAME,
-            arguments={"operation": "retract", "partition": "production", "record_id": str(self.record.id), "expected_updated_at": self.record.updated_at},
-            target="Personal Context", risk="destructive", summary="Approve personal context retract", actor="operator",
+    def _propose_reconciliation(
+        self, *, link_review: bool = True, include_review_id: bool = True,
+        requested_review_id: str | None = None,
+    ):
+        action_id = str(uuid4())
+        proposal = {
+            "record_id": str(self.record.id), "expected_updated_at": self.record.updated_at,
+        }
+        expected = self.knowledge.review_snapshot(
+            partition="production", operation="retract", proposal=proposal,
         )
+        review = None
+        if link_review:
+            review = KnowledgeService(self.knowledge).create_action_review(
+                partition="production", operation="retract", proposal=proposal, evidence={},
+                expected_revisions=expected, reason_codes=("status_change",), action_id=action_id,
+            )
+        arguments = {**proposal, "operation": "retract", "partition": "production"}
+        if include_review_id:
+            arguments["review_id"] = requested_review_id or (str(review.id) if review else str(uuid4()))
+        return self.actions.propose(
+            agent_key="operator", capability_name=CAPABILITY_NAME,
+            arguments=arguments, target="Personal Context", risk="destructive",
+            summary="Approve personal context retract", actor="operator", action_id=action_id,
+        )
+
+    def test_retract_is_proposed_before_it_changes_the_record(self) -> None:
+        action = self._propose_reconciliation()
         self.assertEqual(self.knowledge.get_record(self.record.id, partition="production").record.status, "active")
         verified = self.actions.approve_and_execute(action.action_id, actor="operator", expected_version=0)
         self.assertEqual(verified.status, "verified")
         self.assertEqual(self.knowledge.get_record(self.record.id, partition="production").record.status, "retracted")
 
+    def test_linked_review_can_execute_without_embedded_review_id(self) -> None:
+        action = self._propose_reconciliation(include_review_id=False)
+        outcome = ContextReconciliationExecutor(self.knowledge).execute(action)
+        self.assertTrue(outcome.succeeded)
+        self.assertEqual(self.knowledge.get_record(self.record.id, partition="production").record.status, "retracted")
+
     def test_stale_reconciliation_action_fails_without_writing(self) -> None:
-        action = self.actions.propose(
-            agent_key="operator", capability_name=CAPABILITY_NAME,
-            arguments={"operation": "retract", "partition": "production", "record_id": str(self.record.id), "expected_updated_at": self.record.updated_at},
-            target="Personal Context", risk="destructive", summary="Approve personal context retract", actor="operator",
-        )
+        action = self._propose_reconciliation()
         self.knowledge.set_status(self.record.id, partition="production", status="conflicting")
         result = self.actions.approve_and_execute(action.action_id, actor="operator", expected_version=0)
         self.assertEqual(result.status, "execution_failed")
         self.assertEqual(self.knowledge.get_record(self.record.id, partition="production").record.status, "conflicting")
+
+    def test_missing_mismatched_and_superseded_review_links_reject_without_writes(self) -> None:
+        for action in (
+            self._propose_reconciliation(link_review=False),
+            self._propose_reconciliation(requested_review_id=str(uuid4())),
+        ):
+            with self.subTest(action=action.action_id):
+                outcome = ContextReconciliationExecutor(self.knowledge).execute(action)
+                self.assertFalse(outcome.succeeded)
+                self.assertEqual(
+                    self.knowledge.get_record(self.record.id, partition="production").record.status,
+                    "active",
+                )
+                self.assertIsNone(self.knowledge.reconciliation_effect(action.action_id))
+
+        superseded = self._propose_reconciliation()
+        review = self.knowledge.review_for_action(superseded.action_id, partition="production")
+        assert review is not None
+        self.knowledge.link_review_action(review.id, partition="production", action_id=str(uuid4()))
+        outcome = ContextReconciliationExecutor(self.knowledge).execute(superseded)
+        self.assertFalse(outcome.succeeded)
+        self.assertIsNone(self.knowledge.reconciliation_effect(superseded.action_id))
+        self.assertEqual(
+            self.knowledge.get_record(self.record.id, partition="production").record.status,
+            "active",
+        )
+
+    def test_historical_reconciliation_verification_uses_effect_without_replay(self) -> None:
+        action_id = str(uuid4())
+        self.knowledge.reconcile(
+            action_id=action_id, operation="retract", partition="production",
+            arguments={"record_id": str(self.record.id), "expected_updated_at": self.record.updated_at},
+        )
+
+        class _UnknownAttempt:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def execute(self, _action):
+                self.calls += 1
+                return ExecutionOutcome(None, "legacy_reconciliation_outcome_unknown", {})
+
+        executor = _UnknownAttempt()
+        self.actions.register_handler(
+            CAPABILITY_NAME, executor=executor,
+            verifier=ContextReconciliationVerifier(self.knowledge),
+        )
+        action = self.actions.propose(
+            agent_key="apex", capability_name=CAPABILITY_NAME, arguments={},
+            target="Personal Context", risk="write", summary="Legacy reconciliation attempt",
+            action_id=action_id,
+        )
+        pending = self.actions.approve_and_execute(
+            action.action_id, actor="operator", expected_version=0,
+        )
+        self.assertEqual(pending.status, "outcome_unknown")
+        verified = self.actions.retry_verification(
+            action.action_id, actor="operator", expected_version=pending.version,
+        )
+        self.assertEqual(verified.status, "verified")
+        self.assertEqual(executor.calls, 1)
 
     def test_sensitive_direct_correction_review_builds_server_owned_attempt_arguments(self) -> None:
         service = KnowledgeService(self.knowledge)
