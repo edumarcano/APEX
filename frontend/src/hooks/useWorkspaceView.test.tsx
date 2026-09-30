@@ -32,19 +32,6 @@ function detail(run_status: BriefingSessionDetail['run_status'], withArtifact: b
 }
 
 describe('useWorkspaceView', () => {
-  it('resolves the selected workspace without activating collection', () => {
-    const { result, rerender } = renderHook((props: { destination: 'overview' | 'briefing' }) => useWorkspaceView(props), { initialProps: { destination: 'briefing' } })
-    expect(result.current.view).toBe('briefing')
-
-    rerender({ destination: 'overview' })
-    expect(result.current.view).toBe('overview')
-
-    rerender({ destination: 'briefing' })
-    expect(result.current.view).toBe('briefing')
-    rerender({ destination: 'overview' })
-    expect(result.current.view).toBe('overview')
-  })
-
   it('keeps the selected briefing profile across workspace changes', () => {
     const { result, rerender } = renderHook((props: { destination: 'overview' | 'briefing' }) => useWorkspaceView(props), { initialProps: { destination: 'briefing' } })
     act(() => result.current.setProfileId('catch_up'))

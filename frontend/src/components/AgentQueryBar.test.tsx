@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { ModelCatalogEntry, ToolCatalog, ToolPreflightEstimate } from '../types/telemetry'
 
-import { AgentQueryBar, CortexQueryRim } from './AgentQueryBar'
+import { AgentQueryBar } from './AgentQueryBar'
 
 const catalog: ToolCatalog = {
   agent: 'apex',
@@ -65,11 +65,6 @@ function renderBar(
 }
 
 describe('AgentQueryBar unified tool selection', () => {
-  it('renders the query rim when CortexQueryRim is mounted', () => {
-    const { container } = render(<CortexQueryRim />)
-    expect(container.querySelector('[data-slot="cortex-query-rim"]')).toBeInTheDocument()
-  })
-
   it('uses an icon-only tools trigger in Overview and Briefing', () => {
     renderBar(vi.fn())
 

@@ -1,21 +1,25 @@
 import { createRef } from 'react'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { LaunchView } from './LaunchView'
 
-function renderLaunch() {
-  return render(<LaunchView
+function renderLaunch(current: 'overview' | 'briefing' | 'cortex' | 'reports' | null = null, onSelect = vi.fn(), onOpenSettings = vi.fn()) {
+  return {
+    onSelect,
+    onOpenSettings,
+    ...render(<LaunchView
     logoProps={{ status: 'idle' }}
-    current={null}
-    onSelect={vi.fn()}
-    onOpenSettings={vi.fn()}
+    current={current}
+    onSelect={onSelect}
+    onOpenSettings={onOpenSettings}
     settingsButtonRef={createRef<HTMLButtonElement>()}
     mode={null}
-  />)
+    />),
+  }
 }
 
-const ICON_ACCENTS: Array<[string, string, string]> = [
+const WORKSPACES: Array<[string, string, string]> = [
   ['Overview', 'overview', 'text-[#1F6FE5]'],
   ['Briefing', 'briefing', 'text-[#FBBF24]'],
   ['Cortex', 'cortex', 'text-[#D8B4FE]'],
@@ -23,33 +27,42 @@ const ICON_ACCENTS: Array<[string, string, string]> = [
 ]
 
 describe('LaunchView', () => {
-  it('keeps workspace buttons neutral with accent icons only', () => {
-    renderLaunch()
-    const labels = screen.getAllByRole('button', { name: /^(Overview|Briefing|Cortex|Reports)$/ }).map((button) => button.textContent)
-    expect(labels).toEqual(['Overview', 'Briefing', 'Cortex', 'Reports'])
-    for (const [label, id, iconClass] of ICON_ACCENTS) {
-      const button = screen.getByRole('button', { name: label })
-      expect(button).toHaveClass('hud-glass', 'text-zinc-300', 'border-white/10')
-      expect(button.className).not.toMatch(/(?:^|\s)bg-\[#(?:22D3EE|0F4DB8|FBBF24|7E22CE)\]\/\d+/)
-      expect(button.className).not.toMatch(/(?:^|\s)text-\[#(?:22D3EE|1F6FE5|0F4DB8|A5C7FF|FBBF24|D8B4FE|A5F3FC|FFF3B0)\]/)
-      const icon = screen.getByTestId(`launch-icon-${id}`)
-      expect(icon).toHaveClass(iconClass)
+  it('offers each workspace once and routes its accessible button', () => {
+    const onSelect = vi.fn()
+    renderLaunch(null, onSelect)
+    const workspace = screen.getByRole('navigation', { name: 'Workspace' })
+    const buttons = within(workspace).getAllByRole('button')
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual(WORKSPACES.map(([label]) => label))
+    for (const [label] of WORKSPACES) {
+      const button = within(workspace).getByRole('button', { name: label })
+      fireEvent.click(button)
+      expect(onSelect).toHaveBeenLastCalledWith(label.toLowerCase())
     }
   })
 
-  it('keeps settings off the workspace accent colors', () => {
-    renderLaunch()
+  it('marks the current workspace and keeps the documented neutral surfaces and peer icon accents', () => {
+    renderLaunch('briefing')
+    for (const [label, id, iconClass] of WORKSPACES) {
+      const button = screen.getByRole('button', { name: label })
+      if (label === 'Briefing') expect(button).toHaveAttribute('aria-current', 'page')
+      else expect(button).not.toHaveAttribute('aria-current')
+      expect(button).toHaveClass('hud-glass', 'text-zinc-300', 'border-white/10')
+      const icon = screen.getByTestId(`launch-icon-${id}`)
+      expect(icon).toHaveClass(iconClass)
+    }
     const settings = screen.getByRole('button', { name: 'Open settings' })
-    for (const [, , iconClass] of ICON_ACCENTS) expect(settings).not.toHaveClass(iconClass)
+    expect(settings).toHaveClass('hud-glass', 'text-zinc-300')
+    expect(settings.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
   })
 
-  it('renders the hero wordmark and logo', () => {
-    renderLaunch()
-    expect(screen.getByRole('heading', { name: 'APEX' })).toHaveClass('text-[#FBBF24]', 'text-3xl', 'sm:text-4xl', 'xl:text-5xl')
+  it('shows the APEX identity and opens Settings on request', () => {
+    const onOpenSettings = vi.fn()
+    renderLaunch(null, vi.fn(), onOpenSettings)
+    expect(screen.getByRole('heading', { name: 'APEX' })).toHaveClass('text-[#FBBF24]')
     const wrapper = screen.getByTestId('launch-logo')
-    expect(wrapper).not.toHaveClass('scale-115')
+    expect(wrapper.querySelector('svg')).toBeInTheDocument()
     expect(wrapper.className).toContain('hover:drop-shadow')
-    const logo = wrapper.querySelector('.hud-logo-mark')
-    expect(logo).toHaveClass('h-56', 'sm:h-64', 'xl:h-80')
+    fireEvent.click(screen.getByRole('button', { name: 'Open settings' }))
+    expect(onOpenSettings).toHaveBeenCalledOnce()
   })
 })

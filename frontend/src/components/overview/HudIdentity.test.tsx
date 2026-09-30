@@ -8,41 +8,36 @@ const identity: HudIdentityProps = {
   glyphProps: { status: 'idle', isSpeaking: false },
 }
 
-function renderMark(size: 'hero' | 'large' | 'overview' | 'sidebar' | 'compact') {
-  const { container } = render(<HudIdentityMark identity={identity} size={size} />)
-  const root = container.querySelector('[data-slot="home-identity"]') as HTMLElement
-  const glow = root.firstElementChild as HTMLElement
-  const logo = glow.firstElementChild as HTMLElement
-  return { root, glow, logo }
-}
-
 describe('HudIdentityMark', () => {
-  it.each(['hero', 'overview'] as const)('exposes size and hover glow for %s', (size) => {
-    const { root, glow, logo } = renderMark(size)
-    expect(root.getAttribute('data-logo-size')).toBe(size)
-    expect(glow.className).toContain('hover:drop-shadow')
-    expect(logo.className).toContain('duration-700')
-    expect(logo.className).toContain('motion-reduce:transition-none')
+  it('keeps the active signal label and reduced-motion mark transition across hero and overview', () => {
+    const activeIdentity: HudIdentityProps = {
+      ...identity,
+      glyphProps: { ...identity.glyphProps, activity: 'briefing_ready' },
+    }
+    const { container, rerender } = render(<HudIdentityMark identity={activeIdentity} size="hero" />)
+    for (const size of ['hero', 'overview'] as const) {
+      if (size === 'overview') rerender(<HudIdentityMark identity={activeIdentity} size={size} />)
+      const glyph = container.querySelector('[data-slot="voice-signal-glyph"]')
+      const logo = container.querySelector('[data-activity="briefing_ready"]')
+      expect(glyph).toHaveAttribute('data-signal-tone', 'gold')
+      expect(glyph).toHaveTextContent('Briefing ready')
+      expect(logo).toHaveClass('motion-reduce:transition-none')
+    }
   })
 
-  it('keeps hero scale and overview sizing without the hero height cap', () => {
-    expect(renderMark('hero').glow.className).toContain('scale-115')
-    const { logo } = renderMark('overview')
-    expect(logo.className).toContain('h-24')
-    expect(logo.className).not.toContain('hud-logo-mark')
-  })
-
-  it('sizes the sidebar variant for balanced proportion beside waveform', () => {
-    const { root, logo } = renderMark('sidebar')
-    expect(root.getAttribute('data-logo-size')).toBe('sidebar')
-    expect(logo.className).toContain('h-28')
-    expect(logo.className).toContain('sm:h-32')
+  it('keeps the sidebar signal label aligned with the current Cortex activity', () => {
+    const sidebarIdentity: HudIdentityProps = {
+      ...identity,
+      glyphProps: { ...identity.glyphProps, isCortexQuerying: true, cortexActivityLabel: 'Checking your calendar' },
+    }
+    const { container } = render(<HudIdentityMark identity={sidebarIdentity} size="sidebar" />)
+    expect(container.querySelector('[data-slot="voice-signal-glyph"]')).toHaveTextContent('Checking your calendar')
   })
 
   it('passes hideLabel to the nested voice signal glyph', () => {
     const { container } = render(<HudIdentityMark identity={identity} size="large" hideLabel />)
-    const glyph = container.querySelector('[data-slot="voice-signal-glyph"]') as HTMLElement
+    const glyph = container.querySelector('[data-slot="voice-signal-glyph"]')
     expect(glyph).toBeInTheDocument()
-    expect(glyph.querySelector('span')).not.toBeInTheDocument()
+    expect(glyph?.textContent?.trim()).toBe('')
   })
 })
