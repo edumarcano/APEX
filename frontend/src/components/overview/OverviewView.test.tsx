@@ -265,11 +265,13 @@ describe('OverviewView identity mark sizing', () => {
     // Top-right refresh button exists
     expect(identityCard.querySelector('header button')).toBeInTheDocument()
 
-    // Scaled logo has fluid responsive classes constrained to container
+    // Scaled logo has responsive classes constrained to container
     const logo = identityCard.querySelector('div.max-h-full')
     expect(logo).toBeInTheDocument()
     const logoClass = logo?.getAttribute('class') ?? ''
-    expect(logoClass).toContain('h-full')
+    expect(logoClass).toContain('h-32')
+    expect(logoClass).toContain('sm:h-40')
+    expect(logoClass).toContain('xl:h-48')
     expect(logoClass).toContain('aspect-[5208/5420]')
 
     // Bottom docked glyph exists and has hideLabel (no nested span inside glyph container)

@@ -80,13 +80,13 @@ export function OverviewView({ identity, telemetry, state, error, onCollect, onR
               <RefreshCw className={`size-3.5 motion-reduce:animate-none ${state === 'collecting' || telemetry.isRefreshingAll ? 'animate-spin' : ''}`} strokeWidth={2} aria-hidden />
             </button>
           </header>
-          <div className="my-auto flex min-h-0 flex-1 items-center justify-center px-2 py-1 filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]">
+          <div className="flex min-h-0 flex-1 items-center justify-center px-2 py-1 filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]">
             <ApexLogo
               {...identity.logoProps}
-              className="h-full w-auto max-h-full max-w-full aspect-[5208/5420] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+              className="h-32 w-auto sm:h-40 xl:h-48 max-h-full max-w-full aspect-[5208/5420] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
             />
           </div>
-          <div className="flex w-full shrink-0 justify-center pt-1">
+          <div className="flex w-full shrink-0 justify-center pt-0.5">
             <VoiceSignalGlyph {...identity.glyphProps} hideLabel />
           </div>
         </div>
