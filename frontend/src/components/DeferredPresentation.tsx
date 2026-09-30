@@ -4,7 +4,6 @@ import {
   lazy,
   useState,
   type ComponentType,
-  type ErrorInfo,
   type LazyExoticComponent,
   type ReactNode,
 } from 'react'
@@ -34,10 +33,6 @@ class FailureBoundary extends Component<FailureBoundaryProps, FailureBoundarySta
 
   static getDerivedStateFromError(): FailureBoundaryState {
     return { failed: true }
-  }
-
-  componentDidCatch(_error: Error, _info: ErrorInfo): void {
-    // The caller owns the user-facing error and retry experience.
   }
 
   render(): ReactNode {

@@ -4,23 +4,26 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type CSSProperties,
   type ReactElement,
 } from 'react'
 
 import { type ApexLogoProps } from './components/ApexLogo'
 import { CelestialBackground } from './components/CelestialBackground'
-import { CortexWorkspace } from './components/CortexWorkspace'
-import { ActivityReportsWorkspace } from './components/ActivityReportsWorkspace'
+import type { CortexWorkspace as CortexWorkspaceComponent } from './components/CortexWorkspace'
+import type { ActivityReportsWorkspace as ActivityReportsWorkspaceComponent } from './components/ActivityReportsWorkspace'
 import { ApexAssistantRuntime, type ApexAssistantRunConfig, type ApexAssistantRuntimeHandle } from './components/ApexAssistantRuntime'
 import { PreflightDialog } from './components/PreflightDialog'
 import { ReminderReviewDialog } from './components/ReminderReviewDialog'
 import { ReminderTaskDialog } from './components/ReminderTaskDialog'
 import { CompletedRemindersDialog } from './components/CompletedRemindersDialog'
-import SettingsPanel from './components/SettingsPanel'
+import { DeferredSettingsPanel } from './components/DeferredSettingsPanel'
+import { DeferredPresentation } from './components/DeferredPresentation'
+import { DeferredWorkspaceError, DeferredWorkspaceLoading } from './components/DeferredWorkspaceState'
 import { SystemDiagnostics } from './components/SystemDiagnostics'
 import { HudWorkspace } from './components/HudWorkspace'
-import { BriefingSpeechControl } from './components/briefing/BriefingSpeechControl'
+import type { BriefingSpeechControlProps } from './components/briefing/BriefingSpeechControl'
 import type { BriefingSetupDraft } from './components/briefing/BriefingProfilePanel'
 import { WorkspaceTabs, type WorkspacePeer } from './components/WorkspaceTabs'
 import { LaunchView } from './components/LaunchView'
@@ -82,6 +85,8 @@ function sameToolNames(left: string[], right: string[]): boolean {
 
 const BRIEFING_ACTIVE_STATUSES: ReadonlySet<BriefingSessionStatus> = new Set(['queued', 'running', 'cancelling'])
 const TELEMETRY_FRESHNESS_WINDOW_MS = 5 * 60 * 1000
+const loadCortexWorkspace = () => import('./components/CortexWorkspace').then((module) => ({ default: module.CortexWorkspace }))
+const loadActivityReportsWorkspace = () => import('./components/ActivityReportsWorkspace').then((module) => ({ default: module.ActivityReportsWorkspace }))
 
 function hasUsableTelemetry(snapshot: TelemetrySnapshot | null): boolean {
   if (!snapshot) return false
@@ -1700,7 +1705,7 @@ export default function App(): ReactElement {
           />
         </header> : null}
 
-        <SettingsPanel
+        <DeferredSettingsPanel
           open={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
           restoreFocusRef={settingsButtonRef}
@@ -1788,12 +1793,12 @@ export default function App(): ReactElement {
               loadingLocalModel,
               localLifecycleBusy,
               onUnloadLocalModel: unloadLocalModel,
-              speechControl: selectedCompletedBriefing ? <BriefingSpeechControl
-                {...briefingSpeech}
-                voiceMode={voiceMode}
-                agentDisplayName={agentDisplayName}
-                configuredTtsEngine={voiceEngine}
-              /> : null,
+              speechControl: selectedCompletedBriefing ? {
+                ...briefingSpeech,
+                voiceMode,
+                agentDisplayName,
+                configuredTtsEngine: voiceEngine,
+              } satisfies BriefingSpeechControlProps : null,
               autoGenerateHighlights,
               onAutoGenerateHighlightsChange: handleAutoGenerateHighlightsChange,
               voiceMode,
@@ -1852,80 +1857,92 @@ export default function App(): ReactElement {
             }}
           />
         ) : workspace === 'cortex' ? (
-          <CortexWorkspace
-            activeAgent={activeAgent}
-            cloudEffort={cloudEffort}
-            selectedModel={selectedModel}
-            localContextWindow={localContextWindow}
-            localReasoningMode={localReasoningMode}
-            hostedTools={hostedTools}
-            devModeActive={devModeActive}
-            sandboxMode={sandboxMode}
-            agentQueriesEnabled={Boolean(agentQueriesEnabled)}
-            cortexAgent={cortexAgent}
-            latestTrace={cortexLatestTrace}
-            error={cortexError}
-            contextUsage={cortexContextUsage}
-            toolCatalog={toolCatalogState.catalog}
-            selectedToolNames={toolCatalogState.selectedToolNames}
-            activeToolProfileId={toolCatalogState.activeToolProfileId}
-            selectionReady={toolCatalogState.selectionReady}
-            submissionPending={submissionPending}
-            conversationHydrating={conversationHydrating}
-            onToolSelectionChange={toolCatalogState.setSelectedToolNames}
-            onToolProfileChange={toolCatalogState.applyToolProfile}
-            toolPreflight={toolPreflightState.estimate}
-            toolPreflightLoading={toolPreflightState.isLoading}
-            toolCatalogError={toolCatalogState.error}
-            toolPreflightError={toolPreflightState.error}
-            toolProfileFeedback={toolProfileFeedback}
-            toolProfileError={toolProfileError}
-            onSaveToolProfile={saveToolProfile}
-            onDuplicateToolProfile={duplicateToolProfile}
-            onRenameToolProfile={renameToolProfile}
-            onDeleteToolProfile={deleteToolProfile}
-            onRestoreToolProfile={restoreToolProfile}
-            onSetDefaultToolProfile={setDefaultToolProfile}
-            isQuerying={isCortexQuerying}
-            logoProps={cortexLogoProps}
-            lifecycleBusy={localLifecycleBusy}
-            lifecycleActionPending={isLocalModelActionPending}
-            verifyingCloudModel={verifyingCloudModel}
-            onLoadLocalModel={loadLocalModel}
-            onUnloadLocalModel={unloadLocalModel}
-            onVerifyCloudModel={verifyCloudModel}
-            snapshotAttached={snapshotAttached}
-            snapshotAvailable={telemetry.snapshot !== null}
-            onSnapshotAttachedChange={setSnapshotAttached}
-            personalContextEnabled={sharedAgentModelEntry?.runtime === 'local' ? localPersonalContextEnabled : cloudPersonalContextEnabled}
-            onPersonalContextEnabledChange={(enabled) => persistAgentSettings(sharedAgentModelEntry?.runtime === 'local' ? { local: { personal_context_enabled: enabled } } : { cloud: { personal_context_enabled: enabled } })}
-            onModelChange={handleModelChange}
-            onEffortChange={handleEffortChange}
-            onHostedToolChange={handleHostedToolChange}
-            onSandboxModeChange={handleSandboxModeChange}
-            onLocalContextWindowChange={handleLocalContextWindowChange}
-            onLocalReasoningModeChange={handleLocalReasoningModeChange}
-            actions={actions}
-            demoModeActive={demoModeActive}
-            assistantRunConfig={{
-              agent: activeAgent,
-              effort: sharedAgentModelEntry?.runtime === 'cloud' ? cloudEffort : null,
-              modelId: selectedModel,
-              contextWindow: sharedAgentModelEntry?.runtime === 'local' ? localContextWindow : null,
-              localReasoningMode: sharedAgentModelEntry?.runtime === 'local' ? localReasoningMode : null,
+          <DeferredPresentation
+            key="cortex"
+            load={loadCortexWorkspace}
+            componentProps={{
+              activeAgent,
+              cloudEffort,
+              selectedModel,
+              localContextWindow,
+              localReasoningMode,
+              hostedTools,
+              devModeActive,
+              sandboxMode,
+              agentQueriesEnabled: Boolean(agentQueriesEnabled),
+              cortexAgent,
+              latestTrace: cortexLatestTrace,
+              error: cortexError,
+              contextUsage: cortexContextUsage,
+              toolCatalog: toolCatalogState.catalog,
               selectedToolNames: toolCatalogState.selectedToolNames,
-              toolProfileId: toolCatalogState.activeToolProfileId,
-              snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
-            }}
-            onAssistantPreflight={runAssistantPreflight}
-            linkedReviewId={linkedReviewId}
+              activeToolProfileId: toolCatalogState.activeToolProfileId,
+              selectionReady: toolCatalogState.selectionReady,
+              submissionPending,
+              conversationHydrating,
+              onToolSelectionChange: toolCatalogState.setSelectedToolNames,
+              onToolProfileChange: toolCatalogState.applyToolProfile,
+              toolPreflight: toolPreflightState.estimate,
+              toolPreflightLoading: toolPreflightState.isLoading,
+              toolCatalogError: toolCatalogState.error,
+              toolPreflightError: toolPreflightState.error,
+              toolProfileFeedback,
+              toolProfileError,
+              onSaveToolProfile: saveToolProfile,
+              onDuplicateToolProfile: duplicateToolProfile,
+              onRenameToolProfile: renameToolProfile,
+              onDeleteToolProfile: deleteToolProfile,
+              onRestoreToolProfile: restoreToolProfile,
+              onSetDefaultToolProfile: setDefaultToolProfile,
+              isQuerying: isCortexQuerying,
+              logoProps: cortexLogoProps,
+              lifecycleBusy: localLifecycleBusy,
+              lifecycleActionPending: isLocalModelActionPending,
+              verifyingCloudModel,
+              onLoadLocalModel: loadLocalModel,
+              onUnloadLocalModel: unloadLocalModel,
+              onVerifyCloudModel: verifyCloudModel,
+              snapshotAttached,
+              snapshotAvailable: telemetry.snapshot !== null,
+              onSnapshotAttachedChange: setSnapshotAttached,
+              personalContextEnabled: sharedAgentModelEntry?.runtime === 'local' ? localPersonalContextEnabled : cloudPersonalContextEnabled,
+              onPersonalContextEnabledChange: (enabled) => persistAgentSettings(sharedAgentModelEntry?.runtime === 'local' ? { local: { personal_context_enabled: enabled } } : { cloud: { personal_context_enabled: enabled } }),
+              onModelChange: handleModelChange,
+              onEffortChange: handleEffortChange,
+              onHostedToolChange: handleHostedToolChange,
+              onSandboxModeChange: handleSandboxModeChange,
+              onLocalContextWindowChange: handleLocalContextWindowChange,
+              onLocalReasoningModeChange: handleLocalReasoningModeChange,
+              actions,
+              demoModeActive,
+              assistantRunConfig: {
+                agent: activeAgent,
+                effort: sharedAgentModelEntry?.runtime === 'cloud' ? cloudEffort : null,
+                modelId: selectedModel,
+                contextWindow: sharedAgentModelEntry?.runtime === 'local' ? localContextWindow : null,
+                localReasoningMode: sharedAgentModelEntry?.runtime === 'local' ? localReasoningMode : null,
+                selectedToolNames: toolCatalogState.selectedToolNames,
+                toolProfileId: toolCatalogState.activeToolProfileId,
+                snapshotId: snapshotAttached ? telemetry.snapshot?.snapshot_id ?? null : null,
+              },
+              onAssistantPreflight: runAssistantPreflight,
+              linkedReviewId,
+            } satisfies ComponentProps<typeof CortexWorkspaceComponent>}
+            fallback={<DeferredWorkspaceLoading label="Cortex" />}
+            renderError={(retry) => <DeferredWorkspaceError label="Cortex" retry={retry} />}
           />
         ) : (
-          <ActivityReportsWorkspace
-            reports={activityReports}
-            demoModeActive={demoModeActive}
-            sandboxMode={sandboxMode}
-            onOpenReview={handleOpenActivityReview}
+          <DeferredPresentation
+            key="reports"
+            load={loadActivityReportsWorkspace}
+            componentProps={{
+              reports: activityReports,
+              demoModeActive,
+              sandboxMode,
+              onOpenReview: handleOpenActivityReview,
+            } satisfies ComponentProps<typeof ActivityReportsWorkspaceComponent>}
+            fallback={<DeferredWorkspaceLoading label="Reports" />}
+            renderError={(retry) => <DeferredWorkspaceError label="Reports" retry={retry} />}
           />
       )}
         </ApexAssistantRuntime>
