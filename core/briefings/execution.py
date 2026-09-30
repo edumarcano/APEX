@@ -12,7 +12,7 @@ from typing import Any, Literal
 
 from google.genai.errors import APIError
 
-from core.agent.catalog import build_concrete_agent
+from core.agent.catalog import build_provider_profile
 from core.agent.local_runtime.execution import admit_local_model
 from core.agent.loop import is_local_profile
 from core.agent.model_catalog import model_has_credentials
@@ -81,8 +81,7 @@ def execute_single_call(
     if not model_has_credentials(catalog_profile):
         raise BriefingModelOutputError("Credentials for the selected model are unavailable.")
 
-    concrete_profile = build_concrete_agent(
-        "apex",
+    concrete_profile = build_provider_profile(
         native_effort=model_configuration.reasoning,  # type: ignore[arg-type]
         local_context_window=model_configuration.context_window,
         local_reasoning_mode=model_configuration.local_reasoning_mode,

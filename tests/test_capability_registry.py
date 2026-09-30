@@ -23,7 +23,7 @@ from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.providers.gemini import _descriptors_to_gemini_tools
 from tests.support.agent_fixtures import GEMINI_FLASH_MODEL, build_cloud_profile
-from core.agent.providers.ollama import _descriptor_to_openai_schema
+from core.agent.tool_schemas import descriptor_to_openai_schema
 from core.agent.tools import register_native_capabilities
 from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
 
@@ -203,7 +203,7 @@ class CapabilityRegistryTests(unittest.TestCase):
 
         gemini_tools = _descriptors_to_gemini_tools([weather])
         gemini_declaration = gemini_tools[0].function_declarations[0]
-        ollama_schema = _descriptor_to_openai_schema(weather)
+        ollama_schema = descriptor_to_openai_schema(weather)
 
         self.assertEqual(gemini_declaration.name, ollama_schema["function"]["name"])
         self.assertEqual(
@@ -464,8 +464,8 @@ class CapabilityRegistryTests(unittest.TestCase):
             }
         )
 
-        first_schema = _descriptor_to_openai_schema(first)
-        second_schema = _descriptor_to_openai_schema(second)
+        first_schema = descriptor_to_openai_schema(first)
+        second_schema = descriptor_to_openai_schema(second)
 
         self.assertEqual(
             first_schema["function"]["parameters"]["properties"]["value"]["type"],

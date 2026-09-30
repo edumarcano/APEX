@@ -845,7 +845,7 @@ class RetrievalPrepareResponse(RetrievalStatusResponse):
     """Result of the explicit local model preparation operation."""
 
 
-class CloudAgentVerificationResponse(BaseModel):
+class CloudModelVerificationResponse(BaseModel):
     model_id: str
     status: AgentAvailabilityStatus
     reason: str | None = None

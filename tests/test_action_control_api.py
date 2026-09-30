@@ -25,7 +25,7 @@ from core.agent.capabilities import (
     register_capability,
     validate_capability_arguments,
 )
-from core.agent.catalog import build_concrete_agent
+from core.agent.catalog import build_provider_profile
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.tool_selection import resolve_selected_tools
@@ -138,7 +138,7 @@ class ActionControlApiTests(unittest.TestCase):
         provider = _ProposalProvider()
         response = run_agent_loop(
             AgentQueryRequest(prompt="Write", agent="apex", selected_tool_names=["test_write"]),
-            provider, build_concrete_agent("apex", native_effort=None),
+            provider, build_provider_profile(native_effort=None),
             selected_tools=list(selection.descriptors), tool_selection=selection.diagnostics,
             agent_key="apex",
         )

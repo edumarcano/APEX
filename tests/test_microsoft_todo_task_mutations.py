@@ -25,7 +25,7 @@ from core.actions.microsoft_todo import (
     MicrosoftTodoTaskMutationVerifier,
 )
 from core.agent.capabilities import CapabilityError, get_capability_descriptor, invoke_capability, validate_capability_arguments
-from core.agent.catalog import build_concrete_agent
+from core.agent.catalog import build_provider_profile
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.tool_profiles import get_tool_profile
@@ -178,7 +178,7 @@ class MicrosoftTodoTaskMutationTests(unittest.TestCase):
                 selected_tool_names=[capability],
             ),
             provider,
-            build_concrete_agent("apex", native_effort=None),
+            build_provider_profile(native_effort=None),
             selected_tools=[descriptor],
             agent_key="apex",
         )

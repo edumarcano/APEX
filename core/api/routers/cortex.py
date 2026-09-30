@@ -43,7 +43,7 @@ from core.api.cortex import (
     load_local_model_endpoint,
     query_agent,
     unload_active_local_model_endpoint,
-    verify_cloud_agent_endpoint,
+    verify_cloud_model_endpoint,
 )
 from core.conversations import get_conversation_service
 from core.runs import (
@@ -92,7 +92,7 @@ from core.api.models import (
     CortexAgentResponse,
     ModelVerificationRequest,
     ActionResponse,
-    CloudAgentVerificationResponse,
+    CloudModelVerificationResponse,
     LocalLoadRequest,
     LocalLoadResponse,
     LocalUnloadResponse,
@@ -389,7 +389,6 @@ def list_context_records(
 
 
 @router.get("/api/v1/cortex/vault", response_model=ContextVaultStatusResponse)
-@router.get("/api/v1/cortex/context-vault", response_model=ContextVaultStatusResponse)
 def get_context_vault_status() -> ContextVaultStatusResponse:
     """Report vault selection settings and local export state."""
     try:
@@ -399,7 +398,6 @@ def get_context_vault_status() -> ContextVaultStatusResponse:
 
 
 @router.post("/api/v1/cortex/vault/preview", response_model=ContextVaultPreviewResponse)
-@router.post("/api/v1/cortex/context-vault/preview", response_model=ContextVaultPreviewResponse)
 def preview_context_vault(payload: ContextVaultPreviewRequest) -> ContextVaultPreviewResponse:
     """Preview a scope against all canonical production records without writing files."""
     try:
@@ -445,7 +443,6 @@ def preview_context_vault(payload: ContextVaultPreviewRequest) -> ContextVaultPr
 
 
 @router.post("/api/v1/cortex/vault/refresh", response_model=ContextVaultStatusResponse)
-@router.post("/api/v1/cortex/context-vault/refresh", response_model=ContextVaultStatusResponse)
 async def refresh_context_vault() -> ContextVaultStatusResponse:
     """Serialize a manual publication with the lifespan-owned refresh worker."""
     _ensure_context_vault_write_allowed()
@@ -462,7 +459,6 @@ async def refresh_context_vault() -> ContextVaultStatusResponse:
 
 
 @router.delete("/api/v1/cortex/vault/copies", response_model=ContextVaultStatusResponse)
-@router.delete("/api/v1/cortex/context-vault/copies", response_model=ContextVaultStatusResponse)
 async def remove_context_vault_copies() -> ContextVaultStatusResponse:
     """Remove tracked APEX-owned notes while retaining other vault files."""
     _ensure_context_vault_write_allowed()
@@ -856,6 +852,24 @@ def delete_conversation(conversation_id: str) -> None:
 
 def _turn_result(conversation_id, user, agent) -> ConversationTurnResult:
     metadata = agent.response_metadata or {}
+    projected = {
+        name: metadata[name]
+        for name in (
+            "agent_used",
+            "tool_trace",
+            "tool_outputs",
+            "error",
+            "resolved_tool_selection",
+            "local_context_usage",
+            "resolved_model",
+            "usage",
+            "timing",
+            "cost_estimate",
+            "context_usage",
+            "context_references",
+        )
+        if name in metadata
+    }
     return ConversationTurnResult(
         conversation_id=conversation_id,
         user_message_id=user.id,
@@ -863,7 +877,7 @@ def _turn_result(conversation_id, user, agent) -> ConversationTurnResult:
         active_leaf_message_id=agent.id,
         message_status=agent.status,
         answer=agent.content,
-        **metadata,
+        **projected,
     )
 
 
@@ -1174,7 +1188,7 @@ def _submit_run(conversation_id: UUID, payload: ConversationTurnRequest) -> tupl
         response_data = (
             {"error": error_code}
             if response is None
-            else response.model_dump(mode="json", exclude={"answer", "session_id"})
+            else response.model_dump(mode="json", exclude={"answer"})
         )
         terminal_status = "completed" if message_status == "completed" else "cancelled" if message_status == "interrupted" else "failed"
         response_data["activity_steps"] = coordinator.events.activity_steps_for_completion(record.id, terminal_status)
@@ -1491,14 +1505,14 @@ def cortex_agent() -> CortexAgentResponse:
 
 @router.post(
     "/api/v1/cortex/models/verify",
-    response_model=CloudAgentVerificationResponse,
+    response_model=CloudModelVerificationResponse,
 )
-def verify_model(payload: ModelVerificationRequest) -> CloudAgentVerificationResponse:
+def verify_model(payload: ModelVerificationRequest) -> CloudModelVerificationResponse:
     """Verify a cloud model without generating a turn."""
     profile = get_model_profile(payload.model_id)
     if profile is None or profile.runtime != "cloud":
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Only cloud models can be verified.")
-    return verify_cloud_agent_endpoint(payload.model_id)
+    return verify_cloud_model_endpoint(payload.model_id)
 
 
 @router.post(

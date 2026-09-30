@@ -6,7 +6,7 @@ import unittest
 
 from core.agent.catalog import (
     AGENT_SPECS,
-    build_concrete_agent,
+    build_provider_profile,
     compose_agent_system_instruction,
     resolve_agent_display_name,
 )
@@ -17,7 +17,7 @@ class ApexAgentPromptTests(unittest.TestCase):
         identity = AGENT_SPECS["apex"].identity_instruction
         for model_id in ("gpt-5.6-luna", "gemma-4-E2B-Q4_K_M.gguf"):
             with self.subTest(model_id=model_id):
-                profile = build_concrete_agent("apex", native_effort=None, model_id=model_id)
+                profile = build_provider_profile(native_effort=None, model_id=model_id)
                 self.assertTrue(profile.system_instruction.startswith(identity))
 
     def test_default_identity_sentence_matches_catalog(self) -> None:

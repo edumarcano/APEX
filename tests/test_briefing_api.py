@@ -209,7 +209,7 @@ class BriefingSessionApiTests(unittest.TestCase):
                 patch("core.briefings.daily.get_visible_model_profile", return_value=profile)
             )
             stack.enter_context(
-                patch("core.agent.catalog.build_concrete_agent", return_value=SimpleNamespace(system_instruction="Daily fixture system instruction."))
+                patch("core.agent.catalog.build_provider_profile", return_value=SimpleNamespace(system_instruction="Daily fixture system instruction."))
             )
             stack.enter_context(
                 patch("core.briefings.daily.execute_single_call", side_effect=model_call)
@@ -249,7 +249,7 @@ class BriefingSessionApiTests(unittest.TestCase):
             ),
             patch("core.briefings.daily.get_visible_model_profile", return_value=profile),
             patch(
-                "core.agent.catalog.build_concrete_agent",
+                "core.agent.catalog.build_provider_profile",
                 return_value=SimpleNamespace(system_instruction="x" * 1408),
             ),
             patch(

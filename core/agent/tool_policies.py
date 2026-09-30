@@ -37,21 +37,3 @@ def hosted_tools_for_model(
     if "google_maps" in caps and google_maps_enabled:
         tools.add("google_maps")
     return frozenset(tools)
-
-
-def hosted_tools_for_agent(
-    agent_key: str,
-    *,
-    google_search_enabled: bool = True,
-    google_maps_enabled: bool = True,
-) -> frozenset[str]:
-    """Resolve provider-hosted tools for the selected cloud model."""
-    if agent_key != "apex":
-        return frozenset()
-    from core.agent.catalog import resolve_selected_model_profile
-
-    return hosted_tools_for_model(
-        resolve_selected_model_profile(),
-        google_search_enabled=google_search_enabled,
-        google_maps_enabled=google_maps_enabled,
-    )

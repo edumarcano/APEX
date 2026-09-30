@@ -344,7 +344,7 @@ class BriefingSpeechTests(unittest.TestCase):
             ),
             patch("core.briefings.execution.model_has_credentials", return_value=True),
             patch(
-                "core.briefings.execution.build_concrete_agent",
+                "core.briefings.execution.build_provider_profile",
                 return_value=concrete_profile,
             ) as build_agent,
         ):
@@ -596,7 +596,7 @@ class BriefingSpeechTests(unittest.TestCase):
             ),
             patch("core.briefings.execution.model_has_credentials", return_value=True),
             patch(
-                "core.briefings.execution.build_concrete_agent",
+                "core.briefings.execution.build_provider_profile",
                 return_value=SimpleNamespace(
                     api_model="gemini-3.7-flash",
                     thinking_level="low",
@@ -679,7 +679,7 @@ class BriefingSpeechTests(unittest.TestCase):
             ),
             patch("core.briefings.execution.model_has_credentials", return_value=True),
             patch(
-                "core.briefings.execution.build_concrete_agent",
+                "core.briefings.execution.build_provider_profile",
                 return_value=SimpleNamespace(system_instruction="Selected catalog profile."),
             ),
         ):
@@ -985,7 +985,7 @@ class BriefingSpeechTests(unittest.TestCase):
                 ),
                 patch("core.briefings.execution.model_has_credentials", return_value=True),
                 patch(
-                    "core.briefings.execution.build_concrete_agent",
+                    "core.briefings.execution.build_provider_profile",
                     return_value=concrete_profile,
                 ),
             ):
@@ -1485,7 +1485,7 @@ class BriefingSpeechTests(unittest.TestCase):
             ),
             patch("core.briefings.execution.model_has_credentials", return_value=True),
             patch(
-                "core.briefings.execution.build_concrete_agent",
+                "core.briefings.execution.build_provider_profile",
                 return_value=concrete_profile,
             ),
             patch(

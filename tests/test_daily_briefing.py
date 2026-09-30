@@ -542,7 +542,7 @@ class DailyInputTests(unittest.TestCase):
         with (
             patch("core.briefings.daily.get_visible_model_profile", return_value=SimpleNamespace(maximum_context_window=20_000)),
             patch(
-                "core.agent.catalog.build_concrete_agent",
+                "core.agent.catalog.build_provider_profile",
                 return_value=SimpleNamespace(system_instruction="x" * system_bytes),
             ),
         ):
@@ -602,7 +602,7 @@ class DailyInputTests(unittest.TestCase):
         with (
             patch("core.briefings.daily.get_visible_model_profile", return_value=SimpleNamespace(maximum_context_window=20_000)),
             patch(
-                "core.agent.catalog.build_concrete_agent",
+                "core.agent.catalog.build_provider_profile",
                 return_value=SimpleNamespace(system_instruction="x" * system_bytes),
             ),
         ):
@@ -653,7 +653,7 @@ class DailyInputTests(unittest.TestCase):
         with (
             patch("core.briefings.daily.get_visible_model_profile", return_value=SimpleNamespace(maximum_context_window=20_000)),
             patch(
-                "core.agent.catalog.build_concrete_agent",
+                "core.agent.catalog.build_provider_profile",
                 return_value=SimpleNamespace(system_instruction="x" * system_bytes),
             ),
         ):
@@ -708,7 +708,7 @@ class DailyInputTests(unittest.TestCase):
         with (
             patch("core.briefings.daily.get_visible_model_profile", return_value=SimpleNamespace(maximum_context_window=20_000)),
             patch(
-                "core.agent.catalog.build_concrete_agent",
+                "core.agent.catalog.build_provider_profile",
                 return_value=SimpleNamespace(system_instruction="x" * system_bytes),
             ),
         ):
@@ -979,9 +979,9 @@ class DailyInputTests(unittest.TestCase):
             patch("core.briefings.daily.get_settings_store", return_value=SimpleNamespace(get_snapshot=lambda: object())),
             patch("core.briefings.daily.ContextPolicy.from_settings", return_value=SimpleNamespace(permits_retrieval=False)),
             patch("core.briefings.daily.get_visible_model_profile", return_value=visible_profile),
-            patch("core.agent.catalog.build_concrete_agent", return_value=model_profile),
+            patch("core.agent.catalog.build_provider_profile", return_value=model_profile),
             patch("core.briefings.execution.get_visible_model_profile", return_value=visible_profile),
-            patch("core.briefings.execution.build_concrete_agent", return_value=model_profile),
+            patch("core.briefings.execution.build_provider_profile", return_value=model_profile),
             patch("core.briefings.execution.model_has_credentials", return_value=True),
             patch("core.briefings.daily.investigate_deep") as investigate_deep,
             patch("core.agent.providers.openrouter.OpenAI", openai),

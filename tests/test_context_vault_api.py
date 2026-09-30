@@ -71,18 +71,13 @@ class ContextVaultApiTests(unittest.TestCase):
             "core.api.routers.cortex.get_context_vault_runtime", return_value=runtime,
         ):
             response = self.client.post(
-                "/api/v1/cortex/context-vault/preview", json={"scope_id": str(scope.id)},
-            )
-            canonical = self.client.post(
                 "/api/v1/cortex/vault/preview", json={"scope_id": str(scope.id)},
             )
             missing = self.client.post(
-                "/api/v1/cortex/context-vault/preview", json={"scope_id": str(uuid4())},
+                "/api/v1/cortex/vault/preview", json={"scope_id": str(uuid4())},
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(canonical.status_code, 200)
-        self.assertEqual(canonical.json(), response.json())
         payload = response.json()
         self.assertEqual(payload["candidate_count"], 1)
         self.assertEqual(payload["eligible_count"], 1)
@@ -192,7 +187,7 @@ class ContextVaultApiTests(unittest.TestCase):
         self.assertEqual([change["action"] for change in payload["projection_changes"]], ["added", "added"])
         runtime.preview_scope_projection.assert_called_once()
 
-    def test_status_aliases_preserve_compatibility_and_report_runtime_restrictions(self) -> None:
+    def test_canonical_status_reports_runtime_restrictions_and_aliases_are_absent(self) -> None:
         service = ContextVaultSelectionService(
             self.knowledge, ContextVaultSettings(enabled=True), destination_configured=True,
         )
@@ -201,14 +196,18 @@ class ContextVaultApiTests(unittest.TestCase):
         ), mock.patch(
             "core.api.routers.cortex._context_vault_restriction_code", return_value="sandbox_mode",
         ):
-            legacy = self.client.get("/api/v1/cortex/context-vault")
             canonical = self.client.get("/api/v1/cortex/vault")
+            aliases = (
+                self.client.get("/api/v1/cortex/context-vault"),
+                self.client.post("/api/v1/cortex/context-vault/preview", json={}),
+                self.client.post("/api/v1/cortex/context-vault/refresh"),
+                self.client.delete("/api/v1/cortex/context-vault/copies"),
+            )
             refresh = self.client.post("/api/v1/cortex/vault/refresh")
             remove = self.client.delete("/api/v1/cortex/vault/copies")
 
-        self.assertEqual(legacy.status_code, 200)
         self.assertEqual(canonical.status_code, 200)
-        self.assertEqual(canonical.json(), legacy.json())
+        self.assertEqual([response.status_code for response in aliases], [404, 404, 404, 404])
         self.assertTrue(canonical.json()["export_restricted"])
         self.assertEqual(canonical.json()["restriction_code"], "sandbox_mode")
         self.assertEqual(refresh.status_code, 403)

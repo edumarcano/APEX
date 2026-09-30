@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 from fastapi import HTTPException
 
 from core.agent.capabilities import CapabilityDescriptor
-from core.agent.catalog import build_concrete_agent
+from core.agent.catalog import build_provider_profile
 from core.agent.loop import run_agent_loop
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.tool_catalog import build_tool_catalog
@@ -106,6 +106,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self._patches = [
             patch("core.settings.get_settings_store", return_value=self.store),
             patch("core.agent.tool_profiles.get_settings_store", return_value=self.store),
+            patch("core.api.cortex.get_settings_store", return_value=self.store),
         ]
         for p in self._patches:
             p.start()
@@ -124,6 +125,73 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             "github_search_repositories",
             {tool.name for tool in catalog.tools},
         )
+
+    def test_effective_model_controls_query_and_preflight_tool_defaults(self) -> None:
+        cloud_default = ToolProfile(
+            id="cloud_default",
+            name="Cloud default",
+            tool_names=("get_active_reminders",),
+        )
+        self.store.apply_patch(
+            SettingsPatch(
+                ask_apex={"enabled": True, "selected_model": "gemma-4-E2B-Q4_K_M.gguf"},
+                tool_profiles=ToolProfilesPatch(
+                    custom_profiles=[cloud_default],
+                    default_profile_by_runtime={
+                        "cloud": "cloud_default",
+                        "local": "no_tools",
+                    },
+                ),
+            )
+        )
+        from core.api.cortex import _prepare_agent_payload, query_agent
+
+        with patch("core.api.cortex.DEMO_MODE", True):
+            cloud_response = query_agent(
+                AgentQueryRequest(prompt="reminders", model_id="deepseek/deepseek-v4-flash-0731")
+            )
+        self.assertEqual(cloud_response.agent_used["runtime"], "cloud")
+        self.assertEqual(
+            cloud_response.resolved_tool_selection.active_profile_id,
+            "cloud_default",
+        )
+        self.assertEqual(
+            cloud_response.resolved_tool_selection.offered_tool_names,
+            ["get_active_reminders"],
+        )
+        cloud_preflight = build_tool_preflight(
+            ToolPreflightRequest(
+                agent="apex",
+                model_id="deepseek/deepseek-v4-flash-0731",
+                prompt="reminders",
+            )
+        )
+        self.assertEqual(cloud_preflight.selection.active_profile_id, "cloud_default")
+
+        self.store.apply_patch(
+            SettingsPatch(ask_apex={"selected_model": "deepseek/deepseek-v4-flash-0731"})
+        )
+        with patch("core.api.cortex.DEMO_MODE", True):
+            local_response = query_agent(
+                AgentQueryRequest(prompt="reminders", model_id="gemma-4-E2B-Q4_K_M.gguf")
+            )
+        self.assertEqual(local_response.agent_used["runtime"], "local")
+        self.assertEqual(local_response.resolved_tool_selection.active_profile_id, "no_tools")
+        self.assertEqual(local_response.resolved_tool_selection.offered_tool_names, [])
+        local_preflight = build_tool_preflight(
+            ToolPreflightRequest(
+                agent="apex",
+                model_id="gemma-4-E2B-Q4_K_M.gguf",
+                prompt="reminders",
+            )
+        )
+        self.assertEqual(local_preflight.selection.active_profile_id, "no_tools")
+
+        prepared = _prepare_agent_payload(
+            AgentQueryRequest(prompt="hello", model_id="gemma-4-E2B-Q4_K_M.gguf"),
+            agent_key="apex",
+        )
+        self.assertEqual(prepared.model_id, "gemma-4-E2B-Q4_K_M.gguf")
 
     def test_microsoft_todo_actions_are_in_the_todo_family(self) -> None:
         catalog = build_tool_catalog("apex", model_id="deepseek/deepseek-v4-flash-0731")
@@ -365,12 +433,15 @@ class UnifiedToolSelectionTests(unittest.TestCase):
                     selected_tool_names=["get_weather_forecast"],
                 ),
                 provider,
-                build_concrete_agent("apex", native_effort=None, model_id="qwen3:1.7b"),
+                build_provider_profile(native_effort=None, model_id="qwen3:1.7b"),
                 selected_tools=list(selection.descriptors),
                 tool_selection=selection.diagnostics,
             )
         self.assertEqual(provider.tool_names, [["get_weather_forecast"]])
-        self.assertEqual(response.offered_tool_names, ["get_weather_forecast"])
+        self.assertEqual(
+            response.resolved_tool_selection.offered_tool_names,
+            ["get_weather_forecast"],
+        )
 
     def test_preflight_uses_selected_schema_estimate_and_local_capacity(self) -> None:
         with patch(
@@ -669,7 +740,6 @@ class UnifiedToolSelectionTests(unittest.TestCase):
                     )
                 )
                 resolved_dynamic_names = resolve_profile_names(
-                    "apex",
                     "all_allowed",
                     available_names={
                         "get_active_reminders",

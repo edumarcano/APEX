@@ -9,11 +9,7 @@ from core.actions.runtime import get_action_service
 from core.agent.capabilities import CapabilityDescriptor, get_capability_descriptor
 from core.agent.tool_catalog import build_tool_catalog
 from core.config import DEMO_MODE
-from core.agent.tool_profiles import (
-    default_profile_names,
-    get_tool_profile,
-    resolve_profile_names,
-)
+from core.agent.tool_profiles import get_tool_profile, resolve_profile_names
 from core.agent.tool_schemas import (
     descriptor_to_openai_schema,
     estimate_json_tokens,
@@ -78,7 +74,6 @@ def _dedupe_names(names: list[str]) -> list[str]:
 
 
 def _requested_names(
-    agent_key: str,
     selected_tool_names: list[str] | None,
     tool_profile_id: str | None,
     *,
@@ -97,7 +92,6 @@ def _requested_names(
         profile = get_tool_profile(tool_profile_id)
         if profile is not None:
             resolved_profile_names = resolve_profile_names(
-                agent_key,
                 profile.id,
                 available_names=available_names,
             )
@@ -107,10 +101,10 @@ def _requested_names(
         return names, active_profile_id, active_profile_name, None
 
     if tool_profile_id is None:
-        profile, names = default_profile_names(
-            agent_key,
-            available_names=available_names,
-        )
+        profile = get_tool_profile(catalog.default_profile_id)
+        names = catalog.default_selected_tool_names
+        if profile is None:
+            return [], None, None, None
         return (
             _dedupe_names(names),
             profile.id,
@@ -133,7 +127,6 @@ def _requested_names(
     return (
         _dedupe_names(
             resolve_profile_names(
-                agent_key,
                 profile.id,
                 available_names=available_names,
             )
@@ -163,7 +156,6 @@ def resolve_selected_tools(
         execution_partition=execution_partition,
     )
     requested, active_profile_id, active_profile_name, profile_failure = _requested_names(
-        agent_key,
         selected_tool_names,
         tool_profile_id,
         catalog=catalog,
@@ -273,14 +265,5 @@ def resolve_selected_tools(
 def selection_as_response_fields(
     selection: ResolvedToolSelection,
 ) -> dict[str, object]:
-    """Return compatibility fields alongside the canonical diagnostics object."""
-    diagnostics = selection.diagnostics
-    return {
-        "resolved_tool_selection": diagnostics,
-        "requested_tool_names": diagnostics.requested_tool_names,
-        "offered_tool_names": diagnostics.offered_tool_names,
-        "rejected_tool_names": diagnostics.rejected_tool_names,
-        "selected_schema_tokens": diagnostics.selected_schema_tokens,
-        "active_tool_profile_id": diagnostics.active_profile_id,
-        "active_tool_profile_name": diagnostics.active_profile_name,
-    }
+    """Return the canonical diagnostics object for response models."""
+    return {"resolved_tool_selection": selection.diagnostics}

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Any, Literal, TypeAlias
 
@@ -13,7 +12,6 @@ from core.agent.model_catalog import (
     LOCAL_MODEL_PROFILES,
     ModelProfile,
     get_model_profile,
-    model_has_credentials,
 )
 from core.agent.providers.contract import InferenceProvider, is_local_inference_provider
 from core.agent.local_runtime.contract import LocalModelRef
@@ -43,8 +41,6 @@ from core.config import (
 AgentKey: TypeAlias = Literal["apex"]
 AgentRuntime: TypeAlias = Literal["cloud", "local"]
 NativeEffort: TypeAlias = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
-CloudProvider: TypeAlias = Literal["openai", "openrouter", "gemini"]
-LocalRuntime: TypeAlias = Literal["ollama", "llama_cpp"]
 
 VALID_AGENT_KEYS: frozenset[str] = frozenset({"apex"})
 
@@ -56,7 +52,7 @@ _PROVIDER_DISPLAY_NAMES: dict[InferenceProvider, str] = {
     "openrouter": "OpenRouter",
 }
 
-AgentModelProfile = (
+ProviderModelProfile = (
     GeminiModelProfile
     | OllamaModelProfile
     | LlamaCppModelProfile
@@ -132,16 +128,6 @@ def resolve_effort(
     return model_profile.default_reasoning
 
 
-def model_has_available_credentials(
-    model_id: str, profile: ModelProfile | None = None
-) -> bool:
-    """Return whether a model has credentials."""
-    resolved_profile = profile or get_model_profile(model_id)
-    if resolved_profile is None:
-        return False
-    return model_has_credentials(resolved_profile)
-
-
 def compose_agent_system_instruction(
     agent_key: str,
     base_instruction: str,
@@ -210,19 +196,7 @@ def resolve_selected_model_profile() -> ModelProfile:
     return profile
 
 
-def resolve_cloud_provider() -> CloudProvider:
-    profile = resolve_selected_model_profile()
-    return profile.provider  # type: ignore[return-value]
-
-
-def resolve_local_runtime() -> LocalRuntime:
-    profile = resolve_selected_model_profile()
-    return profile.provider  # type: ignore[return-value]
-
-
-
-def build_concrete_agent(
-    agent_key: str = "apex",
+def build_provider_profile(
     *,
     native_effort: NativeEffort | None,
     local_context_window: int | None = None,
@@ -231,11 +205,8 @@ def build_concrete_agent(
     google_maps_enabled: bool = True,
     model_id: str | None = None,
     agent_display_name: str = "",
-) -> AgentModelProfile:
-    """Materialize a provider-specific model configuration for an Agent."""
-    if agent_key != "apex":
-        raise ValueError(f"Unknown Agent key: {agent_key!r}")
-    spec = AGENT_SPECS["apex"]
+) -> ProviderModelProfile:
+    """Materialize a provider-specific configuration for the selected model."""
     resolved_display_name = resolve_agent_display_name(agent_display_name)
     if model_id is None:
         model_profile = resolve_selected_model_profile()
@@ -398,14 +369,6 @@ def local_context_window_for_model(model_id: str) -> int | None:
     return get_settings_store().get_snapshot().ask_apex.local.context_window
 
 
-def local_agent_keys() -> tuple[str, ...]:
-    return ("apex",) if resolve_selected_model_profile().runtime == "local" else ()
-
-
-def cloud_agent_keys() -> tuple[str, ...]:
-    return ("apex",) if resolve_selected_model_profile().runtime == "cloud" else ()
-
-
 def local_reasoning_modes_for_model(model_id: str) -> tuple[LocalReasoningMode, ...]:
     profile = get_model_profile(model_id)
     if profile is None:
@@ -457,8 +420,7 @@ def local_model_ref_for_model(
     *,
     local_context_window: int | None = None,
 ) -> LocalModelRef:
-    profile = build_concrete_agent(
-        "apex",
+    profile = build_provider_profile(
         native_effort=None,
         local_context_window=local_context_window,
         model_id=model_id,
@@ -537,53 +499,3 @@ def default_local_settings() -> dict[str, Any]:
         "context_window": llama_cpp_runtime_config(DEFAULT_LOCAL_MODEL).default_context_window,
         "reasoning_mode": "none",
     }
-
-
-# Transitional internal adapters keep provider modules importable while their
-# callers move to model-based routing. They are not accepted as public Agent
-# identities or API inputs.
-def agent_has_credentials(agent_key: str, profile: ModelProfile | None = None) -> bool:
-    return model_has_available_credentials(
-        profile.model_id if profile is not None else resolve_selected_model_profile().model_id,
-        profile,
-    )
-
-
-def resolve_effort_for_agent(agent_key: str, requested: str | None) -> str | None:
-    return resolve_effort_for_model(resolve_selected_model_profile().model_id, requested)
-
-
-def is_local_agent_key(agent_key: str) -> bool:
-    return agent_key == "apex" and resolve_selected_model_profile().runtime == "local"
-
-
-def is_cloud_agent_key(agent_key: str) -> bool:
-    return agent_key == "apex" and resolve_selected_model_profile().runtime == "cloud"
-
-
-def local_context_window_for_agent(agent_key: str) -> int | None:
-    return local_context_window_for_model(resolve_selected_model_profile().model_id)
-
-
-def local_reasoning_modes_for_agent(agent_key: str) -> tuple[LocalReasoningMode, ...]:
-    return local_reasoning_modes_for_model(resolve_selected_model_profile().model_id)
-
-
-def local_reasoning_mode_for_agent(agent_key: str) -> LocalReasoningMode | None:
-    return local_reasoning_mode_for_model(resolve_selected_model_profile().model_id)
-
-
-def local_model_ref_for_agent(agent_key: str, *, local_context_window: int | None = None) -> LocalModelRef:
-    return local_model_ref_for_model(resolve_selected_model_profile().model_id, local_context_window=local_context_window)
-
-
-def local_model_refs_for_agent(agent_key: str) -> frozenset[LocalModelRef]:
-    return local_model_refs_for_model(resolve_selected_model_profile().model_id)
-
-
-def agent_key_for_local_model_ref(ref: LocalModelRef) -> str | None:
-    return "apex" if model_id_for_local_model_ref(ref) is not None else None
-
-
-def resolve_agent_selection(agent_settings: Any) -> tuple[AgentRuntime, str, NativeEffort | None]:
-    return resolve_model_selection(agent_settings)

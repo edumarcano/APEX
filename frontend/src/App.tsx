@@ -357,7 +357,7 @@ export default function App(): ReactElement {
     verifyingCloudModel,
     loadLocalModel,
     unloadLocalModel,
-    verifyCloudAgent,
+    verifyCloudModel,
     refreshAgentsStatus,
   } = useCortex(true)
   const agentDisplayName = cortexAgent?.display_name?.trim() || 'Lynx'
@@ -1932,7 +1932,7 @@ export default function App(): ReactElement {
             verifyingCloudModel={verifyingCloudModel}
             onLoadLocalModel={loadLocalModel}
             onUnloadLocalModel={unloadLocalModel}
-            onVerifyCloudAgent={verifyCloudAgent}
+            onVerifyCloudModel={verifyCloudModel}
             snapshotAttached={snapshotAttached}
             snapshotAvailable={telemetry.snapshot !== null}
             onSnapshotAttachedChange={setSnapshotAttached}

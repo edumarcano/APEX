@@ -601,18 +601,17 @@ def build_tool_catalog(
         from core.agent.tool_profiles import resolve_profile_names
 
         default_tools = resolve_profile_names(
-            agent_key, profile_id, available_names=set(default_tools)
+            profile_id, available_names=set(default_tools)
         )
 
     context_window: int | None = None
     reserved_response_tokens: int | None = None
     if model_profile.runtime == "local":
         from core.agent.catalog import (
-            build_concrete_agent,
+            build_provider_profile,
         )
 
-        profile = build_concrete_agent(
-            agent_key,
+        profile = build_provider_profile(
             native_effort=None,
             local_context_window=settings.ask_apex.local.context_window,
             local_reasoning_mode=settings.ask_apex.local.reasoning_mode,

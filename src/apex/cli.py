@@ -298,7 +298,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json_option(vault_remove)
     vault_remove.set_defaults(handler=_context_vault_remove)
 
-    briefing = commands.add_parser("briefing", help="Refresh and generate a briefing.")
+    briefing = commands.add_parser(
+        "briefing", help="Refresh and generate a briefing.", allow_abbrev=False
+    )
     _add_json_option(briefing)
     briefing.add_argument(
         "--profile",
@@ -414,14 +416,7 @@ def _add_activity_metadata_arguments(parser: argparse.ArgumentParser, *, include
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
-    arguments = list(sys.argv[1:] if argv is None else argv)
-    briefing_index = arguments.index("briefing") if "briefing" in arguments else -1
-    if briefing_index >= 0 and any(
-        argument == "--mode" or argument.startswith("--mode=")
-        for argument in arguments[briefing_index + 1 :]
-    ):
-        parser.error("briefing --mode was retired; use --profile daily|catch-up|deep")
-    args = parser.parse_args(arguments)
+    args = parser.parse_args(list(sys.argv[1:] if argv is None else argv))
     json_mode = bool(getattr(args, "json_mode", False))
     client = ApiClient()
     try:

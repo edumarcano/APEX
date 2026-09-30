@@ -18,7 +18,7 @@ const apex: CortexAgent = { key: 'apex', display_name: 'Lynx', canonical_name: '
 const toolCatalog: ToolCatalog = { agent: 'apex', groups: [], tools: [], profiles: [], default_profile_id: 'no_tools', default_profile_name: 'No APEX Tools', default_selected_tool_names: [], provider_hosted_tools: [], context_window: 4096, reserved_response_tokens: 512 }
 
 function props(overrides: Partial<ComponentProps<typeof CortexWorkspace>> = {}): ComponentProps<typeof CortexWorkspace> {
-  return { activeAgent: 'apex', cloudEffort: 'low', selectedModel: cloudModel.model_id, localContextWindow: 16384, localReasoningMode: 'none', hostedTools: { google_search: true, google_maps: true }, devModeActive: false, sandboxMode: false, agentQueriesEnabled: true, cortexAgent: apex, latestTrace: [], error: null, contextUsage: null, toolCatalog, selectedToolNames: [], activeToolProfileId: null, selectionReady: true, isQuerying: false, logoProps: { status: 'idle' }, lifecycleBusy: false, lifecycleActionPending: false, onLoadLocalModel: vi.fn().mockResolvedValue(true), onUnloadLocalModel: vi.fn().mockResolvedValue(true), onVerifyCloudAgent: vi.fn().mockResolvedValue(true), snapshotAttached: true, snapshotAvailable: true, onSnapshotAttachedChange: vi.fn(), onModelChange: vi.fn(), onEffortChange: vi.fn(), onHostedToolChange: vi.fn(), onSandboxModeChange: vi.fn(), onLocalContextWindowChange: vi.fn().mockResolvedValue(true), onLocalReasoningModeChange: vi.fn().mockResolvedValue(true), actions: { actions: [], pendingCount: 0, isLoading: false, error: null, selectedActionId: null, detail: null, isDetailLoading: false, mutation: null, setSelectedActionId: vi.fn(), refresh: vi.fn().mockResolvedValue(undefined), resolve: vi.fn().mockResolvedValue(undefined) }, demoModeActive: false, assistantRunConfig: { agent: 'apex', effort: 'low', selectedToolNames: [], toolProfileId: null, snapshotId: null }, ...overrides }
+  return { activeAgent: 'apex', cloudEffort: 'low', selectedModel: cloudModel.model_id, localContextWindow: 16384, localReasoningMode: 'none', hostedTools: { google_search: true, google_maps: true }, devModeActive: false, sandboxMode: false, agentQueriesEnabled: true, cortexAgent: apex, latestTrace: [], error: null, contextUsage: null, toolCatalog, selectedToolNames: [], activeToolProfileId: null, selectionReady: true, isQuerying: false, logoProps: { status: 'idle' }, lifecycleBusy: false, lifecycleActionPending: false, onLoadLocalModel: vi.fn().mockResolvedValue(true), onUnloadLocalModel: vi.fn().mockResolvedValue(true), onVerifyCloudModel: vi.fn().mockResolvedValue(true), snapshotAttached: true, snapshotAvailable: true, onSnapshotAttachedChange: vi.fn(), onModelChange: vi.fn(), onEffortChange: vi.fn(), onHostedToolChange: vi.fn(), onSandboxModeChange: vi.fn(), onLocalContextWindowChange: vi.fn().mockResolvedValue(true), onLocalReasoningModeChange: vi.fn().mockResolvedValue(true), actions: { actions: [], pendingCount: 0, isLoading: false, error: null, selectedActionId: null, detail: null, isDetailLoading: false, mutation: null, setSelectedActionId: vi.fn(), refresh: vi.fn().mockResolvedValue(undefined), resolve: vi.fn().mockResolvedValue(undefined) }, demoModeActive: false, assistantRunConfig: { agent: 'apex', effort: 'low', selectedToolNames: [], toolProfileId: null, snapshotId: null }, ...overrides }
 }
 function renderWorkspace(overrides: Partial<ComponentProps<typeof CortexWorkspace>> = {}) { const value = props(overrides); return render(<ApexAssistantRuntime config={value.assistantRunConfig}><CortexWorkspace {...value} /></ApexAssistantRuntime>) }
 
@@ -48,11 +48,11 @@ describe('CortexWorkspace', () => {
 
   it('routes verification and model selection by model id', async () => {
     const onModelChange = vi.fn()
-    const onVerifyCloudAgent = vi.fn().mockResolvedValue(true)
+    const onVerifyCloudModel = vi.fn().mockResolvedValue(true)
     const user = userEvent.setup()
-    renderWorkspace({ onModelChange, onVerifyCloudAgent })
+    renderWorkspace({ onModelChange, onVerifyCloudModel })
     await user.click(screen.getByRole('button', { name: 'Verify' }))
-    expect(onVerifyCloudAgent).toHaveBeenCalledWith(cloudModel.model_id)
+    expect(onVerifyCloudModel).toHaveBeenCalledWith(cloudModel.model_id)
     await user.click(screen.getByRole('button', { name: 'Model' }))
     await user.click(screen.getByRole('option', { name: /Gemma 4 E2B/i }))
     expect(onModelChange).toHaveBeenCalledWith(localModel.model_id)

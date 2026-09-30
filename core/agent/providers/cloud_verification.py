@@ -1,4 +1,4 @@
-"""Sanitized, non-generative cloud Agent verification and runtime health cache."""
+"""Sanitized, non-generative cloud model verification and runtime health cache."""
 
 from __future__ import annotations
 
@@ -43,17 +43,8 @@ class CloudStatusRecord:
     source: StatusSource
 
 
-def _route_cache_key(
-    agent_key: str,
-    *,
-    provider: str | None = None,
-    model: str | None = None,
-) -> str:
-    if provider is None or model is None:
-        model_profile = resolve_selected_model_profile()
-        provider = model_profile.provider
-        model = model_profile.model_id
-    return f"{agent_key}:{provider}:{model}"
+def _route_cache_key(*, provider: str, model: str) -> str:
+    return f"{provider}:{model}"
 
 
 def cloud_status(model_id: str) -> CloudStatusRecord:
@@ -61,9 +52,7 @@ def cloud_status(model_id: str) -> CloudStatusRecord:
     profile = get_model_profile(model_id)
     if profile is None or profile.runtime != "cloud":
         raise ValueError("Cloud status requires a registered cloud model.")
-    cache_key = _route_cache_key(
-        "apex", provider=profile.provider, model=profile.model_id
-    )
+    cache_key = _route_cache_key(provider=profile.provider, model=profile.model_id)
     now = _now()
     with _LOCK:
         cached = _CACHE.get(cache_key)
@@ -76,7 +65,7 @@ def cloud_status(model_id: str) -> CloudStatusRecord:
     return CloudStatusRecord("configured", None, now, now, "configuration")
 
 
-def verify_cloud_agent(model_id: str) -> CloudStatusRecord:
+def verify_cloud_model(model_id: str) -> CloudStatusRecord:
     """Force a bounded model-metadata probe and cache its sanitized result."""
     model_profile = get_model_profile(model_id)
     if model_profile is None or model_profile.runtime != "cloud":
@@ -88,7 +77,6 @@ def verify_cloud_agent(model_id: str) -> CloudStatusRecord:
         raise ValueError("Cloud verification requires configured credentials.")
 
     cache_key = _route_cache_key(
-        "apex",
         provider=model_profile.provider,
         model=model_profile.model_id,
     )
@@ -120,20 +108,18 @@ def verify_cloud_agent(model_id: str) -> CloudStatusRecord:
 
 
 def record_cloud_request_success(
-    agent_key: str,
     *,
     provider: str,
     model: str,
 ) -> None:
     """A completed inference is stronger evidence than a metadata probe."""
-    cache_key = _route_cache_key("apex", provider=provider, model=model)
+    cache_key = _route_cache_key(provider=provider, model=model)
     record = _record("verified", None, "request")
     with _LOCK:
         _CACHE[cache_key] = record
 
 
 def record_cloud_request_failure(
-    agent_key: str,
     exc: BaseException,
     *,
     provider: str,
@@ -143,7 +129,7 @@ def record_cloud_request_failure(
     status, reason = classify_provider_failure(exc)
     if status is None:
         return
-    cache_key = _route_cache_key("apex", provider=provider, model=model)
+    cache_key = _route_cache_key(provider=provider, model=model)
     record = _record(status, reason, "request")
     with _LOCK:
         _CACHE[cache_key] = record

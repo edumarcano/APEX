@@ -219,7 +219,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(session.calls[0]["json"]["profile_id"], "catch_up")
         self.assertEqual(session.calls[0]["json"]["model_id"], "override/model")
 
-    def test_briefing_retires_mode_flag_with_profile_migration_message(self) -> None:
+    def test_briefing_rejects_unsupported_mode_flags_with_argparse(self) -> None:
         for argument in ("--mode", "--mode=structured"):
             with self.subTest(argument=argument):
                 errors = io.StringIO()
@@ -229,8 +229,7 @@ class CliTests(unittest.TestCase):
                 with redirect_stderr(errors), self.assertRaises(SystemExit) as raised:
                     cli.main(arguments)
                 self.assertEqual(raised.exception.code, 2)
-                self.assertIn("--mode was retired", errors.getvalue())
-                self.assertIn("--profile daily|catch-up|deep", errors.getvalue())
+                self.assertIn("unrecognized arguments", errors.getvalue())
 
     def test_action_reads_map_to_their_existing_routes(self) -> None:
 
