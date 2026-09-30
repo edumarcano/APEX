@@ -55,7 +55,7 @@ export function OverviewView({ identity, telemetry, state, error, onCollect, onR
     {hasGrid ? <EventsTelemetry data={telemetry} variant="card" className={wide} /> : null}
     {hasGrid ? <NewsTelemetry data={telemetry} variant="card" className={narrow} /> : null}
     <div
-      className={`hud-glass relative flex min-h-0 flex-col rounded-xl border border-white/10 bg-zinc-950/40 ${hasGrid ? (compact ? 'order-first md:col-span-2 justify-between p-4' : `${narrow} justify-between p-4`) : compact ? 'w-full max-w-sm px-8 py-6 items-center justify-center gap-3' : 'w-[calc((100%-2rem)/3)] px-8 py-6 items-center justify-center gap-3'}`}
+      className={`hud-glass relative flex min-h-0 flex-col rounded-xl border border-white/10 bg-zinc-950/40 ${hasGrid ? (compact ? 'order-first md:col-span-2 justify-between p-4 pb-2' : `${narrow} justify-between p-4 pb-2`) : compact ? 'w-full max-w-sm px-8 py-6 items-center justify-center gap-3' : 'w-[calc((100%-2rem)/3)] px-8 py-6 items-center justify-center gap-3'}`}
       data-slot="overview-identity-card"
     >
       {hasGrid ? (
@@ -83,10 +83,10 @@ export function OverviewView({ identity, telemetry, state, error, onCollect, onR
           <div className="flex min-h-0 flex-1 items-center justify-center px-2 py-1 filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]">
             <ApexLogo
               {...identity.logoProps}
-              className="h-32 w-auto sm:h-40 xl:h-48 max-h-full max-w-full aspect-[5208/5420] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+              className="h-36 w-auto sm:h-48 xl:h-56 max-h-full max-w-full aspect-[5208/5420] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
             />
           </div>
-          <div className="flex w-full shrink-0 justify-center pt-0.5">
+          <div className="flex w-full shrink-0 justify-center -mb-2">
             <VoiceSignalGlyph {...identity.glyphProps} hideLabel />
           </div>
         </div>

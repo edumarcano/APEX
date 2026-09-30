@@ -269,9 +269,9 @@ describe('OverviewView identity mark sizing', () => {
     const logo = identityCard.querySelector('div.max-h-full')
     expect(logo).toBeInTheDocument()
     const logoClass = logo?.getAttribute('class') ?? ''
-    expect(logoClass).toContain('h-32')
-    expect(logoClass).toContain('sm:h-40')
-    expect(logoClass).toContain('xl:h-48')
+    expect(logoClass).toContain('h-36')
+    expect(logoClass).toContain('sm:h-48')
+    expect(logoClass).toContain('xl:h-56')
     expect(logoClass).toContain('aspect-[5208/5420]')
 
     // Bottom docked glyph exists and has hideLabel (no nested span inside glyph container)
