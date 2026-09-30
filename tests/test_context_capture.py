@@ -63,7 +63,7 @@ class ContextCaptureTests(unittest.TestCase):
         self.actions = ActionService(ActionStore(self.path))
         self.actions.register_handler(
             CAPABILITY_NAME,
-            executor=ContextCaptureExecutor(self.knowledge, self.conversations),
+            executor=ContextCaptureExecutor(self.knowledge),
             verifier=ContextCaptureVerifier(self.knowledge),
         )
 
@@ -71,7 +71,10 @@ class ContextCaptureTests(unittest.TestCase):
         self.knowledge.close()
         self.tempdir.cleanup()
 
-    def _propose(self, **overrides):
+    def _propose(
+        self, *, link_review: bool = True, include_review_id: bool = True,
+        requested_review_id: str | None = None, **overrides,
+    ):
         arguments = {
             "kind": "preference", "text": "Keep the project plan concise.",
             "subject": None, "predicate": None, "object_entity": None, "object_value": None,
@@ -82,8 +85,39 @@ class ContextCaptureTests(unittest.TestCase):
             },
         }
         arguments.update(overrides)
-        return self.actions.propose(agent_key="apex", capability_name=CAPABILITY_NAME,
-            arguments=arguments, target="Personal Context", risk="write", summary="Approve personal context capture")
+        action_id = str(uuid4())
+        provenance = dict(arguments.pop("_apex_provenance"))
+        payload = {key: value for key, value in arguments.items() if key != "review_id"}
+        partition = str(provenance["partition"])
+        locator = f"conversation/{provenance['conversation_id']}/message/{provenance['message_id']}"
+        original_text = self.conversations.store.text
+        occurred_at = self.conversations.store.created_at
+        decision = self.knowledge.capture_decision(partition=partition, **payload)
+        review = None
+        if link_review:
+            review = KnowledgeService(self.knowledge).create_action_review(
+                partition=partition, operation="capture", proposal=payload,
+                evidence={
+                    "source_kind": "conversation_message", "locator": locator,
+                    "original_text": original_text, "source_origin": "operator_input",
+                    "derivation": "model_interpretation", "occurred_at": occurred_at,
+                },
+                expected_revisions=decision["expected_revisions"],
+                reason_codes=("approval_requested", *decision["reason_codes"]), action_id=action_id,
+            )
+        action_arguments = {
+            **payload, "_apex_provenance": {
+                "source_kind": "conversation_message", "partition": partition,
+                "original_text": original_text, "occurred_at": occurred_at,
+            },
+        }
+        if include_review_id:
+            action_arguments["review_id"] = requested_review_id or (str(review.id) if review else str(uuid4()))
+        return self.actions.propose(
+            agent_key="apex", capability_name=CAPABILITY_NAME,
+            arguments=action_arguments, target="Personal Context", risk="write",
+            summary="Approve personal context capture", action_id=action_id,
+        )
 
     def test_approved_capture_writes_source_record_effect_and_verifies(self) -> None:
         action = self._propose()
@@ -96,6 +130,34 @@ class ContextCaptureTests(unittest.TestCase):
         self.assertEqual(detail.source_links[0].source.occurred_at, "2026-09-09T12:00:00+00:00")
         self.assertEqual(detail.source_links[0].derivation, "model_interpretation")
         self.assertIsNotNone(self.knowledge.capture_effect(action.action_id))
+
+    def test_linked_review_can_execute_without_embedded_review_id(self) -> None:
+        action = self._propose(include_review_id=False)
+        result = ContextCaptureExecutor(self.knowledge).execute(action)
+        self.assertTrue(result.succeeded)
+        self.assertEqual(len(self.knowledge.list_records(partition="production")), 1)
+
+    def test_missing_mismatched_and_superseded_review_links_reject_without_writes(self) -> None:
+        cases = (
+            self._propose(link_review=False),
+            self._propose(requested_review_id=str(uuid4())),
+        )
+        for action in cases:
+            with self.subTest(action=action.action_id):
+                outcome = ContextCaptureExecutor(self.knowledge).execute(action)
+                self.assertFalse(outcome.succeeded)
+                self.assertEqual(outcome.evidence["category"], "ContextCaptureError")
+                self.assertEqual(self.knowledge.list_records(partition="production"), [])
+                self.assertIsNone(self.knowledge.capture_effect(action.action_id))
+
+        superseded = self._propose()
+        review = self.knowledge.review_for_action(superseded.action_id, partition="production")
+        assert review is not None
+        self.knowledge.link_review_action(review.id, partition="production", action_id=str(uuid4()))
+        outcome = ContextCaptureExecutor(self.knowledge).execute(superseded)
+        self.assertFalse(outcome.succeeded)
+        self.assertIsNone(self.knowledge.capture_effect(superseded.action_id))
+        self.assertEqual(self.knowledge.list_records(partition="production"), [])
 
     def test_duplicate_confirms_existing_record_and_new_evidence(self) -> None:
         first = self._propose()
@@ -111,17 +173,49 @@ class ContextCaptureTests(unittest.TestCase):
         self.assertEqual(self.actions.approve_and_execute(first.action_id, actor="operator", expected_version=0).status, "verified")
         second = self._propose(kind="fact", text="Project status is paused.", subject="Project", predicate="status", object_value="paused")
         self.assertEqual(self.actions.approve_and_execute(second.action_id, actor="operator", expected_version=0).status, "verified")
-        records = self.knowledge.list_records(partition="production", statuses=("conflicting",))
+        records = self.knowledge.list_records(
+            partition="production", statuses=("active", "conflicting", "superseded"),
+        )
         self.assertEqual(len(records), 2)
         first_record = next(record for record in records if record.text == "Project status is active.")
         second_record = next(record for record in records if record.text == "Project status is paused.")
-        first_history = self.knowledge.get_record(first_record.id, partition="production").history
-        second_history = self.knowledge.get_record(second_record.id, partition="production").history
-        self.assertEqual([event.operation for event in first_history], ["created", "source_linked", "review_accepted", "status_changed"])
-        self.assertEqual(first_history[-1].reason_code, "status_conflicting")
-        self.assertEqual(first_history[-1].related_record_id, second_record.id)
-        self.assertEqual([event.operation for event in second_history], ["created", "source_linked", "review_accepted"])
-        self.assertEqual(second_history[0].reason_code, "initial_conflicting")
+        self.assertEqual(first_record.status, "superseded")
+        self.assertEqual(second_record.status, "active")
+        self.assertEqual(self.knowledge.capture_effect(second.action_id)[2], "conflicting")
+
+    def test_historical_capture_verification_uses_effect_without_replaying_executor(self) -> None:
+        action_id = str(uuid4())
+        self.knowledge.apply_capture(
+            action_id=action_id, partition="production", source_kind="manual",
+            locator=f"manual/{action_id}", original_text="Historical context evidence.",
+            kind="note", text="Historical context evidence.", derivation="direct",
+        )
+
+        class _UnknownAttempt:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def execute(self, _action):
+                self.calls += 1
+                return ExecutionOutcome(None, "legacy_capture_outcome_unknown", {})
+
+        executor = _UnknownAttempt()
+        self.actions.register_handler(
+            CAPABILITY_NAME, executor=executor, verifier=ContextCaptureVerifier(self.knowledge),
+        )
+        action = self.actions.propose(
+            agent_key="apex", capability_name=CAPABILITY_NAME, arguments={},
+            target="Personal Context", risk="write", summary="Legacy capture attempt", action_id=action_id,
+        )
+        pending = self.actions.approve_and_execute(
+            action.action_id, actor="operator", expected_version=0,
+        )
+        self.assertEqual(pending.status, "outcome_unknown")
+        verified = self.actions.retry_verification(
+            action.action_id, actor="operator", expected_version=pending.version,
+        )
+        self.assertEqual(verified.status, "verified")
+        self.assertEqual(executor.calls, 1)
 
     def test_manual_endpoint_proposes_without_writing_and_rejects_secret(self) -> None:
         payload = ContextCaptureRequest(kind="note", text="Remember this for later.")
@@ -163,7 +257,7 @@ class ContextCaptureTests(unittest.TestCase):
         actions = ActionService(ActionStore(self.path), clock=lambda: now[0])
         actions.register_handler(
             CAPABILITY_NAME,
-            executor=ContextCaptureExecutor(self.knowledge, self.conversations),
+            executor=ContextCaptureExecutor(self.knowledge),
             verifier=ContextCaptureVerifier(self.knowledge),
         )
         knowledge_service = KnowledgeService(self.knowledge)
@@ -187,7 +281,7 @@ class ContextCaptureTests(unittest.TestCase):
         actions = ActionService(ActionStore(self.path), clock=lambda: now[0])
         actions.register_handler(
             CAPABILITY_NAME,
-            executor=ContextCaptureExecutor(self.knowledge, self.conversations),
+            executor=ContextCaptureExecutor(self.knowledge),
             verifier=ContextCaptureVerifier(self.knowledge),
         )
         knowledge_service = KnowledgeService(self.knowledge)
@@ -208,7 +302,7 @@ class ContextCaptureTests(unittest.TestCase):
 
     def test_unknown_attempt_is_verified_before_review_replacement_executes(self) -> None:
         actions = ActionService(ActionStore(self.path))
-        executor = _UnknownOnceCaptureExecutor(ContextCaptureExecutor(self.knowledge, self.conversations))
+        executor = _UnknownOnceCaptureExecutor(ContextCaptureExecutor(self.knowledge))
         actions.register_handler(
             CAPABILITY_NAME, executor=executor, verifier=ContextCaptureVerifier(self.knowledge),
         )

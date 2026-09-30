@@ -40,7 +40,7 @@ class ActivityReviewRefreshTests(unittest.TestCase):
         conversations = SimpleNamespace()
         self.actions.register_handler(
             CAPABILITY_NAME,
-            executor=ContextCaptureExecutor(self.knowledge_store, conversations),
+            executor=ContextCaptureExecutor(self.knowledge_store),
             verifier=ContextCaptureVerifier(self.knowledge_store),
         )
         self.actions.register_handler(
