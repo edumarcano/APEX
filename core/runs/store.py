@@ -13,6 +13,7 @@ from typing import Any, Iterator
 from uuid import UUID
 
 from core.connectors.models import utc_now_iso
+from core.persistence_schema import validate_versioned_schema
 from core.runs.models import (
     RunCompletionEvidence,
     RunError,
@@ -126,27 +127,36 @@ class RunStore:
     def initialize(self) -> None:
         """Initialize the cortex_runs schema domain in apex_memory.db."""
         with self._connection() as conn, conn:
+            self.validate_schema(conn)
+            conn.execute("BEGIN")
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS schema_versions ("
                 "domain TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL CHECK(version >= 1))"
             )
-            row = conn.execute(
-                "SELECT version FROM schema_versions WHERE domain = 'cortex_runs'"
-            ).fetchone()
-            if row is not None and int(row["version"]) > _RUN_SCHEMA_VERSION:
-                raise RunStoreError("Run schema is newer than this APEX build.")
-            if row is not None and int(row["version"]) != _RUN_SCHEMA_VERSION:
-                raise RunStoreError(
-                    "The pre-release run ledger is incompatible with this APEX build. "
-                    "Delete cortex_runs and its schema_versions entry before starting beta.2."
-                )
-
             self._create_schema(conn)
             conn.execute(
                 "INSERT INTO schema_versions(domain, version) VALUES ('cortex_runs', ?) "
                 "ON CONFLICT(domain) DO UPDATE SET version = excluded.version",
                 (_RUN_SCHEMA_VERSION,),
             )
+
+    @staticmethod
+    def validate_schema(conn: sqlite3.Connection) -> None:
+        validate_versioned_schema(
+            conn,
+            domain="cortex_runs",
+            version=_RUN_SCHEMA_VERSION,
+            tables={"cortex_runs": (
+                "id", "conversation_id", "partition", "user_message_id", "agent_message_id",
+                "requested_model", "resolved_model", "provider", "runtime", "status",
+                "stop_reason", "created_at", "started_at", "completed_at", "updated_at",
+                "limit_snapshot_json", "turns_count", "tool_calls_count", "retries_count",
+                "total_tokens", "elapsed_seconds", "usage_quality", "runtime_measurements_json",
+                "final_message_status", "answer_persisted", "tool_outcome_counts_json",
+                "action_ids_json", "trace_id", "error_code",
+            )},
+            error_type=RunStoreError,
+        )
 
     @staticmethod
     def _create_schema(conn: sqlite3.Connection) -> None:

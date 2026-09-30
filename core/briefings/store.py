@@ -14,6 +14,7 @@ from typing import Any, Iterator
 from uuid import UUID
 
 from core.connectors.models import utc_now_iso
+from core.persistence_schema import validate_versioned_schema
 from core.runs.models import SAFE_ERROR_MESSAGES
 from core.briefings.models import (
     BriefingComparison,
@@ -109,17 +110,12 @@ class BriefingSessionStore:
 
     def initialize(self) -> None:
         with self._connection() as conn, conn:
+            self.validate_schema(conn)
+            conn.execute("BEGIN")
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS schema_versions ("
                 "domain TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL CHECK(version >= 1))"
             )
-            row = conn.execute(
-                "SELECT version FROM schema_versions WHERE domain = 'briefing_sessions'"
-            ).fetchone()
-            if row is not None and int(row["version"]) > 2:
-                raise BriefingSessionStoreError(
-                    "Briefing session schema is newer than this APEX build."
-                )
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS briefing_sessions (
@@ -142,14 +138,6 @@ class BriefingSessionStore:
                 )
                 """
             )
-            columns = {
-                row["name"] for row in conn.execute("PRAGMA table_info(briefing_sessions)")
-            }
-            if "history_json" not in columns:
-                conn.execute(
-                    "ALTER TABLE briefing_sessions ADD COLUMN history_json TEXT "
-                    "CHECK(history_json IS NULL OR json_valid(history_json))"
-                )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_briefing_sessions_partition_created "
                 "ON briefing_sessions(partition, created_at DESC)"
@@ -158,16 +146,8 @@ class BriefingSessionStore:
                 "INSERT INTO schema_versions(domain, version) VALUES ('briefing_sessions', 2) "
                 "ON CONFLICT(domain) DO UPDATE SET version = excluded.version"
             )
-            speech_version = conn.execute(
-                "SELECT version FROM schema_versions WHERE domain = 'briefing_speech'"
-            ).fetchone()
-            if speech_version is not None and int(speech_version["version"]) > 1:
-                raise BriefingSessionStoreError(
-                    "Briefing speech schema is newer than this APEX build."
-                )
-            conn.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS briefing_speech (
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS briefing_speech (
                     session_id TEXT PRIMARY KEY NOT NULL
                         REFERENCES briefing_sessions(id) ON DELETE CASCADE,
                     partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')),
@@ -181,8 +161,10 @@ class BriefingSessionStore:
                     error_code TEXT,
                     duration_seconds REAL CHECK(duration_seconds IS NULL OR duration_seconds >= 0),
                     updated_at TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS briefing_speech_audio_chunks (
+                )"""
+            )
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS briefing_speech_audio_chunks (
                     session_id TEXT NOT NULL REFERENCES briefing_speech(session_id) ON DELETE CASCADE,
                     ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
                     content_type TEXT NOT NULL CHECK(content_type IN ('audio/mpeg', 'audio/wav')),
@@ -190,10 +172,11 @@ class BriefingSessionStore:
                     duration_seconds REAL NOT NULL CHECK(duration_seconds > 0),
                     audio_blob BLOB NOT NULL CHECK(length(audio_blob) > 0),
                     PRIMARY KEY(session_id, ordinal)
-                );
-                CREATE INDEX IF NOT EXISTS idx_briefing_speech_partition_status
-                    ON briefing_speech(partition, status);
-                """
+                )"""
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_briefing_speech_partition_status "
+                "ON briefing_speech(partition, status)"
             )
             conn.execute(
                 "UPDATE briefing_speech SET status = 'unavailable', request_id = NULL, "
@@ -204,6 +187,36 @@ class BriefingSessionStore:
                 "INSERT INTO schema_versions(domain, version) VALUES ('briefing_speech', 1) "
                 "ON CONFLICT(domain) DO UPDATE SET version = excluded.version"
             )
+
+    @staticmethod
+    def validate_schema(conn: sqlite3.Connection) -> None:
+        validate_versioned_schema(
+            conn,
+            domain="briefing_sessions",
+            version=2,
+            tables={"briefing_sessions": (
+                "id", "partition", "idempotency_key", "conversation_id", "opening_message_id",
+                "run_id", "profile_id", "created_at", "presented_at", "request_json",
+                "configuration_json", "history_json", "artifact_json", "evidence_json",
+            )},
+            error_type=BriefingSessionStoreError,
+        )
+        validate_versioned_schema(
+            conn,
+            domain="briefing_speech",
+            version=1,
+            tables={
+                "briefing_speech": (
+                    "session_id", "partition", "request_id", "artifact_sha256", "status",
+                    "script_json", "requested_engine", "engine", "voice_gender", "error_code",
+                    "duration_seconds", "updated_at",
+                ),
+                "briefing_speech_audio_chunks": (
+                    "session_id", "ordinal", "content_type", "engine", "duration_seconds", "audio_blob",
+                ),
+            },
+            error_type=BriefingSessionStoreError,
+        )
 
     @staticmethod
     def _speech_artifact_hash(raw_artifact: str) -> str:

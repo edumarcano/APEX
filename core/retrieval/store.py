@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from core.connectors.models import utc_now_iso
+from core.persistence_schema import validate_versioned_schema
 from core.retrieval.models import RetrievalHit, RetrievalItem
 
 _CONVERSATIONAL_STOPWORDS: frozenset[str] = frozenset({
@@ -49,6 +50,10 @@ def sanitize_fts_query(query: str) -> str:
 
 class RetrievalStoreError(RuntimeError):
     pass
+
+
+class RetrievalSchemaCompatibilityError(RetrievalStoreError):
+    """The persisted retrieval domain is outside the supported schema floor."""
 
 
 def item_id_for(item: RetrievalItem) -> str:
@@ -123,18 +128,12 @@ class RetrievalStore:
 
     def initialize(self) -> None:
         with self._connection() as conn, conn:
+            self.validate_schema(conn)
+            conn.execute("BEGIN")
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS schema_versions ("
                 "domain TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL CHECK(version >= 1))"
             )
-            row = conn.execute(
-                "SELECT version FROM schema_versions WHERE domain = 'retrieval'"
-            ).fetchone()
-            version = int(row[0]) if row is not None else 0
-            if version > 2:
-                raise RetrievalStoreError("Retrieval schema is newer than this APEX build.")
-            if version == 1:
-                self._migrate_v1_to_v2(conn)
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS retrieval_items (
@@ -203,96 +202,58 @@ class RetrievalStore:
             self._reconcile_fts(conn)
 
     @staticmethod
-    def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
-        """Preserve source rows while rebuilding derived retrieval state."""
-        conn.executescript(
-            """
-            DROP TRIGGER IF EXISTS retrieval_items_fts_insert;
-            DROP TRIGGER IF EXISTS retrieval_items_fts_delete;
-            DROP TRIGGER IF EXISTS retrieval_items_fts_update;
-            DROP TRIGGER IF EXISTS retrieval_items_embedding_update;
-            DROP TRIGGER IF EXISTS retrieval_cleanup_conversation_message;
-            DROP TABLE IF EXISTS retrieval_items_fts;
-            DROP TABLE IF EXISTS retrieval_embeddings;
-            ALTER TABLE retrieval_items RENAME TO retrieval_items_v1;
-            CREATE TABLE retrieval_items (
-                id TEXT PRIMARY KEY NOT NULL,
-                namespace TEXT NOT NULL,
-                source_type TEXT NOT NULL,
-                source_id TEXT NOT NULL,
-                partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox', 'shared')),
-                conversation_id TEXT,
-                message_id TEXT,
-                role TEXT,
-                timestamp TEXT NOT NULL,
-                locator TEXT NOT NULL,
-                content_hash TEXT NOT NULL,
-                text TEXT NOT NULL,
-                title TEXT,
-                heading TEXT,
-                metadata_json TEXT NOT NULL CHECK(json_valid(metadata_json)),
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                UNIQUE(namespace, source_type, source_id)
-            );
-            INSERT INTO retrieval_items(
-                id, namespace, source_type, source_id, partition, conversation_id,
-                message_id, role, timestamp, locator, content_hash, text, title,
-                heading, metadata_json, created_at, updated_at
-            ) SELECT
-                id, namespace, source_type, source_id, partition, conversation_id,
-                message_id, role, timestamp, locator, content_hash, text, title,
-                heading, metadata_json, created_at, updated_at
-            FROM retrieval_items_v1;
-            DROP TABLE retrieval_items_v1;
-            """
-        )
-        conn.execute(
-            "UPDATE retrieval_model_state SET state = 'unprepared', model_fingerprint = NULL, "
-            "last_prepared_at = NULL, error_category = NULL, updated_at = ? WHERE id = 1",
-            (utc_now_iso(),),
+    def validate_schema(conn: sqlite3.Connection) -> None:
+        validate_versioned_schema(
+            conn,
+            domain="retrieval",
+            version=2,
+            tables={"retrieval_items": (
+                "id", "namespace", "source_type", "source_id", "partition", "conversation_id",
+                "message_id", "role", "timestamp", "locator", "content_hash", "text", "title",
+                "heading", "metadata_json", "created_at", "updated_at",
+            )},
+            optional_tables={
+                "retrieval_embeddings": ("item_id", "model_fingerprint", "vector", "updated_at"),
+                "retrieval_model_state": (
+                    "id", "state", "model_fingerprint", "last_prepared_at", "error_category", "updated_at",
+                ),
+                "retrieval_items_fts": ("item_id", "text", "title", "heading"),
+            },
+            error_type=RetrievalSchemaCompatibilityError,
         )
 
     @staticmethod
     def _create_triggers(conn: sqlite3.Connection) -> None:
-        conn.executescript(
-            """
-            CREATE TRIGGER IF NOT EXISTS retrieval_items_fts_insert
+        conn.execute("""CREATE TRIGGER IF NOT EXISTS retrieval_items_fts_insert
             AFTER INSERT ON retrieval_items BEGIN
                 INSERT INTO retrieval_items_fts(item_id, text, title, heading)
                 VALUES (new.id, new.text, COALESCE(new.title, ''), COALESCE(new.heading, ''));
-            END;
-            CREATE TRIGGER IF NOT EXISTS retrieval_items_fts_delete
+            END""")
+        conn.execute("""CREATE TRIGGER IF NOT EXISTS retrieval_items_fts_delete
             AFTER DELETE ON retrieval_items BEGIN
                 DELETE FROM retrieval_items_fts WHERE item_id = old.id;
-            END;
-            CREATE TRIGGER IF NOT EXISTS retrieval_items_fts_update
+            END""")
+        conn.execute("""CREATE TRIGGER IF NOT EXISTS retrieval_items_fts_update
             AFTER UPDATE OF text, title, heading ON retrieval_items BEGIN
                 DELETE FROM retrieval_items_fts WHERE item_id = old.id;
                 INSERT INTO retrieval_items_fts(item_id, text, title, heading)
                 VALUES (new.id, new.text, COALESCE(new.title, ''), COALESCE(new.heading, ''));
-            END;
-            CREATE TRIGGER IF NOT EXISTS retrieval_items_embedding_update
+            END""")
+        conn.execute("""CREATE TRIGGER IF NOT EXISTS retrieval_items_embedding_update
             AFTER UPDATE OF text, content_hash ON retrieval_items BEGIN
                 DELETE FROM retrieval_embeddings WHERE item_id = old.id;
-            END;
-            """
-        )
+            END""")
         # Branch 2 permanently deletes messages in this transaction. This trigger
         # is installed when the conversation schema is already present and is
         # harmlessly retried on every initialization.
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         if "conversation_messages" in tables:
-            conn.executescript(
-                """
-                CREATE TRIGGER IF NOT EXISTS retrieval_cleanup_conversation_message
+            conn.execute("""CREATE TRIGGER IF NOT EXISTS retrieval_cleanup_conversation_message
                 AFTER DELETE ON conversation_messages BEGIN
                     DELETE FROM retrieval_items
                     WHERE namespace = 'conversation' AND source_type = 'message'
                       AND source_id = old.id;
-                END;
-                """
-            )
+                END""")
 
     @staticmethod
     def _reconcile_fts(conn: sqlite3.Connection) -> None:

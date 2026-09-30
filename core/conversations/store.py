@@ -18,6 +18,7 @@ from core.conversations.models import (
     ConversationMessage,
     ConversationSummary,
 )
+from core.persistence_schema import validate_versioned_schema
 
 MAX_CONVERSATION_PURGE_BATCH_SIZE = 100
 
@@ -98,17 +99,12 @@ class ConversationStore:
 
     def initialize(self) -> None:
         with self._connection() as conn, conn:
+            self.validate_schema(conn)
+            conn.execute("BEGIN")
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS schema_versions ("
                 "domain TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL CHECK(version >= 1))"
             )
-            row = conn.execute(
-                "SELECT version FROM schema_versions WHERE domain = 'conversations'"
-            ).fetchone()
-            if row is not None and int(row[0]) > 2:
-                raise ConversationStoreError("Conversation schema is newer than this APEX build.")
-            if row is not None and int(row[0]) == 1:
-                self._migrate_v1_to_v2(conn)
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS conversations (
@@ -154,40 +150,27 @@ class ConversationStore:
                 "INSERT INTO schema_versions(domain, version) VALUES ('conversations', 2) "
                 "ON CONFLICT(domain) DO UPDATE SET version = excluded.version"
             )
+            conn.commit()
 
     @staticmethod
-    def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
-        """Transactionally rebuild constrained tables without changing message identity."""
-        conn.execute("PRAGMA foreign_keys=OFF")
-        try:
-            conn.execute("ALTER TABLE conversations RENAME TO conversations_v1")
-            conn.execute("ALTER TABLE conversation_messages RENAME TO conversation_messages_v1")
-            conn.executescript("""
-                CREATE TABLE conversations (
-                    id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL CHECK(length(trim(title)) > 0),
-                    partition TEXT NOT NULL CHECK(partition IN ('production', 'sandbox')),
-                    origin TEXT NOT NULL CHECK(origin IN ('hud', 'cli')),
-                    agent TEXT NOT NULL CHECK(agent IN ('apex')),
-                    selected_tool_names_json TEXT CHECK(selected_tool_names_json IS NULL OR json_valid(selected_tool_names_json)),
-                    tool_profile_id TEXT, active_leaf_message_id TEXT, created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL, archived_at TEXT);
-                CREATE TABLE conversation_messages (
-                    id TEXT PRIMARY KEY NOT NULL, conversation_id TEXT NOT NULL REFERENCES conversations(id),
-                    parent_message_id TEXT, role TEXT NOT NULL CHECK(role IN ('user', 'agent')),
-                    content TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('pending', 'completed', 'failed', 'interrupted')),
-                    agent TEXT CHECK(agent IN ('apex')),
-                    request_metadata_json TEXT CHECK(request_metadata_json IS NULL OR json_valid(request_metadata_json)),
-                    response_metadata_json TEXT CHECK(response_metadata_json IS NULL OR json_valid(response_metadata_json)),
-                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(conversation_id, id),
-                    FOREIGN KEY(conversation_id, parent_message_id) REFERENCES conversation_messages(conversation_id, id));
-            """)
-            conn.execute("INSERT INTO conversations SELECT id,title,partition,origin,'apex',selected_tool_names_json,tool_profile_id,active_leaf_message_id,created_at,updated_at,archived_at FROM conversations_v1")
-            conn.execute("INSERT INTO conversation_messages SELECT id,conversation_id,parent_message_id,role,content,status,CASE WHEN agent IS NULL THEN NULL ELSE 'apex' END,request_metadata_json,CASE WHEN response_metadata_json IS NOT NULL AND json_valid(response_metadata_json) THEN json_set(response_metadata_json, '$.agent_used.key', 'apex') ELSE response_metadata_json END,created_at,updated_at FROM conversation_messages_v1")
-            conn.execute("DROP TABLE conversation_messages_v1")
-            conn.execute("DROP TABLE conversations_v1")
-            conn.execute("UPDATE schema_versions SET version = 2 WHERE domain = 'conversations'")
-        finally:
-            conn.execute("PRAGMA foreign_keys=ON")
+    def validate_schema(conn: sqlite3.Connection) -> None:
+        validate_versioned_schema(
+            conn,
+            domain="conversations",
+            version=2,
+            tables={
+                "conversations": (
+                    "id", "title", "partition", "origin", "agent",
+                    "selected_tool_names_json", "tool_profile_id", "active_leaf_message_id",
+                    "created_at", "updated_at", "archived_at",
+                ),
+                "conversation_messages": (
+                    "id", "conversation_id", "parent_message_id", "role", "content", "status",
+                    "agent", "request_metadata_json", "response_metadata_json", "created_at", "updated_at",
+                ),
+            },
+            error_type=ConversationStoreError,
+        )
 
     @staticmethod
     def _summary(row: sqlite3.Row | tuple[Any, ...]) -> ConversationSummary:

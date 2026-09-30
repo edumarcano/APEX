@@ -16,6 +16,7 @@ from core.conversations.store import (
     ConversationBusyError,
     ConversationConflictError,
     ConversationStore,
+    ConversationStoreError,
 )
 from core.conversations.retention import purge_expired_archived_conversations
 from core.briefings.store import BriefingSessionStore
@@ -511,7 +512,7 @@ class ConversationStoreTests(unittest.TestCase):
 
 
 class ConversationMigrationTests(unittest.TestCase):
-    def test_v1_history_is_preserved_and_normalized_to_apex(self) -> None:
+    def test_v1_history_is_rejected_without_rewriting_data(self) -> None:
         temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(temp_dir.cleanup)
         path = Path(temp_dir.name) / "apex_memory.db"
@@ -558,18 +559,12 @@ class ConversationMigrationTests(unittest.TestCase):
 
         store = ConversationStore(path)
         self.addCleanup(store.close)
-        store.initialize()
-
-        detail = store.detail(conversation_id, "production")
-        self.assertEqual(detail.agent, "apex")
-        self.assertEqual(detail.active_leaf_message_id, agent_id)
-        self.assertEqual([message.id for message in detail.messages], [user_id, agent_id])
-        pending = detail.messages[-1]
-        self.assertEqual(pending.status, "pending")
-        self.assertEqual(pending.agent, "apex")
-        self.assertEqual(pending.response_metadata["agent_used"], {
-            "key": "apex", "provider": "openrouter", "model_id": "deepseek/deepseek-v4-flash-0731", "runtime": "cloud",
-        })
+        with self.assertRaisesRegex(ConversationStoreError, "Unsupported conversations persistence schema"):
+            store.initialize()
+        with closing(sqlite3.connect(path)) as conn:
+            self.assertEqual(conn.execute("SELECT version FROM schema_versions WHERE domain='conversations'").fetchone()[0], 1)
+            self.assertEqual(conn.execute("SELECT agent FROM conversations WHERE id=?", (str(conversation_id),)).fetchone()[0], "legacy")
+            self.assertEqual(conn.execute("SELECT response_metadata_json FROM conversation_messages WHERE id=?", (str(agent_id),)).fetchone()[0], json.dumps({"agent_used": {"key": "legacy", "provider": "openrouter", "model_id": "deepseek/deepseek-v4-flash-0731", "runtime": "cloud"}}))
 
 
 if __name__ == "__main__":

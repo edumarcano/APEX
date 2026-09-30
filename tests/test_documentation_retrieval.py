@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from core.retrieval.docs import (
@@ -12,7 +13,7 @@ from core.retrieval.docs import (
 )
 from core.retrieval.models import RetrievalItem
 from core.retrieval.service import RetrievalService
-from core.retrieval.store import RetrievalStore, item_id_for
+from core.retrieval.store import RetrievalSchemaCompatibilityError, RetrievalStore, item_id_for
 
 
 class FakeEmbeddingAdapter:
@@ -101,7 +102,7 @@ class DocumentationRetrievalTests(unittest.TestCase):
         search_documentation("architecture", self.service, root=self.root)
         self.assertFalse(any("architecture.md" in hit.locator for hit in self.service.search("architecture", namespace=DOCS_NAMESPACE, source_type="markdown_chunk", partition="shared")))
 
-    def test_v1_migration_preserves_source_items_and_resets_derived_embeddings(self) -> None:
+    def test_v1_schema_is_rejected_without_rewriting_source_or_embeddings(self) -> None:
         item = RetrievalItem(
             namespace="conversation", source_type="message", source_id="message-1",
             partition="production", conversation_id="conversation-1", message_id="message-1",
@@ -113,14 +114,48 @@ class DocumentationRetrievalTests(unittest.TestCase):
         conn = sqlite3.connect(self.root / "retrieval.db")
         try:
             with conn:
+                source_before = conn.execute(
+                    "SELECT id, text, metadata_json FROM retrieval_items WHERE id = ?",
+                    (item_id_for(item),),
+                ).fetchone()
+                embedding_before = conn.execute(
+                    "SELECT model_fingerprint, vector, updated_at FROM retrieval_embeddings WHERE item_id = ?",
+                    (item_id_for(item),),
+                ).fetchone()
+                state_before = conn.execute(
+                    "SELECT state, model_fingerprint, last_prepared_at, error_category, updated_at "
+                    "FROM retrieval_model_state WHERE id = 1"
+                ).fetchone()
                 conn.execute("UPDATE schema_versions SET version = 1 WHERE domain = 'retrieval'")
         finally:
             conn.close()
 
-        self.store.initialize()
+        with self.assertRaises(RetrievalSchemaCompatibilityError):
+            self.store.initialize()
 
-        self.assertEqual(self.store.counts(), (1, 0))
-        self.assertEqual(self.store.model_state()[0], "unprepared")
+        self.assertEqual(self.store.counts(), (1, 1))
+        with closing(sqlite3.connect(self.root / "retrieval.db")) as conn:
+            self.assertEqual(
+                conn.execute(
+                    "SELECT id, text, metadata_json FROM retrieval_items WHERE id = ?",
+                    (item_id_for(item),),
+                ).fetchone(),
+                source_before,
+            )
+            self.assertEqual(
+                conn.execute(
+                    "SELECT model_fingerprint, vector, updated_at FROM retrieval_embeddings WHERE item_id = ?",
+                    (item_id_for(item),),
+                ).fetchone(),
+                embedding_before,
+            )
+            self.assertEqual(
+                conn.execute(
+                    "SELECT state, model_fingerprint, last_prepared_at, error_category, updated_at "
+                    "FROM retrieval_model_state WHERE id = 1"
+                ).fetchone(),
+                state_before,
+            )
 
 
 if __name__ == "__main__":

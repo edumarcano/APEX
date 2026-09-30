@@ -224,14 +224,16 @@ class RunsLedgerTests(unittest.TestCase):
         self.assertNotIn("max_total_tokens", current_json)
 
     def test_rejects_pre_release_run_ledger_schema(self) -> None:
-        """Verify beta.2 rejects rather than migrates an unreleased ledger schema."""
+        """Reject the old ledger marker without destructive reset instructions."""
         with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.execute(
                 "UPDATE schema_versions SET version = 1 WHERE domain = 'cortex_runs'"
             )
 
-        with self.assertRaisesRegex(RunStoreError, "pre-release run ledger"):
+        with self.assertRaisesRegex(RunStoreError, "Unsupported cortex_runs persistence schema") as raised:
             self.store.initialize()
+        self.assertNotIn("delete", str(raised.exception).lower())
+        self.assertNotIn("reset", str(raised.exception).lower())
 
     def test_foreign_key_constraints_on_messages(self) -> None:
         """Verify composite foreign keys to conversation_messages(conversation_id, id)."""
