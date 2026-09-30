@@ -40,20 +40,24 @@ frontend/src/
 
 Do not expand `useApexData` into another global store. Use the focused owner for each runtime path:
 
-| Hook | Owns |
+| Owner | Owns |
 |---|---|
 | `useApexData` | Boot settings and reminder data and actions |
-| `useAppActivation` | Standby/activated browser session |
-| `usePreflight` | Warning and blocker interaction |
-| `useTelemetrySnapshot` | Process-current telemetry snapshot and refresh |
+| `useTelemetryCollectionState` | The `collectionStarted` app-session latch and its `startCollection`/`resetCollection` transitions, kept separate from whether usable telemetry data exists. |
+| `usePreflight` | Preflight requests and warning or blocker dialog flow |
+| `useTelemetrySnapshot` | Current telemetry snapshot, refresh state, and refresh actions |
 | `useBriefingSessions` | Briefing profiles, generation, session status, selected session and evidence, and presentation state |
 | `useBriefingSpeech` | Speech status and explicit preparation, playback, and stop actions for the selected completed session |
-| `useCortex` | Browser-held conversation, Agent/catalog status, explicit tool-selection diagnostics, tool traces and outputs |
+| `useWorkspaceView` | Resolving the selected Overview or Briefing presentation and owning the selected briefing profile |
+| `useBriefingPresentation` | Marking a completed briefing as presented after it becomes visible |
+| `useCompactLayout` | Shared compact-layout breakpoint |
+| `useCortex` | APEX Agent status and catalog, cloud-model verification, and local-model lifecycle |
+| `ApexAssistantRuntime` | Conversation and thread history, one-turn submission, streaming, tool traces, and outputs |
 | `useCortexRuns` | Recent Cortex runs, active-run polling, selection, activity detail inspection, and cooperative cancellation |
 | `useActions` | Cortex-visible action list, expanded audit detail, bounded polling, and versioned action controls |
-| `useToolCatalog` | Agent-specific catalog, session-persistent selection, and profile application |
+| `useToolCatalog` | Agent catalog, selected-tool state, and profile application |
 | `useToolPreflight` | Debounced estimated token breakdown for the next request |
-| `useMarketData` | Independent market polling with stale fallback |
+| `useMarketData` | Cache-backed Market reads, reloaded when telemetry publishes a Market collection revision |
 | `useSystemDiagnostics` | Independent host diagnostics polling |
 | `useContextInspector` | Personal-context records and detail, retrieval status, entity lookup, direct saves, reconciliation proposals, and durable review decisions |
 | `useContextVault` | Vault settings, selection preview, export status, refresh, and managed-copy removal |
@@ -65,11 +69,11 @@ Do not expand `useApexData` into another global store. Use the focused owner for
 
 `src/lib/api.ts` centralizes the FastAPI base URL at `http://127.0.0.1:8000`. The HUD does not read `.env`, `config.json`, or `config.local.json` directly. Configuration and runtime state arrive through HTTP responses.
 
-The browser owns ephemeral UI state, including unsaved scratch-conversation state and the active view. FastAPI owns connectors, settings persistence, telemetry collection, models, tools, context and action services, and speech. SQLite owns accepted Cortex conversation history and other durable application records. See the [API guide](../docs/api.md) for behavioral contracts.
+The browser owns presentation state such as the active view. `ApexAssistantRuntime` owns conversation and thread interaction, including submission and streaming, while FastAPI and SQLite provide the durable conversation history and other persisted application records. FastAPI also owns connectors, settings, telemetry collection, models, tools, context and action services, and speech. See the [API guide](../docs/api.md) for behavioral contracts.
 
 ## Frontend rules
 
-- Preserve standby, development, and demo behavior.
+- Preserve the Launch screen, explicit collection flow, development mode, and demo mode behavior.
 - Keep independent flows usable when another path is degraded.
 - Parse external JSON defensively before storing it in typed state.
 - Preserve keyboard access, focus handling, semantic labels, and reduced-motion behavior.
