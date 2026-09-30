@@ -352,7 +352,8 @@ describe('ApexAssistantRuntime', () => {
     )
 
     await user.click(await screen.findByRole('button', { name: 'Schedule' }))
-    expect(screen.getByPlaceholderText('Ask Lynx…')).toHaveValue(expect.stringMatching(/calendar events for the next fourteen days/i))
+    const composer = screen.getByPlaceholderText('Ask Lynx…') as HTMLInputElement | HTMLTextAreaElement
+    expect(composer.value).toMatch(/calendar events for the next fourteen days/i)
     expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
     expect(writes).toEqual([])
   })
