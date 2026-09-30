@@ -12,6 +12,7 @@ describe('HudIdentityMark', () => {
   it('keeps the active signal label and reduced-motion mark transition across hero and overview', () => {
     const activeIdentity: HudIdentityProps = {
       ...identity,
+      logoProps: { ...identity.logoProps, activity: 'briefing_ready' },
       glyphProps: { ...identity.glyphProps, activity: 'briefing_ready' },
     }
     const { container, rerender } = render(<HudIdentityMark identity={activeIdentity} size="hero" />)
