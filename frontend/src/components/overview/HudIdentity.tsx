@@ -14,9 +14,11 @@ const LOGO_SIZE_TRANSITION_CLASS = 'transition-[height,width] duration-700 ease-
 export function HudIdentityMark({
   identity,
   size,
+  hideLabel = false,
 }: {
   identity: HudIdentityProps
   size: 'hero' | 'large' | 'overview' | 'sidebar' | 'compact'
+  hideLabel?: boolean
 }): ReactElement {
   const logoClass = size === 'hero'
     ? 'hud-logo-mark h-48 w-auto sm:h-56 xl:h-64'
@@ -32,7 +34,7 @@ export function HudIdentityMark({
       <ApexLogo {...identity.logoProps} className={`${logoClass} ${LOGO_SIZE_TRANSITION_CLASS}`} />
     </div>
     <div className={`flex flex-col items-center whitespace-nowrap ${size === 'hero' ? 'mt-7 xl:mt-9' : 'mt-2'}`}>
-      <VoiceSignalGlyph {...identity.glyphProps} />
+      <VoiceSignalGlyph {...identity.glyphProps} hideLabel={hideLabel} />
     </div>
   </div>
 }

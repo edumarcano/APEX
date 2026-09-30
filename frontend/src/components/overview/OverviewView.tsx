@@ -92,7 +92,17 @@ export function OverviewView({ identity, telemetry, state, error, onCollect, onR
         </div>
       ) : (
         <>
-          <HudIdentityMark identity={identity} size="large" />
+          <header className="flex w-full shrink-0 items-center justify-between pb-1">
+            <span
+              className={[
+                'font-orbitron text-[9px] font-semibold uppercase tracking-[0.2em] transition-colors duration-700 sm:text-[10px]',
+                toneClasses.label,
+              ].join(' ')}
+            >
+              {signalState.label}
+            </span>
+          </header>
+          <HudIdentityMark identity={identity} size="large" hideLabel />
           {state === 'error' ? <div className="max-w-sm text-center" role="alert"><p className="font-mono text-sm text-rose-300">{error || 'I couldn’t collect telemetry just now.'}</p></div> : null}
           {state === 'no-data' ? <p className="font-mono text-sm text-zinc-400" role="status">No telemetry sources are available yet.</p> : null}
           {state === 'center' || state === 'error' || state === 'no-data' ? <TelemetryCollectionAction

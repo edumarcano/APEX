@@ -38,4 +38,11 @@ describe('HudIdentityMark', () => {
     expect(logo.className).toContain('h-28')
     expect(logo.className).toContain('sm:h-32')
   })
+
+  it('passes hideLabel to the nested voice signal glyph', () => {
+    const { container } = render(<HudIdentityMark identity={identity} size="large" hideLabel />)
+    const glyph = container.querySelector('[data-slot="voice-signal-glyph"]') as HTMLElement
+    expect(glyph).toBeInTheDocument()
+    expect(glyph.querySelector('span')).not.toBeInTheDocument()
+  })
 })

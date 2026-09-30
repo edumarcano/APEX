@@ -160,6 +160,8 @@ describe('OverviewView identity mark sizing', () => {
     )
     const centerLayout = screen.getByRole('region', { name: 'Overview' })
     expect(homeIdentity(centerLayout)).toHaveAttribute('data-logo-size', 'large')
+    expect(centerLayout.querySelector('header span')).toHaveTextContent('Ready')
+    expect(centerLayout.querySelector('[data-slot="voice-signal-glyph"] span')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Collect Telemetry' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Refresh All' })).not.toBeInTheDocument()
     centerView.unmount()
