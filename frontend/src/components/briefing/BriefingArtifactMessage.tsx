@@ -3,7 +3,7 @@ import type { ReactElement } from 'react'
 import { AgentResponseName } from '../AgentResponseName'
 import { useBriefingPresentation } from '../../hooks/useBriefingPresentation'
 import { formatBriefingTime } from '../../lib/briefingFormat'
-import type { BriefingComparison, BriefingSessionDetail } from '../../types/briefings'
+import type { BriefingComparison, BriefingSessionDetail, BriefingSpeechState } from '../../types/briefings'
 import {
   BriefingCoverage,
   BriefingEvidenceRecords,
@@ -17,10 +17,45 @@ type Props = {
   evidence: Omit<BriefingEvidenceState, 'sessionId'>
   onMarkPresented: (sessionId: string) => Promise<void>
   agentDisplayName?: string
+  speech?: BriefingSpeechState | null
+}
+
+function SpokenHighlightsCard({
+  script,
+  itemMap,
+}: {
+  script: { highlights: Array<{ item_id: string; text: string }> }
+  itemMap: Map<string, { title: string }>
+}): ReactElement {
+  return (
+    <details
+      aria-label="Spoken highlights transcript"
+      className="rounded-lg border border-cyan-400/25 bg-cyan-950/20 p-3 text-cyan-200"
+    >
+      <summary className="cursor-pointer font-orbitron text-[10px] uppercase tracking-wider text-cyan-300 hover:text-cyan-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#A5F3FC]">
+        Spoken highlights transcript ({script.highlights.length})
+      </summary>
+      <div className="mt-3 space-y-2 border-t border-cyan-400/15 pt-2">
+        {script.highlights.map((highlight, index) => {
+          const referencedItem = itemMap.get(highlight.item_id)
+          return (
+            <div key={`${highlight.item_id}-${index}`} className="rounded border border-cyan-400/10 bg-cyan-950/30 p-2 text-xs">
+              <p className="leading-relaxed text-cyan-100">{highlight.text}</p>
+              {referencedItem ? (
+                <p className="mt-1 font-mono text-[10px] text-cyan-300/80">
+                  Ref: <span className="font-sans text-cyan-200">{referencedItem.title}</span>
+                </p>
+              ) : null}
+            </div>
+          )
+        })}
+      </div>
+    </details>
+  )
 }
 
 /** Structured opening message of a completed briefing session's conversation. */
-export function BriefingArtifactMessage({ session, isLoadingSession, evidence, onMarkPresented, agentDisplayName = 'Lynx' }: Props): ReactElement | null {
+export function BriefingArtifactMessage({ session, isLoadingSession, evidence, onMarkPresented, agentDisplayName = 'Lynx', speech }: Props): ReactElement | null {
   const presentationRef = useBriefingPresentation({ session, isLoadingSession, onMarkPresented })
   const artifact = session.artifact
   if (!artifact) return null
@@ -49,6 +84,9 @@ export function BriefingArtifactMessage({ session, isLoadingSession, evidence, o
       {artifact.sections.length === 0 && !(isCatchUp && artifact.comparison) ? <p className="mt-2 text-sm text-zinc-300">{artifact.comparison?.summary ?? 'No briefing items were produced.'}</p> : null}
     </header>
     {isCatchUp && artifact.comparison ? <CatchUpComparisonBanner comparison={artifact.comparison} /> : null}
+    {speech?.script?.highlights && speech.script.highlights.length > 0 ? (
+      <SpokenHighlightsCard script={speech.script} itemMap={new Map(artifact.sections.flatMap((s) => s.items.map((i) => [i.id, i])))} />
+    ) : null}
     {artifact.sections.map((section) => <section key={section.id} className="space-y-2">
       <h3 className="font-orbitron text-[10px] uppercase tracking-wider text-[#A5C7FF]">{section.title}</h3>
       {section.items.map((item) => <article key={item.id} className="rounded-lg border border-white/10 bg-white/[0.025] p-2.5">

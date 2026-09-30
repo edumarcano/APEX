@@ -16,15 +16,17 @@ export function HudIdentityMark({
   size,
 }: {
   identity: HudIdentityProps
-  size: 'hero' | 'large' | 'overview' | 'compact'
+  size: 'hero' | 'large' | 'overview' | 'sidebar' | 'compact'
 }): ReactElement {
   const logoClass = size === 'hero'
     ? 'hud-logo-mark h-48 w-auto sm:h-56 xl:h-64'
     : size === 'large'
       ? 'hud-logo-mark h-40 w-auto sm:h-48 xl:h-56'
-      : size === 'overview'
-        ? 'h-24 w-auto sm:h-28'
-        : 'h-16 w-auto sm:h-20'
+      : size === 'sidebar'
+        ? 'h-28 w-auto sm:h-32'
+        : size === 'overview'
+          ? 'h-24 w-auto sm:h-28'
+          : 'h-16 w-auto sm:h-20'
   return <div className="relative flex flex-col items-center" data-slot="home-identity" data-logo-size={size}>
     <div className={`${LOGO_GLOW_CLASS} ${size === 'hero' ? 'scale-115 xl:scale-125' : ''}`}>
       <ApexLogo {...identity.logoProps} className={`${logoClass} ${LOGO_SIZE_TRANSITION_CLASS}`} />

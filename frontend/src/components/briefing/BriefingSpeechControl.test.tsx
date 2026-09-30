@@ -41,11 +41,15 @@ describe('BriefingSpeechControl', () => {
   it('offers explicit preparation and describes speech accessibly', async () => {
     const user = userEvent.setup()
     const prepare = vi.fn(async () => undefined)
-    render(<BriefingSpeechControl {...props({ prepare })} />)
+    render(<BriefingSpeechControl {...props({ prepare })} configuredTtsEngine="google" />)
 
     expect(screen.getByRole('region', { name: 'Spoken highlights' })).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('No spoken highlights are prepared.')
-    await user.click(screen.getByRole('button', { name: 'Prepare highlights' }))
+    expect(screen.getByText('Voice engine · Google TTS')).toBeInTheDocument()
+    const prepareButton = screen.getByRole('button', { name: 'Prepare highlights' })
+    expect(prepareButton.className).toContain('enabled:hover:border-cyan-300/60')
+    expect(prepareButton.className).toContain('enabled:hover:shadow-[0_0_14px_rgba(6,182,212,0.25)]')
+    await user.click(prepareButton)
     expect(prepare).toHaveBeenCalledTimes(1)
   })
 

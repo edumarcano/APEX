@@ -65,7 +65,7 @@ import type {
   ModelCatalogEntry,
   TelemetrySnapshot,
 } from './types/telemetry'
-import type { BriefingSessionStatus } from './types/briefings'
+import type { BriefingSessionStatus, BriefingSpeechEngine } from './types/briefings'
 import type { ContextReview } from './types/context'
 import type {
   CloudHostedToolsSettings,
@@ -191,6 +191,22 @@ export default function App(): ReactElement {
   const [activeAgent] = useState<AgentKey>('apex')
   const [cloudEffort, setCloudEffort] = useState<CloudEffort>('medium')
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('automatic')
+  const [autoGenerateHighlights, setAutoGenerateHighlights] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('apex_auto_generate_speech') === 'true'
+    } catch {
+      return false
+    }
+  })
+  const [voiceEngine, setVoiceEngine] = useState<BriefingSpeechEngine>('google')
+  const handleAutoGenerateHighlightsChange = useCallback((enabled: boolean): void => {
+    setAutoGenerateHighlights(enabled)
+    try {
+      localStorage.setItem('apex_auto_generate_speech', String(enabled))
+    } catch {
+      // Local storage unavailable
+    }
+  }, [])
   const [workspace, setWorkspace] = useState<WorkspacePeer>('overview')
   const [isLaunch, setIsLaunch] = useState(true)
   const [hasCollectedTelemetry, setHasCollectedTelemetry] = useState(false)
@@ -558,6 +574,9 @@ export default function App(): ReactElement {
       })
 
       setVoiceMode(response.settings.voice.mode)
+      if (response.settings.voice?.engine) {
+        setVoiceEngine(response.settings.voice.engine)
+      }
     },
     [applyBootSettings],
   )
@@ -709,6 +728,13 @@ export default function App(): ReactElement {
           }
         }
 
+        const voiceSettings = settingsValues.voice
+        if (voiceSettings && typeof voiceSettings === 'object') {
+          const engine = (voiceSettings as { engine?: string }).engine
+          if (engine === 'google' || engine === 'kokoro' || engine === 'pyttsx3') {
+            setVoiceEngine(engine)
+          }
+        }
       } catch {
         // Cortex falls back to boot defaults when settings are temporarily unavailable.
       }
@@ -745,7 +771,7 @@ export default function App(): ReactElement {
     isPreparingSpeech,
     isSpeaking,
   })
-  const resolvedTtsEngine = briefingSpeech.speech?.engine ?? 'google'
+  const resolvedTtsEngine = briefingSpeech.speech?.engine ?? voiceEngine ?? 'google'
   const resolvedSystemThrottled = false
   const localLifecycleBusy =
     (activeQueryAgent === 'apex' && sharedAgentModelEntry?.runtime === 'local') ||
@@ -903,6 +929,7 @@ export default function App(): ReactElement {
   }, [openDailySession, openDailyConversation, selectHudPeer])
 
   const briefingCueSessionsRef = useRef(new Set<string>())
+  const autoSpeechSessionsRef = useRef(new Set<string>())
   const announceBriefingOutcome = useCallback((status: BriefingSessionStatus): void => {
     if (status === 'completed') void requestVoiceCue('briefing_ready')
     else if (status === 'failed' || status === 'interrupted') void requestVoiceCue('briefing_failed')
@@ -920,6 +947,26 @@ export default function App(): ReactElement {
       announceBriefingOutcome(session.run_status)
     }
   }, [announceBriefingOutcome, dailySessionList, voiceMode])
+
+  useEffect(() => {
+    if (voiceMode === 'off') {
+      autoSpeechSessionsRef.current.clear()
+      return
+    }
+    if (
+      autoGenerateHighlights &&
+      selectedCompletedBriefing &&
+      autoSpeechSessionsRef.current.has(selectedCompletedBriefing.id)
+    ) {
+      const speechStatus = briefingSpeech.speech?.status
+      if (speechStatus === 'not_requested') {
+        autoSpeechSessionsRef.current.delete(selectedCompletedBriefing.id)
+        void briefingSpeech.prepare()
+      } else if (speechStatus && speechStatus !== 'preparing') {
+        autoSpeechSessionsRef.current.delete(selectedCompletedBriefing.id)
+      }
+    }
+  }, [autoGenerateHighlights, briefingSpeech, selectedCompletedBriefing, voiceMode])
 
   const performBriefingGeneration = useCallback(async (draft: BriefingSetupDraft): Promise<void> => {
     if (hasActiveDailySession) throw new Error('A briefing is already running.')
@@ -957,6 +1004,9 @@ export default function App(): ReactElement {
     selectHudPeer('briefing')
     setDailyConversationReady(null)
     const summary = await generateBriefing(draft.profileId, generationOptions)
+    if (autoGenerateHighlights && voiceMode !== 'off') {
+      autoSpeechSessionsRef.current.add(summary.id)
+    }
     if (voiceMode === 'automatic') {
       if (BRIEFING_ACTIVE_STATUSES.has(summary.run_status)) {
         briefingCueSessionsRef.current.add(summary.id)
@@ -975,6 +1025,7 @@ export default function App(): ReactElement {
   }, [
     agentDisplayName,
     agentQueriesEnabled,
+    autoGenerateHighlights,
     dailySessions.profiles,
     demoModeActive,
     fullModelCatalog,
@@ -1789,7 +1840,12 @@ export default function App(): ReactElement {
                 {...briefingSpeech}
                 voiceMode={voiceMode}
                 agentDisplayName={agentDisplayName}
+                configuredTtsEngine={voiceEngine}
               /> : null,
+              autoGenerateHighlights,
+              onAutoGenerateHighlightsChange: handleAutoGenerateHighlightsChange,
+              voiceMode,
+              configuredTtsEngine: voiceEngine,
             }}
             briefingConversation={{
               ready: dailyConversationReady === dailySessions.activeSession?.conversation_id && assistantConversationId === dailySessions.activeSession?.conversation_id,
@@ -1801,6 +1857,7 @@ export default function App(): ReactElement {
               onMarkPresented: dailySessions.markPresented,
               onOpenConversation: (conversationId) => void openDailyConversation(conversationId),
               agentDisplayName,
+              speech: briefingSpeech.speech,
               composer: {
                 activeAgent: 'apex',
                 activeAgentName: agentDisplayName,

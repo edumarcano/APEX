@@ -8,7 +8,7 @@ const identity: HudIdentityProps = {
   glyphProps: { status: 'idle', isSpeaking: false },
 }
 
-function renderMark(size: 'hero' | 'large' | 'overview' | 'compact') {
+function renderMark(size: 'hero' | 'large' | 'overview' | 'sidebar' | 'compact') {
   const { container } = render(<HudIdentityMark identity={identity} size={size} />)
   const root = container.querySelector('[data-slot="home-identity"]') as HTMLElement
   const glow = root.firstElementChild as HTMLElement
@@ -30,5 +30,12 @@ describe('HudIdentityMark', () => {
     const { logo } = renderMark('overview')
     expect(logo.className).toContain('h-24')
     expect(logo.className).not.toContain('hud-logo-mark')
+  })
+
+  it('sizes the sidebar variant for balanced proportion beside waveform', () => {
+    const { root, logo } = renderMark('sidebar')
+    expect(root.getAttribute('data-logo-size')).toBe('sidebar')
+    expect(logo.className).toContain('h-28')
+    expect(logo.className).toContain('sm:h-32')
   })
 })

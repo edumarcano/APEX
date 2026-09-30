@@ -1365,6 +1365,7 @@ class BriefingSpeechTests(unittest.TestCase):
             self.assertEqual(prepare.status_code, 202)
             self.assertTrue(synthesis_started.wait(timeout=3))
             self.assertEqual(prepare.json()["status"], "preparing")
+            self.assertIsNone(prepare.json()["script"])
             self.assertEqual(
                 self.client.get(f"/api/v1/briefing-sessions/{record.id}").json()["speech_status"],
                 "preparing",
@@ -1383,6 +1384,15 @@ class BriefingSpeechTests(unittest.TestCase):
             self.assertEqual(
                 ready_json["artifact_sha256"],
                 canonical_artifact_sha256(record.artifact),
+            )
+            self.assertIsNotNone(ready_json["script"])
+            self.assertEqual(
+                ready_json["script"]["highlights"][0]["text"],
+                script.highlights[0].text,
+            )
+            self.assertEqual(
+                ready_json["script"]["highlights"][0]["item_id"],
+                str(script.highlights[0].item_id),
             )
             self.assertNotIn("chunks", ready_json)
             self.assertNotIn("audio", ready_json)
@@ -1569,9 +1579,12 @@ class BriefingSpeechTests(unittest.TestCase):
         self.assertEqual(saved["chunks"][0]["audio"], b"prepared-2")
         restored = self.session_store.get(record.id, "production")
         self.assertEqual(restored.artifact, record.artifact)
+        ready_speech = self.client.get(f"/api/v1/briefing-sessions/{record.id}/speech").json()
+        self.assertEqual(ready_speech["status"], "ready")
+        self.assertIsNotNone(ready_speech["script"])
         self.assertEqual(
-            self.client.get(f"/api/v1/briefing-sessions/{record.id}/speech").json()["status"],
-            "ready",
+            ready_speech["script"]["highlights"][0]["text"],
+            script.highlights[0].text,
         )
 
     def test_demo_speech_uses_deterministic_fixture_and_demo_tts_for_cached_replay(self) -> None:

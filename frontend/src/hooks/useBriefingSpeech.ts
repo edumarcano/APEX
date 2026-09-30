@@ -36,14 +36,32 @@ const ACTIVE_STATUSES = new Set<BriefingSpeechStatus>(['preparing', 'playing', '
 const POLL_INTERVAL_MS = 900
 const SPEECH_ENGINES = new Set<BriefingSpeechEngine>(['google', 'kokoro', 'pyttsx3'])
 
+function isScriptHighlight(value: unknown): value is { item_id: string; text: string } {
+  if (!value || typeof value !== 'object') return false
+  const body = value as Record<string, unknown>
+  return typeof body.item_id === 'string' && typeof body.text === 'string'
+}
+
 function isBriefingSpeechState(value: unknown, sessionId: string): value is BriefingSpeechState {
   if (!value || typeof value !== 'object') return false
   const body = value as Record<string, unknown>
-  return body.session_id === sessionId &&
-    typeof body.artifact_sha256 === 'string' &&
-    typeof body.status === 'string' && SPEECH_STATUSES.has(body.status as BriefingSpeechStatus) &&
-    (body.error_code === null || typeof body.error_code === 'string') &&
-    (body.engine === null || (typeof body.engine === 'string' && SPEECH_ENGINES.has(body.engine as BriefingSpeechEngine)))
+  if (
+    body.session_id !== sessionId ||
+    typeof body.artifact_sha256 !== 'string' ||
+    typeof body.status !== 'string' || !SPEECH_STATUSES.has(body.status as BriefingSpeechStatus) ||
+    !(body.error_code === null || typeof body.error_code === 'string') ||
+    !(body.engine === null || (typeof body.engine === 'string' && SPEECH_ENGINES.has(body.engine as BriefingSpeechEngine)))
+  ) {
+    return false
+  }
+  if (body.script !== undefined && body.script !== null) {
+    if (typeof body.script !== 'object') return false
+    const script = body.script as Record<string, unknown>
+    if (!Array.isArray(script.highlights) || !script.highlights.every(isScriptHighlight)) {
+      return false
+    }
+  }
+  return true
 }
 
 async function readResponse(response: Response, fallback: string): Promise<unknown> {

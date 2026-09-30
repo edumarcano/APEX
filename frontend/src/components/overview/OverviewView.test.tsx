@@ -235,4 +235,44 @@ describe('OverviewView identity mark sizing', () => {
     expect(compactCenterCard).toHaveClass('max-w-sm')
     compactCenterView.unmount()
   })
+
+  it('renders the central card redesign with top-left status text, scaled logo, and bottom-docked glyph without duplicate label', () => {
+    setCompactLayout(false)
+    render(
+      <OverviewView
+        identity={{
+          logoProps: { status: 'idle' },
+          glyphProps: { status: 'idle', isSpeaking: false, activity: 'briefing_ready' },
+        }}
+        telemetry={telemetry}
+        state="ready"
+        onCollect={vi.fn()}
+        onRefreshAll={vi.fn()}
+      />,
+    )
+
+    const layout = screen.getByRole('region', { name: 'Overview' })
+    const identityCard = layout.querySelector('[data-slot="overview-identity-card"]') as HTMLElement
+    expect(identityCard).toBeInTheDocument()
+
+    // Header has status text at top-left
+    const statusText = identityCard.querySelector('header span') as HTMLElement
+    expect(statusText).toHaveTextContent('Briefing ready')
+    expect(statusText).toHaveClass('text-[#FBBF24]')
+
+    // Top-right refresh button exists
+    expect(identityCard.querySelector('header button')).toBeInTheDocument()
+
+    // Scaled logo has vertical expansion classes
+    const logo = identityCard.querySelector('div.h-44')
+    expect(logo).toBeInTheDocument()
+    const logoClass = logo?.getAttribute('class') ?? ''
+    expect(logoClass).toContain('sm:h-52')
+    expect(logoClass).toContain('xl:h-64')
+
+    // Bottom docked glyph exists and has hideLabel (no nested span inside glyph container)
+    const glyph = identityCard.querySelector('[data-slot="voice-signal-glyph"]') as HTMLElement
+    expect(glyph).toBeInTheDocument()
+    expect(glyph.querySelector('span')).not.toBeInTheDocument()
+  })
 })
