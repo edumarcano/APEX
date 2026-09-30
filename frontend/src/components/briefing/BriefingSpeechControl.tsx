@@ -5,18 +5,21 @@ import type { UseBriefingSpeechResult } from '../../hooks/useBriefingSpeech'
 import type { BriefingSpeechEngine } from '../../types/briefings'
 import type { VoiceMode } from '../../types/settings'
 
-type BriefingSpeechControlProps = Pick<UseBriefingSpeechResult,
+export type BriefingSpeechControlProps = Pick<UseBriefingSpeechResult,
   'speech' | 'isLoading' | 'pendingAction' | 'error' | 'playbackCompleted' | 'refresh' | 'prepare' | 'recreateAudio' | 'play' | 'stop'
 > & {
   voiceMode: VoiceMode
   agentDisplayName?: string
+  configuredTtsEngine?: BriefingSpeechEngine
 }
 
 function engineLabel(engine: BriefingSpeechEngine): string {
   switch (engine) {
-    case 'google': return 'Google TTS'
     case 'kokoro': return 'Kokoro'
     case 'pyttsx3': return 'pyttsx3'
+    case 'google':
+    default:
+      return 'Google TTS'
   }
 }
 
@@ -85,7 +88,11 @@ export function BriefingSpeechControl(props: BriefingSpeechControlProps): ReactE
           {props.pendingAction === 'prepare' ? `${agentName} is preparing spoken highlights…` : statusText(props, agentName)}
         </p>
         {props.error ? <p className="text-[10px] text-red-200" role="alert">{props.error}</p> : null}
-        {(props.speech?.status === 'ready' || props.speech?.status === 'playing') && props.speech.engine ? <p className="truncate font-mono text-[9px] text-zinc-500">Voice engine · {engineLabel(props.speech.engine)}</p> : null}
+        {((props.speech?.status === 'ready' || props.speech?.status === 'playing') && (props.speech.engine ?? props.configuredTtsEngine)) ? (
+          <p className="truncate font-mono text-[9px] text-zinc-500">Voice engine · {engineLabel(props.speech.engine ?? props.configuredTtsEngine!)}</p>
+        ) : props.speech?.status === 'not_requested' ? (
+          <p className="truncate font-mono text-[9px] text-zinc-500">Voice engine · {engineLabel(props.configuredTtsEngine ?? props.speech?.engine ?? 'google')}</p>
+        ) : null}
       </div>
     </div>
     {showControls ? <div role="group" aria-label="Spoken highlights controls" className="flex w-full min-w-0 flex-wrap items-center gap-2">
@@ -93,7 +100,7 @@ export function BriefingSpeechControl(props: BriefingSpeechControlProps): ReactE
         type="button"
         onClick={() => { void buttonAction() }}
         disabled={disabled}
-        className="hud-command-surface inline-flex min-h-9 max-w-full shrink-0 items-center gap-1.5 rounded-md border border-cyan-300/20 bg-cyan-950/20 px-2.5 py-1.5 font-orbitron text-[9px] uppercase tracking-[0.1em] text-cyan-100 hover:border-cyan-200/50 hover:bg-cyan-950/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A5F3FC] disabled:cursor-not-allowed disabled:opacity-45"
+        className="hud-command-surface inline-flex min-h-9 max-w-full shrink-0 items-center gap-1.5 rounded-md border border-cyan-300/20 bg-cyan-950/20 px-2.5 py-1.5 font-orbitron text-[9px] uppercase tracking-[0.1em] text-cyan-100 transition-[background-color,border-color,box-shadow,color] duration-200 motion-reduce:transition-none enabled:hover:border-cyan-300/60 enabled:hover:bg-cyan-950/50 enabled:hover:text-white enabled:hover:shadow-[0_0_14px_rgba(6,182,212,0.25)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A5F3FC] disabled:cursor-not-allowed disabled:opacity-45"
       >
         {props.pendingAction ? <LoaderCircle className="size-3 animate-spin motion-reduce:animate-none" aria-hidden /> : isStop ? <Square className="size-3" aria-hidden /> : props.speech?.status === 'ready' ? <Play className="size-3" aria-hidden /> : props.error && !props.speech ? <RotateCw className="size-3" aria-hidden /> : <Volume2 className="size-3" aria-hidden />}
         {label}

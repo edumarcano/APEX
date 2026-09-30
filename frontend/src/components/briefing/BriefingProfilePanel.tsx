@@ -9,12 +9,24 @@ import type {
   BriefingProfileSummary,
   BriefingSessionDetail,
   BriefingSessionSummary,
+  BriefingSpeechEngine,
 } from '../../types/briefings'
+import type { VoiceMode } from '../../types/settings'
 import type { CloudEffort, LocalReasoningMode, ModelCatalogEntry } from '../../types/telemetry'
 import { LocalModelControl } from '../LocalModelControl'
 import { ModelMark } from '../ModelMark'
 import { StabilityBadge } from '../StabilityBadge'
 import { BriefingCoverage } from './BriefingEvidence'
+
+function ttsEngineLabel(engine?: BriefingSpeechEngine): string {
+  switch (engine) {
+    case 'kokoro': return 'Kokoro'
+    case 'pyttsx3': return 'pyttsx3'
+    case 'google':
+    default:
+      return 'Google TTS'
+  }
+}
 
 const FALLBACK_PROFILES: BriefingProfileSummary[] = [
   { id: 'daily', label: 'Daily', purpose: 'A concise view of current information.', investigation_required: false, available: true, unavailable_reason: null },
@@ -67,6 +79,10 @@ export type BriefingProfilePanelProps = {
   onUnloadLocalModel: () => Promise<boolean>
   /** Reserved for briefing speech controls. */
   speechControl?: ReactNode
+  autoGenerateHighlights?: boolean
+  onAutoGenerateHighlightsChange?: (enabled: boolean) => void
+  voiceMode?: VoiceMode
+  configuredTtsEngine?: BriefingSpeechEngine
 }
 
 function sessionFailureCopy(session: BriefingSessionDetail): string | null {
@@ -427,7 +443,7 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
             <div className="min-w-0 flex-1">
               <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#6EA8FF]">Briefing configuration</p>
               <h2 id="briefing-setup-title" className="mt-1 font-orbitron text-sm font-semibold uppercase tracking-[0.12em] text-zinc-100 sm:text-base">Set up your briefing</h2>
-              <p id="briefing-setup-description" className="mt-2 max-w-2xl text-xs leading-relaxed text-zinc-400">{`Choose a briefing profile and configure ${agentDisplayName}. These choices are saved when you generate.`}</p>
+              <p id="briefing-setup-description" className="mt-2 max-w-2xl text-xs leading-relaxed text-zinc-400">{`Choose a briefing and configure ${agentDisplayName}. These choices are saved when you generate.`}</p>
             </div>
             <button
               ref={closeButtonRef}
@@ -442,7 +458,7 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
 
           <div className="space-y-5">
             <fieldset>
-              <legend className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300">Briefing profile</legend>
+              <legend className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300">Select briefing</legend>
               <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                 {profiles.map((item) => <button
                   key={item.id}
@@ -468,7 +484,7 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
             </fieldset>
 
             <div className="min-w-0">
-              <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300">{agentDisplayName}</p>
+              <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300">Configure {agentDisplayName}</p>
               <div ref={agentSelectorRef} className="min-w-0">
                 <div role="group" aria-label={`${agentDisplayName} model and effort`} className="flex min-w-0 rounded-xl border border-white/10 bg-zinc-950/70">
                   <button
@@ -586,6 +602,50 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
                 </div> : null}
               </div>
             </div>
+
+            <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-zinc-950/40 p-3">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label
+                      htmlFor="auto-generate-highlights-toggle"
+                      className={`text-xs font-medium tracking-wide ${props.voiceMode === 'off' ? 'cursor-not-allowed text-zinc-500' : 'cursor-pointer text-zinc-200'}`}
+                    >
+                      Auto-generate spoken highlights
+                    </label>
+                    <span className="font-mono text-[10px] text-zinc-400">
+                      Voice engine · {ttsEngineLabel(props.configuredTtsEngine)}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-zinc-400">
+                    {props.voiceMode === 'off'
+                      ? 'Voice output is turned off in Settings.'
+                      : 'Automatically prepare audio highlights when this briefing finishes.'}
+                  </p>
+                </div>
+                <button
+                  id="auto-generate-highlights-toggle"
+                  type="button"
+                  role="switch"
+                  aria-checked={Boolean(props.autoGenerateHighlights && props.voiceMode !== 'off')}
+                  aria-label="Auto-generate spoken highlights"
+                  disabled={props.voiceMode === 'off' || isSubmitting}
+                  onClick={() => props.onAutoGenerateHighlightsChange?.(!props.autoGenerateHighlights)}
+                  className={`relative h-6 w-11 shrink-0 rounded-full border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF] disabled:cursor-not-allowed disabled:opacity-40 ${
+                    props.autoGenerateHighlights && props.voiceMode !== 'off'
+                      ? 'border-cyan-400/60 bg-cyan-600/40'
+                      : 'border-white/15 bg-white/5'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 size-4 rounded-full bg-white/90 transition-transform motion-reduce:transition-none ${
+                      props.autoGenerateHighlights && props.voiceMode !== 'off' ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
             {props.demoModeActive ? <p className="rounded-lg border border-amber-400/15 bg-amber-950/15 px-3 py-2 text-[11px] leading-relaxed text-amber-100/80">DEMO_MODE generates from saved fixtures. Model choices are not sent to a provider.</p> : null}
             {profileError ? <p className="text-[11px] leading-relaxed text-amber-100/80" role="status">{profileError}</p> : null}
             {setupError ? <p className="rounded-md border border-red-500/20 bg-red-950/20 px-3 py-2 text-xs text-red-200" role="alert">{setupError}</p> : null}

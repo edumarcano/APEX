@@ -160,6 +160,8 @@ describe('OverviewView identity mark sizing', () => {
     )
     const centerLayout = screen.getByRole('region', { name: 'Overview' })
     expect(homeIdentity(centerLayout)).toHaveAttribute('data-logo-size', 'large')
+    expect(centerLayout.querySelector('header span')).toHaveTextContent('Ready')
+    expect(centerLayout.querySelector('[data-slot="voice-signal-glyph"] span')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Collect Telemetry' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Refresh All' })).not.toBeInTheDocument()
     centerView.unmount()
@@ -234,5 +236,47 @@ describe('OverviewView identity mark sizing', () => {
     const compactCenterCard = compactLayout.querySelector('[data-slot="overview-identity-card"]')
     expect(compactCenterCard).toHaveClass('max-w-sm')
     compactCenterView.unmount()
+  })
+
+  it('renders the central card redesign with top-left status text, scaled logo, and bottom-docked glyph without duplicate label', () => {
+    setCompactLayout(false)
+    render(
+      <OverviewView
+        identity={{
+          logoProps: { status: 'idle' },
+          glyphProps: { status: 'idle', isSpeaking: false, activity: 'briefing_ready' },
+        }}
+        telemetry={telemetry}
+        state="ready"
+        onCollect={vi.fn()}
+        onRefreshAll={vi.fn()}
+      />,
+    )
+
+    const layout = screen.getByRole('region', { name: 'Overview' })
+    const identityCard = layout.querySelector('[data-slot="overview-identity-card"]') as HTMLElement
+    expect(identityCard).toBeInTheDocument()
+
+    // Header has status text at top-left
+    const statusText = identityCard.querySelector('header span') as HTMLElement
+    expect(statusText).toHaveTextContent('Briefing ready')
+    expect(statusText).toHaveClass('text-[#FBBF24]')
+
+    // Top-right refresh button exists
+    expect(identityCard.querySelector('header button')).toBeInTheDocument()
+
+    // Scaled logo has responsive classes constrained to container
+    const logo = identityCard.querySelector('div.max-h-full')
+    expect(logo).toBeInTheDocument()
+    const logoClass = logo?.getAttribute('class') ?? ''
+    expect(logoClass).toContain('h-36')
+    expect(logoClass).toContain('sm:h-48')
+    expect(logoClass).toContain('xl:h-56')
+    expect(logoClass).toContain('aspect-[5208/5420]')
+
+    // Bottom docked glyph exists and has hideLabel (no nested span inside glyph container)
+    const glyph = identityCard.querySelector('[data-slot="voice-signal-glyph"]') as HTMLElement
+    expect(glyph).toBeInTheDocument()
+    expect(glyph.querySelector('span')).not.toBeInTheDocument()
   })
 })

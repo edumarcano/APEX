@@ -115,14 +115,18 @@ vi.mock('./components/TelemetryCard', () => ({
     </>
   ) : null,
 }))
-vi.mock('./components/VoiceSignalGlyph', () => ({
-  VoiceSignalGlyph: ({ isLocalModelLoading, loadingDisplayName, activity, isTelemetryCollecting }: { isLocalModelLoading: boolean; loadingDisplayName?: string | null; activity?: string | null; isTelemetryCollecting?: boolean }) => (
-    <>
-      {isLocalModelLoading ? <output data-testid="local-model-loading-label">{loadingDisplayName}</output> : null}
-      <output data-testid="voice-activity" data-activity={activity ?? 'none'} data-telemetry-collecting={String(isTelemetryCollecting ?? false)}>{activity ?? 'none'}</output>
-    </>
-  ),
-}))
+vi.mock('./components/VoiceSignalGlyph', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./components/VoiceSignalGlyph')>()
+  return {
+    ...actual,
+    VoiceSignalGlyph: ({ isLocalModelLoading, loadingDisplayName, activity, isTelemetryCollecting }: { isLocalModelLoading: boolean; loadingDisplayName?: string | null; activity?: string | null; isTelemetryCollecting?: boolean }) => (
+      <>
+        {isLocalModelLoading ? <output data-testid="local-model-loading-label">{loadingDisplayName}</output> : null}
+        <output data-testid="voice-activity" data-activity={activity ?? 'none'} data-telemetry-collecting={String(isTelemetryCollecting ?? false)}>{activity ?? 'none'}</output>
+      </>
+    ),
+  }
+})
 vi.mock('./components/SettingsPanel', () => ({
   default: ({ onApplied }: { onApplied: unknown }) => {
     appMocks.settingsPanelApplied = onApplied

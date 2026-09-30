@@ -104,7 +104,7 @@ describe('BriefingProfilePanel', () => {
 
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
     const dialog = screen.getByRole('dialog', { name: 'Set up your briefing' })
-    expect(within(dialog).getByText('Commander')).toBeInTheDocument()
+    expect(within(dialog).getByText('Configure Commander')).toBeInTheDocument()
     expect(within(dialog).getByText(/configure Commander/)).toBeInTheDocument()
     expect(within(dialog).getByRole('group', { name: 'Commander model and effort' })).toBeInTheDocument()
     expect(within(dialog).queryByText('Lynx')).not.toBeInTheDocument()
@@ -138,7 +138,7 @@ describe('BriefingProfilePanel', () => {
 
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
     const dialog = screen.getByRole('dialog', { name: 'Set up your briefing' })
-    const cards = within(dialog).getByRole('group', { name: 'Briefing profile' })
+    const cards = within(dialog).getByRole('group', { name: 'Select briefing' })
     expect(within(cards).getByRole('button', { name: /Daily/ })).toHaveTextContent('Current information.')
     expect(within(cards).getByRole('button', { name: /Catch Up/ })).toHaveTextContent('What changed since a briefing was presented.')
     expect(within(cards).getByRole('button', { name: /Deep/ })).toHaveTextContent('evidence-backed investigation')
@@ -180,7 +180,7 @@ describe('BriefingProfilePanel', () => {
     render(<BriefingProfilePanel {...baseProps()} />)
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
 
-    const cards = within(screen.getByRole('dialog')).getByRole('group', { name: 'Briefing profile' })
+    const cards = within(screen.getByRole('dialog')).getByRole('group', { name: 'Select briefing' })
     const daily = within(cards).getByRole('button', { name: /Daily/ })
     const catchUp = within(cards).getByRole('button', { name: /Catch Up/ })
     expect(daily).toHaveAttribute('aria-pressed', 'true')
@@ -202,7 +202,7 @@ describe('BriefingProfilePanel', () => {
     render(<BriefingProfilePanel {...baseProps({ onGenerate })} />)
 
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
-    const cards = within(screen.getByRole('dialog')).getByRole('group', { name: 'Briefing profile' })
+    const cards = within(screen.getByRole('dialog')).getByRole('group', { name: 'Select briefing' })
     await user.click(within(cards).getByRole('button', { name: /Catch Up/ }))
     const agentTrigger = screen.getByRole('button', { name: /Cloud A/ })
     await user.click(agentTrigger)
@@ -224,7 +224,7 @@ describe('BriefingProfilePanel', () => {
     expect(onGenerate).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
-    const reopenedCards = within(screen.getByRole('dialog')).getByRole('group', { name: 'Briefing profile' })
+    const reopenedCards = within(screen.getByRole('dialog')).getByRole('group', { name: 'Select briefing' })
     expect(within(reopenedCards).getByRole('button', { name: /Daily/ })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: /^Select effort/ })).toHaveTextContent('High')
   })
@@ -235,14 +235,14 @@ describe('BriefingProfilePanel', () => {
     render(<BriefingProfilePanel {...baseProps({ onGenerate })} />)
 
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
-    const initialCards = within(screen.getByRole('dialog')).getByRole('group', { name: 'Briefing profile' })
+    const initialCards = within(screen.getByRole('dialog')).getByRole('group', { name: 'Select briefing' })
     await user.click(within(initialCards).getByRole('button', { name: /Catch Up/ }))
     await user.click(screen.getByRole('button', { name: /^Select effort/ }))
     await user.click(within(screen.getByRole('group', { name: 'Reasoning effort choices' })).getByRole('button', { name: 'Low' }))
     await user.click(screen.getByRole('button', { name: 'Generate Catch Up' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Set up your briefing' })
-    const reopenedCards = within(dialog).getByRole('group', { name: 'Briefing profile' })
+    const reopenedCards = within(dialog).getByRole('group', { name: 'Select briefing' })
     expect(within(reopenedCards).getByRole('button', { name: /Catch Up/ })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: /^Select effort/ })).toHaveTextContent('Low')
     expect(screen.getByRole('alert')).toHaveTextContent('Briefing settings could not be saved.')
@@ -434,5 +434,39 @@ describe('BriefingProfilePanel', () => {
 
     await user.click(screen.getByRole('button', { name: 'Unload local-a' }))
     expect(onUnloadLocalModel).toHaveBeenCalledTimes(1)
+  })
+
+  it('toggles auto-generate spoken highlights and respects voiceMode off', async () => {
+    const user = userEvent.setup()
+    const onAutoGenerateHighlightsChange = vi.fn()
+    const { rerender } = render(<BriefingProfilePanel
+      {...baseProps()}
+      autoGenerateHighlights={false}
+      onAutoGenerateHighlightsChange={onAutoGenerateHighlightsChange}
+      configuredTtsEngine="google"
+      voiceMode="manual"
+    />)
+
+    await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
+    expect(screen.getByText('Configure Lynx')).toBeInTheDocument()
+    expect(screen.getByText('Voice engine · Google TTS')).toBeInTheDocument()
+    const toggle = screen.getByRole('switch', { name: 'Auto-generate spoken highlights' })
+    expect(toggle).toBeEnabled()
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+
+    await user.click(toggle)
+    expect(onAutoGenerateHighlightsChange).toHaveBeenCalledWith(true)
+
+    rerender(<BriefingProfilePanel
+      {...baseProps()}
+      autoGenerateHighlights={true}
+      onAutoGenerateHighlightsChange={onAutoGenerateHighlightsChange}
+      configuredTtsEngine="kokoro"
+      voiceMode="off"
+    />)
+    expect(screen.getByText('Voice engine · Kokoro')).toBeInTheDocument()
+    expect(screen.getByText('Voice output is turned off in Settings.')).toBeInTheDocument()
+    expect(toggle).toBeDisabled()
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
   })
 })

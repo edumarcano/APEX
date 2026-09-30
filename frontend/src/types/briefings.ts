@@ -12,12 +12,22 @@ export type BriefingProfileSummary = {
 export type BriefingSessionStatus = 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
 export type BriefingSpeechStatus = 'not_requested' | 'preparing' | 'ready' | 'unavailable' | 'cancelled' | 'playing' | 'stopping'
 export type BriefingSpeechEngine = 'google' | 'kokoro' | 'pyttsx3'
+export type BriefingSpeechHighlight = {
+  item_id: string
+  text: string
+}
+
+export type BriefingSpeechScript = {
+  highlights: BriefingSpeechHighlight[]
+}
+
 export type BriefingSpeechState = {
   session_id: string
   artifact_sha256: string
   status: BriefingSpeechStatus
   error_code: string | null
   engine: BriefingSpeechEngine | null
+  script?: { highlights: Array<{ item_id: string; text: string }> } | null
 }
 export type BriefingStage = 'preparing' | 'collecting' | 'selecting' | 'investigating' | 'synthesizing' | 'persisting'
 

@@ -117,6 +117,7 @@ class BriefingSpeechStatusResponse(BaseModel):
     error_code: str | None = Field(default=None, max_length=64, pattern=r"^[a-z0-9_]+$")
     engine: TtsEngine | None = None
     voice_gender: Literal["female", "male"] | None = None
+    script: BriefingSpeechScript | None = None
 
 
 _NUMERIC_FACT = re.compile(
@@ -728,6 +729,13 @@ class BriefingSpeechService:
         error_code = saved.get("error_code")
         engine = saved.get("engine")
         voice_gender = saved.get("voice_gender")
+        script: BriefingSpeechScript | None = None
+        raw_script = saved.get("script_json")
+        if raw_script:
+            try:
+                script = BriefingSpeechScript.model_validate_json(raw_script)
+            except ValidationError:
+                script = None
         with self._lock:
             job = self._active
             if job is not None and job.session_id == session_id:
@@ -742,6 +750,7 @@ class BriefingSpeechService:
             status = "unavailable"
             error_code = "speech_artifact_binding_mismatch"
             engine = None
+            script = None
         return BriefingSpeechStatusResponse(
             session_id=session_id,
             artifact_sha256=artifact_hash,
@@ -749,6 +758,7 @@ class BriefingSpeechService:
             error_code=error_code,
             engine=engine,
             voice_gender=voice_gender,
+            script=script,
         )
 
     def prepare(

@@ -5,7 +5,7 @@ import { useCallback, useState, type ReactElement, type ReactNode } from 'react'
 import { useCompactLayout } from '../../hooks/useCompactLayout'
 import type { BriefingLayoutPhase } from '../../hooks/useWorkspaceView'
 import { parseAgentQueryResponse } from '../../lib/cortexResponse'
-import type { BriefingSessionDetail } from '../../types/briefings'
+import type { BriefingSessionDetail, BriefingSpeechState } from '../../types/briefings'
 import type { BriefingPreviewSection } from '../../types/runs'
 import { ApexAssistantThread, type ApexAssistantComposerProps } from '../ApexAssistantRuntime'
 import { AgentResponseName } from '../AgentResponseName'
@@ -28,6 +28,7 @@ export type BriefingViewConversation = {
   onOpenConversation: (conversationId: string) => void
   agentDisplayName?: string
   composer?: ApexAssistantComposerProps
+  speech?: BriefingSpeechState | null
 }
 
 export type BriefingViewProps = {
@@ -55,19 +56,19 @@ function BriefingAgentMessage({ text, metadata, agentDisplayName }: { text: stri
 }
 
 function BriefingConversation({ conversation }: { conversation: BriefingViewConversation }): ReactElement {
-  const { session, isLoadingSession, evidence, onMarkPresented } = conversation
+  const { session, isLoadingSession, evidence, onMarkPresented, speech } = conversation
   const agentDisplayName = conversation.agentDisplayName?.trim() || 'Lynx'
   const renderAgent = useCallback((text: string, metadata: Record<string, unknown>): ReactNode => {
     if (session?.artifact && metadata.briefing_session_id === session.id) {
-      return <BriefingArtifactMessage session={session} isLoadingSession={isLoadingSession} evidence={evidence} onMarkPresented={onMarkPresented} agentDisplayName={agentDisplayName} />
+      return <BriefingArtifactMessage session={session} isLoadingSession={isLoadingSession} evidence={evidence} onMarkPresented={onMarkPresented} agentDisplayName={agentDisplayName} speech={speech} />
     }
     return <BriefingAgentMessage text={text} metadata={metadata} agentDisplayName={agentDisplayName} />
-  }, [agentDisplayName, evidence, isLoadingSession, onMarkPresented, session])
+  }, [agentDisplayName, evidence, isLoadingSession, onMarkPresented, session, speech])
   if (!session) return <div className="flex min-h-0 flex-1 items-center justify-center p-5 text-xs text-zinc-500">Open a saved briefing to continue its conversation.</div>
   const showPreview = !session.artifact && conversation.previewSections?.length
   return <section className="flex min-h-0 flex-1 flex-col" aria-label="Briefing conversation">
     {showPreview ? <BriefingDraftPreview sections={conversation.previewSections!} /> : null}
-    {session.artifact && !conversation.ready ? <div className="min-h-0 flex-1 overflow-y-auto p-4"><BriefingArtifactMessage session={session} isLoadingSession={isLoadingSession} evidence={evidence} onMarkPresented={onMarkPresented} /></div> : null}
+    {session.artifact && !conversation.ready ? <div className="min-h-0 flex-1 overflow-y-auto p-4"><BriefingArtifactMessage session={session} isLoadingSession={isLoadingSession} evidence={evidence} onMarkPresented={onMarkPresented} speech={speech} /></div> : null}
     {conversation.ready ? (
       <ApexAssistantThread disabled={!conversation.canFollowUp} renderAgent={renderAgent} composer={conversation.composer} />
     ) : (
@@ -134,7 +135,7 @@ export function BriefingView(props: BriefingViewProps): ReactElement {
 
   return <section aria-label="Briefing" data-layout="workspace" className="hud-home-layout-enter grid h-full min-h-0 w-full flex-1 grid-cols-[16rem_minmax(0,1fr)_22rem] gap-4">
     <aside className="flex min-h-0 flex-col items-center gap-4 overflow-y-auto rounded-xl border border-white/10 bg-zinc-950/45 p-3 scrollbar-thin" aria-label="Briefing identity and controls">
-      <HudIdentityMark identity={props.identity} size="compact" />
+      <HudIdentityMark identity={props.identity} size="sidebar" />
       {controls}
     </aside>
     <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-zinc-950/45">

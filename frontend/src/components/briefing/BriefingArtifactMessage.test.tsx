@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -273,5 +273,36 @@ describe('BriefingArtifactMessage', () => {
     expect(disclosure).not.toHaveAttribute('open')
     await userEvent.click(summary)
     expect(disclosure).toHaveAttribute('open')
+  })
+
+  it('renders spoken highlights transcript expandable card with cyan styling when script is present', () => {
+    const session = completedDemoSession()
+    render(<BriefingArtifactMessage
+      session={session}
+      isLoadingSession={false}
+      evidence={{ evidenceById: {}, loadingIds: [], errors: {}, onLoadEvidence: vi.fn(async () => {}) }}
+      onMarkPresented={vi.fn(async () => {})}
+      speech={{
+        session_id: session.id,
+        artifact_sha256: 'sha',
+        status: 'ready',
+        error_code: null,
+        engine: 'google',
+        script: {
+          highlights: [
+            { item_id: 'item-1', text: 'Spoken highlight text for first item.' },
+          ],
+        },
+      }}
+    />)
+
+    const card = screen.getByRole('group', { name: 'Spoken highlights transcript' })
+    expect(card).toBeInTheDocument()
+    expect(card.className).toContain('border-cyan-400/25')
+    expect(card.className).toContain('bg-cyan-950/20')
+    expect(card.className).toContain('text-cyan-200')
+    expect(within(card).getByText('Spoken highlights transcript (1)')).toBeInTheDocument()
+    expect(within(card).getByText('Spoken highlight text for first item.')).toBeInTheDocument()
+    expect(within(card).getByText('External item')).toBeInTheDocument()
   })
 })
