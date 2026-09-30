@@ -669,7 +669,7 @@ describe('App catalog-affecting settings', () => {
       localReasoningMode: null,
     }))
 
-    await selectWorkspace(user, 'Reports')
+    await user.click(within(screen.getByRole('navigation', { name: 'Workspace' })).getByRole('button', { name: 'Reports' }))
     await waitFor(() => expect(appMocks.toolPreflight.mock.lastCall?.[0]).toMatchObject({
       effort: 'high',
       enabled: false,
