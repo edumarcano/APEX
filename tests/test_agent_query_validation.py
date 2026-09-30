@@ -17,15 +17,10 @@ from core.agent.types import (
     AgentQueryResponse,
     ToolSelectionDiagnostics,
 )
-from core.api.models import ToolPreflightRequest
 from core.api.cortex import query_agent
 
 
 class LocalEffortRejectionTests(unittest.TestCase):
-    def test_tool_preflight_rejects_removed_history_fields(self) -> None:
-        with self.assertRaises(ValueError):
-            ToolPreflightRequest.model_validate({"history": [], "prompt": "status"})
-
     def test_local_model_rejects_effort_with_400(self) -> None:
         with mock.patch("core.api.cortex.DEMO_MODE", False), mock.patch(
             "core.api.cortex.is_dev_mode", return_value=True

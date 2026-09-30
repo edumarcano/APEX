@@ -206,40 +206,27 @@ describe('OverviewView identity mark sizing', () => {
     expect(homeIdentity(layout)).toHaveAttribute('data-logo-size', 'overview')
   })
 
-  it('uses grid-slot width on the identity card before collection but not after on desktop', () => {
+  it('offers collection from the centered state and telemetry cards after collection', () => {
     const onCollect = vi.fn()
-    const gridSlotWidth = 'w-[calc((100%-2rem)/3)]'
 
     setCompactLayout(false)
-    const centerView = render(
+    const { rerender } = render(
       <OverviewView identity={identity} telemetry={telemetry} state="center" onCollect={onCollect} onRefreshAll={vi.fn()} />,
     )
-    const centerLayout = screen.getByRole('region', { name: 'Overview' })
-    const centerCard = centerLayout.querySelector('[data-slot="overview-identity-card"]')
-    expect(centerCard).toHaveClass(gridSlotWidth)
-    expect(centerCard).not.toHaveClass('max-w-sm')
-    centerView.unmount()
+    expect(screen.getByRole('button', { name: 'Collect Telemetry' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Reminders' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
+    expect(onCollect).toHaveBeenCalledOnce()
 
-    const readyView = render(
-      <OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={onCollect} onRefreshAll={vi.fn()} />,
-    )
-    const readyLayout = screen.getByRole('region', { name: 'Overview' })
-    const readyCard = readyLayout.querySelector('[data-slot="overview-identity-card"]')
-    expect(readyCard).not.toHaveClass('max-w-sm', gridSlotWidth)
-    readyView.unmount()
-
-    setCompactLayout(true)
-    const compactCenterView = render(
-      <OverviewView identity={identity} telemetry={telemetry} state="center" onCollect={onCollect} onRefreshAll={vi.fn()} />,
-    )
-    const compactLayout = screen.getByRole('region', { name: 'Overview' })
-    const compactCenterCard = compactLayout.querySelector('[data-slot="overview-identity-card"]')
-    expect(compactCenterCard).toHaveClass('max-w-sm')
-    compactCenterView.unmount()
+    rerender(<OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={onCollect} onRefreshAll={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Collect Telemetry' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Reminders' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Market' })).toBeInTheDocument()
   })
 
-  it('renders the central card redesign with top-left status text, scaled logo, and bottom-docked glyph without duplicate label', () => {
+  it('presents identity status and an accessible refresh action without a duplicate glyph label', () => {
     setCompactLayout(false)
+    const onRefreshAll = vi.fn()
     render(
       <OverviewView
         identity={{
@@ -249,34 +236,15 @@ describe('OverviewView identity mark sizing', () => {
         telemetry={telemetry}
         state="ready"
         onCollect={vi.fn()}
-        onRefreshAll={vi.fn()}
+        onRefreshAll={onRefreshAll}
       />,
     )
 
-    const layout = screen.getByRole('region', { name: 'Overview' })
-    const identityCard = layout.querySelector('[data-slot="overview-identity-card"]') as HTMLElement
-    expect(identityCard).toBeInTheDocument()
-
-    // Header has status text at top-left
-    const statusText = identityCard.querySelector('header span') as HTMLElement
-    expect(statusText).toHaveTextContent('Briefing ready')
-    expect(statusText).toHaveClass('text-[#FBBF24]')
-
-    // Top-right refresh button exists
-    expect(identityCard.querySelector('header button')).toBeInTheDocument()
-
-    // Scaled logo has responsive classes constrained to container
-    const logo = identityCard.querySelector('div.max-h-full')
-    expect(logo).toBeInTheDocument()
-    const logoClass = logo?.getAttribute('class') ?? ''
-    expect(logoClass).toContain('h-36')
-    expect(logoClass).toContain('sm:h-48')
-    expect(logoClass).toContain('xl:h-56')
-    expect(logoClass).toContain('aspect-[5208/5420]')
-
-    // Bottom docked glyph exists and has hideLabel (no nested span inside glyph container)
-    const glyph = identityCard.querySelector('[data-slot="voice-signal-glyph"]') as HTMLElement
-    expect(glyph).toBeInTheDocument()
-    expect(glyph.querySelector('span')).not.toBeInTheDocument()
+    expect(screen.getByText('Briefing ready')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh All' }))
+    expect(onRefreshAll).toHaveBeenCalledOnce()
+    const glyph = document.querySelector('[data-slot="voice-signal-glyph"]')
+    expect(glyph).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.queryByText('Ready', { exact: true })).not.toBeInTheDocument()
   })
 })

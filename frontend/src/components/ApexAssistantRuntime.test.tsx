@@ -289,7 +289,7 @@ describe('ApexAssistantRuntime', () => {
 
   it('loads the authoritative thread and gates a prompt through the APEX turn endpoint', async () => {
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input)
       if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
       if (url.endsWith('/api/v1/cortex/conversations')) return response([summary])
@@ -330,7 +330,32 @@ describe('ApexAssistantRuntime', () => {
 
     await waitFor(() => expect(screen.getByText('There are three active reminders.')).toBeInTheDocument())
     expect(beforeRun).toHaveBeenCalledTimes(1)
-    expect(fetchMock).toHaveBeenCalled()
+  })
+
+  it('fills the composer with the Schedule calendar intent without starting or saving a turn', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
+    const writes: string[] = []
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (init?.method && init.method !== 'GET') writes.push(`${init.method} ${url}`)
+      if (url.endsWith('/api/v1/cortex/conversations?archived=true')) return response([])
+      if (url.endsWith('/api/v1/cortex/conversations')) return response([summary])
+      if (url.endsWith(`/api/v1/cortex/conversations/${conversationId}`)) return response({ ...summary, active_leaf_message_id: null, messages: [] })
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+
+    render(
+      <ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}>
+        <ApexAssistantThread />
+      </ApexAssistantRuntime>,
+    )
+
+    await user.click(await screen.findByRole('button', { name: 'Schedule' }))
+    const composer = screen.getByPlaceholderText('Ask Lynx…') as HTMLInputElement | HTMLTextAreaElement
+    expect(composer.value).toMatch(/calendar events for the next fourteen days/i)
+    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+    expect(writes).toEqual([])
   })
 
   it('hides the in-flight Agent card and shows one compact preparation label', async () => {

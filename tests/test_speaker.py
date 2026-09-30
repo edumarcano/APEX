@@ -6,7 +6,6 @@ import os
 import subprocess
 import tempfile
 import threading
-import time
 import unittest
 import wave
 from contextlib import contextmanager
@@ -87,12 +86,43 @@ class SpeakerRoutingTests(unittest.TestCase):
         google.assert_not_called()
 
     def test_synthesis_timeout_is_bounded(self) -> None:
+        synthesis_started = threading.Event()
+        release_synthesis = threading.Event()
+        synthesis_finished = threading.Event()
+        call_finished = threading.Event()
+        outcome: list[Exception] = []
+
         def slow() -> str:
-            time.sleep(0.1)
+            synthesis_started.set()
+            if not release_synthesis.wait(timeout=5.0):
+                raise TimeoutError("test synthesis release watchdog expired")
+            synthesis_finished.set()
             return "late"
 
-        with self.assertRaisesRegex(TimeoutError, "tts_synthesis_timeout"):
-            speaker._run_with_timeout(slow, 0.01)
+        def run_synthesis() -> None:
+            try:
+                speaker._run_with_timeout(slow, 0.05)
+            except Exception as exc:
+                outcome.append(exc)
+            else:
+                outcome.append(AssertionError("speech synthesis call did not time out"))
+            finally:
+                call_finished.set()
+
+        caller = threading.Thread(target=run_synthesis)
+        try:
+            caller.start()
+            self.assertTrue(synthesis_started.wait(timeout=1.0))
+            self.assertTrue(call_finished.wait(timeout=1.0))
+            self.assertFalse(synthesis_finished.is_set())
+            self.assertEqual(len(outcome), 1)
+            self.assertIsInstance(outcome[0], TimeoutError)
+            self.assertRegex(str(outcome[0]), "tts_synthesis_timeout")
+        finally:
+            release_synthesis.set()
+            caller.join(timeout=1.0)
+            self.assertFalse(caller.is_alive())
+            self.assertTrue(synthesis_finished.wait(timeout=1.0))
 
     def test_playback_cancellation_stops_active_mixer(self) -> None:
         fake_music = MagicMock()

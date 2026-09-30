@@ -6,10 +6,13 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from core.agent.catalog import build_provider_profile, resolve_effort
+from core.agent.capabilities import CapabilityDescriptor
+from core.agent.loop import run_agent_loop
 from core.agent.model_catalog import get_model_profile
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.ollama import OllamaProvider
-from core.agent.types import AgentMessage
+from core.agent.providers.contract import ProviderTurnResult
+from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
 from core.config import CORTEX_RUNS_MAX_TOOL_CALLS, CORTEX_RUNS_MAX_MODEL_TURNS
 
 def _concrete_profile(model_id: str):
@@ -28,32 +31,93 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
             with self.subTest(model=model_id):
                 profile = get_model_profile(model_id)
                 assert profile is not None
-                self.assertGreater(profile.max_tool_turns, 0)
+                self.assertGreaterEqual(profile.max_tool_turns, 2)
                 self.assertGreaterEqual(profile.max_tool_calls, profile.max_tool_turns)
                 self.assertLessEqual(profile.max_tool_turns, CORTEX_RUNS_MAX_MODEL_TURNS)
                 self.assertLessEqual(profile.max_tool_calls, CORTEX_RUNS_MAX_TOOL_CALLS)
 
-    def test_local_models_leave_a_final_answer_turn_after_tool_work(self) -> None:
-        for model_id in (
+    def test_local_models_respect_loop_caps_and_leave_a_final_answer_turn(self) -> None:
+        local_model_ids = (
             "qwen3:1.7b",
             "qwen3:4b-instruct",
             "gemma-4-E2B-Q4_K_M.gguf",
             "gemma-4-E4B-Q4_K_M.gguf",
             "Qwen3.5-4B-Q4_K_M.gguf",
-        ):
+        )
+        for model_id in local_model_ids:
             with self.subTest(model=model_id):
                 profile = get_model_profile(model_id)
                 assert profile is not None
-                self.assertGreater(profile.max_tool_turns, 0)
+                self.assertGreaterEqual(profile.max_tool_turns, 2)
                 self.assertGreaterEqual(profile.max_tool_calls, profile.max_tool_turns)
-        for model_id in (
-            "qwen3:4b-instruct",
-            "gemma-4-E2B-Q4_K_M.gguf",
-            "gemma-4-E4B-Q4_K_M.gguf",
-            "Qwen3.5-4B-Q4_K_M.gguf",
-        ):
-            with self.subTest(model=model_id):
-                self.assertEqual(get_model_profile(model_id).max_tool_turns, 4)
+                self.assertLessEqual(profile.max_tool_turns, CORTEX_RUNS_MAX_MODEL_TURNS)
+                self.assertLessEqual(profile.max_tool_calls, CORTEX_RUNS_MAX_TOOL_CALLS)
+
+        profile = build_provider_profile(
+            native_effort=None,
+            local_reasoning_mode="none",
+            model_id="qwen3:1.7b",
+        ).model_copy(update={"max_tool_turns": 2, "max_tool_calls": 1})
+        descriptor = CapabilityDescriptor(
+            name="get_weather_forecast",
+            title="Weather",
+            description="Read a forecast",
+            input_schema={"type": "object", "properties": {}},
+            origin="native",
+            risk="read",
+            expose_to_agent=True,
+            expose_to_mcp_server=False,
+            expose_to_client_display=True,
+        )
+
+        class Provider:
+            def __init__(self) -> None:
+                self.offered_tools: list[list[CapabilityDescriptor]] = []
+
+            def generate_turn(
+                self,
+                _messages: list[AgentMessage],
+                tools: list[CapabilityDescriptor],
+                _profile: object,
+                system_instruction_override: str | None = None,
+                *,
+                execution_control: object | None = None,
+                stream_observer: object | None = None,
+                output_schema: dict[str, object] | None = None,
+            ) -> ProviderTurnResult:
+                del system_instruction_override, execution_control, stream_observer, output_schema
+                self.offered_tools.append(tools)
+                if tools:
+                    return ProviderTurnResult(
+                        message=AgentMessage(
+                            role="agent",
+                            tool_calls=[
+                                ToolCall(
+                                    id="weather-1",
+                                    name="get_weather_forecast",
+                                    arguments={},
+                                )
+                            ],
+                        )
+                    )
+                return ProviderTurnResult(
+                    message=AgentMessage(role="agent", content="It will be sunny.")
+                )
+
+        provider = Provider()
+        dispatched: list[str] = []
+        response = run_agent_loop(
+            AgentQueryRequest(prompt="What is the weather?", agent="apex"),
+            provider,
+            profile,
+            tools_dispatcher=lambda name, _arguments: dispatched.append(name) or "Sunny",
+            selected_tools=[descriptor],
+        )
+
+        self.assertEqual(response.answer, "It will be sunny.")
+        self.assertIsNone(response.error)
+        self.assertEqual(dispatched, ["get_weather_forecast"])
+        self.assertEqual(provider.offered_tools, [[descriptor], []])
 
     @patch("core.agent.providers.gemini.genai.Client")
     def test_gemini_provider_config_omits_temperature(

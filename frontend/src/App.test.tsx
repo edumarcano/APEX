@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useEffect, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
@@ -147,7 +147,6 @@ vi.mock('./components/CortexWorkspace', () => ({
     devModeActive,
     sandboxMode,
     lifecycleBusy,
-    onLocalContextWindowChange,
     onHostedToolChange,
     onSandboxModeChange,
     toolCatalog,
@@ -158,7 +157,6 @@ vi.mock('./components/CortexWorkspace', () => ({
     devModeActive: boolean
     sandboxMode: boolean
     lifecycleBusy: boolean
-    onLocalContextWindowChange: (contextWindow: number) => Promise<boolean>
     onHostedToolChange: (tool: 'google_search' | 'google_maps', enabled: boolean) => void
     onSandboxModeChange: (enabled: boolean) => void
     toolCatalog: ToolCatalog | null
@@ -166,35 +164,6 @@ vi.mock('./components/CortexWorkspace', () => ({
     logoProps?: Pick<ApexLogoProps, 'status' | 'hasCollectedTelemetry'>
   }) => {
     appMocks.cortexLifecycleBusy = lifecycleBusy
-    const authoritativeContextWindow = toolCatalog?.context_window ?? null
-    const [selectedContextWindow, setSelectedContextWindow] = useState(authoritativeContextWindow)
-    const [pendingTarget, setPendingTarget] = useState<number | null>(null)
-    useEffect(() => {
-      if (pendingTarget !== null) {
-        if (authoritativeContextWindow === pendingTarget) {
-          setPendingTarget(null)
-          setSelectedContextWindow(authoritativeContextWindow)
-        }
-        return
-      }
-      setSelectedContextWindow(authoritativeContextWindow)
-    }, [authoritativeContextWindow, pendingTarget])
-    const handleContextWindowChange = async (contextWindow: number): Promise<void> => {
-      const rollbackContextWindow =
-        pendingTarget ?? authoritativeContextWindow
-      setSelectedContextWindow(contextWindow)
-      setPendingTarget(contextWindow)
-      try {
-        const persisted = await onLocalContextWindowChange(contextWindow)
-        if (!persisted) {
-          setPendingTarget(null)
-          setSelectedContextWindow(rollbackContextWindow)
-        }
-      } catch {
-        setPendingTarget(null)
-        setSelectedContextWindow(rollbackContextWindow)
-      }
-    }
     return (
       <div>
         {logoProps && <output data-testid="reminder-pulse-count" data-status={logoProps.status} data-collected={String(logoProps.hasCollectedTelemetry ?? false)} />}
@@ -202,25 +171,11 @@ vi.mock('./components/CortexWorkspace', () => ({
         <output data-testid="provider-hosted-tools">
           {toolCatalog?.provider_hosted_tools.join(',') ?? ''}
         </output>
-        <output data-testid="catalog-context-window">
-          {toolCatalog?.context_window ?? ''}
-        </output>
         <output data-testid="actions-pending-count">
           {actions?.pendingCount ?? 0}
         </output>
         <output data-testid="cortex-lifecycle-busy">{String(lifecycleBusy)}</output>
-        {toolCatalog?.context_window !== null ? (
-          <select
-            aria-label="Context window"
-            value={String(selectedContextWindow ?? '')}
-            onChange={(event) => {
-              void handleContextWindowChange(Number(event.target.value))
-            }}
-          >
-            <option value="16384">16K</option>
-            <option value="32768">32K</option>
-          </select>
-        ) : (
+        {toolCatalog?.context_window === null && (
           <button type="button" onClick={() => onHostedToolChange('google_search', true)}>
             Enable Google Search
           </button>

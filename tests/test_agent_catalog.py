@@ -6,7 +6,8 @@ import unittest
 from unittest import mock
 
 from core.agent.catalog import AGENT_SPECS, build_agent_used_metadata, resolve_model_selection
-from core.agent.model_catalog import get_model_profile, visible_cloud_models, visible_local_models
+from core.agent import model_catalog
+from core.agent.model_catalog import ModelProfile, get_model_profile, visible_cloud_models, visible_local_models
 from core.settings.models import AgentSettings, CloudSettings, LocalSettings
 
 
@@ -49,31 +50,66 @@ class ApexAgentCatalogTests(unittest.TestCase):
             ("local", "gemma-4-E2B-Q4_K_M.gguf", None),
         )
 
-    def test_visible_catalogs_are_ordered_by_runtime(self) -> None:
-        self.assertEqual(
-            [profile.model_id for profile in visible_cloud_models()],
-            ["deepseek/deepseek-v4-flash-0731", "gemini-3.7-flash"],
-        )
-        self.assertEqual(
-            [profile.model_id for profile in visible_local_models()],
-            ["gemma-4-E2B-Q4_K_M.gguf"],
+    @staticmethod
+    def _model(model_id: str, runtime: str, *, dev_only: bool = False) -> ModelProfile:
+        provider = "openai" if runtime == "cloud" else "ollama"
+        return ModelProfile(
+            model_id=model_id,
+            display_name=model_id,
+            provider=provider,
+            runtime=runtime,
+            stability="stable",
+            credential_env=None,
+            max_tool_turns=2,
+            max_tool_calls=2,
+            supports_encrypted_reasoning=False,
+            hosted_capabilities=frozenset(),
+            dev_only=dev_only,
         )
 
-    def test_dev_only_models_appear_when_development_mode_is_enabled(self) -> None:
-        self.assertEqual(
-            [profile.model_id for profile in visible_cloud_models(dev_mode=True)],
-            ["deepseek/deepseek-v4-flash-0731", "gpt-5.6-luna", "gemini-3.7-flash"],
-        )
-        self.assertEqual(
-            [profile.model_id for profile in visible_local_models(dev_mode=True)],
-            [
-                "gemma-4-E2B-Q4_K_M.gguf",
-                "gemma-4-E4B-Q4_K_M.gguf",
-                "qwen3:1.7b",
-                "qwen3:4b-instruct",
-                "Qwen3.5-4B-Q4_K_M.gguf",
-            ],
-        )
+    def test_visible_catalogs_preserve_runtime_order_and_hide_dev_only_profiles(self) -> None:
+        cloud = {
+            "cloud-first": self._model("cloud-first", "cloud"),
+            "cloud-dev": self._model("cloud-dev", "cloud", dev_only=True),
+            "cloud-last": self._model("cloud-last", "cloud"),
+        }
+        local = {
+            "local-first": self._model("local-first", "local"),
+            "local-dev": self._model("local-dev", "local", dev_only=True),
+            "local-last": self._model("local-last", "local"),
+        }
+        with mock.patch.dict(model_catalog.CLOUD_MODEL_PROFILES, cloud, clear=True), mock.patch.dict(
+            model_catalog.LOCAL_MODEL_PROFILES, local, clear=True
+        ):
+            self.assertEqual(
+                [profile.model_id for profile in visible_cloud_models()],
+                ["cloud-first", "cloud-last"],
+            )
+            self.assertEqual(
+                [profile.model_id for profile in visible_local_models()],
+                ["local-first", "local-last"],
+            )
+
+    def test_dev_mode_includes_dev_only_profiles_in_catalog_order(self) -> None:
+        cloud = {
+            "cloud-first": self._model("cloud-first", "cloud"),
+            "cloud-dev": self._model("cloud-dev", "cloud", dev_only=True),
+        }
+        local = {
+            "local-first": self._model("local-first", "local"),
+            "local-dev": self._model("local-dev", "local", dev_only=True),
+        }
+        with mock.patch.dict(model_catalog.CLOUD_MODEL_PROFILES, cloud, clear=True), mock.patch.dict(
+            model_catalog.LOCAL_MODEL_PROFILES, local, clear=True
+        ):
+            self.assertEqual(
+                [profile.model_id for profile in visible_cloud_models(dev_mode=True)],
+                ["cloud-first", "cloud-dev"],
+            )
+            self.assertEqual(
+                [profile.model_id for profile in visible_local_models(dev_mode=True)],
+                ["local-first", "local-dev"],
+            )
 
     def test_cloud_profiles_keep_provider_specific_credentials(self) -> None:
         expected = {
@@ -104,6 +140,9 @@ class ApexAgentCatalogTests(unittest.TestCase):
         self.assertEqual(payload["canonical_name"], "APEX Agent")
         self.assertEqual(payload["selected_model"], "deepseek/deepseek-v4-flash-0731")
         self.assertTrue(payload["model_catalog"])
+        runtimes = {model["runtime"] for model in payload["model_catalog"]}
+        self.assertIn("cloud", runtimes)
+        self.assertIn("local", runtimes)
         local_model = next(
             model for model in payload["model_catalog"] if model["runtime"] == "local"
         )

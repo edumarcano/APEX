@@ -7,7 +7,6 @@ import json
 import os
 import tempfile
 import threading
-import time
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -150,22 +149,40 @@ class CapabilityUnregisterTests(unittest.TestCase):
     def test_registry_reads_wait_for_concurrent_mutation_lock(self) -> None:
         from core.agent import capabilities
 
-        started = threading.Event()
+        lock_attempted = threading.Event()
         finished = threading.Event()
+        registry_lock = capabilities._REGISTRY._lock
+
+        class ObservedLock:
+            """Expose lock attempts while delegating all ownership to the real lock."""
+
+            def __enter__(self):
+                lock_attempted.set()
+                registry_lock.acquire()
+                return self
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                registry_lock.release()
+                return False
 
         def _list_capabilities() -> None:
-            started.set()
             list_agent_capabilities()
             finished.set()
 
-        with capabilities._REGISTRY._lock:
-            worker = threading.Thread(target=_list_capabilities)
-            worker.start()
-            self.assertTrue(started.wait(timeout=1.0))
-            time.sleep(0.02)
-            self.assertFalse(finished.is_set())
+        capabilities._REGISTRY._lock = ObservedLock()
+        worker = threading.Thread(target=_list_capabilities)
+        try:
+            with registry_lock:
+                worker.start()
+                self.assertTrue(lock_attempted.wait(timeout=1.0))
+                self.assertFalse(finished.is_set())
+        finally:
+            try:
+                worker.join(timeout=1.0)
+            finally:
+                capabilities._REGISTRY._lock = registry_lock
+            self.assertFalse(worker.is_alive())
 
-        worker.join(timeout=1.0)
         self.assertTrue(finished.is_set())
 
 

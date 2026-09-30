@@ -26,30 +26,23 @@ class ModelCatalogReconcileTests(unittest.TestCase):
             DEFAULT_CLOUD_MODEL,
         )
 
-    def test_hidden_local_model_falls_back_outside_dev_mode(self) -> None:
-        self.assertEqual(reconcile_local_model("qwen3:1.7b", dev_mode=False), DEFAULT_LOCAL_MODEL)
-
     def test_visible_local_model_remains_selected(self) -> None:
         self.assertEqual(
             reconcile_local_model("gemma-4-E2B-Q4_K_M.gguf", dev_mode=False),
             "gemma-4-E2B-Q4_K_M.gguf",
         )
 
-    def test_hidden_cloud_model_falls_back_outside_dev_mode(self) -> None:
-        self.assertEqual(
-            reconcile_cloud_model("gpt-5.6-luna", dev_mode=False),
-            DEFAULT_CLOUD_MODEL,
+    def test_hidden_models_fall_back_to_their_runtime_defaults_outside_dev_mode(self) -> None:
+        hidden_models = (
+            ("cloud", "gpt-5.6-luna", DEFAULT_CLOUD_MODEL),
+            ("Ollama", "qwen3:1.7b", DEFAULT_LOCAL_MODEL),
+            ("llama.cpp", "gemma-4-E4B-Q4_K_M.gguf", DEFAULT_LOCAL_MODEL),
+            ("llama.cpp", "Qwen3.5-4B-Q4_K_M.gguf", DEFAULT_LOCAL_MODEL),
         )
-
-    def test_hidden_local_models_fall_back_outside_dev_mode(self) -> None:
-        self.assertEqual(
-            reconcile_local_model("gemma-4-E4B-Q4_K_M.gguf", dev_mode=False),
-            DEFAULT_LOCAL_MODEL,
-        )
-        self.assertEqual(
-            reconcile_local_model("Qwen3.5-4B-Q4_K_M.gguf", dev_mode=False),
-            DEFAULT_LOCAL_MODEL,
-        )
+        for runtime, model_id, expected in hidden_models:
+            with self.subTest(runtime=runtime, model=model_id):
+                reconcile = reconcile_cloud_model if runtime == "cloud" else reconcile_local_model
+                self.assertEqual(reconcile(model_id, dev_mode=False), expected)
 
     def test_dev_only_models_remain_when_development_mode_is_enabled(self) -> None:
         self.assertEqual(reconcile_local_model("qwen3:1.7b", dev_mode=True), "qwen3:1.7b")
