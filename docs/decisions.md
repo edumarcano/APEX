@@ -32,7 +32,9 @@ Each entry leads with the decision, then the motivation and consequence. Entries
 
 **Trade-off.** The database is not encrypted by APEX and requires schema compatibility and transaction discipline.
 
-The beta.6 cutover transactionally drops only the retired legacy `briefings` table. Its rows are permanently removed, with no migration into session history; `briefing_sessions` and unrelated database records are preserved.
+The beta.6 cutover transactionally dropped only the retired legacy `briefings` table. Its rows were permanently removed, with no migration into session history; `briefing_sessions` and unrelated database records were preserved.
+
+The beta.6 schema is the supported upgrade floor. Startup validates core persistence through a read-only connection before bootstrap or recovery and stops without rewriting an unsupported core database. Retrieval remains optional: an unsupported retrieval schema disables retrieval for the run while leaving canonical knowledge writes available without derived retrieval synchronization. Current initialization leaves any remaining legacy `briefings` table untouched.
 
 ### Keep context evidence separate from current claims
 

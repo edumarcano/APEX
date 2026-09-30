@@ -37,7 +37,7 @@ Write-capable tools create approval-gated action proposals. New proposals use `a
 
 Personal context keeps immutable source evidence separate from the normalized claim derived from it. A source records its origin, occurrence time when known, and capture time. Each claim-to-source link records whether the claim was direct, model-interpreted, or unknown, so approval does not turn a model interpretation into a direct operator statement.
 
-Knowledge history records later status changes, evidence links, corrections, conflict decisions, and entity reconciliation against the affected claim. Records upgraded from earlier schemas receive a `migration_baseline` history entry with unknown provenance; it marks the start of durable history without inventing older events or attribution.
+Knowledge history records later status changes, evidence links, corrections, conflict decisions, and entity reconciliation against the affected claim. Existing `migration_baseline` entries remain historical records; current bootstrap does not synthesize new baselines.
 
 ## External activity boundary
 
@@ -124,4 +124,6 @@ Briefing's Daily, Catch Up, and Deep actions create durable sessions and use the
 
 The canonical briefing API consists of `GET /api/v1/briefing-profiles` and the `/api/v1/briefing-sessions` routes. The CLI uses the same asynchronous session API and marks its constrained origin as `cli`; it does not call services or SQLite directly. The Agent's `get_briefing_history` tool queries at most five newest completed artifact-backed sessions from the active partition in one joined read and returns bounded canonical content, profile/model identity, timestamps, presentation status, and limitations. Failed or incomplete sessions are skipped before applying the limit. The old transcript-based pipeline, mode settings, routes, and status poll are retired.
 
-At database initialization, an idempotent transactional upgrade drops only the legacy SQLite `briefings` table, permanently removing those old transcript rows. `briefing_sessions`, `briefing_speech`, and unrelated application tables and records remain intact. The migration does not copy old preferences or history into the new session system.
+The beta.6 database schema is the supported upgrade floor. A fresh database is bootstrapped to the current schema. Before startup performs any bootstrap or recovery, APEX checks core persistence versions and required table shapes through a read-only connection. An unsupported core schema stops startup without rewriting data or deleting tables. A database with an unsupported retrieval schema can still start with retrieval disabled for that run; canonical knowledge writes continue without derived retrieval synchronization. APEX does not automatically migrate older database schemas.
+
+The beta.6 cutover dropped the retired SQLite `briefings` table. Current initialization leaves any such table untouched and does not copy its rows or preferences into the saved-session system.

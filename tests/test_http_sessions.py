@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import tempfile
 import unittest
 from contextlib import ExitStack
+from pathlib import Path
 from unittest import mock
 
 from fastapi.testclient import TestClient
@@ -177,6 +179,25 @@ class ConnectorHttpSessionsTests(unittest.TestCase):
 
 
 class AppHttpSessionLifecycleTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from core import database
+
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        db_override = mock.patch(
+            "core.api.app.database.DB_NAME",
+            str(Path(self.temp_dir.name) / "http-lifecycle.db"),
+        )
+        db_override.start()
+        self.addCleanup(db_override.stop)
+        database.initialize_db()
+
+        # These tests cover resource ownership; persistence compatibility has
+        # production lifecycle coverage in test_persistence_lifecycle.py.
+        validator = mock.patch("core.api.app._validate_persistence_before_startup")
+        validator.start()
+        self.addCleanup(validator.stop)
+
     def _assert_lifespan_preserves_dependencies_on_drain_failure(
         self,
         *,

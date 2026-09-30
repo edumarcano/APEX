@@ -8,6 +8,7 @@ import os
 import sqlite3
 import threading
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
 from dotenv import load_dotenv
@@ -66,6 +67,7 @@ from core.knowledge.reconciliation import (
     ContextReconciliationVerifier,
 )
 from core.retrieval import RetrievalService, RetrievalStore, set_retrieval_service
+from core.retrieval.store import RetrievalSchemaCompatibilityError
 from core.mcp import load_mcp_config, set_mcp_manager
 from core.mcp.manager import MCPClientManager
 from core.runtime_logging import configure_logging
@@ -76,6 +78,42 @@ from core.tracing import get_tracing_service
 load_dotenv(dotenv_path=ENV_PATH)
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _validate_persistence_before_startup(
+    *, connection: sqlite3.Connection | None = None, include_actions: bool
+) -> bool:
+    """Check core schemas and classify optional retrieval without opening writes."""
+    owns_connection = connection is None
+    if connection is None:
+        db_path = Path(database.DB_NAME)
+        # A missing database is a fresh install. Validate it against an empty
+        # in-memory connection rather than opening SQLite in create mode.
+        if db_path.exists():
+            connection = sqlite3.connect(
+                f"{db_path.resolve().as_uri()}?mode=ro", uri=True, timeout=30.0
+            )
+        else:
+            connection = sqlite3.connect(":memory:")
+    try:
+        database.validate_schema(connection, include_actions=include_actions)
+        ConversationStore.validate_schema(connection)
+        RunStore.validate_schema(connection)
+        BriefingSessionStore.validate_schema(connection)
+        KnowledgeStore.validate_schema(connection)
+        ActivityStore.validate_schema(connection)
+        try:
+            RetrievalStore.validate_schema(connection)
+        except RetrievalSchemaCompatibilityError as exc:
+            _LOGGER.error(
+                "Unsupported retrieval persistence schema; retrieval is disabled for this run: %s",
+                exc,
+            )
+            return False
+        return True
+    finally:
+        if owns_connection:
+            connection.close()
 
 
 async def _drain_application_tasks(
@@ -134,12 +172,18 @@ async def _app_lifespan(_app: FastAPI):
     conversation_retention_stop: asyncio.Event | None = None
     llama_supervisor = get_llama_cpp_server_supervisor()
     lifecycle_error: BaseException | None = None
+    retrieval_schema_supported = True
 
     try:
         if DEMO_MODE:
             demo_db = sqlite3.connect(":memory:", check_same_thread=False)
             demo_db.execute("PRAGMA foreign_keys=ON;")
             demo_db_lock = threading.RLock()
+        retrieval_schema_supported = await asyncio.to_thread(
+            _validate_persistence_before_startup,
+            connection=demo_db,
+            include_actions=not DEMO_MODE,
+        )
         if not DEMO_MODE:
             microsoft_auth = MicrosoftTodoAuthenticationService()
             await microsoft_auth.initialize()
@@ -198,7 +242,10 @@ async def _app_lifespan(_app: FastAPI):
         retrieval_service = RetrievalService(
             retrieval_store,
             conversation_store,
-            enabled=not DEMO_MODE,
+            enabled=not DEMO_MODE and retrieval_schema_supported,
+            initialization_error=(
+                None if retrieval_schema_supported else "retrieval_initialization_failed"
+            ),
         )
         try:
             await asyncio.to_thread(retrieval_service.initialize)
@@ -206,7 +253,7 @@ async def _app_lifespan(_app: FastAPI):
             # Retrieval is optional and repairable; it must never block Cortex readiness.
             pass
         set_retrieval_service(retrieval_service)
-        if not DEMO_MODE:
+        if not DEMO_MODE and retrieval_service.enabled:
             async def _warm_retrieval() -> None:
                 try:
                     await asyncio.to_thread(
@@ -220,6 +267,7 @@ async def _app_lifespan(_app: FastAPI):
             None if DEMO_MODE else database.DB_NAME,
             connection=demo_db,
             lock=demo_db_lock,
+            retrieval_enabled=retrieval_service.enabled,
         )
         knowledge_store.initialize()
         set_knowledge_service(KnowledgeService(knowledge_store))
@@ -251,7 +299,7 @@ async def _app_lifespan(_app: FastAPI):
             action_service = ActionService()
             action_service.register_handler(
                 CAPABILITY_NAME,
-                executor=ContextCaptureExecutor(knowledge_store, conversation_service),
+                executor=ContextCaptureExecutor(knowledge_store),
                 verifier=ContextCaptureVerifier(knowledge_store),
             )
             action_service.register_handler(
