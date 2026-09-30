@@ -19,7 +19,7 @@ from core.api.models import (
     SyncRemindersRequest,
     SyncRemindersResponse,
 )
-from core.api.tts import clean_for_tts
+from core.speaker import prepare_text
 from core.config import DEMO_MODE
 from core.reminders import get_reminder_service
 from core.reminders.service import ReminderServiceError
@@ -76,7 +76,7 @@ def list_reminders() -> ReminderListResponse:
     status_code=status.HTTP_201_CREATED,
 )
 def create_reminder(payload: CreateReminderRequest, response: Response) -> CreateReminderResponse:
-    sanitized = clean_for_tts(payload.text)
+    sanitized = prepare_text(payload.text)
     if not sanitized:
         raise HTTPException(status_code=422, detail="Reminder text is empty after sanitization.")
     if DEMO_MODE:
@@ -173,7 +173,7 @@ def update_reminder_task(
         include={"title", "due", "importance"}, exclude_unset=True
     )
     if "title" in changes:
-        sanitized = clean_for_tts(str(changes["title"]))
+        sanitized = prepare_text(str(changes["title"]))
         if not sanitized:
             raise HTTPException(status_code=422, detail="Reminder title is empty after sanitization.")
         changes["title"] = sanitized

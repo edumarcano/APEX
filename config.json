@@ -69,7 +69,6 @@
     "enabled": true,
     "host": "http://localhost:11434",
     "idle_unload_timeout_minutes": 5,
-    "single_loaded_model": true,
     "manual_unload_enabled": true,
     "resource_gates": {
       "qwen3:1.7b": { "ram_limit": 88.0, "cpu_limit": 95.0 },

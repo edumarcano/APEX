@@ -114,12 +114,12 @@ export function resolveConnectorStatus(
   }
 
   const failedSet = new Set(failedConnectors.map((id) => id.trim().toLowerCase()))
-  const aliases =
+  const connectorNames =
     connectorKey === 'sports'
-      ? ['sports', 'sports_f1', 'sports_football']
+      ? ['f1', 'football']
       : [connectorKey]
 
-  if (aliases.some((alias) => failedSet.has(alias))) {
+  if (connectorNames.some((name) => failedSet.has(name))) {
     return { value: 'Failed last refresh', tone: 'error' }
   }
   return { value: 'Clear last refresh', tone: 'ok' }

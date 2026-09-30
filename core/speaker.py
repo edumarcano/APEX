@@ -106,9 +106,6 @@ def _normalize_voice_gender(gender: str | None) -> str:
 
 def _normalize_engine(engine: str | None) -> ResolvedTtsEngine:
     normalized = str(engine or "pyttsx3").strip().lower()
-    if normalized == "piper":
-        _LOGGER.warning("Piper is deprecated; routing to pyttsx3.")
-        return "pyttsx3"
     if normalized in {"google", "kokoro", "pyttsx3"}:
         return normalized  # type: ignore[return-value]
     _LOGGER.warning("Unrecognized TTS engine %r; defaulting to pyttsx3.", engine)

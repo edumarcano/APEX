@@ -11,13 +11,6 @@ from core.connectors.models import (
 )
 
 
-def _legacy_failure_name(connector_name: str) -> str:
-    """Map independent sports modules onto the legacy sports failure label."""
-    if connector_name in {"f1", "football"}:
-        return "sports"
-    return connector_name
-
-
 def compute_sync_health(
     results: Mapping[str, ConnectorResult | None],
 ) -> SyncHealthReport:
@@ -52,9 +45,8 @@ def compute_sync_health(
     for result in scored:
         if result.status != "unavailable":
             continue
-        legacy_name = _legacy_failure_name(result.name)
-        if legacy_name not in failed:
-            failed.append(legacy_name)
+        if result.name not in failed:
+            failed.append(result.name)
 
     if not scored:
         return SyncHealthReport(

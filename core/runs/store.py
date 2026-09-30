@@ -63,7 +63,6 @@ _VALID_STOP_REASONS = frozenset(
         "end_turn",
         "operator_cancelled",
         "max_elapsed_seconds",
-        "max_total_tokens",
         "max_retries",
         "max_model_turns",
         "max_tool_calls",
