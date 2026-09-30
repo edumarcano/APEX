@@ -104,7 +104,7 @@ describe('BriefingProfilePanel', () => {
 
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
     const dialog = screen.getByRole('dialog', { name: 'Set up your briefing' })
-    expect(within(dialog).getByText('Select model for Commander')).toBeInTheDocument()
+    expect(within(dialog).getByText('Configure Commander')).toBeInTheDocument()
     expect(within(dialog).getByText(/configure Commander/)).toBeInTheDocument()
     expect(within(dialog).getByRole('group', { name: 'Commander model and effort' })).toBeInTheDocument()
     expect(within(dialog).queryByText('Lynx')).not.toBeInTheDocument()
@@ -448,7 +448,7 @@ describe('BriefingProfilePanel', () => {
     />)
 
     await user.click(screen.getByRole('button', { name: 'Set up briefing' }))
-    expect(screen.getByText('Select model for Lynx')).toBeInTheDocument()
+    expect(screen.getByText('Configure Lynx')).toBeInTheDocument()
     expect(screen.getByText('Voice engine · Google TTS')).toBeInTheDocument()
     const toggle = screen.getByRole('switch', { name: 'Auto-generate spoken highlights' })
     expect(toggle).toBeEnabled()

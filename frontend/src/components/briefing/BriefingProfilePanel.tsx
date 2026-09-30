@@ -484,7 +484,7 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
             </fieldset>
 
             <div className="min-w-0">
-              <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300">Select model for {agentDisplayName}</p>
+              <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-300">Configure {agentDisplayName}</p>
               <div ref={agentSelectorRef} className="min-w-0">
                 <div role="group" aria-label={`${agentDisplayName} model and effort`} className="flex min-w-0 rounded-xl border border-white/10 bg-zinc-950/70">
                   <button
