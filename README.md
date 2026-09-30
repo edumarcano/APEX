@@ -17,13 +17,13 @@ APEX opens on Launch, which provides access to four peer workspaces: Overview sh
 <p align="center">
   <img
   src="docs/assets/apex-home.png"
-  alt="APEX Overview HUD with live demo telemetry and central status mark"
+  alt="APEX Overview after demo telemetry collection, showing connector health, weather, events, news, reminders, market, and email cards."
   width="900"
 >
 </p>
 
 <p align="center">
-  <em>The Overview HUD showing telemetry cards, status, and system health in demo mode.</em>
+  <em>Overview after demo telemetry collection, with ready, degraded, unavailable, and disabled connector states visible.</em>
 </p>
 
 ## What APEX does
@@ -39,13 +39,13 @@ Briefing creates Daily, Catch Up, and Deep sessions with the selected APEX Agent
 <p align="center">
   <img
   src="docs/assets/apex-briefing.png"
-  alt="APEX Briefing workspace showing session setup and live telemetry context"
+  alt="Completed Daily demo fixture shown in its linked Cortex conversation, with the selected profile, model control, and current telemetry rail."
   width="900"
 >
 </p>
 
 <p align="center">
-  <em>The Briefing workspace with session setup, repeat controls, and active telemetry context.</em>
+  <em>The saved Daily artifact and its linked conversation, with the current model control and demo telemetry rail in view.</em>
 </p>
 
 ### Operates the APEX Agent
@@ -59,13 +59,13 @@ After a Microsoft To Do list is selected, its incomplete tasks become the Overvi
 <p align="center">
   <img
   src="docs/assets/apex-cortex.png"
-  alt="APEX Cortex workspace showing conversation interface, prompt chips, model controls, and telemetry context"
+  alt="Cortex with a new conversation and the default Agent model, reasoning, context, and tool controls."
   width="900"
 >
 </p>
 
 <p align="center">
-  <em>The Cortex workspace with prompt chips, model configuration, tool selection, and personal context controls available alongside the chat.</em>
+  <em>A new Cortex conversation with its default Agent controls visible. The model control shows its current unavailable status.</em>
 </p>
 
 ### Shares selected context through a vault
@@ -78,7 +78,7 @@ Local tools can submit completed-work reports through the APEX CLI, JSON or Mark
 
 ### Keeps runtime control visible
 
-The HUD exposes connector health, CPU and memory use, active model state, briefing profile and progress, voice delivery, preflight warnings, and machine-local settings. Activation, telemetry refresh, briefing sessions, Agent requests, and speech are separate operations rather than one mandatory pipeline.
+The HUD exposes connector health, CPU and memory use, active model state, briefing profile and progress, voice delivery, preflight warnings, and machine-local settings. Telemetry collection, connector refreshes, briefing sessions, Agent requests, and speech are separate operations rather than one mandatory pipeline.
 
 ## Engineering highlights
 
@@ -108,7 +108,7 @@ flowchart LR
     API --> DB["SQLite"]
 ```
 
-The browser owns the interactive session. FastAPI owns connector access, runtime coordination, model and tool execution, speech, and persistence. See the [architecture reference](docs/architecture.md) for the full system model and failure behavior.
+The frontend owns workspace presentation and interaction state. FastAPI owns connector access, runtime coordination, model and tool execution, and speech; it writes durable sessions and history to SQLite. See the [architecture reference](docs/architecture.md) for the full system model and failure behavior.
 
 ## Technology
 

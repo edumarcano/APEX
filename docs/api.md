@@ -342,7 +342,7 @@ Plays only previously prepared audio and returns `202` when playback is queued. 
 
 ### POST `/api/v1/briefing-sessions/{session_id}/speech/stop`
 
-Cancels this session's preparation or playback and returns the current status. Stop does not cancel unrelated voice cues or legacy speech. Preparing or playing requires voice mode to be enabled (`403` otherwise); an incomplete session or play request without a ready cache returns `409`, a busy single-worker queue returns `429`, and unavailable speech/runtime services return `503`.
+Cancels this session's preparation or playback and returns the current status. Stop does not cancel unrelated voice cues or generic speech requests. Preparing or playing requires voice mode to be enabled (`403` otherwise); an incomplete session or play request without a ready cache returns `409`, a busy single-worker queue returns `429`, and unavailable speech/runtime services return `503`.
 
 ## Reminders
 

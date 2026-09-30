@@ -422,7 +422,7 @@ class CortexRunCoordinator:
         finalize_conversation: FinalizeConversation | None = None,
         finalize_run: FinalizeRun | None = None,
     ) -> Future[Any]:
-        """Submit an admitted run with legacy or transaction-owning finalization."""
+        """Submit an admitted run with conversation or caller-owned run finalization."""
         if (finalize_conversation is None) == (finalize_run is None):
             raise ValueError("Exactly one run finalizer is required.")
         with self._lock:

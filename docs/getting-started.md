@@ -172,7 +172,7 @@ uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model ge
 - Personal-context retrieval is off by default for both cloud and local models. The Cortex Context inspector remains available for adding, inspecting, correcting, retracting, and reviewing local records.
 - Context vault export is off by default. See the [Context vault guide](context-vault.md) when you want to share selected records as local Markdown notes.
 - Runtime Settings writes machine-local overrides to `config.local.json`.
-- `apex_memory.db` stores briefing sessions and artifacts, Cortex conversations and run records, external activity reports, personal-context sources and history, retrieval indexes, context reviews, the Microsoft To Do reminder cache and offline queue, and durable action history. On the next database initialization, APEX drops the retired `briefings` table and permanently deletes its rows while preserving briefing sessions and unrelated records. Demo sessions use fixed non-personal fixtures and skip live providers.
+- `apex_memory.db` stores briefing sessions and artifacts, Cortex conversations and run records, external activity reports, personal-context sources and history, retrieval indexes, context reviews, the Microsoft To Do reminder cache and offline queue, and durable action history. Beta.6 is the supported persistence floor; startup checks existing core schema versions and table shapes before bootstrap or recovery, and current initialization leaves any residual retired `briefings` table untouched. See [Persistence compatibility](architecture.md#persistence-compatibility). Demo sessions use fixed non-personal fixtures and skip live providers.
 
 ## Troubleshooting
 
