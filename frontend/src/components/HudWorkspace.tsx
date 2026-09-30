@@ -6,7 +6,7 @@ import type { HudIdentityProps } from './overview/HudIdentity'
 import { OverviewView } from './overview/OverviewView'
 import type { HudTelemetryData } from './overview/HudTelemetry'
 import type { ComponentProps } from 'react'
-import { StandbyActions } from './StandbyActions'
+import { CollectTelemetryButton } from './CollectTelemetryButton'
 import type { BriefingLayoutPhase, WorkspacePresentationView } from '../hooks/useWorkspaceView'
 import type { BriefingTelemetryCollectionState } from './overview/HudTelemetryRail'
 
@@ -18,7 +18,7 @@ export type HudWorkspaceProps = {
   overviewState: 'center' | 'collecting' | 'ready' | 'error' | 'no-data'
   overviewError?: string | null
   onRefreshAll: () => void
-  overviewActions: ComponentProps<typeof StandbyActions>
+  overviewActions: ComponentProps<typeof CollectTelemetryButton>
   briefingControls: BriefingProfilePanelProps
   briefingConversation: BriefingViewConversation
   briefingTelemetry: {

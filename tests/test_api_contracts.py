@@ -1,4 +1,4 @@
-"""HTTP smoke coverage for the extracted API routers."""
+"""Package and HTTP contract coverage for the public API."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from core.reminders.service import ReminderServiceError
 from core.conversations.store import ConversationNotFoundError
 
 
-class ApiPackageCompatibilityTests(unittest.TestCase):
+class ApiPackageContractTests(unittest.TestCase):
     def test_module_entrypoint_calls_main(self) -> None:
         app_module = importlib.import_module("core.api.app")
         with mock.patch.object(app_module, "main") as main_mock:
@@ -40,7 +40,7 @@ class ApiPackageCompatibilityTests(unittest.TestCase):
         )
 
 
-class ExtractedRouterHttpTests(unittest.TestCase):
+class ApiHttpContractTests(unittest.TestCase):
     def setUp(self) -> None:
         self.client = TestClient(app, raise_server_exceptions=True)
 

@@ -31,20 +31,15 @@
   }
 }
 
-/* Legacy APEX HUD custom properties (frontend/style.css) */
+/* Shared HUD surface and layer tokens */
 @layer base {
   :root {
     --hud-bg: #000000;
-    --hud-panel-bg: #07070a;
     --hud-border-color: rgba(255, 255, 255, 0.08);
     --hud-accent: #0F4DB8;
     --hud-text: #e2e8f0;
-    --hud-radius: 15px;
     --hud-panel-pad: 1.25rem;
-    --z-space-gradient: 0;
     --z-celestial-stars: 10;
-    --z-reactive-glow: 20;
-    --z-core-logo: 30;
     --z-bento-hud: 40;
     --z-overlay: 50;
   }
@@ -87,59 +82,6 @@
 
 .hud-app-shell {
   overscroll-behavior: contain;
-}
-
-.home-command-grid {
-  display: grid;
-  min-width: 0;
-  gap: 0.625rem;
-}
-
-.home-command-grid__agent-row {
-  display: flex;
-  align-items: stretch;
-  gap: 0.625rem;
-  min-width: 0;
-  width: 100%;
-}
-
-.home-command-grid__agent-composer {
-  flex: 1 1 0%;
-  min-width: 0;
-}
-
-.home-command-grid__briefing-row {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  min-width: 0;
-  width: 100%;
-}
-
-.home-command-grid__briefing {
-  flex: 1 1 0%;
-  min-width: 0;
-}
-
-.home-command-grid__briefing-actions {
-  display: flex;
-  min-width: 0;
-  flex: 0 0 auto;
-  margin-left: auto;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.home-command-grid__synthesize {
-  height: 2.5rem;
-  width: auto;
-  min-width: 0;
-  flex: 0 0 auto;
-}
-
-.home-command-grid__synthesize > button {
-  height: 100%;
-  white-space: nowrap;
 }
 
 @media (max-width: 1279px) {
@@ -582,15 +524,6 @@
   }
 }
 
-.hover-blue-subtle {
-  transition: border-color 500ms ease, box-shadow 500ms ease;
-}
-
-.hover-blue-subtle:hover {
-  border-color: rgba(31, 111, 229, 0.25) !important;
-  box-shadow: 0 0 12px rgba(31, 111, 229, 0.05) !important;
-}
-
 .hover-blue-medium {
   transition: border-color 500ms ease, box-shadow 500ms ease;
 }
@@ -938,16 +871,6 @@
 }
 
 @layer utilities {
-  @keyframes twinkleSlow {
-    0%,
-    100% {
-      opacity: 0.1;
-    }
-    50% {
-      opacity: 0.35;
-    }
-  }
-
   @keyframes twinkleMedium {
     0%,
     100% {
@@ -956,58 +879,6 @@
     50% {
       opacity: 0.6;
     }
-  }
-
-  @keyframes twinkleFast {
-    0%,
-    100% {
-      opacity: 0.55;
-    }
-    50% {
-      opacity: 0.85;
-    }
-  }
-
-  .animate-twinkle-slow {
-    animation: twinkleSlow 15s ease-in-out infinite;
-    will-change: opacity;
-  }
-
-  .animate-twinkle-medium {
-    animation: twinkleMedium 8s ease-in-out infinite;
-    will-change: opacity;
-  }
-
-  .animate-twinkle-fast {
-    animation: twinkleFast 4s ease-in-out infinite;
-    will-change: opacity;
-  }
-
-  .star-tier-far {
-    transform: translate3d(
-      calc(var(--mouse-x, 0) * 12px),
-      calc(var(--mouse-y, 0) * 12px),
-      0
-    );
-    transition: transform 0.1s ease-out;
-  }
-
-  .star-tier-mid {
-    transform: translate3d(
-      calc(var(--mouse-x, 0) * 28px),
-      calc(var(--mouse-y, 0) * 28px),
-      0
-    );
-    transition: transform 0.1s ease-out;
-  }
-
-  .star-tier-near {
-    transform: translate3d(
-      calc(var(--mouse-x, 0) * 48px),
-      calc(var(--mouse-y, 0) * 48px),
-      0
-    );
-    transition: transform 0.1s ease-out;
   }
 
   .scrollbar-thin {
@@ -1038,13 +909,6 @@
     background-color: rgba(255, 255, 255, 0.2);
   }
 
-  .scrollbar-none {
-    scrollbar-width: none;
-  }
-
-  .scrollbar-none::-webkit-scrollbar {
-    display: none;
-  }
 }
 
 .hud-home-layout-enter {

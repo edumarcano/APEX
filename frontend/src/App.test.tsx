@@ -32,9 +32,9 @@ const appMocks = vi.hoisted(() => ({
   updateReminderTask: vi.fn(),
   deleteReminderTask: vi.fn(),
   reopenReminderTask: vi.fn(),
-  activate: vi.fn(),
-  deactivate: vi.fn(),
-  activated: true,
+  startCollection: vi.fn(),
+  resetCollection: vi.fn(),
+  collectionStarted: true,
   noModels: false,
   settingsPanelApplied: null as unknown,
   marketSymbols: null as string[] | null,
@@ -263,21 +263,21 @@ vi.mock('./hooks/useApexData', () => ({
     applyBootSettings: appMocks.applyBootSettings,
   }),
 }))
-vi.mock('./hooks/useAppActivation', async () => {
+vi.mock('./hooks/useTelemetryCollectionState', async () => {
   const { useState } = await import('react')
   return {
-    useAppActivation: () => {
+    useTelemetryCollectionState: () => {
       const [, setRevision] = useState(0)
       return {
-        activated: appMocks.activated,
-        activate: () => {
-          appMocks.activate()
-          appMocks.activated = true
+        collectionStarted: appMocks.collectionStarted,
+        startCollection: () => {
+          appMocks.startCollection()
+          appMocks.collectionStarted = true
           setRevision((revision) => revision + 1)
         },
-        deactivate: () => {
-          appMocks.deactivate()
-          appMocks.activated = false
+        resetCollection: () => {
+          appMocks.resetCollection()
+          appMocks.collectionStarted = false
           setRevision((revision) => revision + 1)
         },
       }
@@ -562,7 +562,7 @@ describe('App catalog-affecting settings', () => {
     appMocks.localBriefingModel = null
     appMocks.devModeActive = false
     appMocks.marketEnabled = false
-    appMocks.activated = true
+    appMocks.collectionStarted = true
     appMocks.settingsPanelApplied = null
     appMocks.telemetryRefreshingAll = false
     appMocks.telemetryRefreshingConnectors = new Set<string>()
@@ -816,13 +816,13 @@ describe('App market loading feedback', () => {
 
 describe('App Market settings refresh', () => {
   afterEach(() => {
-    appMocks.activated = true
+    appMocks.collectionStarted = true
     appMocks.settingsPanelApplied = null
     appMocks.refreshConnector.mockClear()
     appMocks.applyBootSettings.mockClear()
   })
 
-  it('refreshes changed Market settings only while the application is activated', async () => {
+  it('refreshes changed Market settings only after collection starts', async () => {
     const { rerender } = renderOverviewApp()
     const baseline = structuredClone(BASE_SETTINGS)
     const unrelated = structuredClone(baseline)
@@ -849,7 +849,7 @@ describe('App Market settings refresh', () => {
     expect(appMocks.applyBootSettings).toHaveBeenLastCalledWith(expect.objectContaining({ marketEnabled: false }))
     expect(appMocks.refreshConnector).toHaveBeenCalledTimes(2)
 
-    appMocks.activated = false
+    appMocks.collectionStarted = false
     rerender(<App />)
     const inactiveChange = structuredClone(disabled)
     inactiveChange.market.symbols = ['QQQ']
@@ -924,7 +924,7 @@ describe('App reminder feedback', () => {
 
 describe('App contextual voice cues', () => {
   afterEach(() => {
-    appMocks.activated = true
+    appMocks.collectionStarted = true
     appMocks.demoModeActive = false
     appMocks.weatherSnapshot = null
     appMocks.telemetrySnapshot = null
@@ -980,7 +980,7 @@ describe('App contextual voice cues', () => {
   it('uses only the loading greeting when refresh fills missing telemetry', async () => {
     const user = userEvent.setup()
     const events: string[] = []
-    appMocks.activated = false
+    appMocks.collectionStarted = false
     stubAppFetch(events)
     appMocks.refreshAllWithOutcome.mockImplementation(async () => {
       events.push('refresh')
@@ -998,7 +998,7 @@ describe('App contextual voice cues', () => {
   it('skips the collecting cue when the refresh reuses a fresh snapshot but still announces the result', async () => {
     const user = userEvent.setup()
     const events: string[] = []
-    appMocks.activated = false
+    appMocks.collectionStarted = false
     stubAppFetch(events, { reusable: true })
     appMocks.refreshAllWithOutcome.mockImplementation(async () => {
       events.push('refresh')
@@ -1014,7 +1014,7 @@ describe('App contextual voice cues', () => {
   it('stays silent about collecting when the reuse check cannot be confirmed', async () => {
     const user = userEvent.setup()
     const events: string[] = []
-    appMocks.activated = false
+    appMocks.collectionStarted = false
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input))
       if (url.pathname.endsWith('/telemetry/reuse')) return Promise.reject(new Error('offline'))
@@ -1035,7 +1035,7 @@ describe('App contextual voice cues', () => {
   it('does not race a cached snapshot load against the explicit refresh', async () => {
     const user = userEvent.setup()
     const events: string[] = []
-    appMocks.activated = false
+    appMocks.collectionStarted = false
     appMocks.loadLatest.mockResolvedValue(createTelemetrySnapshot())
     stubAppFetch(events)
     appMocks.refreshAllWithOutcome.mockImplementation(async () => {
@@ -1053,7 +1053,7 @@ describe('App contextual voice cues', () => {
   it('keeps the center error state when the first refresh fails despite cached usable telemetry', async () => {
     const user = userEvent.setup()
     const events: string[] = []
-    appMocks.activated = false
+    appMocks.collectionStarted = false
     appMocks.telemetrySnapshot = createTelemetrySnapshot()
     appMocks.loadLatest.mockResolvedValue(createTelemetrySnapshot())
     stubAppFetch(events)
@@ -1076,7 +1076,7 @@ describe('App contextual voice cues', () => {
     const user = userEvent.setup()
     const events: string[] = []
     const freshAt = new Date().toISOString()
-    appMocks.activated = false
+    appMocks.collectionStarted = false
     stubAppFetch(events)
     appMocks.refreshAllWithOutcome.mockImplementation(async () => {
       events.push('refresh')
@@ -1107,7 +1107,7 @@ describe('App contextual voice cues', () => {
     const user = userEvent.setup()
     const events: string[] = []
     const oldAt = new Date(Date.now() - 6 * 60 * 1000).toISOString()
-    appMocks.activated = false
+    appMocks.collectionStarted = false
     stubAppFetch(events)
     appMocks.refreshAllWithOutcome.mockResolvedValue({
       kind: 'success',
@@ -1134,7 +1134,7 @@ describe('App contextual voice cues', () => {
   it('orders the activation refresh failure follow-up and skips it on conflict', async () => {
     const user = userEvent.setup()
     const events: string[] = []
-    appMocks.activated = false
+    appMocks.collectionStarted = false
     stubAppFetch(events)
     appMocks.refreshAllWithOutcome.mockImplementation(async () => {
       events.push('refresh')
@@ -1149,7 +1149,7 @@ describe('App contextual voice cues', () => {
 
     firstRender.unmount()
     events.length = 0
-    appMocks.activated = false
+    appMocks.collectionStarted = false
     appMocks.refreshAllWithOutcome.mockResolvedValue({
       kind: 'conflict',
       snapshot: null,
@@ -1164,7 +1164,7 @@ describe('App contextual voice cues', () => {
   it('uses the no-data cue when no telemetry modules are usable', async () => {
     const user = userEvent.setup()
     const events: string[] = []
-    appMocks.activated = false
+    appMocks.collectionStarted = false
     stubAppFetch(events)
     appMocks.refreshAllWithOutcome.mockImplementation(async () => {
       events.push('refresh')
@@ -1183,12 +1183,12 @@ describe('App contextual voice cues', () => {
 
 describe('App Overview and Briefing states', () => {
   afterEach(() => {
-    appMocks.activated = true
+    appMocks.collectionStarted = true
     appMocks.noModels = false
     appMocks.weatherSnapshot = null
     appMocks.telemetrySnapshot = null
-    appMocks.deactivate.mockClear()
-    appMocks.activate.mockClear()
+    appMocks.resetCollection.mockClear()
+    appMocks.startCollection.mockClear()
     appMocks.requestOperation.mockReset().mockResolvedValue('proceed')
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
@@ -1205,7 +1205,7 @@ describe('App Overview and Briefing states', () => {
   }
 
   it('opens on Launch and offers Collect Telemetry after navigating to Overview', async () => {
-    appMocks.activated = false
+    appMocks.collectionStarted = false
     appMocks.loadLatest.mockClear()
     appMocks.requestOperation.mockClear()
     stubHomeFetch([])
@@ -1226,7 +1226,7 @@ describe('App Overview and Briefing states', () => {
   })
 
   it('shares standby logo state across workspaces and leaves it uncollected after failure', async () => {
-    appMocks.activated = false
+    appMocks.collectionStarted = false
     appMocks.refreshAllWithOutcome.mockResolvedValue({ kind: 'failure', snapshot: null, error: 'offline' })
     stubHomeFetch([])
     const user = userEvent.setup()
@@ -1254,7 +1254,7 @@ describe('App Overview and Briefing states', () => {
   })
 
   it('uses the collected logo state across workspaces after a usable snapshot', async () => {
-    appMocks.activated = false
+    appMocks.collectionStarted = false
     appMocks.refreshAllWithOutcome.mockResolvedValue({ kind: 'success', snapshot: usableTelemetrySnapshot() })
     stubHomeFetch([])
     const user = userEvent.setup()
@@ -1276,7 +1276,7 @@ describe('App Overview and Briefing states', () => {
   })
 
   it('keeps the telemetry standby state after a no-data collection', async () => {
-    appMocks.activated = false
+    appMocks.collectionStarted = false
     appMocks.refreshAllWithOutcome.mockResolvedValue({
       kind: 'success',
       snapshot: { ...usableTelemetrySnapshot(), modules: {} },
@@ -1294,7 +1294,7 @@ describe('App Overview and Briefing states', () => {
   })
 
   it('latches a usable snapshot supplied outside Overview collection', async () => {
-    appMocks.activated = false
+    appMocks.collectionStarted = false
     appMocks.telemetrySnapshot = usableTelemetrySnapshot()
     stubHomeFetch([])
     const user = userEvent.setup()
@@ -1385,8 +1385,8 @@ describe('App Overview and Briefing states', () => {
   })
 
   it('opens Briefing from Overview without activation or generating a briefing', async () => {
-    appMocks.activated = false
-    appMocks.activate.mockClear()
+    appMocks.collectionStarted = false
+    appMocks.startCollection.mockClear()
     const user = userEvent.setup()
     const posts: string[] = []
     stubHomeFetch(posts)
@@ -1395,15 +1395,15 @@ describe('App Overview and Briefing states', () => {
     expect(screen.getByRole('region', { name: 'Overview' })).toBeInTheDocument()
 
     await selectWorkspace(user, 'Briefing')
-    expect(appMocks.activate).not.toHaveBeenCalled()
+    expect(appMocks.startCollection).not.toHaveBeenCalled()
     expect(await screen.findByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: 'Set up your briefing' })).not.toBeInTheDocument()
     expect(posts.filter((path) => path.endsWith('/briefing-sessions'))).toHaveLength(0)
   })
 
   it('collects telemetry from Briefing in place and reveals the sections when the snapshot is usable', async () => {
-    appMocks.activated = false
-    appMocks.activate.mockClear()
+    appMocks.collectionStarted = false
+    appMocks.startCollection.mockClear()
     appMocks.requestOperation.mockClear()
     const refresh = deferred<{
       kind: 'success'
@@ -1419,7 +1419,7 @@ describe('App Overview and Briefing states', () => {
     await user.click(within(rail).getByRole('button', { name: 'Collect Telemetry' }))
 
     expect(appMocks.requestOperation).toHaveBeenCalledWith('activate')
-    expect(appMocks.activate).toHaveBeenCalledOnce()
+    expect(appMocks.startCollection).toHaveBeenCalledOnce()
     expect(await within(rail).findByText('Collecting telemetry…')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Overview' })).not.toBeInTheDocument()
@@ -1456,9 +1456,9 @@ describe('App Overview and Briefing states', () => {
   })
 
   it('opens Briefing setup from the Briefing tab without activation, even without a model', async () => {
-    appMocks.activated = false
+    appMocks.collectionStarted = false
     appMocks.noModels = true
-    appMocks.activate.mockClear()
+    appMocks.startCollection.mockClear()
     const user = userEvent.setup()
     const posts: string[] = []
     stubHomeFetch(posts)
@@ -1470,14 +1470,14 @@ describe('App Overview and Briefing states', () => {
     expect(await screen.findByRole('dialog', { name: 'Set up your briefing' })).toBeInTheDocument()
     expect(await screen.findByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
     expect(appMocks.requestOperation).not.toHaveBeenCalledWith('activate')
-    expect(appMocks.activate).not.toHaveBeenCalled()
+    expect(appMocks.startCollection).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Generate Daily' })).toBeDisabled()
     expect(posts.filter((path) => path.endsWith('/briefing-sessions'))).toHaveLength(0)
   })
 
   it('does not collect telemetry from Enter while on inactive Briefing', async () => {
-    appMocks.activated = false
-    appMocks.activate.mockClear()
+    appMocks.collectionStarted = false
+    appMocks.startCollection.mockClear()
     appMocks.requestOperation.mockClear()
     const user = userEvent.setup()
     stubHomeFetch([])
@@ -1486,15 +1486,15 @@ describe('App Overview and Briefing states', () => {
     await selectWorkspace(user, 'Briefing')
     await user.keyboard('{Enter}')
 
-    expect(appMocks.activate).not.toHaveBeenCalled()
+    expect(appMocks.startCollection).not.toHaveBeenCalled()
     expect(appMocks.requestOperation).not.toHaveBeenCalledWith('activate')
     expect(screen.queryByRole('region', { name: 'Overview' })).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
   })
 
   it('does not collect telemetry from the global Enter key in Overview', async () => {
-    appMocks.activated = false
-    appMocks.activate.mockClear()
+    appMocks.collectionStarted = false
+    appMocks.startCollection.mockClear()
     appMocks.requestOperation.mockClear()
     const user = userEvent.setup()
     stubHomeFetch([])
@@ -1502,13 +1502,13 @@ describe('App Overview and Briefing states', () => {
 
     await user.keyboard('{Enter}')
 
-    expect(appMocks.activate).not.toHaveBeenCalled()
+    expect(appMocks.startCollection).not.toHaveBeenCalled()
     expect(appMocks.requestOperation).not.toHaveBeenCalledWith('activate')
     expect(screen.getByRole('button', { name: 'Collect Telemetry' })).toBeInTheDocument()
   })
 
   it('activates Overview from Collect Telemetry on Standby', async () => {
-    appMocks.activated = false
+    appMocks.collectionStarted = false
     const user = userEvent.setup()
     stubHomeFetch([])
     renderOverviewApp()
@@ -1605,7 +1605,7 @@ describe('App active local briefing lifecycle', () => {
 
 describe('App briefing session flow', () => {
   afterEach(() => {
-    appMocks.activated = true
+    appMocks.collectionStarted = true
     appMocks.demoModeActive = false
     appMocks.requestOperation.mockReset().mockResolvedValue('proceed')
     vi.restoreAllMocks()
@@ -1698,8 +1698,8 @@ describe('App briefing session flow', () => {
       takeRecords(): IntersectionObserverEntry[] { return [] }
     }
     vi.stubGlobal('IntersectionObserver', VisibleIntersectionObserver as unknown as typeof IntersectionObserver)
-    appMocks.activated = false
-    appMocks.activate.mockClear()
+    appMocks.collectionStarted = false
+    appMocks.startCollection.mockClear()
     appMocks.requestOperation.mockClear().mockImplementation(async (operation) => {
       eventOrder.push(`preflight:${operation}`)
       return 'proceed'
@@ -1858,7 +1858,7 @@ describe('App briefing session flow', () => {
 
 describe('App briefing setup failure ordering', () => {
   afterEach(() => {
-    appMocks.activated = true
+    appMocks.collectionStarted = true
     appMocks.demoModeActive = false
     appMocks.noModels = false
     appMocks.localBriefingModel = null
@@ -1931,7 +1931,7 @@ describe('App briefing setup failure ordering', () => {
 
 describe('App Repeat last briefing', () => {
   afterEach(() => {
-    appMocks.activated = true
+    appMocks.collectionStarted = true
     appMocks.demoModeActive = false
     appMocks.noModels = false
     appMocks.localBriefingModel = null

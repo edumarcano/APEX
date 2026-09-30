@@ -36,8 +36,8 @@ const telemetry: HudTelemetryData = {
     footballRefreshing: false,
   },
   market: { data: null, isLoading: false, enabled: true },
-  email: { ledState: 'loading', statusMessage: null, compactValue: null, count: 0, items: [], refreshing: false },
-  news: { ledState: 'loading', statusMessage: null, compactValue: null, items: [], refreshing: false },
+  email: { state: 'unavailable', ledState: 'loading', statusMessage: null, compactValue: null, count: null, items: [], refreshing: false },
+  news: { state: 'unavailable', ledState: 'loading', statusMessage: null, compactValue: null, items: [], refreshing: false },
   reminders: {
     loadState: 'loaded',
     ledState: 'loading',

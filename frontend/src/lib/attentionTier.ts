@@ -85,22 +85,22 @@ export function resolveAttentionTier(
 }
 
 /**
- * Attention for Start APEX / telemetry-only collection (no briefing pipeline).
- * Activated home reveals cards during refresh without briefing stages.
+ * Attention for telemetry-only collection (no briefing pipeline).
+ * Started collection reveals cards during refresh without briefing stages.
  */
 export function resolveTelemetryAttentionTier(
   surface: AttentionSurfaceId,
   options: {
-    activated: boolean
+    collectionStarted: boolean
     isRefreshing: boolean
     hasSnapshot: boolean
     briefingStatus: SystemState | null
     briefingStep: number | null
   },
 ): AttentionTier {
-  const { activated, isRefreshing, hasSnapshot, briefingStatus, briefingStep } = options
+  const { collectionStarted, isRefreshing, hasSnapshot, briefingStatus, briefingStep } = options
 
-  if (!activated) {
+  if (!collectionStarted) {
     return 'dormant'
   }
 

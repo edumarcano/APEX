@@ -1,7 +1,7 @@
 import { Radio } from 'lucide-react'
 import type { ReactElement } from 'react'
 
-interface StandbyActionsProps {
+interface CollectTelemetryButtonProps {
   onCollectTelemetry: () => void
   disabled?: boolean
 }
@@ -9,12 +9,12 @@ interface StandbyActionsProps {
 const ACTION_CLASS = 'group hud-command-surface inline-flex items-center gap-1.5 rounded-lg border px-4 py-2.5 font-orbitron text-[10px] font-semibold uppercase tracking-[0.14em] backdrop-blur-md transition-[border-color,background-color,box-shadow,color] duration-300 motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 sm:text-[11px]'
 const DISABLED_CLASS = 'cursor-not-allowed border-white/5 bg-transparent text-zinc-600 opacity-40'
 
-export function StandbyActions({
+export function CollectTelemetryButton({
   onCollectTelemetry,
   disabled = false,
-}: StandbyActionsProps): ReactElement {
+}: CollectTelemetryButtonProps): ReactElement {
   return (
-    <div className="inline-flex items-center gap-2.5" data-slot="standby-actions">
+    <div className="inline-flex items-center gap-2.5" data-slot="collect-telemetry-action">
       <button
         type="button"
         onClick={onCollectTelemetry}

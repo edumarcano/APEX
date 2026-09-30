@@ -3,34 +3,8 @@ export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
-      colors: {
-        hud: {
-          bg: 'var(--hud-bg)',
-          panel: 'var(--hud-panel-bg)',
-          border: 'var(--hud-border-color)',
-          text: 'var(--hud-text)',
-          accent: 'var(--hud-accent)',
-          /** Legacy `.hud-header__status--offline` */
-          offline: 'hsl(0 14% 48%)',
-        },
-      },
-      borderRadius: {
-        hud: 'var(--hud-radius)',
-      },
-      spacing: {
-        'hud-panel': 'var(--hud-panel-pad)',
-      },
       fontFamily: {
-        hud: [
-          '"Exo 2"',
-          'system-ui',
-          '"Segoe UI"',
-          'sans-serif',
-        ],
         orbitron: ['Orbitron', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-      },
-      lineHeight: {
-        hud: '1.5',
       },
       scale: {
         115: '1.15',
