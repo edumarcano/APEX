@@ -6,7 +6,6 @@ import json
 import logging
 import re
 import time
-from types import SimpleNamespace
 from typing import Any
 
 import requests
@@ -228,53 +227,6 @@ def _extract_error_detail(response: requests.Response | None) -> str:
         if isinstance(message, str):
             return " ".join(message.split())[:300]
     return ""
-
-
-def _post_chat(
-    payload: dict[str, Any],
-    profile: LlamaCppModelProfile,
-) -> dict[str, Any]:
-    host = get_llama_cpp_host()
-    url = f"{host.rstrip('/')}/v1/chat/completions"
-    try:
-        response = get_http_session().post(
-            url,
-            params={"autoload": "false"},
-            json=payload,
-            headers=get_auth_headers(),
-            timeout=profile.generation_timeout,
-        )
-        response.raise_for_status()
-    except requests.Timeout as exc:
-        raise RuntimeError(
-            f"llama.cpp generation timed out after {profile.generation_timeout}s "
-            f"for model {profile.runtime_model_id!r}."
-        ) from exc
-    except requests.ConnectionError as exc:
-        raise RuntimeError(
-            f"Failed to connect to llama.cpp at {host}. "
-            "Ensure the local llama.cpp router is running."
-        ) from exc
-    except RequestException as exc:
-        status_code = exc.response.status_code if exc.response is not None else None
-        detail = _extract_error_detail(exc.response)
-        status_detail = f" (HTTP {status_code})" if status_code is not None else ""
-        raise LlamaCppRequestError(
-            f"llama.cpp request failed for model {profile.runtime_model_id!r}"
-            f"{status_detail}{f': {detail}' if detail else '.'}",
-            status_code=status_code,
-            detail=detail,
-        ) from exc
-
-    try:
-        data = response.json()
-    except ValueError as exc:
-        raise RuntimeError(
-            f"llama.cpp returned non-JSON response (HTTP {response.status_code})."
-        ) from exc
-    if not isinstance(data, dict):
-        raise RuntimeError("llama.cpp returned a non-object JSON chat response.")
-    return data
 
 
 def _post_chat_stream(
@@ -633,16 +585,8 @@ class LlamaCppProvider:
             system_instruction,
             max_tokens=resolved_max_tokens,
         )
-        # Production calls always use SSE.  Existing adapter fakes patch the
-        # completed helper; retain that narrow compatibility path for them.
-        native_stream = (
-            stream_observer is not None
-            or execution_control is not None
-            or not type(_post_chat).__module__.startswith("unittest.mock")
-        )
-        payload["stream"] = native_stream
-        if native_stream:
-            payload["stream_options"] = {"include_usage": True}
+        payload["stream"] = True
+        payload["stream_options"] = {"include_usage": True}
         if output_schema and not tools:
             payload["response_format"] = {
                 "type": "json_schema",
@@ -666,9 +610,9 @@ class LlamaCppProvider:
 
         started = time.perf_counter()
         try:
-            data = (
-                _post_chat_stream(payload, profile, execution_control=execution_control, stream_observer=stream_observer)
-                if native_stream else _post_chat(payload, profile)
+            data = _post_chat_stream(
+                payload, profile, execution_control=execution_control,
+                stream_observer=stream_observer,
             )
         except LlamaCppRequestError as exc:
             current_messages = messages[_current_turn_start(messages) :]
@@ -697,17 +641,16 @@ class LlamaCppProvider:
             retry_count += 1
             if execution_control is not None:
                 execution_control.before_retry(retry_count)
-            payload["stream"] = native_stream
-            if native_stream:
-                payload["stream_options"] = {"include_usage": True}
+            payload["stream"] = True
+            payload["stream_options"] = {"include_usage": True}
             if output_schema and not tools:
                 payload["response_format"] = {
                     "type": "json_schema",
                     "json_schema": {"name": "apex_output", "schema": output_schema, "strict": True},
                 }
-            data = (
-                _post_chat_stream(payload, profile, execution_control=execution_control, stream_observer=stream_observer)
-                if native_stream else _post_chat(payload, profile)
+            data = _post_chat_stream(
+                payload, profile, execution_control=execution_control,
+                stream_observer=stream_observer,
             )
 
         register_local_activity(
@@ -741,12 +684,11 @@ class LlamaCppProvider:
             retry_count += 1
             if execution_control is not None:
                 execution_control.before_retry(retry_count)
-            retry_payload["stream"] = native_stream
-            if native_stream:
-                retry_payload["stream_options"] = {"include_usage": True}
-            data = (
-                _post_chat_stream(retry_payload, profile, execution_control=execution_control, stream_observer=stream_observer)
-                if native_stream else _post_chat(retry_payload, profile)
+            retry_payload["stream"] = True
+            retry_payload["stream_options"] = {"include_usage": True}
+            data = _post_chat_stream(
+                retry_payload, profile, execution_control=execution_control,
+                stream_observer=stream_observer,
             )
             register_local_activity(
                 LocalModelRef(provider="llama_cpp", model=profile.runtime_model_id)
@@ -763,10 +705,6 @@ class LlamaCppProvider:
         provider_ms = round((time.perf_counter() - started) * 1000, 2)
         agent_message = _openai_message_to_agent_message(message)
         if stream_observer is not None:
-            if agent_message.content and not native_stream:
-                stream_observer(ProviderStreamEvent(kind="text", text=agent_message.content))
-            if agent_message.tool_calls and not native_stream:
-                stream_observer(ProviderStreamEvent(kind="reset"))
             stream_observer(ProviderStreamEvent(kind="completed"))
         agent_message.prompt_tokens = peak_prompt_tokens
         agent_message.estimated_prompt_tokens = peak_estimated_tokens

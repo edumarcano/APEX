@@ -12,7 +12,8 @@ from core.agent.providers.contract import ProviderStreamEvent
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.providers.openrouter import OpenRouterModelProfile, OpenRouterProvider
-from core.agent.providers.openai_provider import OpenAIProvider, OPENAI_INTERNAL_PROFILES
+from core.agent.providers.openai_provider import OpenAIProvider
+from tests.support.provider_fixtures import OPENAI_INTERNAL_PROFILES, response_event_stream
 from core.agent.providers.llama_cpp import LlamaCppProvider
 from core.agent.providers.llama_cpp_models import build_llama_cpp_profile
 from core.agent.providers.ollama import OllamaProvider
@@ -182,6 +183,23 @@ class Branch3StreamingTests(unittest.TestCase):
         client.models.generate_content.assert_not_called()
 
     @patch("core.agent.providers.gemini.genai.Client")
+    def test_gemini_native_stream_with_no_chunks_fails_without_unary_call(self, client_cls):
+        stream = _Stream([])
+        client = Mock()
+        client.models.generate_content_stream.return_value = stream
+        client_cls.return_value = client
+        profile = GeminiModelProfile(
+            display_name="Gemini", api_model="gemini", stability="stable",
+            thinking_level="low", system_instruction="",
+        )
+        with self.assertRaisesRegex(ValueError, "native stream returned no chunks"):
+            GeminiProvider("key").generate_turn(
+                [AgentMessage(role="user", content="x")], [], profile,
+            )
+        self.assertTrue(stream.closed)
+        client.models.generate_content.assert_not_called()
+
+    @patch("core.agent.providers.gemini.genai.Client")
     def test_gemini_empty_stop_stream_recovers_with_one_bounded_unary_call(self, client_cls):
         empty = SimpleNamespace(
             candidates=[SimpleNamespace(
@@ -329,6 +347,24 @@ class Branch3StreamingTests(unittest.TestCase):
         self.assertTrue(result.provider_tool_events)
         self.assertTrue(stream.closed)
         self.assertIn("reset", [event.kind for event in events])
+        self.assertNotIn("NYC", repr(events))
+
+    @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
+    @patch("core.agent.providers.llama_cpp.get_http_session")
+    def test_llama_cpp_uses_sse_without_observer(self, session_factory, _activity):
+        response = Mock()
+        response.iter_lines.return_value = [
+            'data: {"choices":[{"delta":{"content":"answer"}}]}',
+            'data: [DONE]',
+        ]
+        session_factory.return_value.post.return_value = response
+        profile = build_local_profile(model="gemma-4-E2B-Q4_K_M.gguf")
+        result = LlamaCppProvider().generate_turn(
+            [AgentMessage(role="user", content="x")], [], profile
+        )
+        self.assertEqual(result.message.content, "answer")
+        self.assertTrue(session_factory.return_value.post.call_args.kwargs["stream"])
+        self.assertTrue(response.close.called)
 
     @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
     @patch("core.agent.providers.llama_cpp.get_http_session")
@@ -370,8 +406,10 @@ class Branch3StreamingTests(unittest.TestCase):
         provider = ResponsesApiProvider.__new__(ResponsesApiProvider)
         provider.provider_kind = "openai"
         provider.client = Mock()
-        response = Mock(output=[{"type": "message", "content": [{"type": "output_text", "text": "{}"}]}], model="m", usage=None)
-        provider.client.responses.create.return_value = response
+        provider.client.responses.create.return_value = _Stream(response_event_stream(
+            text="{}", model="m",
+            output=[{"type": "message", "content": [{"type": "output_text", "text": "{}"}]}],
+        ))
         result = provider.generate_turn([AgentMessage(role="user", content="x")], [], OPENAI_INTERNAL_PROFILES["openai_default"], output_schema={"type": "object"})
         request = provider.client.responses.create.call_args.kwargs
         self.assertEqual(request["text"]["format"]["type"], "json_schema")

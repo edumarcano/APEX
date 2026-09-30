@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
-from core.agent.catalog import build_concrete_agent, resolve_effort
+from core.agent.catalog import build_provider_profile, resolve_effort
 from core.agent.model_catalog import get_model_profile
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.ollama import OllamaProvider
@@ -16,8 +16,7 @@ def _concrete_profile(model_id: str):
     model_profile = get_model_profile(model_id)
     assert model_profile is not None
     native = resolve_effort(model_profile, None)
-    return build_concrete_agent(
-        "apex",
+    return build_provider_profile(
         native_effort=native,
         model_id=model_id,
     )
@@ -63,14 +62,15 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
         """Verify GeminiProvider does not pass temperature to GenerateContentConfig."""
         mock_client = MagicMock()
         mock_client_cls.return_value = mock_client
-        mock_response = MagicMock()
-        mock_candidate = MagicMock()
         mock_part = MagicMock()
         mock_part.text = "Test response"
+        mock_part.thought = False
         mock_part.function_call = None
+        mock_candidate = MagicMock()
         mock_candidate.content.parts = [mock_part]
-        mock_response.candidates = [mock_candidate]
-        mock_client.models.generate_content.return_value = mock_response
+        mock_chunk = MagicMock()
+        mock_chunk.candidates = [mock_candidate]
+        mock_client.models.generate_content_stream.return_value = [mock_chunk]
 
         provider = GeminiProvider(api_key="test-api-key")
         profile = _concrete_profile("gemini-3.7-flash")
@@ -78,8 +78,8 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
 
         provider.generate_turn(messages=messages, tools=[], profile=profile)
 
-        mock_client.models.generate_content.assert_called_once()
-        _args, kwargs = mock_client.models.generate_content.call_args
+        mock_client.models.generate_content_stream.assert_called_once()
+        _args, kwargs = mock_client.models.generate_content_stream.call_args
         config = kwargs["config"]
         self.assertFalse(hasattr(config, "temperature") and config.temperature is not None)
         self.assertEqual(kwargs["model"], "gemini-3.7-flash")

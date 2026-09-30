@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import requests
 
 from core.agent.capabilities import CapabilityDescriptor
-from core.agent.catalog import build_concrete_agent, resolve_effort
+from core.agent.catalog import build_provider_profile, resolve_effort
 from core.agent.model_catalog import get_model_profile
 from core.agent.prompting import SECURITY_BOUNDARY_DIRECTIVE
 from core.agent.providers.llama_cpp import (
@@ -18,7 +18,7 @@ from core.agent.providers.llama_cpp import (
     LlamaCppRequestError,
     _openai_message_to_agent_message,
     _parse_tool_call_arguments,
-    _post_chat,
+    _post_chat_stream,
     _strip_thinking_tags,
 )
 from core.agent.types import AgentMessage, ToolCall, ToolResult
@@ -41,8 +41,7 @@ def _llama_profile(
     model_profile = get_model_profile(model_id)
     assert model_profile is not None
     native = resolve_effort(model_profile, None)
-    return build_concrete_agent(
-        "apex",
+    return build_provider_profile(
         native_effort=native,
         local_context_window=context_window,
         local_reasoning_mode=reasoning_mode,
@@ -102,7 +101,7 @@ def _mock_response(
 
 class LlamaCppProviderTests(unittest.TestCase):
     @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
-    @patch("core.agent.providers.llama_cpp._post_chat")
+    @patch("core.agent.providers.llama_cpp._post_chat_stream")
     def test_basic_final_answer(
         self, mock_post: MagicMock, _activity: MagicMock
     ) -> None:
@@ -123,11 +122,12 @@ class LlamaCppProviderTests(unittest.TestCase):
         )
         self.assertEqual(payload["max_tokens"], 768)
         self.assertEqual(payload["temperature"], 0.2)
-        self.assertFalse(payload["stream"])
+        self.assertTrue(payload["stream"])
+        self.assertEqual(payload["stream_options"], {"include_usage": True})
         self.assertIn(SECURITY_BOUNDARY_DIRECTIVE, payload["messages"][0]["content"])
 
     @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
-    @patch("core.agent.providers.llama_cpp._post_chat")
+    @patch("core.agent.providers.llama_cpp._post_chat_stream")
     def test_explicit_output_limit_caps_llama_cpp_request(
         self, mock_post: MagicMock, _activity: MagicMock
     ) -> None:
@@ -144,7 +144,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         self.assertEqual(payload["max_tokens"], 64)
 
     @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
-    @patch("core.agent.providers.llama_cpp._post_chat")
+    @patch("core.agent.providers.llama_cpp._post_chat_stream")
     def test_empty_assistant_content(
         self, mock_post: MagicMock, _activity: MagicMock
     ) -> None:
@@ -165,7 +165,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         self.assertIsNone(result.message.content)
 
     @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
-    @patch("core.agent.providers.llama_cpp._post_chat")
+    @patch("core.agent.providers.llama_cpp._post_chat_stream")
     def test_focused_reasoning_omits_reasoning_effort(
         self, mock_post: MagicMock, _activity: MagicMock
     ) -> None:
@@ -184,7 +184,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         self.assertEqual(payload["max_tokens"], 1536)
 
     @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
-    @patch("core.agent.providers.llama_cpp._post_chat")
+    @patch("core.agent.providers.llama_cpp._post_chat_stream")
     def test_reasoning_payload_is_explicit_for_each_llama_model(
         self, mock_post: MagicMock, _activity: MagicMock
     ) -> None:
@@ -218,7 +218,7 @@ class LlamaCppProviderTests(unittest.TestCase):
                         self.assertEqual(payload["reasoning_effort"], "none")
 
     @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
-    @patch("core.agent.providers.llama_cpp._post_chat")
+    @patch("core.agent.providers.llama_cpp._post_chat_stream")
     def test_single_tool_call_string_arguments(
         self, mock_post: MagicMock, _activity: MagicMock
     ) -> None:
@@ -240,7 +240,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         self.assertEqual(payload["reasoning_effort"], "none")
 
     @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
-    @patch("core.agent.providers.llama_cpp._post_chat")
+    @patch("core.agent.providers.llama_cpp._post_chat_stream")
     def test_parallel_tool_calls_mixed_argument_shapes(
         self, mock_post: MagicMock, _activity: MagicMock
     ) -> None:
@@ -272,7 +272,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         self.assertEqual(_parse_tool_call_arguments(None), {})
 
     @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
-    @patch("core.agent.providers.llama_cpp._post_chat")
+    @patch("core.agent.providers.llama_cpp._post_chat_stream")
     def test_outbound_tool_history_and_security_wrappers(
         self, mock_post: MagicMock, _activity: MagicMock
     ) -> None:
@@ -336,7 +336,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         self.assertNotIn("should never surface", message.content or "")
 
     @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
-    @patch("core.agent.providers.llama_cpp._post_chat")
+    @patch("core.agent.providers.llama_cpp._post_chat_stream")
     def test_usage_cached_tokens_and_timings(
         self, mock_post: MagicMock, _activity: MagicMock
     ) -> None:
@@ -358,7 +358,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         self.assertNotIn("Usage and timings are present", joined)
 
     @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
-    @patch("core.agent.providers.llama_cpp._post_chat")
+    @patch("core.agent.providers.llama_cpp._post_chat_stream")
     def test_resolved_model_falls_back_to_runtime_alias(
         self, mock_post: MagicMock, _activity: MagicMock
     ) -> None:
@@ -379,7 +379,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         self.assertEqual(result.resolved_model, profile.runtime_model_id)
 
     @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
-    @patch("core.agent.providers.llama_cpp._post_chat")
+    @patch("core.agent.providers.llama_cpp._post_chat_stream")
     def test_overflow_retries_without_prior_history(
         self, mock_post: MagicMock, _activity: MagicMock
     ) -> None:
@@ -413,7 +413,7 @@ class LlamaCppProviderTests(unittest.TestCase):
         self.assertEqual(user_contents, ["Current question"])
 
     @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
-    @patch("core.agent.providers.llama_cpp._post_chat")
+    @patch("core.agent.providers.llama_cpp._post_chat_stream")
     def test_truncated_tool_turn_regenerates_without_tools(
         self, mock_post: MagicMock, _activity: MagicMock
     ) -> None:
@@ -472,15 +472,21 @@ class LlamaCppProviderTests(unittest.TestCase):
         self, mock_get_session: MagicMock, _auth: MagicMock
     ) -> None:
         session = MagicMock()
-        session.post.return_value = _mock_response(
-            payload=_load_fixture("basic_answer.json")
-        )
+        response = MagicMock()
+        response.status_code = 200
+        response.raise_for_status.return_value = None
+        response.iter_lines.return_value = [
+            'data: {"choices":[{"delta":{"content":"ok"}}]}',
+            'data: [DONE]',
+        ]
+        session.post.return_value = response
         mock_get_session.return_value = session
-        _post_chat(
+        _post_chat_stream(
             {
                 "model": "gemma-4-e2b-16k",
                 "messages": [{"role": "user", "content": "Hi"}],
-                "stream": False,
+                "stream": True,
+                "stream_options": {"include_usage": True},
                 "temperature": 0.2,
                 "max_tokens": 64,
                 "reasoning_effort": "none",
@@ -502,11 +508,11 @@ class LlamaCppProviderTests(unittest.TestCase):
 
         session.post.side_effect = requests.Timeout()
         with self.assertRaisesRegex(RuntimeError, "timed out"):
-            _post_chat(payload, profile)
+            _post_chat_stream(payload, profile)
 
         session.post.side_effect = requests.ConnectionError()
         with self.assertRaisesRegex(RuntimeError, "Failed to connect"):
-            _post_chat(payload, profile)
+            _post_chat_stream(payload, profile)
 
     @patch("core.agent.providers.llama_cpp.get_auth_headers", return_value={})
     @patch("core.agent.providers.llama_cpp.get_http_session")
@@ -524,7 +530,7 @@ class LlamaCppProviderTests(unittest.TestCase):
             raise_http=True,
         )
         with self.assertRaises(LlamaCppRequestError) as raised:
-            _post_chat(
+            _post_chat_stream(
                 {
                     "model": "gemma-4-e2b-16k",
                     "messages": [{"role": "user", "content": prompt}],
@@ -546,15 +552,24 @@ class LlamaCppProviderTests(unittest.TestCase):
     ) -> None:
         session = MagicMock()
         mock_get_session.return_value = session
-        session.post.return_value = _mock_response(status_code=200, payload=None)
-        with self.assertRaisesRegex(RuntimeError, "non-JSON"):
-            _post_chat({"model": "gemma-4-e2b-16k", "messages": []}, _local_profile())
+        response = MagicMock()
+        response.status_code = 200
+        response.raise_for_status.return_value = None
+        response.iter_lines.return_value = [
+            "event: ping", "data: not-json", "data: [DONE]"
+        ]
+        session.post.return_value = response
+        data = _post_chat_stream(
+            {"model": "gemma-4-e2b-16k", "messages": []}, _local_profile()
+        )
+        self.assertEqual(data["choices"][0]["message"]["content"], "")
+        self.assertTrue(response.close.called)
 
         with patch(
             "core.agent.providers.llama_cpp.register_local_activity",
             return_value=None,
         ), patch(
-            "core.agent.providers.llama_cpp._post_chat",
+            "core.agent.providers.llama_cpp._post_chat_stream",
             return_value={"choices": []},
         ):
             with self.assertRaisesRegex(RuntimeError, "missing choices"):

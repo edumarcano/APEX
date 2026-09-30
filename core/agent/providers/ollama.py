@@ -26,11 +26,6 @@ _PROMPT_BYTES_PER_TOKEN = 3
 _PROMPT_TEMPLATE_ALLOWANCE_TOKENS = 128
 _PROMPT_SAFETY_MARGIN_TOKENS = 512
 
-def _descriptor_to_openai_schema(descriptor: CapabilityDescriptor) -> dict[str, Any]:
-    """Compatibility wrapper for the shared schema serializer."""
-    return descriptor_to_openai_schema(descriptor)
-
-
 def _serialize_tool_output(output: Any) -> str:
     """Serialize tool output as stable JSON when possible."""
     try:
@@ -317,7 +312,7 @@ def _build_payload(
         "keep_alive": get_keep_alive_duration(),
     }
     if tools:
-        payload["tools"] = [_descriptor_to_openai_schema(tool) for tool in tools]
+        payload["tools"] = [descriptor_to_openai_schema(tool) for tool in tools]
     return payload
 
 
