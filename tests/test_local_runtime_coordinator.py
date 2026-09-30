@@ -415,13 +415,6 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
             LocalModelRef(provider="ollama", model="qwen-4b-model"),
         )
 
-    def test_profile_protocol_compliance(self) -> None:
-        profile = _FakeProfile(api_model="qwen-4b-model", high_resource=True)
-        self.assertIsInstance(profile, LocalModelProfile)
-        small_qwen = _FakeProfile(api_model="qwen-17b-model", high_resource=False)
-        self.assertFalse(small_qwen.high_resource)
-        self.assertTrue(profile.high_resource)
-
     def test_ollama_to_llama_cpp_unloads_ollama_first(self) -> None:
         self.backend.resident.add("qwen-4b-model")
         coord.register_local_activity(

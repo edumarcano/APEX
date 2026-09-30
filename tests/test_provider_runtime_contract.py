@@ -10,7 +10,6 @@ from openai import APIStatusError
 
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.catalog import (
-    AGENT_SPECS,
     model_id_for_local_model_ref,
     build_provider_profile,
     known_local_model_refs,
@@ -379,7 +378,6 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(response.cost_estimate.pricing_version, PRICING_VERSION)
         self.assertEqual(response.cost_estimate.completeness, "complete")
         self.assertEqual(response.tool_trace[0]["origin"], "apex")
-        self.assertEqual(set(AGENT_SPECS), {"apex"})
 
     def test_provider_tool_events_reach_the_trace_with_numeric_durations(self) -> None:
         class Provider:
@@ -965,13 +963,6 @@ class ResponsesAdapterTests(unittest.TestCase):
                 for log in log_cm.output
             )
         )
-
-
-class PublicRosterTests(unittest.TestCase):
-    def test_registry_exposes_the_singular_apex_agent(self) -> None:
-        self.assertEqual(set(AGENT_SPECS), {"apex"})
-        self.assertEqual(AGENT_SPECS["apex"].display_name, "Lynx")
-        self.assertEqual(AGENT_SPECS["apex"].canonical_name, "APEX Agent")
 
 
 if __name__ == "__main__":

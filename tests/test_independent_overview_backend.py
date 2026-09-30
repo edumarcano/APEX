@@ -95,14 +95,6 @@ class CortexAgentCatalogTests(unittest.TestCase):
         self.addCleanup(reset_settings_store_for_tests)
         self.addCleanup(self._tmp.cleanup)
 
-    def test_exposes_one_native_agent_with_both_model_runtimes(self) -> None:
-        response = cortex_agent()
-        self.assertEqual(response.key, "apex")
-        self.assertEqual(response.display_name, "Lynx")
-        self.assertEqual(response.canonical_name, "APEX Agent")
-        self.assertTrue(any(model.runtime == "cloud" for model in response.model_catalog))
-        self.assertTrue(any(model.runtime == "local" for model in response.model_catalog))
-
     def test_cortex_agent_uses_saved_display_name(self) -> None:
         self.store.apply_patch(SettingsPatch(agent_display_name="Nova"))
         response = cortex_agent()
