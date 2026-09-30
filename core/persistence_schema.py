@@ -13,6 +13,23 @@ def _object_type(conn: sqlite3.Connection, name: str) -> str | None:
     return str(row[0]) if row is not None else None
 
 
+def _has_singleton_domain_key(conn: sqlite3.Connection) -> bool:
+    """Return whether domain has a full, single-column unique key."""
+    table_info = conn.execute('PRAGMA table_info("schema_versions")').fetchall()
+    primary_key_columns = [str(row[1]) for row in table_info if int(row[5]) > 0]
+    if primary_key_columns == ["domain"]:
+        return True
+
+    for index in conn.execute('PRAGMA index_list("schema_versions")').fetchall():
+        if not bool(index[2]) or (len(index) > 4 and bool(index[4])):
+            continue
+        name = str(index[1]).replace('"', '""')
+        columns = conn.execute(f'PRAGMA index_info("{name}")').fetchall()
+        if len(columns) == 1 and columns[0][2] == "domain" and int(columns[0][1]) >= 0:
+            return True
+    return False
+
+
 def validate_table_columns(
     conn: sqlite3.Connection,
     *,
@@ -100,6 +117,10 @@ def validate_versioned_schema(
                 marker = row[0]
             except (TypeError, ValueError, IndexError) as exc:
                 raise error_type(f"Persistence version for {domain!r} is malformed.") from exc
+        if not _has_singleton_domain_key(conn):
+            raise error_type(
+                "Persistence version table must enforce a unique domain key."
+            )
 
     if marker is None and not present:
         return

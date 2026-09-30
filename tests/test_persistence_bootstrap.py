@@ -116,7 +116,7 @@ class PersistenceBootstrapTests(unittest.TestCase):
 
     def test_partial_current_run_schema_is_rejected_without_repair(self) -> None:
         with closing(sqlite3.connect(self.path)) as conn, conn:
-            conn.execute("CREATE TABLE schema_versions(domain TEXT, version INTEGER)")
+            conn.execute("CREATE TABLE schema_versions(domain TEXT PRIMARY KEY, version INTEGER)")
             conn.execute("INSERT INTO schema_versions VALUES ('cortex_runs', 2)")
             conn.execute("CREATE TABLE cortex_runs(id TEXT PRIMARY KEY)")
 
@@ -128,6 +128,23 @@ class PersistenceBootstrapTests(unittest.TestCase):
             columns = {row[1] for row in conn.execute("PRAGMA table_info(cortex_runs)")}
             self.assertEqual(columns, {"id"})
             self.assertEqual(conn.execute("SELECT version FROM schema_versions WHERE domain='cortex_runs'").fetchone()[0], 2)
+
+    def test_run_table_view_is_rejected_without_replacement(self) -> None:
+        with closing(sqlite3.connect(self.path)) as conn, conn:
+            conn.execute("CREATE TABLE schema_versions(domain TEXT PRIMARY KEY, version INTEGER)")
+            conn.execute("INSERT INTO schema_versions VALUES ('cortex_runs', 2)")
+            conn.execute("CREATE VIEW cortex_runs AS SELECT 'existing' AS id")
+
+        store = RunStore(self.path)
+        self.addCleanup(store.close)
+        with self.assertRaisesRegex(RuntimeError, "cortex_runs.*invalid schema"):
+            store.initialize()
+        with closing(sqlite3.connect(self.path)) as conn:
+            self.assertEqual(
+                conn.execute("SELECT type FROM sqlite_master WHERE name='cortex_runs'").fetchone()[0],
+                "view",
+            )
+            self.assertEqual(conn.execute("SELECT id FROM cortex_runs").fetchone()[0], "existing")
 
     def test_briefing_speech_late_failure_rolls_back_session_and_speech_ddl(self) -> None:
         store = BriefingSessionStore(self.path)
