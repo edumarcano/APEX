@@ -177,9 +177,11 @@ class CapabilityUnregisterTests(unittest.TestCase):
                 self.assertTrue(lock_attempted.wait(timeout=1.0))
                 self.assertFalse(finished.is_set())
         finally:
-            worker.join(timeout=1.0)
+            try:
+                worker.join(timeout=1.0)
+            finally:
+                capabilities._REGISTRY._lock = registry_lock
             self.assertFalse(worker.is_alive())
-            capabilities._REGISTRY._lock = registry_lock
 
         self.assertTrue(finished.is_set())
 
