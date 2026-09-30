@@ -6,8 +6,8 @@ on:
   pull_request:
 
 jobs:
-  validate:
-    name: Windows validation
+  backend:
+    name: Windows backend validation
     runs-on: windows-latest
     defaults:
       run:
@@ -25,13 +25,6 @@ jobs:
           python-version: "3.14"
           enable-cache: true
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
       - name: Sync Python dependencies
         run: uv sync --locked
 
@@ -48,22 +41,6 @@ jobs:
 
       - name: Run tracing tests with optional dependencies
         run: uv run python -m unittest -v tests.test_runs_tracing
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Run frontend tests
-        working-directory: frontend
-        run: npm test
-
-      - name: Lint frontend
-        working-directory: frontend
-        run: npm run lint
-
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build
 
       - name: Check committed whitespace errors
         env:
@@ -86,3 +63,43 @@ jobs:
           "from core.api import app; from launcher import main;
           assert app.title == 'APEX API';
           assert callable(main)"
+
+  frontend:
+    name: Windows frontend validation
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test
+
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Check frontend loading boundaries
+        working-directory: frontend
+        run: npm run check:loading
