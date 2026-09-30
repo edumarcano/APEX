@@ -26,67 +26,6 @@ export const DEFAULT_WEATHER_INFO: ResolvedWeatherInfo = {
   timeline: [],
 }
 
-/**
- * Variable Typography Engine - Telemetry Extractor
- * Parses the integer Fahrenheit token out of the raw atmospheric string.
- * Format: "Current temperature is {temp} degrees with {condition}."
- */
-export function resolvePipelineTemperatureF(
-  weatherReport: string | undefined | null,
-): number | null {
-  if (!weatherReport) return null
-
-  const tempMatch = weatherReport.match(/Current temperature is\s+(-?\d+)\s+degrees/)
-  if (!tempMatch) return null
-
-  const parsedTemp = parseInt(tempMatch[1], 10)
-  return isNaN(parsedTemp) ? null : parsedTemp
-}
-
-/**
- * Variable Typography Engine - Description Extractor
- * Isolates the atmospheric condition clause, stripping structural padding.
- * Format: "Current temperature is {temp} degrees with {condition}."
- */
-export function resolveWeatherDetail(weatherReport: string | undefined | null): string {
-  if (!weatherReport) return 'No Atmospheric Data'
-
-  const conditionMatch = weatherReport.match(/with\s+([^.]+)/)
-  if (!conditionMatch) return weatherReport
-
-  return conditionMatch[1]
-    .trim()
-    .split(' ')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-}
-
-/**
- * Micro-climate archetype resolver for per-condition Weather card icons.
- * Matches condition tokens in the atmospheric detail clause (case-insensitive).
- */
-export function resolveWeatherCondition(detail: string): WeatherConditionArchetype | null {
-  const normalized = detail.trim().toLowerCase()
-  if (!normalized) return null
-
-  if (normalized.includes('thunderstorm')) return 'thunderstorm'
-  if (
-    normalized.includes('rain') ||
-    normalized.includes('drizzle') ||
-    normalized.includes('shower')
-  ) {
-    return 'rain'
-  }
-  if (normalized.includes('cloud') || normalized.includes('overcast')) return 'clouds'
-  if (normalized.includes('clear')) {
-    const hour = new Date().getHours()
-    if (hour < 6 || hour >= 18) return 'clear_night'
-    return 'clear_day'
-  }
-
-  return null
-}
-
 const VALID_ARCHETYPES: readonly WeatherConditionArchetype[] = [
   'clear_day',
   'clear_night',
@@ -95,7 +34,7 @@ const VALID_ARCHETYPES: readonly WeatherConditionArchetype[] = [
   'thunderstorm',
 ]
 
-/** Prefer typed snapshot weather data; fall back to display_text parsers. */
+/** Resolve weather display fields from the typed snapshot payload. */
 export function resolveWeatherFromModule(module: {
   display_text: string
   data: Record<string, unknown>
@@ -168,10 +107,10 @@ export function resolveWeatherFromModule(module: {
         .split(' ')
         .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ')
-    : resolveWeatherDetail(module.display_text)
+    : ''
 
   return {
-    temperatureF: tempFromData ?? resolvePipelineTemperatureF(module.display_text),
+    temperatureF: tempFromData,
     apparentTempF: apparentTempFromData,
     tempMaxF: tempMaxFromData,
     tempMinF: tempMinFromData,
@@ -179,7 +118,7 @@ export function resolveWeatherFromModule(module: {
     windSpeedMph: windFromData,
     precipProbabilityMax: precipProbFromData,
     detail,
-    condition: archetype ?? resolveWeatherCondition(detail),
+    condition: archetype,
     timeline,
   }
 }

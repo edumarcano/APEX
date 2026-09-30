@@ -30,7 +30,7 @@ import { useApexData } from './hooks/useApexData'
 import { useCortex } from './hooks/useCortex'
 import { useActions } from './hooks/useActions'
 import { useActivityReports } from './hooks/useActivityReports'
-import { useAppActivation } from './hooks/useAppActivation'
+import { useTelemetryCollectionState } from './hooks/useTelemetryCollectionState'
 import { useBriefingSpeech } from './hooks/useBriefingSpeech'
 import { useBriefingSessions } from './hooks/useBriefingSessions'
 import { resolveBriefingLayoutPhase, useWorkspaceView, type WorkspaceHudDestination } from './hooks/useWorkspaceView'
@@ -53,6 +53,8 @@ import {
 } from './lib/logoVisualState'
 import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
 import { DEFAULT_WEATHER_INFO, resolveWeatherFromModule } from './lib/weatherTelemetry'
+import { resolveEmailTelemetry } from './lib/emailTelemetry'
+import { resolveNewsTelemetry } from './lib/newsTelemetry'
 import { filterAgentSettingsForDevMode } from './lib/settings'
 import {
   resolveAgentTurnOverrides,
@@ -106,49 +108,6 @@ function hasUsableTelemetry(snapshot: TelemetrySnapshot | null): boolean {
 function marketSettingsChanged(previous: RuntimeSettings, next: RuntimeSettings): boolean {
   return previous.features.market !== next.features.market || previous.market.symbols.length !== next.market.symbols.length || previous.market.symbols.some((symbol, index) => symbol !== next.market.symbols[index])
 }
-
-interface ParsedEmail {
-  subject: string
-  time: string
-}
-
-function parseEmailTelemetry(emailText: string): { count: number; items: ParsedEmail[] } {
-  if (!emailText || emailText.includes('No unread emails') || emailText.includes('bypassed')) {
-    return { count: 0, items: [] }
-  }
-  const countMatch = emailText.match(/Email Telemetry:\s+(\d+)\s+unread/i)
-  const count = countMatch ? parseInt(countMatch[1], 10) : 0
-  const recentIndex = emailText.indexOf('Most recent: ')
-  if (recentIndex < 0) return { count, items: [] }
-  const recentStr = emailText.slice(recentIndex + 'Most recent: '.length)
-  const matches = [...recentStr.matchAll(/'([^']+)'\s+at\s+([^,)]+)/g)]
-  const items = matches.map((m) => ({
-    subject: m[1],
-    time: m[2].trim(),
-  }))
-  return { count, items }
-}
-
-interface ParsedNews {
-  topic: string
-  headline: string
-}
-
-function parseNewsTelemetry(newsText: string): ParsedNews[] {
-  if (!newsText || !newsText.includes('[NEWS TELEMETRY]')) {
-    return []
-  }
-  const cleanText = newsText.replace('[NEWS TELEMETRY]\n', '')
-  const parts = cleanText.split(' | ')
-  return parts.map((part) => {
-    const match = part.match(/^\[([^\]]+)\]\s*(.+)$/)
-    if (match) {
-      return { topic: match[1], headline: match[2] }
-    }
-    return { topic: 'Global', headline: part }
-  })
-}
-
 
 const VALID_VOICE_MODES: readonly VoiceMode[] = ['off', 'manual', 'automatic']
 
@@ -214,11 +173,11 @@ export default function App(): ReactElement {
   const [overviewError, setOverviewError] = useState<string | null>(null)
   const [briefingTelemetryCollectionState, setBriefingTelemetryCollectionState] = useState<'idle' | 'collecting' | 'error' | 'no-data'>('idle')
   const [briefingTelemetryCollectionError, setBriefingTelemetryCollectionError] = useState<string | null>(null)
-  const [dailyConversationReady, setDailyConversationReady] = useState<string | null>(null)
+  const [briefingConversationReady, setBriefingConversationReady] = useState<string | null>(null)
   const [briefingSetupAutoOpen, setBriefingSetupAutoOpen] = useState(false)
-  const completedDailyHistoryRef = useRef(new Set<string>())
-  const dailyOpenSequenceRef = useRef(0)
-  const dailyOpeningSessionsRef = useRef(new Map<string, number>())
+  const completedBriefingHistoryRef = useRef(new Set<string>())
+  const briefingOpenSequenceRef = useRef(0)
+  const briefingOpeningSessionsRef = useRef(new Map<string, number>())
   const briefingOperationRef = useRef(false)
   const [lastAssistantWorkspace, setLastAssistantWorkspace] = useState<Exclude<WorkspacePeer, 'reports'>>('overview')
   const [hudDestination, setHudDestination] = useState<WorkspaceHudDestination>('overview')
@@ -303,7 +262,7 @@ export default function App(): ReactElement {
   const actions = useActions(
     workspace === 'cortex' && !demoModeActive,
   )
-  const { activated, activate } = useAppActivation()
+  const { collectionStarted, startCollection } = useTelemetryCollectionState()
   const workspaceView = useWorkspaceView({ destination: hudDestination })
   const selectHudPeer = navigateWorkspace
   const briefingWorkspaceOpen = workspace === 'briefing' && workspaceView.view === 'briefing'
@@ -319,12 +278,12 @@ export default function App(): ReactElement {
     ? telemetry.snapshot.modules.market.data.collection_revision
     : null
   const { data: marketData, isLoading: isMarketDisplayLoading } = useMarketData(
-    marketEnabled && activated,
+    marketEnabled && collectionStarted,
     marketRevision,
     marketSymbols,
   )
-  const dailySessions = useBriefingSessions()
-  const refreshBriefingSessions = dailySessions.refreshSessions
+  const briefingSessions = useBriefingSessions()
+  const refreshBriefingSessions = briefingSessions.refreshSessions
   const previousBriefingWorkspaceOpenRef = useRef(false)
   useEffect(() => {
     if (briefingWorkspaceOpen && !previousBriefingWorkspaceOpenRef.current) {
@@ -332,8 +291,8 @@ export default function App(): ReactElement {
     }
     previousBriefingWorkspaceOpenRef.current = briefingWorkspaceOpen
   }, [briefingWorkspaceOpen, refreshBriefingSessions])
-  const currentSelectedSession = dailySessions.activeSession
-  const selectedCompletedBriefing = currentSelectedSession && currentSelectedSession.id === dailySessions.selectedSessionId &&
+  const currentSelectedSession = briefingSessions.activeSession
+  const selectedCompletedBriefing = currentSelectedSession && currentSelectedSession.id === briefingSessions.selectedSessionId &&
     currentSelectedSession.run_status === 'completed' && currentSelectedSession.artifact
     ? currentSelectedSession
     : null
@@ -343,12 +302,12 @@ export default function App(): ReactElement {
   }, [voiceMode])
   const briefingSpeech = useBriefingSpeech(selectedCompletedBriefing?.id ?? null, voiceMode, announceHighlightsOutcome)
   const {
-    openSession: openDailySession,
+    openSession: openBriefingSession,
     generate: generateBriefing,
-    cancelSession: cancelDailySession,
-    hasActiveSession: hasActiveDailySession,
+    cancelSession: cancelBriefingSession,
+    hasActiveSession: hasActiveBriefingSession,
     refreshLatestSession: refreshLatestBriefingSession,
-  } = dailySessions
+  } = briefingSessions
   const {
     cortexAgent,
     modelCatalog: fullModelCatalog,
@@ -589,16 +548,16 @@ export default function App(): ReactElement {
         setMarketSymbols(response.settings.market.symbols)
       }
       handleSettingsApplied(response)
-      if (activated && shouldRefreshMarket) {
+      if (collectionStarted && shouldRefreshMarket) {
         await telemetry.refreshConnector('market', { force: true })
       }
-      if (activated && shouldRefreshCalendar) {
+      if (collectionStarted && shouldRefreshCalendar) {
         await telemetry.refreshConnector('calendar', { force: true })
       }
       await refreshAgentsStatus()
       await toolCatalogState.refreshCatalog()
     },
-    [activated, handleSettingsApplied, refreshAgentsStatus, telemetry, toolCatalogState],
+    [collectionStarted, handleSettingsApplied, refreshAgentsStatus, telemetry, toolCatalogState],
   )
 
   const saveBriefingModelSettings = useCallback(async (
@@ -745,19 +704,19 @@ export default function App(): ReactElement {
   const selectedBriefingVisual = resolveBriefingVisualState(currentSelectedSession)
   const activeBriefingActivity = useMemo(
     () => resolveActiveBriefingActivity({
-      sessions: dailySessions.sessions,
-      selectedSessionId: dailySessions.selectedSessionId,
+      sessions: briefingSessions.sessions,
+      selectedSessionId: briefingSessions.selectedSessionId,
       selectedSession: currentSelectedSession,
       modelCatalog: fullModelCatalog,
     }),
-    [currentSelectedSession, dailySessions.selectedSessionId, dailySessions.sessions, fullModelCatalog],
+    [currentSelectedSession, briefingSessions.selectedSessionId, briefingSessions.sessions, fullModelCatalog],
   )
   const activeBriefingDetail = activeBriefingActivity.session &&
-    dailySessions.selectedSessionId === activeBriefingActivity.session.id &&
+    briefingSessions.selectedSessionId === activeBriefingActivity.session.id &&
     currentSelectedSession?.id === activeBriefingActivity.session.id
     ? currentSelectedSession
-    : dailySessions.activeRunDetail?.id === activeBriefingActivity.session?.id
-      ? dailySessions.activeRunDetail
+    : briefingSessions.activeRunDetail?.id === activeBriefingActivity.session?.id
+      ? briefingSessions.activeRunDetail
       : null
   const activeBriefingVisual = resolveBriefingVisualState(activeBriefingDetail)
   const briefingStatus = activeBriefingActivity.isRunning ? 'loading' : selectedBriefingVisual.status
@@ -776,7 +735,7 @@ export default function App(): ReactElement {
   const localLifecycleBusy =
     (activeQueryAgent === 'apex' && sharedAgentModelEntry?.runtime === 'local') ||
     activeBriefingActivity.isLocalModelRunning ||
-    (dailySessions.isGenerating && sharedAgentModelEntry?.runtime === 'local')
+    (briefingSessions.isGenerating && sharedAgentModelEntry?.runtime === 'local')
 
   const isBriefingRunning = briefingStatus === 'loading'
   const isRefreshingAll = telemetry.isRefreshingAll
@@ -787,7 +746,7 @@ export default function App(): ReactElement {
   const isMarketLoading =
     isMarketDisplayLoading || (
       marketEnabled &&
-      activated &&
+      collectionStarted &&
       isMarketTelemetryRefreshing
     )
 
@@ -856,7 +815,7 @@ export default function App(): ReactElement {
     }
   }, [])
 
-  const handleStartApex = useCallback(async (onActivated?: () => void, onOutcome?: (outcome: RefreshAllOutcome) => void): Promise<boolean> => {
+  const handleCollectTelemetry = useCallback(async (onCollectionStarted?: () => void, onOutcome?: (outcome: RefreshAllOutcome) => void): Promise<boolean> => {
     const resolution = await preflight.requestOperation('activate')
     if (resolution !== 'proceed') {
       return false
@@ -864,8 +823,8 @@ export default function App(): ReactElement {
 
     setOverviewError(null)
     setOverviewState('collecting')
-    activate()
-    onActivated?.()
+    startCollection()
+    onCollectionStarted?.()
     // The reuse check must finish first; a live refresh would make the snapshot look reusable.
     const announceCollection = voiceMode === 'automatic' && await willCollectFreshTelemetry()
     const refreshPromise = telemetry.refreshAllWithOutcome({ force: false })
@@ -901,32 +860,32 @@ export default function App(): ReactElement {
       }
     }
     return true
-  }, [preflight, activate, telemetry, voiceMode])
+  }, [preflight, startCollection, telemetry, voiceMode])
 
-  const openDailyConversation = useCallback(async (conversationId: string, completedSessionId?: string, expectedSequence?: number): Promise<boolean> => {
-    const sequence = expectedSequence ?? ++dailyOpenSequenceRef.current
+  const openBriefingConversation = useCallback(async (conversationId: string, completedSessionId?: string, expectedSequence?: number): Promise<boolean> => {
+    const sequence = expectedSequence ?? ++briefingOpenSequenceRef.current
     const opened = await assistantRuntimeRef.current?.openConversation(conversationId) ?? false
-    if (sequence !== dailyOpenSequenceRef.current) return false
-    setDailyConversationReady(opened ? conversationId : null)
-    if (opened && completedSessionId) completedDailyHistoryRef.current.add(completedSessionId)
+    if (sequence !== briefingOpenSequenceRef.current) return false
+    setBriefingConversationReady(opened ? conversationId : null)
+    if (opened && completedSessionId) completedBriefingHistoryRef.current.add(completedSessionId)
     return opened
   }, [])
 
-  const handleOpenDailySession = useCallback(async (sessionId: string): Promise<void> => {
-    const sequence = ++dailyOpenSequenceRef.current
-    dailyOpeningSessionsRef.current.set(sessionId, sequence)
+  const handleOpenBriefingSession = useCallback(async (sessionId: string): Promise<void> => {
+    const sequence = ++briefingOpenSequenceRef.current
+    briefingOpeningSessionsRef.current.set(sessionId, sequence)
     selectHudPeer('briefing')
-    setDailyConversationReady(null)
+    setBriefingConversationReady(null)
     try {
-      const session = await openDailySession(sessionId)
-      if (sequence !== dailyOpenSequenceRef.current) return
-      await openDailyConversation(session.conversation_id, session.run_status === 'completed' ? session.id : undefined, sequence)
+      const session = await openBriefingSession(sessionId)
+      if (sequence !== briefingOpenSequenceRef.current) return
+      await openBriefingConversation(session.conversation_id, session.run_status === 'completed' ? session.id : undefined, sequence)
     } catch {
-      if (sequence === dailyOpenSequenceRef.current) setDailyConversationReady(null)
+      if (sequence === briefingOpenSequenceRef.current) setBriefingConversationReady(null)
     } finally {
-      if (dailyOpeningSessionsRef.current.get(sessionId) === sequence) dailyOpeningSessionsRef.current.delete(sessionId)
+      if (briefingOpeningSessionsRef.current.get(sessionId) === sequence) briefingOpeningSessionsRef.current.delete(sessionId)
     }
-  }, [openDailySession, openDailyConversation, selectHudPeer])
+  }, [openBriefingSession, openBriefingConversation, selectHudPeer])
 
   const briefingCueSessionsRef = useRef(new Set<string>())
   const autoSpeechSessionsRef = useRef(new Set<string>())
@@ -934,19 +893,19 @@ export default function App(): ReactElement {
     if (status === 'completed') void requestVoiceCue('briefing_ready')
     else if (status === 'failed' || status === 'interrupted') void requestVoiceCue('briefing_failed')
   }, [])
-  const dailySessionList = dailySessions.sessions
+  const briefingSessionList = briefingSessions.sessions
   useEffect(() => {
     // Only sessions started in this page session are announced, once, when they leave an active status.
     if (voiceMode !== 'automatic') {
       briefingCueSessionsRef.current.clear()
       return
     }
-    for (const session of dailySessionList) {
+    for (const session of briefingSessionList) {
       if (!briefingCueSessionsRef.current.has(session.id) || BRIEFING_ACTIVE_STATUSES.has(session.run_status)) continue
       briefingCueSessionsRef.current.delete(session.id)
       announceBriefingOutcome(session.run_status)
     }
-  }, [announceBriefingOutcome, dailySessionList, voiceMode])
+  }, [announceBriefingOutcome, briefingSessionList, voiceMode])
 
   useEffect(() => {
     if (voiceMode === 'off') {
@@ -969,14 +928,14 @@ export default function App(): ReactElement {
   }, [autoGenerateHighlights, briefingSpeech, selectedCompletedBriefing, voiceMode])
 
   const performBriefingGeneration = useCallback(async (draft: BriefingSetupDraft): Promise<void> => {
-    if (hasActiveDailySession) throw new Error('A briefing is already running.')
+    if (hasActiveBriefingSession) throw new Error('A briefing is already running.')
     if (!agentQueriesEnabled && !demoModeActive) throw new Error(`Briefings are disabled in ${agentDisplayName} settings.`)
-    const sequence = ++dailyOpenSequenceRef.current
+    const sequence = ++briefingOpenSequenceRef.current
     const model = fullModelCatalog.find((entry) => entry.model_id === draft.modelId)
     if (!demoModeActive && (!model || model.credentials_configured === false || model.status === 'disabled' || !['available', 'configured', 'verified', 'unknown', undefined].includes(model.status))) {
       throw new Error(`The selected ${agentDisplayName} model is not currently available.`)
     }
-    const selectedProfile = dailySessions.profiles.find((entry) => entry.id === draft.profileId)
+    const selectedProfile = briefingSessions.profiles.find((entry) => entry.id === draft.profileId)
     if (selectedProfile && !selectedProfile.available) {
       throw new Error(selectedProfile.unavailable_reason ?? `${selectedProfile.label} is unavailable.`)
     }
@@ -987,7 +946,7 @@ export default function App(): ReactElement {
       model_id: requestModelId,
       involves_cloud: !demoModeActive && model?.runtime === 'cloud',
     })
-    if (resolution !== 'proceed' || sequence !== dailyOpenSequenceRef.current) {
+    if (resolution !== 'proceed' || sequence !== briefingOpenSequenceRef.current) {
       throw new Error(resolution === 'blocked'
         ? 'Preflight blocked this briefing. Review the blocker, then try again.'
         : 'Briefing setup was kept open because preflight was cancelled.')
@@ -1002,7 +961,7 @@ export default function App(): ReactElement {
     }
 
     selectHudPeer('briefing')
-    setDailyConversationReady(null)
+    setBriefingConversationReady(null)
     const summary = await generateBriefing(draft.profileId, generationOptions)
     if (autoGenerateHighlights && voiceMode !== 'off') {
       autoSpeechSessionsRef.current.add(summary.id)
@@ -1016,24 +975,24 @@ export default function App(): ReactElement {
       }
     }
     workspaceView.setProfileId(draft.profileId)
-    dailyOpeningSessionsRef.current.set(summary.id, sequence)
-    void openDailyConversation(summary.conversation_id, summary.run_status === 'completed' ? summary.id : undefined, sequence)
+    briefingOpeningSessionsRef.current.set(summary.id, sequence)
+    void openBriefingConversation(summary.conversation_id, summary.run_status === 'completed' ? summary.id : undefined, sequence)
       .catch(() => false)
       .finally(() => {
-        if (dailyOpeningSessionsRef.current.get(summary.id) === sequence) dailyOpeningSessionsRef.current.delete(summary.id)
+        if (briefingOpeningSessionsRef.current.get(summary.id) === sequence) briefingOpeningSessionsRef.current.delete(summary.id)
       })
   }, [
     agentDisplayName,
     agentQueriesEnabled,
     autoGenerateHighlights,
-    dailySessions.profiles,
+    briefingSessions.profiles,
     demoModeActive,
     fullModelCatalog,
     generateBriefing,
     announceBriefingOutcome,
-    hasActiveDailySession,
+    hasActiveBriefingSession,
     workspaceView,
-    openDailyConversation,
+    openBriefingConversation,
     preflight,
     saveBriefingModelSettings,
     selectHudPeer,
@@ -1051,7 +1010,7 @@ export default function App(): ReactElement {
   }, [performBriefingGeneration])
 
   const repeatLastBriefing = useCallback(async (): Promise<void> => {
-    if (hasActiveDailySession) throw new Error('A briefing is already running.')
+    if (hasActiveBriefingSession) throw new Error('A briefing is already running.')
     const latest = await refreshLatestBriefingSession()
     if (!latest) throw new Error('No saved briefing history is available to repeat.')
     const profileId = latest.configuration.profile.id
@@ -1087,17 +1046,17 @@ export default function App(): ReactElement {
       throw new Error('The saved local reasoning mode is no longer supported by this model.')
     }
     await startBriefing({ profileId, modelId: model.model_id, cloudEffort: null, localReasoningMode: savedModel.local_reasoning_mode as LocalReasoningMode })
-  }, [agentDisplayName, agentQueriesEnabled, demoModeActive, fullModelCatalog, hasActiveDailySession, refreshLatestBriefingSession, startBriefing])
+  }, [agentDisplayName, agentQueriesEnabled, demoModeActive, fullModelCatalog, hasActiveBriefingSession, refreshLatestBriefingSession, startBriefing])
 
-  const handleCollectTelemetry = useCallback((): void => {
+  const handleCollectOverviewTelemetry = useCallback((): void => {
     setIsLaunch(false)
     selectHudPeer('overview')
-    void handleStartApex()
-  }, [handleStartApex, selectHudPeer])
+    void handleCollectTelemetry()
+  }, [handleCollectTelemetry, selectHudPeer])
 
   const handleCollectBriefingTelemetry = useCallback((): void => {
     setBriefingTelemetryCollectionError(null)
-    void handleStartApex(
+    void handleCollectTelemetry(
       () => setBriefingTelemetryCollectionState('collecting'),
       (outcome) => {
         if (outcome.kind === 'success') {
@@ -1114,14 +1073,14 @@ export default function App(): ReactElement {
     ).then((started) => {
       if (!started) setBriefingTelemetryCollectionState('idle')
     })
-  }, [handleStartApex])
+  }, [handleCollectTelemetry])
 
   const handleSelectWorkspace = useCallback((peer: WorkspacePeer): void => {
     navigateWorkspace(peer)
   }, [navigateWorkspace])
 
-  const dailyControlsBusy = preflight.isChecking || preflight.dialogOpen || dailySessions.isGenerating
-  const canGenerateDaily = Boolean(agentQueriesEnabled || demoModeActive)
+  const briefingControlsBusy = preflight.isChecking || preflight.dialogOpen || briefingSessions.isGenerating
+  const canGenerateBriefing = Boolean(agentQueriesEnabled || demoModeActive)
   const isConnectorRefreshing = useCallback(
     (name: string): boolean => isRefreshingAll || telemetry.refreshingConnectors.has(name),
     [isRefreshingAll, telemetry.refreshingConnectors],
@@ -1153,7 +1112,7 @@ export default function App(): ReactElement {
 
   const attentionTiers = useMemo(() => {
     const options = {
-      activated,
+      collectionStarted,
       isRefreshing: isRefreshingAll,
       hasSnapshot,
       briefingStatus,
@@ -1168,7 +1127,7 @@ export default function App(): ReactElement {
       email: resolveTelemetryAttentionTier('email', options),
       insights: resolveTelemetryAttentionTier('insights', options),
     }
-  }, [activated, isRefreshingAll, hasSnapshot, briefingStatus, activeStep])
+  }, [collectionStarted, isRefreshingAll, hasSnapshot, briefingStatus, activeStep])
 
   const attentionStagger = useMemo(
     () => ({
@@ -1249,20 +1208,20 @@ export default function App(): ReactElement {
   }, [createReminder])
 
   useEffect(() => {
-    const session = dailySessions.activeSession
-    if (!briefingWorkspaceOpen || !session || dailySessions.selectedSessionId !== session.id || session.run_status !== 'completed' || !session.artifact) return
-    if (completedDailyHistoryRef.current.has(session.id) && assistantConversationId === session.conversation_id) return
-    if (dailyOpeningSessionsRef.current.has(session.id)) return
-    const sequence = ++dailyOpenSequenceRef.current
-    dailyOpeningSessionsRef.current.set(session.id, sequence)
-    void openDailyConversation(session.conversation_id, session.id, sequence).finally(() => {
-      if (dailyOpeningSessionsRef.current.get(session.id) === sequence) dailyOpeningSessionsRef.current.delete(session.id)
+    const session = briefingSessions.activeSession
+    if (!briefingWorkspaceOpen || !session || briefingSessions.selectedSessionId !== session.id || session.run_status !== 'completed' || !session.artifact) return
+    if (completedBriefingHistoryRef.current.has(session.id) && assistantConversationId === session.conversation_id) return
+    if (briefingOpeningSessionsRef.current.has(session.id)) return
+    const sequence = ++briefingOpenSequenceRef.current
+    briefingOpeningSessionsRef.current.set(session.id, sequence)
+    void openBriefingConversation(session.conversation_id, session.id, sequence).finally(() => {
+      if (briefingOpeningSessionsRef.current.get(session.id) === sequence) briefingOpeningSessionsRef.current.delete(session.id)
     })
-  }, [assistantConversationId, briefingWorkspaceOpen, dailySessions.activeSession, dailySessions.selectedSessionId, openDailyConversation])
+  }, [assistantConversationId, briefingWorkspaceOpen, briefingSessions.activeSession, briefingSessions.selectedSessionId, openBriefingConversation])
 
-  const handleCancelDailySession = useCallback((sessionId: string): void => {
-    void cancelDailySession(sessionId).catch(() => undefined)
-  }, [cancelDailySession])
+  const handleCancelBriefingSession = useCallback((sessionId: string): void => {
+    void cancelBriefingSession(sessionId).catch(() => undefined)
+  }, [cancelBriefingSession])
 
   const logoStatus = briefingStatus !== 'idle'
     ? briefingStatus
@@ -1286,8 +1245,8 @@ export default function App(): ReactElement {
   }
 
   const f1ScheduleTelemetryText = f1Module?.display_text?.trim() ?? ''
-  const emailInfo = parseEmailTelemetry(emailModule?.display_text ?? '')
-  const newsItems = parseNewsTelemetry(newsModule?.display_text ?? '')
+  const emailInfo = resolveEmailTelemetry(emailModule)
+  const newsInfo = resolveNewsTelemetry(newsModule)
   const calendarInfo = resolveCalendarTelemetry(calendarModule)
   const footballInfo = resolveFootballTelemetry(footballModule)
 
@@ -1297,8 +1256,8 @@ export default function App(): ReactElement {
         footballInfo.fixtures.length > 0 ? `${footballInfo.fixtures.length} football` : null,
       ].filter((value): value is string => value !== null).join(' · ') || 'No events'
     : null
-  const emailCompactValue = hasSnapshot ? `${emailInfo.count} unread` : null
-  const newsCompactValue = hasSnapshot ? `${newsItems.length} headlines` : null
+  const emailCompactValue = emailInfo.state === 'available' && emailInfo.count !== null ? `${emailInfo.count} unread` : null
+  const newsCompactValue = newsInfo.state === 'available' ? `${newsInfo.items.length} headlines` : null
   const remindersCompactValue = `${pendingReminderCount} pending`
   const runAssistantPreflight = useCallback(async (config: ApexAssistantRunConfig): Promise<boolean> => {
     if (submissionPendingRef.current) return false
@@ -1620,16 +1579,16 @@ export default function App(): ReactElement {
   }, [actions])
 
   const briefingPhase = resolveBriefingLayoutPhase({
-    session: dailySessions.activeSession,
-    selectedSession: dailySessions.sessions.find((session) => session.id === dailySessions.selectedSessionId) ?? null,
-    isGenerating: dailySessions.isGenerating,
+    session: briefingSessions.activeSession,
+    selectedSession: briefingSessions.sessions.find((session) => session.id === briefingSessions.selectedSessionId) ?? null,
+    isGenerating: briefingSessions.isGenerating,
   })
   const briefingEvidence = useMemo(() => ({
-    evidenceById: dailySessions.evidenceById,
-    loadingIds: dailySessions.evidenceLoadingIds,
-    errors: dailySessions.evidenceErrors,
-    onLoadEvidence: dailySessions.loadEvidence,
-  }), [dailySessions.evidenceById, dailySessions.evidenceErrors, dailySessions.evidenceLoadingIds, dailySessions.loadEvidence])
+    evidenceById: briefingSessions.evidenceById,
+    loadingIds: briefingSessions.evidenceLoadingIds,
+    errors: briefingSessions.evidenceErrors,
+    onLoadEvidence: briefingSessions.loadEvidence,
+  }), [briefingSessions.evidenceById, briefingSessions.evidenceErrors, briefingSessions.evidenceLoadingIds, briefingSessions.loadEvidence])
   const hudIdentity: HudIdentityProps = {
     logoProps: cortexLogoProps,
     glyphProps: {
@@ -1673,6 +1632,7 @@ export default function App(): ReactElement {
     },
     market: { data: marketData, isLoading: isMarketLoading, enabled: marketEnabled },
     email: {
+      state: emailInfo.state,
       ledState: emailLedState,
       statusMessage: emailStatusMessage,
       compactValue: emailCompactValue,
@@ -1681,10 +1641,11 @@ export default function App(): ReactElement {
       refreshing: emailRefreshing,
     },
     news: {
+      state: newsInfo.state,
       ledState: newsLedState,
       statusMessage: newsStatusMessage,
       compactValue: newsCompactValue,
-      items: newsItems,
+      items: newsInfo.items,
       refreshing: newsRefreshing,
     },
     reminders: {
@@ -1789,7 +1750,7 @@ export default function App(): ReactElement {
             identity={hudIdentity}
             telemetry={hudTelemetry}
             overviewActions={{
-              onCollectTelemetry: handleCollectTelemetry,
+              onCollectTelemetry: handleCollectOverviewTelemetry,
               disabled: preflight.isChecking,
             }}
             overviewState={overviewState}
@@ -1797,32 +1758,32 @@ export default function App(): ReactElement {
             onRefreshAll={handleRefreshAll}
             briefingControls={{
               agentDisplayName,
-              profiles: dailySessions.profiles,
+              profiles: briefingSessions.profiles,
               profileId: workspaceView.profileId,
               onProfileChange: workspaceView.setProfileId,
               selectedModelId: selectedModel,
               cloudEffort,
               localReasoningMode,
               modelCatalog: fullModelCatalog,
-              canGenerate: canGenerateDaily,
-              busy: dailyControlsBusy,
-              hasActiveSession: dailySessions.hasActiveSession,
-              isGenerating: dailySessions.isGenerating,
+              canGenerate: canGenerateBriefing,
+              busy: briefingControlsBusy,
+              hasActiveSession: briefingSessions.hasActiveSession,
+              isGenerating: briefingSessions.isGenerating,
               onGenerate: startBriefing,
               onRepeat: repeatLastBriefing,
               autoOpenSetup: briefingSetupAutoOpen,
               onAutoOpenSetupConsumed: () => setBriefingSetupAutoOpen(false),
               demoModeActive,
-              onCancel: handleCancelDailySession,
-              sessions: dailySessions.sessions,
-              selectedSessionId: dailySessions.selectedSessionId,
-              isLoadingSessions: dailySessions.isLoadingSessions,
-              onOpenSession: (sessionId) => void handleOpenDailySession(sessionId),
-              activeSession: dailySessions.activeSession,
-              latestSession: dailySessions.latestSession,
-              latestError: dailySessions.latestError,
-              isLoadingLatestSession: dailySessions.isLoadingLatestSession,
-              error: dailySessions.error,
+              onCancel: handleCancelBriefingSession,
+              sessions: briefingSessions.sessions,
+              selectedSessionId: briefingSessions.selectedSessionId,
+              isLoadingSessions: briefingSessions.isLoadingSessions,
+              onOpenSession: (sessionId) => void handleOpenBriefingSession(sessionId),
+              activeSession: briefingSessions.activeSession,
+              latestSession: briefingSessions.latestSession,
+              latestError: briefingSessions.latestError,
+              isLoadingLatestSession: briefingSessions.isLoadingLatestSession,
+              error: briefingSessions.error,
               activeLocalModel,
               loadingLocalModel,
               localLifecycleBusy,
@@ -1839,14 +1800,14 @@ export default function App(): ReactElement {
               configuredTtsEngine: voiceEngine,
             }}
             briefingConversation={{
-              ready: dailyConversationReady === dailySessions.activeSession?.conversation_id && assistantConversationId === dailySessions.activeSession?.conversation_id,
+              ready: briefingConversationReady === briefingSessions.activeSession?.conversation_id && assistantConversationId === briefingSessions.activeSession?.conversation_id,
               canFollowUp: Boolean(agentQueriesEnabled) && !demoModeActive,
-              session: dailySessions.activeSession,
-              previewSections: dailySessions.preview?.sessionId === dailySessions.activeSession?.id ? dailySessions.preview?.sections : undefined,
-              isLoadingSession: dailySessions.isLoadingSession,
+              session: briefingSessions.activeSession,
+              previewSections: briefingSessions.preview?.sessionId === briefingSessions.activeSession?.id ? briefingSessions.preview?.sections : undefined,
+              isLoadingSession: briefingSessions.isLoadingSession,
               evidence: briefingEvidence,
-              onMarkPresented: dailySessions.markPresented,
-              onOpenConversation: (conversationId) => void openDailyConversation(conversationId),
+              onMarkPresented: briefingSessions.markPresented,
+              onOpenConversation: (conversationId) => void openBriefingConversation(conversationId),
               agentDisplayName,
               speech: briefingSpeech.speech,
               composer: {

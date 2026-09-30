@@ -30,8 +30,8 @@ function telemetry(overrides: Partial<HudTelemetryData> = {}): HudTelemetryData 
       footballRefreshing: false,
     },
     market: { data: null, isLoading: false, enabled: true },
-    email: { ledState: 'live', statusMessage: null, compactValue: null, count: 0, items: [], refreshing: false },
-    news: { ledState: 'live', statusMessage: null, compactValue: null, items: [], refreshing: false },
+    email: { state: 'available', ledState: 'live', statusMessage: null, compactValue: null, count: 0, items: [], refreshing: false },
+    news: { state: 'available', ledState: 'live', statusMessage: null, compactValue: null, items: [], refreshing: false },
     reminders: {
       loadState: 'loaded',
       ledState: 'live',

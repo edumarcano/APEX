@@ -4,6 +4,7 @@ import type { ComponentProps, ReactElement } from 'react'
 import type { AttentionTier } from '../../lib/attentionTier'
 import type { resolveModuleLedState } from '../../lib/moduleTelemetry'
 import type { ResolvedWeatherInfo } from '../../lib/weatherTelemetry'
+import type { TelemetryContentState } from '../../lib/emailTelemetry'
 import type { ActiveReminder } from '../../types/telemetry'
 import { CalendarEventList } from '../CalendarEventList'
 import { FootballFixtureList } from '../FootballFixtureList'
@@ -52,11 +53,13 @@ export type HudTelemetryData = {
     ledState: LedState
     statusMessage: string | null
     compactValue: string | null
-    count: number
+    state: TelemetryContentState
+    count: number | null
     items: Array<{ subject: string; time: string }>
     refreshing: boolean
   }
   news: {
+    state: TelemetryContentState
     ledState: LedState
     statusMessage: string | null
     compactValue: string | null
@@ -195,11 +198,15 @@ export function EmailTelemetry({ data, variant, className }: DomainProps): React
     className={layoutClass(variant, className)}
     chrome={variant === 'section' ? 'section' : 'card'}
   >
-    {email.refreshing && !data.hasSnapshot ? (
+    {email.refreshing && email.state === 'unavailable' ? (
       <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">Loading email…</p>
+    ) : email.state === 'unavailable' ? (
+      <p className="text-sm text-[color:var(--hud-muted-text)]">Email unavailable.</p>
+    ) : email.state === 'disabled' ? (
+      <p className="text-sm text-[color:var(--hud-muted-text)]">Email disabled.</p>
     ) : (
       <>
-        {email.count > 0 && (
+        {email.count !== null && email.count > 0 && (
           <p className="mb-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--hud-accent)]">{email.count} Primary Messages</p>
         )}
         {email.items.length > 0 ? (
@@ -214,10 +221,10 @@ export function EmailTelemetry({ data, variant, className }: DomainProps): React
               </li>
             ))}
           </ScrollFadeContainer>
-        ) : data.hasSnapshot ? (
+        ) : email.count === 0 ? (
           <p className="text-sm text-[color:var(--hud-muted-text)]">No unread emails.</p>
         ) : (
-          <p className="text-sm text-[color:var(--hud-muted-text)]">Email unavailable.</p>
+          <p className="text-sm text-[color:var(--hud-muted-text)]">Message previews unavailable.</p>
         )}
       </>
     )}
@@ -239,8 +246,12 @@ export function NewsTelemetry({ data, variant, className }: DomainProps): ReactE
     className={layoutClass(variant, className)}
     chrome={variant === 'section' ? 'section' : 'card'}
   >
-    {news.refreshing && !data.hasSnapshot ? (
+    {news.refreshing && news.state === 'unavailable' ? (
       <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">Loading news…</p>
+    ) : news.state === 'unavailable' ? (
+      <p className="text-sm text-[color:var(--hud-muted-text)]">News unavailable.</p>
+    ) : news.state === 'disabled' ? (
+      <p className="text-sm text-[color:var(--hud-muted-text)]">News disabled.</p>
     ) : news.items.length > 0 ? (
       <ScrollFadeContainer as="ul" className="min-h-0 overflow-y-auto pr-1 scrollbar-thin">
         {news.items.map((item, index) => (
@@ -253,10 +264,8 @@ export function NewsTelemetry({ data, variant, className }: DomainProps): ReactE
           </li>
         ))}
       </ScrollFadeContainer>
-    ) : data.hasSnapshot ? (
-      <p className="text-sm text-[color:var(--hud-muted-text)]">No news headlines available.</p>
     ) : (
-      <p className="text-sm text-[color:var(--hud-muted-text)]">News unavailable.</p>
+      <p className="text-sm text-[color:var(--hud-muted-text)]">No news headlines available.</p>
     )}
   </TelemetryCard>
 }
