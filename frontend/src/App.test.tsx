@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
+import './components/SettingsPanel'
 import type { ApexLogoProps } from './components/ApexLogo'
 import type { AgentKey, ModelCatalogEntry, TelemetrySnapshot, ToolCatalog } from './types/telemetry'
 import type { RuntimeSettings, SettingsResponse } from './types/settings'
@@ -130,12 +131,12 @@ vi.mock('./components/VoiceSignalGlyph', async (importOriginal) => {
 vi.mock('./components/SettingsPanel', () => ({
   default: ({ onApplied }: { onApplied: unknown }) => {
     appMocks.settingsPanelApplied = onApplied
-    return null
+    return <output data-testid="settings-panel-loaded" />
   },
 }))
 vi.mock('./components/SystemDiagnostics', () => ({
-  SystemDiagnostics: ({ workspaceNavigation, onReturnToLaunch, onRefreshConnectors }: { workspaceNavigation?: ReactNode; onReturnToLaunch?: () => void; onRefreshConnectors?: () => void }) => (
-    <>{workspaceNavigation}<button type="button" onClick={onReturnToLaunch}>APEX Launch</button><button type="button" onClick={onRefreshConnectors}>Refresh checks</button></>
+  SystemDiagnostics: ({ workspaceNavigation, onReturnToLaunch, onRefreshConnectors, onOpenSettings }: { workspaceNavigation?: ReactNode; onReturnToLaunch?: () => void; onRefreshConnectors?: () => void; onOpenSettings?: () => void }) => (
+    <>{workspaceNavigation}<button type="button" onClick={onReturnToLaunch}>APEX Launch</button><button type="button" onClick={onRefreshConnectors}>Refresh checks</button><button type="button" aria-label="Open settings" onClick={onOpenSettings}>Settings</button></>
   ),
 }))
 vi.mock('./components/CortexWorkspace', () => ({
@@ -507,16 +508,30 @@ function briefingSettingsResponse(
   })
 }
 
-function applySavedSettings(response: SettingsResponse, previousSettings: RuntimeSettings): Promise<void> {
+async function applySavedSettings(response: SettingsResponse, previousSettings: RuntimeSettings): Promise<void> {
+  await ensureSettingsPanelLoaded()
   if (typeof appMocks.settingsPanelApplied !== 'function') {
     throw new Error('SettingsPanel has not supplied an onApplied callback.')
   }
-  return (appMocks.settingsPanelApplied as (saved: SettingsResponse, previous: RuntimeSettings) => Promise<void>)(response, previousSettings)
+  await (appMocks.settingsPanelApplied as (saved: SettingsResponse, previous: RuntimeSettings) => Promise<void>)(response, previousSettings)
+}
+
+async function ensureSettingsPanelLoaded(): Promise<void> {
+  if (typeof appMocks.settingsPanelApplied === 'function') return
+  const returnToLaunch = screen.queryByRole('button', { name: 'APEX Launch' })
+  if (returnToLaunch) fireEvent.click(returnToLaunch)
+  fireEvent.click(screen.getByRole('button', { name: 'Open settings' }))
+  await waitFor(() => expect(typeof appMocks.settingsPanelApplied).toBe('function'), { timeout: 5000 })
+  const overview = screen.queryByRole('navigation', { name: 'Workspace' })?.querySelector('button')
+  if (overview) fireEvent.click(overview)
 }
 
 async function selectWorkspace(user: ReturnType<typeof userEvent.setup>, name: string): Promise<void> {
   const nav = screen.getByRole('navigation', { name: 'Workspace' })
   await user.click(within(nav).getByRole('button', { name }))
+  if (name !== 'Overview') {
+    await waitFor(() => expect(screen.queryByRole('status', { name: `Loading ${name}` })).not.toBeInTheDocument())
+  }
 }
 
 function renderOverviewApp(): ReturnType<typeof render> {
@@ -524,6 +539,26 @@ function renderOverviewApp(): ReturnType<typeof render> {
   fireEvent.click(screen.getByRole('button', { name: 'Overview' }))
   return result
 }
+
+describe('App deferred settings panel', () => {
+  afterEach(() => {
+    appMocks.settingsPanelApplied = null
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('loads Settings only after the Launch action opens it', async () => {
+    appMocks.settingsPanelApplied = null
+    render(<App />)
+
+    expect(screen.getByRole('region', { name: 'Launch' })).toBeInTheDocument()
+    expect(screen.queryByTestId('settings-panel-loaded')).not.toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Open settings' }))
+
+    expect(await screen.findByTestId('settings-panel-loaded')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Launch' })).toBeInTheDocument()
+  })
+})
 
 function usableTelemetrySnapshot(): TelemetrySnapshot {
   const collectedAt = new Date().toISOString()
@@ -634,7 +669,7 @@ describe('App catalog-affecting settings', () => {
       localReasoningMode: null,
     }))
 
-    await selectWorkspace(user, 'Reports')
+    await user.click(within(screen.getByRole('navigation', { name: 'Workspace' })).getByRole('button', { name: 'Reports' }))
     await waitFor(() => expect(appMocks.toolPreflight.mock.lastCall?.[0]).toMatchObject({
       effort: 'high',
       enabled: false,
@@ -824,6 +859,7 @@ describe('App Market settings refresh', () => {
 
   it('refreshes changed Market settings only after collection starts', async () => {
     const { rerender } = renderOverviewApp()
+    await ensureSettingsPanelLoaded()
     const baseline = structuredClone(BASE_SETTINGS)
     const unrelated = structuredClone(baseline)
     unrelated.voice.mode = 'off'
@@ -857,7 +893,7 @@ describe('App Market settings refresh', () => {
       await applySavedSettings(buildSettingsResponse(inactiveChange), disabled)
     })
     expect(appMocks.refreshConnector).toHaveBeenCalledTimes(2)
-  })
+  }, 15000)
 })
 
 describe('App weather attribution', () => {
@@ -1671,6 +1707,11 @@ describe('App briefing session flow', () => {
     let speechPrepares = 0
     let speechPlays = 0
     let speechStatus: 'not_requested' | 'preparing' | 'playing' | 'ready' = 'not_requested'
+    const queryRunId = '00000000-0000-4000-8000-000000000076'
+    let queryRunPosts = 0
+    let queryRunCancelPosts = 0
+    let queryStreamController: ReadableStreamDefaultController<Uint8Array> | null = null
+    const eventText = (sequence: number, type: string, payload: Record<string, unknown>): string => `id: ${sequence}\nevent: ${type}\ndata: ${JSON.stringify({ sequence, run_id: queryRunId, type, timestamp: new Date().toISOString(), payload })}\n\n`
     const speechResponse = () => ({
       session_id: sessionId,
       artifact_sha256: 'canonical-artifact-digest',
@@ -1755,6 +1796,22 @@ describe('App briefing session flow', () => {
       }
       if (path.endsWith(`/cortex/runs/${sessionSummary.run_id}/cancel`)) {
         cancellationWrites += 1
+        return new Response(JSON.stringify({ status: 'cancelling' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith(`/cortex/conversations/${conversationId}/runs`) && init?.method === 'POST') {
+        queryRunPosts += 1
+        return new Response(JSON.stringify({ id: queryRunId, status: 'queued' }), { status: 202, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (path.endsWith(`/cortex/runs/${queryRunId}/events`)) {
+        return new Response(new ReadableStream<Uint8Array>({
+          start(controller) {
+            queryStreamController = controller
+            controller.enqueue(new TextEncoder().encode(eventText(1, 'run.snapshot', { run: { status: 'running' }, activity_steps: [], answer: '' })))
+          },
+        }), { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+      }
+      if (path.endsWith(`/cortex/runs/${queryRunId}/cancel`) && init?.method === 'POST') {
+        queryRunCancelPosts += 1
         return new Response(JSON.stringify({ status: 'cancelling' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
       if (path.endsWith(`/cortex/conversations/${conversationId}`)) {
@@ -1844,8 +1901,10 @@ describe('App briefing session flow', () => {
     await user.type(composer, 'What about traffic?')
     await selectWorkspace(user, 'Reports')
     await selectWorkspace(user, 'Overview')
+    await user.click(screen.getByRole('button', { name: 'APEX Launch' }))
+    expect(screen.getByRole('region', { name: 'Launch' })).toBeInTheDocument()
     expect(screen.queryByTestId('briefing-artifact')).not.toBeInTheDocument()
-    await selectWorkspace(user, 'Briefing')
+    await user.click(screen.getByRole('button', { name: 'Briefing' }))
 
     expect(await screen.findByTestId('briefing-artifact')).toBeInTheDocument()
     expect(screen.getByRole('textbox')).toHaveValue('What about traffic?')
@@ -1853,6 +1912,30 @@ describe('App briefing session flow', () => {
     expect(presentationWrites).toBe(1)
     expect(cancellationWrites).toBe(0)
     expect(spokenCues).toEqual(['briefing_generating', 'briefing_ready'])
+
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() => expect(queryStreamController).not.toBeNull())
+    expect(queryRunPosts).toBe(1)
+    expect(screen.getByRole('button', { name: 'Stop generation' })).toBeInTheDocument()
+    await selectWorkspace(user, 'Reports')
+    await selectWorkspace(user, 'Overview')
+    await user.click(screen.getByRole('button', { name: 'APEX Launch' }))
+    expect(screen.getByRole('region', { name: 'Launch' })).toBeInTheDocument()
+    expect(queryRunCancelPosts).toBe(0)
+    expect(queryRunPosts).toBe(1)
+
+    await act(async () => {
+      queryStreamController?.enqueue(new TextEncoder().encode(
+        eventText(2, 'response.completed', { answer: 'Traffic is moving normally.' }) + eventText(3, 'run.completed', { status: 'completed' }),
+      ))
+      queryStreamController?.close()
+    })
+    await user.click(screen.getByRole('button', { name: 'Briefing' }))
+    expect(await screen.findByText('Traffic is moving normally.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Stop generation' })).not.toBeInTheDocument()
+    expect(queryRunPosts).toBe(1)
+    expect(queryRunCancelPosts).toBe(0)
+    expect(admissions).toBe(1)
   }, 10000)
 })
 

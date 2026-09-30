@@ -12,13 +12,15 @@ npm run dev
 npm test
 npm run lint
 npm run build
+npm run check:loading
 ```
 
 - `npm ci` installs the exact `package-lock.json` graph.
 - `npm run dev` starts the Vite hot-reload server.
-- `npm test` runs Vitest once.
+- `npm test` runs Vitest and the production loading-check tests once.
 - `npm run lint` runs ESLint with TypeScript-aware rules.
 - `npm run build` runs the TypeScript build and writes the production HUD to `../dist/`.
+- `npm run check:loading` checks that build's initial import graph and reports JavaScript byte totals. Run it after the build.
 
 Use `npm install` only when intentionally changing dependencies and updating the lockfile.
 
@@ -64,6 +66,16 @@ Do not expand `useApexData` into another global store. Use the focused owner for
 | `useActivityReports` | Bounded external report list/detail, filters, dispositions, context proposals, and linked-review refresh |
 
 `App.tsx` coordinates these owners but should not duplicate their internal state machines.
+
+## Presentation loading
+
+Launch and Overview load with the app shell. Settings loads on its first open; Cortex, Reports, and Briefing load when selected. These boundaries defer presentation code while `ApexAssistantRuntime` and the app-level state owners stay mounted. Navigating between workspaces or returning to Launch preserves conversation drafts, history, and active work. Existing workspace-local hooks keep their current mount lifecycle.
+
+Loading and failure states stay within the requested presentation, leaving workspace navigation available. Settings supplies a focus-trapped dialog while its code loads and restores focus on close. Retry starts a fresh loading attempt without resetting the shared runtime. If an asset remains unavailable, explicit page reload is available; it discards unsent text.
+
+The runtime's default assistant-message Markdown renderer loads separately. Its loading and failure fallback shows escaped plain text so the answer, composer, and activity remain usable. Cortex, Briefing, and Reports retain their own rendering rules inside their deferred presentations.
+
+The production build writes a Vite manifest and a sanitized module report under `dist/.vite/`. `npm run check:loading` follows static imports and HTML module preloads, checks the deferred presentations and Markdown dependencies, and reports entry, initial, deferred, and total JavaScript sizes with per-asset gzip totals. Its optional `--baseline` argument accepts an absolute directory containing an earlier build and manifest. Compare builds made with the same lockfile and options; byte reductions alone do not measure browser startup time or first-use latency.
 
 ## API boundary
 

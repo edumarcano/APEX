@@ -4,9 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "vitest run",
+    "test": "vitest run && node --test scripts/check-loading.node-test.mjs",
     "test:watch": "vitest",
     "build": "tsc -b && vite build",
+    "check:loading": "node scripts/check-loading.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },
