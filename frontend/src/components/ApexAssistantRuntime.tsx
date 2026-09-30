@@ -1228,7 +1228,7 @@ function ApexAssistantMessage(): ReactNode {
         load={loadAssistantMarkdown}
         componentProps={{ text }}
         fallback={<div className="whitespace-pre-wrap break-words">{text}</div>}
-        renderError={(retry) => <div className="whitespace-pre-wrap break-words">{text}<button type="button" onClick={retry} className="ml-2 font-mono text-[10px] text-[#9AC2FF] underline underline-offset-2 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF]">Retry Markdown</button></div>}
+        renderError={(retry) => <div className="whitespace-pre-wrap break-words">{text}<button type="button" onClick={retry} className="ml-2 font-mono text-[10px] text-[#9AC2FF] underline underline-offset-2 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF]">Retry formatting</button></div>}
       /> : text}
       {role === 'assistant' ? <ActivityTimeline steps={metadata.activity_steps} toolLabels={toolLabels} collapsed /> : null}
       {role === 'assistant' && status?.type === 'incomplete' ? <ApexAssistantError /> : null}

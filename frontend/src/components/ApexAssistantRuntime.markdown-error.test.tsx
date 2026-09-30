@@ -55,7 +55,7 @@ describe('ApexAssistantRuntime deferred Markdown errors', () => {
 
     render(<ApexAssistantRuntime config={{ agent: 'apex', effort: 'medium', selectedToolNames: [], toolProfileId: null, snapshotId: null }}><ApexAssistantThread /></ApexAssistantRuntime>)
 
-    expect(await screen.findByRole('button', { name: 'Retry Markdown' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Retry formatting' })).toBeInTheDocument()
     expect(screen.getByText('**Saved** <img src="bad" onerror="alert(1)">')).toBeInTheDocument()
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
     expect(screen.getByText('**Keep this prompt plain**')).toBeInTheDocument()
@@ -67,7 +67,7 @@ describe('ApexAssistantRuntime deferred Markdown errors', () => {
     expect(screen.getByText('Thinking')).toBeVisible()
     const requestsBeforeRetry = fetchMock.mock.calls.length
 
-    await user.click(screen.getByRole('button', { name: 'Retry Markdown' }))
+    await user.click(screen.getByRole('button', { name: 'Retry formatting' }))
     expect(await screen.findByTestId('markdown-ready')).toHaveTextContent('**Saved** <img src="bad" onerror="alert(1)">')
     expect(fetchMock).toHaveBeenCalledTimes(requestsBeforeRetry)
     expect(markdownImport.attempts).toBe(2)
