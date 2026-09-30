@@ -175,7 +175,7 @@ vi.mock('./components/CortexWorkspace', () => ({
           {actions?.pendingCount ?? 0}
         </output>
         <output data-testid="cortex-lifecycle-busy">{String(lifecycleBusy)}</output>
-        {toolCatalog?.context_window === null ? (
+        {toolCatalog?.context_window === null && (
           <button type="button" onClick={() => onHostedToolChange('google_search', true)}>
             Enable Google Search
           </button>
