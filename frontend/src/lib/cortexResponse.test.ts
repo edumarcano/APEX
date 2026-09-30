@@ -36,25 +36,70 @@ describe('parseAgentQueryResponse', () => {
     expect(parsed.metadata?.toolSelection?.selected_schema_tokens).toBe(123)
   })
 
-  it('continues to parse the nested metadata shape', () => {
+  it('parses canonical grounding and citations with context and tool diagnostics', () => {
     const parsed = parseAgentQueryResponse({
-      metadata: {
-        agent: { key: 'apex' },
-        usage: { total_tokens: 12 },
-      },
+      citations: [{ title: 'Map', uri: 'https://example.test/map', snippet: 'Place', source: 'google_maps' }],
+      grounding: { search_suggestions_html: '<a>Search</a>' },
+      context_references: [{ namespace: 'personal', source_type: 'note', source_id: 'n1', locator: 'line 1', status: 'ready' }],
+      context_usage: { estimated_tokens: 21, truncated: false },
+      local_context_usage: { estimated_prompt_tokens: 34, context_window: 4096, history_messages_dropped: 0 },
+      tool_trace: [{ name: 'lookup', status: 'ok', duration_ms: 8 }],
+      tool_outputs: [{ name: 'lookup', status: 'ok', duration_ms: 8, output: { count: 1 } }],
     })
 
-    expect(parsed.metadata?.agent?.key).toBe('apex')
-    expect(parsed.metadata?.usage?.totalTokens).toBe(12)
+    expect(parsed.metadata?.citations).toEqual([{ title: 'Map', uri: 'https://example.test/map', snippet: 'Place', source: 'google_maps' }])
+    expect(parsed.metadata?.grounding?.searchSuggestionsHtml).toBe('<a>Search</a>')
+    expect(parsed.context_references).toHaveLength(1)
+    expect(parsed.context_usage?.estimated_tokens).toBe(21)
+    expect(parsed.local_context_usage?.estimated_prompt_tokens).toBe(34)
+    expect(parsed.tool_trace).toHaveLength(1)
+    expect(parsed.tool_outputs).toHaveLength(1)
   })
 
-  it('parses top-level agent property for in-flight streaming responses', () => {
+  it('ignores retired metadata envelopes, alternate agent properties, and camel-case grounding fields', () => {
     const parsed = parseAgentQueryResponse({
+      metadata: { agent: { key: 'apex' }, usage: { total_tokens: 12 }, timing: { total_ms: 4 } },
       agent: { key: 'apex' },
-      answer: 'Streaming text...',
+      grounding: { searchSuggestionsHtml: '<a>Old</a>' },
     })
 
-    expect(parsed.metadata?.agent?.key).toBe('apex')
+    expect(parsed.metadata?.agent).toBeNull()
     expect(parsed.metadata?.usage).toBeNull()
+    expect(parsed.metadata?.timing).toBeNull()
+    expect(parsed.metadata?.toolSelection).toBeNull()
+    expect(parsed.metadata?.grounding?.searchSuggestionsHtml).toBeNull()
+  })
+
+  it('treats malformed flat records and arrays as absent metadata without losing valid response fields', () => {
+    const parsed = parseAgentQueryResponse({
+      answer: 'Still here.',
+      agent_used: [],
+      usage: ['bad'],
+      timing: null,
+      cost_estimate: [],
+      grounding: [],
+      citations: [null, [], { title: 'Valid' }],
+      context_usage: [],
+      context_references: [[], { namespace: 'personal', source_type: 'note', source_id: 'n2', locator: 'line 2' }],
+      tool_outputs: [[], { name: 'lookup', status: 'ok', duration_ms: 3, output: 'done' }],
+    })
+
+    expect(parsed.answer).toBe('Still here.')
+    expect(parsed.metadata?.agent).toBeNull()
+    expect(parsed.metadata?.usage).toBeNull()
+    expect(parsed.metadata?.timing).toBeNull()
+    expect(parsed.metadata?.cost).toBeNull()
+    expect(parsed.metadata?.grounding).toBeNull()
+    expect(parsed.metadata?.citations).toEqual([{ title: 'Valid', uri: null, snippet: null, source: null }])
+    expect(parsed.context_usage).toBeNull()
+    expect(parsed.context_references).toHaveLength(1)
+    expect(parsed.tool_outputs).toHaveLength(1)
+  })
+
+  it('ignores arrays as response objects', () => {
+    const parsed = parseAgentQueryResponse([{ answer: 'not a response object' }])
+    expect(parsed.answer).toBeUndefined()
+    expect(parsed.tool_trace).toEqual([])
+    expect(parsed.tool_outputs).toEqual([])
   })
 })
