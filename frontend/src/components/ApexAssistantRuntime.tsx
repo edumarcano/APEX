@@ -18,8 +18,6 @@ import {
   type ThreadHistoryAdapter,
 } from '@assistant-ui/react'
 
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { createAssistantStream } from 'assistant-stream'
 
 import { API_ENDPOINTS } from '../lib/api'
@@ -33,6 +31,9 @@ import { CompactModelSelector } from './CompactModelSelector'
 import { OPERATION_PROMPT_CHIPS } from '../lib/promptChips'
 import { Send, Square, Trash2 } from 'lucide-react'
 import { ApexLogo, type ApexLogoProps } from './ApexLogo'
+import { DeferredPresentation } from './DeferredPresentation'
+
+const loadAssistantMarkdown = () => import('./AssistantMarkdown')
 
 type ConversationSummary = {
   id: string
@@ -1223,7 +1224,12 @@ function ApexAssistantMessage(): ReactNode {
     <div className={role === 'user'
       ? 'max-w-[85%] rounded-2xl rounded-br-md border border-[#0F4DB8]/35 bg-[#0F4DB8]/15 px-4 py-3 text-sm text-white'
       : 'rounded-2xl rounded-bl-md border border-white/10 bg-zinc-900/80 px-4 py-3 text-sm leading-relaxed text-zinc-200'}>
-      {role === 'assistant' ? renderAgent?.(text, metadata) ?? <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown> : text}
+      {role === 'assistant' ? renderAgent?.(text, metadata) ?? <DeferredPresentation
+        load={loadAssistantMarkdown}
+        componentProps={{ text }}
+        fallback={<div className="whitespace-pre-wrap break-words">{text}</div>}
+        renderError={(retry) => <div className="whitespace-pre-wrap break-words">{text}<button type="button" onClick={retry} className="ml-2 font-mono text-[10px] text-[#9AC2FF] underline underline-offset-2 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF]">Retry Markdown</button></div>}
+      /> : text}
       {role === 'assistant' ? <ActivityTimeline steps={metadata.activity_steps} toolLabels={toolLabels} collapsed /> : null}
       {role === 'assistant' && status?.type === 'incomplete' ? <ApexAssistantError /> : null}
       <div className="mt-2 flex items-center gap-2 font-mono text-[10px] text-zinc-500">

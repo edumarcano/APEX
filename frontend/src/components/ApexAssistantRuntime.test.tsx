@@ -1017,8 +1017,8 @@ describe('ApexAssistantRuntime', () => {
           title: 'Preserved Conversation',
           active_leaf_message_id: null,
           messages: [
-            { id: userMsgId, parent_message_id: null, role: 'user', content: 'What was the diagnostic result?', status: 'completed', agent: null, created_at: '2026-08-18T12:00:00Z', updated_at: '2026-08-18T12:00:00Z' },
-            { id: agentMsgId, parent_message_id: userMsgId, role: 'agent', content: 'All checks normal.', status: 'completed', agent: 'apex', created_at: '2026-08-18T12:00:01Z', updated_at: '2026-08-18T12:00:01Z' },
+            { id: userMsgId, parent_message_id: null, role: 'user', content: '**What was** the diagnostic result?', status: 'completed', agent: null, created_at: '2026-08-18T12:00:00Z', updated_at: '2026-08-18T12:00:00Z' },
+            { id: agentMsgId, parent_message_id: userMsgId, role: 'agent', content: '| Check | Result |\n| --- | --- |\n| System | ~~unknown~~ normal |', status: 'completed', agent: 'apex', created_at: '2026-08-18T12:00:01Z', updated_at: '2026-08-18T12:00:01Z' },
           ],
         })
       }
@@ -1032,8 +1032,10 @@ describe('ApexAssistantRuntime', () => {
       </ApexAssistantRuntime>,
     )
 
-    await waitFor(() => expect(screen.getByText('What was the diagnostic result?')).toBeInTheDocument())
-    expect(screen.getByText('All checks normal.')).toBeInTheDocument()
+    expect(await screen.findByText('**What was** the diagnostic result?')).toBeInTheDocument()
+    const table = await screen.findByRole('table')
+    expect(table).toHaveTextContent('System')
+    expect(screen.getByText('unknown').tagName).toBe('DEL')
   })
 
   it('switches back to a conversation and sends follow-up turn with correct parent ID', async () => {
