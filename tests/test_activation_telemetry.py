@@ -372,6 +372,7 @@ class TelemetryApiTests(unittest.TestCase):
         self.assertEqual(module["status"], "healthy")
         self.assertEqual(module["freshness"], "stale")
         self.assertEqual(module["display_text"], "keep-me")
+        self.assertEqual(refreshed.json()["modules"]["reminders"]["status"], "healthy")
 
     def test_concurrent_refresh_returns_409(self) -> None:
         gate = threading.Event()

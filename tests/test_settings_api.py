@@ -189,6 +189,7 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertNotIn("news", payload["settings"]["features"])
+        self.assertFalse(payload["settings"]["features"]["market"])
         self.assertTrue(payload["settings"]["features"]["weather"])
         self.assertEqual(payload["settings"]["voice"]["gender"], "male")
         self.assertEqual(payload["settings"]["voice"]["engine"], "google")
@@ -197,7 +198,10 @@ class SettingsApiTests(unittest.TestCase):
 
         again = self.client.get("/api/v1/settings").json()
         self.assertNotIn("news", again["settings"]["features"])
+        self.assertFalse(again["settings"]["features"]["market"])
         self.assertEqual(again["settings"]["voice"]["gender"], "male")
+        persisted = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertFalse(persisted["features"]["market"])
 
     def test_unknown_field_rejected(self) -> None:
         for payload in (
