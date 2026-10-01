@@ -131,6 +131,10 @@ External reports are immutable input, separate from accepted knowledge. Their st
 
 Reports are not indexed for general personal-context retrieval or promoted automatically. When personal-context policy permits, briefing selection can include at most three relevant, non-dismissed reports from the newest 50 candidates as untrusted evidence.
 
+Cortex exposes `search_activity_reports` and `get_activity_report` as native read-only tools in the Reports family and Personal Ops profile. Discovery searches titles, outcomes, subjects, and projects, excluding dismissed reports unless requested. Exact reads can include dismissed reports. Results are bounded to 8,000 serialized characters and return continuation cursors for older receipts or remaining report content. Markdown and finding text are readable through the detail tool but are not searched.
+
+Cortex report reads require the effective model runtime's personal-context setting and a production run outside demo and development modes. Execution binds the admitted partition and model to the capability worker, and each read rechecks access. Report content remains untrusted, source labels remain caller-declared, and reading does not change disposition or accept knowledge. References are returned without fetching URLs or files. Deep retains its existing report-evidence selection and does not gain these tools.
+
 An operator can select a finding for a pending context review. The server freezes its text, evidence locator, external origin, and occurrence time. Locators identify `/findings/<index>`, or `/outcome` and `/markdown_body` when no structured finding exists. A declared `model_interpretation` remains an interpretation; otherwise derivation is `unknown`. Only acceptance creates a knowledge record eligible for retrieval.
 
 The Reports workspace reads a bounded list and exact details, changes disposition, and opens linked reviews in Cortex. It retains the selected partition. Report text and external references remain untrusted display data: Markdown renders without raw HTML and links are limited to HTTP(S).

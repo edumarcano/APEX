@@ -153,7 +153,7 @@ Disabling export keeps existing copies. Changing the destination leaves copies a
 
 ## Privacy and development modes
 
-Cloud and local personal-context retrieval switches are independent and off by default. They allow selected saved claims and, for briefings, pending reviews, external reports, and verified action evidence to enter model prompts. See [Privacy](privacy.md#personal-context).
+Cloud and local personal-context switches are independent and off by default. They allow selected saved claims and, for briefings, pending reviews, external reports, and verified action evidence to enter model prompts. Cortex report tools also require the effective model runtime's personal-context switch; selecting a report tool alone does not enable report access. See [Privacy](privacy.md#personal-context).
 
 Sandbox mode is available only in `DEV_MODE`, uses a restricted non-personal tool allowlist, and stores conversation history in the sandbox partition. `DEMO_MODE` takes precedence for demo paths and does not contact configured providers.
 

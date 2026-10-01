@@ -200,6 +200,51 @@ class ActivityStore:
             ).fetchall()
         return [self._report(row) for row in rows]
 
+    def search_agent_reports(
+        self, *, partition: str, query: str | None, client_id: str | None,
+        disposition: str | None, limit: int,
+        after: tuple[str, int] | None = None,
+    ) -> list[tuple[ActivityReport, int]]:
+        """Search only the report fields intended for Agent discovery.
+
+        The caller owns input validation and cursor binding. This query always
+        scopes results to the explicit partition argument.
+        """
+        if partition not in _PARTITIONS:
+            raise ActivityStoreError("partition_invalid")
+        clauses = ["partition=?"]
+        parameters: list[object] = [partition]
+        if client_id is not None:
+            clauses.append("client_id=?")
+            parameters.append(client_id)
+        if disposition is None:
+            clauses.append("disposition IN ('new','reviewed')")
+        else:
+            if disposition not in _DISPOSITIONS:
+                raise ActivityStoreError("disposition_invalid")
+            clauses.append("disposition=?")
+            parameters.append(disposition)
+        if query:
+            clauses.append("(" + " OR ".join((
+                "instr(lower(json_extract(content_json,'$.title')),lower(?))>0",
+                "instr(lower(json_extract(content_json,'$.outcome')),lower(?))>0",
+                "EXISTS (SELECT 1 FROM json_each(content_json,'$.subjects') s WHERE instr(lower(CAST(s.value AS TEXT)),lower(?))>0)",
+                "EXISTS (SELECT 1 FROM json_each(content_json,'$.projects') p WHERE instr(lower(CAST(p.value AS TEXT)),lower(?))>0)",
+            )) + ")")
+            parameters.extend([query] * 4)
+        if after is not None:
+            clauses.append("(received_at, rowid) < (?, ?)")
+            parameters.extend(after)
+        parameters.append(max(1, min(21, limit)))
+        with self._connection() as conn:
+            rows = conn.execute(
+                "SELECT id,partition,client_id,client_display_name,principal,submission_key,received_at,disposition,content_json,content_hash,rowid "
+                "FROM activity_reports WHERE " + " AND ".join(clauses)
+                + " ORDER BY received_at DESC, rowid DESC LIMIT ?",
+                parameters,
+            ).fetchall()
+        return [(self._report(row), int(row[10])) for row in rows]
+
     def get(self, report_id: UUID, *, partition: str) -> ActivityReport:
         with self._connection() as conn:
             row = conn.execute(

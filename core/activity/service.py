@@ -50,6 +50,16 @@ class ActivityService:
     def list(self, *, partition: str, client_id: str | None = None, disposition: str | None = None, limit: int = 50):
         return self.store.list(partition=partition, client_id=client_id, disposition=disposition, limit=limit)
 
+    def search_agent_reports(
+        self, *, partition: str, query: str | None, client_id: str | None,
+        disposition: str | None, limit: int, after: tuple[str, int] | None = None,
+    ):
+        """Return Agent discovery candidates with stable pagination positions."""
+        return self.store.search_agent_reports(
+            partition=partition, query=query, client_id=client_id,
+            disposition=disposition, limit=limit, after=after,
+        )
+
     def get(self, report_id: UUID, *, partition: str):
         return self.store.get(report_id, partition=partition)
 

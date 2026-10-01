@@ -37,7 +37,7 @@ BUILT_IN_TOOL_PROFILES: tuple[ToolProfile, ...] = (
     _profile(
         "personal_ops",
         "Personal Ops",
-        "Schedule, mail, reminders, Microsoft To Do, and briefing history.",
+        "Schedule, mail, reminders, Microsoft To Do, briefing history, and received reports.",
         (
             "get_upcoming_calendar_events",
             "get_active_reminders",
@@ -51,6 +51,8 @@ BUILT_IN_TOOL_PROFILES: tuple[ToolProfile, ...] = (
             "reopen_microsoft_todo_task",
             "delete_microsoft_todo_task",
             "get_briefing_history",
+            "search_activity_reports",
+            "get_activity_report",
         ),
     ),
     _profile(

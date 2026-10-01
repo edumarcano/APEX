@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import contextvars
 import inspect
 import json
 import logging
@@ -315,7 +316,8 @@ def _run_handler(
                     "Tool execution failed.",
                 ) from exc
 
-    future = _SYNC_HANDLER_EXECUTOR.submit(handler, **arguments)
+    caller_context = contextvars.copy_context()
+    future = _SYNC_HANDLER_EXECUTOR.submit(caller_context.run, handler, **arguments)
     try:
         return future.result(timeout=timeout_seconds)
     except concurrent.futures.TimeoutError as exc:

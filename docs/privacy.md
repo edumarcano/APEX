@@ -37,6 +37,10 @@ Original evidence, normalized claims, provenance, and knowledge history are stor
 
 Importing a report stores its findings and Markdown locally without accepting them as personal knowledge. When personal context is enabled, APEX can select relevant, non-dismissed report excerpts for briefing evidence and send them to the chosen model. Cloud models receive the excerpts included in their requests.
 
+Cortex can discover and read received reports when the report tools are selected and the chosen runtime's personal-context setting is enabled. Reads are unavailable in demo, development, and sandbox execution. Cloud models receive the report content returned by these tools, including Markdown, findings, and external references when read. Responses are bounded and long reports require continuation reads; an exact read can include a dismissed report. Reading does not authenticate a source, accept its claims, or follow its references.
+
+The run retains its admitted partition and effective model for report access. Turning off personal context blocks subsequent report reads; it cannot retract content already sent to the model.
+
 Accepting a context review linked to a report creates a normalized claim with external source provenance. That claim can later enter ordinary personal-context retrieval when enabled. Normal claim retrieval does not include the full report or its original evidence.
 
 The optional report folder leaves imported files in place. If the folder is synced, its sync service controls the external copies. The separate local submission gateway accepts caller-declared source labels; those labels do not authenticate the submitting program. See [Configuration](configuration.md#external-activity-gateway) for its loopback boundary.

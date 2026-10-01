@@ -98,6 +98,12 @@ APEX_TOOL_FAMILIES: tuple[ApexToolFamily, ...] = (
         ("get_briefing_history",),
     ),
     ApexToolFamily(
+        "reports",
+        "Reports",
+        "Find and read received external activity reports.",
+        ("search_activity_reports", "get_activity_report"),
+    ),
+    ApexToolFamily(
         "personal_context",
         "Personal Context",
         "Approval-gated capture of operator-provided personal context.",
@@ -424,6 +430,16 @@ def build_tool_catalog(
         if descriptor.origin == "mcp":
             available, unavailable_reason = _mcp_availability(
                 name, config=config, configured=configured_mcp
+            )
+        elif name in {"search_activity_reports", "get_activity_report"}:
+            from core.agent.report_access import report_read_availability
+
+            report_partition = execution_partition or (
+                "sandbox" if sandbox_active else "production"
+            )
+            available, unavailable_reason = report_read_availability(
+                model_id=resolved_model_id,
+                partition=report_partition,
             )
         else:
             available, unavailable_reason = _native_availability(name)

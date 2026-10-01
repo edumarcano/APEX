@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import nullcontext
 from typing import Any, Callable, Literal, Mapping
 
 from fastapi import HTTPException, status
@@ -11,6 +12,11 @@ from core import config
 from core.agent.loop import ExecutionControl, build_agent_failure_details, run_agent_loop
 from core.agent.providers.contract import ProviderStreamObserver
 from core.agent.capabilities import CapabilityDescriptor
+from core.agent.report_access import (
+    ReportReadExecutionContext,
+    bind_report_read_context,
+    make_report_read_context,
+)
 from core.agent.tool_catalog import build_tool_catalog
 from core.agent.tool_selection import (
     ResolvedToolSelection,
@@ -757,6 +763,7 @@ def _execute_agent_turn(
     stream_observer: ProviderStreamObserver | None = None,
     activity_observer: Callable[[str, dict[str, Any]], None] | None = None,
     execution_partition: Literal["production", "sandbox"] | None = None,
+    report_read_context: ReportReadExecutionContext | None = None,
 ) -> AgentQueryResponse:
     """Build telemetry context, select the provider, and run the bounded agent loop."""
     try:
@@ -805,19 +812,25 @@ def _execute_agent_turn(
         else:
             execution_payload = payload
 
-        response = run_agent_loop(
-            execution_payload,
-            provider,
-            profile,
-            system_instruction_override=local_system_instruction,
-            selected_tools=selected_tools,
-            tool_selection=tool_selection,
-            agent_key=agent_key,
-            action_provenance=action_provenance,
-            execution_control=execution_control,
-            stream_observer=stream_observer,
-            activity_observer=activity_observer,
+        report_context_scope = (
+            bind_report_read_context(report_read_context)
+            if report_read_context is not None
+            else nullcontext()
         )
+        with report_context_scope:
+            response = run_agent_loop(
+                execution_payload,
+                provider,
+                profile,
+                system_instruction_override=local_system_instruction,
+                selected_tools=selected_tools,
+                tool_selection=tool_selection,
+                agent_key=agent_key,
+                action_provenance=action_provenance,
+                execution_control=execution_control,
+                stream_observer=stream_observer,
+                activity_observer=activity_observer,
+            )
         if not is_local_profile(profile):
             record_cloud_request_success(
                 provider=profile.provider,
@@ -1133,6 +1146,24 @@ def query_agent(
     model_profile = _resolve_and_validate_model_profile(agent_key, payload.model_id)
     payload = payload.model_copy(update={"model_id": model_profile.model_id})
 
+    report_partition = execution_partition
+    if report_partition is None:
+        try:
+            from core.conversations import get_conversation_service
+
+            report_partition = get_conversation_service().partition()
+        except RuntimeError:
+            # Some direct/internal callers do not have conversation services.
+            # Keep their existing query behavior and fail report reads closed.
+            report_partition = "unavailable"
+        else:
+            execution_partition = report_partition
+
+    report_read_context = make_report_read_context(
+        model_id=model_profile.model_id,
+        partition=report_partition,
+    )
+
     if model_profile.runtime == "local" and payload.effort is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1279,6 +1310,7 @@ def query_agent(
                 stream_observer=stream_observer,
                 activity_observer=activity_observer,
                 execution_partition=execution_partition,
+                report_read_context=report_read_context,
             )
         finally:
             end_local_execution()
@@ -1306,4 +1338,5 @@ def query_agent(
         stream_observer=stream_observer,
         activity_observer=activity_observer,
         execution_partition=execution_partition,
+        report_read_context=report_read_context,
     )

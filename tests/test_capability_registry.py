@@ -50,6 +50,8 @@ class CapabilityRegistryTests(unittest.TestCase):
                 "get_upcoming_calendar_events",
                 "get_active_reminders",
                 "get_briefing_history",
+                "search_activity_reports",
+                "get_activity_report",
                 "search_gmail",
                 "list_microsoft_todo_lists",
                 "list_microsoft_todo_tasks",
@@ -74,7 +76,13 @@ class CapabilityRegistryTests(unittest.TestCase):
             )
             self.assertEqual(capability.risk, expected_risk)
             self.assertTrue(capability.expose_to_agent)
-            self.assertTrue(capability.expose_to_client_display)
+            self.assertEqual(
+                capability.expose_to_client_display,
+                capability.name not in {
+                    "search_activity_reports",
+                    "get_activity_report",
+                },
+            )
             self.assertFalse(capability.expose_to_mcp_server)
 
     def test_calendar_capability_defaults_to_fourteen_days(self) -> None:
