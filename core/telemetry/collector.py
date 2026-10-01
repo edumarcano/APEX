@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 
-from clients import market_client, news_client, sports_client, weather_client
+from clients import market_client, sports_client, weather_client
 from core.connectors.collect import collect_calendar, collect_email, collect_reminders
 from core.connectors.models import CONNECTOR_NAMES, ConnectorResult, utc_now_iso
 from core.settings import CalendarSettings, FeaturesSettings, ModulesSettings
@@ -22,8 +22,6 @@ def is_connector_enabled(
     """Return whether a connector is enabled in the current runtime settings."""
     if name == "weather":
         return features.weather
-    if name == "news":
-        return features.news
     if name == "email":
         return features.email
     if name == "calendar":
@@ -123,14 +121,6 @@ def collect_connector_results(
             if features.sports and not modules.football:
                 _LOGGER.info("Football module bypassed via user preference")
             results["football"] = disabled_result("football")
-
-    if _wanted("news"):
-        if is_connector_enabled("news", features=features, modules=modules):
-            _before("news")
-            results["news"] = news_client.collect_news()
-        else:
-            _LOGGER.info("News module bypassed via user preference")
-            results["news"] = disabled_result("news")
 
     if _wanted("email"):
         if is_connector_enabled("email", features=features, modules=modules):

@@ -55,7 +55,6 @@ _FAMILIES_BY_SOURCE: dict[str, tuple[str, ...]] = {
     "reminders": ("microsoft_todo", "schedule"),
     "email": ("mail",),
     "weather": ("weather",),
-    "news": ("web_search",),
     "market": ("market",),
     "f1": ("formula_1",),
     "football": ("football",),

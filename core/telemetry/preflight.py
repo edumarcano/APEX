@@ -251,8 +251,6 @@ def _connector_credential_blockers(names: set[str]) -> list[PreflightBlocker]:
     missing: list[str] = []
     if "weather" in names and not os.getenv("TARGET_LOCATION"):
         missing.append("weather")
-    if "news" in names and not os.getenv("GNEWS_API_KEY"):
-        missing.append("news")
     if "football" in names and not os.getenv("FOOTBALL_API_KEY"):
         missing.append("football")
     if names & {"email", "calendar"}:

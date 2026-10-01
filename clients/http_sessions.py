@@ -8,7 +8,7 @@ from typing import Any, Literal, Protocol
 
 import requests
 
-ConnectorName = Literal["market", "weather", "news", "sports"]
+ConnectorName = Literal["market", "weather", "sports"]
 
 
 class SessionLike(Protocol):
@@ -63,7 +63,7 @@ class ConnectorHttpSessions:
     ) -> None:
         self._sessions: dict[ConnectorName, ManagedSession] = {
             name: ManagedSession(session_factory())
-            for name in ("market", "weather", "news", "sports")
+            for name in ("market", "weather", "sports")
         }
         self._closed = False
 

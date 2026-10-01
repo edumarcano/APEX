@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import hashlib
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
-from clients import news_client, sports_client
+from clients import sports_client
 from core.connectors.models import ConnectorResult
 from core.connectors.scoring import compute_sync_health
 from core.sanitization import sanitize_fact
@@ -33,10 +32,9 @@ class SyncHealthScoringTests(unittest.TestCase):
         report = compute_sync_health(
             {
                 "weather": _result("weather", "healthy"),
-                "news": _result("news", "degraded", reason_code="partial_failure"),
                 "email": _result("email", "unavailable", reason_code="connection_error"),
                 "calendar": None,
-                "f1": None,
+                "f1": _result("f1", "degraded", reason_code="partial_failure"),
                 "football": None,
                 "reminders": _result("reminders", "healthy"),
             }
@@ -45,7 +43,7 @@ class SyncHealthScoringTests(unittest.TestCase):
         self.assertEqual(report.failed_connectors, ["email"])
         self.assertEqual(
             [entry.name for entry in report.connector_health],
-            ["weather", "news", "email", "reminders"],
+            ["weather", "email", "f1", "reminders"],
         )
 
     def test_sports_failures_keep_independent_connector_names(self) -> None:
@@ -72,7 +70,7 @@ class SyncHealthScoringTests(unittest.TestCase):
 
     def test_disabled_modules_are_excluded(self) -> None:
         report = compute_sync_health({
-            "weather": None, "news": None, "email": None, "calendar": None,
+            "weather": None, "email": None, "calendar": None,
             "f1": None, "football": None, "reminders": None,
         })
         self.assertEqual(report.sync_health_score, 100.0)
@@ -106,57 +104,6 @@ class SanitizationTests(unittest.TestCase):
 
 
 class ConnectorValidationTests(unittest.TestCase):
-    def test_news_malformed_articles_return_typed_unavailable_result(self) -> None:
-        response = Mock()
-        response.raise_for_status.return_value = None
-        response.json.return_value = {"articles": ["malformed"]}
-        with patch.object(news_client, "api_key", "test-key"), patch.object(
-            news_client.time, "sleep",
-        ), patch.object(news_client.requests, "get", return_value=response):
-            result = news_client.collect_news()
-        self.assertEqual(result.status, "unavailable")
-        self.assertEqual(result.freshness, "none")
-        self.assertEqual(result.reason_code, "invalid_payload")
-
-    def test_news_partial_transport_failure_is_degraded(self) -> None:
-        response = Mock()
-        response.raise_for_status.return_value = None
-        article_url = "https://news.example/articles/roadmap"
-        response.json.return_value = {"articles": [{
-            "title": "Verified headline", "url": article_url,
-            "publishedAt": "2026-09-25T12:00:00Z",
-        }]}
-        with patch.object(news_client, "api_key", "test-key"), patch.object(
-            news_client.time, "sleep",
-        ), patch.object(
-            news_client.requests,
-            "get",
-            side_effect=[response, news_client.requests.exceptions.RequestException("offline")],
-        ):
-            result = news_client.collect_news()
-        self.assertEqual(result.status, "degraded")
-        self.assertEqual(result.reason_code, "partial_failure")
-        self.assertEqual(len(result.data["headlines"]), 1)
-        self.assertEqual(
-            result.data["headlines"][0]["article_id"],
-            hashlib.sha256(article_url.encode("utf-8")).hexdigest(),
-        )
-
-    def test_news_malformed_article_url_keeps_headline_without_stable_id(self) -> None:
-        response = Mock()
-        response.raise_for_status.return_value = None
-        response.json.return_value = {"articles": [{
-            "title": "Useful headline", "url": "https://[invalid",
-        }]}
-        with patch.object(news_client, "api_key", "test-key"), patch.object(
-            news_client.time, "sleep",
-        ), patch.object(news_client.requests, "get", return_value=response):
-            result = news_client.collect_news()
-        self.assertEqual(result.status, "healthy")
-        self.assertEqual(len(result.data["headlines"]), 1)
-        self.assertEqual(result.data["headlines"][0]["headline"], "Useful headline")
-        self.assertNotIn("article_id", result.data["headlines"][0])
-
     def test_malformed_fresh_f1_cache_is_not_scored_healthy(self) -> None:
         malformed_cache = {
             "cached_at": sports_client.datetime.now(sports_client.timezone.utc).isoformat(),

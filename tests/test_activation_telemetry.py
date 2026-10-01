@@ -49,7 +49,6 @@ class SnapshotStoreUnitTests(unittest.TestCase):
         prior = build_snapshot_from_results(
             {
                 "weather": _result("weather", "healthy", display_text="72 clear"),
-                "news": _result("news", "healthy"),
             }
         )
         merged = build_snapshot_from_results(
@@ -68,13 +67,12 @@ class SnapshotStoreUnitTests(unittest.TestCase):
         self.assertEqual(weather.freshness, "stale")
         self.assertEqual(weather.display_text, "72 clear")
         self.assertEqual(weather.reason_code, "network_error")
-        self.assertEqual(merged.modules["news"].status, "healthy")
 
     def test_partial_failure_replaces_prior_degraded_reason(self) -> None:
         prior = build_snapshot_from_results(
             {
-                "news": _result(
-                    "news",
+                "f1": _result(
+                    "f1",
                     "degraded",
                     reason_code="partial_payload",
                     display_text="keep-me",
@@ -83,8 +81,8 @@ class SnapshotStoreUnitTests(unittest.TestCase):
         )
         merged = build_snapshot_from_results(
             {
-                "news": _result(
-                    "news",
+                "f1": _result(
+                    "f1",
                     "unavailable",
                     reason_code="network_error",
                     display_text="",
@@ -93,11 +91,11 @@ class SnapshotStoreUnitTests(unittest.TestCase):
             prior=prior,
         )
 
-        news = merged.modules["news"]
-        self.assertEqual(news.status, "degraded")
-        self.assertEqual(news.freshness, "stale")
-        self.assertEqual(news.display_text, "keep-me")
-        self.assertEqual(news.reason_code, "network_error")
+        f1 = merged.modules["f1"]
+        self.assertEqual(f1.status, "degraded")
+        self.assertEqual(f1.freshness, "stale")
+        self.assertEqual(f1.display_text, "keep-me")
+        self.assertEqual(f1.reason_code, "network_error")
 
     def test_disabled_excluded_from_sync_health_denominator(self) -> None:
         from core.connectors.scoring import compute_sync_health
@@ -105,14 +103,14 @@ class SnapshotStoreUnitTests(unittest.TestCase):
         report = compute_sync_health(
             {
                 "weather": _result("weather", "healthy"),
-                "news": _result("news", "disabled", reason_code="disabled"),
+                "f1": _result("f1", "disabled", reason_code="disabled"),
                 "email": None,
             }
         )
         self.assertEqual(report.sync_health_score, 100.0)
         self.assertEqual(
             [entry.name for entry in report.connector_health],
-            ["weather", "news"],
+            ["weather", "f1"],
         )
 
 
@@ -130,7 +128,6 @@ class TelemetryApiTests(unittest.TestCase):
                 "features": {
                     "weather": True,
                     "sports": False,
-                    "news": True,
                     "email": False,
                     "calendar": False,
                     "market": False,
@@ -210,15 +207,11 @@ class TelemetryApiTests(unittest.TestCase):
 
     def test_refresh_all_and_latest(self) -> None:
         weather = _result("weather", "healthy", display_text="70 sunny")
-        news = _result("news", "healthy", display_text="headline")
         reminders = _result("reminders", "healthy", display_text="none")
 
         with mock.patch(
             "core.telemetry.collector.weather_client.collect_weather",
             return_value=weather,
-        ), mock.patch(
-            "core.telemetry.collector.news_client.collect_news",
-            return_value=news,
         ), mock.patch(
             "core.telemetry.collector.collect_reminders",
             return_value=reminders,
@@ -238,18 +231,13 @@ class TelemetryApiTests(unittest.TestCase):
 
     def test_freshness_window_skips_connector_calls(self) -> None:
         weather = _result("weather", "healthy")
-        news = _result("news", "healthy")
         reminders = _result("reminders", "healthy")
         collect_weather = mock.Mock(return_value=weather)
-        collect_news = mock.Mock(return_value=news)
         collect_reminders = mock.Mock(return_value=reminders)
 
         with mock.patch(
             "core.telemetry.collector.weather_client.collect_weather",
             collect_weather,
-        ), mock.patch(
-            "core.telemetry.collector.news_client.collect_news",
-            collect_news,
         ), mock.patch(
             "core.telemetry.collector.collect_reminders",
             collect_reminders,
@@ -261,16 +249,12 @@ class TelemetryApiTests(unittest.TestCase):
         self.assertEqual(second.status_code, 200)
         self.assertEqual(first.json()["snapshot_id"], second.json()["snapshot_id"])
         self.assertEqual(collect_weather.call_count, 1)
-        self.assertEqual(collect_news.call_count, 1)
 
     def test_reuse_check_matches_what_a_normal_refresh_would_do(self) -> None:
         self.assertEqual(self.client.get("/api/v1/telemetry/reuse").json(), {"reusable": False})
         with mock.patch(
             "core.telemetry.collector.weather_client.collect_weather",
             return_value=_result("weather", "healthy"),
-        ), mock.patch(
-            "core.telemetry.collector.news_client.collect_news",
-            return_value=_result("news", "healthy"),
         ), mock.patch(
             "core.telemetry.collector.collect_reminders",
             return_value=_result("reminders", "healthy"),
@@ -287,16 +271,12 @@ class TelemetryApiTests(unittest.TestCase):
 
     def test_force_refresh_bypasses_freshness(self) -> None:
         weather = _result("weather", "healthy")
-        news = _result("news", "healthy")
         reminders = _result("reminders", "healthy")
         collect_weather = mock.Mock(return_value=weather)
 
         with mock.patch(
             "core.telemetry.collector.weather_client.collect_weather",
             collect_weather,
-        ), mock.patch(
-            "core.telemetry.collector.news_client.collect_news",
-            return_value=news,
         ), mock.patch(
             "core.telemetry.collector.collect_reminders",
             return_value=reminders,
@@ -314,18 +294,17 @@ class TelemetryApiTests(unittest.TestCase):
             datetime.now(timezone.utc)
             - timedelta(seconds=FRESHNESS_WINDOW_SECONDS + 1)
         ).isoformat()
-        weather = _result("weather", "healthy")
-        old_news = _result("news", "healthy", observed_at=old_observation)
+        old_market = _result("market", "healthy", observed_at=old_observation)
         reminders = _result("reminders", "healthy")
-        collect_weather = mock.Mock(return_value=weather)
-        collect_news = mock.Mock(return_value=old_news)
+        collect_market = mock.Mock(side_effect=[old_market, _result("market", "healthy")])
+        self.store.apply_patch(SettingsPatch.model_validate({"features": {"market": True}}))
 
         with mock.patch(
             "core.telemetry.collector.weather_client.collect_weather",
-            collect_weather,
+            return_value=_result("weather", "healthy"),
         ), mock.patch(
-            "core.telemetry.collector.news_client.collect_news",
-            collect_news,
+            "core.telemetry.collector.market_client.collect_market",
+            collect_market,
         ), mock.patch(
             "core.telemetry.collector.collect_reminders",
             return_value=reminders,
@@ -340,16 +319,13 @@ class TelemetryApiTests(unittest.TestCase):
         self.assertEqual(seed.status_code, 200)
         self.assertEqual(partial.status_code, 200)
         self.assertEqual(refreshed.status_code, 200)
-        self.assertEqual(collect_news.call_count, 2)
+        self.assertEqual(collect_market.call_count, 2)
 
     def test_setting_change_replaces_cached_connector_with_disabled_state(self) -> None:
         collect_weather = mock.Mock(return_value=_result("weather", "healthy"))
         with mock.patch(
             "core.telemetry.collector.weather_client.collect_weather",
             collect_weather,
-        ), mock.patch(
-            "core.telemetry.collector.news_client.collect_news",
-            return_value=_result("news", "healthy"),
         ), mock.patch(
             "core.telemetry.collector.collect_reminders",
             return_value=_result("reminders", "healthy"),
@@ -367,15 +343,11 @@ class TelemetryApiTests(unittest.TestCase):
 
     def test_partial_refresh_merge_and_retain_on_failure(self) -> None:
         weather = _result("weather", "healthy", display_text="keep-me")
-        news = _result("news", "healthy")
         reminders = _result("reminders", "healthy")
 
         with mock.patch(
             "core.telemetry.collector.weather_client.collect_weather",
             return_value=weather,
-        ), mock.patch(
-            "core.telemetry.collector.news_client.collect_news",
-            return_value=news,
         ), mock.patch(
             "core.telemetry.collector.collect_reminders",
             return_value=reminders,
@@ -400,7 +372,6 @@ class TelemetryApiTests(unittest.TestCase):
         self.assertEqual(module["status"], "healthy")
         self.assertEqual(module["freshness"], "stale")
         self.assertEqual(module["display_text"], "keep-me")
-        self.assertEqual(refreshed.json()["modules"]["news"]["status"], "healthy")
 
     def test_concurrent_refresh_returns_409(self) -> None:
         gate = threading.Event()
@@ -416,9 +387,6 @@ class TelemetryApiTests(unittest.TestCase):
             with mock.patch(
                 "core.telemetry.collector.weather_client.collect_weather",
                 side_effect=_slow_weather,
-            ), mock.patch(
-                "core.telemetry.collector.news_client.collect_news",
-                return_value=_result("news", "healthy"),
             ), mock.patch(
                 "core.telemetry.collector.collect_reminders",
                 return_value=_result("reminders", "healthy"),
@@ -444,26 +412,25 @@ class TelemetryApiTests(unittest.TestCase):
             "core.telemetry.collector.weather_client.collect_weather",
             return_value=_result("weather", "healthy"),
         ), mock.patch(
-            "core.telemetry.collector.news_client.collect_news",
-            return_value=_result("news", "healthy"),
-        ), mock.patch(
             "core.telemetry.collector.collect_reminders",
             return_value=_result("reminders", "healthy"),
         ):
             seed = self.client.post("/api/v1/telemetry/refresh", json={"force": True})
         self.assertEqual(seed.status_code, 200)
 
-        response = self.client.post(
-            "/api/v1/telemetry/refresh",
-            json={"connectors": ["not_a_connector"]},
-        )
-        self.assertEqual(response.status_code, 400)
+        for connector in ("not_a_connector", "news"):
+            with self.subTest(connector=connector):
+                response = self.client.post(
+                    "/api/v1/telemetry/refresh",
+                    json={"connectors": [connector]},
+                )
+                self.assertEqual(response.status_code, 400)
 
     def test_invalid_connector_rejected_in_demo_mode(self) -> None:
         with mock.patch("core.telemetry.service.config.DEMO_MODE", True):
             response = self.client.post(
                 "/api/v1/telemetry/refresh",
-                json={"connectors": ["not_a_connector"]},
+                json={"connectors": ["news"]},
             )
         self.assertEqual(response.status_code, 400)
 

@@ -55,7 +55,7 @@ from core.settings.models import (
 _LOGGER = logging.getLogger(__name__)
 
 _FEATURE_KEYS: frozenset[str] = frozenset(
-    {"weather", "sports", "news", "email", "calendar", "market"}
+    {"weather", "sports", "email", "calendar", "market"}
 )
 _MODULE_KEYS: frozenset[str] = frozenset({"football", "f1"})
 EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
@@ -1070,7 +1070,6 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     features = FeaturesSettings(
         weather=bool(features_raw.get("weather", False)),
         sports=bool(features_raw.get("sports", False)),
-        news=bool(features_raw.get("news", False)),
         email=bool(features_raw.get("email", False)),
         calendar=bool(features_raw.get("calendar", False)),
         market=bool(features_raw.get("market", False)),

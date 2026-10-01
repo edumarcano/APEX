@@ -143,12 +143,22 @@ class BriefingSpeechTests(unittest.TestCase):
         )
 
     @staticmethod
-    def _output() -> BriefingGenerationOutput:
+    def _output(source: str = "calendar") -> BriefingGenerationOutput:
         evidence = BriefingEvidence(
-            source="calendar",
-            source_id="event-1",
+            source=source,
+            source_id="event-1" if source == "calendar" else "news:historical-article",
             trust="observed",
-            content="A planning meeting begins at 10:00.",
+            content=(
+                "A planning meeting begins at 10:00."
+                if source == "calendar"
+                else "Historical headline from the saved news briefing."
+            ),
+        )
+        title = "Planning meeting" if source == "calendar" else "Historical headline"
+        body = (
+            "The meeting begins at 10:00."
+            if source == "calendar"
+            else "The saved briefing recorded this article."
         )
         return BriefingGenerationOutput(
             draft=BriefingDraft(
@@ -158,8 +168,8 @@ class BriefingSpeechTests(unittest.TestCase):
                         items=[
                             BriefingItemDraft(
                                 category="observation",
-                                title="Planning meeting",
-                                body="The meeting begins at 10:00.",
+                                title=title,
+                                body=body,
                                 evidence_ids=[evidence.id],
                             )
                         ],
@@ -167,7 +177,7 @@ class BriefingSpeechTests(unittest.TestCase):
                 ]
             ),
             evidence=[evidence],
-            coverage=[BriefingCoverage(source="calendar", scope="today", status="complete")],
+            coverage=[BriefingCoverage(source=source, scope="today", status="complete")],
         )
 
     def _service(self, executor, resolver=None):
@@ -383,6 +393,26 @@ class BriefingSpeechTests(unittest.TestCase):
         payload = json.loads(prompt.rsplit("Speech input JSON:\n", 1)[1])
         self.assertNotIn("user_designation", payload)
         self.assertNotIn("user_designation", prompt.split("Speech input JSON:\n", 1)[0])
+
+    def test_speech_prompt_reads_saved_historical_news_artifact(self) -> None:
+        started = self._service(
+            lambda *_args: self._output(source="news")
+        ).start(self._request())
+        assert started.future is not None
+        started.future.result(timeout=3)
+        record = self.session_store.get(started.session.id, "production")
+        assert record.artifact is not None
+
+        payload = json.loads(_speech_prompt(record.artifact).rsplit("Speech input JSON:\n", 1)[1])
+        artifact = json.loads(payload["canonical_artifact_json"])
+
+        self.assertEqual(record.evidence[0].source, "news")
+        self.assertEqual(record.artifact.coverage[0].source, "news")
+        self.assertEqual(artifact["sections"][0]["items"][0]["title"], "Historical headline")
+        self.assertEqual(
+            artifact["sections"][0]["items"][0]["body"],
+            "The saved briefing recorded this article.",
+        )
 
     def test_speech_prompt_includes_user_designation_when_set(self) -> None:
         record = self._completed_session()

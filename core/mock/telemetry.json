@@ -49,24 +49,6 @@
         ]
       }
     },
-    "news": {
-      "status": "degraded",
-      "freshness": "live",
-      "reason_code": "partial_failure",
-      "observed_at_offset": "now-5m",
-      "data": {
-        "headlines": [
-          {
-            "topic": "Artificial Intelligence",
-            "headline": "Enterprise teams accelerate local inference adoption"
-          },
-          {
-            "topic": "Global Events",
-            "headline": "Regional transit authorities report smooth morning operations"
-          }
-        ]
-      }
-    },
     "email": {
       "status": "healthy",
       "freshness": "live",

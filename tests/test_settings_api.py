@@ -33,7 +33,7 @@ class SettingsApiTests(unittest.TestCase):
             "features": {
                 "weather": True,
                 "sports": True,
-                "news": False,
+                "news": True,
                 "email": False,
                 "calendar": True,
                 "market": True,
@@ -84,6 +84,7 @@ class SettingsApiTests(unittest.TestCase):
         self.assertNotIn("schema_version", payload)
         self.assertTrue(payload["settings"]["features"]["market"])
         self.assertTrue(payload["settings"]["features"]["weather"])
+        self.assertNotIn("news", payload["settings"]["features"])
         self.assertNotIn("briefing", payload["settings"])
         self.assertEqual(payload["settings"]["voice"]["mode"], "automatic")
         self.assertTrue(payload["settings"]["modules"]["f1"])
@@ -183,11 +184,11 @@ class SettingsApiTests(unittest.TestCase):
     def test_partial_patch_persists_and_returns_resolved(self) -> None:
         response = self.client.patch(
             "/api/v1/settings",
-            json={"features": {"news": True}, "voice": {"gender": "male"}},
+            json={"features": {"market": False}, "voice": {"gender": "male"}},
         )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertTrue(payload["settings"]["features"]["news"])
+        self.assertNotIn("news", payload["settings"]["features"])
         self.assertTrue(payload["settings"]["features"]["weather"])
         self.assertEqual(payload["settings"]["voice"]["gender"], "male")
         self.assertEqual(payload["settings"]["voice"]["engine"], "google")
@@ -195,12 +196,13 @@ class SettingsApiTests(unittest.TestCase):
         self.assertTrue(self.local_path.is_file())
 
         again = self.client.get("/api/v1/settings").json()
-        self.assertTrue(again["settings"]["features"]["news"])
+        self.assertNotIn("news", again["settings"]["features"])
         self.assertEqual(again["settings"]["voice"]["gender"], "male")
 
     def test_unknown_field_rejected(self) -> None:
         for payload in (
             {"features": {"weather": True, "unknown": True}},
+            {"features": {"news": True}},
             {"briefing": {"default_mode": "unknown-mode"}},
             {"ask_apex": {"cloud": {"provider": "gemini"}}},
             {"ask_apex": {"local": {"runtime": "ollama"}}},
@@ -361,7 +363,7 @@ class SettingsApiTests(unittest.TestCase):
         ):
             response = self.client.patch(
                 "/api/v1/settings",
-                json={"features": {"news": True}},
+                json={"features": {"weather": False}},
             )
         self.assertEqual(response.status_code, 500)
         self.assertIn("config.local.json", response.json()["detail"])

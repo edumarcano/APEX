@@ -11,7 +11,7 @@ from unittest import mock
 
 from fastapi.testclient import TestClient
 
-from clients import market_client, news_client, sports_client, weather_client
+from clients import market_client, sports_client, weather_client
 from clients.http_sessions import (
     ConnectorHttpSessions,
     get_connector_http_session,
@@ -62,13 +62,13 @@ class ConnectorHttpSessionsTests(unittest.TestCase):
             return session
 
         registry = ConnectorHttpSessions(session_factory=factory)
-        self.assertEqual(len(sessions), 4)
+        self.assertEqual(len(sessions), 3)
         self.assertIsNot(registry.for_connector("market"), registry.for_connector("weather"))
 
         registry.close()
         registry.close()
 
-        self.assertEqual([session.close_calls for session in sessions], [1, 1, 1, 1])
+        self.assertEqual([session.close_calls for session in sessions], [1, 1, 1])
 
     def test_installed_registry_is_available_and_can_be_cleared(self) -> None:
         registry = ConnectorHttpSessions(
@@ -101,7 +101,7 @@ class ConnectorHttpSessionsTests(unittest.TestCase):
             market_client._alpha_vantage_get({"symbol": "SPY"})
         top_level_get.assert_called_once()
 
-    def test_weather_news_and_sports_use_installed_sessions(self) -> None:
+    def test_weather_and_sports_use_installed_sessions(self) -> None:
         weather_session = _Session(
             [
                 _Response({"results": [{"latitude": 42.36, "longitude": -71.06}]}),
@@ -134,22 +134,6 @@ class ConnectorHttpSessionsTests(unittest.TestCase):
         ) as weather_get:
             weather_client.collect_weather()
         self.assertEqual(weather_get.call_count, 2)
-
-        news_session = _Session(_Response({"articles": []}))
-        with mock.patch.object(news_client, "api_key", "news-key"), mock.patch.object(
-            news_client, "get_connector_http_session", return_value=news_session
-        ), mock.patch.object(news_client.time, "sleep"):
-            result = news_client.collect_news()
-        self.assertEqual(result.status, "healthy")
-        self.assertEqual(len(news_session.calls), 2)
-
-        with mock.patch.object(news_client, "api_key", "news-key"), mock.patch.object(
-            news_client, "get_connector_http_session", return_value=None
-        ), mock.patch.object(
-            news_client.requests, "get", return_value=news_session.response
-        ) as news_get, mock.patch.object(news_client.time, "sleep"):
-            news_client.collect_news()
-        self.assertEqual(news_get.call_count, 2)
 
         sports_session = _Session(
             _Response(

@@ -311,6 +311,49 @@ class BriefingSessionApiTests(unittest.TestCase):
             second_ack.json()["presented_at"], first_ack.json()["presented_at"]
         )
 
+    def test_saved_news_evidence_remains_readable_through_session_api(self) -> None:
+        evidence = BriefingEvidence(
+            source="news",
+            source_id="news:historical-article",
+            trust="observed",
+            content="Historical headline and source details.",
+        )
+        output = BriefingGenerationOutput(
+            draft=BriefingDraft(sections=[
+                BriefingSectionDraft(title="Earlier updates", items=[
+                    BriefingItemDraft(
+                        category="observation",
+                        title="Historical headline",
+                        body="The saved briefing recorded this article.",
+                        evidence_ids=[evidence.id],
+                    ),
+                ]),
+            ]),
+            evidence=[evidence],
+            coverage=[BriefingCoverage(
+                source="news", scope="historical headlines", status="complete"
+            )],
+        )
+        started = self._service(lambda *_args: output).start(self._request())
+        assert started.future is not None
+        started.future.result(timeout=3)
+
+        detail = self.client.get(
+            f"/api/v1/briefing-sessions/{started.session.id}"
+        )
+        evidence_response = self.client.get(
+            f"/api/v1/briefing-sessions/{started.session.id}/evidence/{evidence.id}"
+        )
+
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["artifact"]["coverage"][0]["source"], "news")
+        self.assertEqual(evidence_response.status_code, 200)
+        self.assertEqual(evidence_response.json()["source"], "news")
+        self.assertEqual(
+            evidence_response.json()["content"],
+            "Historical headline and source details.",
+        )
+
     def test_saved_session_list_excludes_archived_conversations_before_pagination(self) -> None:
         oldest = self._completed_session()
         middle = self._completed_session()
