@@ -115,12 +115,28 @@ class ApexAgentCatalogTests(unittest.TestCase):
         expected = {
             "gpt-5.6-luna": "OPENAI_API_KEY",
             "deepseek/deepseek-v4-flash-0731": "OPENROUTER_API_KEY",
+            "z-ai/glm-5.3-flash": "OPENROUTER_API_KEY",
             "gemini-3.7-flash": "GEMINI_API_KEY",
         }
         self.assertEqual(
             {model_id: get_model_profile(model_id).credential_env for model_id in expected},
             expected,
         )
+
+    def test_glm_5_3_flash_profile_attributes(self) -> None:
+        profile = get_model_profile("z-ai/glm-5.3-flash")
+        self.assertIsNotNone(profile)
+        assert profile is not None
+        self.assertEqual(profile.display_name, "GLM 5.3 Flash")
+        self.assertEqual(profile.provider, "openrouter")
+        self.assertEqual(profile.runtime, "cloud")
+        self.assertEqual(profile.stability, "stable")
+        self.assertEqual(profile.credential_env, "OPENROUTER_API_KEY")
+        self.assertEqual(profile.reasoning_options, ("low", "high", "max"))
+        self.assertEqual(profile.default_reasoning, "low")
+        self.assertFalse(profile.supports_encrypted_reasoning)
+        self.assertEqual(profile.hosted_capabilities, frozenset())
+        self.assertEqual(profile.maximum_context_window, 1_048_576)
 
     def test_cortex_agent_endpoint_returns_one_catalog(self) -> None:
         from fastapi.testclient import TestClient

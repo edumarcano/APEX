@@ -577,6 +577,22 @@ class PricingRegistryTests(unittest.TestCase):
         # cached at $0.04, and 1M output at $1.80.
         self.assertAlmostEqual(estimate.token_cost or 0.0, 2.056, places=4)
 
+    def test_glm_flash_uses_the_current_standard_rates(self) -> None:
+        rates = _MODEL_RATES["z-ai/glm-5.3-flash"]
+        self.assertEqual(rates.input_per_million, 0.15)
+        self.assertEqual(rates.output_per_million, 0.50)
+        self.assertEqual(rates.cached_input_per_million, 0.03)
+
+        estimate = estimate_inference_cost(
+            model="z-ai/glm-5.3-flash",
+            usage=TokenUsage(
+                input_tokens=1_000_000,
+                cached_input_tokens=200_000,
+                output_tokens=1_000_000,
+            ),
+        )
+        self.assertAlmostEqual(estimate.token_cost or 0.0, 0.626, places=4)
+
     def test_gemini_flash_uses_standard_billing(self) -> None:
         pricing = agent_pricing(
             "apex",

@@ -62,6 +62,7 @@ _MODEL_RATES: dict[str, ModelTokenRates] = {
         long_context_cached_input_per_million=0.04,
     ),
     "deepseek/deepseek-v4-flash-0731": ModelTokenRates(0.14, 0.28, 0.028),
+    "z-ai/glm-5.3-flash": ModelTokenRates(0.15, 0.50, 0.03),
 }
 
 _LOCAL_ZERO = ModelTokenRates(0.0, 0.0, 0.0)

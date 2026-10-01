@@ -4,6 +4,7 @@ import GemmaColor from '@lobehub/icons/es/Gemma/components/Color'
 import OllamaMono from '@lobehub/icons/es/Ollama/components/Mono'
 import OpenAIMono from '@lobehub/icons/es/OpenAI/components/Mono'
 import QwenColor from '@lobehub/icons/es/Qwen/components/Color'
+import ZhipuColor from '@lobehub/icons/es/Zhipu/components/Color'
 import { Cpu } from 'lucide-react'
 import type { ReactElement } from 'react'
 
@@ -28,6 +29,15 @@ export function ModelMark({
     return (
       <span className={`inline-flex shrink-0 items-center justify-center ${className}`} aria-hidden>
         <GeminiColor size={size} />
+      </span>
+    )
+  }
+
+  // Zhipu / GLM family
+  if (normalizedModel.startsWith('z-ai') || normalizedModel.includes('glm')) {
+    return (
+      <span className={`inline-flex shrink-0 items-center justify-center ${className}`} aria-hidden>
+        <ZhipuColor size={size} />
       </span>
     )
   }

@@ -125,6 +125,23 @@ class CloudModelVerificationTests(unittest.TestCase):
             timeout=5,
         )
 
+    def test_openrouter_probe_supports_glm_5_3_flash(self) -> None:
+        response = mock.Mock(ok=True)
+        response.json.return_value = {
+            "data": [{"model_id": "z-ai/glm-5.3-flash"}]
+        }
+        with mock.patch("core.agent.providers.cloud_verification.requests.get", return_value=response) as get:
+            from core.agent.providers.cloud_verification import _probe_model
+
+            status, reason = _probe_model("openrouter", "z-ai/glm-5.3-flash", "secret")
+
+        self.assertEqual((status, reason), ("verified", None))
+        get.assert_called_once_with(
+            "https://openrouter.ai/api/v1/endpoints/zdr",
+            headers={"Authorization": "Bearer secret"},
+            timeout=5,
+        )
+
     def test_openrouter_probe_fails_closed_for_invalid_or_unavailable_zdr_responses(self) -> None:
         from core.agent.providers.cloud_verification import _probe_model
 
