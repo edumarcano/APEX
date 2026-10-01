@@ -17,12 +17,14 @@ import os
 import sys
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Iterator
 from unittest.mock import patch
 from uuid import uuid4
+
+import requests
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -58,6 +60,8 @@ class ScenarioResult:
     output_tokens: int
     reasoning_tokens: int
     cost: float
+    provider: str = "OpenRouter"
+    generation_ids: list[str] = field(default_factory=list)
 
 
 class _TrackingStream:
@@ -71,6 +75,12 @@ class _TrackingStream:
 
     def __iter__(self) -> Iterator[Any]:
         for chunk in self._stream:
+            gen_id = getattr(chunk, "id", None)
+            if gen_id is None and isinstance(chunk, dict):
+                gen_id = chunk.get("id")
+            if gen_id and gen_id not in self._tracker["generation_ids"]:
+                self._tracker["generation_ids"].append(gen_id)
+
             if not self._first_token_seen:
                 choices = getattr(chunk, "choices", None)
                 if choices and len(choices) > 0:
@@ -146,6 +156,7 @@ def capture_turn_metrics(model_id: str) -> Iterator[dict[str, Any]]:
         "billed_cost": 0.0,
         "has_billed_cost": False,
         "turn_count": 0,
+        "generation_ids": [],
     }
 
     orig_generate_turn = OpenRouterProvider.generate_turn
@@ -264,6 +275,7 @@ def run_scenario_1(model_id: str) -> ScenarioResult:
         output_tokens=tracker["output_tokens"],
         reasoning_tokens=tracker["reasoning_tokens"],
         cost=cost,
+        generation_ids=list(tracker["generation_ids"]),
     )
 
 
@@ -309,6 +321,7 @@ def run_scenario_2(model_id: str) -> ScenarioResult:
         output_tokens=tracker["output_tokens"],
         reasoning_tokens=tracker["reasoning_tokens"],
         cost=cost,
+        generation_ids=list(tracker["generation_ids"]),
     )
 
 
@@ -362,6 +375,7 @@ def run_scenario_3(model_id: str) -> ScenarioResult:
         output_tokens=tracker["output_tokens"],
         reasoning_tokens=tracker["reasoning_tokens"],
         cost=cost,
+        generation_ids=list(tracker["generation_ids"]),
     )
 
 
@@ -371,10 +385,52 @@ def format_tokens(r: ScenarioResult) -> str:
     return f"{r.input_tokens} in / {r.output_tokens} out"
 
 
+def resolve_routed_providers(results: list[ScenarioResult], api_key: str) -> None:
+    """Fetch routed upstream providers for each scenario from OpenRouter generation metadata."""
+    all_gen_ids = {gid for r in results for gid in r.generation_ids}
+    if not all_gen_ids:
+        return
+
+    provider_map: dict[str, str] = {}
+    print("\nResolving routed upstream providers from OpenRouter...", flush=True)
+
+    for attempt in range(8):
+        unresolved = [gid for gid in all_gen_ids if gid not in provider_map]
+        if not unresolved:
+            break
+        for gid in unresolved:
+            try:
+                resp = requests.get(
+                    f"https://openrouter.ai/api/v1/generation?id={gid}",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    timeout=5,
+                )
+                if resp.status_code == 200:
+                    data = resp.json().get("data", {})
+                    pname = data.get("provider_name")
+                    if pname:
+                        provider_map[gid] = str(pname)
+            except Exception:
+                pass
+        remaining = [gid for gid in all_gen_ids if gid not in provider_map]
+        if remaining and attempt < 7:
+            time.sleep(2.0 + attempt * 0.5)
+
+    for r in results:
+        names = []
+        for gid in r.generation_ids:
+            if gid in provider_map:
+                names.append(provider_map[gid])
+        seen = set()
+        distinct = [n for n in names if not (n in seen or seen.add(n))]
+        if distinct:
+            r.provider = ", ".join(distinct)
+
+
 def format_results_markdown(results: list[ScenarioResult]) -> str:
     lines = [
-        "| Model | Scenario | TTFT | Total | Tokens | Cost |",
-        "|---|---|---:|---:|---:|---:|",
+        "| Model | Provider | Scenario | TTFT | Total | Tokens | Cost |",
+        "|---|---|---|---:|---:|---:|---:|",
     ]
     for r in results:
         tokens_str = format_tokens(r)
@@ -382,7 +438,7 @@ def format_results_markdown(results: list[ScenarioResult]) -> str:
         total_str = f"{r.total_seconds:.2f}s"
         cost_str = f"${r.cost:.6f}"
         lines.append(
-            f"| {r.model} | {r.scenario} | {ttft_str} | {total_str} | {tokens_str} | {cost_str} |"
+            f"| {r.model} | {r.provider} | {r.scenario} | {ttft_str} | {total_str} | {tokens_str} | {cost_str} |"
         )
     return "\n".join(lines)
 
@@ -421,6 +477,8 @@ def main() -> None:
         r3 = run_scenario_3(model_id)
         print(f"    Done: TTFT={r3.ttft_ms:.1f}ms, Total={r3.total_seconds:.2f}s, Tokens={format_tokens(r3)}, Cost=${r3.cost:.6f}", flush=True)
         all_results.append(r3)
+
+    resolve_routed_providers(all_results, api_key)
 
     print("\nBenchmark Results:\n")
     table = format_results_markdown(all_results)
