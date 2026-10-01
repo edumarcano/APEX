@@ -60,11 +60,7 @@ class ActionIntegrityError(ActionStoreError):
 
 
 def initialize_action_schema(conn: sqlite3.Connection) -> None:
-    """Create the additive action tables if they do not already exist.
-
-    This is intentionally a small idempotent migration. More machinery is only
-    warranted once this unshipped schema needs a second incompatible change.
-    """
+    """Create the current action tables and indexes when they are absent."""
     conn.execute(
         f"""
         CREATE TABLE IF NOT EXISTS actions (

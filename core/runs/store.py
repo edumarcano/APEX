@@ -174,7 +174,7 @@ class RunStore:
                 runtime TEXT,
                 status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled', 'interrupted')),
                 stop_reason TEXT CHECK(stop_reason IS NULL OR stop_reason IN (
-                    'end_turn', 'operator_cancelled', 'max_elapsed_seconds', 'max_total_tokens',
+                    'end_turn', 'operator_cancelled', 'max_elapsed_seconds',
                     'max_retries', 'max_model_turns', 'max_tool_calls', 'provider_error',
                     'tool_error', 'runtime_error', 'resource_exhaustion', 'interrupted_by_restart',
                     'internal_error'

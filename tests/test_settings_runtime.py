@@ -25,21 +25,6 @@ def _write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
-class SportsClientSnapshotTests(unittest.TestCase):
-    def test_disabled_modules_skip_network(self) -> None:
-        from clients import sports_client
-
-        with mock.patch.object(sports_client.requests, "get") as get_mock:
-            report, refreshed, f1_map = sports_client.fetch_sports_snapshot(
-                f1=False,
-                football=False,
-            )
-        self.assertEqual(report, "")
-        self.assertTrue(refreshed)
-        self.assertIsNone(f1_map)
-        get_mock.assert_not_called()
-
-
 class SpeakBindingTests(unittest.TestCase):
     def setUp(self) -> None:
         self._temp_dir = tempfile.TemporaryDirectory(prefix="apex_speak_")

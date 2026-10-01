@@ -681,7 +681,7 @@ def synthesize_audio(
     except Exception:
         if cancellation_event.is_set() or selected == "pyttsx3":
             raise
-        # Cached speech follows legacy fallback rules. Kokoro never escalates to cloud TTS.
+        # Keep saved-speech fallback local; Kokoro never escalates to cloud TTS.
         _LOGGER.info("Saved speech engine %s failed; falling back to local pyttsx3.", selected)
         return synthesize_all("pyttsx3"), "pyttsx3"
 

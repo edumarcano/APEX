@@ -120,10 +120,10 @@ def normalize_layer(
     issues: NormalizationIssues | None = None,
 ) -> dict[str, Any]:
     """
-    Normalize a single config layer for editable settings.
+    Normalize one config layer for editable runtime settings.
 
-    - Validate the current ask_apex shape and reject stale Agent/provider/runtime keys.
-    - Warn and drop unknown keys under editable sections.
+    Reject retired Agent/provider/runtime fields and warn before dropping
+    unknown keys from editable sections.
     """
     if not isinstance(raw, dict):
         _LOGGER.warning("%s root must be a JSON object; ignoring layer.", layer_name)

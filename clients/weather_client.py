@@ -455,11 +455,6 @@ def collect_weather() -> ConnectorResult:
         )
 
 
-def fetch_weather_data() -> str:
-    """Compatibility facade returning display text for non-briefing callers."""
-    return collect_weather().display_text
-
-
 def fetch_weather_forecast(location: str | None = None, days: int = 5) -> dict[str, Any]:
     """Fetch an enriched multi-day Open-Meteo forecast and current conditions for any location or configured default."""
     resolved_location = location.strip() if isinstance(location, str) and location.strip() else _configured_location()
@@ -546,4 +541,4 @@ def fetch_weather_forecast(location: str | None = None, days: int = 5) -> dict[s
 
 if __name__ == "__main__":
     print("[WEATHER]: Weather client diagnostics")
-    print(f"[WEATHER]: {fetch_weather_data()}")
+    print(f"[WEATHER]: {collect_weather().display_text}")

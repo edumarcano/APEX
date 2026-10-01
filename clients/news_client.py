@@ -140,12 +140,7 @@ def collect_news() -> ConnectorResult:
     )
 
 
-def fetch_news_data() -> str:
-    """Compatibility façade returning display text for non-briefing callers."""
-    return collect_news().display_text
-
-
 if __name__ == "__main__":
     print("[NEWS] Initializing news service test.")
-    fetch_news_data()
+    print(collect_news().display_text)
     print("[NEWS] News service test completed.")
