@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide takes APEX from a clean checkout to a running local HUD. It starts with the credential-free demo path, then covers the normal launcher, manual development servers, optional providers, and common startup failures.
+This guide takes you from a clean checkout to a first run of APEX. Start with the demo to explore the interface, then configure the models and connected services you want to use.
 
 ## Prerequisites
 
@@ -28,7 +28,7 @@ cd ..
 
 ## Run the credential-free demo
 
-Create a local environment file:
+If you do not already have a `.env` file, copy the example:
 
 ```powershell
 copy .env.example .env
@@ -46,7 +46,7 @@ Then launch APEX:
 uv run python launcher.py
 ```
 
-Demo mode uses static telemetry, deterministic Agent responses, and fixed Daily and Catch Up briefing fixtures in an in-memory database. It skips live connectors and provider calls, and its sessions reset when the demo process stops. It is the safest way to inspect the complete interface without disclosing personal data or configuring provider credentials.
+Demo mode uses static telemetry, deterministic Agent responses, and fixed Daily and Catch Up briefing fixtures in an in-memory database. It skips live connectors and model provider calls, and its sessions reset when the demo process stops. Deep briefings are unavailable in demo mode. Optional speech uses `DEMO_TTS`, which defaults to the local pyttsx3 engine; selecting Google speech requires its credentials and sends spoken text to Google.
 
 <p align="center">
   <img
@@ -62,18 +62,26 @@ Demo mode uses static telemetry, deterministic Agent responses, and fixed Daily 
 
 ## Run the full local system
 
-After configuring the features you intend to use, run:
+Stop the demo and set this value in `.env`:
+
+```dotenv
+DEMO_MODE=false
+```
+
+Read [Privacy](privacy.md) before connecting personal services or using cloud models, then restart APEX after changing `.env`:
 
 ```powershell
 uv run python launcher.py
 ```
 
+Once APEX is running, open Runtime Settings to choose a model and enable the features you intend to use. [Configuration](configuration.md) explains the required credentials and local model setup. APEX can open without a model provider credential, but live Agent responses and generated briefings need an available model.
+
 The launcher:
 
 1. Starts FastAPI on `127.0.0.1:8000`.
-2. Starts the compiled HUD on `127.0.0.1:5500`.
+2. Starts the compiled frontend on `127.0.0.1:5500`.
 3. Waits for API readiness and frontend availability.
-4. Opens a supported browser in kiosk mode when possible.
+4. Opens a supported browser in an application window when possible.
 5. Stops both child servers when the tracked browser closes.
 
 If the launcher uses the operating-system default browser, it cannot track that browser process. Press `Ctrl+C` in the launcher terminal to stop the servers.
@@ -113,66 +121,18 @@ npm run dev
 
 Vite serves on its development port and calls the FastAPI process at `127.0.0.1:8000`.
 
-## Configure optional capabilities
+## Explore the workspaces
 
-APEX can start without most provider credentials. Enable only the integrations you intend to use.
+APEX opens on Launch without collecting telemetry or running a briefing.
 
-| Capability | What to prepare |
-|---|---|
-| Cloud models | `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, or `GEMINI_API_KEY`, according to the model you select |
-| Weather, news, and football data | The corresponding key from `.env.example` |
-| Market data | `ALPHA_VANTAGE_API_KEY` in `.env` plus ticker symbols in Runtime Settings |
-| Gmail and Google Calendar | Desktop OAuth `credentials.json`; first authorization writes `token.json` |
-| Google Cloud Text-to-Speech | Service-account key and an absolute `GOOGLE_APPLICATION_CREDENTIALS` path |
-| Local models through Ollama | Ollama plus the desired Qwen3 model tags for development-only models |
-| Local models through llama.cpp | Optional external or APEX-managed llama.cpp router with model-based aliases |
-| Microsoft To Do | Public/native Entra application with delegated `Tasks.ReadWrite` |
-| MCP providers | Provider credential plus explicit runtime and preset enablement |
-| OpenTelemetry GenAI tracing | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` in `.env` (optional headers or service name) |
+1. Open **Overview** and select **Collect Telemetry** to check connected services and populate the grid. This does not run a model.
+2. Open **Briefing**, choose **Daily**, and generate a session. In demo mode this uses a fixture; outside demo mode it uses the model selected in APEX Agent settings. The saved result can be continued in its linked Cortex conversation.
+3. Open **Cortex** to talk directly with the Agent. You can do this without collecting telemetry first.
+4. Open **Reports** to inspect imported external activity reports.
 
-See [Configuration](configuration.md) for ownership, precedence, modes, model settings, and provider-specific boundaries.
+Personal-context retrieval is off by default for cloud and local models. You can still inspect and manage local records through Cortex's Context inspector. Exporting selected records as Markdown is also off by default; see [Context Vault](context-vault.md).
 
-## Install local Ollama models
-
-Install and start [Ollama](https://ollama.com), then pull only the development-only local models you want to test:
-
-```powershell
-ollama pull qwen3:1.7b
-ollama pull qwen3:4b-instruct
-```
-
-These map to development-only local model options. Missing tags appear as unavailable in the HUD instead of failing at selection time. They are surfaced only in `DEV_MODE`.
-
-## Optional llama.cpp path
-
-llama.cpp is not required to start APEX. When you want to use a local llama.cpp model:
-
-1. Install llama.cpp yourself (APEX does not install, bundle, or update it, and does not download model weights).
-2. Copy [`docs/examples/llama-cpp-apex-local-models.preset.ini`](examples/llama-cpp-apex-local-models.preset.ini) to a machine-local path, set the GGUF placeholders, and keep that copy untracked.
-3. Choose a mode:
-   - **External:** start the router yourself with `--models-preset`, `--models-max 1`, and `--no-models-autoload` as documented in [configuration.md](configuration.md#external-and-managed-router-modes).
-   - **Managed:** in Runtime Settings, enable llama.cpp, turn on Manage server automatically, and set the executable and preset paths. APEX starts the router only when the configured loopback URL is unreachable.
-4. Set `llama_cpp.enabled` to `true` in `config.local.json` if needed, and optionally `LLAMA_CPP_API_KEY` in `.env`.
-5. Keep `autoload` disabled for APEX traffic; the provider always requests `autoload=false`.
-
-Local models default to request-level `none` reasoning. The Cortex Reasoning control can select `focused` for supported llama.cpp models without unloading the model; hidden reasoning is discarded before display.
-
-A manual smoke script is available when a router is running:
-
-```powershell
-uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model gemma-4-e2b-16k --load --unload
-```
-
-## First-run expectations
-
-- Launch does not automatically restore a telemetry snapshot, collect telemetry, or run a briefing.
-- Opening Overview only shows its central identity card. **Collect Telemetry** runs preflight, refreshes telemetry, and opens the Overview grid without running a model.
-- Open the **Briefing** tab to set up or generate a session with the shared APEX Agent model. Choose Catch Up or Deep from Briefing controls.
-- Agent queries are available in Cortex when enabled in Settings; they do not require telemetry collection.
-- Personal-context retrieval is off by default for both cloud and local models. The Cortex Context inspector remains available for adding, inspecting, correcting, retracting, and reviewing local records.
-- Context vault export is off by default. See the [Context vault guide](context-vault.md) when you want to share selected records as local Markdown notes.
-- Runtime Settings writes machine-local overrides to `config.local.json`.
-- `apex_memory.db` stores briefing sessions and artifacts, Cortex conversations and run records, external activity reports, personal-context sources and history, retrieval indexes, context reviews, the Microsoft To Do reminder cache and offline queue, and durable action history. Beta.6 is the supported persistence floor; startup checks existing core schema versions and table shapes before bootstrap or recovery, and current initialization leaves any residual retired `briefings` table untouched. See [Persistence compatibility](architecture.md#persistence-compatibility). Demo sessions use fixed non-personal fixtures and skip live providers.
+Normal sessions are stored in the local `apex_memory.db`; demo sessions are temporary. If you are opening an existing database, see [Persistence compatibility](architecture.md#persistence-compatibility) for the supported versions and startup checks.
 
 ## Troubleshooting
 
@@ -196,7 +156,7 @@ Stop the existing APEX process or other service using the port. APEX intentional
 
 ### Readiness fails
 
-`GET /api/v1/health/ready` checks the runtime settings snapshot and a lightweight SQLite query. Inspect malformed `config.local.json`, database access, and the API terminal. Optional external providers do not affect readiness.
+`GET /api/v1/health/ready` checks the runtime settings snapshot and a lightweight SQLite query. Inspect the API terminal and database access. Runtime Settings reports invalid local overrides and falls back to tracked defaults. Optional external providers do not affect readiness.
 
 ### A local model is unavailable
 
@@ -204,7 +164,7 @@ Confirm the selected backend is running. For Ollama, check the configured host a
 
 ### Live connectors return no data
 
-Confirm the connector is enabled, its required credential is present, and the HUD preflight or telemetry health reason. Disabled connectors deliberately make no network or authentication attempt.
+Confirm the connector is enabled, its required credential is present, and the preflight or telemetry health reason. Disabled connectors deliberately make no network or authentication attempt.
 
 ### Google authorization changed
 

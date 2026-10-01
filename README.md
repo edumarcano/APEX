@@ -31,7 +31,7 @@ APEX opens on Launch, with access to four workspaces:
 
 ## Try the demo
 
-The demo uses static data and needs no connector or model credentials. The validated development baseline is Windows with Python 3.14, uv, Node.js 24, and npm. Start from the repository root:
+The demo uses static data and needs no connector or model credentials. The validated development baseline is Windows with Python 3.14, uv, Node.js 24, and npm. Start from the repository root. If you do not already have a `.env` file, copy the example:
 
 ```powershell
 copy .env.example .env

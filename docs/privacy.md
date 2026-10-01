@@ -1,55 +1,88 @@
 # Privacy
 
-APEX is local-first: durable settings, conversation history, retrieval data, context sources and history, review proposals, action evidence, external activity reports, the Cortex run ledger, and new briefing sessions and speech artifacts remain on the local machine unless a selected operation requires an enabled connector or model provider. APEX does not encrypt its local SQLite databases.
+APEX stores its settings and history locally, but connected services, cloud models, speech providers, and optional tracing can send data outside the machine. The settings you enable and the model you select determine those boundaries. Local storage is not encrypted by APEX.
 
-## Interactive models
+## Local storage and credentials
 
-The selected model determines the inference boundary. Cloud model requests may send the bounded prompt, active-branch history, explicitly selected APEX or MCP schemas, and any context allowed by the relevant runtime policy. Local model requests use the configured Ollama or llama.cpp endpoint. Personal-context retrieval is disabled by default for both runtimes.
+`apex_memory.db` holds conversations, run records, briefing artifacts and speech, personal-context evidence and history, review proposals, external activity reports, reminder state, retrieval indexes, and action evidence. Runtime Settings saves non-secret preferences in `config.local.json`.
 
-Provider-hosted grounding is separate from APEX-managed tool calls. It is enabled only when the selected cloud model supports it and the corresponding Runtime Settings switch is enabled.
+Credentials use separate storage:
+
+- Provider keys and environment-specific paths belong in `.env` or the process environment.
+- Google authorization reads `credentials.json` and writes a local `token.json`. The token file is not encrypted by APEX.
+- Microsoft To Do uses an encrypted token cache outside the repository.
+- MCP OAuth authorization uses the operating system credential manager. Other MCP credentials are read from the configured environment variables.
+
+Keep credential files, tokens, databases, and local overrides out of source control. Files copied by backups or sync services are governed by those services, including copies of the database or exported notes.
+
+## Models and connected services
+
+A cloud model request can include your message, selected conversation history, tool definitions, and the evidence allowed for that request. Local models receive those inputs at the configured Ollama or llama.cpp endpoint. Choosing a local model does not make connected services local: a connector or MCP tool can still contact its external service.
+
+Provider-hosted grounding is separate from APEX tool calls. It is available only when the cloud model supports it and its Runtime Settings switch is enabled. Search or map grounding can send information from the request to the provider's hosted service.
+
+Calendar reads use only the calendars selected in Runtime Settings. Event titles, times, locations, and calendar labels can enter briefing or Agent prompts. Turning off **Show calendar names with events** removes calendar attribution labels from model-visible context; it does not remove the event metadata.
+
+Tools send the arguments needed for their operation to the relevant service, and their results can be returned to the selected model as untrusted data. Native write operations require local approval and create action evidence. Ambiguous outcomes are not replayed automatically.
 
 ## Personal context
 
-Original evidence, normalized claims, provenance, and append-only knowledge history are stored separately in the local SQLite database. APEX does not encrypt that database. Corrections and retractions preserve earlier evidence and history rather than erasing them, and pending review proposals remain outside normal retrieval.
+Cloud and local personal-context retrieval are independently disabled by default. When enabled, selected current claims can enter model prompts with concise provenance and effective-time labels. Normal claim retrieval excludes full source evidence, knowledge history, and pending replacement text as current knowledge.
 
-Canonical claims have a persisted sensitivity classification. New sensitive captures retain that classification when their review is accepted; corrections and conflict resolution carry it forward if any predecessor is sensitive. Existing claims linked to an accepted sensitive review are backfilled as sensitive, and other existing claims start unclassified. Changing a record's classification requires a revision-checked operator mutation that adds a history event. Context vault selection is disabled with no selected records by default, and sensitive records remain excluded unless a scope explicitly opts in. When enabled, one lifespan-owned worker writes selected production claims under `APEX_CONTEXT_VAULT_PATH` and reconciles them after committed changes. Generated notes include canonical claim text and limited source metadata, but omit original evidence, source locators, and source URLs. Ownership hashes, pending paths, and operational state stay in local SQLite outside the vault. The publisher leaves handwritten files and `.obsidian/` alone, refuses to overwrite an unowned file at a generated path, and removes only files it tracks when asked. Demo and development sandbox modes cannot write to the production vault. A local export status does not confirm that another application or sync service copied or indexed the files.
+Briefings have an additional evidence path. When personal context is enabled, they can include pending review text, selected external report excerpts, and verified action outcomes alongside accepted claims. Pending proposals remain labeled as pending; external reports remain untrusted. Neither becomes accepted knowledge merely because it was included in a briefing.
 
-When personal context is enabled for a model runtime, APEX can send selected current claims with concise provenance and effective-time labels as untrusted reference context. Full source evidence and knowledge history stay out of the prompt, and a pending proposal's replacement text is not sent as current knowledge. A cloud model provider receives the selected context included in that request; local models keep it on the configured local inference boundary.
-
-The [Context vault guide](context-vault.md) explains how to select, share, and remove generated copies.
+Original evidence, normalized claims, provenance, and knowledge history are stored locally. Corrections and retractions preserve earlier evidence and history. Records have a sensitivity classification, which carries forward through corrections and conflict resolution when a predecessor is sensitive. Changing that classification adds a history event. The Context vault uses sensitivity to control export; its opt-in is separate from the runtime switches that permit model retrieval.
 
 ## External activity reports
 
-External activity reports, including their structured findings and imported Markdown, are retained in local SQLite and may contain private content. They do not enter retrieval or model prompts automatically. APEX may select up to three relevant, non-dismissed reports from the newest 50 candidates for a Daily or Deep briefing and send bounded excerpts to the selected model as explicitly untrusted evidence. The excerpts identify the content as an external report; this does not promote it to accepted context. The optional local report folder leaves the original files in the operator-selected folder; if that folder is synced, its sync tool controls any external copies.
+Importing a report stores its findings and Markdown locally without accepting them as personal knowledge. When personal context is enabled, APEX can select relevant, non-dismissed report excerpts for briefing evidence and send them to the chosen model. Cloud models receive the excerpts included in their requests.
 
-When the operator accepts a context review linked to a report, the resulting normalized claim enters personal-context retrieval with its external source provenance. If retrieval is enabled for a model runtime, selected claims can then enter model prompts, including cloud requests. Normal retrieval does not include the full report or original source evidence.
+Accepting a context review linked to a report creates a normalized claim with external source provenance. That claim can later enter ordinary personal-context retrieval when enabled. Normal claim retrieval does not include the full report or its original evidence.
+
+The optional report folder leaves imported files in place. If the folder is synced, its sync service controls the external copies. The separate local submission gateway accepts caller-declared source labels; those labels do not authenticate the submitting program. See [Configuration](configuration.md#external-activity-gateway) for its loopback boundary.
 
 ## Briefings
 
-The Briefing Daily, Catch Up, and Deep actions use the selected APEX Agent model and send their bounded prompts to that model's configured provider, or to the configured local inference endpoint. Deep also sends bounded read-only tool definitions to the selected model; when the model requests a read, APEX invokes only the selected local connector or explicitly enabled and allowlisted MCP capability, then returns a bounded result to that model. Deep's curated tool set is selected for the briefing and does not use the saved Agent tool profile; current policy, connector availability, production/sandbox partition, and MCP allowlist and risk checks still apply. The investigation prompt can include selected current evidence and paired historical evidence with their role, capture time, trust, and content. The model may choose not to read anything. Deep never offers write, destructive, hosted, or unbounded tools. Saved Deep read results carry an untrusted source label and capture time, and the raw investigation transcript is not persisted. Cloud providers receive the selected current and historical evidence and any read results included in the relevant model calls; local models keep those prompts on the configured local inference boundary. Investigation is bounded to four calls, six saved read-result records, at most 1,024 generated tokens per investigation turn (or the lower configured output limit), and at most 180 seconds or half the remaining run time; total saved evidence is capped at 50 records. A model/run limit that cannot leave room for both investigation and synthesis, or the absence of an eligible read capability, is rejected before a Deep session is created. Deep is unavailable in DEMO mode.
+Daily, Catch Up, and Deep use the selected APEX Agent model. Their requests can include current telemetry and selected contextual evidence. Catch Up and Deep can also include historical evidence from previously presented briefings. Cloud providers receive the evidence included in these calls; local inference uses the configured endpoint. APEX does not silently fall back to another model.
 
-Catch Up compares current evidence against source checkpoints from completed sessions that were actually presented in the active production or sandbox partition. It uses the newest complete, untruncated inventory for source membership; partial snapshots can support matching-ID comparisons but cannot establish that an unseen item is new. Catch Up returns a deterministic no-change artifact without contacting a model when comparable sources contain no material changes. A completed session and its canonical artifact and evidence snapshot are stored locally in the active partition. The conversation stores a rendered opening message linked to the artifact. Later turns may send up to 500 estimated tokens of cited briefing evidence to the model selected for that turn, including a cloud model. This is limited by the ordinary context budget and keeps source trust, comparison role, and captured-time labels. Saved accepted context, pending reviews, external reports, and action evidence are included only when personal-context retrieval is enabled for the selected runtime; the original artifact remains unchanged. Full saved evidence remains available through local inspection.
+Catch Up compares compatible checkpoints separately for each source. It can save a deterministic no-change result without calling a model. Saved artifacts and evidence remain available for local inspection. Follow-up conversation turns can send a limited selection of cited briefing evidence to the model chosen for that turn, including a cloud model.
 
-Grounded speech is an optional derivative prepared only after a completed artifact is saved and shown only after the user selects Prepare or Play. Its separate, bounded script call receives that artifact alone through the model selected for the original session; it has no tools, retrieval, conversation history, or telemetry. The validated script and each ordered audio chunk are stored in the active local SQLite database with the artifact hash, selected/resolved TTS engine, and voice gender. Google Cloud TTS receives the selected spoken text when it synthesizes audio; Kokoro and pyttsx3 remain local. Replaying uses the stored chunks without contacting a model or TTS engine. Audio is not streamed to the browser, and these controls do not speak automatically.
+Deep offers a curated set of permitted read-only tools, separate from the saved Agent tool profile. A model may request reads from enabled connectors or allowlisted MCP services, and bounded results are returned to it. Write, destructive, and provider-hosted tools are excluded. Selected read results are saved with their source trust and capture time; the raw investigation transcript is not persisted. See [Architecture](architecture.md#briefing-routes) for execution and evidence limits.
 
-Daily, Catch Up, and Deep briefings use the model selected in APEX Agent settings. Cloud providers receive only the bounded evidence used for the selected profile; a local model keeps its prompts on the configured local inference endpoint. APEX does not silently fall back to another model. Catch Up can return a deterministic no-change artifact without a model call. Deep may send bounded read-only tool definitions and selected evidence to the chosen model and, when needed, return bounded results from enabled local connectors or allowed MCP services.
+## Speech
 
-Current initialization leaves any residual retired `briefings` table untouched; its contents are not read or migrated into saved-session history and may remain as private data in the local SQLite database. See [Persistence compatibility](architecture.md#persistence-compatibility) for the startup validation and unsupported-schema behavior.
+Preparing spoken highlights makes a separate model call using the saved briefing artifact and the original session's model. The saved user designation may also be sent so the script can address the user. That call has no tools, retrieval, conversation history, or fresh telemetry. The validated script and audio chunks are stored locally. Playback uses the stored chunks without another model or speech-synthesis call, and audio is played on the host machine rather than streamed to the browser.
 
-Automatic voice delivery speaks short cues for telemetry collection and for the start, completion, or failure of briefings and spoken-highlights preparation. A briefing cue can name the briefing profile. Cues never play prepared briefing speech; APEX does not start it automatically. Optional saved-session speech is prepared and played explicitly from the saved artifact. With Google Cloud TTS selected, cue and prepared speech text may be sent to Google; local speech engines keep it on the machine. Manual and off voice modes do not speak contextual cues.
+Google Cloud Text-to-Speech receives the text it synthesizes. Kokoro and pyttsx3 synthesize locally. This applies both to prepared briefing speech and short contextual cues. Automatic voice mode can speak cues during collection, briefing generation, and speech preparation; manual and off modes suppress those cues. Prepared briefing speech is played only through explicit controls.
 
-Calendar reads are limited to the calendars selected in Runtime Settings. Briefing and Agent calendar context can include selected event metadata, such as titles, times, and locations. When a cloud briefing or Agent request uses that context, it is sent to the configured provider. Calendar labels are included by default; turn off **Show calendar names with events** in Runtime Settings to suppress labels from event attribution and model-visible calendar context. This does not remove the selected event metadata itself.
+See [Speech Runtime](speech-runtime.md) for installation, fallback, and caching behavior.
 
-## Tools and actions
+## Context vault copies
 
-APEX tools pass only the arguments required for the requested operation. Tool output is treated as untrusted model data. Write operations are approval-gated, create local action evidence, and are not replayed automatically after ambiguous outcomes.
+Context vault export is disabled by default and starts with no selected records. Enabling it writes selected production claims as Markdown under `APEX_CONTEXT_VAULT_PATH`. Sensitive records require a scope's explicit opt-in. Demo and development sandbox sessions cannot publish to the production vault.
+
+Generated notes contain canonical claim text and limited source metadata, but omit original evidence, source locators, and source URLs. Export status confirms local publication only; it does not confirm that another application or sync service copied or indexed the files.
+
+Disabling export retains existing copies. Deselecting a record while export is enabled removes its managed copy on refresh. Changing the destination leaves copies at the previous location for deliberate cleanup. Managed-copy removal affects only files tracked as APEX-owned, leaving handwritten files and `.obsidian/` alone. Copies made by other applications must be managed there.
+
+See [Context Vault](context-vault.md) for selection and cleanup procedures.
+
+## Retention and deletion
+
+Archived Cortex conversations are eligible for permanent deletion after 30 days by default. The configurable minimum is 14 days. Checks run at startup and about every 24 hours, and skip conversations with pending turns or active runs. Deleting a conversation also removes its linked briefing session and speech data. Separately accepted personal-context sources keep their own lifecycle.
+
+Retracting personal knowledge preserves its earlier evidence and history; it is not an erasure operation. Imported report-folder files and copies held by backups, sync services, or external providers are outside conversation deletion.
+
+An existing retired `briefings` table is left untouched. Its contents are not read or migrated into saved-session history and can remain private data in the database. See [Configuration](configuration.md#archived-conversation-retention) for retention settings and [Persistence compatibility](architecture.md#persistence-compatibility) for database startup checks.
 
 ## Distributed tracing
 
-OpenTelemetry tracing is optional and disabled by default. When an operator configures an OTLP export endpoint in `.env`, trace spans are sent to that destination. Tracing adheres to GenAI semantic conventions and preserves a zero-content privacy guarantee: spans capture run metadata, model names, token counts, timings, and status, but never include prompt text, model answers, or raw exception payloads.
+Tracing is optional. With the tracing dependencies installed and an OTLP endpoint configured, APEX exports spans to that destination. Its explicit span attributes record identifiers, models, token counts, timings, and status without adding prompt, answer, or tool-result content.
+
+The current tracing contexts can also record exceptions that escape them, including exception messages and stack traces. Error text can contain private information, so exported traces do not have a zero-content guarantee. The collector controls retention and access to exported copies. See [Configuration](configuration.md#opentelemetry-genai-tracing) for setup.
 
 ## Development and demo
 
-`DEV_MODE` masks email, calendar, and reminder content before briefing prompts or saved evidence; non-personal telemetry such as weather remains available. Sandbox uses a restricted non-personal tool allowlist and isolated history, and cannot refresh or remove copies in the production Context vault. Accepted Cortex runs retain their server-derived production or sandbox partition through execution and retrieval indexing, so changing the sandbox setting affects later requests without moving in-flight history or context. `DEMO_MODE` uses deterministic Daily and Catch Up fixtures, cannot write to the production vault, and does not contact configured connectors or model providers on demo paths. Optional demo speech is adapted deterministically from the persisted fixture artifact and synthesized with `DEMO_TTS`.
+`DEV_MODE` masks email, calendar, and reminder content before briefing prompts and saved evidence. It does not make every operation offline. The development sandbox uses restricted non-personal tools and separate history. An accepted Cortex run keeps its original production or sandbox partition even if the setting changes while it is running.
 
-Credentials belong in `.env` or the local environment, never in `config.json`, `config.local.json`, documents, or source control.
+`DEMO_MODE` uses temporary storage and deterministic Daily and Catch Up fixtures. Demo paths skip live connectors and model providers, and cannot write to the production Context vault. Optional speech is adapted from the fixture artifact and uses `DEMO_TTS`; selecting Google speech can still send spoken text to Google. The default demo speech engine is local pyttsx3.

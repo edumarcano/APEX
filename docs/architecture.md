@@ -1,133 +1,156 @@
 # Architecture
 
-APEX is a local-first personal intelligence HUD. FastAPI serves the backend, React opens on a Launch screen and provides Overview, Briefing, Cortex, and Reports as peer workspaces, SQLite owns durable application state, and optional providers and connectors stay behind explicit capability and privacy boundaries.
+APEX is a local-first personal intelligence workspace. React provides the interface, FastAPI owns application services and execution, and SQLite stores durable application records. Optional connectors, model providers, and speech services can send data outside the local process; [Privacy](privacy.md) describes those boundaries.
 
-## Core model
+This document explains how collection, conversations, briefings, and personal context fit together. Use [Configuration](configuration.md) for settings, [API](api.md) for HTTP behavior, and the [frontend guide](../frontend/README.md) for browser state and presentation loading.
 
-- **Launch** is the initial view after each page load. It exposes workspace navigation, Settings, and the active DEMO/DEVELOPER indicator without loading a snapshot or starting collection.
-- **Overview** initially shows only its central identity card and **Collect Telemetry**. The explicit action runs preflight, refreshes sources, then opens the grid when a usable snapshot exists; unavailable sources leave a centered retry state. Workspace navigation itself has no collection or voice-cue side effect.
-- **Briefing** covers profile controls, the saved briefing thread, and a single telemetry panel. It opens without activation; generation and setup stay Briefing-local.
-- **Cortex** is the control surface for conversations, model settings, tool selection, context, and approval-gated actions.
-- **Reports** is the dedicated list-and-detail workspace for immutable, untrusted reports with caller-claimed source labels.
-- **APEX Agent** is the single native personal operations assistant. It understands APEX briefings, trusted context, connected services, and APEX tools.
-- **Cortex Engine** executes bounded model turns and tool loops. It is model-routed, not Agent-routed.
+## System components
 
-Launch and Overview load with the app shell; Settings loads on first open, while Briefing, Cortex, and Reports load when selected. The shared `ApexAssistantRuntime` and app-level state owners remain mounted as those workspace presentations load. Loading and retry states stay within the requested workspace, so navigating between views does not discard conversation drafts, history, or active work. See the [frontend guide](../frontend/README.md#presentation-loading) for loading ownership and the production loading check.
+The browser opens on Launch and provides four peer workspaces: Overview, Briefing, Cortex, and Reports. Navigation does not start telemetry collection or briefing generation. The shared conversation runtime and app-level state owners stay mounted while workspace presentations load on demand. Loading and retry states remain within the requested workspace; see [Presentation loading](../frontend/README.md#presentation-loading).
 
-The selected model determines cloud versus local execution, provider/runtime, model limits, pricing, availability, supported reasoning and context controls, and hosted tools. The stable Agent identity is always `apex`.
+FastAPI owns connectors, telemetry snapshots, settings, conversations, runs, tools, actions, knowledge, retrieval, briefing sessions, and speech. Its lifespan initializes services, recovers interrupted work, starts background workers, and drains work before closing dependencies.
 
-## Request flow
+The **APEX Agent** is the single built-in assistant, identified internally as `apex`. The **Cortex Engine** runs its model turns and tool loops. A model choice determines the provider or local runtime, context limits, reasoning controls, pricing, availability, and supported hosted tools. It does not change the Agent's identity. Naming and workspace definitions belong in [Identity and naming](identity-and-naming.md).
+
+## Telemetry collection
+
+Telemetry collection gathers status from enabled connectors without requiring model inference. Overview begins with Collect Telemetry; preflight and an explicit refresh precede the first usable grid. A failed or unusable first collection leaves a retry or no-data state. Briefing can also collect telemetry without leaving its workspace.
 
 ```text
-Overview, Briefing, or Cortex
-    -> selected model and effective controls
-    -> APEX Agent policy and tool projection
-    -> Cortex Engine bounded loop
-    -> provider or local runtime
-    -> durable conversation metadata and action evidence
+Explicit collection request
+    -> connector refresh lifecycle
+    -> shared snapshot with source health and freshness
+    -> Overview display or briefing evidence selection
 ```
 
-Conversation storage owns prompts and answers. Turn request metadata records the resolved model, provider, runtime, effective controls, and accepted partition so idempotent replay distinguishes executions that use the same APEX Agent identity. An accepted asynchronous run keeps those execution choices through completion even if later settings changes affect subsequent requests.
+Connector refreshes run sequentially. The shared snapshot records usable data and source limitations, so one unavailable connector need not hide the others. Cached values retain freshness labels rather than being treated as live observations.
 
-Provider profiles, tool defaults, hosted capabilities, and schema projections follow the effective request model, including an explicit override. Gemini, OpenAI Responses, and llama.cpp consume native streams even without a live UI observer. Stream cleanup and bounded retries remain provider-owned; Gemini can recover an empty non-structured STOP result with one bounded unary call. OpenAI requests use `store=False` and carry bounded APEX history rather than relying on provider-owned conversation state.
+Market uses a separate file-backed cache owned by its client. Collection can fetch Alpha Vantage data; the Market API only reads the cache. Per-symbol request gates handle successful daily fetches, throttling, quota exhaustion, and failure backoff. The frontend reloads Market data when telemetry publishes a collection revision. Charts use daily OHLCV history, while briefings use bounded ticker snapshots and price moves. See [Market data](configuration.md#market-data) for cache and request settings.
 
-## Tool and action boundary
+## Conversations and model execution
 
-Tool exposure is the intersection of user selection, APEX Agent policy, runtime availability, sandbox restrictions, risk controls, and MCP allowlists. An empty selection means no APEX-managed tools. Provider-hosted grounding is separate from APEX and MCP tool schemas.
+Conversation requests resolve their model and effective controls before entering the Agent loop:
 
-Write-capable tools create approval-gated action proposals. New proposals use `agent_key="apex"`; historical action records retain their immutable provenance and checksums.
+```text
+Conversation turn
+    -> resolved model, controls, and partition
+    -> permitted context and tools
+    -> Cortex Engine bounded model/tool loop
+    -> provider or local runtime
+    -> saved answer, execution metadata, and action evidence
+```
 
-## Personal context provenance
+Conversation storage owns prompts and answers. Request metadata records the model, provider, runtime, controls, and accepted production or sandbox partition. Idempotent replay uses those choices as well as the Agent identity. Once an asynchronous run is accepted, later settings changes affect subsequent requests rather than changing that run's execution choices.
 
-Personal context keeps immutable source evidence separate from the normalized claim derived from it. A source records its origin, occurrence time when known, and capture time. Each claim-to-source link records whether the claim was direct, model-interpreted, or unknown, so approval does not turn a model interpretation into a direct operator statement.
+Provider profiles, tool defaults, hosted capabilities, and schema projections follow the effective request model, including an explicit override. Gemini, OpenAI Responses, and llama.cpp consume native streams even without a live browser observer. Providers own stream cleanup and bounded retries. Gemini can recover an empty non-structured STOP result with one bounded unary call. OpenAI requests use `store=False` and send bounded APEX history instead of relying on provider-owned conversation state.
 
-Knowledge history records later status changes, evidence links, corrections, conflict decisions, and entity reconciliation against the affected claim. Existing `migration_baseline` entries remain historical records; current bootstrap does not synthesize new baselines.
+### Tools and actions
 
-## External activity boundary
+Tool exposure depends on user selection, Agent policy, runtime availability, sandbox restrictions, risk controls, and MCP allowlists. An empty selection exposes no APEX-managed tools. Provider-hosted grounding is controlled separately from APEX and MCP tool schemas.
 
-External activity reports use their own SQLite table, receipt identity, partition, caller-claimed source label, idempotency key, and reversible report disposition. The ID syntax is checked at the shared service boundary but does not authenticate the caller. Their structured JSON and Markdown body stay immutable after receipt. Stable future-review evidence locations point to `/findings/<index>`, or to `/outcome` and `/markdown_body` when no structured finding exists.
+Write-capable tools create action proposals for operator approval before execution. New proposals use `agent_key="apex"`; historical action records retain their original provenance and checksums. Execution and verification belong to the action service, which records outcomes for later inspection.
 
-Activity reports have no retrieval synchronization, general prompt assembly caller, attention integration, or automatic trust-promotion path. A Daily run may select up to three relevant, non-dismissed reports from the newest 50 candidates and include bounded excerpts as explicitly untrusted evidence. An operator may also select one immutable finding and create a linked pending context review. The server freezes the selected report text, locator, external source origin, and occurrence time as `external_activity` evidence; a finding can declare `model_interpretation`, otherwise its derivation is `unknown`. Only accepted context reviews write a normal knowledge record and retrieval entry.
+### Local inference
 
-Reports reads a bounded report list and exact report detail, lets the operator set the separate `new`, `reviewed`, or `dismissed` disposition, and opens linked decisions in Cortex Review. It never changes partitions automatically. Report text, Markdown, and external references remain untrusted display data; the HUD renders text without raw HTML and enables only HTTP(S) links.
+One coordinator permits a single local inference execution across Ollama and llama.cpp. Before loading a model, it checks reachability, resident models, installed aliases, and resource gates. Context and reasoning changes apply to the next relevant request. Loading, switching, and unloading share the coordination boundary with inference.
 
-An opt-in process on loopback can expose only activity submission through JSON HTTP and Streamable HTTP MCP. It opens the same activity store as local CLI and file import, resolves the generic local `operator` principal, and derives the current partition server-side. The process has no main API routes, Cortex initialization, connectors, report reads, resources, prompts, actions, or proxy behavior. Its process-wide rate limit allows 30 combined JSON and MCP attempts per minute. The gateway does not authenticate remote callers and must not be placed behind a tunnel or reverse proxy.
+### Runs and activity
 
-## Context review
+The `CortexRunCoordinator` executes asynchronous work in a bounded thread pool. It permits one active run per conversation, returns `409` for overlap and `429` when the pool is full, and reuses an existing run for an identical turn request without taking another slot. [Bounded run limits](configuration.md#bounded-run-limits) defines the settings.
 
-The knowledge store owns durable review proposals. A review freezes source
-evidence, the proposed mutation, reason codes, and affected record, entity, and
-alias snapshots before a decision. Pending proposals remain outside retrieval. Acceptance uses
-the existing action executor and verifier, and commits the knowledge mutation,
-history, retrieval synchronization, and review decision in one SQLite write
-transaction.
+SQLite stores run limits, token accounting, turn and tool counts, timings, stop reasons, and completion evidence in a ledger separate from message text. Unfinished runs become `interrupted` on startup. Cancellation is cooperative: execution checks for it at model-turn and tool boundaries.
 
-Context assembly reloads each selected personal record from the knowledge store
-before it enters a prompt. It includes only active or explicitly conflicting
-records, so stale retrieval entries cannot restore superseded or retracted
-claims. Each rendered claim carries concise provenance and effective-time labels
-plus pointers to its source and history inspection views. A pending review
-labels the current claim as uncertain without adding the proposed text.
-Retrieved context remains inside the untrusted reference boundary and counts
-against the existing cloud or local context budget.
+Server-Sent Events carry live status, answer deltas, tool activity, and measurements. Bounded process-local buffers support reconnect replay; disconnecting the browser does not cancel the run. These buffers do not survive a server restart.
 
-Cortex's Context inspector keeps record evidence and review decisions separate.
-Its Records view shows current normalized wording beside immutable source text,
-times, history, and related records. Its Review view compares pending proposed
-information with current evidence; proposed text remains non-current until the
-operator accepts it. A stale decision must be refreshed and deliberately
-decided again.
-
-## Context vault publication
-
-APEX keeps canonical knowledge in the knowledge store and treats the configured
-vault as a generated local copy. One worker owned by the FastAPI lifespan
-coalesces committed production changes, snapshots all enabled scopes, renders
-Markdown, and publishes files off the event loop. Manual refresh and managed
-copy removal use the same serialization boundary. SQLite advances the
-production knowledge revision in each source transaction; a before-and-after
-revision check catches changes across the per-scope snapshots and publication.
-If the revision or saved selection changes mid-refresh, the worker leaves the
-state dirty and reconciles again.
-
-The publisher and runtime keep ownership hashes, interrupted work, revisions,
-counts, timestamps, and sanitized errors in the local application database.
-Startup reconciles enabled scopes and recovers pending publication. Failures
-retain dirty state, receive a bounded retry window, and wait for a new change or
-manual refresh afterward. Disablement retains generated files; explicit removal
-deletes only tracked files and never prunes the destination tree. Export status
-reports local completion, not sync or indexing by another application.
-
-The [Context vault guide](context-vault.md) covers selection, sharing, and cleanup from the operator's view.
-
-## Market telemetry
-
-Market participates in both Overview telemetry and briefing evidence collection. Telemetry refreshes it in the normal sequential connector lifecycle and records its health in the shared snapshot. The Market client owns Alpha Vantage access, a versioned file-backed cache, and per-symbol daily request gates; the Market route only reads that cache. A successful symbol fetch is limited to once per UTC calendar day. Temporary provider throttling uses a short same-day cooldown, daily quota exhaustion defers requests until the next UTC day, and other symbol failures use exponential date-based backoff up to eight days. Daily OHLCV history stays in the Market display projection, while briefing evidence captures bounded ticker snapshots and price moves for synthesis and Catch Up comparison without chart payload overhead. Overview updates its card only after collection.
-
-## Local runtime coordination
-
-APEX permits one local inference execution across Ollama and llama.cpp. The coordinator validates reachability, resident models, installed aliases, and resource gates before loading. The selected model’s context and reasoning controls apply on the next relevant request; unloading remains provider-neutral.
-
-## Bounded run coordination and live activity
-
-Cortex runs execute asynchronously through the `CortexRunCoordinator`. A run carries one request through bounded model turns, tool execution, and action proposals:
-
-- **Admission and concurrency:** A thread pool bounds active runs (`max_concurrent_runs`, default 2). The coordinator enforces one active run per conversation, returning `409` on overlap and `429` on pool saturation. Identical turn requests matching an existing `agent_message_id` return the existing run without consuming a slot.
-- **Durable run ledger:** SQLite records run metadata in the `cortex_runs` table partitioned by `production` and `sandbox`. Records capture limits, token totals, turn/tool counts, timings, stop reasons, and completion evidence. Message text stays in conversation persistence rather than being duplicated in the ledger. On startup, unfinished runs are safely finalized as `interrupted`.
-- **Live streaming:** Process-local Server-Sent Events stream live status, deltas, tool activity, and runtime measurements. Streams support reconnect replay from bounded in-memory buffers; disconnecting a client does not cancel the underlying run.
-- **Cooperative cancellation:** Active runs poll for cancellation at turn and tool boundaries, writing a cancellation marker and finalizing as `cancelled`.
-- **Shutdown ownership:** Application shutdown signals briefing-speech cancellation and closes run admission, then drains active Cortex runs and application-owned tasks before draining the speech worker and releasing conversation, run, retrieval, connector, and action dependencies. One bounded shutdown window reports failure and leaves those dependencies open if a Cortex run, speech worker, or application-owned task remains active.
-
-## Distributed tracing
-
-When configured, APEX exports failure-isolated distributed traces using OpenTelemetry GenAI semantic conventions. Tracing covers the root run span (`invoke_agent`), model provider calls, and tool execution. Spans record model identifiers, tokens, counters, and timings, while preserving a zero-content privacy guarantee that omits prompt text, answers, and raw exceptions.
+Completed conversation messages also retain a bounded, sanitized activity timeline. Saved history can show model and tool progress without reconstructing the live event stream. Activity excludes model reasoning and tool argument or result bodies; answer content and tool outputs have their own presentation paths.
 
 ## Briefing routes
 
-Briefing's Daily, Catch Up, and Deep actions create durable sessions and use the same bounded collection, history, synthesis, and artifact path with the explicitly selected APEX Agent model. Deep adds an `investigating` stage that offers up to eight evidence-selected read capabilities through the shared Agent loop, with current policy, partition, connector, and MCP checks enforced both at selection and invocation. Its bounded investigation prompt includes selected current evidence and paired historical records with their role, capture time, trust, and content. The stage is limited to four calls, at most 1,024 generated tokens per turn or the lower session output limit, and at most 180 seconds or half of remaining run time; run/model turn limits reserve at least two turns for synthesis, including one repair. Local investigation admission is released before synthesis admission, avoiding a nested local-model lease. A completed artifact records bounded investigation status and limitations; cancellation, global run limits, invalid synthesis, and persistence errors do not produce a completed artifact. The session owns a conversation whose rendered opening assistant message is linked to the artifact; the canonical artifact and evidence remain in briefing-session storage. Follow-up turns use the ordinary conversation history and context policy. A small, relevance-ranked slice of cited saved evidence is attached inside the existing untrusted retrieved-context boundary and budget; personal-context-derived snapshots follow the selected runtime's retrieval setting. The saved evidence inspector still reads the complete snapshots on demand. Briefings do not silently switch models when the selected model is unavailable or its context cannot fit a useful prompt. Deep is unavailable in demo mode.
+Briefings create durable sessions through a shared collection, comparison, synthesis, and artifact pipeline:
 
-The canonical briefing API consists of `GET /api/v1/briefing-profiles` and the `/api/v1/briefing-sessions` routes. The CLI uses the same asynchronous session API and marks its constrained origin as `cli`; it does not call services or SQLite directly. The Agent's `get_briefing_history` tool queries at most five newest completed artifact-backed sessions from the active partition in one joined read and returns bounded canonical content, profile/model identity, timestamps, presentation status, and limitations. Failed or incomplete sessions are skipped before applying the limit. The old transcript-based pipeline, mode settings, routes, and status poll are retired.
+```text
+Profile and explicit model choice
+    -> current telemetry and permitted personal evidence
+    -> comparison with presented source checkpoints
+    -> bounded investigation for Deep
+    -> synthesis and validation, or a no-change Catch Up result
+    -> canonical artifact, saved evidence, and linked conversation
+```
 
-## Persistence compatibility
+Daily selects current evidence for an orientation. Catch Up compares current source state with compatible checkpoints from completed, presented sessions; different sources can use different prior sessions. Showing an artifact marks it as presented, which is separate from completing generation. When comparison finds no material changes and no synthesis candidates, Catch Up can save a no-change result without a model call.
 
-The beta.6 database schema is the supported upgrade floor. A fresh database is bootstrapped to the current schema. Before startup performs any bootstrap or recovery, APEX checks core persistence versions and required table shapes through a read-only connection. An unsupported core schema stops startup without rewriting data or deleting tables. A database with an unsupported retrieval schema can still start with retrieval disabled for that run; canonical knowledge writes continue without derived retrieval synchronization. Conversation deletion and archived-conversation retention are also deferred while retrieval persistence is unsupported, because message deletion triggers can update retrieval rows. Manual deletion returns `409 Conflict`; the retention worker logs the failed sweep and retries on its next scheduled pass. APEX does not automatically migrate older database schemas. Current initialization leaves any residual retired `briefings` table untouched. See [Configuration](configuration.md#briefing-profiles) for the ignored legacy preference behavior and [Privacy](privacy.md#briefings) for local storage implications.
+Accepted context, pending reviews, relevant external reports, and verified action outcomes enter evidence selection only when the selected runtime permits personal context and development mode is off. Pending proposals and reports keep their distinct trust labels. They do not become accepted knowledge by appearing in a briefing.
+
+The session stores the canonical artifact, observed evidence, coverage, comparison, model configuration, and limitations. Its opening conversation message is a rendered copy linked to that artifact. Follow-ups use normal conversation history and context policy, with a small, relevance-ranked slice of cited saved evidence inside the untrusted reference boundary and context budget. Personal-context-derived snapshots remain subject to the selected runtime's retrieval setting. The evidence inspector reads full saved snapshots on demand.
+
+Briefings do not silently switch models when the requested model is unavailable or cannot fit a useful prompt. Cancellation, global execution limits, invalid synthesis after repair, and persistence errors do not produce a completed artifact. Demo mode supplies deterministic Daily and Catch Up fixtures; Deep is unavailable.
+
+### Deep investigation
+
+Deep inserts an investigation before synthesis using the shared Agent loop. It selects up to eight relevant read capabilities from current evidence, separately from the saved Agent tool profile. Policy, partition, connector availability, and MCP permissions are checked at selection and invocation. Write, destructive, and provider-hosted tools are excluded.
+
+The investigation prompt includes bounded current evidence and paired historical records with source roles, trust labels, and capture times. It permits at most four calls, 1,024 generated tokens per turn or the lower session output limit, and 180 seconds or half the remaining run time. Model and run limits reserve at least two turns for synthesis, including one repair. Local investigation releases its inference slot before synthesis acquires one.
+
+Selected read results become labeled evidence. The artifact records investigation status and limitations, while the raw investigation transcript is not persisted.
+
+### API and history
+
+The briefing API consists of `GET /api/v1/briefing-profiles` and the `/api/v1/briefing-sessions` routes. The CLI uses the same asynchronous API with origin `cli`; it does not call services or SQLite directly.
+
+The Agent's `get_briefing_history` tool reads at most five newest completed sessions with canonical artifacts from the active partition. It returns bounded content, profile and model identity, timestamps, presentation status, and limitations. Failed or incomplete sessions are excluded before applying the limit. The retired transcript-based briefing pipeline and routes are not supported.
+
+### Speech derived from briefings
+
+Speech preparation starts from a completed canonical artifact. A separate worker makes a bounded adaptation call using the session's model and artifact, validates the resulting highlights, and synthesizes audio through the selected voice engine. It does not collect fresh evidence or run an independent investigation.
+
+The session stores the speech script and references to local audio chunks, tied to the artifact's hash. Playback reuses prepared audio on the APEX host without another model or synthesis call. One speech worker serializes preparation and playback, with explicit stop and shutdown cancellation. Speech failure leaves the canonical briefing available. See the [Speech runtime guide](speech-runtime.md) for delivery behavior and [Privacy](privacy.md#speech) for data sent to voice services.
+
+## Personal context and review
+
+The knowledge store separates immutable source evidence from normalized claims. Sources record origin, occurrence time when known, and capture time. Claim-to-source links distinguish direct statements, model interpretations, and unknown derivation; approval does not change how the evidence originated.
+
+Knowledge history records status changes, evidence links, corrections, conflict decisions, and entity reconciliation. Existing `migration_baseline` entries remain historical records; bootstrap does not create new baselines.
+
+Review proposals freeze source evidence, the proposed mutation, reason codes, and affected record, entity, and alias snapshots. Pending proposals stay outside retrieval. Acceptance uses the action executor and verifier, committing the knowledge mutation, history, retrieval synchronization, and decision in one SQLite write transaction. A stale decision must be refreshed before the operator decides again.
+
+Context assembly reloads retrieved records from the knowledge store before adding them to a prompt. Only active or explicitly conflicting records are eligible, so stale retrieval entries cannot restore superseded or retracted claims. Claims carry provenance, effective-time labels, and inspection references. A pending review marks the current claim as uncertain without inserting its proposed replacement into retrieved context. Briefing selection can include pending proposals separately, as described above.
+
+Retrieved context remains untrusted reference material and counts against the cloud or local context budget. Cortex's Context inspector exposes current wording, original evidence, history, and review decisions separately.
+
+## Context vault publication
+
+The knowledge store remains canonical; the configured vault is a generated Markdown copy. A worker owned by the FastAPI lifespan coalesces committed production changes and publishes selected scopes off the event loop. Manual refresh and managed-copy removal use the same serialization boundary.
+
+Each source transaction advances the production knowledge revision. The worker checks revisions before and after snapshots and publication. If knowledge or the saved selection changes during a refresh, it keeps the state dirty and reconciles again.
+
+SQLite retains ownership hashes, interrupted work, revisions, counts, timestamps, and sanitized errors. Startup recovers pending publication. Failures keep dirty state, receive bounded retries, and then wait for a new change or manual refresh. Disabling publication keeps existing copies; explicit removal deletes tracked files without pruning the destination tree. Completion means files were published locally, not that another application synced or indexed them. See the [Context vault guide](context-vault.md) for selection and cleanup.
+
+## External activity reports
+
+External reports are immutable input, separate from accepted knowledge. Their store records receipt identity, partition, caller-claimed source label, and idempotency key. The separate `new`, `reviewed`, or `dismissed` disposition can change without modifying the report. Valid source-label syntax does not authenticate the caller.
+
+Reports are not indexed for general personal-context retrieval or promoted automatically. When personal-context policy permits, briefing selection can include at most three relevant, non-dismissed reports from the newest 50 candidates as untrusted evidence.
+
+An operator can select a finding for a pending context review. The server freezes its text, evidence locator, external origin, and occurrence time. Locators identify `/findings/<index>`, or `/outcome` and `/markdown_body` when no structured finding exists. A declared `model_interpretation` remains an interpretation; otherwise derivation is `unknown`. Only acceptance creates a knowledge record eligible for retrieval.
+
+The Reports workspace reads a bounded list and exact details, changes disposition, and opens linked reviews in Cortex. It retains the selected partition. Report text and external references remain untrusted display data: Markdown renders without raw HTML and links are limited to HTTP(S).
+
+The opt-in loopback gateway exposes submission through JSON HTTP and Streamable HTTP MCP. It shares the activity store with CLI and file import, uses the local `operator` principal, and derives the partition server-side. It does not expose report reads, main application routes, Agent execution, actions, or proxy access. Its process-wide limit is 30 combined JSON and MCP attempts per minute. Because it does not authenticate remote callers, it must not be exposed through a tunnel or reverse proxy. Setup belongs in [Configuration](configuration.md#external-activity-gateway).
+
+## Persistence and lifecycle
+
+SQLite owns conversations, runs, briefing sessions, knowledge and review history, actions, external reports, and derived retrieval records. The browser owns presentation state; vault notes, retrieval indexes, and speech output are derived from application records rather than replacing them.
+
+On shutdown, FastAPI signals speech cancellation and closes run admission. It drains active runs and application-owned tasks, then the speech worker, before releasing stores, connectors, and other dependencies. A bounded shutdown window reports failure and leaves dependencies open if work remains active, avoiding cleanup underneath a running worker.
+
+### Persistence compatibility
+
+The beta.6 database schema is the supported upgrade floor. Before bootstrap or recovery, startup checks core persistence versions and required table shapes through a read-only connection. Fresh databases receive the current schema. Unsupported core schemas stop startup without rewriting data or deleting tables; APEX does not automatically migrate older schemas.
+
+Unsupported retrieval persistence disables retrieval for that run while canonical knowledge writes continue without derived synchronization. Conversation deletion and archived-conversation retention are also deferred because message deletion triggers can update retrieval rows. Manual deletion returns `409 Conflict`; retention logs the failed sweep and retries on its next scheduled pass.
+
+Initialization leaves any residual retired `briefings` table untouched. See [Configuration](configuration.md#briefing-profiles) for ignored legacy preferences and [Privacy](privacy.md#retention-and-deletion) for retained data and deletion boundaries.
+
+## Distributed tracing
+
+When configured, OpenTelemetry exports failure-isolated traces for the root run (`invoke_agent`), model calls, and tool execution using GenAI semantic conventions. Explicit attributes contain model identifiers, tokens, counters, and timings without adding prompt or answer content. Exceptions escaping tracing contexts can still record messages and stack traces. See [Configuration](configuration.md#opentelemetry-genai-tracing) for setup and [Privacy](privacy.md#distributed-tracing) for that limitation.
