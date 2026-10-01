@@ -8,9 +8,9 @@
 
 ## Current Focus
 
-**Current Phase:** [Phase VI: Native Platform & Interaction](#phase-vi-native-platform--interaction)  
-**Next Milestone:** [v2.1.0 - Native Desktop Foundation](#v210---native-desktop-foundation)  
-**Current Direction:** [APEX 2.0 Direction](#apex-20-direction)
+- **Current Phase:** [Phase VI: Native Platform & Interaction](#phase-vi-native-platform--interaction)
+- **Next Milestone:** [v2.1.0 - Native Desktop Foundation](#v210---native-desktop-foundation)
+- **Current Direction:** [APEX 2.0 Direction](#apex-20-direction)
 
 ### Navigation
 
@@ -498,7 +498,8 @@ Consolidate the six beta milestones into a stable local-first foundation for per
 
 **Status:** Planned
 
-**Core Focus:**  
+**Core Focus:**
+
 Move APEX from a browser-hosted local interface into a native desktop environment while preserving its independent backend and CLI, then improve how the system presents information and supports natural operator interaction.
 
 The desktop application should remain a client of APEX rather than becoming the owner of Cortex, persistence, or personal context.
@@ -513,7 +514,8 @@ Native capabilities should be added through small platform services with clear b
 
 **Status:** Planned
 
-**Objective:**  
+**Objective:**
+
 Establish APEX as a native desktop application while preserving the backend, APIs, persistence, Cortex runtime, and CLI as independent platform components.
 
 The main milestone should:
@@ -541,7 +543,8 @@ The goal is to make APEX feel like a native application without tying the APEX p
 
 **Status:** Planned
 
-**Objective:**  
+**Objective:**
+
 Make APEX fully usable in English and Spanish while establishing a localization architecture that can support additional languages without duplicating application logic.
 
 APEX should have an explicit application-language preference, initially supporting English and Spanish. Native platform locale information may provide a sensible default, but the operator should remain in control of the selected language.
@@ -568,7 +571,8 @@ The goal is to make English and Spanish first-class ways to use the same APEX sy
 
 **Status:** Planned
 
-**Objective:**  
+**Objective:**
+
 Improve how APEX communicates information through both visual presentation and speech without changing the underlying Cortex or personal-context architecture.
 
 Expand speech delivery with Gemini Flash-Lite TTS as a high-quality option for spoken briefing highlights while preserving Google Cloud TTS and local engines as independent choices.
@@ -587,7 +591,8 @@ The goal is for APEX to adapt how it looks and sounds while keeping the underlyi
 
 **Status:** Planned
 
-**Objective:**  
+**Objective:**
+
 Add a voice-first interaction mode that allows the operator to converse with and control APEX without requiring continuous keyboard and mouse interaction.
 
 Voice interaction should support the languages established by APEX's multilingual foundation rather than introducing a separate language configuration or English-only interaction path.
@@ -650,5 +655,4 @@ Models, note applications, sync providers, speech providers, and outside AI prod
 
 APEX is currently in **Phase VI: Native Platform & Interaction**.
 
-**Next milestone:**  
-[v2.1.0 - Native Desktop Foundation](#v210---native-desktop-foundation)
+**Next milestone:** [v2.1.0 - Native Desktop Foundation](#v210---native-desktop-foundation)
