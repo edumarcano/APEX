@@ -88,7 +88,7 @@ export function OverviewView({
             <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center">
               <ApexLogo
                 {...identity.logoProps}
-                className={`w-auto max-w-full aspect-[5208/5420] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none ${compact ? 'h-48 max-h-full sm:h-56' : 'h-full max-h-[26rem]'}`}
+                className="hud-logo-mark h-56 w-auto max-h-full max-w-full aspect-[5208/5420] sm:h-64 xl:h-80 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
               />
             </div>
             <VoiceSignalGlyph {...identity.glyphProps} />
@@ -106,10 +106,10 @@ export function OverviewView({
         <>
           <header className="min-h-7 shrink-0" aria-hidden="true" />
           <div className={`flex min-h-0 flex-1 flex-col items-center justify-center ${compact ? 'gap-3' : 'gap-4'}`} data-slot="home-identity" data-logo-size="overview">
-          <div className={`filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] flex min-h-0 min-w-0 items-center justify-center ${compact ? 'h-48 max-h-full sm:h-56' : 'h-full max-h-[26rem] flex-1'}`}>
+          <div className="filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] flex min-h-0 min-w-0 flex-1 items-center justify-center">
             <ApexLogo
               {...identity.logoProps}
-              className="h-full w-auto max-h-[26rem] max-w-full aspect-[5208/5420] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+              className="hud-logo-mark h-56 w-auto max-h-full max-w-full aspect-[5208/5420] sm:h-64 xl:h-80 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
             />
           </div>
           <VoiceSignalGlyph {...identity.glyphProps} />
