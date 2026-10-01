@@ -44,7 +44,6 @@ VALID_VOICE_ENGINES: frozenset[str] = frozenset({"google", "pyttsx3", "kokoro"})
 VALID_VOICE_GENDERS: frozenset[str] = frozenset({"male", "female"})
 VALID_VOICE_MODES: frozenset[str] = frozenset({"off", "manual", "automatic"})
 
-SETTINGS_SCHEMA_VERSION: int = 24
 MCP_PROVIDER_IDS: tuple[str, ...] = ("github", "brave", "alphavantage")
 
 LlamaCppServerState = Literal[
@@ -705,7 +704,6 @@ class SettingsResponse(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: int = SETTINGS_SCHEMA_VERSION
     settings: RuntimeSettingsSnapshot
     local_file_present: bool
     local_override_active: bool

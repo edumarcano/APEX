@@ -29,10 +29,6 @@ ROUTE_HEADING_PATTERN = re.compile(
     r"^#{2,6}\s+(GET|POST|PATCH|PUT|DELETE)\s+`([^`]+)`\s*$",
     re.IGNORECASE,
 )
-SCHEMA_VERSION_PATTERN = re.compile(r'"schema_version"\s*:\s*(\d+)')
-API_SETTINGS_SCHEMA_VERSION_PATTERN = re.compile(
-    r"\bsettings\s+schema\s+version\s+(?:is\s+)?`?(\d+)`?", re.IGNORECASE
-)
 RELEASE_HEADING_PATTERN = re.compile(r"^##\s+v(\d+\.\d+\.\d+)\b", re.MULTILINE)
 
 
@@ -218,70 +214,6 @@ def check_routes(
                 "route detail heading is duplicated",
             )
         )
-    return issues
-
-
-def check_schema_versions(
-    paths: Iterable[Path],
-    expected_version: int,
-    contents: Mapping[Path, str] | None = None,
-) -> list[DocumentationIssue]:
-    issues: list[DocumentationIssue] = []
-    for path in paths:
-        text = contents.get(path, "") if contents is not None else path.read_text(encoding="utf-8")
-        for line_number, line in enumerate(
-            text.splitlines(), start=1
-        ):
-            for match in SCHEMA_VERSION_PATTERN.finditer(line):
-                found = int(match.group(1))
-                if found != expected_version:
-                    issues.append(
-                        DocumentationIssue(
-                            path,
-                            line_number,
-                            str(found),
-                            f"settings schema version should be {expected_version}",
-                        )
-                    )
-    return issues
-
-
-def check_api_settings_schema_version(
-    api_path: Path,
-    expected_version: int,
-    contents: Mapping[Path, str] | None = None,
-) -> list[DocumentationIssue]:
-    """Keep prose references to the API's settings schema aligned with settings."""
-    text = contents.get(api_path, "") if contents is not None else api_path.read_text(
-        encoding="utf-8"
-    )
-    matches = [
-        (line_number, match)
-        for line_number, line in lines_outside_fences(text)
-        for match in API_SETTINGS_SCHEMA_VERSION_PATTERN.finditer(line)
-    ]
-    if not matches:
-        return [
-            DocumentationIssue(
-                api_path,
-                1,
-                "settings schema version",
-                f"API settings schema version statement should be {expected_version}",
-            )
-        ]
-
-    issues: list[DocumentationIssue] = []
-    for line_number, match in matches:
-        found = int(match.group(1))
-        if found != expected_version:
-            issues.append(
-                DocumentationIssue(
-                    api_path,
-                    line_number,
-                    str(found),
-                    f"API settings schema version should be {expected_version}",
-                )
-            )
     return issues
 
 
@@ -528,8 +460,6 @@ def registered_model_ids() -> set[str]:
 
 
 def run(root: Path = ROOT) -> list[DocumentationIssue]:
-    from core.settings.models import SETTINGS_SCHEMA_VERSION
-
     paths = public_document_paths(root)
     contract_paths = [
         root / "README.md",
@@ -543,8 +473,6 @@ def run(root: Path = ROOT) -> list[DocumentationIssue]:
     issues: list[DocumentationIssue] = []
     issues.extend(check_links(paths, root))
     issues.extend(check_routes(api_path, public_openapi_routes()))
-    issues.extend(check_schema_versions(contract_paths, SETTINGS_SCHEMA_VERSION))
-    issues.extend(check_api_settings_schema_version(api_path, SETTINGS_SCHEMA_VERSION))
     issues.extend(check_agent_profiles(contract_paths, current_agent_profiles()))
     issues.extend(check_cors_example(root))
     issues.extend(check_release_version(root))

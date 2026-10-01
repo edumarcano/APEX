@@ -307,7 +307,6 @@ export interface SettingsPatch {
 }
 
 export interface SettingsResponse {
-  schema_version: number
   settings: RuntimeSettings
   local_file_present: boolean
   local_override_active: boolean

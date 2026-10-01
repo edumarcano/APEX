@@ -84,7 +84,6 @@ export function buildSettingsResponse(
   overrides: Partial<SettingsResponse> = {},
 ): SettingsResponse {
   return {
-    schema_version: 23,
     settings,
     local_file_present: false,
     local_override_active: false,

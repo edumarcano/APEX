@@ -17,7 +17,6 @@ from core.agent.catalog import (
     resolve_model_selection,
 )
 from core.settings import (
-    SETTINGS_SCHEMA_VERSION,
     LlamaCppServerStatusResponse,
     SettingsPatch,
     SettingsPersistenceError,
@@ -109,7 +108,6 @@ def _build_settings_response() -> SettingsResponse:
     """Assemble the public settings envelope from the runtime store."""
     store = get_settings_store()
     return SettingsResponse(
-        schema_version=SETTINGS_SCHEMA_VERSION,
         settings=store.get_snapshot(),
         local_file_present=store.local_file_present,
         local_override_active=store.local_override_active,

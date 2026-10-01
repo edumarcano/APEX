@@ -132,8 +132,6 @@ def normalize_layer(
     normalized: dict[str, Any] = {}
 
     for key, value in raw.items():
-        if key == "schema_version":
-            continue
         if key not in EDITABLE_ROOT_KEYS:
             if key not in (
                 "synthesis",

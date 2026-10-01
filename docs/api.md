@@ -1,6 +1,6 @@
 # APEX API
 
-This is the behavioral reference for APEX's loopback HTTP API at `http://127.0.0.1:8000`. It explains workflows, ownership, and meaningful errors. FastAPI's generated [`/docs`](http://127.0.0.1:8000/docs) and [`/openapi.json`](http://127.0.0.1:8000/openapi.json) are the canonical exhaustive request and response schemas. The current documented settings schema version is `24`.
+This is the behavioral reference for APEX's loopback HTTP API at `http://127.0.0.1:8000`. It explains workflows, ownership, and meaningful errors. FastAPI's generated [`/docs`](http://127.0.0.1:8000/docs) and [`/openapi.json`](http://127.0.0.1:8000/openapi.json) are the canonical exhaustive request and response schemas.
 
 The API has no authentication and is intentionally bound to loopback. `APEX_ALLOWED_ORIGINS` controls browser CORS policy; it does not authorize non-browser clients or make remote binding safe. See [Configuration](configuration.md) and [Privacy](privacy.md).
 
@@ -137,7 +137,7 @@ Returns boot-time interface values such as Agent query enablement, the effective
 
 ### GET `/api/v1/settings`
 
-Returns the resolved settings envelope. The current settings schema version is `24`.
+Returns the resolved settings envelope.
 
 Use the generated OpenAPI schema for the full envelope and [Configuration](configuration.md#runtime-settings) for field meanings and defaults. The envelope includes `settings`, local-overlay status, load warnings, and active development/demo modes.
 
