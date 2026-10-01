@@ -2,7 +2,7 @@
 
 ---
 
-## v2.0.0 - APEX 2.0 Stable
+## v2.0.0 - APEX 2.0
 
 **Released:** October 1, 2026
 
