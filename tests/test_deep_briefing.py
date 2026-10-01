@@ -157,6 +157,8 @@ class DeepBriefingTests(unittest.TestCase):
             SimpleNamespace(name="list_microsoft_todo_tasks", available=True, allowed_for_agent=True, risk="read", apex_family="microsoft_todo"),
             SimpleNamespace(name="get_active_reminders", available=True, allowed_for_agent=True, risk="read", apex_family="schedule"),
             SimpleNamespace(name="brave_brave_web_search", available=True, allowed_for_agent=True, risk="read", apex_family="web_search"),
+            SimpleNamespace(name="search_activity_reports", available=True, allowed_for_agent=True, risk="read", apex_family="reports"),
+            SimpleNamespace(name="get_activity_report", available=True, allowed_for_agent=True, risk="read", apex_family="reports"),
             SimpleNamespace(name="brave_" + "x" * 64, available=True, allowed_for_agent=True, risk="read", apex_family="web_search"),
         ])])
         descriptors = tuple(_capability(name) for name in (
@@ -205,6 +207,8 @@ class DeepBriefingTests(unittest.TestCase):
         self.assertNotIn("brave_" + "x" * 64, eligible)
         self.assertNotIn("get_gmail_message", eligible)
         self.assertNotIn("send_email", eligible)
+        self.assertNotIn("search_activity_reports", eligible)
+        self.assertNotIn("get_activity_report", eligible)
 
     def test_changed_snapshot_prompt_includes_paired_historical_evidence(self) -> None:
         pair_id = uuid4()
