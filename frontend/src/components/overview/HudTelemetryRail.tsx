@@ -5,7 +5,6 @@ import {
   EventsTelemetry,
   EmailTelemetry,
   MarketTelemetry,
-  NewsTelemetry,
   RemindersTelemetry,
   WeatherTelemetry,
   type HudTelemetryData,
@@ -41,7 +40,6 @@ export function HudTelemetryRail({
         <WeatherTelemetry data={data} variant="section" />
         <EventsTelemetry data={data} variant="section" />
         <EmailTelemetry data={data} variant="section" />
-        <NewsTelemetry data={data} variant="section" />
         <RemindersTelemetry data={data} variant="section" />
         <MarketTelemetry data={data} variant="section" />
       </> : <>

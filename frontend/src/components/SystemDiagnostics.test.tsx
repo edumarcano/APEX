@@ -54,7 +54,7 @@ describe('SystemDiagnostics', () => {
       connectorHealth: [
         { name: 'email', status: 'healthy', freshness: 'live', reason_code: 'ok', observed_at: new Date().toISOString() },
         { name: 'calendar', status: 'unavailable', freshness: 'none', reason_code: 'unauthorized', observed_at: new Date().toISOString() },
-        { name: 'news', status: 'disabled', freshness: 'none', reason_code: 'disabled', observed_at: null },
+        { name: 'football', status: 'disabled', freshness: 'none', reason_code: 'disabled', observed_at: null },
       ],
       onRefreshConnectors,
     })

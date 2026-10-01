@@ -50,7 +50,6 @@ export interface ActivityReportFolderStatusResponse {
 export interface FeaturesSettings {
   weather: boolean
   sports: boolean
-  news: boolean
   email: boolean
   calendar: boolean
   market: boolean
@@ -171,7 +170,6 @@ export interface RuntimeSettings {
 export interface FeaturesPatch {
   weather?: boolean
   sports?: boolean
-  news?: boolean
   email?: boolean
   calendar?: boolean
   market?: boolean

@@ -427,6 +427,7 @@ export type TelemetryCardProps = {
   headerAction?: ReactNode
   /** Renders the header action on its own row beneath the title for narrow surfaces. */
   headerActionBelow?: boolean
+  weatherStacked?: boolean
   /** Explicit typed module state or failure reason shown with the card content. */
   statusMessage?: string | null
   /** When true, renders a single condensed summary row instead of the full card body (e.g. while the console tray is open). */
@@ -459,6 +460,7 @@ export function TelemetryCard({
   refreshActions,
   headerAction,
   headerActionBelow = false,
+  weatherStacked = false,
   statusMessage,
   isCompact = false,
   compactValue,
@@ -644,10 +646,10 @@ export function TelemetryCard({
         {primaryTemperatureF != null ? (
           <div className="flex min-h-0 flex-1 flex-col justify-between overflow-y-auto pr-0.5 scrollbar-thin">
             {/* HERO ROW */}
-            <div className="flex shrink-0 items-center justify-between gap-3">
+            <div className={`flex shrink-0 gap-3 ${weatherStacked ? 'flex-wrap items-start justify-between' : 'items-center justify-between'}`}>
               <div className="flex items-center gap-3">
                 <p
-                  className="tabular-nums text-4xl leading-none tracking-tight text-white"
+                  className={`${weatherStacked ? 'text-3xl' : 'text-4xl'} tabular-nums leading-none tracking-tight text-white`}
                   style={primaryTemperatureStyle}
                   data-vte="primary-temperature-readout"
                   aria-label="Current temperature"
@@ -665,7 +667,7 @@ export function TelemetryCard({
               </div>
 
               {isWeatherCard ? (
-                <div className="min-w-0 flex-1 text-right">
+                <div className={`min-w-0 flex-1 ${weatherStacked ? 'text-left' : 'text-right'}`}>
                   {compactValue != null ? (
                     <p
                       className="truncate text-xs font-medium text-zinc-200"
@@ -674,7 +676,7 @@ export function TelemetryCard({
                       {compactValue}
                     </p>
                   ) : null}
-                  <div className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 text-[11px] font-mono text-zinc-400">
+                  <div className={`mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] font-mono text-zinc-400 ${weatherStacked ? 'justify-start' : 'justify-end'}`}>
                     {apparentTemperatureF != null ? (
                       <span>Feels {apparentTemperatureF}°</span>
                     ) : null}

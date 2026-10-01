@@ -32,7 +32,7 @@ export default function DataSourcesView({
         id={`${titleId}-feeds`}
         title="Core Feeds"
         icon={CloudSun}
-        badgeText="Weather · News · Email"
+        badgeText="Weather · Email"
       >
         <div className="space-y-2">
           <SettingsToggle
@@ -44,18 +44,6 @@ export default function DataSourcesView({
               setDraft((prev) => ({
                 ...prev,
                 features: { ...prev.features, weather: next },
-              }))
-            }
-          />
-          <SettingsToggle
-            id="settings-feature-news"
-            label="News"
-            checked={draft.features.news}
-            timing={featuresTiming}
-            onChange={(next) =>
-              setDraft((prev) => ({
-                ...prev,
-                features: { ...prev.features, news: next },
               }))
             }
           />

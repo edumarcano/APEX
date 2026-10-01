@@ -385,7 +385,6 @@ function settingsResponse(
       features: {
         weather: false,
         sports: false,
-        news: false,
         email: false,
         calendar: false,
         market: false,
@@ -1564,6 +1563,33 @@ describe('App Overview and Briefing states', () => {
     expect(appMocks.startCollection).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Generate Daily' })).toBeDisabled()
     expect(posts.filter((path) => path.endsWith('/briefing-sessions'))).toHaveLength(0)
+  })
+
+  it('opens the existing setup dialog from Overview without collecting or starting a briefing', async () => {
+    appMocks.collectionStarted = false
+    appMocks.startCollection.mockClear()
+    appMocks.refreshAllWithOutcome.mockResolvedValue({ kind: 'success', snapshot: usableTelemetrySnapshot() })
+    appMocks.requestOperation.mockClear()
+    const user = userEvent.setup()
+    const posts: string[] = []
+    stubHomeFetch(posts)
+    renderOverviewApp()
+
+    await collectOverview(user)
+    const overviewSetup = screen.getByRole('button', { name: 'Set up briefing' })
+    const collectionStarts = appMocks.startCollection.mock.calls.length
+    const activationChecks = appMocks.requestOperation.mock.calls.filter(([operation]) => operation === 'activate').length
+    await user.click(overviewSetup)
+
+    expect(await screen.findByRole('dialog', { name: 'Set up your briefing' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Briefing controls' })).toBeInTheDocument()
+    expect(appMocks.startCollection).toHaveBeenCalledTimes(collectionStarts)
+    expect(appMocks.requestOperation.mock.calls.filter(([operation]) => operation === 'activate')).toHaveLength(activationChecks)
+    expect(posts.filter((path) => path.endsWith('/briefing-sessions'))).toHaveLength(0)
+    expect(screen.getByRole('button', { name: 'Generate Daily' })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'Close briefing setup' }))
+    const briefingSetup = screen.getByRole('button', { name: 'Set up briefing' })
+    expect(document.activeElement).toBe(briefingSetup)
   })
 
   it('does not collect telemetry from Enter while on inactive Briefing', async () => {

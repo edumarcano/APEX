@@ -4,18 +4,16 @@ import { RefreshCw } from 'lucide-react'
 import { useCompactLayout } from '../../hooks/useCompactLayout'
 import { ApexLogo } from '../ApexLogo'
 import { VoiceSignalGlyph } from '../VoiceSignalGlyph'
-import { resolveSignalState, resolveToneClasses } from '../../lib/logoVisualState'
-import { HudIdentityMark, type HudIdentityProps } from './HudIdentity'
 import { TelemetryCollectionAction } from './TelemetryCollectionAction'
 import {
   EventsTelemetry,
   EmailTelemetry,
   MarketTelemetry,
-  NewsTelemetry,
   RemindersTelemetry,
   WeatherTelemetry,
   type HudTelemetryData,
 } from './HudTelemetry'
+import type { HudIdentityProps } from './HudIdentity'
 
 export type OverviewViewProps = {
   identity: HudIdentityProps
@@ -24,51 +22,57 @@ export type OverviewViewProps = {
   error?: string | null
   onCollect: () => void
   onRefreshAll: () => void
+  onSetUpBriefing: () => void
   collectDisabled?: boolean
 }
 
 /** Telemetry-first Overview peer. It never needs a model. */
-export function OverviewView({ identity, telemetry, state, error, onCollect, onRefreshAll, collectDisabled = false }: OverviewViewProps): ReactElement {
+export function OverviewView({
+  identity,
+  telemetry,
+  state,
+  error,
+  onCollect,
+  onRefreshAll,
+  onSetUpBriefing,
+  collectDisabled = false,
+}: OverviewViewProps): ReactElement {
   const compact = useCompactLayout()
-  const wide = compact ? '' : 'col-span-3'
-  const narrow = compact ? '' : 'col-span-2'
   const hasGrid = state === 'collecting' || state === 'ready'
-  const signalState = resolveSignalState(
-    identity.glyphProps.activity,
-    identity.glyphProps.isLocalModelLoading,
-    identity.glyphProps.loadingDisplayName,
-    identity.glyphProps.isCortexQuerying,
-    identity.glyphProps.isTelemetryCollecting,
-    identity.glyphProps.cortexActivityLabel,
-  )
-  const toneClasses = resolveToneClasses(signalState.tone)
+  const desktop = !compact
 
   return <section
     aria-label="Overview"
-    className={`hud-home-layout ${!hasGrid
-      ? 'flex h-full min-h-0 w-full flex-1 items-center justify-center'
-      : compact
-      ? 'grid w-full grid-cols-1 gap-4 md:grid-cols-2'
-      : 'grid h-full min-h-0 w-full flex-1 grid-cols-6 grid-rows-[minmax(0,1.15fr)_minmax(0,1.15fr)_minmax(0,1fr)] gap-4'} ${hasGrid ? 'hud-home-layout-enter' : ''}`}
+    className={`hud-home-layout ${hasGrid
+      ? compact
+        ? 'grid w-full grid-cols-1 gap-4 md:grid-cols-2'
+        : 'grid h-full min-h-0 w-full flex-1 grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)_minmax(0,1.55fr)] grid-rows-[repeat(6,minmax(0,1fr))] gap-4'
+      : 'flex h-full min-h-0 w-full flex-1 items-center justify-center'} ${hasGrid ? 'hud-home-layout-enter' : ''}`}
   >
-    {hasGrid ? <WeatherTelemetry data={telemetry} variant="card" className={wide} /> : null}
-    {hasGrid ? <EventsTelemetry data={telemetry} variant="card" className={wide} /> : null}
-    {hasGrid ? <NewsTelemetry data={telemetry} variant="card" className={narrow} /> : null}
+    {hasGrid ? (
+      <WeatherTelemetry
+        data={telemetry}
+        variant="card"
+        className={`overview-weather-center ${desktop ? 'col-start-2 row-start-1 row-span-2 min-w-0' : 'order-1 md:col-span-2 min-w-0'}`}
+        narrow
+        dataSlot="overview-weather"
+      />
+    ) : null}
+    {hasGrid ? <EventsTelemetry data={telemetry} variant="card" className={desktop ? 'col-start-1 row-start-1 row-span-3 min-w-0' : 'order-2 min-w-0'} /> : null}
+    {hasGrid ? <EmailTelemetry data={telemetry} variant="card" className={desktop ? 'col-start-3 row-start-1 row-span-3 min-w-0' : 'order-3 min-w-0'} /> : null}
     <div
-      className={`hud-glass relative flex min-h-0 flex-col rounded-xl border border-white/10 bg-zinc-950/40 ${hasGrid ? (compact ? 'order-first md:col-span-2 justify-between p-4 pb-2' : `${narrow} justify-between p-4 pb-2`) : compact ? 'w-full max-w-sm px-8 py-6 items-center justify-center gap-3' : 'w-[calc((100%-2rem)/3)] px-8 py-6 items-center justify-center gap-3'}`}
+      className={`hud-glass relative flex min-h-0 min-w-0 flex-col rounded-xl border border-white/10 bg-zinc-950/40 ${hasGrid
+        ? desktop
+          ? 'col-start-2 row-start-3 row-span-4 p-4'
+          : 'order-first md:col-span-2 p-4'
+        : compact
+          ? 'w-full max-w-sm px-6 py-5'
+          : 'h-2/3 w-[24.4%] max-w-[26rem] min-w-64 p-4'}`}
       data-slot="overview-identity-card"
     >
       {hasGrid ? (
-        <div className="flex h-full w-full min-h-0 flex-1 flex-col justify-between" data-slot="home-identity" data-logo-size="overview">
-          <header className="flex w-full shrink-0 items-center justify-between pb-1">
-            <span
-              className={[
-                'font-orbitron text-[9px] font-semibold uppercase tracking-[0.2em] transition-colors duration-700 sm:text-[10px]',
-                toneClasses.label,
-              ].join(' ')}
-            >
-              {signalState.label}
-            </span>
+        <>
+          <header className="flex w-full shrink-0 items-center justify-end">
             <button
               type="button"
               onClick={onRefreshAll}
@@ -80,29 +84,35 @@ export function OverviewView({ identity, telemetry, state, error, onCollect, onR
               <RefreshCw className={`size-3.5 motion-reduce:animate-none ${state === 'collecting' || telemetry.isRefreshingAll ? 'animate-spin' : ''}`} strokeWidth={2} aria-hidden />
             </button>
           </header>
-          <div className="flex min-h-0 flex-1 items-center justify-center px-2 py-1 filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)]">
-            <ApexLogo
-              {...identity.logoProps}
-              className="h-36 w-auto sm:h-48 xl:h-56 max-h-full max-w-full aspect-[5208/5420] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
-            />
+          <div className={`flex min-h-0 flex-1 flex-col items-center justify-center filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)] ${compact ? 'gap-3' : 'gap-4'}`} data-slot="home-identity" data-logo-size="overview">
+            <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center">
+              <ApexLogo
+                {...identity.logoProps}
+                className={`w-auto max-w-full aspect-[5208/5420] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none ${compact ? 'h-48 max-h-full sm:h-56' : 'h-full max-h-[26rem]'}`}
+              />
+            </div>
+            <VoiceSignalGlyph {...identity.glyphProps} />
+            <button
+              type="button"
+              onClick={onSetUpBriefing}
+              aria-haspopup="dialog"
+              className="inline-flex min-h-10 w-full max-w-xs shrink-0 items-center justify-center rounded-lg border border-[#1F6FE5]/50 bg-[#0F4DB8]/20 px-3 py-2 text-center font-orbitron text-[9px] font-semibold uppercase leading-snug tracking-[0.12em] text-[#DCEAFF] transition-[background-color,border-color,box-shadow] duration-200 motion-reduce:transition-none enabled:hover:border-[#6EA8FF]/70 enabled:hover:bg-[#0F4DB8]/35 enabled:hover:shadow-[0_0_16px_rgba(31,111,229,0.22)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7EB3FF]"
+            >
+              Set up briefing
+            </button>
           </div>
-          <div className="flex w-full shrink-0 justify-center -mb-2">
-            <VoiceSignalGlyph {...identity.glyphProps} hideLabel />
-          </div>
-        </div>
+        </>
       ) : (
         <>
-          <header className="flex w-full shrink-0 items-center justify-between pb-1">
-            <span
-              className={[
-                'font-orbitron text-[9px] font-semibold uppercase tracking-[0.2em] transition-colors duration-700 sm:text-[10px]',
-                toneClasses.label,
-              ].join(' ')}
-            >
-              {signalState.label}
-            </span>
-          </header>
-          <HudIdentityMark identity={identity} size="large" hideLabel />
+          <header className="min-h-7 shrink-0" aria-hidden="true" />
+          <div className={`flex min-h-0 flex-1 flex-col items-center justify-center ${compact ? 'gap-3' : 'gap-4'}`} data-slot="home-identity" data-logo-size="overview">
+          <div className={`filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] flex min-h-0 min-w-0 items-center justify-center ${compact ? 'h-48 max-h-full sm:h-56' : 'h-full max-h-[26rem] flex-1'}`}>
+            <ApexLogo
+              {...identity.logoProps}
+              className="h-full w-auto max-h-[26rem] max-w-full aspect-[5208/5420] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+            />
+          </div>
+          <VoiceSignalGlyph {...identity.glyphProps} />
           {state === 'error' ? <div className="max-w-sm text-center" role="alert"><p className="font-mono text-sm text-rose-300">{error || 'I couldn’t collect telemetry just now.'}</p></div> : null}
           {state === 'no-data' ? <p className="font-mono text-sm text-zinc-400" role="status">No telemetry sources are available yet.</p> : null}
           {state === 'center' || state === 'error' || state === 'no-data' ? <TelemetryCollectionAction
@@ -110,11 +120,11 @@ export function OverviewView({ identity, telemetry, state, error, onCollect, onR
             disabled={collectDisabled}
             label={state === 'error' || state === 'no-data' ? 'Retry Telemetry' : 'Collect Telemetry'}
           /> : null}
+          </div>
         </>
       )}
     </div>
-    {hasGrid ? <RemindersTelemetry data={telemetry} variant="card" className={narrow} /> : null}
-    {hasGrid ? <MarketTelemetry data={telemetry} variant="card" className={wide} /> : null}
-    {hasGrid ? <EmailTelemetry data={telemetry} variant="card" className={wide} /> : null}
+    {hasGrid ? <MarketTelemetry data={telemetry} variant="card" className={desktop ? 'col-start-1 row-start-4 row-span-3 min-w-0' : 'order-4 min-w-0'} /> : null}
+    {hasGrid ? <RemindersTelemetry data={telemetry} variant="card" className={desktop ? 'col-start-3 row-start-4 row-span-3 min-w-0' : 'order-5 min-w-0'} /> : null}
   </section>
 }

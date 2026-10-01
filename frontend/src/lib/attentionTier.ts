@@ -7,7 +7,6 @@ export type AttentionTier = 'dormant' | 'pending' | 'active' | 'complete'
 export type AttentionSurfaceId =
   | 'reminders'
   | 'weather'
-  | 'news'
   | 'events'
   | 'market'
   | 'email'
@@ -25,14 +24,13 @@ type SurfaceSchedule = {
 /**
  * Reveal order by data source latency:
  * 1. Reminders (local DB) — gate
- * 2. Weather + News (public APIs) — unlock during collection
+ * 2. Weather (public API) — unlock during collection
  * 3. Events + Market + Email (heavier / auth’d APIs) — active through collection
  * 4. Insights (AI synthesis) — synthesis → persistence
  */
 const SURFACE_SCHEDULE: Record<AttentionSurfaceId, SurfaceSchedule> = {
   reminders: { activeAt: 1, completeAt: 2, staggerMs: 0 },
   weather: { activeAt: 2, completeAt: 2, staggerMs: 0 },
-  news: { activeAt: 2, completeAt: 2, staggerMs: 120 },
   events: { activeAt: 2, completeAt: 3, staggerMs: 280 },
   market: { activeAt: 2, completeAt: 3, staggerMs: 360 },
   email: { activeAt: 2, completeAt: 3, staggerMs: 440 },
@@ -64,7 +62,7 @@ export function resolveAttentionTier(
 
   const { activeAt, completeAt } = SURFACE_SCHEDULE[surface]
 
-  // Same-step unlock (e.g. weather/news): spotlight during that step, settle after.
+  // Same-step unlock: spotlight during that step, settle after.
   if (activeAt === completeAt) {
     if (activeStep > completeAt) {
       return 'complete'

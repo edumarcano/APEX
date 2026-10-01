@@ -1,4 +1,4 @@
-import { Calendar, CheckSquare, Clock, CloudSun, Mail, Newspaper } from 'lucide-react'
+import { Calendar, CheckSquare, Clock, CloudSun, Mail } from 'lucide-react'
 import type { ComponentProps, ReactElement } from 'react'
 
 import type { AttentionTier } from '../../lib/attentionTier'
@@ -15,7 +15,7 @@ import { ScrollFadeContainer } from '../ScrollFadeContainer'
 import { TelemetryCard } from '../TelemetryCard'
 
 type LedState = ReturnType<typeof resolveModuleLedState>
-type Surface = 'weather' | 'events' | 'market' | 'email' | 'news' | 'reminders'
+type Surface = 'weather' | 'events' | 'market' | 'email' | 'reminders'
 
 /** App-derived telemetry view model shared by Overview cards and the Briefing rail. */
 export type HudTelemetryData = {
@@ -58,14 +58,6 @@ export type HudTelemetryData = {
     items: Array<{ subject: string; time: string }>
     refreshing: boolean
   }
-  news: {
-    state: TelemetryContentState
-    ledState: LedState
-    statusMessage: string | null
-    compactValue: string | null
-    items: Array<{ topic: string; headline: string }>
-    refreshing: boolean
-  }
   reminders: {
     loadState: 'loading' | 'loaded' | 'unavailable'
     ledState: LedState
@@ -97,7 +89,7 @@ function layoutClass(variant: HudTelemetryVariant, className?: string): string {
   return [variant === 'card' ? 'min-h-0 h-full' : 'h-auto! flex-none', className].filter(Boolean).join(' ')
 }
 
-export function WeatherTelemetry({ data, variant, className }: DomainProps): ReactElement {
+export function WeatherTelemetry({ data, variant, className, narrow = false, dataSlot }: DomainProps & { narrow?: boolean; dataSlot?: string }): ReactElement {
   const { weather } = data
   const attribution = (
     <span
@@ -116,6 +108,7 @@ export function WeatherTelemetry({ data, variant, className }: DomainProps): Rea
   return <TelemetryCard
     title="Weather"
     icon={CloudSun}
+    data-slot={dataSlot}
     primaryTemperatureF={weather.info.temperatureF}
     apparentTemperatureF={weather.info.apparentTempF}
     tempMaxF={weather.info.tempMaxF}
@@ -129,7 +122,8 @@ export function WeatherTelemetry({ data, variant, className }: DomainProps): Rea
     statusMessage={weather.statusMessage}
     compactValue={weather.body}
     headerAction={weather.showAttribution ? attribution : undefined}
-    headerActionBelow={variant === 'section'}
+    headerActionBelow={variant === 'section' || narrow}
+    weatherStacked={narrow}
     attentionTier={data.attentionTiers.weather}
     attentionStaggerMs={data.attentionStagger.weather}
     className={layoutClass(variant, className)}
@@ -227,45 +221,6 @@ export function EmailTelemetry({ data, variant, className }: DomainProps): React
           <p className="text-sm text-[color:var(--hud-muted-text)]">Message previews unavailable.</p>
         )}
       </>
-    )}
-  </TelemetryCard>
-}
-
-export function NewsTelemetry({ data, variant, className }: DomainProps): ReactElement {
-  const { news } = data
-  return <TelemetryCard
-    title="News Wire"
-    icon={Newspaper}
-    ledState={news.ledState}
-    onRefresh={() => data.onRefreshConnector('news')}
-    refreshDisabled={data.isRefreshingAll}
-    statusMessage={news.statusMessage}
-    compactValue={news.compactValue}
-    attentionTier={data.attentionTiers.news}
-    attentionStaggerMs={data.attentionStagger.news}
-    className={layoutClass(variant, className)}
-    chrome={variant === 'section' ? 'section' : 'card'}
-  >
-    {news.refreshing && news.state === 'unavailable' ? (
-      <p className="animate-pulse text-sm text-[color:var(--hud-muted-text)]">Loading news…</p>
-    ) : news.state === 'unavailable' ? (
-      <p className="text-sm text-[color:var(--hud-muted-text)]">News unavailable.</p>
-    ) : news.state === 'disabled' ? (
-      <p className="text-sm text-[color:var(--hud-muted-text)]">News disabled.</p>
-    ) : news.items.length > 0 ? (
-      <ScrollFadeContainer as="ul" className="min-h-0 overflow-y-auto pr-1 scrollbar-thin">
-        {news.items.map((item, index) => (
-          <li key={`${item.topic}-${index}`} className={index < news.items.length - 1 ? 'border-b border-zinc-800/60 py-3 first:pt-0' : 'py-3 first:pt-0'}>
-            <p className="flex items-center gap-2 font-orbitron text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--hud-accent)]">
-              <span className="hud-log-index">{String(index).padStart(2, '0')}</span>
-              [{item.topic}]
-            </p>
-            <p className="mt-0.5 line-clamp-2 text-sm leading-relaxed text-zinc-200">{item.headline}</p>
-          </li>
-        ))}
-      </ScrollFadeContainer>
-    ) : (
-      <p className="text-sm text-[color:var(--hud-muted-text)]">No news headlines available.</p>
     )}
   </TelemetryCard>
 }

@@ -6,7 +6,7 @@ import { DEFAULT_WEATHER_INFO } from '../../lib/weatherTelemetry'
 import type { HudTelemetryData } from './HudTelemetry'
 import { HudTelemetryRail } from './HudTelemetryRail'
 
-const surfaces = { weather: 0, events: 0, market: 0, email: 0, news: 0, reminders: 0 }
+const surfaces = { weather: 0, events: 0, market: 0, email: 0, reminders: 0 }
 
 function telemetry(overrides: Partial<HudTelemetryData> = {}): HudTelemetryData {
   return {
@@ -14,7 +14,7 @@ function telemetry(overrides: Partial<HudTelemetryData> = {}): HudTelemetryData 
     isRefreshingAll: false,
     isRefreshingAnyConnector: false,
     onRefreshConnector: vi.fn(),
-    attentionTiers: { weather: 'complete', events: 'complete', market: 'complete', email: 'complete', news: 'complete', reminders: 'complete' },
+    attentionTiers: { weather: 'complete', events: 'complete', market: 'complete', email: 'complete', reminders: 'complete' },
     attentionStagger: surfaces,
     weather: { info: { ...DEFAULT_WEATHER_INFO, temperatureF: 72, condition: 'clear_day' }, body: 'Clear', ledState: 'live', statusMessage: null, showAttribution: true },
     events: {
@@ -31,7 +31,6 @@ function telemetry(overrides: Partial<HudTelemetryData> = {}): HudTelemetryData 
     },
     market: { data: null, isLoading: false, enabled: true },
     email: { state: 'available', ledState: 'live', statusMessage: null, compactValue: null, count: 0, items: [], refreshing: false },
-    news: { state: 'available', ledState: 'live', statusMessage: null, compactValue: null, items: [], refreshing: false },
     reminders: {
       loadState: 'loaded',
       ledState: 'live',
@@ -58,7 +57,6 @@ function domainSections(rail: HTMLElement): Array<HTMLElement | null> {
     within(rail).getByRole('heading', { name: 'Weather' }),
     within(rail).getByRole('heading', { name: 'Events' }),
     within(rail).getByRole('heading', { name: 'Email' }),
-    within(rail).getByRole('heading', { name: 'News Wire' }),
     within(rail).getByRole('heading', { name: 'Reminders' }),
     within(rail).getByRole('region', { name: 'Market ticker' }),
   ].map((element) => element.closest('section'))

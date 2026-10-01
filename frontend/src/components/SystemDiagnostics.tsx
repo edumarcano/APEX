@@ -10,7 +10,6 @@ import {
   LineChart,
   Mail,
   MemoryStick,
-  Newspaper,
   PlugZap,
   RefreshCw,
   Settings,
@@ -46,7 +45,6 @@ function formatPercentage(
 
 const CONNECTOR_LABELS: Record<string, string> = {
   weather: 'Weather',
-  news: 'News',
   email: 'Email',
   calendar: 'Calendar',
   sports: 'Sports',
@@ -60,7 +58,6 @@ const CONNECTOR_LABELS: Record<string, string> = {
 
 const CONNECTOR_ICONS: Record<string, LucideIcon> = {
   weather: Globe,
-  news: Newspaper,
   email: Mail,
   calendar: CalendarDays,
   f1: Trophy,
