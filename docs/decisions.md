@@ -1,291 +1,299 @@
 # Engineering Decisions
 
-This is the reasoning record behind APEX. The architecture reference explains how the current system works; this document explains why its boundaries were drawn and which trade-offs were accepted for a single-user, local-first project.
+This document records why APEX uses its current boundaries and which trade-offs it accepts as a single-user, local-first project. [Architecture](architecture.md) explains how those choices fit together; the linked guides own settings, API behavior, and operational details.
 
-Each entry leads with the decision, then the motivation and consequence. Entries marked **Superseded** preserve the earlier reasoning as history; the status note points to the current behavior.
+The current decisions are grouped by concern. Each states the choice, its motivation, and its cost. [Earlier designs](#earlier-designs) preserves the reasoning behind retired approaches and links to their replacements.
 
-## Configuration
+## Configuration and storage
 
-### Separate secrets from user preferences
+### Separate secrets, tracked defaults, and local preferences
 
-**Decision.** Credentials, tokens, private keys, and environment-only modes belong in `.env`. Committed non-secret defaults belong in `config.json`, while machine-local runtime settings can live in gitignored `config.local.json`.
+**Decision.** Keep secrets out of configuration JSON. Provider keys and environment-only switches use `.env` or the process environment; OAuth credentials and tokens use their connector's file, encrypted cache, or operating system credential store. `config.json` holds committed non-secret defaults, and gitignored `config.local.json` holds supported local overrides.
 
-**Why.** Secrets should stay outside normal configuration files. Non-secret settings should live where APEX can validate and manage them. Things like the llama.cpp executable path or preset location do not need to be environment variables as long as they are untracked.
+**Why.** Credentials, shared defaults, and personal settings have different lifecycles. Separating them lets APEX manage preferences without rewriting secrets or committing machine-specific values.
 
-**Trade-off.** Each setting needs a clear owner across multiple storage locations.
+**Trade-off.** There are several storage locations to understand and protect. Neither an untracked file nor local storage implies encryption. See [Configuration](configuration.md#where-settings-live) and [Privacy](privacy.md#local-storage-and-credentials).
 
-### Use `config.local.json` as a mutable overlay
+### Use a mutable overlay for Runtime Settings
 
-**Decision.** Runtime Settings writes only to gitignored `config.local.json`, which overlays `config.json`.
+**Decision.** Runtime Settings writes supported changes to `config.local.json`, overlays them on tracked defaults, and publishes the new snapshot after the file has been replaced successfully.
 
-**Why.** Normal preferences should be changeable from the HUD without touching tracked defaults or restarting the process.
+**Why.** Preferences should be editable from the interface without modifying the repository's defaults or restarting for each change.
 
-**Trade-off.** Invalid editable runtime settings reject the local layer as a unit, except MCP configuration: malformed optional MCP fields or providers fail closed independently so one broken integration cannot invalidate unrelated preferences. Successful settings writes use transactional replacement before the new snapshot is published.
+**Trade-off.** File-only settings still need a restart, and invalid overrides need a clear fallback to defaults. Validation and persistence must agree before a new snapshot becomes visible. See [Runtime Settings](configuration.md#runtime-settings).
 
-## Backend and API
+### Use SQLite for durable application state
 
-### Use SQLite for local durable state
+**Decision.** SQLite owns local application records, including conversations, runs, briefings, personal context, reviews, reports, reminders, and actions.
 
-**Decision.** SQLite stores APEX's local durable state, including conversation and run history, briefing sessions and speech artifacts, personal context and retrieval indexes, review proposals, the reminder cache and outbox, and the action ledger. Microsoft To Do remains authoritative for synced reminders.
+**Why.** These records need identity, ordering, transactions, and recovery. SQLite supplies those properties without requiring a separate database service.
 
-**Why.** This data needs identity, ordering, transactions, or reliable recovery that would be awkward to maintain in JSON or flat files. SQLite provides those properties without adding another service.
+**Trade-off.** APEX must manage schema compatibility, transaction boundaries, and retention. It does not encrypt the database. External services can remain authoritative for synced data, as with [Microsoft To Do reminders](#use-microsoft-to-do-as-the-reminder-authority).
 
-**Trade-off.** The database is not encrypted by APEX and requires schema compatibility and transaction discipline.
+### Validate persistence before changing it
 
-The beta.6 cutover transactionally dropped only the retired legacy `briefings` table. Its rows were permanently removed, with no migration into session history; `briefing_sessions` and unrelated database records were preserved.
+**Decision.** The v2.0.0-beta.6 schema is the supported upgrade floor. Startup checks core persistence through a read-only connection before bootstrap or recovery and rejects unsupported schemas. Unsupported retrieval persistence disables retrieval for the run while canonical knowledge writes continue without derived synchronization.
 
-The beta.6 schema is the supported upgrade floor. Startup validates core persistence through a read-only connection before bootstrap or recovery and stops without rewriting an unsupported core database. Retrieval remains optional: an unsupported retrieval schema disables retrieval for the run while leaving canonical knowledge writes available without derived retrieval synchronization. Current initialization leaves any remaining legacy `briefings` table untouched.
+**Why.** Conversation and knowledge records are harder to replace than a derived search index. Startup should establish that it understands existing data before writing to it.
 
-### Keep context evidence separate from current claims
+**Trade-off.** APEX does not automatically upgrade every older database. Retrieval degradation also defers conversation deletion and retention where deletion triggers could touch unsupported retrieval tables. See [Persistence compatibility](architecture.md#persistence-compatibility).
 
-**Decision.** Personal context keeps immutable source evidence separate from normalized claims and records later changes in append-only history. Clear direct operator input may save immediately; sensitive, conflicting, or model-interpreted changes use a durable review with frozen evidence and expected revisions. Pending proposals stay out of retrieval. Acceptance runs through the action executor and verifier, while the knowledge mutation, history, retrieval update, and review decision commit together.
+### Write timezone-aware UTC timestamps
 
-**Why.** APEX needs to explain both what was originally supplied and what it currently treats as true. Separating those records prevents a model interpretation or stale proposal from silently becoming trusted context.
+**Decision.** Application-generated record timestamps use timezone-aware UTC.
 
-**Trade-off.** Context changes require more schema and lifecycle handling, and old evidence remains in the unencrypted local database after a correction or retraction. Prompt assembly therefore sends bounded current claims and provenance labels rather than full evidence or history.
+**Why.** A shared time basis keeps ordering and comparisons independent of the host's current time zone and avoids ambiguous local wall-clock values.
 
-### Keep full trigger execution synchronous (superseded)
+**Trade-off.** Presentation must convert timestamps to the user's local time where appropriate. The retired reader for legacy cooldown records is described under [Earlier designs](#legacy-cooldown-timestamp-reads).
 
-**Status: Superseded by the beta.6 saved-session engine.** The blocking `/api/v1/trigger` route and active pipeline status endpoint have been removed.
+## Execution and model ownership
 
-**Decision.** `POST /api/v1/trigger` remains one blocking full-run request while status observation uses a separate polling endpoint.
+### Give operations independent lifecycles
 
-**Why.** One request owns the result and error contract, while polling can animate progress without streaming partial state. For a single-user HUD, this is simpler than a job queue or websocket protocol.
+**Decision.** Activation, telemetry collection, briefing generation, Agent turns, and speech have separate service and interface owners.
 
-**Trade-off.** The HTTP request stays open through collection and synthesis. The independent snapshot and briefing endpoints are preferable when the caller does not need the whole orchestration path.
+**Why.** A provider or speech failure should not prevent telemetry inspection or make an already saved briefing unreadable. Each operation needs its own progress, failure, and retry behavior.
 
-### Separate runtime paths without removing the full pipeline (superseded)
-
-**Status: Superseded by the beta.6 route retirement.** Activation, telemetry refresh, briefing sessions, Agent requests, and speech have separate owners; the old full trigger is no longer supported.
-
-**Decision.** Activation, telemetry collection, briefing generation, Agent requests, and voice delivery have separate APIs and frontend owners. The full trigger remains supported.
-
-**Why.** APEX became less useful when one environmental or provider failure blocked every capability. Telemetry inspection, agent queries, briefing regeneration, and speech replay should each work independently.
-
-**Trade-off.** More API and frontend paths to maintain. The older full trigger also remains supported, so the documentation has to make clear which paths are the normal ones.
-
-### Keep telemetry snapshots process-local
-
-**Decision.** The current typed telemetry snapshot lives in memory and is identified by an opaque `snapshot_id`.
-
-**Why.** Snapshot state is temporary and tied to refreshes. Persisting every connector observation would add migrations, cleanup, and stale-record ambiguity without improving anything in a single-process session.
-
-**Trade-off.** Restarting FastAPI invalidates an explicit telemetry snapshot reference. Briefing sessions instead persist the evidence captured during generation and remain readable after restart.
-
-### Make operational preflight advisory before it is blocking
-
-**Decision.** Network policy, power state, refresh frequency, and elevated resource use normally produce warnings. Hard blockers are reserved for conditions that prevent the selected operation.
-
-**Why.** A Wi-Fi name or battery state is useful context, not authorization. The original hard gate made APEX unavailable whenever the environment differed from expectations, which was too aggressive for a personal local tool.
-
-**Trade-off.** The user makes the final call on advisory risk. Missing credentials, unavailable models, inference contention, failed resource gates, invalid input, and broken local configuration or database state remain non-overridable.
-
-### Source speaker state and reset the pipeline from the backend (superseded)
-
-**Status: Superseded by session-scoped speech and current Briefing state.** The old global status poll and full-run pipeline reset have been removed. Briefing derives progress from the active session and speech state from the saved session's speech endpoint.
-
-**Decision.** The HUD reads speaking state from the API instead of inferring completion from a frontend timer, and `_speak_and_cleanup` owns the final pipeline reset after audio playback.
-
-**Why.** Voice duration varies by engine, fallback, text length, and machine, so the subsystem performing playback is the only reliable owner. Returning the briefing response before speech ends keeps the HUD responsive, but clearing state at response time would incorrectly report standby during delivery.
-
-**Trade-off.** Status polling continues while audio plays, and a background worker thread must preserve run context and guarantee cleanup after success or failure.
-
-### Isolate launcher child environments
-
-**Decision.** FastAPI receives the backend environment; the static server and browser receive a restricted environment.
-
-**Why.** Only the API owns connectors and providers. Passing API keys to processes that do not need them increases exposure without adding capability.
-
-**Trade-off.** The launcher maintains an explicit allowlist of process-essential variables.
-
-### Separate liveness and readiness
-
-**Decision.** Liveness proves the process can answer; readiness also checks runtime settings and SQLite.
-
-**Why.** The launcher should stop on broken required local state, but optional connector or model outages should not bring down the whole HUD.
-
-**Trade-off.** Provider health appears in its own runtime surface rather than readiness.
-
-### Write UTC while preserving legacy timestamp reads (superseded)
-
-**Status: Superseded by Stable persistence cleanup.** The legacy cooldown reader and its timestamp parser have been retired. Existing rows in the old `runs` table remain untouched; this parser is not a current run-record compatibility path.
-
-**Decision.** New timestamps are timezone-aware UTC. Legacy timezone-naive run values are interpreted as local wall-clock time.
-
-**Why.** UTC removes ambiguity for new records, and a destructive migration would add risk solely to normalize a SQLite text field.
-
-**Trade-off.** Timestamp parsing permanently carries a compatibility branch.
-
-### Use Microsoft To Do as the main reminder source
-
-**Decision.** One selected Microsoft To Do list is the main source for APEX reminders. SQLite keeps a local copy of active reminders and stores pending local changes that still need to be synced.
-
-**Why.** Microsoft To Do keeps reminders in sync across devices without APEX needing its own mobile app. Keeping a local copy in SQLite preserves local-first behavior, so reminders can still be shown and created when To Do or the network is unavailable.
-
-**Trade-off.** The local copy can go stale while offline, and locally created reminders may need to be synced later. APEX has to keep the Microsoft list and its local state clearly separated instead of treating both as equal sources of truth.
-
-### Keep the CLI as a client of the APEX API
-
-**Decision.** The APEX CLI talks to the same local API as the HUD instead of calling backend services or the database directly.
-
-**Why.** This keeps one path for Agent requests, briefings, reminders, actions, approval, and verification. The HUD and CLI follow the same rules instead of slowly developing different behavior.
-
-**Trade-off.** The APEX backend has to be running before the CLI can be used, and the CLI is intentionally limited to the local APEX instance.
-
-## AI and speech
-
-### Synthesize from typed facts instead of display prose (superseded)
-
-**Status: Superseded by the canonical briefing-session evidence and artifact contract.** The old Flash/Focused projections and Structured renderer were retired with their engine. Current profiles share one bounded session flow and selected-model contract.
-
-**Decision.** Connectors turn their data into one normalized, bounded `BriefingFacts` snapshot. Flash and Focused use explicit factual projections, while Structured consumes the complete facts directly; all model input is marked as untrusted data.
-
-**Why.** Display text mixes presentation, health state, and third-party content. A separate schema makes it clear which facts can be sent to a briefing model and keeps third-party text inside an explicit untrusted-data boundary.
-
-**Trade-off.** Every new fact that should reach synthesis has to be added deliberately. That extra work is preferable to silently sending more data to a model.
-
-### Keep deterministic synthesis as the final fallback (superseded)
-
-**Status: Superseded by explicit model selection.** A failed or unavailable selected model does not silently switch to a separate briefing route. Catch Up may return a deterministic no-change artifact when comparable source history shows no material change; that is part of its profile behavior, not a provider fallback.
-
-**Decision.** Every briefing mode ends in Structured when its selected model path cannot produce valid output.
-
-**Why.** A personal briefing should remain useful when credentials, networks, providers, local models, or the generated format fail.
-
-**Trade-off.** Deterministic prose is less flexible, but its behavior is predictable and limited to known facts.
-
-### Share one local runtime lifecycle across briefings and Agent turns
-
-**Decision.** Local briefings and Agent requests share the same model loading, resource checks, execution slot, model switching, and idle unload across Ollama and llama.cpp.
-
-**Why.** Both workloads compete for the same CPU, RAM, and one resident-model budget. Separate managers would still fight over the same hardware while making that contention harder to observe and control.
-
-**Trade-off.** One local operation can reject another rather than queue behind it. Briefing prompts and Agent context remain separate even though they share model lifecycle management.
-
-### Expose explicit briefing modes (superseded)
-
-**Status: Superseded by Daily, Catch Up, and Deep briefing profiles.** Profiles share the selected APEX Agent model. Old Flash, Focused, and Structured preferences are ignored rather than mapped, and `--mode` is retired from the CLI.
-
-**Decision.** The HUD offers canonical `flash`, `focused`, and `structured` modes rather than exposing Agent identities as mode identifiers. Flash is the default; legacy identifiers are intentionally rejected without migration.
-
-**Why.** Cloud disclosure, local resource use, latency, and model-free output are meaningful personal choices. The selected mode should make that choice visible before execution.
-
-**Trade-off.** More modes mean more availability, fallback, configuration, and UI coverage to maintain.
-
-### Use layered text-to-speech fallback
-
-**Decision.** Google Cloud TTS falls back to pyttsx3. Kokoro also falls back to pyttsx3, but never to Google, so a local speech request does not silently become a cloud request.
-
-**Why.** Speech should stay available when the selected engine fails while preserving the privacy choice between local and cloud delivery.
-
-**Trade-off.** Fallback can change voice quality, so the resolved engine needs to remain visible.
-
-### Keep Kokoro hardware-conditional
-
-**Decision.** Kokoro remains supported but is only loaded when selected. Piper was removed.
-
-**Why.** On the Intel Lunar Lake development machine, CPU ONNX execution took over 40 seconds before speech for a 420-character briefing. Piper took about 16 seconds. Google delivered in under three seconds with no sustained local CPU load, while pyttsx3 began immediately.
-
-Lazy Kokoro imports and warmup avoid idle memory and thread cost when it is not selected. Hardware with suitable ONNX acceleration can still opt in.
-
-**Trade-off.** The default Google path requires network access and can disclose transcript text. pyttsx3 is lower quality but provides immediate offline delivery.
-
-## Local inference
+**Trade-off.** More independent paths require coordination and explicit state ownership. There is no full-trigger request that owns every operation. See [Architecture](architecture.md).
 
 ### Use one APEX Agent with model-routed execution
 
-**Decision.** APEX has one native APEX Agent. The selected model determines cloud provider or local runtime, capabilities, controls, availability, and lifecycle behavior.
+**Decision.** APEX has one built-in Agent. The selected model determines its provider or local runtime, capabilities, controls, and availability. Experimental models remain in that catalog but are exposed only in development mode.
 
-**Why.** Cloud and local execution are runtime details, not enduring product identities. A singular assistant keeps Overview, Briefing, Cortex, settings, and persistence aligned.
+**Why.** The assistant's role should remain consistent when its model changes. A development-only catalog gives the project room to experiment without introducing another Agent identity for each runtime.
 
-**Trade-off.** The model catalog can grow without creating another Agent identity, but model metadata, settings, and documentation still need to stay in sync.
+**Trade-off.** Model metadata, settings, and capability checks still need to agree. A consistent Agent identity does not imply identical behavior across models. See [Identity and naming](identity-and-naming.md#apex-agent-and-lynx) and [Models and credentials](configuration.md#models-and-credentials).
 
-### Keep development-only models separate from APEX Agent
+### Keep conversation state in APEX
 
-**Decision.** Development-only models remain in APEX Agent's registered model catalog and appear only when `DEV_MODE` is active. They are not separate Agent identities.
+**Decision.** APEX stores the conversation tree and rebuilds a bounded active-branch history for each run rather than relying on a persistent provider-owned model session.
 
-**Why.** There needs to be a safe place to try alternate cloud and local models without expanding the normal product roster.
+**Why.** Branching, history, and recovery should remain under application control when the selected model or provider changes.
 
-**Trade-off.** Documentation and tests must distinguish the stable APEX Agent identity from replaceable model configuration.
+**Trade-off.** APEX must select history within the model's context budget and reconcile browser thread state with the saved active branch. Conversation text remains in unencrypted local storage. See [Conversations and model execution](architecture.md#conversations-and-model-execution).
 
-### Keep Agent execution stateless while storing conversations
+### Share local inference admission and model lifecycle
 
-**Decision.** APEX stores Cortex conversations and rebuilds a bounded active-branch history for each run. The synchronous `/turns` route waits for completion; the `/runs` route starts the same work asynchronously. Neither route keeps a model session between turns.
+**Decision.** Briefings, Agent turns, and speech adaptation share local model loading, switching, execution admission, and idle unloading across Ollama and llama.cpp. APEX coordinates one resident model among its known models and rejects competing local execution rather than adding a hidden queue.
 
-**Why.** SQLite owns the conversation tree and client-visible metadata. Each run reads a bounded history slice, so session expiry and cleanup do not depend on a long-lived model session. Multi-tab coordination stays in conversation persistence.
+**Why.** These workloads use the same CPU and memory. One coordinator makes contention visible and prevents separate APEX managers from loading competing models. Cold-load resource checks protect the host; a verified resident model does not need another loading gate.
 
-**Trade-off.** Conversation text and response metadata remain in unencrypted local SQLite. Only the bounded history slice reaches the model. The frontend must reconcile assistant-ui's transient branch state with the durable active leaf.
+**Trade-off.** Busy requests require a retry, and idle unloading adds another lifecycle to manage. This coordination does not control unrelated processes or every model loaded outside APEX. See [Local inference](architecture.md#local-inference).
 
-### Keep assistant-ui replaceable and behind an APEX adapter
+### Expose supported reasoning controls and keep reasoning private
 
-**Decision.** Cortex uses a pinned assistant-ui runtime only for browser thread state and low-level UI primitives. `ApexAssistantRuntime` is the one frontend module that touches assistant-ui runtime APIs and canonicalizes generated identifiers before an APEX request.
+**Decision.** Reasoning controls follow the selected model's capabilities. Local reasoning defaults to `none`. Hidden reasoning fields and think-style tags are removed before response display, and activity records exclude model reasoning.
 
-**Why.** APEX owns message-tree persistence, execution, tools, actions, preflight, and runtime policy. A narrow adapter boundary lets editing and branch interaction work without a second durable conversation system alongside the one APEX already maintains.
+**Why.** Provider controls differ, and an unsupported setting should not appear to work. Progress visibility should explain what the Agent is doing without exposing hidden reasoning.
 
-**Trade-off.** The adapter needs focused conversion coverage whenever the pinned assistant-ui release changes, because its message and thread identifiers are not a stable public contract. The boundary is isolated in `frontend/src/components/ApexAssistantRuntime.tsx`. APEX does not expose assistant-ui cancellation, client-side tools, attachments, cloud storage, feedback, or automatic title generation. Empty threads are transient until their first accepted turn. Permanent deletion is an APEX-owned capability limited to archived conversations and exposed through the archived-only API route.
+**Trade-off.** Equivalent control names do not guarantee equivalent behavior across models. APEX does not set a separate local reasoning-token budget or report local reasoning-token usage. See [Models and credentials](configuration.md#models-and-credentials) and [Runs and activity](architecture.md#runs-and-activity).
 
-### Stream live run activity over process-local Server-Sent Events
+### Bound execution and drain workers before closing dependencies
 
-**Decision.** Live run updates stream over process-local Server-Sent Events rather than WebSockets, polling, or database-backed message queues.
+**Decision.** Run admission and execution are bounded. Cancellation is cooperative. Shutdown closes admission and drains active work before closing the stores, connectors, and runtimes it uses.
 
-**Why.** SSE provides unidirectional streaming over standard HTTP with reconnect replay through `Last-Event-ID`. In-memory ring buffers let clients reconnect after transient network glitches without writing intermediate delta events to SQLite. Client disconnections do not cancel active backend runs.
+**Why.** Long model and tool operations need limits, while dependencies must remain available until their workers stop using them.
 
-**Trade-off.** Live events are process-local and lost on backend restart. Durable run state remains limited to the completed run ledger and conversation messages.
+**Trade-off.** Cancellation can wait for a model or tool boundary. If work outlasts the shutdown window, shutdown reports failure and leaves dependencies open rather than closing them beneath a running worker. See [Bounded run limits](configuration.md#bounded-run-limits) and [Persistence and lifecycle](architecture.md#persistence-and-lifecycle).
 
-### Adopt OpenTelemetry GenAI semantics without an internal tracing platform
+### Keep operational preflight advisory where possible
 
-**Decision.** APEX exports distributed traces adhering to OpenTelemetry GenAI semantic conventions via standard OTLP HTTP rather than building an in-tree tracing UI or observability store.
+**Decision.** Network policy, power state, refresh frequency, and high-resource model selection normally produce warnings. Conditions that prevent the chosen operation remain blockers.
 
-**Why.** Standard OTLP output lets operators connect standard evaluation or visualization tools (such as Arize Phoenix or OpenTelemetry collectors) when desired. Tracing is failure-isolated and has zero runtime overhead when disabled. Spans enforce a zero-content privacy guarantee that omits prompts, completions, and raw exceptions.
+**Why.** A Wi-Fi name or battery state provides context, not proof of safety or permission. A personal tool should let the operator decide whether to proceed through an advisory warning.
 
-**Trade-off.** Inspecting detailed traces requires running an external OTLP-compatible collector.
+**Trade-off.** The operator must judge those warnings. Missing required credentials, unavailable models, inference contention, failed resource gates, and invalid required local state cannot be overridden. See [Telemetry and preflight](api.md#telemetry-and-preflight).
 
-### Enforce one resident model and non-blocking admission
+### Stream live activity without persisting every event
 
-**Decision.** APEX keeps one selected local model resident across Ollama and llama.cpp and rejects competing local execution rather than queueing it.
+**Decision.** Live run updates use Server-Sent Events with bounded process-local replay buffers. SQLite records run state from admission onward, and completed messages retain a bounded, sanitized activity timeline.
 
-**Why.** Consumer hardware should stay responsive, and a hidden queue behind a slow generation gives poor feedback. CPU and RAM checks protect cold loads; a model that is already resident skips that check because loading it again would add no new footprint.
+**Why.** Unidirectional HTTP streaming supports live progress and reconnects without a WebSocket protocol or a database write for every answer delta. Saved status and activity can remain useful after the live stream is gone.
 
-**Trade-off.** Rejected requests require a retry. Idle auto-unload returns memory without depending on manual cleanup.
+**Trade-off.** Replay covers only the retained buffer and cannot survive a backend restart. Unfinished durable runs become interrupted on startup. Disconnecting a client does not cancel its run. See [Runs and activity](architecture.md#runs-and-activity).
 
-### Talk to llama.cpp over HTTP with optional process supervision
+## Briefings and speech
 
-**Decision.** APEX talks to llama.cpp over HTTP rather than embedding a Python binding. The router can be run externally, or APEX can start and stop a locally installed `llama-server` executable.
+### Keep live telemetry snapshots process-local
 
-**Why.** Process isolation, independent upgrades, and the existing OpenAI-compatible tooling matter more than in-process convenience for a personal HUD. Managed mode removes a manual startup step without bundling binaries or model weights.
+**Decision.** The current typed telemetry snapshot stays in memory and is identified by an opaque `snapshot_id`. Briefing sessions persist the evidence they use.
 
-**Trade-off.** APEX never installs, bundles, or updates llama.cpp and never downloads model weights. Managed mode accepts only loopback hosts, stops only processes APEX launched, and does not expose local filesystem paths outside Runtime Settings.
+**Why.** Live observations serve refresh and inspection. Saving every observation would introduce another retention and compatibility lifecycle; saved briefing evidence provides history for the generation that needs it.
 
-### Use stable runtime aliases for llama.cpp models
+**Trade-off.** Restarting the backend invalidates explicit live snapshot references. APEX does not provide a durable history of every connector observation. See [Telemetry collection](architecture.md#telemetry-collection).
 
-**Decision.** APEX Agent loads llama.cpp models through stable model-based aliases such as `gemma-4-e2b-16k` instead of exposing raw GGUF paths or an arbitrary context slider.
+### Save a canonical briefing artifact with its evidence
 
-**Why.** A small set of tested context sizes keeps loading, memory checks, and documentation predictable while model paths remain behind stable aliases.
+**Decision.** Each completed briefing session saves a canonical artifact, selected evidence, and execution metadata. Presentation is recorded separately from generation. The linked conversation starts with a rendered copy of the artifact.
 
-**Trade-off.** Adding a new context requires a router preset and matching model configuration. High-resource presets such as `gemma-4-e2b-132k` and `gemma-4-e4b-64k` are explicitly marked as such. A model can support a larger maximum context than APEX chooses to expose.
+**Why.** A briefing should remain inspectable after its source data changes. Separating evidence from display prose also makes the information sent to synthesis deliberate. Catch Up needs to distinguish a generated briefing from one actually presented to the operator.
 
-### Make local reasoning capability-driven and private
+**Trade-off.** Evidence selection, provenance, and presentation checkpoints require their own contracts and storage. A saved artifact records what APEX produced; it does not guarantee that every model claim is correct. See [Briefing routes](architecture.md#briefing-routes).
 
-**Decision.** Local reasoning preferences default to `none`. llama.cpp models that support reasoning expose `none` and `focused`; Ollama development models expose only `none`. For llama.cpp, `none` sends `reasoning_effort: "none"`, while `focused` lets the model use its native reasoning behavior. Hidden reasoning fields and think-style tags are removed before display.
+### Separate briefing profiles from model selection
 
-**Why.** Local models do not all support the same reasoning controls as cloud models. The HUD only shows options the selected model actually supports, and hidden reasoning stays out of the visible response.
+**Decision.** Daily, Catch Up, and Deep define the briefing workflow and use the explicitly selected Agent model. An unavailable or failed selected model does not silently switch to another model or synthesis route.
 
-**Trade-off.** Focused mode has no separate reasoning-token budget or telemetry in APEX. llama.cpp runtime data only gives conservative completion headroom, and model-specific sampling stays unchanged until benchmarks justify tuning it.
+**Why.** The kind of briefing and the model executing it are separate choices. Keeping them separate makes provider use, local resource use, and failure behavior easier to understand.
 
-## Security
+**Trade-off.** Some failures leave the session without a completed artifact. Catch Up can produce a deterministic no-change result when its comparison warrants one, but that is profile behavior rather than a model fallback. See [Briefing profiles](configuration.md#briefing-profiles).
 
-### Treat connector, telemetry, and tool content as untrusted model data
+### Derive speech separately and reuse prepared audio
 
-**Decision.** Briefing facts, explicit telemetry context, and tool results use separate untrusted-data markers with matching system instructions.
+**Decision.** Speech preparation adapts a completed artifact using the session's saved model, then validates the script and caches audio tied to that artifact. Playback uses the saved chunks on the APEX host. The backend owns actual preparation and playback state.
 
-**Why.** Calendar titles, headlines, email content, tasks, and provider results are written outside APEX's control and can contain instruction-like text.
+**Why.** Speech should not collect new evidence or change a saved briefing. Separating preparation from playback avoids repeated model and synthesis calls, and speech failure leaves the briefing available. Backend state reflects delivery more reliably than a browser timer.
 
-**Trade-off.** Prompt boundaries reduce risk but do not authorize actions. Supported native writes go through the action system, while MCP write and destructive capabilities remain unavailable.
+**Trade-off.** Preparation adds a model call, audio storage, cache invalidation, and worker coordination. Validation catches specified mismatches rather than proving every factual claim, and host playback depends on working local audio. See [Saved briefing highlights](speech-runtime.md#saved-briefing-highlights) and [Speech privacy](privacy.md#speech).
+
+### Keep speech fallback local
+
+**Decision.** Google Cloud TTS and Kokoro attempt local pyttsx3 fallback when synthesis fails. Kokoro never falls back to Google Cloud TTS.
+
+**Why.** A failed local engine should not silently send its text to a cloud speech service. A lighter local engine can still offer delivery when the selected engine is unavailable.
+
+**Trade-off.** Fallback can change the voice or fail too. The saved speech state records the resolved engine. Local audio synthesis is separate from script preparation, which may use a cloud model. See [Engine behavior](speech-runtime.md#engine-behavior).
+
+### Load Kokoro only when selected
+
+**Decision.** Kokoro is optional, initializes only when selected, and has speech-specific resource admission checks.
+
+**Why.** Its imports, warmup, and inference consume resources even when another voice engine is preferred. Earlier measurements on the development machine showed enough startup latency to justify keeping it optional.
+
+**Trade-off.** Selecting Kokoro requires local assets and may incur warmup or resource-related fallback. Performance depends on the host; the historical observations below are not current latency guarantees. See [Installation](speech-runtime.md#installation) and [Kokoro resource checks](speech-runtime.md#kokoro-resource-checks).
+
+## Context and actions
+
+### Keep source evidence separate from current claims
+
+**Decision.** Personal context separates immutable source evidence from normalized claims and preserves changes in append-only history. Clear direct operator input can save immediately; sensitive, conflicting, or model-interpreted changes use durable review. Pending replacement claims stay out of ordinary retrieval.
+
+**Why.** APEX needs to distinguish what was supplied, how it was interpreted, and what it currently treats as true. Frozen evidence and revision checks prevent a stale proposal from silently replacing current knowledge.
+
+**Trade-off.** Review and history add schema and lifecycle work, and correction or retraction does not erase earlier evidence. Review acceptance commits the mutation, history, decision, and supported retrieval synchronization together. See [Personal context and review](architecture.md#personal-context-and-review) and [Privacy](privacy.md#personal-context).
+
+### Publish selected context as a derived copy
+
+**Decision.** The knowledge store remains canonical. Context vault publication is opt-in and writes selected production claims as generated Markdown, with a separate sensitive-data opt-in and managed-file ownership.
+
+**Why.** External applications can read useful context without becoming the knowledge store or receiving all source evidence. Explicit selection keeps publication separate from permission to retrieve context for model prompts.
+
+**Trade-off.** Publication needs revision tracking, recovery, and cleanup. Disabling it retains existing copies, and local publication cannot confirm another application's sync or indexing. Copies outside APEX's ownership have their own lifecycle. See [Context Vault](context-vault.md).
+
+### Keep external reports outside accepted knowledge
+
+**Decision.** External activity reports are immutable input with a separately editable disposition. Findings become accepted knowledge only through review. Reports are excluded from general personal-context retrieval, though permitted briefings can select excerpts as untrusted evidence.
+
+**Why.** Receiving a report or marking it reviewed does not establish the truth of its claims. A separate review preserves external provenance and gives the operator control over promotion into personal context.
+
+**Trade-off.** Reports and knowledge need separate storage and review paths. Caller-declared source labels do not authenticate origin, and permitted report excerpts may reach the selected model before knowledge acceptance. See [External activity reports](architecture.md#external-activity-reports) and [Privacy](privacy.md#external-activity-reports).
+
+### Treat connector and tool content as untrusted data
+
+**Decision.** Connector evidence, retrieved context, and tool results enter prompts within explicit untrusted-data boundaries. Native write capabilities use the action system; MCP write and destructive capabilities remain unavailable.
+
+**Why.** Calendar titles, messages, reports, and provider results can contain instructions written outside APEX's control. Their content should inform an answer without granting authority to act.
+
+**Trade-off.** Prompt markers reduce risk but cannot prove that a model will ignore every embedded instruction. Execution policy and approval must enforce the action boundary independently. See [Tools and actions](architecture.md#tools-and-actions).
 
 ### Prove the action flow with Microsoft To Do
 
-**Decision.** Microsoft To Do changes go through APEX's action flow: propose the change, ask for approval when needed, execute it, verify the result, and record what happened. To Do is the first real use of this system and serves as a test case for future Cortex actions.
+**Decision.** Agent-requested To Do changes use proposals, approval, execution, verification, and an action record. Direct reminder management remains an operator action without an added model-approval step.
 
-**Why.** Task changes are simple enough to test the full flow without much risk. The approval flow applies to Agent-requested changes, where APEX needs a clear boundary between a model suggestion and an external write. Direct reminder management in the Overview workspace stays simpler and does not add approval steps just to edit a task. This gives APEX a place to work through approval, failed or uncertain writes, restart recovery, verification, and history before the same ideas are used for more important workflows.
+**Why.** Task changes provide a manageable way to explore approval, uncertain writes, restart recovery, verification, and history before applying the same ideas to more consequential workflows.
 
-**Trade-off.** This is more machinery than Microsoft To Do alone needs. For now, that extra complexity is intentional because the goal is to prove the action flow, not just build task editing.
+**Trade-off.** This is more machinery than task editing alone requires. That complexity is intentional: APEX is a place to learn and experiment with development using AI tools, including the boundaries around model-requested actions. See [Actions](api.md#actions).
+
+## Integrations and interface boundaries
+
+### Use Microsoft To Do as the reminder authority
+
+**Decision.** One selected Microsoft To Do list is authoritative for synced reminders. SQLite keeps local reminder state and an outbox for pending changes.
+
+**Why.** To Do supplies cross-device synchronization without APEX needing a mobile application. Local records preserve reminder visibility and allow local creation during an outage.
+
+**Trade-off.** Cached reminders can become stale, and pending changes need later synchronization. Local state and confirmed external state must remain distinguishable. See [Reminders](api.md#reminders).
+
+### Keep the CLI as an API client
+
+**Decision.** The CLI uses the same local API as the browser rather than calling backend services or SQLite directly.
+
+**Why.** One service boundary keeps validation, approval, execution, and verification consistent across interfaces.
+
+**Trade-off.** The backend must be running, and the CLI is limited to the local APEX instance. See [CLI](cli.md).
+
+### Restrict launcher child environments
+
+**Decision.** FastAPI receives the backend environment; the static server and browser receive a restricted environment.
+
+**Why.** Those presentation processes do not need connector or provider credentials. Restricting inheritance reduces unnecessary credential exposure.
+
+**Trade-off.** The launcher must maintain an allowlist of process-essential variables. See [Getting Started](getting-started.md) for the launch workflow.
+
+### Separate liveness from readiness
+
+**Decision.** Liveness checks that the process can answer. Readiness also checks required settings and SQLite, while optional connector and model availability have their own status surfaces.
+
+**Why.** Broken required local state should prevent normal startup, but an optional provider outage should not make the whole application unavailable.
+
+**Trade-off.** A ready backend does not mean every capability is ready. Clients must inspect operation-specific availability. See [Service and configuration](api.md#service-and-configuration).
+
+### Keep assistant-ui behind an APEX adapter
+
+**Decision.** Cortex uses assistant-ui for browser thread state and low-level interface primitives through an APEX-owned adapter. APEX retains conversation persistence, execution, policy, tools, and actions.
+
+**Why.** The interface library can supply editing and branch interactions without becoming a second durable conversation system.
+
+**Trade-off.** The adapter must translate identifiers and history correctly, with focused coverage when the pinned dependency changes. See [Frontend state ownership](../frontend/README.md#state-ownership).
+
+### Use llama.cpp over HTTP with stable model aliases
+
+**Decision.** APEX talks to llama.cpp over HTTP and selects models through configured aliases rather than raw GGUF paths. The router can run externally or be supervised by APEX using a locally installed executable.
+
+**Why.** Process isolation and independent upgrades are useful for experimentation. Aliases separate model selection from machine-specific files and give context presets a predictable configuration boundary.
+
+**Trade-off.** Router presets and APEX model configuration must agree. APEX does not install llama.cpp or download its weights. Managed mode accepts loopback hosts and stops only processes APEX launched. See [External and managed router modes](configuration.md#external-and-managed-router-modes).
+
+### Export optional traces instead of maintaining a tracing platform
+
+**Decision.** Optional tracing uses OpenTelemetry GenAI attributes and standard OTLP HTTP export. APEX does not maintain a tracing interface or observability store.
+
+**Why.** An external collector can support inspection and evaluation without adding another application subsystem. Explicit attributes record identifiers, usage, timings, and status while omitting prompt, answer, and tool-result content.
+
+**Trade-off.** Inspection requires an external collector with its own access and retention policies. Exceptions escaping tracing contexts can include messages and stack traces, so exports have no zero-content guarantee. Disabled tracing does not initialize an exporter. See [Tracing configuration](configuration.md#opentelemetry-genai-tracing) and [Tracing privacy](privacy.md#distributed-tracing).
+
+## Earlier designs
+
+These approaches are retired. Their reasoning is preserved here to explain the transitions, not to describe supported workflows.
+
+### The blocking full-run pipeline
+
+The original trigger kept collection and synthesis in one blocking request, with separate progress polling. A single result and error contract was simpler than coordinating asynchronous work. Later, operations gained independent APIs while the full trigger remained available, increasing the number of paths to maintain.
+
+The v2.0.0-beta.6 saved-session engine retired the full trigger and its pipeline status routes. The current decisions are [independent operation lifecycles](#give-operations-independent-lifecycles) and [saved briefing artifacts](#save-a-canonical-briefing-artifact-with-its-evidence).
+
+### Global speaker state and pipeline cleanup
+
+The earlier pipeline read speaking state from the backend and reset global pipeline state after playback. This avoided assuming that a browser timer or an HTTP response meant speech had finished, but coupled delivery to full-run cleanup.
+
+Session-scoped speech retired that reset path. [Backend-owned speech preparation and playback](#derive-speech-separately-and-reuse-prepared-audio) retains the state-ownership principle.
+
+### Legacy cooldown timestamp reads
+
+Earlier cooldown handling interpreted timezone-naive values in the legacy `runs` table as local wall-clock time while writing new values in UTC. This avoided rewriting old records solely to normalize a text field, at the cost of a compatibility parser.
+
+Stable persistence cleanup retired that cooldown reader and parser while leaving existing legacy rows untouched. [Timezone-aware UTC writes](#write-timezone-aware-utc-timestamps) remain the current choice.
+
+### Earlier briefing modes and deterministic fallback
+
+Flash, Focused, and Structured combined execution choices with different synthesis paths. Their typed `BriefingFacts` projections kept model input separate from display prose, and Structured supplied deterministic output when model paths failed. This favored availability but required separate mode, projection, and fallback behavior.
+
+v2.0.0-beta.6 replaced those paths with Daily, Catch Up, and Deep profiles using an explicit model selection. The [canonical artifact and evidence](#save-a-canonical-briefing-artifact-with-its-evidence) retain the separation between evidence and presentation; [profiles separate from model selection](#separate-briefing-profiles-from-model-selection) replace silent synthesis fallback.
+
+During that cutover, the retired `briefings` table was transactionally dropped without migrating its rows into session history; `briefing_sessions` and unrelated records were preserved. Current initialization leaves any residual retired table untouched. See [Persistence compatibility](architecture.md#persistence-compatibility).
+
+### Earlier speech-engine measurements
+
+The original decision log recorded time before speech on an Intel Lunar Lake development machine: over 40 seconds for Kokoro CPU ONNX on a 420-character briefing, about 16 seconds for Piper, under three seconds for Google, and immediate pyttsx3 delivery. These were observations from that setup, not reproducible benchmarks or guarantees for current versions.
+
+They motivated removing Piper and keeping Kokoro optional. [Load Kokoro only when selected](#load-kokoro-only-when-selected) retains that resource choice; [local speech fallback](#keep-speech-fallback-local) records the current delivery boundary.

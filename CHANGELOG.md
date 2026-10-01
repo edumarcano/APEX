@@ -73,7 +73,7 @@ This release rebuilds briefings around a unified, saved-session engine using the
 
 - Updated architecture, API, CLI, configuration, decisions, design system, and getting-started documentation for the saved-session briefing engine, speech synthesis, Overview/Briefing workspace separation, and report folder configuration.
 - Refreshed interface screenshots for Overview, Briefing, Cortex, and Launch.
-- Shortened the beta.6 objective and marked the milestone complete in `docs/roadmap.md`.
+- Shortened the v2.0.0-beta.6 objective and marked the milestone complete in `docs/roadmap.md`.
 
 ---
 

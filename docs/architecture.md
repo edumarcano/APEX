@@ -145,7 +145,7 @@ On shutdown, FastAPI signals speech cancellation and closes run admission. It dr
 
 ### Persistence compatibility
 
-The beta.6 database schema is the supported upgrade floor. Before bootstrap or recovery, startup checks core persistence versions and required table shapes through a read-only connection. Fresh databases receive the current schema. Unsupported core schemas stop startup without rewriting data or deleting tables; APEX does not automatically migrate older schemas.
+The v2.0.0-beta.6 database schema is the supported upgrade floor. Before bootstrap or recovery, startup checks core persistence versions and required table shapes through a read-only connection. Fresh databases receive the current schema. Unsupported core schemas stop startup without rewriting data or deleting tables; APEX does not automatically migrate older schemas.
 
 Unsupported retrieval persistence disables retrieval for that run while canonical knowledge writes continue without derived synchronization. Conversation deletion and archived-conversation retention are also deferred because message deletion triggers can update retrieval rows. Manual deletion returns `409 Conflict`; retention logs the failed sweep and retries on its next scheduled pass.
 
