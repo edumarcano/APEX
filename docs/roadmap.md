@@ -8,8 +8,8 @@
 
 ## Current Focus
 
-**Current Phase:** [Phase V: APEX 2.0 Beta](#phase-v-apex-20-beta)
-**Next Milestone:** [v2.0.0 - APEX 2.0 Stable](#v200---apex-20-stable)
+**Current Phase:** [Phase VI: Native Platform & Physical Context](#phase-vi-native-platform--physical-context)
+**Next Milestone:** [v2.1.0 - Native Desktop Application](#v210---native-desktop-application)
 **Current Direction:** [APEX 2.0 Direction](#apex-20-direction)
 
 ### Navigation
@@ -382,7 +382,7 @@ Give Cortex its first safe write path through verified Microsoft To Do actions, 
 
 # Phase V: APEX 2.0 Beta
 
-**Status:** In Progress
+**Status:** Complete
 
 **Core Focus:**
 Build and stabilize the parts of APEX that should remain specific to the operator: personal context, source history, review, permissions, verified actions, attention, and a consistent interface.
@@ -487,24 +487,10 @@ Rebuild briefings around a bounded, saved-session engine with Daily, Catch Up, a
 
 ## v2.0.0 - APEX 2.0 Stable
 
-**Status:** Planned
+**Status:** Complete
 
 **Objective:**
-Consolidate the six beta milestones into a stable APEX 2.0 release without adding another major feature area.
-
-The release should settle the contracts for personal context and evidence, review decisions, APEX Agent runs, verified actions, external activity, generated context vaults, briefing configuration, and persistent attention.
-
-Migration work should preserve useful operator data, including conversations, accepted context, source history, reviews, actions, run summaries, reports, and new briefing sessions. The retired legacy `briefings` table is deliberately dropped during the v2.0.0-beta.6 cutover, and its records are not migrated. Old briefing profile and model settings are also not mapped into the current configuration.
-
-Vault testing should cover export selection, retractions, obsolete generated files, broken links, regeneration, and protection of handwritten notes. Documentation should clearly distinguish local APEX records from copies shared through cloud storage or other applications.
-
-Briefing testing should cover normal use, missing or stale sources, unreviewed external findings, unavailable models, cancellation, repeated attention items, and opted-in background generation.
-
-APEX should remain usable without Google Drive, Obsidian, an outside AI application, or an optional tracing service. A missing external service must not prevent access to locally stored personal context.
-
-Fresh and upgraded installations should reach the same current schema and configuration. Documentation should explain data ownership, privacy boundaries, export behavior, model selection, and the limits of any proactive features.
-
-Stable v2.0.0 should mark a reliable foundation for future improvements, not require every possible briefing mode, connection, or automation to be finished.
+Consolidate the six beta milestones into a stable local-first foundation for personal context, verified actions, external reports, context sharing, and saved briefings.
 
 ---
 
@@ -613,7 +599,7 @@ Models, note applications, sync providers, and outside AI products should remain
 
 ## Current Focus
 
-APEX is currently in **Phase V: APEX 2.0 Beta**.
+APEX is currently in **Phase VI: Native Platform & Physical Context**.
 
 **Next milestone:**
-[v2.0.0 - APEX 2.0 Stable](#v200---apex-20-stable)
+[v2.1.0 - Native Desktop Application](#v210---native-desktop-application)

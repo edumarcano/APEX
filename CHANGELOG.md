@@ -2,6 +2,41 @@
 
 ---
 
+## v2.0.0 - APEX 2.0 Stable
+
+**Released:** October 1, 2026
+
+APEX 2.0 brings the six beta milestones together into a stable local-first foundation for personal context, verified actions, external reports, context sharing, and saved briefings. This release tightens persistence and model contracts, fixes briefing and telemetry failures, and refines the HUD.
+
+### Briefing and HUD Updates
+
+- Made Lynx the default display name of the single APEX Agent and standardized APEX naming across the interface, prompts, CLI, and documentation. A local display name can still replace Lynx.
+- Reorganized Runtime Settings into a two-pane layout with categories for intelligence, data sources, integrations, voice, and system status.
+- Refined the celestial background and gave Reports a platinum theme, alongside layout and status improvements in Overview and Briefing.
+- Added a spoken-highlights transcript and an option to prepare highlights automatically after a briefing completes. Briefing and highlights voice cues report completion or failure; reused telemetry no longer triggers a collecting cue.
+- Deferred Cortex, Reports, settings, and Markdown presentation code until needed, with loading and retry states that preserve workspace state.
+
+### Reliability Fixes
+
+- Fixed Deep briefing failures on reasoning models by allowing a larger output budget for cloud models with sufficient context. Briefing draft validation also accepts JSON wrapped in Markdown code fences.
+- Separated temporary market rate limits from daily quota exhaustion, spaced requests across symbols, and added a short provider cooldown instead of deferring burst-limited requests until the next day.
+- Kept cached market data available when the market source is enabled, while preserving explicit telemetry collection as the trigger for live refreshes.
+- Validated retrieval persistence within conversation-deletion transactions so an incompatible retrieval schema cannot leave conversation cleanup partially committed.
+
+### Persistence and Contract Changes
+
+- Established the v2.0.0-beta.6 database schema as the supported upgrade floor. Startup checks core schema versions and required table shapes before bootstrap or recovery; unsupported core schemas stop startup without rewriting stored data. Automatic upgrades from older schemas are no longer supported.
+- Disabled retrieval for the current run when its persistence schema is unsupported, while retaining canonical personal-context writes without derived retrieval synchronization.
+- Removed obsolete backend aliases, legacy migration paths, duplicate response fields, and unused telemetry wrappers. Model selection and verification now use model contracts consistently, and context actions require their linked durable review.
+- Retired the `/api/v1/cortex/context-vault` route aliases; `/api/v1/cortex/vault` remains the canonical route family. Added `/api/v1/telemetry/reuse` and the saved speech script to briefing speech status responses, and removed the settings response's obsolete `schema_version` field.
+
+### Documentation and Validation
+
+- Refreshed setup, architecture, API, configuration, privacy, naming, and interface documentation and screenshots for the stable platform.
+- Consolidated redundant tests while retaining focused coverage for persistence, privacy, provider behavior, and asynchronous lifecycle boundaries. Backend and frontend CI now run independently.
+
+---
+
 ## v2.0.0-beta.6 - Cortex: Adaptive Briefings & Attention
 
 **Released:** September 29, 2026
