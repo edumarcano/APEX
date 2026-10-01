@@ -112,7 +112,6 @@ Enable only the services you intend to use. Disabled telemetry connectors do not
 | Capability | Setup |
 |---|---|
 | Weather | `TARGET_LOCATION` in `.env`; Open-Meteo needs no API key |
-| News | `GNEWS_API_KEY` in `.env` |
 | Football | `FOOTBALL_API_KEY` in `.env` and followed teams in Runtime Settings |
 | Gmail and Google Calendar | Desktop OAuth `credentials.json` in the repository root; first authorization creates `token.json` |
 | Microsoft To Do | `MICROSOFT_TODO_CLIENT_ID`, optional tenant and token-cache path; a public/native Entra app with device-code flow and delegated `Tasks.ReadWrite` |
@@ -120,6 +119,8 @@ Enable only the services you intend to use. Disabled telemetry connectors do not
 | MCP services | Enable MCP and the chosen server preset, then configure its environment credential or OAuth authorization |
 
 The tracked MCP presets cover GitHub, Brave Search, and Alpha Vantage. GitHub uses `GITHUB_PERSONAL_ACCESS_TOKEN`, Brave uses `BRAVE_API_KEY`, and Alpha Vantage MCP uses browser OAuth. Alpha Vantage market telemetry uses the separate API key described below.
+
+APEX no longer collects headlines through a News telemetry connector, so `GNEWS_API_KEY` is not required. Existing copies of that variable have no effect. News search tools available through Brave Search or Alpha Vantage are separate from Overview telemetry.
 
 Google authorization uses shared Gmail and Calendar scopes. If those scopes change, remove the local `token.json` and authorize again. Keep credential files and tokens out of source control.
 

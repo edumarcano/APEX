@@ -4,7 +4,7 @@
   <img src="docs/assets/apex-logo.png" alt="The APEX logo" width="180">
 </p>
 
-APEX is a local-first personal intelligence workspace. It brings schedules, reminders, weather, news, markets, and personal context together so you can check what needs attention, prepare a briefing, and follow up with an assistant that can use your connected services.
+APEX is a local-first personal intelligence workspace. It brings schedules, reminders, weather, markets, email, and personal context together so you can check what needs attention, prepare a briefing, and follow up with an assistant that can use your connected services.
 
 The application runs on your machine and stores its history locally. You choose which services to connect and whether to use a cloud or local model. Collection, briefing generation, conversations, and speech are separate operations, with their status and failures visible in the interface.
 
@@ -22,11 +22,11 @@ APEX opens on Launch, with access to four workspaces:
 | **Reports** | Read work reports submitted by outside tools and review findings that might belong in personal context |
 
 <p align="center">
-  <img src="docs/assets/apex-home.png" alt="APEX Overview with demo weather, calendar, news, reminders, market, email, and connector health cards" width="900">
+  <img src="docs/assets/apex-home.png" alt="APEX Overview with Events and Market cards on the left, Weather and the central identity card, and Email and Reminders on the right" width="900">
 </p>
 
 <p align="center">
-  <em>Overview after collecting demo telemetry.</em>
+  <em>Overview after collecting demo telemetry, with four equal side cards and a central Weather and identity column.</em>
 </p>
 
 ## Try the demo
@@ -56,7 +56,7 @@ See [Getting Started](docs/getting-started.md) for prerequisites, live setup, de
 
 ### Check connected services and manage reminders
 
-In Overview, choose **Collect Telemetry** to check readiness and collect status from enabled services. Opening the workspace does not start collection. Telemetry is the collected status behind the weather, calendar, email, news, sports, reminder, and market cards. Each connector reports its health and freshness, including unavailable or stale data. You can refresh individual connectors or use **Refresh All** after collection.
+In Overview, choose **Collect Telemetry** to check readiness and collect status from enabled services. Opening the workspace does not start collection. Telemetry provides the status behind Weather, Events, Email, Market, and Reminders. Each connector reports its health and freshness, including unavailable or stale data. You can refresh individual connectors or use **Refresh All** after collection.
 
 Selecting a Microsoft To Do list makes its incomplete tasks the Overview reminder source. The Reminders panel lets you edit, complete, delete, reopen, and inspect completed tasks directly. A local cache supports stale display, and an offline queue retains local reminders awaiting synchronization.
 
