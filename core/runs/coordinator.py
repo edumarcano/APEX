@@ -210,8 +210,8 @@ class RunExecutionControl:
 
     def after_model_turn(self, result: ProviderTurnResult) -> None:
         self.turns += 1
-        # Provider adapters that receive this control charge retries before
-        # waiting.  Legacy adapters still report their count here.
+        # Subtract retries already charged by the control before waiting;
+        # include any additional retries reported by the provider result.
         self.retries += max(0, result.retry_count - self._turn_retry_count)
         usage = result.usage
         if usage is not None and usage.total_tokens is not None:

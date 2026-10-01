@@ -635,9 +635,6 @@ export function parseSettingsResponse(body: unknown): SettingsResponse | null {
     return null
   }
 
-  if (typeof body.schema_version !== 'number') {
-    return null
-  }
   if (typeof body.local_file_present !== 'boolean') {
     return null
   }
@@ -655,7 +652,6 @@ export function parseSettingsResponse(body: unknown): SettingsResponse | null {
   }
 
   return {
-    schema_version: body.schema_version,
     settings,
     local_file_present: body.local_file_present,
     local_override_active: body.local_override_active,

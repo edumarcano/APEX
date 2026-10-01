@@ -379,7 +379,6 @@ function settingsResponse(
   sandboxMode = false,
 ): Response {
   return new Response(JSON.stringify({
-    schema_version: 19,
     settings: {
       user_designation: '',
       agent_display_name: '',

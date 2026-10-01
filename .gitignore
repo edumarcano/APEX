@@ -8,6 +8,7 @@ __pycache__/
 .ruff_cache/
 
 *.db
+*.constraint-cleanup-*.bak
 *.db-wal
 *.db-shm
 credentials.json

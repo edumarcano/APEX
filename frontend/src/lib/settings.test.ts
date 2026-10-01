@@ -103,7 +103,6 @@ describe('settings response parsing', () => {
     ['voice mode', ['settings', 'voice', 'mode'], 'invalid'],
     ['MCP master boolean', ['settings', 'mcp', 'enabled'], 'yes'],
     ['MCP provider boolean', ['settings', 'mcp', 'servers', 'github', 'enabled'], 1],
-    ['schema version', ['schema_version'], '1'],
     ['local file flag', ['local_file_present'], 'false'],
     ['local override flag', ['local_override_active'], 0],
     ['load warning', ['load_warning'], 42],

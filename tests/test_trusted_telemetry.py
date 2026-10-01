@@ -105,22 +105,6 @@ class SanitizationTests(unittest.TestCase):
         self.assertEqual(sanitize_fact("A" * 100, 32), "A" * 32)
 
 
-class CompatibilityFacadeTests(unittest.TestCase):
-    def test_weather_facade_returns_display_text(self) -> None:
-        from clients import weather_client
-
-        fake = ConnectorResult(
-            name="weather", status="healthy", freshness="live", reason_code="ok",
-            display_text="Current temperature is 70 degrees with clear sky.",
-            data={"temp_f": 70, "condition": "clear sky"},
-        )
-        with patch.object(weather_client, "collect_weather", return_value=fake):
-            self.assertEqual(
-                weather_client.fetch_weather_data(),
-                "Current temperature is 70 degrees with clear sky.",
-            )
-
-
 class ConnectorValidationTests(unittest.TestCase):
     def test_news_malformed_articles_return_typed_unavailable_result(self) -> None:
         response = Mock()

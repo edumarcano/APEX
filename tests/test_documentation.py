@@ -6,11 +6,9 @@ from pathlib import Path
 from scripts.check_docs import (
     ROOT,
     check_agent_profiles,
-    check_api_settings_schema_version,
     check_briefing_profiles,
     check_frontend_owner_names,
     check_links,
-    check_schema_versions,
     duplicate_route_headings,
 )
 
@@ -58,25 +56,6 @@ class DocumentationCheckerTests(unittest.TestCase):
         contents = {source: "```markdown\n[Example](missing.md)\n```\n"}
 
         self.assertEqual(check_links([source], root, contents), [])
-
-    def test_reports_schema_version_mismatch(self) -> None:
-        source = Path("virtual-api.md")
-        issues = check_schema_versions(
-            [source], 5, {source: '{"schema_version": 4}\n'}
-        )
-
-        self.assertEqual(len(issues), 1)
-        self.assertIn("should be 5", issues[0].reason)
-
-    def test_reports_prose_api_settings_schema_version_mismatch(self) -> None:
-        source = Path("virtual-api.md")
-        issues = check_api_settings_schema_version(
-            source, 13, {source: "The current settings schema version is `12`.\n"}
-        )
-
-        self.assertEqual(len(issues), 1)
-        self.assertEqual(issues[0].target, "12")
-        self.assertIn("should be 13", issues[0].reason)
 
     def test_reports_unknown_gemini_model(self) -> None:
         source = Path("virtual-readme.md")

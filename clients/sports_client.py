@@ -443,39 +443,6 @@ def collect_football(*, force: bool = False) -> ConnectorResult:
     return ConnectorResult(name="football", status="healthy", freshness="fresh_cache" if fresh_cache_used and not live_entries else "live", reason_code="ok", observed_at=observed_at, display_text=_football_display_text(fixtures), data=data)
 
 
-def fetch_sports_snapshot(
-    *,
-    f1: bool,
-    football: bool,
-) -> tuple[str, bool, Dict[str, Any] | None]:
-    """Compatibility snapshot returning combined text plus F1 freshness/map."""
-    segments: list[str] = []
-    f1_cache_refreshed = True
-    resolved_f1_map: Dict[str, Any] | None = None
-
-    if f1:
-        f1_result = collect_f1()
-        segments.append(f1_result.display_text)
-        f1_cache_refreshed = bool(f1_result.data.get("cache_refreshed", False))
-        f1_map = f1_result.data.get("f1_map")
-        resolved_f1_map = f1_map if isinstance(f1_map, dict) else None
-
-    if football:
-        segments.append(collect_football().display_text)
-
-    return " ".join(segments), f1_cache_refreshed, resolved_f1_map
-
-
-def fetch_sports_data() -> tuple[str, bool]:
-    """Compatibility façade returning the legacy report/freshness pair."""
-    modules = get_settings_store().get_snapshot().modules
-    report, refreshed, _f1_map = fetch_sports_snapshot(
-        f1=modules.f1,
-        football=modules.football,
-    )
-    return report, refreshed
-
-
 def fetch_f1_driver_standings() -> Dict[str, Any]:
     """Fetch current Formula 1 driver championship standings from Ergast."""
     url = "https://api.jolpi.ca/ergast/f1/current/driverStandings.json"
@@ -570,5 +537,10 @@ def fetch_f1_season_calendar() -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
-    report, _ = fetch_sports_data()
-    print(f"[SPORTS]: {report}")
+    modules = get_settings_store().get_snapshot().modules
+    segments: list[str] = []
+    if modules.f1:
+        segments.append(collect_f1().display_text)
+    if modules.football:
+        segments.append(collect_football().display_text)
+    print(f"[SPORTS]: {' '.join(segments)}")
