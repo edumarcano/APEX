@@ -147,7 +147,7 @@ Briefing profile selection is per session and does not add a Runtime Settings fi
 
 ### PATCH `/api/v1/settings`
 
-Accepts a strict partial patch for the optional user designation, optional agent display name, connectors, sports modules, followed football teams, market symbols, Google Calendar selection and label display, Context vault enablement and scopes, Agent query settings, tool profiles, voice, llama.cpp enablement, loopback host, optional managed-server paths, tracked MCP enablement, and local activity report folder settings. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
+Accepts a strict partial patch for the optional user designation, optional agent display name, connector features, sports modules, followed football teams, market symbols, Google Calendar selection and label display, Context vault enablement and scopes, Agent query settings, tool profiles, voice, llama.cpp enablement, loopback host, optional managed-server paths, tracked MCP enablement, and local activity report folder settings. The supported `features` toggles are `weather`, `sports`, `email`, `calendar`, and `market`; `features.news` is retired and returns `422` as an unknown field. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
 
 ```json
 {
@@ -193,7 +193,7 @@ Returns `{ "reusable": true }` when a normal full refresh would return the curre
 
 ### POST `/api/v1/telemetry/refresh`
 
-Refreshes all enabled connectors or a selected subset.
+Refreshes all enabled connectors or a selected subset. The supported connector IDs are `weather`, `email`, `calendar`, `f1`, `football`, `reminders`, and `market`. `news` is retired: explicitly requesting it returns `400` through the usual unknown-connector validation. Preflight requests naming `news` return an `invalid_input` blocker through the usual connector validation. Omitting the connector list refreshes only the supported connectors.
 
 Market participates in this lifecycle and in Sync Health. Each symbol can make at most one Alpha Vantage request per UTC calendar day after a successful response. Successful results remain fresh cached data for that day even when the latest trading close is older, such as on weekends. Temporary provider throttling retries after a short same-day cooldown, and daily quota exhaustion waits for the next UTC day. Other failed symbols wait until a later UTC date according to their failure backoff. Briefing profiles can use the bounded Market snapshot.
 

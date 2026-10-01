@@ -12,6 +12,8 @@ Use Runtime Settings for everyday preferences and `.env` for credentials and env
 
 For editable settings, APEX reads `config.json` and overlays supported values from `config.local.json`. Runtime Settings saves changes to the local file and applies them in the running process. An invalid local override is discarded in favor of tracked defaults, with a warning. File-only settings such as run limits and Ollama configuration are read from `config.json`.
 
+The retired `features.news` setting in an older `config.json` or `config.local.json` is ignored. It does not prevent other saved preferences from loading or being updated.
+
 Restart after editing configuration files or `.env` directly. Existing process environment values take precedence over `.env`. Keep credentials out of both JSON files, and keep machine-specific paths and model weights out of source control.
 
 ## Runtime Settings
