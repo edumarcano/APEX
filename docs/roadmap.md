@@ -494,7 +494,7 @@ Consolidate the six beta milestones into a stable APEX 2.0 release without addin
 
 The release should settle the contracts for personal context and evidence, review decisions, APEX Agent runs, verified actions, external activity, generated context vaults, briefing configuration, and persistent attention.
 
-Migration work should preserve useful operator data, including conversations, accepted context, source history, reviews, actions, run summaries, reports, and new briefing sessions. The retired legacy `briefings` table is deliberately dropped during the beta.6 cutover, and its records are not migrated. Old briefing profile and model settings are also not mapped into the current configuration.
+Migration work should preserve useful operator data, including conversations, accepted context, source history, reviews, actions, run summaries, reports, and new briefing sessions. The retired legacy `briefings` table is deliberately dropped during the v2.0.0-beta.6 cutover, and its records are not migrated. Old briefing profile and model settings are also not mapped into the current configuration.
 
 Vault testing should cover export selection, retractions, obsolete generated files, broken links, regeneration, and protection of handwritten notes. Documentation should clearly distinguish local APEX records from copies shared through cloud storage or other applications.
 

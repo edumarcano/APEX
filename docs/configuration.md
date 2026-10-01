@@ -1,10 +1,22 @@
 # Configuration
 
-APEX keeps portable defaults in `config.json`, editable non-secret Runtime Settings in `config.local.json`, and credentials, environment-only switches, and the Context vault destination path in `.env`. Do not commit secrets or GGUF paths.
+Use Runtime Settings for everyday preferences and `.env` for credentials and environment-specific setup. This reference explains where settings live, how models and connectors are configured, and which limits apply. For a first run, start with [Getting Started](getting-started.md).
+
+## Where settings live
+
+| Location | Purpose |
+|---|---|
+| `config.json` | Tracked defaults, Agent prompts, and file-only execution settings |
+| `config.local.json` | Gitignored overrides written by Runtime Settings, including local model paths and report-folder preferences |
+| `.env` or process environment | Credentials, development/demo switches, and paths such as the Context vault destination |
+
+For editable settings, APEX reads `config.json` and overlays supported values from `config.local.json`. Runtime Settings saves changes to the local file and applies them in the running process. An invalid local override is discarded in favor of tracked defaults, with a warning. File-only settings such as run limits and Ollama configuration are read from `config.json`.
+
+Restart after editing configuration files or `.env` directly. Existing process environment values take precedence over `.env`. Keep credentials out of both JSON files, and keep machine-specific paths and model weights out of source control.
 
 ## Runtime Settings
 
-Runtime Settings persist the editable parts of the resolved configuration. Schema version `24` includes Context vault selections and `ask_apex` model routing. `ask_apex` has one native identity plus model-based routing:
+Briefing and Cortex use the same APEX Agent model selection. The following `ask_apex` section shows the tracked model defaults:
 
 ```json
 {
@@ -16,27 +28,100 @@ Runtime Settings persist the editable parts of the resolved configuration. Schem
 }
 ```
 
-Current default model mapping is `apex` -> `deepseek/deepseek-v4-flash-0731`; `selected_model` is authoritative. Selecting a cloud or local model remembers that choice and its controls in the matching runtime section. Cloud and local personal-context preferences are independent. `tool_profiles.default_profile_by_runtime` selects the default tool profile for cloud and local requests. Fresh defaults are All APEX Tools for cloud and No APEX Tools for local; a per-turn model override uses its own runtime's default without changing saved settings.
+The default model mapping is `apex` -> `deepseek/deepseek-v4-flash-0731`; `selected_model` chooses the model for new requests. Selecting a cloud or local model remembers that choice and its controls in the matching runtime section. Cloud and local personal-context preferences are independent. `tool_profiles.default_profile_by_runtime` selects the default tool profile for cloud and local requests. Fresh defaults are All APEX Tools for cloud and No APEX Tools for local; a per-turn model override uses its own runtime's default without changing saved settings.
 
 Optional `user_designation` and `agent_display_name` are machine-local personalization fields stored only in `config.local.json`. An empty `agent_display_name` keeps the default visible name Lynx.
 
-Briefing and Cortex share this model selection; Overview is telemetry-first and runs no model. Briefing follow-ups use the saved cloud reasoning effort, or the saved local context window and reasoning mode; these per-turn values are ephemeral and never modify saved Cortex settings.
+Overview collects telemetry without running a model. Briefing follow-ups use the selected model and its saved reasoning and context controls. Per-turn overrides do not change saved preferences.
 
-## Context vault selection
+## Models and credentials
 
-For setup, sharing, refresh, and cleanup steps, see the [Context vault guide](context-vault.md).
+The default model is OpenRouter DeepSeek V4 Flash with Low reasoning. Configure the credential for the provider of the model you select:
 
-The Context vault selection is disabled by default and starts with no scopes or selected records. Use Cortex → Context → Vault to create and edit scopes, choose entities and records, preview eligible exports, and save or enable a selection. The global `enabled` flag and scope list are also available through `PATCH /api/v1/settings`. Each scope has a stable ID, name, enable flag, selected entity IDs, explicit record IDs, excluded record IDs, and an `include_sensitive` opt-in. Selected entities match canonical records where the entity is the subject or object. Merged entity IDs remain selected but produce a reselection issue instead of silently selecting the merge target. Record exclusions continue through known replacement and conflict-resolution lineage.
+| Provider | Environment variable |
+|---|---|
+| OpenRouter | `OPENROUTER_API_KEY` |
+| OpenAI | `OPENAI_API_KEY` |
+| Google Gemini | `GEMINI_API_KEY` |
 
-Set `APEX_CONTEXT_VAULT_PATH` in `.env` to an absolute machine-specific directory for local Markdown publication. The setting is optional. The callable publisher creates `index.md` and stable `scopes/<scope-id>/` folders. Each scope has its own index, entity notes, and record notes named with immutable IDs. Links inside a scope stay within that scope, so its folder can be copied by itself.
+Local models use Ollama or llama.cpp. Cortex reports availability for each model. APEX does not install these runtimes or download model weights.
 
-The publisher includes only active production records without a pending challenge; sensitive records require that scope's opt-in. Record notes include the canonical claim, relationship fields, timestamps, source IDs and source kind/origin/derivation. They omit original source evidence and source locators. APEX stores ownership hashes, pending file paths, and export status in local SQLite state outside the vault. It regenerates edited files at owned paths and removes obsolete owned notes, while leaving other files, including handwritten notes and `.obsidian/`, untouched. It refuses an unowned file at a generated path and does not recursively delete the destination.
+Ollama model options are available only in `DEV_MODE`. Install and start Ollama, then pull the tags you want to use:
 
-When exports are enabled, one worker in the main API process reconciles them at startup and after committed production knowledge or selection changes. Filesystem work runs off the async request loop; manual refreshes share the same serialized publisher. A revision change during a refresh leaves the export dirty and starts another reconciliation. Failures keep dirty state and retry a bounded number of times, then wait for another change or manual refresh. Status reports local publication only; it does not claim that Drive copied the files or that Obsidian or Gemini indexed them.
+```powershell
+ollama pull qwen3:1.7b
+ollama pull qwen3:4b-instruct
+```
 
-Use `GET /api/v1/cortex/vault` and `POST /api/v1/cortex/vault/preview` to inspect the current selection. `POST /api/v1/cortex/vault/refresh` refreshes now. Disable exports before `DELETE /api/v1/cortex/vault/copies`; the route returns `409 Conflict` while exports are enabled, then removes only files tracked as APEX-owned. Disabling exports retains the existing files. Deselecting records while enabled removes their managed copies on refresh. Changing `APEX_CONTEXT_VAULT_PATH` on restart leaves copies at the previous root and reports that destination for deliberate cleanup, even while exports are disabled. Demo and development sandbox sessions cannot publish to the production vault.
+Ollama host, idle-unload, and resource-gate settings live under `ollama` in `config.json`. For llama.cpp, see [External and managed router modes](#external-and-managed-router-modes).
 
-The `apex context vault` CLI exposes status, preview, configuration, refresh, and managed-copy removal. Local publication completion does not indicate that another application or cloud sync service has copied or indexed the files.
+Only one local generation may run at a time. APEX checks runtime reachability, installed models, resource gates, and residency before a cold load. The provider-neutral unload control releases the current local model.
+
+## External and managed router modes
+
+Copy the [llama.cpp preset example](examples/llama-cpp-apex-local-models.preset.ini) to a machine-local path and replace its GGUF placeholders. Keep the edited preset and weights untracked. Each alias exposes a model at a particular context size; use the aliases expected by APEX.
+
+In **external mode**, start the router yourself. For example, from PowerShell, with paths adjusted for your installation:
+
+```powershell
+& "C:\path\to\llama-server.exe" --host 127.0.0.1 --port 8080 --models-preset "C:\path\to\apex-local-models.ini" --models-max 1 --no-models-autoload
+```
+
+Enable llama.cpp in Runtime Settings and set its host to `http://127.0.0.1:8080`, or the loopback address and port you chose. Leave **Manage server automatically** off.
+
+In **managed mode**, enable llama.cpp and **Manage server automatically**, then set absolute executable and preset paths in Runtime Settings. APEX starts the router when the configured loopback URL is unreachable. These machine-local values are saved under `llama_cpp` in `config.local.json`:
+
+```json
+{
+  "llama_cpp": {
+    "enabled": true,
+    "managed": true,
+    "host": "http://127.0.0.1:8080",
+    "executable_path": "C:\\path\\to\\llama-server.exe",
+    "preset_path": "C:\\path\\to\\apex-local-models.ini"
+  }
+}
+```
+
+If the router requires a bearer token, set `LLAMA_CPP_API_KEY` in `.env` and configure the router to accept it. APEX requests `autoload=false`; keep automatic loading disabled. Local reasoning defaults to `none`; Cortex can select `focused` for supported llama.cpp models without unloading them. Hidden reasoning is discarded before display.
+
+To check a running router manually:
+
+```powershell
+uv run python scripts/smoke_llama_cpp.py --host http://127.0.0.1:8080 --model gemma-4-e2b-16k --load --unload
+```
+
+## Briefing profiles
+
+Briefing and `apex briefing` use the selected APEX Agent model. Daily is the CLI default; the interface lets you choose a profile:
+
+- **Daily** provides orientation from current sources.
+- **Catch Up** compares current sources with compatible evidence from completed briefings that were presented. Each source can use a different checkpoint. When comparable sources show no material changes, it saves a no-change result without calling a model.
+- **Deep** adds a limited investigation with read-only tools allowed by the current connector, Agent, and MCP policies. It uses a curated tool selection rather than the saved Agent tool profile.
+
+Sessions retain their model selection and saved artifact and can be continued in a linked Cortex conversation. APEX does not silently substitute another model. Insufficient context or execution capacity is rejected before generation; Deep also requires an eligible read capability. Demo mode supplies Daily and Catch Up fixtures and does not offer Deep.
+
+See [Architecture](architecture.md#briefing-routes) for evidence selection and investigation limits, and [Privacy](privacy.md#briefings) for what reaches the model.
+
+The retired Flash, Focused, and Structured briefing engine and routes are not supported. Existing `briefing` entries in `config.local.json` are ignored; APEX does not map their settings or model choices into profile or APEX Agent preferences. See [Persistence compatibility](architecture.md#persistence-compatibility) for database validation and legacy-table behavior.
+
+## Connector credentials
+
+Enable only the services you intend to use. Disabled telemetry connectors do not make network or authentication attempts.
+
+| Capability | Setup |
+|---|---|
+| Weather | `TARGET_LOCATION` in `.env`; Open-Meteo needs no API key |
+| News | `GNEWS_API_KEY` in `.env` |
+| Football | `FOOTBALL_API_KEY` in `.env` and followed teams in Runtime Settings |
+| Gmail and Google Calendar | Desktop OAuth `credentials.json` in the repository root; first authorization creates `token.json` |
+| Microsoft To Do | `MICROSOFT_TODO_CLIENT_ID`, optional tenant and token-cache path; a public/native Entra app with device-code flow and delegated `Tasks.ReadWrite` |
+| Google Cloud speech | Service-account key with its absolute path in `GOOGLE_APPLICATION_CREDENTIALS` |
+| MCP services | Enable MCP and the chosen server preset, then configure its environment credential or OAuth authorization |
+
+The tracked MCP presets cover GitHub, Brave Search, and Alpha Vantage. GitHub uses `GITHUB_PERSONAL_ACCESS_TOKEN`, Brave uses `BRAVE_API_KEY`, and Alpha Vantage MCP uses browser OAuth. Alpha Vantage market telemetry uses the separate API key described below.
+
+Google authorization uses shared Gmail and Calendar scopes. If those scopes change, remove the local `token.json` and authorize again. Keep credential files and tokens out of source control.
 
 ## Google Calendar selection
 
@@ -54,6 +139,39 @@ Calendar IDs and this display preference are local runtime settings:
 ```
 
 APEX keeps unavailable saved IDs so they can be removed deliberately. It reads selected calendars independently: events from calendars that succeed remain available when another selected calendar fails, and Sync Health reports the partial failure. It does not create events, alter Google Calendar visibility, or use webhooks or a remote cache.
+
+## Market data
+
+Enable `features.market`, add one to eight `market.symbols`, and place `ALPHA_VANTAGE_API_KEY` in `.env`. Market reads daily closing data, and each symbol can contact Alpha Vantage at most once per UTC calendar day after a successful response. A successful response remains fresh cached data for that UTC day even when the latest close came from an earlier trading day. Temporary provider throttling retries after a short same-day cooldown, and daily quota exhaustion waits for the next UTC day. Other failed symbols retry on a later date with exponential backoff. An enabled connector without symbols or an API key reports unavailable in Sync Health but does not prevent APEX activation.
+## Context vault selection
+
+Context vault export is disabled by default, with no selected records. Set `APEX_CONTEXT_VAULT_PATH` in `.env` to an absolute destination directory, then use Cortex → Context → Vault to choose records and enable export.
+
+`context_vault.enabled` controls publication. Each scope has a name, enable flag, selected entity and record IDs, excluded record IDs, and an `include_sensitive` opt-in. Only active production records without pending challenges are eligible; sensitive records require that scope's explicit opt-in.
+
+Disabling export keeps existing copies. Changing the destination leaves copies at the previous location for deliberate cleanup. See [Context Vault](context-vault.md) for selection, preview, refresh, and removal procedures, and [Privacy](privacy.md#context-vault-copies) for what exported notes contain.
+
+## Privacy and development modes
+
+Cloud and local personal-context retrieval switches are independent and off by default. They allow selected saved claims and, for briefings, pending reviews, external reports, and verified action evidence to enter model prompts. See [Privacy](privacy.md#personal-context).
+
+Sandbox mode is available only in `DEV_MODE`, uses a restricted non-personal tool allowlist, and stores conversation history in the sandbox partition. `DEMO_MODE` takes precedence for demo paths and does not contact configured providers.
+
+## Voice settings
+
+Runtime Settings configures text-to-speech engine selection, voice gender, and delivery mode:
+
+```json
+{
+  "tts_settings": {
+    "primary_tts": "pyttsx3",
+    "voice_gender": "female",
+    "voice_mode": "automatic"
+  }
+}
+```
+
+This example selects local speech; the tracked default engine is Google. Install the optional dependencies for Google or Kokoro before selecting them. The settings API exposes these under `voice` with `engine` (`google`, `pyttsx3`, or `kokoro`), `gender` (`female` or `male`), and `mode` (`automatic`, `manual`, or `off`). In automatic mode, APEX can speak short contextual cues for telemetry collection and for briefing and spoken-highlights progress; manual mode suppresses cues while allowing explicit speech and briefing highlights. Off mode also blocks speech preparation and playback. For installation, fallback behavior, Kokoro hardware gates, and speech caching, see the [Speech runtime guide](speech-runtime.md).
 
 ## External activity intake
 
@@ -107,24 +225,6 @@ The gateway rejects non-loopback bindings, unexpected Host headers, cross-origin
 
 Keep this listener on loopback. Do not place it behind a tunnel, reverse proxy, or public endpoint; the gateway does not authenticate remote callers.
 
-## Models and credentials
-
-The fresh interactive default is OpenRouter DeepSeek V4 Flash with Low reasoning. Cloud models require their documented provider credential: `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY`. Local models run through Ollama or llama.cpp and their availability is reported per model in Cortex.
-
-Only one local generation may run at a time. APEX checks runtime reachability, installed models, resource gates, and residency before a cold load. The provider-neutral unload control releases the current local model.
-
-## Briefing profiles
-
-Briefing and `apex briefing` use one saved-session engine with the selected APEX Agent model. The built-in profiles are Daily for orientation, Catch Up for source changes since the last presented complete session, and Deep for broader reasoning with a bounded read-only investigation. Daily is the CLI default; the HUD lets you choose a profile. Sessions retain the selected model and canonical artifact, and the HUD can continue them in the linked Cortex conversation. Briefings do not silently substitute a different model.
-
-Deep uses a curated read-only tool set selected for the session's evidence, subject to current Agent policy, partition, connector, and MCP permissions. It requires room for investigation and synthesis and is rejected before session creation when model/run limits cannot provide that capacity or no eligible read tool is available. Investigation is limited to eight offered tools, four calls, six saved result records, at most 1,024 generated tokens per turn (or the lower configured output limit), and at most 180 seconds or half of remaining run time; the model may decide not to call a tool. Demo mode provides deterministic Daily and Catch Up fixtures without provider calls; Deep is unavailable there. A model context window that cannot fit a useful briefing prompt is rejected before generation. Catch Up uses source history from completed sessions that were actually presented; incomplete source snapshots limit membership claims. When comparable sources show no material changes, it records a no-change result without running a model.
-
-The retired Flash, Focused, and Structured briefing engine and routes are not supported. Existing `briefing` entries in `config.local.json` are ignored; APEX does not map their settings or model choices into profile or APEX Agent preferences. See [Persistence compatibility](architecture.md#persistence-compatibility) for database validation and legacy-table behavior.
-
-## External and managed router modes
-
-Configure llama.cpp aliases with one preset per exposed context size. A tracked placeholder is [`docs/examples/llama-cpp-apex-local-models.preset.ini`](examples/llama-cpp-apex-local-models.preset.ini). Copy it to a machine-local path, replace GGUF placeholders, and keep that copy untracked. External launchers should use one preset at a time; managed mode uses the same aliases and resource gates.
-
 ## Bounded run limits
 
 `config.json` sets execution ceilings for asynchronous Cortex runs:
@@ -165,34 +265,16 @@ Archived Briefing conversations disappear from Saved sessions and Repeat last bu
 
 ## OpenTelemetry GenAI tracing
 
-APEX can export distributed trace spans adhering to OpenTelemetry GenAI semantic conventions when an endpoint is configured in `.env`:
+Install the optional tracing dependencies before configuring export:
+
+```powershell
+uv sync --locked --extra tracing
+```
+
+Set the following values in `.env` and restart APEX:
 
 - `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`: Destination URL for OTLP HTTP trace export (such as a local Arize Phoenix or OpenTelemetry collector).
 - `OTEL_EXPORTER_OTLP_TRACES_HEADERS` or `OTEL_EXPORTER_OTLP_HEADERS`: Optional comma-separated `key=value` headers.
 - `OTEL_SERVICE_NAME`: Service name attribute, defaulting to `apex`.
 
-When `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is unset, tracing is disabled with zero runtime overhead. Trace spans include run identifiers, model names, token counts, and step durations; they never include prompt or answer text.
-
-## Privacy and development modes
-
-Personal context is off by default for both runtimes. Sandbox mode is available only in `DEV_MODE`, uses a restricted non-personal tool allowlist, and stores conversation history in the sandbox partition. `DEMO_MODE` takes precedence for demo paths and does not contact configured providers.
-
-## Voice settings
-
-Runtime Settings configures text-to-speech engine selection, voice gender, and delivery mode:
-
-```json
-{
-  "tts_settings": {
-    "primary_tts": "pyttsx3",
-    "voice_gender": "female",
-    "voice_mode": "automatic"
-  }
-}
-```
-
-The settings API exposes these under `voice` with `engine` (`google`, `pyttsx3`, or `kokoro`), `gender` (`female` or `male`), and `mode` (`automatic`, `manual`, or `off`). In automatic mode, APEX can speak short contextual cues for telemetry collection and for briefing and spoken-highlights progress; manual and off modes suppress these cues while keeping briefing highlights and explicit speech endpoints available. For installation, fallback behavior, Kokoro hardware gates, and speech caching, see the [Speech runtime guide](speech-runtime.md).
-
-## Market data
-
-Enable `features.market`, add one to eight `market.symbols`, and place `ALPHA_VANTAGE_API_KEY` in `.env`. Market reads daily closing data, and each symbol can contact Alpha Vantage at most once per UTC calendar day after a successful response. A successful response remains fresh cached data for that UTC day even when the latest close came from an earlier trading day. Temporary provider throttling retries after a short same-day cooldown, and daily quota exhaustion waits for the next UTC day. Other failed symbols retry on a later date with exponential backoff. An enabled connector without symbols or an API key reports unavailable in Sync Health but does not prevent APEX activation.
+Without an endpoint, APEX does not configure trace export. If the SDK or exporter is missing, it logs a warning and leaves export disabled. Spans record run identifiers, models, token counts, timings, and status. Exceptions escaping a tracing context can also be recorded with their message and stack trace; see [Privacy](privacy.md#distributed-tracing).

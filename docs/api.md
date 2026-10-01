@@ -6,6 +6,13 @@ The API has no authentication and is intentionally bound to loopback. `APEX_ALLO
 
 The included [`uv run apex`](cli.md) command is a thin loopback client for a focused subset of these routes. It does not add routes or bypass their validation, action version checks, or runtime-mode behavior.
 
+Use the sections below for operation behavior and examples. For a typical integration:
+
+- Check readiness before submitting work.
+- Create a conversation for an Agent request, or a briefing session for a briefing.
+- Poll saved run/session state or subscribe to run events for asynchronous work.
+- Read the current action version or context-review revisions before making a decision.
+
 ## Route index
 
 | Method | Path | Purpose |
@@ -13,7 +20,7 @@ The included [`uv run apex`](cli.md) command is a thin loopback client for a foc
 | GET | `/` | Compatibility health response |
 | GET | `/api/v1/health/live` | Process liveness |
 | GET | `/api/v1/health/ready` | Local runtime readiness |
-| GET | `/api/v1/config` | HUD boot configuration |
+| GET | `/api/v1/config` | Interface boot configuration |
 | GET | `/api/v1/settings` | Resolved runtime settings |
 | PATCH | `/api/v1/settings` | Persist runtime-setting changes |
 | GET | `/api/v1/google-calendar/calendars` | Readable Google Calendar choices for Runtime Settings |
@@ -117,7 +124,7 @@ Returns success when the API process can answer. It does not inspect configurati
 
 ### GET `/api/v1/health/ready`
 
-Loads the runtime settings snapshot and executes a lightweight SQLite query. The launcher uses this route before opening the HUD.
+Loads the runtime settings snapshot and executes a lightweight SQLite query. The launcher uses this route before opening the interface.
 
 - `200` — required local state is ready.
 - `503` — settings or database readiness failed.
@@ -126,55 +133,13 @@ Optional external services are deliberately excluded.
 
 ### GET `/api/v1/config`
 
-Returns boot-time HUD values such as Agent query enablement, the effective model selection, voice defaults, market enablement, message limits, runtime modes, and `cortex_initial_selection` containing `canonical_name` ("APEX Agent"), default or resolved `display_name` ("Lynx"), and the saved model/runtime selection.
+Returns boot-time interface values such as Agent query enablement, the effective model selection, voice defaults, market enablement, message limits, runtime modes, and `cortex_initial_selection` containing `canonical_name` ("APEX Agent"), default or resolved `display_name` ("Lynx"), and the saved model/runtime selection.
 
 ### GET `/api/v1/settings`
 
 Returns the resolved settings envelope. The current settings schema version is `24`.
 
-```json
-{
-  "schema_version": 24,
-  "settings": {
-    "user_designation": "",
-    "agent_display_name": "",
-    "features": { "weather": true, "sports": true, "news": true, "email": false, "calendar": false, "market": false },
-    "modules": { "football": false, "f1": true },
-    "football": { "teams": [] },
-    "market": { "symbols": [] },
-    "calendar": { "selected_calendar_ids": ["primary"], "show_calendar_names": true },
-    "context_vault": { "enabled": false, "scopes": [] },
-    "ask_apex": {
-      "enabled": true,
-      "selected_model": "deepseek/deepseek-v4-flash-0731",
-      "sandbox_mode": false,
-      "cloud": {
-        "last_model": "deepseek/deepseek-v4-flash-0731",
-        "effort": "low",
-        "personal_context_enabled": false,
-        "hosted_tools": { "google_search": true, "google_maps": true }
-      },
-      "local": {
-        "last_model": "gemma-4-E2B-Q4_K_M.gguf",
-        "context_window": 16384,
-        "reasoning_mode": "none",
-        "personal_context_enabled": false
-      }
-    },
-    "tool_profiles": { "custom_profiles": [], "default_profile_by_runtime": {} },
-    "voice": { "engine": "google", "gender": "female", "mode": "automatic" },
-    "mcp": { "enabled": false, "servers": { "github": { "enabled": false }, "brave": { "enabled": false }, "alphavantage": { "enabled": false } } },
-    "llama_cpp": { "enabled": false, "managed": false, "host": "http://127.0.0.1:8080", "executable_path": "", "preset_path": "" },
-    "microsoft_todo": { "reminder_list_id": "" },
-    "activity_report_folder": { "enabled": false, "folder_path": "" }
-  },
-  "local_file_present": false,
-  "local_override_active": false,
-  "load_warning": null,
-  "dev_mode_active": false,
-  "demo_mode_active": false
-}
-```
+Use the generated OpenAPI schema for the full envelope and [Configuration](configuration.md#runtime-settings) for field meanings and defaults. The envelope includes `settings`, local-overlay status, load warnings, and active development/demo modes.
 
 `football.teams`, `market.symbols`, `calendar`, `context_vault`, `tool_profiles`, and `microsoft_todo.reminder_list_id` are returned in the resolved settings snapshot. APEX Agent settings persist the selected model and independent cloud/local controls; the model catalog derives provider or local runtime. The selected provider/runtime remains in execution metadata and historical records. The optional Microsoft To Do list ID is opaque, bounded to 512 characters, and is never selected or cleared automatically. OpenAPI contains the complete shape. Tool profiles persist through the same settings store, but the dedicated `/api/v1/cortex/tool-profiles` routes are the canonical mutation workflow for built-in/custom profiles and per-runtime defaults.
 
@@ -198,7 +163,7 @@ The store validates and transactionally replaces `config.local.json` before publ
 
 `ask_apex.local.reasoning_mode` accepts `none` or `focused` for llama.cpp models and only `none` for Ollama models. `focused` is request-level and does not trigger a local model unload/reload; unsupported model/mode combinations return `422`.
 
-Environment modes, prompt text, credentials, endpoints, commands, allowlists, and tool risks are not patchable. The optional `user_designation` and `agent_display_name` personalization fields persist to the gitignored local settings overlay. Machine-local llama.cpp `executable_path` and `preset_path` also persist only to `config.local.json`.
+Environment modes, prompt text, credentials, MCP endpoints and commands, allowlists, and tool risks are not patchable. The optional `user_designation` and `agent_display_name` personalization fields persist to the gitignored local settings overlay. Machine-local llama.cpp `executable_path` and `preset_path` also persist only to `config.local.json`.
 
 ### GET `/api/v1/google-calendar/calendars`
 
@@ -212,19 +177,19 @@ Returns sanitized llama.cpp server ownership for Runtime Settings: `enabled`, `m
 
 ### GET `/api/v1/diagnostics`
 
-Returns current CPU, memory, disk, and network diagnostics for the HUD. This poll is independent of telemetry and briefing state.
+Returns current CPU, memory, disk, and network diagnostics for the interface. This poll is independent of telemetry and briefing state.
 
 ## Telemetry and preflight
 
 ### GET `/api/v1/telemetry/latest`
 
-Returns the current process-local `TelemetrySnapshot`. Each module reports typed status, freshness, reason, observation time, display text, and structured data. `failed_connectors` identifies unavailable modules by their canonical names, including independent `f1` and `football` entries. The HUD combines those two modules for the Sports status row.
+Returns the current process-local `TelemetrySnapshot`. Each module reports typed status, freshness, reason, observation time, display text, and structured data. `failed_connectors` identifies unavailable modules by their canonical names, including independent `f1` and `football` entries. The Overview workspace combines those two modules for the Sports status row.
 
 Returns `404` before the first successful snapshot or after a process restart.
 
 ### GET `/api/v1/telemetry/reuse`
 
-Returns `{ "reusable": true }` when a normal full refresh would return the current snapshot without connector calls, and `{ "reusable": false }` when it would collect, including when no snapshot exists and in demo mode. It reads state only and never starts a refresh. The HUD uses it to skip the "collecting" voice cue when nothing will be collected.
+Returns `{ "reusable": true }` when a normal full refresh would return the current snapshot without connector calls, and `{ "reusable": false }` when it would collect, including when no snapshot exists and in demo mode. It reads state only and never starts a refresh. The interface uses it to skip the "collecting" voice cue when nothing will be collected.
 
 ### POST `/api/v1/telemetry/refresh`
 
@@ -287,24 +252,32 @@ Admits an asynchronous Daily, Catch Up, or Deep generation using the explicit mo
 }
 ```
 
-`local_reasoning_mode` may be supplied for a compatible local model. `origin` is constrained to `hud` or `cli` and records caller provenance; HUD is the default. The server owns execution limits and creates the linked conversation. A successful new admission returns `202` with a session ID, conversation ID, run ID, and current run status. Replaying the same idempotency key and request returns the existing session with `200`.
+`local_reasoning_mode` may be supplied for a compatible local model. `origin` is constrained to `hud` or `cli` and records caller provenance; `hud` is the default. The server owns execution limits and creates the linked conversation. A successful new admission returns `202` with a session ID, conversation ID, run ID, and current run status. Replaying the same idempotency key and request returns the existing session with `200`.
 
 - `409` — the idempotency key conflicts with a different request.
 - `422` — the profile is not available, the model or requested controls are unavailable, or its context window cannot fit a useful briefing prompt.
 - `429` — the run coordinator has no free execution slot.
 - `503` — briefing generation is unavailable or shutting down.
 
-The Briefing setup UI uses the existing preflight, settings, and session routes. For a model-backed Generate action it first preflights the draft model, then saves `selected_model` and that runtime's `last_model` plus supported reasoning value with one settings `PATCH`, then admits the session with the resolved settings. A cancelled or blocked preflight and a failed settings save do not send the session `POST`. Demo runs keep using the saved fixture and do not persist its fixture model as the APEX Agent selection.
+Session admission uses the supplied model and controls; it does not save model preferences. Clients that want a persistent selection should update Runtime Settings separately before creating the session. [Architecture](architecture.md#briefing-routes) explains evidence collection and synthesis.
 
-Deep first gathers the shared current and relevant history evidence, then makes a bounded investigation with up to eight eligible read capabilities selected for the evidence and source coverage. Its investigation prompt includes selected current evidence and paired historical evidence, with each row's role, capture time, trust, and content, so it can frame reads against observed changes. The selected set is independent of the saved runtime tool profile and still intersects current Agent policy, connector availability, partition, sandbox, and MCP allowlist/risk checks. Deep requires capacity for at least two investigation turns, one tool call, and two synthesis turns; otherwise admission returns `422` before creating a session. Investigation is limited to four tool calls, 180 seconds or half of the remaining run time (whichever is smaller), at most six saved read-result evidence records, and at most 1,024 generated tokens per investigation turn (or the lower configured output limit). The model may decide no additional read is needed. Write, destructive, hosted, and unbounded tools are not offered. Read-result evidence keeps an untrusted source label and capture time; raw investigation transcripts are not saved. The completed artifact's optional `investigation` field reports whether investigation completed, was limited, or needed no read, along with bounded counts and limitations. The total saved evidence remains capped at 50 records.
+Deep requires capacity for at least two investigation turns, one tool call, and two synthesis turns; insufficient limits return `422` before creating a session. Investigation offers eligible read tools under current policy and availability checks, independently of the saved runtime tool profile. It offers no write, destructive, or provider-hosted tools. The artifact's optional `investigation` field reports completion, limits, or that no additional read was needed. Read results remain untrusted evidence; raw investigation transcripts are not saved. See [Deep investigation](architecture.md#deep-investigation) for execution limits and evidence handling.
 
 ### Catch Up comparison history
 
-The admission transaction freezes up to 100 newest presented, completed sessions from the active partition. Reading a session does not make it a checkpoint; the client records presentation through `POST /api/v1/briefing-sessions/{session_id}/presented`. Catch Up compares each source independently with history from the same normalized source scope. The newest complete, untruncated presented inventory is the membership checkpoint: a newer partial or capped snapshot does not replace it. Catch Up does not infer new items from incomplete-list membership. For bounded unread email and news, it can still identify a genuinely new message or article when a stable provider ID is available and its received/published timestamp falls after the prior source observation and no later than the current observation. Unmatched items without that timestamp evidence remain not comparable. A source with changed settings or a different normalization version has no compatible baseline.
+Catch Up compares each source with compatible completed sessions that the client has marked presented. Admission freezes up to 100 newest eligible sessions in the active partition. Reading a session does not make it a checkpoint; presentation uses the dedicated acknowledgment route.
 
-The artifact's `comparison` field reports the overall outcome and, for each source, its status, baseline/current observation times, and any limitation reason. A partial, failed, disabled, stale, or missing source can make the overall result limited; Catch Up only claims changes supported by comparable evidence. The same comparison metadata is stored with the completed session and returned by the session detail endpoint.
+The newest complete, untruncated inventory is the source's membership checkpoint. A newer partial or capped snapshot does not replace it, and incomplete membership alone cannot establish new items. Unmatched email or news can count as new only with a stable provider ID and a received/published timestamp after the prior source observation and no later than the current observation. Changed settings or normalization versions make a baseline incompatible.
 
-Catch Up uses each source's `observed_at` as its “last checked” time, not the session's creation, completion, or presentation time. The visible combined period runs from the earliest comparable source baseline to the latest current source observation; source details retain the exact per-source times. Reminder and calendar items can become newly time-sensitive when their fixed attention window advances. Market prices count as material only after a 5% move from the baseline. Weather counts condition changes or changes of at least 5°F in temperature, 20 percentage points in precipitation chance, 0.1 inch in precipitation, or 5 mph in wind; forecast-date rollover alone is not material. Missing comparison values or a regressed source timestamp make that source limited rather than supporting a no-change claim.
+The artifact's `comparison` field reports the overall outcome, each source's status, baseline/current observation times, and limitations. Failed, partial, disabled, stale, or missing sources can make the result limited. Missing values or regressed observation times also prevent a supported no-change claim.
+
+Comparison uses each source's `observed_at`, rather than session creation, completion, or presentation time. The combined period spans the earliest comparable baseline through the latest current source observation. Material changes include:
+
+- Reminders or calendar events entering their fixed attention window.
+- Market prices moving at least 5% from the baseline.
+- Weather conditions changing, or temperature moving at least 5°F, precipitation chance 20 percentage points, precipitation 0.1 inch, or wind 5 mph. Forecast-date rollover alone is not material.
+
+See [Architecture](architecture.md#briefing-routes) for the relationship between evidence, presentation checkpoints, and no-change results.
 
 Source inventories are bounded: reminders include at most 8 items in the selected list; calendar includes at most 12 selected-calendar events in its 14-day window; email includes at most 8 unread primary-inbox records; weather includes current conditions and up to 3 forecast days; cached news includes at most 5 headlines; F1 includes the next-race snapshot; football includes at most 6 fixtures; and market includes at most 12 configured symbols. A top-five news rotation alone does not establish that a headline was newly published; unmatched news without a stable article ID and post-checkpoint publication time is not called new. Personal evidence is retrieval/relevance-limited; pending reviews include at most 5 items, external reports select at most 3 relevant reports from the newest 50 candidates, and verified action outcomes include at most 20 records. The persisted observed inventory is capped at 32 evidence records and model synthesis at 18 evidence records; omitted synthesis evidence does not reduce the persisted source-coverage claim.
 
@@ -312,7 +285,7 @@ Source inventories are bounded: reminders include at most 8 items in the selecte
 
 Returns up to 100 newest session summaries whose linked Cortex conversations are active in the current production or sandbox partition. Archived conversations are excluded before `limit` and `offset` are applied. `limit` defaults to 25 and accepts 1–100; `offset` defaults to 0. Summaries include run status and the first-presentation timestamp. Listing does not change presentation state. A session linked to an archived conversation remains addressable by ID until that conversation is permanently deleted.
 
-The Briefing UI's Repeat action reads the newest visible summary with `limit=1`, then loads its detail without changing the displayed selection. It repeats that saved profile, model, and reasoning configuration through a new session `POST`; the server gathers a fresh context snapshot, and the client does not replay the old evidence or context. Failed and CLI-origin sessions remain eligible when their saved configuration is currently supported.
+To repeat a session, read its captured configuration and submit a new session request with a new idempotency key. The server gathers current evidence; callers do not replay the saved evidence or context. The saved configuration must still be supported.
 
 The read-only APEX Agent tool `get_briefing_history` uses the same active-partition boundary. Its `limit` is clamped to 1–5; one joined query filters for completed sessions with canonical artifacts before applying the bound. Archived sessions remain available to this history query until their conversations are deleted. Each result includes the session ID, profile, selected model, creation and presentation times, presentation status, up to two concise canonical items, and up to four recorded limitations. Failed and incomplete sessions are omitted. The tool does not fetch full evidence or speech data.
 
@@ -330,11 +303,17 @@ Records the first time the client presents a completed briefing and returns the 
 
 ### GET `/api/v1/briefing-sessions/{session_id}/speech`
 
-Returns the speech status, a SHA-256 binding to the exact persisted canonical artifact, and the engine and voice gender used for cached audio when available. Audio and the spoken script are not returned by this endpoint. Persisted status is `not_requested`, `preparing`, `ready`, `unavailable`, or `cancelled`; an active playback may report `playing` or `stopping`. Demo Daily and Catch Up sessions use a deterministic script from their saved fixture artifact and the configured `DEMO_TTS` engine; they do not call a model. A session outside the active partition returns `404`; unsupported fixture sessions return `403`.
+Returns the speech status, a SHA-256 binding to the exact persisted canonical artifact, and the engine and voice gender used for cached audio when available. The saved script is returned when available; audio bytes are not returned. Persisted status is `not_requested`, `preparing`, `ready`, `unavailable`, or `cancelled`; an active playback may report `playing` or `stopping`. Demo Daily and Catch Up sessions use a deterministic script from their saved fixture artifact and the configured `DEMO_TTS` engine; they do not call a model. A session outside the active partition returns `404`; unsupported fixture sessions return `403`.
 
 ### POST `/api/v1/briefing-sessions/{session_id}/speech/prepare`
 
-Prepares short spoken highlights from the completed session's persisted artifact and synthesizes ordered, separately playable audio chunks. For model-backed sessions the script call uses only the session's selected APEX Agent model, with no tools, retrieval, or other conversation context; the script is validated against the artifact's item IDs, numbers, dates, uncertainty, report attribution, review status, and suggestion/completion distinctions. APEX may immediately retain individually valid highlights or read the exact title and body of a model-selected item after a numeric-fact mismatch, subject to the same validation and speech limits and only when the source has no URL or citation. An unrecoverable response gets at most one repair call. Invalid segments with changed dates, missing qualifiers, or other factual drift are never spoken; if no valid segment or eligible exact-source numeric recovery remains, preparation stays unavailable. The model call is bounded by the smaller of its saved model budget and 240 seconds; a deadline reports `speech_model_timeout` rather than an audio error. Demo Daily and Catch Up instead use a deterministic script from the exact saved fixture artifact and the configured `DEMO_TTS` engine, with no provider call. Work is admitted asynchronously and returns `202`; a matching ready cache returns `200`. Calling Prepare after the selected voice engine or gender changes replaces the cached derivative. `?force=true` explicitly rebuilds the speech derivative with the current voice settings, without regenerating the briefing. Google TTS may receive the script text; Kokoro and pyttsx3 keep synthesis local. The response contains `session_id`, `artifact_sha256`, `status`, `error_code`, `engine`, and `voice_gender`.
+Prepares spoken highlights from the completed session's persisted artifact and caches ordered audio chunks. Model-backed sessions use that session's selected model with no tools, retrieval, or other conversation context. APEX validates the highlights against the artifact, including numbers, dates, uncertainty, attribution, and review status. It can retain valid segments, use eligible exact-source text after a numeric mismatch, or make one repair call. These checks reject specific reference, numeric, date-word, and qualifier mismatches; they do not verify every factual claim. If no usable segment remains, preparation reports unavailable.
+
+The script call is bounded by the smaller of its saved model budget and 240 seconds; a deadline reports `speech_model_timeout`. Demo Daily and Catch Up use a deterministic script from their saved artifact and `DEMO_TTS`, without a model call.
+
+New work returns `202`; a matching ready cache returns `200`. Changing the voice engine or gender replaces the cached derivative on the next Prepare. `?force=true` rebuilds it with current voice settings without regenerating the briefing. The response includes `session_id`, `artifact_sha256`, `status`, `error_code`, `engine`, and `voice_gender`.
+
+See [Architecture](architecture.md#speech-derived-from-briefings) for artifact ownership, [Speech Runtime](speech-runtime.md) for engines and playback, and [Privacy](privacy.md#speech) for text sharing.
 
 ### POST `/api/v1/briefing-sessions/{session_id}/speech/play`
 
@@ -379,7 +358,7 @@ Accepts one opaque `{ "id": "todo:…" | "local:…" }`. Remote completion rerea
 
 `GET /api/v1/reminders/completed` reads one bounded live collection and returns only completed Microsoft To Do tasks. It never reads SQLite cache or local outbox rows. When no selected list or live Microsoft connection is available, it returns an empty `unavailable` envelope.
 
-`POST /api/v1/reminders/update`, `/delete`, and `/reopen` are explicit operator commands. They require the opaque `todo:` ID and the `last_modified_at` observed by the HUD; update accepts only title, due date/timezone, and importance. A verified mutation returns `200`; an ambiguous execution or failed verification returns `202` with an action ID and is never replayed automatically. Stale targets return `409`, known unavailability returns `503`, absence returns `404`, and definitive action failure returns `502` with its action ID.
+`POST /api/v1/reminders/update`, `/delete`, and `/reopen` are explicit operator commands. They require the opaque `todo:` ID and the `last_modified_at` observed by the client; update accepts only title, due date/timezone, and importance. A verified mutation returns `200`; an ambiguous execution or failed verification returns `202` with an action ID and is never replayed automatically. Stale targets return `409`, known unavailability returns `503`, absence returns `404`, and definitive action failure returns `502` with its action ID.
 
 ### POST `/api/v1/reminders/sync`
 
@@ -433,7 +412,7 @@ The local operator can select a stable finding reference and submit the normal c
 
 Accepted claims retain an `external_activity` source with the report-and-finding locator, original selected text, `external_tool` origin, occurrence time when the report supplied one, and the report's declared derivation. A report is never indexed directly.
 
-External activity is untrusted report material. Receiving, reading, reviewing, dismissing, or reopening a report never creates knowledge, changes retrieval, adds prompt context, affects attention or briefings, or approves a review. Retraction remains an explicit context operation.
+Reports remain untrusted and are not indexed or automatically accepted as personal context. Outside DEV mode, briefing generation can select relevant non-dismissed reports when personal context is enabled for the selected model runtime. The evidence keeps its source attribution and untrusted label. Report disposition and context-review decisions are independent; dismissing a report excludes it from subsequent report selection without retracting an accepted claim. Retraction remains an explicit context operation.
 
 The separately started activity gateway is not part of this API schema. It exposes a liveness probe, JSON submission, and a Streamable HTTP MCP endpoint; see [External activity gateway](configuration.md#external-activity-gateway) for its startup and boundary contract.
 
@@ -572,9 +551,7 @@ have a pending turn or active run. Active conversations cannot be deleted; archi
 
 ### Cortex turns
 
-APEX owns Cortex conversation history in `apex_memory.db`. Conversations contain a tree of user and Agent messages, an active branch, Agent/tool selection state, timestamps, and archive state. HUD scratch threads remain browser-local until their first accepted turn; archived conversations can be permanently deleted through the archived-only DELETE route. A background sweep also deletes archived conversations after the configured retention period, measured from when they were archived. Repeating Archive does not extend that period; restoring and later archiving starts a new period. A pending turn or active run postpones automatic deletion until a later sweep. An unsupported retrieval schema also postpones deletion: the route returns `409 Conflict`, and the maintenance worker logs the failed sweep and retries on its next scheduled pass.
-
-`GET /api/v1/cortex/conversations` lists the current server-derived partition. `POST /api/v1/cortex/conversations` creates a `hud` or `cli` conversation. `GET` and `PATCH /api/v1/cortex/conversations/{conversation_id}` read or update title, archive state, active branch, and saved Agent/tool state.
+APEX owns Cortex conversation history in `apex_memory.db`. Conversations contain a tree of user and Agent messages, an active branch, Agent/tool selection state, timestamps, and archive state. Unsaved interface threads remain browser-local until their first accepted turn; archived conversations can be permanently deleted through the archived-only DELETE route. A background sweep also deletes archived conversations after the configured retention period, measured from when they were archived. Repeating Archive does not extend that period; restoring and later archiving starts a new period. A pending turn or active run postpones automatic deletion until a later sweep. An unsupported retrieval schema also postpones deletion: the route returns `409 Conflict`, and the maintenance worker logs the failed sweep and retries on its next scheduled pass.
 
 `POST /api/v1/cortex/conversations/{conversation_id}/turns` runs one Cortex Engine turn. Clients send generated user and Agent message UUIDs, an optional parent ID, and the current turn inputs.
 Finalized Agent messages may include `response_metadata.activity_steps`, a bounded
@@ -775,7 +752,7 @@ Context record responses include the persisted `sensitive` flag. `PATCH /api/v1/
 
 The root index is compared using the prospective set of enabled scopes, so activation, removal, or rename can appear even when sibling scope notes are unchanged. Saved-scope preview also renders its prospective projection while global export is disabled; this does not publish files. `projection_comparison_state` is `compared` when local ownership hashes from the last successful export are available, `no_prior_export` when the preview is compared with an empty projection, or a status explaining why comparison was unavailable. A new scope has additions when another scope was previously exported. Preview reads APEX's local publisher state and renders in memory; it does not read or write destination files. This local projection state does not indicate whether Drive or another service synced or indexed notes.
 
-A selected entity ID that no longer exists is returned as a selection issue with reason `entity_unavailable`; an unknown scope ID still returns `404`. Preview does not use the ordinary 100-record context-list cap, read source snapshots or review proposals, include sandbox records, or write files. Conflicting, superseded, retracted, pending-review, operator-excluded, and non-opted-in sensitive records are ineligible. Merged selected entities require explicit reselection. The old preview route remains an alias.
+A selected entity ID that no longer exists is returned as a selection issue with reason `entity_unavailable`; an unknown scope ID still returns `404`. Preview does not use the ordinary 100-record context-list cap, read source snapshots or review proposals, include sandbox records, or write files. Conflicting, superseded, retracted, pending-review, operator-excluded, and non-opted-in sensitive records are ineligible. Merged selected entities require explicit reselection.
 
 When exports are enabled, one lifespan-owned worker reconciles at startup and after committed production knowledge or selection changes. The status describes local file publication only; it does not claim that a sync service copied files or that another application indexed them. `POST /api/v1/cortex/vault/refresh` requests a serialized publication and returns the resulting status, including any sanitized error. Disable exports before calling `DELETE /api/v1/cortex/vault/copies`; it returns `409` while exports are enabled. Removal deletes only files recorded as APEX-owned at the currently configured destination; it does not recursively delete the destination or remove handwritten files or `.obsidian/`. Disabling the vault stops updates and retains existing files; enabled scope deselection removes obsolete managed copies during refresh. Changing the configured root leaves the old root in place and reports it, including when export is disabled. Demo and sandbox requests receive an explicit restriction status, and refresh or removal returns `403` in those modes.
 
@@ -882,7 +859,7 @@ Successful response after playback completes:
 - `409` — speech is already active.
 - `503` — no configured fallback completed delivery.
 
-The endpoint does not generate or persist a briefing. It speaks only the text supplied in the request. Session briefing speech uses the separate Prepare and Play routes and is never automatic.
+The endpoint does not generate or persist a briefing. It speaks only the text supplied in the request. Session briefing speech uses the separate Prepare and Play routes. The interface can request preparation automatically after a new briefing completes, but playback always requires an explicit request.
 
 ### POST `/api/v1/voice/cue`
 

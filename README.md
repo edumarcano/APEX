@@ -1,136 +1,45 @@
-# APEX: Automated Personal Environment Xylem
+# APEX
 
 <p align="center">
-  <img
-    src="docs/assets/apex-logo.png"
-    alt="The APEX logo"
-    width="180"
-  >
+  <img src="docs/assets/apex-logo.png" alt="The APEX logo" width="180">
 </p>
 
-APEX started as a small, fun experiment: could I build something that gave me a spoken daily briefing with a little of the Jarvis feeling from *Iron Man*? As it grew, it became a playground for a new interest in AI tools and software development, a place to experiment, learn, and find out what I could actually build.
+APEX is a local-first personal intelligence workspace. It brings schedules, reminders, weather, news, markets, and personal context together so you can check what needs attention, prepare a briefing, and follow up with an assistant that can use your connected services.
 
-Today, it is a local-first operational HUD that brings weather, schedules, reminders, news, markets, system health, sourced personal context, outside activity reports, and APEX Agent work into one place. It turns those signals into Overview telemetry, concise briefings, and Agent queries while keeping the local machine, not a hosted account, at the center of the system.
+The application runs on your machine and stores its history locally. You choose which services to connect and whether to use a cloud or local model. Collection, briefing generation, conversations, and speech are separate operations, with their status and failures visible in the interface.
 
-APEX opens on Launch, which provides access to four peer workspaces: Overview shows the telemetry grid after Collect Telemetry, Briefing runs saved sessions and setup, Cortex is where you interact directly with APEX Agent and review personal context, and Reports holds reports from outside tools. Overview navigation does not collect data; choose Collect Telemetry to run preflight and begin a refresh. Telemetry means structured status collected from connected services; a briefing is a saved, structured session built from that evidence; and an Agent query is a request sent to the selected model through APEX Agent.
+APEX began as a small experiment in spoken daily briefings, inspired by the Jarvis feeling from *Iron Man*. It remains a personal project and a place for me to learn and experiment with software development using AI tools.
 
-<p align="center">
-  <img
-  src="docs/assets/apex-home.png"
-  alt="APEX Overview after demo telemetry collection, showing connector health, weather, events, news, reminders, market, and email cards."
-  width="900"
->
-</p>
+## Find your way around
 
-<p align="center">
-  <em>Overview after demo telemetry collection, with ready, degraded, unavailable, and disabled connector states visible.</em>
-</p>
+APEX opens on Launch, with access to four workspaces:
 
-## What APEX does
-
-### Builds live Overview telemetry
-
-APEX collects enabled weather, calendar, email, news, sports, reminder, and market signals into typed telemetry. Each connector reports its own freshness and health, so missing data is visible rather than hidden inside generated prose.
-
-### Produces interactive briefings
-
-Briefing creates Daily, Catch Up, and Deep sessions with the selected APEX Agent model. Each session saves a canonical artifact and evidence in the active local partition, and opens a linked Cortex conversation for follow-up. Catch Up compares current sources with the last presented complete session; Deep can investigate with a bounded set of read-only tools. The HUD never silently changes the selected model. Demo mode uses fixed Daily and Catch Up fixtures without contacting a provider.
-
-<p align="center">
-  <img
-  src="docs/assets/apex-briefing.png"
-  alt="Completed Daily demo fixture shown in its linked Cortex conversation, with the selected profile, model control, and current telemetry rail."
-  width="900"
->
-</p>
-
-<p align="center">
-  <em>The saved Daily artifact and its linked conversation, with the current model control and demo telemetry rail in view.</em>
-</p>
-
-### Operates the APEX Agent
-
-Agent queries can use approved read tools for live data, briefing history, Gmail, Microsoft To Do, personal context, and optional MCP (Model Context Protocol) providers. Reads run directly. Supported native writes create action proposals that require local approval and verification before they are considered complete.
-
-Cortex keeps normalized personal-context records separate from their original evidence and append-only history. Clear operator input can be saved or corrected directly; sensitive, conflicting, or model-interpreted changes wait in a durable review queue. Pending proposals do not enter retrieval, and the Records and Review views expose the evidence behind the current claim before the operator accepts or rejects a change.
-
-After a Microsoft To Do list is selected, its incomplete tasks become the Overview reminder source. SQLite keeps a small cache for stale display and an offline queue for local reminders that still need to sync. The Overview Reminders panel can edit, complete, delete, reopen, and review completed tasks directly without adding the Agent approval step. APEX Agent uses one Tools selector; cloud and local model defaults remain runtime-scoped, while policy and MCP permissions remain separate boundaries.
-
-<p align="center">
-  <img
-  src="docs/assets/apex-cortex.png"
-  alt="Cortex with a new conversation and the default Agent model, reasoning, context, and tool controls."
-  width="900"
->
-</p>
-
-<p align="center">
-  <em>A new Cortex conversation with its default Agent controls visible. The model control shows its current unavailable status.</em>
-</p>
-
-### Shares selected context through a vault
-
-The Context vault can publish selected current records as linked Markdown notes in separate scopes. APEX keeps the canonical records; the generated notes can be opened in Obsidian or synced through Google Drive for other tools to read. Export starts disabled. Cortex asks you to preview a scope before enabling export; the API and CLI can enable it directly, so preview their selections first. See the [Context vault guide](docs/context-vault.md) for setup, sharing, and cleanup.
-
-### Reviews outside work in Reports
-
-Local tools can submit completed-work reports through the APEX CLI, JSON or Markdown import, an optional loopback-only HTTP and MCP gateway, or a configured local report folder. Reports shows the immutable reports and lets the operator mark them new, reviewed, or dismissed. A selected finding can be proposed as personal context, but it stays outside trusted retrieval until its linked review is accepted. See [Configuration](docs/configuration.md#external-activity-intake) for intake options and [Privacy](docs/privacy.md#external-activity-reports) for the trust boundary.
-
-### Keeps runtime control visible
-
-The HUD exposes connector health, CPU and memory use, active model state, briefing profile and progress, voice delivery, preflight warnings, and machine-local settings. Telemetry collection, connector refreshes, briefing sessions, Agent requests, and speech are separate operations rather than one mandatory pipeline.
-
-## Engineering highlights
-
-- **Local-first:** FastAPI, the React HUD, SQLite, runtime settings, and the default Ollama endpoint stay on the machine and bind to loopback.
-- **Independent features:** Telemetry, briefing generation, Agent work, and voice delivery can fail independently instead of taking the whole HUD down.
-- **Safer model input:** Connectors produce typed telemetry, and briefing models receive only bounded evidence marked as untrusted data.
-- **One briefing engine:** Daily, Catch Up, and Deep are built-in profiles over the selected APEX Agent model and one saved-session workflow.
-- **One local model at a time:** APEX avoids hidden local-inference queues and keeps model loading visible.
-- **Local storage:** SQLite keeps briefing sessions and artifacts, the reminder cache and offline queue, Cortex conversations and run records, external activity reports, personal-context sources and history, retrieval indexes, context reviews, and the durable action ledger. Reloading APEX restores the active conversation branch and its per-conversation Agent/tool preferences.
-- **Visible failures:** Readiness checks, connector health, stable errors, run IDs, and preflight warnings make degraded states easier to understand.
-- **Credential isolation:** The backend receives credentials; the static server and browser receive a restricted child environment.
-
-## Architecture at a glance
-
-```mermaid
-flowchart LR
-    L["launcher.py"] --> API["FastAPI · 127.0.0.1:8000"]
-    L --> HUD["React HUD · 127.0.0.1:5500"]
-    HUD --> T["Telemetry snapshots"]
-    HUD --> B["Briefing sessions"]
-    HUD --> A["Agent queries"]
-    HUD --> V["Voice delivery"]
-    T --> C["Local and external connectors"]
-    B --> M["Daily · Catch Up · Deep profiles"]
-    M --> A
-    A --> P["Native and approved MCP capabilities"]
-    API --> DB["SQLite"]
-```
-
-The frontend owns workspace presentation and interaction state. FastAPI owns connector access, runtime coordination, model and tool execution, and speech; it writes durable sessions and history to SQLite. See the [architecture reference](docs/architecture.md) for the full system model and failure behavior.
-
-## Technology
-
-| Layer | Current stack |
+| Workspace | Use it to |
 |---|---|
-| Backend | Python 3.14, FastAPI, Pydantic, uvicorn |
-| Frontend | React 19, TypeScript 6, Vite 8, Tailwind CSS 4 |
-| Persistence | SQLite |
-| Cloud reasoning | APEX Agent through OpenAI, OpenRouter, or Google; see Configuration for current model IDs |
-| Local model infrastructure | APEX Agent through Ollama development models or llama.cpp with Gemma and Qwen options |
-| Voice | Google Cloud TTS, pyttsx3, optional Kokoro ONNX |
-| Tool integrations | Native connectors plus allowlisted MCP clients |
-| Validation | unittest, Vitest, ESLint, TypeScript, Vite build |
+| **Overview** | Collect status from connected services, check freshness and connector health, and manage reminders |
+| **Briefing** | Generate Daily, Catch Up, or Deep briefings, revisit saved sessions, and prepare spoken highlights |
+| **Cortex** | Talk with the APEX Agent, choose its model and tools, review actions, and manage personal context |
+| **Reports** | Read work reports submitted by outside tools and review findings that might belong in personal context |
 
-## Try it safely
+<p align="center">
+  <img src="docs/assets/apex-home.png" alt="APEX Overview with demo weather, calendar, news, reminders, market, email, and connector health cards" width="900">
+</p>
 
-The quickest evaluation path uses static demo data and needs no external credentials:
+<p align="center">
+  <em>Overview after collecting demo telemetry.</em>
+</p>
+
+## Try the demo
+
+The demo uses static data and needs no connector or model credentials. The validated development baseline is Windows with Python 3.14, uv, Node.js 24, and npm. Start from the repository root. If you do not already have a `.env` file, copy the example:
 
 ```powershell
 copy .env.example .env
-# Set DEMO_MODE=true in .env
+```
 
+Set `DEMO_MODE=true` in `.env`, then install and launch:
+
+```powershell
 uv sync --locked
 cd frontend
 npm ci
@@ -139,60 +48,115 @@ cd ..
 uv run python launcher.py
 ```
 
-Demo mode bypasses live connectors and model calls, uses static Daily and Catch Up sessions, and uses the configured demo voice path. For the complete Windows setup, optional providers, manual launch commands, and troubleshooting, see [Getting Started](docs/getting-started.md).
+Demo mode skips live connectors and model calls. It provides fixed Daily and Catch Up briefings and deterministic Agent responses; Deep is unavailable. Demo history is held in memory and resets when the process stops. Optional speech uses the configured demo voice engine.
 
-## Use APEX without the HUD
+See [Getting Started](docs/getting-started.md) for prerequisites, live setup, development servers, and troubleshooting.
 
-When the backend is already running, the included CLI can inspect APEX, run one Agent turn, generate a briefing, submit and inspect outside activity, review personal context, inspect recent Cortex runs, and resolve durable actions:
+## Everyday workflows
+
+### Check connected services and manage reminders
+
+In Overview, choose **Collect Telemetry** to check readiness and collect status from enabled services. Opening the workspace does not start collection. Telemetry is the collected status behind the weather, calendar, email, news, sports, reminder, and market cards. Each connector reports its health and freshness, including unavailable or stale data. You can refresh individual connectors or use **Refresh All** after collection.
+
+Selecting a Microsoft To Do list makes its incomplete tasks the Overview reminder source. The Reminders panel lets you edit, complete, delete, reopen, and inspect completed tasks directly. A local cache supports stale display, and an offline queue retains local reminders awaiting synchronization.
+
+### Prepare a briefing and follow up
+
+Briefing offers three profiles:
+
+- **Daily** gives an orientation from current sources.
+- **Catch Up** compares current sources with previously presented briefing evidence. When comparable sources show no material changes, it saves a no-change result without calling a model.
+- **Deep** can investigate with a limited set of read-only tools before producing the briefing.
+
+Each completed session saves the briefing and its supporting evidence locally, with a linked Cortex conversation for follow-up. APEX uses your selected model and does not silently switch to another if it is unavailable.
+
+You can also prepare spoken highlights from a saved briefing, then play them on your machine. Preparation uses the saved briefing as its source; replay uses stored audio. These controls do not speak automatically.
+
+<p align="center">
+  <img src="docs/assets/apex-briefing.png" alt="A saved Daily demo briefing in its linked conversation, alongside profile controls and telemetry" width="900">
+</p>
+
+<p align="center">
+  <em>A saved Daily demo briefing and its linked conversation.</em>
+</p>
+
+### Work with the APEX Agent
+
+The **APEX Agent**, named **Lynx** by default, is the assistant shared across Overview, Briefing, and Cortex. Choosing a model changes how that same Agent runs. Cortex provides its full conversation workspace, with model, reasoning, context, and tool controls.
+
+Enabled read tools can access connected services, briefing history, and personal context. Optional MCP (Model Context Protocol) integrations add explicitly allowed capabilities. Reads run directly within the configured permissions. Supported native write tools create action proposals that require local approval and verification before the Agent can treat them as complete.
+
+<p align="center">
+  <img src="docs/assets/apex-cortex.png" alt="A new Cortex conversation with model, reasoning, context, and tool controls" width="900">
+</p>
+
+<p align="center">
+  <em>Cortex conversation controls, including the selected model's availability.</em>
+</p>
+
+### Keep personal context reviewable
+
+Cortex keeps personal-context records alongside their original evidence and change history. Clear input you provide can be saved or corrected directly. Sensitive, conflicting, or model-interpreted changes wait for review. The Records and Review views let you inspect the evidence before accepting or rejecting a proposal; pending proposals stay outside trusted retrieval.
+
+The **Context vault** can export selected records as linked Markdown notes for Obsidian or other tools. Export starts disabled, and Cortex requires a preview before enabling a scope or broadening what it shares. APEX retains the source records and manages the exported copies. If you sync those notes through Google Drive or another service, that service controls the external copies. See the [Context Vault guide](docs/context-vault.md) for selection, sharing, and cleanup.
+
+### Review reports from outside tools
+
+Local tools can submit work reports through the CLI, JSON or Markdown import, a configured report folder, or an optional local HTTP and MCP gateway. Reports preserves the submitted content and lets you mark each report new, reviewed, or dismissed.
+
+You can propose a finding as personal context, but it enters trusted retrieval only after its linked review is accepted. Relevant report excerpts may also be used as explicitly untrusted briefing evidence. See [Configuration](docs/configuration.md#external-activity-intake) for intake options and [Privacy](docs/privacy.md#external-activity-reports) for how reports are used.
+
+## What stays local
+
+APEX stores conversations, briefings and their evidence, prepared briefing audio, personal context, reports, and action history in local SQLite storage. Settings are local too. Personal-context retrieval is disabled by default for both cloud and local models.
+
+Enabled connectors contact their services, and cloud model requests send the prompt, history, evidence, and tool results allowed for that operation. Selecting a local model keeps inference on the configured Ollama or llama.cpp endpoint. Speech has its own boundary: Google Cloud TTS receives spoken text, while pyttsx3 and Kokoro run locally. Review [Privacy and Data Boundaries](docs/privacy.md) before enabling personal connectors, cloud processing, or context export.
+
+The launcher serves the interface at `127.0.0.1:5500` and the API at `127.0.0.1:8000`. The API has no authentication and is intended for local use; CORS is not an access-control boundary. The launcher limits the environment variables passed to the frontend server and browser processes.
+
+## Use APEX from a terminal
+
+With the backend running, the CLI can inspect status, ask the Agent a question, generate a briefing, and review stored context, reports, and actions:
 
 ```powershell
 uv run apex status
-uv run apex models
-uv run apex ask "What needs my attention?" --profile personal_ops
-uv run apex briefing
-uv run apex briefing --profile catch-up --model gemini-3.7-flash
-uv run apex activity list
-uv run apex context list
-uv run apex context review list
-uv run apex runs list
+uv run apex ask "What needs my attention?"
+uv run apex briefing --profile catch-up
 uv run apex actions list
 ```
 
-The CLI talks only to APEX's loopback API at `127.0.0.1:8000`; it does not start the backend or provide remote access. See the [CLI reference](docs/cli.md) for the full command list and action behavior.
+The CLI talks only to the local API and does not start the backend. See the [CLI reference](docs/cli.md) for all commands and examples.
 
-## Local trust boundary
+## How it runs
 
-APEX is local-first, not fully offline. Enabled connectors and selected cloud model or speech providers receive the data required for their operation. The API has no authentication and intentionally binds only to `127.0.0.1`; CORS is not an access-control boundary.
+The React interface handles presentation and interaction. FastAPI coordinates connectors, model and tool execution, speech, and persistence. The Cortex Engine runs bounded Agent turns, and local generation is limited to one request at a time, with model loading visible in the interface.
 
-Select a local model in Runtime Settings to keep briefing prompts on the configured local inference endpoint. Cloud models receive the bounded evidence required for the selected profile. Review [Privacy and Data Boundaries](docs/privacy.md) before enabling personal connectors or cloud processing.
+```mermaid
+flowchart LR
+    UI["React · 127.0.0.1:5500"] --> API["FastAPI · 127.0.0.1:8000"]
+    CLI["APEX CLI"] --> API
+    API --> DB["Local SQLite storage"]
+    API --> C["Connected services and allowed MCP tools"]
+    API --> P["Cloud or local models"]
+    API --> V["Speech engines and local playback"]
+    API --> B["Briefing sessions"]
+    B --> M["Daily · Catch Up · Deep profiles"]
+```
+
+The backend uses Python 3.14, FastAPI, and Pydantic. The frontend uses React 19, TypeScript 6, Vite 8, and Tailwind CSS 4. Cloud model support includes OpenAI, OpenRouter, and Google; local inference uses Ollama or llama.cpp. See [Configuration](docs/configuration.md) for supported models and optional dependencies, and [Architecture](docs/architecture.md) for runtime ownership and failure behavior.
 
 ## Documentation
 
-| Document | Its one job |
+| Start here | Reference |
 |---|---|
-| [Getting Started](docs/getting-started.md) | Install APEX, run a safe demo, launch the full system, and resolve common startup problems |
-| [Configuration](docs/configuration.md) | Configure settings, credentials, connectors, models, speech, and MCP providers |
-| [Architecture](docs/architecture.md) | Understand processes, runtime paths, state ownership, data boundaries, concurrency, and failure behavior |
-| [API](docs/api.md) | Use the public HTTP workflows and understand their behavioral contracts |
-| [CLI](docs/cli.md) | Use the running local backend from a terminal without duplicating backend logic |
-| [Context Vault](docs/context-vault.md) | Manage, export, and safely synchronize selected personal knowledge with local Markdown vaults |
-| [Engineering Decisions](docs/decisions.md) | Understand why important technical choices and trade-offs were made |
-| [Identity and Naming](docs/identity-and-naming.md) | Understand the APEX name, logo symbolism, product vocabulary, and APEX Agent |
-| [Privacy](docs/privacy.md) | See what stays local, what can leave the machine, and what is persisted |
-| [Design System](docs/design-system.md) | Preserve the HUD's visual language, state semantics, responsiveness, and accessibility |
-| [Speech Runtime](docs/speech-runtime.md) | Understand voice modes, engine fallback, speech caching, and audio playback |
-| [Roadmap](docs/roadmap.md) | Follow APEX's product and architectural evolution and its planned direction |
-| [Changelog](CHANGELOG.md) | Review the detailed record of released changes |
-| [Frontend Guide](frontend/README.md) | Work specifically in the React/TypeScript application |
-| [Local Model Benchmarking](benchmarks/README.md) | Compare local models and one-off llama.cpp candidates with the developer benchmark utility |
-
-Run the documentation consistency check after editing public docs:
-
-```powershell
-uv run python scripts/check_docs.py
-```
-
-APEX is a personal project. Local constraints, privacy boundaries, failure behavior, and the HUD's visual language are part of how I want the system to work, not afterthoughts.
+| Install and run | [Getting Started](docs/getting-started.md) |
+| Choose services, models, and settings | [Configuration](docs/configuration.md) |
+| Understand storage and data sharing | [Privacy](docs/privacy.md), [Context Vault](docs/context-vault.md) |
+| Use APEX from other tools | [CLI](docs/cli.md), [API](docs/api.md) |
+| Understand the implementation | [Architecture](docs/architecture.md), [Engineering Decisions](docs/decisions.md) |
+| Work on the interface | [Frontend Guide](frontend/README.md), [Design System](docs/design-system.md) |
+| Configure speech or compare local models | [Speech Runtime](docs/speech-runtime.md), [Local Model Benchmarking](benchmarks/README.md) |
+| Understand APEX's identity and development | [Identity and Naming](docs/identity-and-naming.md), [Roadmap](docs/roadmap.md), [Changelog](CHANGELOG.md) |
 
 ## License
 

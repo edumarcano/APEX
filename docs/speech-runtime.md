@@ -1,25 +1,45 @@
 # Speech Runtime
 
-APEX manages speech through `core.speaker`. It prepares text, chooses the engine, handles fallback, splits long text, plays audio, supports cancellation, and reports whether speech is ready. FastAPI starts the speech runtime during application startup and releases it during shutdown; importing `core.speaker` does not load Kokoro or initialize cloud TTS.
+APEX uses speech for short progress cues, explicit text requests, and highlights from saved briefings. Audio plays on the machine running the backend, through one shared speaker lock. The browser controls delivery but does not receive audio files.
+
+For engine and voice settings, see [Configuration](configuration.md#voice-settings). This guide explains preparation, playback, fallback, and cancellation; the [API reference](api.md#voice) documents the HTTP requests.
+
+## Voice modes and briefing controls
+
+Voice mode determines which speech requests are allowed:
+
+| Mode | Progress cues | Explicit speech and briefing highlights |
+|---|---|---|
+| Automatic | Best-effort cues for work started in the current page session | Available |
+| Manual | Silent | Available |
+| Off | Silent | Preparation and playback blocked |
+
+Saved briefings have separate **Prepare**, **Play**, and **Stop** controls. Prepare creates a script and caches its audio. Play uses that cache, and Stop cancels that session's preparation or playback. Highlights never play automatically.
+
+The interface also offers an option to prepare highlights automatically after a newly generated briefing completes. This preference is saved in the browser and works in automatic or manual voice mode. It does not prepare highlights just because a saved session is opened.
 
 ## Installation
 
-The base APEX install includes `pygame-ce` and `pyttsx3`, so an offline fallback remains available without optional speech packages.
+The base install includes `pygame-ce` for audio playback and `pyttsx3` as the local speech fallback. Working delivery still depends on the host's audio setup and system speech engine.
 
-Google Cloud TTS and Kokoro are optional extras:
+Google Cloud TTS and Kokoro require optional packages. Choose one extra, or install both together:
 
 ```powershell
 uv sync --extra tts-google
 uv sync --extra tts-kokoro
+uv sync --extra tts-google --extra tts-kokoro
 ```
 
-Install both optional speech engines with:
+Google also needs `GOOGLE_APPLICATION_CREDENTIALS`, as described in [Configuration](configuration.md#connector-credentials). Kokoro expects two local assets:
 
-```powershell
-uv sync --all-extras
+```text
+core/weights/kokoro/kokoro-v1.0.onnx
+core/weights/kokoro/voices-v1.0.bin
 ```
 
-If an optional engine is missing its package, credentials, or local model files, APEX still starts. Speech reports that engine as unavailable and uses the local fallback when speech is requested.
+Installing the Kokoro extra does not supply those files. Keep model weights out of version control.
+
+A missing optional package, credential, or model file does not prevent APEX from starting. The selected engine reports unavailable, and a speech request attempts the local fallback. If that fallback also fails, delivery reports a failure.
 
 ## Engine behavior
 
@@ -29,31 +49,47 @@ If an optional engine is missing its package, credentials, or local model files,
 | Kokoro | local Kokoro ONNX | local pyttsx3 |
 | pyttsx3 | local pyttsx3 | delivery failure |
 
-Kokoro stays local. If Kokoro is unavailable or fails during preparation, synthesis, or playback, APEX falls back to pyttsx3 and never sends the text to Google Cloud TTS.
+A Kokoro request never falls back to Google Cloud TTS. Its text stays local during audio synthesis. Preparing a briefing's highlight script is a separate model call and may use a cloud model; see [Privacy](privacy.md#speech) for that sharing boundary.
 
 ## Contextual cues
 
-In automatic voice mode, APEX may speak short first-person cues in two places. Telemetry collection speaks a cue when it starts and when it finishes, fails, or returns no fresh data. The start cue is skipped when the refresh would reuse a snapshot that is still fresh, for example after reloading the page, because nothing is being collected. The result cue is still spoken.
+In automatic voice mode, APEX may speak a short first-person cue when telemetry collection starts and when it finishes, fails, or returns no fresh data. If the refresh will reuse a fresh snapshot, the start cue is skipped because no collection is needed. The result cue can still be spoken.
 
-Briefing speaks a cue when a briefing starts (naming its profile), when it completes, and when it fails, plus a cue when spoken highlights finish preparing or fail to prepare. These cues are spoken only for work started in the current page session and once per run. Opening a saved session, reloading while a run is in progress, cancelling, and reading saved highlight status are silent. Highlights are never played automatically.
+Briefing cues announce the start, including the profile name, and completion or failure. Spoken highlights have their own preparation completion and failure cues. These announcements apply only to work started in the current page session and are deduplicated for that work. Opening saved sessions, reloading during a run, cancelling, and reading saved highlight status are silent.
 
-Cues use the local time of day and optional saved user designation where they greet. They do not announce a fallback. Manual and off modes skip them.
-
-Cue requests share the speech lock and configured engine fallback with other speech. They are best effort: a busy or failed cue does not fail telemetry collection or refresh. See the [voice cue API](api.md#post-apiv1voicecue) for the request and response contract.
-
-## Long-text delivery
-
-Google and Kokoro input is normalized to Unicode plain text and split at sentence boundaries. Very long sentences are split again at a fixed size limit. Valid accented and non-Latin characters are preserved.
-
-APEX synthesizes one chunk ahead of playback. The first chunk starts playing while the next one is generated, and the queue stays small so a long briefing does not need all of its audio in memory before playback begins.
+Greetings use the local time of day and an optional saved user designation. Cues do not announce engine fallback. They share the speaker lock with other delivery and are best effort: a busy or failed cue does not fail the operation it describes. See the [voice cue API](api.md#post-apiv1voicecue) for the request and response contract.
 
 ## Saved briefing highlights
 
-Briefing speech is an optional derivative of one completed, persisted canonical artifact. The client must request Prepare; APEX makes a tool-free script call with the model frozen into that session, bounded by the smaller of its saved model budget and 240 seconds. If the response contains individually valid highlights, APEX can use them without another model call. For a numeric-fact mismatch, it may read the exact title and body of a model-selected item when it fits the speech limits and contains no URL or citation. An unrecoverable response gets at most one repair call. The complete recovered script passes the same artifact validator. Invalid segments with changed dates, missing qualifiers, or other factual drift are never spoken; if no valid segment or eligible exact-source numeric recovery remains, preparation stays unavailable. A model deadline is reported as `speech_model_timeout`, separately from audio failures. The script can only cite item IDs from the artifact and must preserve its numbers, dates, uncertainty, external-report attribution, review state, and suggestion status. No retrieval, conversation history, or run telemetry is added to this call; when Runtime Settings include a saved user designation, that value is passed into the script prompt so highlights may address the user naturally. Already-prepared audio is reused until Prepare runs again after an engine or voice-gender change or until `?force=true` explicitly rebuilds it. Demo Daily and Catch Up use a deterministic script taken from the exact persisted fixture artifact and `DEMO_TTS`, without a provider call.
+Highlights are derived from one completed, persisted briefing artifact. They do not change the original briefing. Preparation and playback run on one speech worker, separate from the Cortex run workers, whose default capacity is two. That worker accepts one session job at a time rather than queuing additional sessions.
 
-Preparation runs on one speech worker, separate from the two Cortex run workers; it can run alongside those workers. The speech worker does not queue additional sessions, uses the shared local-model admission lock, and fails fast if local inference is already occupied. It synthesizes short text chunks with the selected engine and stores each chunk independently in SQLite with its audio type and duration; separate WAV chunks are never concatenated. pyttsx3 exports WAV through a time-limited child process. The stored cache records the requested/resolved engine and voice gender, so Play continues to use the prepared voice even if Runtime Settings later change. A new Prepare request rebuilds the cache after an engine or gender change; `?force=true` explicitly rebuilds it with the current voice settings.
+### Script preparation and validation
 
-Play sends the ordered cached chunks through the shared `core.speaker` lock, so cues, generic `/api/v1/voice/speak` delivery, and saved briefing playback cannot overlap. Playback has a deadline derived from the bounded stored chunk durations; cancellation remains responsive while the mixer is active. Play never regenerates audio and never streams bytes to the browser. Stop cancels the active session job without stopping unrelated speech. Preparation and cached chunks have bounded counts, byte sizes, durations, provider retries, and elapsed time. Application shutdown cancels speech before draining Cortex runs and keeps SQLite and the speaker open until the speech worker has drained.
+APEX asks the model captured in the briefing session to write a script using only that artifact. The call has no tools, retrieval, conversation history, or run telemetry. A saved user designation may also be included so the highlights can address the user naturally. The model deadline is the smaller of the session's saved model budget and 240 seconds, shared across the initial call and any repair. Local inference uses the shared admission lock and fails fast if another operation already owns it.
+
+The script is instructed to preserve the artifact's facts and status. The validator checks item references, matching numeric values and date words, required uncertainty and category qualifiers, unsupported completion language for suggestions, and the absence of URLs or citations. These checks do not verify every factual claim. APEX can keep individually valid highlights without another model call. After a numeric mismatch, it may instead read the exact title and body of a model-selected item if that text fits the speech limits and contains no URL or citation.
+
+If those recovery steps do not produce a usable script, APEX allows at most one repair call. Recovered scripts pass the same validator. Detected reference, numeric, date-word, and qualifier mismatches are rejected; preparation remains unavailable if no valid script can be recovered. A model deadline is reported as `speech_model_timeout`, separately from audio failures.
+
+Demo Daily and Catch Up use a deterministic script from the persisted fixture artifact and the `DEMO_TTS` engine, without a model-provider call.
+
+### Audio caching
+
+After validating the script, APEX synthesizes short chunks and stores each separately in SQLite with its audio type and duration. WAV chunks are never concatenated. pyttsx3 exports WAV through a child process with a time limit. Chunk counts, byte sizes, durations, retries, and elapsed time are bounded.
+
+The cache is bound to the exact briefing artifact and records the requested engine, resolved fallback engine, and voice gender. Play retains that prepared voice even if Runtime Settings later change. Prepare reuses a matching cache, rebuilds it after an engine or gender change, and explicitly rebuilds it with the current settings when requested with `?force=true`.
+
+### Playback and stopping
+
+Play sends the ordered cached chunks through the shared `core.speaker` lock. It does not regenerate the script or audio, and it does not stream bytes to the browser. A busy speaker can prevent delivery. Playback has a deadline derived from the stored chunk durations, and cancellation remains responsive while the mixer is active.
+
+Stop cancels only the selected session's job and leaves unrelated speech alone. See the [briefing speech API](api.md#get-apiv1briefing-sessionssessionidspeech) for status, Prepare, Play, and Stop requests.
+
+## Long-text delivery
+
+Direct text delivery through Google or Kokoro normalizes Markdown to Unicode plain text and splits it at sentence boundaries. Very long sentences are split again at a fixed size limit. Valid accented and non-Latin characters are preserved.
+
+This delivery path synthesizes one chunk ahead: the first chunk plays while the next is generated, keeping the queue small. Saved briefing highlights use the separate preparation and caching workflow above; all of their audio is prepared before Play.
 
 ## Kokoro resource checks
 
@@ -63,12 +99,12 @@ Kokoro has its own CPU and memory checks:
 - CPU above 80% may be temporary, so APEX waits briefly and requires stable samples at or below the threshold before starting Kokoro.
 - If CPU pressure remains high through that window, APEX falls back to pyttsx3.
 
-These checks are separate from the general system scanner and avoid rejecting Kokoro just because briefing generation ended with a short CPU spike.
+These checks are separate from the general system scanner and allow a short CPU spike after briefing generation to settle.
 
 ## Readiness and cancellation
 
-Startup readiness tracks audio mixer initialization and the selected optional engine. Kokoro checks its model and voice files, loads the model, and runs a small synthesis probe. Google checks its credentials, package availability, and client setup.
+FastAPI initializes `core.speaker` during startup and releases it during shutdown. Importing the module does not load Kokoro or initialize Google Cloud TTS.
 
-An unavailable optional speech engine does not make the whole API unavailable. `/api/v1/health/ready` continues to represent the core application rather than every optional speech provider.
+Startup readiness tracks audio mixer initialization and the selected optional engine. Kokoro checks its model and voice files, loads the model, and runs a small synthesis probe. Google checks credentials, package availability, and client setup. Optional engine readiness does not guarantee successful delivery, and an unavailable engine does not make the whole API unavailable: `/api/v1/health/ready` represents the core application.
 
-The speaker also owns cancellation during shutdown. It stops active mixer playback, attempts to stop pyttsx3, prevents queued chunks from continuing, and ignores late synthesis results. The session-scoped briefing Stop route cancels only that session's preparation or cached playback; shutdown remains the application-wide cancellation boundary.
+Shutdown requests speech cancellation before draining Cortex runs. The speaker stops active mixer playback, attempts to stop pyttsx3, suppresses queued chunks, and ignores late synthesis results. SQLite and the speaker stay open while the briefing speech worker drains within the shared shutdown deadline. If draining times out, shutdown reports an error and leaves those dependencies open.
