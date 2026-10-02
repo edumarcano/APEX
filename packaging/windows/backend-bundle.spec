@@ -1,0 +1,153 @@
+# -*- mode: python ; coding: utf-8 -*-
+
+import importlib.util
+import os
+from pathlib import Path
+import sys
+
+from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
+
+
+ROOT = Path(SPECPATH).resolve().parents[1]
+collection_path = ROOT / "packaging" / "windows" / "collection.py"
+collection_spec = importlib.util.spec_from_file_location("apex_bundle_collection", collection_path)
+if collection_spec is None or collection_spec.loader is None:
+    raise RuntimeError("Could not load the shared bundle collection helper.")
+collection_module = importlib.util.module_from_spec(collection_spec)
+collection_spec.loader.exec_module(collection_module)
+bundle_datas = collection_module.bundle_datas
+bundle_hidden_imports = collection_module.bundle_hidden_imports
+
+
+probe_mode = os.environ.get("APEX_BUNDLE_PROBE_BUILD") == "1"
+resource_root = ROOT / "build" / "backend-bundle" / "staging" / "resources"
+datas = [(source, destination) for source, destination in bundle_datas(resource_root)]
+binaries = []
+hiddenimports = bundle_hidden_imports()
+
+# These packages ship runtime data and native libraries that module analysis
+# alone does not reliably discover on Windows.
+def include_non_test_module(name):
+    return not any(part in {"test", "tests", "testing"} for part in name.split("."))
+
+
+for package in (
+    "fastembed",
+    "onnxruntime",
+    "numpy",
+    "pygame",
+    "kokoro_onnx",
+    "espeakng_loader",
+):
+    package_datas, package_binaries, package_hidden = collect_all(
+        package,
+        filter_submodules=include_non_test_module,
+        exclude_datas=["**/test/**", "**/tests/**", "**/testing/**"],
+    )
+    datas.extend(package_datas)
+    binaries.extend(package_binaries)
+    hiddenimports.extend(package_hidden)
+
+hiddenimports.extend(
+    collect_submodules(
+        "comtypes",
+        filter_submodules=lambda name: include_non_test_module(name)
+        and not name.startswith("comtypes.gen"),
+    )
+)
+hiddenimports.extend(
+    collect_submodules(
+        "pyttsx3",
+        filter_submodules=lambda name: name in {
+            "pyttsx3",
+            "pyttsx3.drivers",
+            "pyttsx3.drivers.sapi5",
+        },
+    )
+)
+
+datas.extend(copy_metadata("apex", recursive=True))
+datas.extend(copy_metadata("fastembed"))
+if probe_mode:
+    hiddenimports.extend(["scripts.smoke_backend_bundle", "core.host.profile_lock"])
+
+entry = (
+    ROOT / "packaging" / "windows" / "smoke" / "probe.py"
+    if probe_mode
+    else ROOT / "packaging" / "windows" / "backend_entry.py"
+)
+analysis = Analysis(
+    [str(entry)],
+    pathex=[str(ROOT), str(ROOT / "src")],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=sorted(set(hiddenimports)),
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[str(ROOT / "packaging" / "windows" / "rthook_comtypes.py")],
+    excludes=[],
+    noarchive=False,
+)
+pyz = PYZ(analysis.pure)
+executable_name = "apex-bundle-probe" if probe_mode else "apex-backend"
+console_executable = EXE(
+    pyz,
+    analysis.scripts,
+    [],
+    exclude_binaries=True,
+    name=executable_name,
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    console=True,
+    disable_windowed_traceback=False,
+)
+
+if probe_mode:
+    coll = COLLECT(
+        console_executable,
+        analysis.binaries,
+        analysis.datas,
+        strip=False,
+        upx=False,
+        name="apex-bundle-probe",
+    )
+else:
+    cli_analysis = Analysis(
+        [str(ROOT / "packaging" / "windows" / "cli_entry.py")],
+        pathex=[str(ROOT), str(ROOT / "src")],
+        binaries=binaries,
+        datas=datas,
+        hiddenimports=sorted(set(hiddenimports)),
+        hookspath=[],
+        hooksconfig={},
+        runtime_hooks=[],
+        excludes=[],
+        noarchive=False,
+    )
+    cli_pyz = PYZ(cli_analysis.pure)
+    cli_executable = EXE(
+        cli_pyz,
+        cli_analysis.scripts,
+        [],
+        exclude_binaries=True,
+        name="apex",
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,
+        console=True,
+        disable_windowed_traceback=False,
+    )
+    coll = COLLECT(
+        console_executable,
+        cli_executable,
+        analysis.binaries,
+        analysis.datas,
+        cli_analysis.binaries,
+        cli_analysis.datas,
+        strip=False,
+        upx=False,
+        name="backend-bundle",
+    )

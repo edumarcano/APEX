@@ -1,0 +1,12 @@
+{
+  "architecture": "AMD64",
+  "extras": [
+    "tts-google",
+    "tts-kokoro",
+    "tracing"
+  ],
+  "hooks_contrib_version": "2026.8",
+  "python_version": "3.14.7",
+  "pyinstaller_version": "6.22.3",
+  "uv_version": "0.12.3"
+}

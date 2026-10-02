@@ -16,6 +16,7 @@ credentials.json
 token.json
 service_account.json
 dist/
+build/backend-bundle/
 frontend/node_modules/
 clients/.f1_cache.json
 clients/.football_cache.json
