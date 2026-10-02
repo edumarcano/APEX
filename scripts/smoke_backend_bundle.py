@@ -181,7 +181,10 @@ def _next_envelope(lines: queue.Queue[bytes | None], deadline: float) -> dict[st
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("timed out waiting for the managed host control envelope")
-        raw = lines.get(timeout=remaining)
+        try:
+            raw = lines.get(timeout=remaining)
+        except queue.Empty as exc:
+            raise TimeoutError("timed out waiting for the managed host control envelope") from exc
         if raw is None:
             raise RuntimeError("managed host closed its control stream before readiness")
         return decode_frame(raw).as_dict()

@@ -76,6 +76,10 @@ class BackendBundleSmokeHarnessTests(unittest.TestCase):
                 if stream is not None and not stream.closed:
                     stream.close()
 
+    def test_envelope_queue_deadline_uses_timeout_error_contract(self) -> None:
+        with self.assertRaisesRegex(TimeoutError, "timed out waiting"):
+            smoke._next_envelope(smoke.queue.Queue(), smoke.time.monotonic() + 0.01)
+
 
 if __name__ == "__main__":
     unittest.main()
