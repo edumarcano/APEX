@@ -86,7 +86,7 @@ class BackendBundleBuildTests(unittest.TestCase):
     def test_package_collection_excludes_hooks_and_compiler_only_modules(self) -> None:
         self.assertEqual(
             COLLECTION.bundle_analysis_excludes(),
-            ["numpy.f2py", "numpy._pyinstaller", "pygame.__pyinstaller"],
+            ["numpy.f2py", "numpy._pyinstaller", "pygame.__pyinstaller", "setuptools"],
         )
         self.assertFalse(
             COLLECTION.include_runtime_submodule("numpy._pyinstaller.hook-numpy")

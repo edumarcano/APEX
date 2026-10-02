@@ -53,6 +53,7 @@ _ANALYSIS_EXCLUDES = (
     "numpy.f2py",
     "numpy._pyinstaller",
     "pygame.__pyinstaller",
+    "setuptools",
 )
 
 
