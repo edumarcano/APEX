@@ -684,7 +684,7 @@ def _stage_corresponding_sources(
                 "kind": "source-provenance",
             }
         )
-        manifest_destination = destination.parent / "espeak-ng-source.json"
+        manifest_destination = output_dir / "licenses" / "source-material" / "espeak-ng-source.json"
         shutil.copyfile(manifest_path, manifest_destination)
         records.append(
             {

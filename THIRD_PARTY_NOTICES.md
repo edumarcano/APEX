@@ -14,7 +14,7 @@ The all-extras dependency graph includes `pygame-ce`, ONNX Runtime, `phonemizer-
 
 Model weights are not bundled. APEX downloads retrieval models on demand and operators may supply speech weights separately; model terms are governed by their respective upstream sources and are outside this software inventory.
 
-The loader source archive also carries a verified MIT grant for the 0.2.4 Python wrapper. The collector stages it only after comparing the installed wrapper bytes with the upstream licensed source. Model weights are not bundled; model terms are governed by their respective upstream sources and are outside this software inventory.
+The loader source archive also carries a verified MIT grant for the 0.2.4 Python wrapper. The collector stages it only after comparing the installed wrapper bytes with the upstream licensed source.
 
 ## Frontend attributions
 
