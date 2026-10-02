@@ -83,6 +83,37 @@ class BackendBundleBuildTests(unittest.TestCase):
             COLLECTION.include_onnxruntime_submodule("onnxruntime.datasets.example")
         )
 
+    def test_package_collection_excludes_hooks_and_compiler_only_modules(self) -> None:
+        self.assertEqual(
+            COLLECTION.bundle_analysis_excludes(),
+            ["numpy.f2py", "numpy._pyinstaller", "pygame.__pyinstaller"],
+        )
+        self.assertFalse(
+            COLLECTION.include_runtime_submodule("numpy._pyinstaller.hook-numpy")
+        )
+        self.assertFalse(
+            COLLECTION.include_runtime_submodule("pygame.__pyinstaller.hook-pygame")
+        )
+        self.assertFalse(COLLECTION.include_runtime_submodule("numpy.f2py.f2py2e"))
+        self.assertFalse(COLLECTION.include_runtime_submodule("numpy._pytesttester"))
+        self.assertTrue(COLLECTION.include_runtime_submodule("numpy.linalg"))
+        self.assertTrue(
+            COLLECTION.is_bundle_excluded_data_path("numpy/_pyinstaller/hook-numpy.py")
+        )
+        self.assertTrue(
+            COLLECTION.is_bundle_excluded_data_path("numpy/f2py/f2py2e.py")
+        )
+        self.assertTrue(
+            COLLECTION.is_bundle_excluded_data_path(
+                "pygame/__pyinstaller/hook-pygame.py"
+            )
+        )
+        self.assertFalse(
+            COLLECTION.is_bundle_excluded_data_path(
+                "espeakng_loader/espeak-ng-data/phondata"
+            )
+        )
+
     def test_build_info_is_deterministic_and_contains_no_machine_path(self) -> None:
         toolchain = builder._load_toolchain()
         lock_digest = "a" * 64

@@ -49,6 +49,17 @@ _HIDDEN_IMPORTS = (
     "espeakng_loader",
 )
 
+_ANALYSIS_EXCLUDES = (
+    "numpy.f2py",
+    "numpy._pyinstaller",
+    "pygame.__pyinstaller",
+)
+
+
+def bundle_analysis_excludes() -> list[str]:
+    """Return exact package roots that are build tools, not runtime features."""
+    return list(_ANALYSIS_EXCLUDES)
+
 
 def is_onnxruntime_example_data_path(value: str | Path) -> bool:
     """Identify only ONNX Runtime's packaged example dataset subtree."""
@@ -59,11 +70,45 @@ def is_onnxruntime_example_data_path(value: str | Path) -> bool:
     )
 
 
+def is_bundle_excluded_data_path(value: str | Path) -> bool:
+    """Identify known collected-package data not used by APEX at runtime."""
+    parts = str(value).replace("\\", "/").casefold().split("/")
+    excluded_subtrees = (
+        ["numpy", "_pyinstaller"],
+        ["numpy", "f2py"],
+        ["pygame", "__pyinstaller"],
+        ["onnxruntime", "datasets"],
+    )
+    return any(
+        parts[index : index + 2] == subtree
+        for subtree in excluded_subtrees
+        for index in range(len(parts) - 1)
+    )
+
+
+def include_runtime_submodule(name: str) -> bool:
+    """Keep runtime modules while excluding package hooks and NumPy's compiler."""
+    normalized = name.casefold()
+    parts = normalized.split(".")
+    if any(
+        part in {"test", "tests", "testing", "_pyinstaller", "__pyinstaller"}
+        for part in parts
+    ):
+        return False
+    if (
+        normalized == "numpy._pytesttester"
+        or normalized == "numpy.f2py"
+        or normalized.startswith("numpy.f2py.")
+    ):
+        return False
+    return True
+
+
 def include_onnxruntime_submodule(name: str) -> bool:
     """Keep runtime modules while excluding ONNX Runtime example datasets."""
     normalized = name.casefold()
     return (
-        not any(part in {"test", "tests", "testing"} for part in normalized.split("."))
+        include_runtime_submodule(name)
         and normalized != "onnxruntime.datasets"
         and not normalized.startswith("onnxruntime.datasets.")
     )

@@ -17,8 +17,10 @@ collection_module = importlib.util.module_from_spec(collection_spec)
 collection_spec.loader.exec_module(collection_module)
 bundle_datas = collection_module.bundle_datas
 bundle_hidden_imports = collection_module.bundle_hidden_imports
+bundle_analysis_excludes = collection_module.bundle_analysis_excludes
 include_onnxruntime_submodule = collection_module.include_onnxruntime_submodule
-is_onnxruntime_example_data_path = collection_module.is_onnxruntime_example_data_path
+include_runtime_submodule = collection_module.include_runtime_submodule
+is_bundle_excluded_data_path = collection_module.is_bundle_excluded_data_path
 
 
 probe_mode = os.environ.get("APEX_BUNDLE_PROBE_BUILD") == "1"
@@ -26,12 +28,6 @@ resource_root = ROOT / "build" / "backend-bundle" / "staging" / "resources"
 datas = [(source, destination) for source, destination in bundle_datas(resource_root)]
 binaries = []
 hiddenimports = bundle_hidden_imports()
-
-# These packages ship runtime data and native libraries that module analysis
-# alone does not reliably discover on Windows.
-def include_non_test_module(name):
-    return not any(part in {"test", "tests", "testing"} for part in name.split("."))
-
 
 _OMIT_DIST_INFO_FILES = {
     "direct_url.json",
@@ -51,7 +47,7 @@ def sanitize_analysis_datas(analysis):
     for item in analysis.datas:
         destination = str(item[0]).replace("\\", "/")
         parts = destination.split("/")
-        if is_onnxruntime_example_data_path(destination):
+        if is_bundle_excluded_data_path(destination):
             continue
         dist_info = next(
             (part for part in parts if part.lower().endswith(".dist-info")),
@@ -77,17 +73,16 @@ for package in (
     "espeakng_loader",
 ):
     submodule_filter = (
-        include_onnxruntime_submodule if package == "onnxruntime" else include_non_test_module
+        include_onnxruntime_submodule if package == "onnxruntime" else include_runtime_submodule
     )
     package_datas, package_binaries, package_hidden = collect_all(
         package,
         filter_submodules=submodule_filter,
         exclude_datas=["**/test/**", "**/tests/**", "**/testing/**"],
     )
-    if package == "onnxruntime":
-        package_datas = [
-            item for item in package_datas if not is_onnxruntime_example_data_path(item[1])
-        ]
+    package_datas = [
+        item for item in package_datas if not is_bundle_excluded_data_path(item[1])
+    ]
     datas.extend(package_datas)
     binaries.extend(package_binaries)
     hiddenimports.extend(package_hidden)
@@ -111,7 +106,7 @@ analysis = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[str(ROOT / "packaging" / "windows" / "rthook_comtypes.py")],
-    excludes=[],
+    excludes=bundle_analysis_excludes(),
     noarchive=False,
 )
 sanitize_analysis_datas(analysis)
@@ -150,7 +145,7 @@ else:
         hookspath=[],
         hooksconfig={},
         runtime_hooks=[],
-        excludes=[],
+        excludes=bundle_analysis_excludes(),
         noarchive=False,
     )
     sanitize_analysis_datas(cli_analysis)
