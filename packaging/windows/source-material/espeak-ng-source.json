@@ -1,0 +1,6 @@
+{
+  "archive": "espeak-ng-1.52.0.tar.gz",
+  "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+  "upstream_revision": "4870adfa25b1a32b4361592f1be8a40337c58d6c",
+  "loader_revision": "146599e29be31bf17d99f0bcb7dbb2f92aef3d95"
+}

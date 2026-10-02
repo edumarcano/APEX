@@ -1,0 +1,8 @@
+{
+  "version": "3.4.4",
+  "upstream_revision": "9138d40e8813c2a7c6c7a015f3dffe0a120730e0",
+  "wheel_sha256": "9d3a6327b9ee835188eb7323fc3b5d4cd061631b48da8ece56794bb538972505",
+  "license_file": "fastmcp-slim-3.4.4-LICENSE.txt",
+  "license_sha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1",
+  "license_url": "https://raw.githubusercontent.com/PrefectHQ/fastmcp/9138d40e8813c2a7c6c7a015f3dffe0a120730e0/LICENSE"
+}

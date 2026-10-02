@@ -1,51 +1,29 @@
 # Third-Party Notices
 
-APEX includes third-party open-source software distributed under their respective licenses.
+APEX includes third-party software under the licenses carried by its source distributions and installed packages. The frozen backend bundle stages the original license and notice files from the locked runtime dependency closure in `licenses/`; this document accompanies that generated inventory.
 
-## Microsoft Authentication Libraries
+## Bundle scope
 
-APEX uses:
+The backend bundle uses the Python dependencies in `pyproject.toml` and `uv.lock`, including the `tts-google`, `tts-kokoro`, and `tracing` extras. Its generated inventory records each installed distribution name and version and links to the license or notice files copied from that distribution. It also includes the Python interpreter license and PyInstaller's bootloader license exception. Build-only packages are excluded except for the PyInstaller bootloader notice.
 
-- Microsoft Authentication Library for Python (`msal`)
-- Microsoft Authentication Extensions for Python (`msal-extensions`)
+The inventory is generated at build time because optional dependencies and transitive versions are part of the shipped files. If a runtime distribution has no installed license or notice material, the collector stops instead of inferring a license from package metadata.
 
-Copyright (c) Microsoft Corporation.
+## Native and model files
 
-Both are licensed under the MIT License.
+The all-extras dependency graph includes `pygame-ce`, ONNX Runtime, `phonemizer-fork`, and the Windows `espeakng-loader` wheel. The eSpeak NG native files have licensing and corresponding-source material separate from the Python loader package. The pygame-ce Windows wheel also bundles SDL and codec DLLs; its hash-verified 2.5.7 source distribution supplies the pygame and multimedia license texts, with separate upstream licenses staged for the libxmp 4.6.1 and WavPack 5.6.0 DLLs. See [Backend bundle](docs/backend-bundle.md) for the exact packaging scope and source-material status.
 
-## Apache-2.0 Components
+Model weights are not bundled. APEX downloads retrieval models on demand and operators may supply speech weights separately; model terms are governed by their respective upstream sources and are outside this software inventory.
 
-APEX uses software distributed under the Apache License 2.0, including:
+The loader source archive also carries a verified MIT grant for the 0.2.4 Python wrapper. The collector stages it only after comparing the installed wrapper bytes with the upstream licensed source. Model weights are not bundled; model terms are governed by their respective upstream sources and are outside this software inventory.
 
-- FastMCP
-- Google API Client for Python
-- Google Auth
-- Google Auth OAuthlib
-- Google Gen AI SDK
-- OpenAI Python SDK
-- Requests
-- Google Cloud Text-to-Speech, when installed
-- OpenTelemetry Python SDK and exporter libraries, when installed
+## Frontend attributions
 
-Redistributions must preserve the applicable Apache License 2.0 notices and any required upstream `NOTICE` material.
+The APEX source distribution also includes frontend software under separate licenses. React and related frontend libraries and assistant-ui (`@assistant-ui/react`) are MIT-licensed; Lucide is ISC-licensed. The frontend package manifests and lockfile identify the exact versions. These source-project attributions remain relevant when distributing the frontend; they are not part of the standalone backend bundle's generated dependency inventory.
 
-## Other Licensed Components
+## Source project attributions
 
-APEX also uses third-party components under permissive or weak-copyleft licenses, including:
+The source project also uses Microsoft Authentication Library for Python (`msal`) and Microsoft Authentication Extensions for Python (`msal-extensions`), both under the MIT License. Its Python dependency set includes Apache-2.0 components such as FastMCP, Google Auth, Google Gen AI, OpenAI, Requests, Google Cloud Text-to-Speech, and OpenTelemetry packages, plus components under other upstream licenses such as pygame-ce, pyttsx3, psutil, and python-dotenv. Consult the project dependency manifests and lockfiles for exact versions and each package's complete terms. These source-project attributions do not replace the generated backend bundle inventory.
 
-- React and related frontend libraries: MIT
-- assistant-ui (`@assistant-ui/react`): MIT
-- Lucide: ISC
-- psutil: BSD-3-Clause
-- python-dotenv: BSD-3-Clause
-- pygame-ce: LGPL-2.1-or-later
-- pyttsx3: MPL-2.0
-- FastEmbed and the pinned `BAAI/bge-small-en-v1.5` retrieval model: MIT
+## Other attributions
 
-These components remain subject to their respective upstream license terms.
-
-## Data Attribution
-
-Third-party data and hosted-service attribution requirements are presented in the APEX interface where applicable and are not replaced by this file.
-
-See the project dependency manifests and lockfiles for the complete dependency set.
+Third-party data and hosted-service attribution requirements are presented in the APEX interface where applicable. They are not replaced by this file.
