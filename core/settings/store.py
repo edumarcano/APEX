@@ -41,8 +41,11 @@ class RuntimeSettingsStore:
     """
     Thread-safe settings store.
 
-    Loads ``config.json`` then overlays ``config.local.json``, publishes an
-    immutable snapshot, and persists dirty patches transactionally.
+    The default store layers resource defaults, a separate data-directory
+    ``config.json``, and data-directory ``config.local.json``. Explicit custom
+    config/local paths retain the two-file behavior unless an operator path is
+    supplied. The store publishes an immutable snapshot and persists dirty
+    patches transactionally to the local file.
     """
 
     def __init__(
@@ -417,7 +420,7 @@ def get_settings_store(
 
     When ``force_new`` is true, or custom paths are provided, construct a fresh
     store (used by tests). Otherwise reuse the singleton initialized for the
-    default project paths.
+    selected runtime profile.
     """
     global _STORE
     if (
