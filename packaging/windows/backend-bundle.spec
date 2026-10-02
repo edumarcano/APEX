@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import sys
 
-from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
+from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 
 ROOT = Path(SPECPATH).resolve().parents[1]
@@ -31,6 +31,39 @@ def include_non_test_module(name):
     return not any(part in {"test", "tests", "testing"} for part in name.split("."))
 
 
+_OMIT_DIST_INFO_FILES = {
+    "direct_url.json",
+    "uv_cache.json",
+    "uv_build.json",
+    "record",
+    "record.jws",
+    "record.p7s",
+    "installer",
+    "requested",
+}
+
+
+def sanitize_analysis_datas(analysis):
+    """Remove installer provenance and metadata-only shim records from a build."""
+    retained = []
+    for item in analysis.datas:
+        destination = str(item[0]).replace("\\", "/")
+        parts = destination.split("/")
+        dist_info = next(
+            (part for part in parts if part.lower().endswith(".dist-info")),
+            None,
+        )
+        if dist_info is not None:
+            normalized_dist = dist_info[: -len(".dist-info")].lower().replace("_", "-")
+            filename = parts[-1].lower()
+            if normalized_dist.startswith("pypiwin32-"):
+                continue
+            if filename in _OMIT_DIST_INFO_FILES:
+                continue
+        retained.append(item)
+    analysis.datas[:] = retained
+
+
 for package in (
     "fastembed",
     "onnxruntime",
@@ -47,24 +80,6 @@ for package in (
     datas.extend(package_datas)
     binaries.extend(package_binaries)
     hiddenimports.extend(package_hidden)
-
-hiddenimports.extend(
-    collect_submodules(
-        "comtypes",
-        filter_submodules=lambda name: include_non_test_module(name)
-        and not name.startswith("comtypes.gen"),
-    )
-)
-hiddenimports.extend(
-    collect_submodules(
-        "pyttsx3",
-        filter_submodules=lambda name: name in {
-            "pyttsx3",
-            "pyttsx3.drivers",
-            "pyttsx3.drivers.sapi5",
-        },
-    )
-)
 
 datas.extend(copy_metadata("apex", recursive=True))
 datas.extend(copy_metadata("fastembed"))
@@ -88,6 +103,7 @@ analysis = Analysis(
     excludes=[],
     noarchive=False,
 )
+sanitize_analysis_datas(analysis)
 pyz = PYZ(analysis.pure)
 executable_name = "apex-bundle-probe" if probe_mode else "apex-backend"
 console_executable = EXE(
@@ -126,6 +142,7 @@ else:
         excludes=[],
         noarchive=False,
     )
+    sanitize_analysis_datas(cli_analysis)
     cli_pyz = PYZ(cli_analysis.pure)
     cli_executable = EXE(
         cli_pyz,
