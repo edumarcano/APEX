@@ -10,7 +10,6 @@ import socket
 import subprocess
 import sys
 import tempfile
-import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -164,26 +163,30 @@ class BackendBundleSmokeHarnessTests(unittest.TestCase):
             self.assertTrue((profile / "smoke-retrieval-fts.db").exists())
 
     def test_managed_host_diagnostic_preserves_control_entrypoint_and_restores_wrappers(self) -> None:
-        calls: dict[str, object] = {}
+        import core.backend_host as backend
 
-        async def original_serve(*args, **kwargs):
+        calls: dict[str, object] = {}
+        original_main = backend.main
+        production_serve = backend._serve
+        production_http_json = backend._http_json
+
+        async def fake_serve(*args, **kwargs):
             calls["serve"] = (args, kwargs)
             return 23
 
-        def original_http_json(url: str, *, timeout: float = 0.5):
+        def fake_http_json(url: str, *, timeout: float = 0.5):
             calls["http"] = (url, timeout)
             return {"status": "ready"}
-
-        backend = types.SimpleNamespace(_serve=original_serve, _http_json=original_http_json)
 
         def backend_main(argv: list[str]) -> int:
             self.assertEqual(argv, ["serve", "--managed"])
             calls["http_result"] = backend._http_json("http://127.0.0.1:8000/api/v1/health/ready")
             return asyncio.run(backend._serve("opaque-start-id", channel="real-control-channel"))
 
-        backend.main = backend_main
         stderr = io.StringIO()
-        with patch.dict(sys.modules, {"core.backend_host": backend}), \
+        with patch.object(backend, "main", backend_main), \
+                patch.object(backend, "_serve", fake_serve), \
+                patch.object(backend, "_http_json", fake_http_json), \
                 patch.object(probe.faulthandler, "dump_traceback_later"), \
                 patch.object(probe.faulthandler, "cancel_dump_traceback_later"), \
                 contextlib.redirect_stderr(stderr):
@@ -193,8 +196,9 @@ class BackendBundleSmokeHarnessTests(unittest.TestCase):
         self.assertEqual(calls["serve"], (("opaque-start-id",), {"channel": "real-control-channel"}))
         self.assertEqual(calls["http"], ("http://127.0.0.1:8000/api/v1/health/ready", 0.5))
         self.assertEqual(calls["http_result"], {"status": "ready"})
-        self.assertIs(backend._serve, original_serve)
-        self.assertIs(backend._http_json, original_http_json)
+        self.assertIs(backend._serve, production_serve)
+        self.assertIs(backend._http_json, production_http_json)
+        self.assertIs(backend.main, original_main)
         self.assertIn('"kind":"serve_enter"', stderr.getvalue())
         self.assertIn('"kind":"http_self_probe"', stderr.getvalue())
 
