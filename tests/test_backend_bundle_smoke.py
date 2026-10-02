@@ -191,6 +191,9 @@ class BackendBundleSmokeHarnessTests(unittest.TestCase):
                 patch.object(probe.faulthandler, "cancel_dump_traceback_later"), \
                 contextlib.redirect_stderr(stderr):
             result = probe._managed_host_diagnostic()
+            self.assertIs(backend._serve, fake_serve)
+            self.assertIs(backend._http_json, fake_http_json)
+            self.assertIs(backend.main, backend_main)
 
         self.assertEqual(result, 23)
         self.assertEqual(calls["serve"], (("opaque-start-id",), {"channel": "real-control-channel"}))
