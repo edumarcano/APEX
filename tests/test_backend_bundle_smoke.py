@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import socket
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -58,6 +59,22 @@ class BackendBundleSmokeHarnessTests(unittest.TestCase):
         self.assertFalse(report.failed)
         report.add("runtime-identity", "failed", "identity mismatch")
         self.assertTrue(report.failed)
+
+    def test_shutdown_rejects_a_host_that_exited_without_stopped_frame(self) -> None:
+        process = subprocess.Popen(
+            [sys.executable, "-c", "pass"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        process.wait(timeout=10)
+        try:
+            with self.assertRaisesRegex(RuntimeError, "no stopped envelope was observed"):
+                smoke._stop_host(process, smoke.queue.Queue(), smoke.BoundedTail(), "launch-id")
+        finally:
+            for stream in (process.stdin, process.stdout, process.stderr):
+                if stream is not None and not stream.closed:
+                    stream.close()
 
 
 if __name__ == "__main__":

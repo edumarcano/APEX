@@ -237,7 +237,10 @@ def _spawn_host(exe: Path, profile: Path, root: Path, *, dev: bool = False, demo
 
 def _stop_host(process: subprocess.Popen[bytes], frames: queue.Queue[bytes | None], stderr: BoundedTail, launch_id: str | None, *, timeout_seconds: int = 60) -> None:
     if process.poll() is not None:
-        return
+        raise RuntimeError(
+            f"managed host exited before graceful shutdown (code={process.returncode}); "
+            "no stopped envelope was observed; stderr tail: " + stderr.text()
+        )
     if process.stdin is not None and not process.stdin.closed:
         try:
             if launch_id:
@@ -288,13 +291,18 @@ def _cli(exe: Path, argv: list[str], cwd: Path, env: dict[str, str]) -> str:
     ]
     for thread in threads: thread.start()
     try:
-        code = result.wait(timeout=30)
-    except subprocess.TimeoutExpired:
-        result.kill()
-        result.wait(timeout=5)
-        raise RuntimeError(f"CLI {argv[0]} exceeded its 30 second timeout")
-    for thread in threads: thread.join(timeout=2)
-    for stream in (result.stdout, result.stderr): stream.close()
+        try:
+            code = result.wait(timeout=30)
+        except subprocess.TimeoutExpired as exc:
+            result.kill()
+            result.wait(timeout=5)
+            raise RuntimeError(f"CLI {argv[0]} exceeded its 30 second timeout") from exc
+    finally:
+        for stream in (result.stdout, result.stderr):
+            if not stream.closed:
+                stream.close()
+        for thread in threads:
+            thread.join(timeout=2)
     if code:
         raise RuntimeError(f"CLI {argv[0]} exited {code}: {stderr.text()[-2048:]}")
     return stdout.text()
