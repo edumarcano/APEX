@@ -298,11 +298,21 @@ def _cli(exe: Path, argv: list[str], cwd: Path, env: dict[str, str]) -> str:
             result.wait(timeout=5)
             raise RuntimeError(f"CLI {argv[0]} exceeded its 30 second timeout") from exc
     finally:
-        for stream in (result.stdout, result.stderr):
-            if not stream.closed:
-                stream.close()
         for thread in threads:
             thread.join(timeout=2)
+        if any(thread.is_alive() for thread in threads):
+            # The child has been reaped, so EOF should normally finish both
+            # readers. Close only as a fallback for a stalled drain, then give
+            # it one more bounded chance to exit.
+            for stream in (result.stdout, result.stderr):
+                if not stream.closed:
+                    stream.close()
+            for thread in threads:
+                thread.join(timeout=1)
+        else:
+            for stream in (result.stdout, result.stderr):
+                if not stream.closed:
+                    stream.close()
     if code:
         raise RuntimeError(f"CLI {argv[0]} exited {code}: {stderr.text()[-2048:]}")
     return stdout.text()
