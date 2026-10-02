@@ -24,7 +24,7 @@ import pyttsx3
 from core import config
 from core.runtime_paths import get_runtime_paths
 from core.settings import get_settings_store
-from core.host.worker_dispatch import worker_command
+from core.host.worker_dispatch import worker_invocation
 
 # Headless SDL so pygame.mixer can initialize without a display.
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -551,8 +551,10 @@ def _synthesize_pyttsx3_wav(
             unregister_owned_process,
         )
 
+        command, worker_env = worker_invocation(output_path)
         process = subprocess.Popen(
-            worker_command(output_path),
+            command,
+            env=worker_env,
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

@@ -258,6 +258,27 @@ class HostProtocolTests(unittest.TestCase):
         finally:
             channel.close()
 
+    def test_deeply_nested_json_reports_protocol_failure(self) -> None:
+        failed = threading.Event()
+        reasons: list[str] = []
+
+        def on_failure(reason: str) -> None:
+            reasons.append(reason)
+            failed.set()
+
+        nested = b"[" * 12000 + b"0" + b"]" * 12000
+        frame = (
+            b'{"version":1,"type":"start","request_id":"nested",'
+            b'"payload":{"launch_id":' + nested + b"}}\n"
+        )
+        self.assertLess(len(frame), MAX_FRAME_BYTES)
+        channel = ControlChannel(io.BytesIO(frame), io.BytesIO(), on_failure=on_failure)
+        try:
+            self.assertTrue(failed.wait(2))
+            self.assertEqual(reasons, ["reader_failed"])
+        finally:
+            channel.close()
+
     def test_incoming_queue_overflow_is_reported(self) -> None:
         frame = encode_envelope(self._envelope())
         overflow = threading.Event()

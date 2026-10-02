@@ -5,19 +5,22 @@ from __future__ import annotations
 import importlib
 import sys
 
+from core.host.processes import python_child_invocation
 
-def worker_command(output_path: str) -> list[str]:
-    """Build the speech-export worker command for source or frozen execution."""
+
+def worker_invocation(output_path: str) -> tuple[list[str], dict[str, str]]:
+    """Build the worker command and environment with a directly owned Python child."""
     if getattr(sys, "frozen", False):
-        return [sys.executable, "worker", "speech-export", output_path]
-    return [
-        sys.executable,
-        "-m",
-        "core.backend_host",
-        "worker",
-        "speech-export",
-        output_path,
-    ]
+        arguments = ["worker", "speech-export", output_path]
+    else:
+        arguments = [
+            "-m",
+            "core.backend_host",
+            "worker",
+            "speech-export",
+            output_path,
+        ]
+    return python_child_invocation(arguments)
 
 
 def dispatch_worker(arguments: list[str]) -> int | None:

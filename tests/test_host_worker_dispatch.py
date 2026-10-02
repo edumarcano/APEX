@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import os
 import subprocess
 import sys
 import types
@@ -15,25 +16,22 @@ class WorkerCommandTests(unittest.TestCase):
     def test_source_command_routes_through_backend_host(self) -> None:
         with patch.object(worker_dispatch.sys, "frozen", False, create=True), patch.object(
             worker_dispatch.sys, "executable", "python.exe"
+        ), patch.object(
+            worker_dispatch.sys, "_base_executable", "python.exe", create=True
         ):
+            command, _environment = worker_dispatch.worker_invocation("speech.wav")
             self.assertEqual(
-                worker_dispatch.worker_command("speech.wav"),
-                [
-                    "python.exe",
-                    "-m",
-                    "core.backend_host",
-                    "worker",
-                    "speech-export",
-                    "speech.wav",
-                ],
+                command,
+                ["python.exe", "-m", "core.backend_host", "worker", "speech-export", "speech.wav"],
             )
 
     def test_frozen_command_uses_packaged_worker_entrypoint(self) -> None:
         with patch.object(worker_dispatch.sys, "frozen", True, create=True), patch.object(
             worker_dispatch.sys, "executable", "APEX.exe"
         ):
+            command, _environment = worker_dispatch.worker_invocation("speech.wav")
             self.assertEqual(
-                worker_dispatch.worker_command("speech.wav"),
+                command,
                 ["APEX.exe", "worker", "speech-export", "speech.wav"],
             )
 
@@ -80,6 +78,37 @@ class WorkerDispatchTests(unittest.TestCase):
 
 
 class SpeechExportWorkerTests(unittest.TestCase):
+    def test_python_child_invocation_owns_the_real_interpreter_pid(self) -> None:
+        from core.host.processes import python_child_invocation
+
+        command, environment = python_child_invocation(
+            [
+                "-B",
+                "-c",
+                "import json,os,sys,fastapi; print(json.dumps({'pid':os.getpid(),'prefix':sys.prefix,'fastapi':fastapi.__version__}))",
+            ],
+            env={**os.environ, "PYTHON_DOTENV_DISABLED": "1"},
+        )
+        child = subprocess.Popen(
+            command,
+            env=environment,
+            cwd=Path(__file__).resolve().parents[1],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = child.communicate(timeout=10)
+        self.assertEqual(child.returncode, 0, stderr)
+        import json
+
+        result = json.loads(stdout)
+        self.assertEqual(result["pid"], child.pid)
+        self.assertEqual(
+            os.path.normcase(result["prefix"]),
+            os.path.normcase(sys.prefix),
+        )
+        self.assertTrue(result["fastapi"])
+
     def test_worker_module_does_not_load_host_configuration_or_api(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         command = (

@@ -26,6 +26,7 @@ from core.agent.local_runtime.coordinator import (
     is_local_execution_active,
 )
 from core.agent.providers.llama_cpp_runtime import get_llama_cpp_runtime_settings
+from core.host.processes import register_owned_process, unregister_owned_process
 from core.settings.models import (
     LlamaCppServerOwnership,
     LlamaCppServerState,
@@ -435,6 +436,9 @@ class LlamaCppServerSupervisor:
             self._restart_allowed = True
 
     def _clear_owned_process_locked(self) -> None:
+        process = self._process
+        if process is not None and process.poll() is not None:
+            unregister_owned_process(process)  # type: ignore[arg-type]
         self._process = None
         self._owned = False
         self._launch_identity = None
@@ -483,6 +487,7 @@ class LlamaCppServerSupervisor:
         self._process = process
         self._owned = True
         self._launch_identity = self._identity_tuple(settings)
+        register_owned_process(process, kind="llama_cpp")  # type: ignore[arg-type]
         self._start_log_readers_locked(process)
 
     def _start_log_readers_locked(self, process: subprocess.Popen[str]) -> None:
@@ -566,6 +571,11 @@ class LlamaCppServerSupervisor:
             _LOGGER.warning(
                 "Error stopping owned llama.cpp process: %s",
                 type(exc).__name__,
+            )
+        if process.poll() is None:
+            self._clear_owned_process_locked()
+            raise LlamaCppManagedServerError(
+                "Managed llama.cpp process did not exit during shutdown."
             )
         self._clear_owned_process_locked()
 

@@ -20,14 +20,42 @@ from core.knowledge import get_knowledge_service
 from core.retrieval import get_retrieval_service
 from core.retrieval.service import RetrievalService
 from core.retrieval.store import RetrievalStore
+from core.runtime_paths import RuntimePaths
 
 
 class PersistenceLifecycleTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.path = Path(self.temp_dir.name) / "lifecycle.db"
+        root = Path(self.temp_dir.name)
+        self._runtime_paths = mock.patch(
+            "core.runtime_paths.get_runtime_paths",
+            return_value=RuntimePaths(resource_root=root, data_root=root),
+        )
+        self._runtime_paths.start()
+        from core.api.app import app
+
+        stale = getattr(app.state, "host_context", None)
+        if stale is not None and stale.profile_lock.acquired:
+            stale.release()
+        app.state.host_context = None
+        app.state.lifecycle_entered = False
+        app.state.lifecycle_established = False
+        app.state.lifecycle_cleanup_complete = False
+        app.state.http_shutdown_timed_out = False
 
     def tearDown(self) -> None:
+        from core.api.app import app
+
+        context = getattr(app.state, "host_context", None)
+        if context is not None and context.profile_lock.acquired:
+            context.release()
+        app.state.host_context = None
+        app.state.lifecycle_entered = False
+        app.state.lifecycle_established = False
+        app.state.lifecycle_cleanup_complete = False
+        app.state.http_shutdown_timed_out = False
+        self._runtime_paths.stop()
         self.temp_dir.cleanup()
 
     def _seed_unsupported_core_schema(self) -> str:

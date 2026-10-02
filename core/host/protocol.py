@@ -24,7 +24,10 @@ _READY_FIELDS = frozenset(
     }
 )
 _ERROR_CODES = frozenset(
-    {"startup_failed", "profile_in_use", "protocol_error", "shutdown_timeout", "child_failed", "internal_error"}
+    {
+        "startup_failed", "port_in_use", "profile_in_use", "protocol_error",
+        "shutdown_timeout", "shutdown_failed", "child_failed", "internal_error",
+    }
 )
 
 
@@ -89,8 +92,7 @@ def _validate_type_payload(message_type: str, payload: Mapping[str, object]) -> 
         except (ValueError, TypeError, AttributeError) as exc:
             raise ControlProtocolError("Start payload does not match the lifecycle contract.") from exc
     elif message_type == "starting":
-        if _READY_FIELDS.intersection(payload):
-            _validate_identity_payload(payload, exact=False)
+        _validate_identity_payload(payload, exact=True)
     elif message_type == "ready":
         _validate_identity_payload(payload, exact=True)
     elif message_type == "error":
@@ -109,6 +111,8 @@ def _validate_type_payload(message_type: str, payload: Mapping[str, object]) -> 
             "completed", "failed", "cancelled"
         }:
             raise ControlProtocolError("Completion payload does not match the lifecycle contract.")
+    elif message_type == "shutdown" and payload:
+        raise ControlProtocolError("Shutdown payload must be empty.")
 
 
 def validate_envelope(
@@ -164,7 +168,7 @@ def decode_frame(data: bytes, *, expected_request_id: str | None = None) -> Cont
             line.decode("utf-8"),
             parse_constant=lambda _value: (_ for _ in ()).throw(ValueError()),
         )
-    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+    except (UnicodeError, json.JSONDecodeError, ValueError, RecursionError) as exc:
         raise ControlProtocolError("Control frame is not valid UTF-8 JSON.") from exc
     return validate_envelope(value, expected_request_id=expected_request_id)
 

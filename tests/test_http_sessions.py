@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 import tempfile
 import unittest
 from contextlib import ExitStack
@@ -18,6 +19,7 @@ from clients.http_sessions import (
     reset_connector_http_sessions_for_tests,
     set_connector_http_sessions,
 )
+from core.runtime_paths import RuntimePaths
 
 
 class _Response:
@@ -168,6 +170,14 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
 
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
+        root = Path(self.temp_dir.name)
+        runtime_paths = mock.patch(
+            "core.runtime_paths.get_runtime_paths",
+            return_value=RuntimePaths(resource_root=root, data_root=root),
+        )
+        runtime_paths.start()
+        self.addCleanup(runtime_paths.stop)
+        self._reset_host_context()
         db_override = mock.patch(
             "core.api.app.database.DB_NAME",
             str(Path(self.temp_dir.name) / "http-lifecycle.db"),
@@ -182,6 +192,23 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         validator.start()
         self.addCleanup(validator.stop)
 
+    def _reset_host_context(self) -> None:
+        from core.api.app import app
+
+        context = getattr(app.state, "host_context", None)
+        if context is not None and context.profile_lock.acquired:
+            context.release()
+        app.state.host_context = None
+        app.state.lifecycle_entered = False
+        app.state.lifecycle_established = False
+        app.state.lifecycle_cleanup_complete = False
+        app.state.http_shutdown_timed_out = False
+
+    def tearDown(self) -> None:
+        # Failed-drain coverage intentionally retains the lease until this
+        # isolated fixture is discarded.
+        self._reset_host_context()
+
     def _assert_lifespan_preserves_dependencies_on_drain_failure(
         self,
         *,
@@ -189,6 +216,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         expected_error: str,
         task_drain: mock.AsyncMock | None = None,
         speech_service: mock.Mock | None = None,
+        http_timeout: bool = False,
     ) -> None:
         from core.api.app import app
         from core.mcp.models import McpRuntimeConfig
@@ -289,7 +317,10 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
                 stack.enter_context(mock.patch(f"core.api.app.{setter}"))
             with self.assertRaisesRegex(RuntimeError, expected_error):
                 with TestClient(app):
-                    pass
+                    if http_timeout:
+                        # Uvicorn sets this marker when its HTTP grace expires;
+                        # canceled ASGI tasks may already have disappeared.
+                        app.state.http_shutdown_timed_out = True
 
         conversation_store.close.assert_not_called()
         run_store.close.assert_not_called()
@@ -317,6 +348,46 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         drained_tasks = task_drain.await_args.args[0]
         self.assertEqual(len(drained_tasks), 2)
         self.assertIn("activity-report-folder-poller", {task.get_name() for task in drained_tasks})
+
+    def test_http_grace_timeout_preserves_dependencies_after_request_task_cancellation(self) -> None:
+        coordinator = mock.Mock()
+        coordinator.close.return_value = True
+        self._assert_lifespan_preserves_dependencies_on_drain_failure(
+            coordinator=coordinator,
+            expected_error="HTTP request shutdown drain timed out",
+            http_timeout=True,
+        )
+        coordinator.close.assert_not_called()
+
+    def test_request_tracker_keeps_a_blocked_handler_active_until_it_finishes(self) -> None:
+        from core.api.app import _HttpRequestTracker, _HttpRequestTrackingMiddleware
+
+        tracker = _HttpRequestTracker()
+        entered = threading.Event()
+        release = threading.Event()
+
+        async def blocked_app(_scope, _receive, _send) -> None:
+            entered.set()
+            await asyncio.to_thread(release.wait)
+
+        middleware = _HttpRequestTrackingMiddleware(blocked_app, tracker)
+        failures: list[BaseException] = []
+
+        def invoke() -> None:
+            try:
+                asyncio.run(middleware({"type": "http"}, None, None))
+            except BaseException as exc:
+                failures.append(exc)
+
+        request = threading.Thread(target=invoke, daemon=True)
+        request.start()
+        self.assertTrue(entered.wait(2))
+        self.assertEqual(tracker.active, 1)
+        release.set()
+        request.join(2)
+        self.assertFalse(request.is_alive())
+        self.assertEqual(failures, [])
+        self.assertEqual(tracker.active, 0)
 
     def test_lifespan_keeps_dependencies_open_when_run_drain_errors(self) -> None:
         call_order: list[str] = []

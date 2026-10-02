@@ -1,7 +1,9 @@
-"""Run the local API server with ``python -m core.api``."""
+"""Run the local API server through the lifecycle-owning host."""
 
-from core.api.app import main
+import sys
+
+from core.backend_host import main
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main(["serve", "--standalone", *sys.argv[1:]]))

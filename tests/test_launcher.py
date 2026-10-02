@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import os
+import io
 import subprocess
 import unittest
+import uuid
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import launcher
+from core.host.protocol import ControlEnvelope, encode_envelope
 
 
 class LauncherHelperTests(unittest.TestCase):
@@ -81,6 +85,75 @@ class LauncherHelperTests(unittest.TestCase):
         proc.terminate.assert_called_once()
         proc.kill.assert_called_once()
 
+    def test_control_reader_rejects_mismatched_request_correlation(self) -> None:
+        launch_id = str(uuid.uuid4())
+        wrong_id = str(uuid.uuid4())
+        identity = {
+            "app_id": "apex",
+            "app_version": "2.1.0",
+            "build_id": "source:2.1.0",
+            "instance_id": str(uuid.uuid4()),
+            "pid": 123,
+            "hosting_mode": "managed",
+            "launch_id": launch_id,
+            "data_root_fingerprint": "a" * 64,
+            "shutdown_timeout_seconds": 60,
+        }
+        frame = encode_envelope(
+            ControlEnvelope(1, "starting", wrong_id, identity)
+        )
+        process = mock.Mock(spec=subprocess.Popen)
+        process.poll.return_value = None
+        process.stdin = io.BytesIO()
+        process.stdout = io.BytesIO(frame)
+        control = launcher._ManagedBackendControl(process, launch_id)
+
+        control.wait_ready(1)
+        self.assertTrue(control.failed)
+        self.assertEqual(control.error_code, "protocol_error")
+
+    def test_wait_for_services_rejects_unowned_pid_and_failed_control(self) -> None:
+        backend = mock.Mock(spec=subprocess.Popen)
+        static = mock.Mock(spec=subprocess.Popen)
+        backend.pid = 100
+        backend.poll.return_value = None
+        static.poll.return_value = None
+        launch_id = str(uuid.uuid4())
+        identity = {
+            "pid": 101,
+            "launch_id": launch_id,
+            "hosting_mode": "managed",
+            "build_id": "expected-build",
+            "data_root_fingerprint": "a" * 64,
+        }
+        control = SimpleNamespace(
+            identity=identity,
+            launch_id=launch_id,
+            error_code=None,
+            failed=False,
+        )
+        with mock.patch.object(launcher, "_control_for", return_value=control), mock.patch.object(
+            launcher, "_expected_profile_build", return_value=("expected-build", "a" * 64)
+        ):
+            reason = launcher.wait_for_services(backend, static)
+        self.assertIn("identity did not match", reason or "")
+
+        identity["pid"] = backend.pid
+        control.failed = True
+        with mock.patch.object(launcher, "_control_for", return_value=control), mock.patch.object(
+            launcher, "_expected_profile_build", return_value=("expected-build", "a" * 64)
+        ):
+            reason = launcher.wait_for_services(backend, static)
+        self.assertIn("control channel", reason or "")
+
+    def test_runtime_monitor_fails_when_owned_control_pipe_closes(self) -> None:
+        backend = mock.Mock(spec=subprocess.Popen)
+        backend.poll.return_value = None
+        control = SimpleNamespace(failed=True, error_code=None)
+        with mock.patch.object(launcher, "_control_for", return_value=control):
+            reason = launcher._child_exit_reason("uvicorn", backend)
+        self.assertIn("control channel", reason or "")
+
     def test_launch_background_servers_sets_pythonpath_and_commands(self) -> None:
         created: list[dict[str, object]] = []
         real_popen = subprocess.Popen
@@ -89,6 +162,9 @@ class LauncherHelperTests(unittest.TestCase):
             created.append({"cmd": cmd, "kwargs": kwargs})
             handle = mock.Mock(spec=real_popen)
             handle.poll.return_value = None
+            if "stdout" in kwargs:
+                handle.stdin = io.BytesIO()
+                handle.stdout = io.BytesIO()
             return handle
 
         with mock.patch.object(launcher.subprocess, "Popen", side_effect=_fake_popen):
@@ -98,9 +174,12 @@ class LauncherHelperTests(unittest.TestCase):
         uvicorn_cmd = created[0]["cmd"]
         static_cmd = created[1]["cmd"]
         self.assertEqual(
-            uvicorn_cmd[-6:],
-            ["uvicorn", "core.api:app", "--host", "127.0.0.1", "--port", "8000"],
+            uvicorn_cmd[-4:],
+            ["-m", "core.backend_host", "serve", "--managed"],
         )
+        self.assertIn("-m", uvicorn_cmd)
+        self.assertEqual(created[0]["kwargs"]["stdin"], subprocess.PIPE)
+        self.assertEqual(created[0]["kwargs"]["stdout"], subprocess.PIPE)
         self.assertIn("http.server", static_cmd)
         self.assertIn("5500", static_cmd)
         self.assertIn("--bind", static_cmd)
@@ -120,6 +199,8 @@ class LauncherHelperTests(unittest.TestCase):
     def test_launch_background_servers_cleans_up_after_second_spawn_failure(self) -> None:
         uvicorn_proc = mock.Mock(spec=subprocess.Popen)
         uvicorn_proc.poll.return_value = None
+        uvicorn_proc.stdin = io.BytesIO()
+        uvicorn_proc.stdout = io.BytesIO()
 
         with mock.patch.object(
             launcher.subprocess,
@@ -166,6 +247,8 @@ class LauncherHelperTests(unittest.TestCase):
             launcher, "launch_background_servers", return_value=(uvicorn_proc, static_proc)
         ), mock.patch.object(launcher, "register_shutdown_hooks"), mock.patch.object(
             launcher, "_http_ok", return_value=True
+        ), mock.patch.object(
+            launcher, "wait_for_services", return_value=None
         ), mock.patch.object(
             launcher, "launch_kiosk_browser", return_value=browser_proc
         ) as launch_browser, mock.patch.object(

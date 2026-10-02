@@ -5,12 +5,33 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass
 from typing import BinaryIO
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def python_child_invocation(
+    arguments: list[str], *, env: dict[str, str] | None = None
+) -> tuple[list[str], dict[str, str]]:
+    """Build a Python child invocation whose process handle owns the interpreter.
+
+    Windows venv launchers redirect to a second base-interpreter process. Use
+    that interpreter directly with CPython's launcher hint so Popen.pid remains
+    the actual Python process while venv prefix and packages stay active.
+    """
+    child_env = dict(os.environ if env is None else env)
+    executable = sys.executable
+    if os.name == "nt" and not getattr(sys, "frozen", False):
+        base_executable = getattr(sys, "_base_executable", None)
+        if isinstance(base_executable, str) and base_executable:
+            executable = base_executable
+            if os.path.normcase(executable) != os.path.normcase(sys.executable):
+                child_env["__PYVENV_LAUNCHER__"] = sys.executable
+    return [executable, *arguments], child_env
 
 
 def redirect_stdout_to_stderr() -> BinaryIO:
@@ -135,6 +156,7 @@ def terminate_owned_processes(timeout_seconds: float) -> None:
 __all__ = [
     "OwnedProcessRegistration",
     "OwnedProcessRegistry",
+    "python_child_invocation",
     "redirect_stdout_to_stderr",
     "register_owned_process",
     "terminate_owned_processes",
