@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import faulthandler
 import json
 import logging
 import multiprocessing
@@ -150,6 +152,65 @@ def _optional_assets() -> dict[str, object]:
     return {"retrieval_mode": "semantic", "semantic_results": semantic_results, "kokoro_assets": assets, "kokoro_engine": engine, "wav_bytes": len(audio)}
 
 
+def _lifecycle() -> dict[str, object]:
+    from core.api.app import _app_lifespan, app
+
+    phase = {"name": "before_startup"}
+
+    def task_snapshot() -> list[dict[str, object]]:
+        current = asyncio.current_task()
+        snapshot = []
+        for task in asyncio.all_tasks():
+            if task is current:
+                continue
+            coroutine = task.get_coro()
+            stack = task.get_stack(limit=6)
+            snapshot.append({
+                "name": task.get_name(),
+                "done": task.done(),
+                "coroutine": getattr(coroutine, "__qualname__", type(coroutine).__name__),
+                "stack": [
+                    {"function": frame.f_code.co_name, "file": frame.f_code.co_filename, "line": frame.f_lineno}
+                    for frame in stack
+                ],
+            })
+        return sorted(snapshot, key=lambda item: str(item["name"]))
+
+    async def monitor_tasks() -> None:
+        while True:
+            await asyncio.sleep(5)
+            print(
+                "APEX_LIFECYCLE_DIAG " + json.dumps({"phase": phase["name"], "tasks": task_snapshot()}, ensure_ascii=True, separators=(",", ":")),
+                file=sys.stderr,
+                flush=True,
+            )
+
+    async def run() -> dict[str, object]:
+        monitor = asyncio.create_task(monitor_tasks(), name="bundle-lifecycle-task-monitor")
+        lifecycle = _app_lifespan(app)
+        try:
+            await lifecycle.__aenter__()
+            phase["name"] = "lifespan_running"
+            startup_tasks = task_snapshot()
+            await asyncio.sleep(5)
+            phase["name"] = "lifespan_shutdown"
+            await lifecycle.__aexit__(None, None, None)
+            return {"status": "started_and_stopped", "tasks_after_startup": startup_tasks, "tasks_after_shutdown": task_snapshot()}
+        finally:
+            phase["name"] = "monitor_cleanup"
+            monitor.cancel()
+            try:
+                await monitor
+            except asyncio.CancelledError:
+                pass
+
+    faulthandler.dump_traceback_later(15, repeat=True, file=sys.stderr)
+    try:
+        return asyncio.run(run())
+    finally:
+        faulthandler.cancel_dump_traceback_later()
+
+
 def _write_json_line(payload: dict[str, object], stream: object = None) -> None:
     print(json.dumps(payload, ensure_ascii=True, separators=(",", ":")), file=stream if stream is not None else sys.stdout)
 
@@ -170,11 +231,11 @@ def main(argv: list[str] | None = None) -> int:
     if worker is not None:
         return worker
     parser = argparse.ArgumentParser(description="Constrained frozen APEX packaging checks.")
-    parser.add_argument("scenario", choices=("imports", "retrieval", "audio-worker", "no-model-assets", "optional-assets"))
+    parser.add_argument("scenario", choices=("imports", "retrieval", "audio-worker", "no-model-assets", "optional-assets", "lifecycle"))
     args = parser.parse_args(values)
     try:
         with redirect_stdout(sys.stderr):
-            evidence = {"imports": _imports, "retrieval": _retrieval, "audio-worker": _audio_worker, "no-model-assets": _no_model_assets, "optional-assets": _optional_assets}[args.scenario]()
+            evidence = {"imports": _imports, "retrieval": _retrieval, "audio-worker": _audio_worker, "no-model-assets": _no_model_assets, "optional-assets": _optional_assets, "lifecycle": _lifecycle}[args.scenario]()
         _write_json_line({"schema_version": 1, "scenario": args.scenario, "status": "passed", "evidence": evidence})
         return 0
     except Exception as exc:
