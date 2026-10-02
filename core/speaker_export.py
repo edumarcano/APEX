@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from collections.abc import Sequence
 
 
 def _select_voice(engine: object, gender: str) -> None:
@@ -25,8 +26,9 @@ def _select_voice(engine: object, gender: str) -> None:
     engine.setProperty("voice", voices[0].id)
 
 
-def main() -> int:
-    if len(sys.argv) != 2:
+def main(argv: Sequence[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if len(arguments) != 1:
         return 2
     try:
         payload = json.load(sys.stdin)
@@ -39,7 +41,7 @@ def main() -> int:
         engine = pyttsx3.init()
         engine.setProperty("rate", 175)
         _select_voice(engine, gender)
-        output_path = Path(sys.argv[1])
+        output_path = Path(arguments[0])
         engine.save_to_file(text, str(output_path))
         engine.runAndWait()
         engine.stop()
