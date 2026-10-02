@@ -92,7 +92,7 @@ class GenAISpansTests(unittest.TestCase):
             conversation_id=conv_id,
             user_message_id=user_msg_id,
             agent_message_id=agent_msg_id,
-            requested_model="deepseek/deepseek-v4-flash-0731",
+            requested_model="z-ai/glm-5.3-flash",
             provider="openrouter",
             runtime="cloud",
             limit_snapshot=limit_snapshot,
@@ -101,7 +101,7 @@ class GenAISpansTests(unittest.TestCase):
             self.assertEqual(len(span_ctx.trace_id), 32)
 
             span_ctx.record_progress(
-                resolved_model="deepseek/deepseek-v4-flash-0731",
+                resolved_model="z-ai/glm-5.3-flash",
                 turns_count=2,
                 tool_calls_count=1,
                 retries_count=0,
@@ -119,8 +119,8 @@ class GenAISpansTests(unittest.TestCase):
 
         # Conformance to GenAI semantic conventions & metadata
         self.assertEqual(attrs.get("gen_ai.system"), "apex")
-        self.assertEqual(attrs.get("gen_ai.request.model"), "deepseek/deepseek-v4-flash-0731")
-        self.assertEqual(attrs.get("gen_ai.response.model"), "deepseek/deepseek-v4-flash-0731")
+        self.assertEqual(attrs.get("gen_ai.request.model"), "z-ai/glm-5.3-flash")
+        self.assertEqual(attrs.get("gen_ai.response.model"), "z-ai/glm-5.3-flash")
         self.assertEqual(attrs.get("apex.run_id"), str(run_id))
         self.assertEqual(attrs.get("apex.conversation_id"), str(conv_id))
         self.assertEqual(attrs.get("apex.user_message_id"), str(user_msg_id))
@@ -155,7 +155,7 @@ class GenAISpansTests(unittest.TestCase):
             conversation_id=conv_id,
             user_message_id=user_msg_id,
             agent_message_id=agent_msg_id,
-            requested_model="deepseek/deepseek-v4-flash-0731",
+            requested_model="z-ai/glm-5.3-flash",
             provider="openrouter",
             runtime="cloud",
         ) as root_ctx:
@@ -163,12 +163,12 @@ class GenAISpansTests(unittest.TestCase):
 
             # Turn 1: provider call
             with trace_provider_turn(
-                model="deepseek/deepseek-v4-flash-0731",
+                model="z-ai/glm-5.3-flash",
                 provider="openrouter",
                 turn=1,
             ) as turn_ctx:
                 mock_result = mock.Mock(
-                    resolved_model="deepseek/deepseek-v4-flash-0731",
+                    resolved_model="z-ai/glm-5.3-flash",
                     usage=mock.Mock(input_tokens=100, output_tokens=50),
                     provider_ms=150.5,
                     runtime_measurements=mock.Mock(
@@ -202,8 +202,8 @@ class GenAISpansTests(unittest.TestCase):
         # Provider turn attributes
         turn_attrs = turn_span.attributes or {}
         self.assertEqual(turn_attrs.get("gen_ai.system"), "openrouter")
-        self.assertEqual(turn_attrs.get("gen_ai.request.model"), "deepseek/deepseek-v4-flash-0731")
-        self.assertEqual(turn_attrs.get("gen_ai.response.model"), "deepseek/deepseek-v4-flash-0731")
+        self.assertEqual(turn_attrs.get("gen_ai.request.model"), "z-ai/glm-5.3-flash")
+        self.assertEqual(turn_attrs.get("gen_ai.response.model"), "z-ai/glm-5.3-flash")
         self.assertEqual(turn_attrs.get("apex.turn"), 1)
         self.assertEqual(turn_attrs.get("gen_ai.usage.input_tokens"), 100)
         self.assertEqual(turn_attrs.get("gen_ai.usage.output_tokens"), 50)
@@ -263,12 +263,12 @@ class GenAISpansTests(unittest.TestCase):
             conversation_id=conv_id,
             user_message_id=user_msg_id,
             agent_message_id=agent_msg_id,
-            requested_model="deepseek/deepseek-v4-flash-0731",
+            requested_model="z-ai/glm-5.3-flash",
             provider="openrouter",
             runtime="cloud",
         ) as root_ctx:
             mock_record = mock.Mock(
-                resolved_model="deepseek/deepseek-v4-flash-0731",
+                resolved_model="z-ai/glm-5.3-flash",
                 provider="openrouter",
                 runtime="cloud",
                 turns_count=3,
@@ -285,7 +285,7 @@ class GenAISpansTests(unittest.TestCase):
         spans = self.memory_exporter.get_finished_spans()
         self.assertEqual(len(spans), 1)
         attrs = spans[0].attributes or {}
-        self.assertEqual(attrs.get("gen_ai.response.model"), "deepseek/deepseek-v4-flash-0731")
+        self.assertEqual(attrs.get("gen_ai.response.model"), "z-ai/glm-5.3-flash")
         self.assertEqual(attrs.get("apex.turns_count"), 3)
         self.assertEqual(attrs.get("apex.tool_calls_count"), 2)
         self.assertEqual(attrs.get("apex.retries_count"), 1)

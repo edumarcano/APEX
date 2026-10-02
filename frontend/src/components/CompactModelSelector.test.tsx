@@ -6,7 +6,7 @@ import type { ModelCatalogEntry } from '../types/telemetry'
 import { CompactModelSelector } from './CompactModelSelector'
 
 const catalog: ModelCatalogEntry[] = [
-  { model_id: 'deepseek/deepseek-v4-flash-0731', display_name: 'DeepSeek V4 Flash', provider: 'openrouter', runtime: 'cloud', stability: 'stable', reasoning_options: ['none', 'low', 'high', 'max'], default_reasoning: 'high', pricing: { currency: 'USD', pricing_version: 'test', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 0.4, cached_input_per_million: null, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null }, hosted_capabilities: [], status: 'configured' },
+  { model_id: 'z-ai/glm-5.3-flash', display_name: 'GLM 5.3 Flash', provider: 'openrouter', runtime: 'cloud', stability: 'stable', reasoning_options: ['none', 'low', 'high', 'max'], default_reasoning: 'high', pricing: { currency: 'USD', pricing_version: 'test', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 0.4, cached_input_per_million: null, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null }, hosted_capabilities: [], status: 'configured' },
   { model_id: 'gpt-5.6-luna', display_name: 'GPT-5.6 Luna', provider: 'openai', runtime: 'cloud', stability: 'preview', reasoning_options: ['none', 'low', 'high'], default_reasoning: 'low', hosted_capabilities: [], status: 'verified' },
   { model_id: 'gemma-4-E2B-Q4_K_M.gguf', display_name: 'Gemma 4 E2B', provider: 'llama_cpp', runtime: 'local', stability: 'experimental', reasoning_options: null, default_reasoning: null, maximum_context_window: 131072, hosted_capabilities: [], status: 'available' },
 ]
@@ -15,9 +15,9 @@ describe('CompactModelSelector', () => {
   it('shows the selected model and its provider metadata', async () => {
     const user = userEvent.setup()
     render(<CompactModelSelector selectedModelId={catalog[0].model_id} onModelChange={vi.fn()} catalog={catalog} />)
-    await user.click(screen.getByRole('button', { name: /model: deepseek v4 flash/i }))
+    await user.click(screen.getByRole('button', { name: /model: glm 5\.3 flash/i }))
     const listbox = screen.getByRole('listbox', { name: /select model/i })
-    expect(within(listbox).getByText('DeepSeek V4 Flash')).toBeInTheDocument()
+    expect(within(listbox).getByText('GLM 5.3 Flash')).toBeInTheDocument()
     expect(within(listbox).getByText(/OpenRouter · Reasoning configurable/i)).toBeInTheDocument()
   })
 
@@ -25,7 +25,7 @@ describe('CompactModelSelector', () => {
     const onModelChange = vi.fn()
     const user = userEvent.setup()
     render(<CompactModelSelector selectedModelId={catalog[0].model_id} onModelChange={onModelChange} catalog={catalog} />)
-    await user.click(screen.getByRole('button', { name: /model: deepseek v4 flash/i }))
+    await user.click(screen.getByRole('button', { name: /model: glm 5\.3 flash/i }))
     const popover = screen.getByRole('listbox', { name: /select model/i })
     expect(within(popover).getByRole('group', { name: 'Cloud models' })).toBeInTheDocument()
     expect(within(popover).getByRole('group', { name: 'Local models' })).toBeInTheDocument()
@@ -43,7 +43,7 @@ describe('CompactModelSelector', () => {
     render(<CompactModelSelector selectedModelId={catalog[1].model_id} onModelChange={vi.fn()} catalog={availabilityCatalog} />)
     await user.click(screen.getByRole('button', { name: /model: gpt-5\.6 luna/i }))
     const popover = screen.getByRole('listbox', { name: /select model/i })
-    expect(within(popover).getByRole('option', { name: /deepseek v4 flash/i })).toBeDisabled()
+    expect(within(popover).getByRole('option', { name: /glm 5\.3 flash/i })).toBeDisabled()
     expect(within(popover).getByText(/OpenRouter · Missing API key/i)).toBeInTheDocument()
     expect(within(popover).getByRole('option', { name: /gemma 4 e2b/i })).not.toBeDisabled()
   })
@@ -104,8 +104,8 @@ describe('CompactModelSelector', () => {
       onEffortChange={onEffortChange}
     />)
 
-    const trigger = screen.getByRole('button', { name: /model: deepseek v4 flash, reasoning high/i })
-    expect(trigger).toHaveTextContent('DeepSeek V4 Flash')
+    const trigger = screen.getByRole('button', { name: /model: glm 5\.3 flash, reasoning high/i })
+    expect(trigger).toHaveTextContent('GLM 5.3 Flash')
     expect(trigger).toHaveTextContent('High')
     await user.click(trigger)
     const menu = screen.getByRole('listbox', { name: /select model/i })

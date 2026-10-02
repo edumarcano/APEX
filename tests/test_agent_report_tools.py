@@ -121,7 +121,7 @@ class AgentReportToolTests(unittest.TestCase):
     def context(self, *, partition: str = "production", permitted: bool = True):
         return ReportReadExecutionContext(
             partition=partition,
-            model_id="deepseek/deepseek-v4-flash-0731",
+            model_id="z-ai/glm-5.3-flash",
             permitted=permitted,
         )
 
@@ -151,7 +151,7 @@ class AgentReportToolTests(unittest.TestCase):
             get_capability_descriptor("search_activity_reports"),
             get_capability_descriptor("get_activity_report"),
         )
-        profile = build_cloud_profile(model="deepseek/deepseek-v4-flash-0731")
+        profile = build_cloud_profile(model="z-ai/glm-5.3-flash")
         from core.api.cortex import _execute_agent_turn
 
         with patch("core.api.cortex._create_provider", return_value=provider):
@@ -233,7 +233,7 @@ class AgentReportToolTests(unittest.TestCase):
     def test_unselected_tool_call_is_rejected_by_agent_loop(self) -> None:
         provider = _SearchThenReadProvider("unavailable")
         provider.require_tools = False
-        profile = build_cloud_profile(model="deepseek/deepseek-v4-flash-0731")
+        profile = build_cloud_profile(model="z-ai/glm-5.3-flash")
         from core.agent.report_access import bind_report_read_context
 
         with bind_report_read_context(self.context()):

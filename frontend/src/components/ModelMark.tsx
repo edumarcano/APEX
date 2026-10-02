@@ -4,6 +4,7 @@ import GemmaColor from '@lobehub/icons/es/Gemma/components/Color'
 import OllamaMono from '@lobehub/icons/es/Ollama/components/Mono'
 import OpenAIMono from '@lobehub/icons/es/OpenAI/components/Mono'
 import QwenColor from '@lobehub/icons/es/Qwen/components/Color'
+import ZAIMono from '@lobehub/icons/es/ZAI/components/Mono'
 import { Cpu } from 'lucide-react'
 import type { ReactElement } from 'react'
 
@@ -32,10 +33,24 @@ export function ModelMark({
     )
   }
 
-  if (normalizedModel.startsWith('deepseek') || normalizedProvider === 'openrouter') {
+  // DeepSeek family
+  if (normalizedModel.startsWith('deepseek')) {
     return (
       <span className={`inline-flex shrink-0 items-center justify-center ${className}`} aria-hidden>
         <DeepSeekColor size={size} />
+      </span>
+    )
+  }
+
+  // Z.ai / GLM family / OpenRouter default
+  if (
+    normalizedModel.startsWith('z-ai') ||
+    normalizedModel.includes('glm') ||
+    normalizedProvider === 'openrouter'
+  ) {
+    return (
+      <span className={`inline-flex shrink-0 items-center justify-center text-zinc-100 ${className}`} aria-hidden>
+        <ZAIMono size={size} />
       </span>
     )
   }

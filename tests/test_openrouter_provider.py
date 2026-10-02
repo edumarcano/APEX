@@ -20,7 +20,7 @@ class OpenRouterProviderTests(unittest.TestCase):
     def _profile(self, effort: str = "high") -> OpenRouterModelProfile:
         return OpenRouterModelProfile(
             display_name="Lynx",
-            api_model="deepseek/deepseek-v4-flash-0731",
+            api_model="z-ai/glm-5.3-flash",
             max_tool_turns=6,
             max_tool_calls=10,
             system_instruction="System instruction.",
@@ -31,7 +31,7 @@ class OpenRouterProviderTests(unittest.TestCase):
     def test_request_enforces_privacy_policy_and_normalizes_usage(self, client_cls: mock.Mock) -> None:
         response = mock.Mock()
         response.model_dump.return_value = {
-            "model": "deepseek/deepseek-v4-flash-0731",
+            "model": "z-ai/glm-5.3-flash",
             "choices": [{"message": {"content": "done"}}],
             "usage": {
                 "prompt_tokens": 20,
@@ -54,7 +54,7 @@ class OpenRouterProviderTests(unittest.TestCase):
             timeout=OPENROUTER_REQUEST_TIMEOUT_SECONDS,
         )
         request = client_cls.return_value.chat.completions.create.call_args.kwargs
-        self.assertEqual(request["model"], "deepseek/deepseek-v4-flash-0731")
+        self.assertEqual(request["model"], "z-ai/glm-5.3-flash")
         self.assertNotIn("max_tokens", request)
         self.assertEqual(
             request["extra_body"],
@@ -74,7 +74,7 @@ class OpenRouterProviderTests(unittest.TestCase):
     ) -> None:
         response = mock.Mock()
         response.model_dump.return_value = {
-            "model": "deepseek/deepseek-v4-flash-0731",
+            "model": "z-ai/glm-5.3-flash",
             "choices": [{"message": {"content": "bounded"}}],
         }
         client_cls.return_value.chat.completions.create.return_value = response
@@ -96,7 +96,7 @@ class OpenRouterProviderTests(unittest.TestCase):
     ) -> None:
         response = mock.Mock()
         response.model_dump.return_value = {
-            "model": "deepseek/deepseek-v4-flash-0731",
+            "model": "z-ai/glm-5.3-flash",
             "choices": [{"message": {"content": "bounded"}}],
         }
         client_cls.return_value.chat.completions.create.return_value = response
@@ -137,7 +137,7 @@ class OpenRouterProviderTests(unittest.TestCase):
     def test_all_reasoning_efforts_are_sent_inside_extra_body(self, client_cls: mock.Mock) -> None:
         response = mock.Mock()
         response.model_dump.return_value = {
-            "model": "deepseek/deepseek-v4-flash-0731",
+            "model": "z-ai/glm-5.3-flash",
             "choices": [{"message": {"content": "done"}}],
         }
         client_cls.return_value.chat.completions.create.return_value = response
@@ -168,7 +168,7 @@ class OpenRouterProviderTests(unittest.TestCase):
 
         response = mock.Mock()
         response.model_dump.return_value = {
-            "model": "deepseek/deepseek-v4-flash-0731",
+            "model": "z-ai/glm-5.3-flash",
             "choices": [{"message": {"content": "done"}}],
         }
         client_cls.return_value.chat.completions.create.side_effect = [

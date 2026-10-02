@@ -9,8 +9,8 @@ describe('parseAgentQueryResponse', () => {
       agent_used: {
         key: 'apex',
         provider: 'openrouter',
-        configured_model: 'deepseek/deepseek-v4-flash-0731',
-        resolved_model: 'deepseek/deepseek-v4-flash-0731',
+        configured_model: 'z-ai/glm-5.3-flash',
+        resolved_model: 'z-ai/glm-5.3-flash',
       },
       usage: { input_tokens: 120, output_tokens: 30, total_tokens: 150 },
       timing: { total_ms: 820, provider_ms: 700, apex_tool_ms: 40 },

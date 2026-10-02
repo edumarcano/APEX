@@ -105,7 +105,7 @@ class BriefingSessionApiTests(unittest.TestCase):
         return BriefingGenerationRequest(
             idempotency_key=uuid4(),
             profile_id="daily",
-            model_id="deepseek/deepseek-v4-flash-0731",
+            model_id="z-ai/glm-5.3-flash",
             reasoning="high",
         )
 
@@ -378,7 +378,7 @@ class BriefingSessionApiTests(unittest.TestCase):
                     json={
                         "idempotency_key": str(uuid4()),
                         "profile_id": profile_id,
-                        "model_id": "deepseek/deepseek-v4-flash-0731",
+                        "model_id": "z-ai/glm-5.3-flash",
                     },
                 )
                 self.assertEqual(response.status_code, 422, profile_id)
@@ -390,7 +390,7 @@ class BriefingSessionApiTests(unittest.TestCase):
                     json={
                         "idempotency_key": str(uuid4()),
                         "profile_id": "daily",
-                        "model_id": "deepseek/deepseek-v4-flash-0731",
+                        "model_id": "z-ai/glm-5.3-flash",
                     },
                 )
 
@@ -416,7 +416,7 @@ class BriefingSessionApiTests(unittest.TestCase):
             body = BriefingSessionGenerateRequest(
                 idempotency_key=uuid4(),
                 profile_id="daily",
-                model_id="deepseek/deepseek-v4-flash-0731",
+                model_id="z-ai/glm-5.3-flash",
                 reasoning="high",
             )
             first = self.client.post(

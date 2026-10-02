@@ -27,7 +27,11 @@ def _concrete_profile(model_id: str):
 
 class GeminiProviderTemperatureTests(unittest.TestCase):
     def test_cloud_agents_apply_quota_aware_loop_caps(self) -> None:
-        for model_id in ("gpt-5.6-luna", "deepseek/deepseek-v4-flash-0731", "gemini-3.7-flash"):
+        for model_id in (
+            "gpt-5.6-luna",
+            "gemini-3.7-flash",
+            "z-ai/glm-5.3-flash",
+        ):
             with self.subTest(model=model_id):
                 profile = get_model_profile(model_id)
                 assert profile is not None

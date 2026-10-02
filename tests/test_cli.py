@@ -113,19 +113,19 @@ class CliTests(unittest.TestCase):
         agent_code, agent_output, _, agent_session = self._run(
             ["models"],
             [_Response(200, {"key": "apex", "display_name": "Nova", "model_catalog": [{
-                "model_id": "deepseek/deepseek-v4-flash-0731", "display_name": "DeepSeek V4 Flash",
+                "model_id": "z-ai/glm-5.3-flash", "display_name": "GLM 5.3 Flash",
                 "runtime": "cloud", "provider": "openrouter", "status": "available",
             }]})],
         )
         self.assertEqual(agent_code, 0)
         self.assertIn("Nova", agent_output)
-        self.assertIn("DeepSeek", agent_output)
+        self.assertIn("GLM", agent_output)
         self.assertEqual(agent_session.calls[0]["url"], f"{cli.API_ROOT}/api/v1/cortex/agent")
 
         default_agent_code, default_agent_output, _, _ = self._run(
             ["models"],
             [_Response(200, {"key": "apex", "model_catalog": [{
-                "model_id": "deepseek/deepseek-v4-flash-0731", "display_name": "DeepSeek V4 Flash",
+                "model_id": "z-ai/glm-5.3-flash", "display_name": "GLM 5.3 Flash",
                 "runtime": "cloud", "provider": "openrouter", "status": "available",
             }]})],
         )
@@ -143,12 +143,12 @@ class CliTests(unittest.TestCase):
         self.assertEqual(session.calls[1]["json"]["prompt"], "Hello")
 
         code, _, _, session = self._run(
-            ["ask", "Plan", "--model", "deepseek/deepseek-v4-flash-0731", "--effort", "high", "--profile", "daily_planning"],
+            ["ask", "Plan", "--model", "z-ai/glm-5.3-flash", "--effort", "high", "--profile", "daily_planning"],
             [_Response(201, {"id": "conversation-2"}), response],
         )
         self.assertEqual(code, 0)
         self.assertEqual({key: value for key, value in session.calls[1]["json"].items() if key not in {"user_message_id", "agent_message_id"}}, {
-            "prompt": "Plan", "model_id": "deepseek/deepseek-v4-flash-0731", "effort": "high",
+            "prompt": "Plan", "model_id": "z-ai/glm-5.3-flash", "effort": "high",
             "tool_profile_id": "daily_planning",
         })
         self.assertEqual(session.calls[1]["timeout"], (3.0, 600.0))
@@ -648,7 +648,7 @@ class CliTests(unittest.TestCase):
                         "cortex_initial_selection": {
                             "runtime": "cloud",
                             "agent": "apex",
-                            "model_id": "deepseek/deepseek-v4-flash-0731",
+                            "model_id": "z-ai/glm-5.3-flash",
                             "effort": "high",
                         },
                     },

@@ -500,10 +500,10 @@ class RunCoordinatorTests(unittest.TestCase):
             user_message_id=uuid4(),
             agent_message_id=uuid4(),
             prompt="Hello",
-            model_id="deepseek/deepseek-v4-flash-0731",
+            model_id="z-ai/glm-5.3-flash",
         )
         metadata_cloud = _resolved_turn_metadata(cloud_payload)
-        self.assertEqual(metadata_cloud["effective_context_window"], 1_310_720)
+        self.assertEqual(metadata_cloud["effective_context_window"], 1_048_576)
 
     @patch("core.api.routers.cortex.get_knowledge_service")
     @patch("core.api.routers.cortex.get_retrieval_service")
@@ -748,7 +748,7 @@ class RunCoordinatorTests(unittest.TestCase):
                 SettingsPatch.model_validate(
                     {
                         "ask_apex": {
-                            "selected_model": "deepseek/deepseek-v4-flash-0731",
+                            "selected_model": "z-ai/glm-5.3-flash",
                             "sandbox_mode": True,
                         }
                     }
@@ -891,12 +891,12 @@ class RunCoordinatorTests(unittest.TestCase):
         coordinator = CortexRunCoordinator(self.service, max_workers=1)
         self.addCleanup(coordinator.close)
         _conv_id, _user_id, _agent_id, _record, handle = self._create_run(coordinator=coordinator)
-        handle.start(resolved_model="deepseek/deepseek-v4-flash-0731", provider="openrouter", runtime="cloud")
+        handle.start(resolved_model="z-ai/glm-5.3-flash", provider="openrouter", runtime="cloud")
         control = RunExecutionControl(handle, threading.Event())
 
         result = ProviderTurnResult(
             message=AgentMessage(role="agent", content="Hello world"),
-            resolved_model="deepseek/deepseek-v4-flash-0731",
+            resolved_model="z-ai/glm-5.3-flash",
             usage=TokenUsage(input_tokens=50, output_tokens=100, total_tokens=150),
             provider_ms=1200.0,
             runtime_measurements={"ttft_ms": 200.0},

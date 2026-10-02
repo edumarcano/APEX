@@ -120,7 +120,7 @@ class RunsLedgerTests(unittest.TestCase):
         partition="production",
         user_message_id=None,
         agent_message_id=None,
-        requested_model="deepseek/deepseek-v4-flash-0731",
+        requested_model="z-ai/glm-5.3-flash",
         limits=None,
     ) -> tuple[RunRecord, bool]:
         if conversation_id is None:
@@ -324,7 +324,7 @@ class RunsLedgerTests(unittest.TestCase):
         self.store.start_run(
             run.id,
             partition="production",
-            resolved_model="deepseek",
+            resolved_model="z-ai/glm-5.3-flash",
             provider="openrouter",
             runtime="cloud",
         )
@@ -407,7 +407,7 @@ class RunsLedgerTests(unittest.TestCase):
         self.store.start_run(
             run.id,
             partition="production",
-            resolved_model="deepseek",
+            resolved_model="z-ai/glm-5.3-flash",
             provider="openrouter",
             runtime="cloud",
         )
@@ -544,7 +544,7 @@ class RunsLedgerTests(unittest.TestCase):
             partition="production",
             user_message_id=uid,
             agent_message_id=aid,
-            requested_model="deepseek/deepseek-v4-flash-0731",
+            requested_model="z-ai/glm-5.3-flash",
             limit_snapshot=self._default_limits(),
         )
         self.assertFalse(replayed1)
@@ -556,7 +556,7 @@ class RunsLedgerTests(unittest.TestCase):
             partition="production",
             user_message_id=uid,
             agent_message_id=aid,
-            requested_model="deepseek/deepseek-v4-flash-0731",
+            requested_model="z-ai/glm-5.3-flash",
             limit_snapshot=self._default_limits(),
         )
         self.assertTrue(replayed2)
@@ -603,7 +603,7 @@ class RunsLedgerTests(unittest.TestCase):
         self.store.start_run(
             run1.id,
             partition="production",
-            resolved_model="deepseek",
+            resolved_model="z-ai/glm-5.3-flash",
             provider="openrouter",
             runtime="cloud",
         )
@@ -629,13 +629,13 @@ class RunsLedgerTests(unittest.TestCase):
         started = self.store.start_run(
             run.id,
             partition="production",
-            resolved_model="deepseek/deepseek-v4-flash-0731",
+            resolved_model="z-ai/glm-5.3-flash",
             provider="openrouter",
             runtime="cloud",
         )
         self.assertEqual(started.status, "running")
         self.assertIsNotNone(started.started_at)
-        self.assertEqual(started.resolved_model, "deepseek/deepseek-v4-flash-0731")
+        self.assertEqual(started.resolved_model, "z-ai/glm-5.3-flash")
 
         # Progress
         progress = self.store.update_progress(
@@ -826,7 +826,7 @@ class RunsLedgerTests(unittest.TestCase):
             conversation_id=self.prod_conversation_id,
             user_message_id=uid,
             agent_message_id=aid,
-            requested_model="deepseek/deepseek-v4-flash-0731",
+            requested_model="z-ai/glm-5.3-flash",
             limit_snapshot=self._default_limits(),
         )
         self.assertFalse(replayed)
@@ -842,7 +842,7 @@ class RunsLedgerTests(unittest.TestCase):
 
         # Lifecycle operations via partition-bound handle
         started = handle.start(
-            resolved_model="deepseek",
+            resolved_model="z-ai/glm-5.3-flash",
             provider="openrouter",
             runtime="cloud",
         )

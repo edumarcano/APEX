@@ -39,20 +39,20 @@ class ModelProfile:
 
 # Cloud models available to APEX Agent.
 CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
-    "deepseek/deepseek-v4-flash-0731": ModelProfile(
-        model_id="deepseek/deepseek-v4-flash-0731",
-        display_name="DeepSeek V4 Flash 0731",
+    "z-ai/glm-5.3-flash": ModelProfile(
+        model_id="z-ai/glm-5.3-flash",
+        display_name="GLM 5.3 Flash",
         provider="openrouter",
         runtime="cloud",
         stability="stable",
         credential_env="OPENROUTER_API_KEY",
         max_tool_turns=min(6, CORTEX_RUNS_MAX_MODEL_TURNS),
         max_tool_calls=min(10, CORTEX_RUNS_MAX_TOOL_CALLS),
-        reasoning_options=("none", "low", "high", "max"),
-        default_reasoning="high",
+        reasoning_options=("low", "high", "max"),
+        default_reasoning="low",
         supports_encrypted_reasoning=False,
         hosted_capabilities=frozenset(),
-        maximum_context_window=1_310_720,
+        maximum_context_window=1_048_576,
     ),
     "gpt-5.6-luna": ModelProfile(
         model_id="gpt-5.6-luna",
@@ -161,7 +161,7 @@ ALL_MODEL_PROFILES: dict[str, ModelProfile] = {
     **LOCAL_MODEL_PROFILES,
 }
 
-DEFAULT_APEX_MODEL = "deepseek/deepseek-v4-flash-0731"
+DEFAULT_APEX_MODEL = "z-ai/glm-5.3-flash"
 DEFAULT_CLOUD_MODEL = DEFAULT_APEX_MODEL
 DEFAULT_LOCAL_MODEL = "gemma-4-E2B-Q4_K_M.gguf"
 DEFAULT_LOCAL_RUNTIME: LocalRuntime = "llama_cpp"

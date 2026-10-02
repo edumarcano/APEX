@@ -62,7 +62,7 @@ class CliRunsTests(unittest.TestCase):
             {
                 "id": "run-1",
                 "status": "completed",
-                "resolved_model": "deepseek/deepseek-v4-flash-0731",
+                "resolved_model": "z-ai/glm-5.3-flash",
                 "runtime": "cloud",
                 "total_tokens": 512,
                 "elapsed_seconds": 1.25,
@@ -110,7 +110,7 @@ class CliRunsTests(unittest.TestCase):
             "status": "completed",
             "stop_reason": "end_turn",
             "conversation_id": "conv-xyz",
-            "resolved_model": "deepseek/deepseek-v4-flash-0731",
+            "resolved_model": "z-ai/glm-5.3-flash",
             "runtime": "cloud",
             "provider": "openrouter",
             "total_tokens": 1024,
@@ -134,7 +134,7 @@ class CliRunsTests(unittest.TestCase):
         self.assertIn("Run ID: run-abc", output)
         self.assertIn("Status: completed", output)
         self.assertIn("Stop Reason: end_turn", output)
-        self.assertIn("Model: deepseek/deepseek-v4-flash-0731 (cloud / openrouter)", output)
+        self.assertIn("Model: z-ai/glm-5.3-flash (cloud / openrouter)", output)
         self.assertIn("Tokens: 1024 (reported)", output)
         self.assertIn("Trace ID: 4bf92f3577b34da6a3ce929d0e0e4736", output)
         self.assertIn("Answer Persisted: True", output)

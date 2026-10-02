@@ -118,7 +118,7 @@ class BriefingSpeechTests(unittest.TestCase):
         return BriefingGenerationRequest(
             idempotency_key=uuid4(),
             profile_id="daily",
-            model_id="deepseek/deepseek-v4-flash-0731",
+            model_id="z-ai/glm-5.3-flash",
             reasoning="high",
         )
 

@@ -19,7 +19,7 @@ uv run apex models
 
 ```powershell
 uv run apex ask "What needs my attention?"
-uv run apex ask "Review my plan" --model deepseek/deepseek-v4-flash-0731 --effort high --profile daily_planning
+uv run apex ask "Review my plan" --model z-ai/glm-5.3-flash --effort high --profile daily_planning
 ```
 
 Each `ask` invocation creates one persisted CLI conversation and submits one turn; it does not attach the current telemetry snapshot. `--model` is optional; omitting it uses the persisted selected model. When `--profile` is omitted, the backend chooses the saved default profile for the selected model runtime.

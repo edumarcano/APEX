@@ -12,7 +12,7 @@ vi.mock('./CortexContext', () => ({
   CortexContext: ({ onOpenActions }: { onOpenActions: (actionId: string) => void }) => <button type="button" onClick={() => onOpenActions('linked-action')}>Open linked action</button>,
 }))
 
-const cloudModel: ModelCatalogEntry = { model_id: 'deepseek/deepseek-v4-flash-0731', display_name: 'DeepSeek V4 Flash', provider: 'openrouter', runtime: 'cloud', stability: 'stable', hosted_capabilities: [], status: 'configured', reasoning_options: ['none', 'low', 'high'], default_reasoning: 'low' }
+const cloudModel: ModelCatalogEntry = { model_id: 'z-ai/glm-5.3-flash', display_name: 'GLM 5.3 Flash', provider: 'openrouter', runtime: 'cloud', stability: 'stable', hosted_capabilities: [], status: 'configured', reasoning_options: ['none', 'low', 'high'], default_reasoning: 'low' }
 const localModel: ModelCatalogEntry = { model_id: 'gemma-4-E2B-Q4_K_M.gguf', display_name: 'Gemma 4 E2B', provider: 'llama_cpp', runtime: 'local', stability: 'stable', hosted_capabilities: [], status: 'available', context_options: [4096, 16384], default_context_window: 16384, reasoning_modes: ['none', 'focused'], default_reasoning_mode: 'none', active: false, loading: false }
 const apex: CortexAgent = { key: 'apex', display_name: 'Lynx', canonical_name: 'APEX Agent', description: 'Native assistant.', selected_model: cloudModel.model_id, model_catalog: [cloudModel, localModel] }
 const toolCatalog: ToolCatalog = { agent: 'apex', groups: [], tools: [], profiles: [], default_profile_id: 'no_tools', default_profile_name: 'No APEX Tools', default_selected_tool_names: [], provider_hosted_tools: [], context_window: 4096, reserved_response_tokens: 512 }

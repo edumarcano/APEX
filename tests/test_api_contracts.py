@@ -311,7 +311,7 @@ class ApiHttpContractTests(unittest.TestCase):
         load.assert_called_once_with("gemma-4-E2B-Q4_K_M.gguf")
 
         verification = CloudModelVerificationResponse(
-            model_id="deepseek/deepseek-v4-flash-0731",
+            model_id="z-ai/glm-5.3-flash",
             status="verified",
             checked_at="2026-08-02T12:00:00Z",
         )
@@ -319,11 +319,11 @@ class ApiHttpContractTests(unittest.TestCase):
             "core.api.routers.cortex.verify_cloud_model_endpoint",
             return_value=verification,
         ) as verify:
-            response = self.client.post("/api/v1/cortex/models/verify", json={"model_id": "deepseek/deepseek-v4-flash-0731"})
+            response = self.client.post("/api/v1/cortex/models/verify", json={"model_id": "z-ai/glm-5.3-flash"})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "verified")
-        verify.assert_called_once_with("deepseek/deepseek-v4-flash-0731")
+        verify.assert_called_once_with("z-ai/glm-5.3-flash")
 
         service = mock.Mock()
         conversation_id = "00000000-0000-4000-8000-000000000001"
