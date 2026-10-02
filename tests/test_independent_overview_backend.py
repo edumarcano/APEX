@@ -53,7 +53,6 @@ class CortexAgentCatalogTests(unittest.TestCase):
                 "features": {
                     "weather": True,
                     "sports": True,
-                    "news": True,
                     "email": True,
                     "calendar": True,
                     "market": False,
@@ -166,13 +165,13 @@ class TelemetryContextTests(unittest.TestCase):
             + ("x" * 5000)
         )
         snapshot = build_snapshot_from_results(
-            {"news": _result("news", malicious)}
+            {"weather": _result("weather", malicious)}
         )
         service.store.set(snapshot)
 
         context = _build_telemetry_context(
             AgentQueryRequest(
-                prompt="news?",
+                prompt="weather?",
                 history=[],
                 snapshot_id=snapshot.snapshot_id,
             )
@@ -201,7 +200,6 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
                 "features": {
                     "weather": True,
                     "sports": True,
-                    "news": True,
                     "email": True,
                     "calendar": True,
                     "market": False,

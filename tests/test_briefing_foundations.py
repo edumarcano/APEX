@@ -645,7 +645,7 @@ class BriefingSessionLifecycleTests(unittest.TestCase):
         self.assertIn("A planning meeting begins at 10:00.", context.rendered)
         self.assertEqual(context.references[0].namespace, "briefing_session")
 
-    def test_daily_followup_prioritizes_question_relevance_within_budget(self) -> None:
+    def test_saved_news_evidence_remains_available_to_followup_context(self) -> None:
         evidence = [
             BriefingEvidence(
                 source="news", source_id=f"item-{index}", trust="observed",

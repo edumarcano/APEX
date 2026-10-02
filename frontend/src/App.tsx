@@ -57,7 +57,6 @@ import {
 import { moduleReasonLabel, resolveModuleLedState } from './lib/moduleTelemetry'
 import { DEFAULT_WEATHER_INFO, resolveWeatherFromModule } from './lib/weatherTelemetry'
 import { resolveEmailTelemetry } from './lib/emailTelemetry'
-import { resolveNewsTelemetry } from './lib/newsTelemetry'
 import { filterAgentSettingsForDevMode } from './lib/settings'
 import {
   resolveAgentTurnOverrides,
@@ -1083,6 +1082,11 @@ export default function App(): ReactElement {
     })
   }, [handleCollectTelemetry])
 
+  const handleOverviewSetupBriefing = useCallback((): void => {
+    setBriefingSetupAutoOpen(true)
+    navigateWorkspace('briefing')
+  }, [navigateWorkspace])
+
   const handleSelectWorkspace = useCallback((peer: WorkspacePeer): void => {
     navigateWorkspace(peer)
   }, [navigateWorkspace])
@@ -1111,7 +1115,6 @@ export default function App(): ReactElement {
 
   const hasSnapshot = telemetry.snapshot !== null
   const weatherModule = telemetry.snapshot?.modules.weather
-  const newsModule = telemetry.snapshot?.modules.news
   const emailModule = telemetry.snapshot?.modules.email
   const calendarModule = telemetry.snapshot?.modules.calendar
   const f1Module = telemetry.snapshot?.modules.f1
@@ -1129,7 +1132,6 @@ export default function App(): ReactElement {
     return {
       reminders: resolveTelemetryAttentionTier('reminders', options),
       weather: resolveTelemetryAttentionTier('weather', options),
-      news: resolveTelemetryAttentionTier('news', options),
       events: resolveTelemetryAttentionTier('events', options),
       market: resolveTelemetryAttentionTier('market', options),
       email: resolveTelemetryAttentionTier('email', options),
@@ -1141,7 +1143,6 @@ export default function App(): ReactElement {
     () => ({
       reminders: resolveAttentionStaggerMs('reminders'),
       weather: resolveAttentionStaggerMs('weather'),
-      news: resolveAttentionStaggerMs('news'),
       events: resolveAttentionStaggerMs('events'),
       market: resolveAttentionStaggerMs('market'),
       email: resolveAttentionStaggerMs('email'),
@@ -1151,7 +1152,6 @@ export default function App(): ReactElement {
   )
 
   const weatherRefreshing = isConnectorRefreshing('weather')
-  const newsRefreshing = isConnectorRefreshing('news')
   const emailRefreshing = isConnectorRefreshing('email')
   const calendarRefreshing = isConnectorRefreshing('calendar')
   const f1Refreshing = isConnectorRefreshing('f1')
@@ -1159,11 +1159,9 @@ export default function App(): ReactElement {
   const remindersRefreshing = isConnectorRefreshing('reminders') || isReminderRefreshPending
 
   const weatherLedState = resolveModuleLedState(weatherModule, weatherRefreshing)
-  const newsLedState = resolveModuleLedState(newsModule, newsRefreshing)
   const emailLedState = resolveModuleLedState(emailModule, emailRefreshing)
   const calendarLedState = resolveModuleLedState(calendarModule, calendarRefreshing)
   const weatherStatusMessage = moduleReasonLabel(weatherModule)
-  const newsStatusMessage = moduleReasonLabel(newsModule)
   const emailStatusMessage = moduleReasonLabel(emailModule)
   const remindersStatusMessage = moduleReasonLabel(remindersModule)
   const eventsStatusMessage = [
@@ -1254,7 +1252,6 @@ export default function App(): ReactElement {
 
   const f1ScheduleTelemetryText = f1Module?.display_text?.trim() ?? ''
   const emailInfo = resolveEmailTelemetry(emailModule)
-  const newsInfo = resolveNewsTelemetry(newsModule)
   const calendarInfo = resolveCalendarTelemetry(calendarModule)
   const footballInfo = resolveFootballTelemetry(footballModule)
 
@@ -1265,7 +1262,6 @@ export default function App(): ReactElement {
       ].filter((value): value is string => value !== null).join(' · ') || 'No events'
     : null
   const emailCompactValue = emailInfo.state === 'available' && emailInfo.count !== null ? `${emailInfo.count} unread` : null
-  const newsCompactValue = newsInfo.state === 'available' ? `${newsInfo.items.length} headlines` : null
   const remindersCompactValue = `${pendingReminderCount} pending`
   const runAssistantPreflight = useCallback(async (config: ApexAssistantRunConfig): Promise<boolean> => {
     if (submissionPendingRef.current) return false
@@ -1648,14 +1644,6 @@ export default function App(): ReactElement {
       items: emailInfo.items,
       refreshing: emailRefreshing,
     },
-    news: {
-      state: newsInfo.state,
-      ledState: newsLedState,
-      statusMessage: newsStatusMessage,
-      compactValue: newsCompactValue,
-      items: newsInfo.items,
-      refreshing: newsRefreshing,
-    },
     reminders: {
       ledState: resolveModuleLedState(remindersModule, remindersRefreshing),
       statusMessage: remindersStatusMessage,
@@ -1761,6 +1749,7 @@ export default function App(): ReactElement {
               onCollectTelemetry: handleCollectOverviewTelemetry,
               disabled: preflight.isChecking,
             }}
+            onOverviewSetupBriefing={handleOverviewSetupBriefing}
             overviewState={overviewState}
             overviewError={overviewError}
             onRefreshAll={handleRefreshAll}

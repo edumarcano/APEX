@@ -537,6 +537,8 @@ Basic system-theme integration or shell-level appearance behavior may be added w
 
 The goal is to make APEX feel like a native application without tying the APEX platform to a single interface.
 
+The milestone also removes the GNews-backed News telemetry connector and updates the Overview composition around the remaining services. APEX should not introduce a replacement news feed as part of this milestone. Previously saved briefing evidence remains available for historical review.
+
 ---
 
 ## v2.2.0 - Multilingual Foundation
@@ -622,6 +624,7 @@ These ideas are not requirements for the currently planned milestones. They shou
 * **Edits from Obsidian or other note tools:** Changes to exported notes may eventually become proposals for APEX review. They should not silently overwrite accepted personal context.
 * **External task delegation:** APEX may hand a bounded task to Hermes Agent or another isolated runtime when there is a practical reason to start that work from APEX.
 * **Workflow tools and additional event sources:** A specific workflow, webhook, or external source may justify an adapter to an established tool. APEX should add the connection needed for that use, not build a general automation platform.
+* **News-oriented Reports (after v2.4.0):** Plan how Reports could receive and present news research prepared by an external AI client, including dependable delivery, source attribution, reporting windows, freshness, and Briefing selection. Reports are not an automatic replacement for the removed News connector today.
 * **Portable procedural skills:** An existing skill format may be adopted when repeated APEX procedures justify it.
 * **A cloud-hosted APEX service:** Live access or processing while the main machine is offline would require a separate design for hosting, security, synchronization, and data ownership. This is different from syncing a generated Markdown vault.
 

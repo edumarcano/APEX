@@ -10,7 +10,6 @@ export const BASE_SETTINGS: RuntimeSettings = {
   features: {
     weather: true,
     sports: true,
-    news: true,
     email: false,
     calendar: false,
     market: true,

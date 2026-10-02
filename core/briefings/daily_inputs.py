@@ -31,7 +31,6 @@ SOURCE_SCOPES = {
     "calendar": "Selected calendar events in the configured 14-day window",
     "email": "Up to eight unread primary inbox message metadata records",
     "weather": "Current weather and the available near-term forecast",
-    "news": "Available cached headlines",
     "f1": "Available F1 telemetry snapshot",
     "football": "Available followed-team fixtures",
     "market": "Available configured market symbols",
@@ -59,7 +58,7 @@ def _telemetry_inputs(
     coverage: list[BriefingCoverage] = []
     evidence: list[BriefingEvidence] = []
     for source in (
-        "reminders", "calendar", "email", "weather", "news", "f1", "football", "market"
+        "reminders", "calendar", "email", "weather", "f1", "football", "market"
     ):
         entry = snapshot.modules.get(source) if snapshot else None
         status, reason = _coverage_status(entry)
@@ -119,8 +118,6 @@ def _expected_evidence_count(source: str, data: dict[str, Any]) -> int:
         return min(12, len(_dict_list(data.get("events"))))
     if source == "email":
         return min(8, len(_dict_list(data.get("emails"))))
-    if source == "news":
-        return min(5, len(_dict_list(data.get("headlines"))))
     if source == "football":
         return min(6, len(_dict_list(data.get("fixtures"))))
     if source == "market":
@@ -154,11 +151,6 @@ def _telemetry_scope_key(source: str, data: dict[str, Any], *, dev_mode: bool) -
         if not isinstance(location, str) or not location or not isinstance(zone, str) or not zone:
             return None
         return _scope_key(source, {"location": location.casefold(), "timezone": zone, "forecast_days": 3})
-    if source == "news":
-        topics = data.get("topics")
-        if not isinstance(topics, list) or not all(isinstance(value, str) for value in topics):
-            return None
-        return _scope_key(source, {"topics": sorted(topics), "headline_limit": 5})
     if source == "f1":
         return _scope_key(source, {"series": "formula1", "selection": "next_race"}) if isinstance(data.get("f1_map"), dict) else None
     if source == "football":
@@ -199,8 +191,6 @@ def _module_truncated(source: str, data: dict[str, Any]) -> bool:
         emails = _dict_list(data.get("emails"))
         count = _safe_count(data.get("count"))
         return len(emails) > 8 or count > min(len(emails), 8)
-    if source == "news":
-        return len(_dict_list(data.get("headlines"))) >= 5
     if source == "calendar":
         events = _dict_list(data.get("events"))
         total_count = _safe_count(data.get("total_count"), default=len(events))
@@ -350,26 +340,6 @@ def _module_evidence(
                 priority=30,
                 semantic_fingerprint=_semantic_fingerprint(_weather_semantics(data)),
                 comparison_state=_weather_comparison_state(data),
-            ))
-    elif source == "news":
-        for item in _dict_list(data.get("headlines"))[:5]:
-            content = _news_text(item)
-            article_id = str(item.get("article_id") or "").strip()
-            items.append(_evidence(
-                source=source,
-                source_id=f"news:{article_id}" if article_id else _content_id(content),
-                identity_kind="provider" if article_id else "content",
-                revision=_content_hash(content),
-                revision_kind="content",
-                observed_at=observed_at,
-                effective_at=_parse_datetime(item.get("published_at")),
-                content=content,
-                priority=15,
-                semantic_fingerprint=_semantic_fingerprint({
-                    "headline": item.get("headline"), "topic": item.get("topic"),
-                    "source": item.get("source"), "published_at": _normalized_instant(item.get("published_at")),
-                    "synopsis": item.get("synopsis"),
-                }),
             ))
     elif source == "football":
         for item in _dict_list(data.get("fixtures"))[:6]:
@@ -908,15 +878,6 @@ def _calendar_semantic_time(value: Any, event: dict[str, Any]) -> str | None:
         except (TypeError, ValueError):
             pass
     return _normalized_instant(value)
-
-
-def _news_text(item: dict[str, Any]) -> str:
-    parts = [str(item.get("headline") or "")]
-    for key in ("topic", "source", "published_at", "synopsis"):
-        value = item.get(key)
-        if value:
-            parts.append(f"{key.replace('_', ' ')}: {value}")
-    return "; ".join(parts)[:1500]
 
 
 def _fixture_text(item: dict[str, Any]) -> str:

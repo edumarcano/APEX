@@ -25,6 +25,7 @@ export type HudWorkspaceProps = {
   overviewState: 'center' | 'collecting' | 'ready' | 'error' | 'no-data'
   overviewError?: string | null
   onRefreshAll: () => void
+  onOverviewSetupBriefing: () => void
   overviewActions: ComponentProps<typeof CollectTelemetryButton>
   briefingControls: Omit<BriefingProfilePanelProps, 'speechControl'> & { speechControl?: BriefingSpeechControlProps | null }
   briefingConversation: BriefingViewConversation
@@ -50,6 +51,7 @@ export function HudWorkspace(props: HudWorkspaceProps): ReactElement {
         error={props.overviewError}
         onCollect={props.overviewActions.onCollectTelemetry}
         onRefreshAll={props.onRefreshAll}
+        onSetUpBriefing={props.onOverviewSetupBriefing}
         collectDisabled={props.overviewActions.disabled}
       />
     ) : (

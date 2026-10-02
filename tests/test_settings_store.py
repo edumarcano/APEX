@@ -48,6 +48,38 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertEqual(settings.cloud.effort, "low")
         self.assertEqual(settings.local.context_window, 16384)
 
+    def test_retired_news_feature_in_disk_config_is_ignored_without_losing_preferences(self) -> None:
+        _write_json(self.config_path, {
+            "features": {
+                "weather": True,
+                "sports": True,
+                "news": True,
+                "email": True,
+                "calendar": False,
+                "market": True,
+            },
+            "ask_apex": {"enabled": True},
+        })
+        store = self._store()
+
+        loaded = store.get_snapshot().features
+        self.assertTrue(loaded.weather)
+        self.assertTrue(loaded.sports)
+        self.assertTrue(loaded.email)
+        self.assertTrue(loaded.market)
+        self.assertFalse(loaded.calendar)
+        self.assertFalse(hasattr(loaded, "news"))
+
+        updated = store.apply_patch(
+            SettingsPatch.model_validate({"features": {"weather": False}})
+        ).features
+        self.assertFalse(updated.weather)
+        self.assertTrue(updated.sports)
+        self.assertTrue(updated.email)
+        self.assertTrue(updated.market)
+        self.assertFalse(updated.calendar)
+        self.assertFalse(hasattr(updated, "news"))
+
     def test_model_selection_updates_the_matching_runtime_memory(self) -> None:
         store = self._store()
         settings = store.apply_patch(

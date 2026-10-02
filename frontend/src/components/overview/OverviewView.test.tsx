@@ -6,9 +6,7 @@ import type { HudIdentityProps } from './HudIdentity'
 import type { HudTelemetryData } from './HudTelemetry'
 import { OverviewView } from './OverviewView'
 
-afterEach(() => {
-  vi.unstubAllGlobals()
-})
+afterEach(() => vi.unstubAllGlobals())
 
 const identity: HudIdentityProps = {
   logoProps: { status: 'idle' },
@@ -20,8 +18,8 @@ const telemetry: HudTelemetryData = {
   isRefreshingAll: false,
   isRefreshingAnyConnector: false,
   onRefreshConnector: vi.fn(),
-  attentionTiers: { weather: 'pending', events: 'pending', market: 'pending', email: 'pending', news: 'pending', reminders: 'pending' },
-  attentionStagger: { weather: 0, events: 0, market: 0, email: 0, news: 0, reminders: 0 },
+  attentionTiers: { weather: 'pending', events: 'pending', market: 'pending', email: 'pending', reminders: 'pending' },
+  attentionStagger: { weather: 0, events: 0, market: 0, email: 0, reminders: 0 },
   weather: { info: DEFAULT_WEATHER_INFO, body: 'Weather unavailable.', ledState: 'loading', statusMessage: null, showAttribution: false },
   events: {
     f1Text: '',
@@ -37,7 +35,6 @@ const telemetry: HudTelemetryData = {
   },
   market: { data: null, isLoading: false, enabled: true },
   email: { state: 'unavailable', ledState: 'loading', statusMessage: null, compactValue: null, count: null, items: [], refreshing: false },
-  news: { state: 'unavailable', ledState: 'loading', statusMessage: null, compactValue: null, items: [], refreshing: false },
   reminders: {
     loadState: 'loaded',
     ledState: 'loading',
@@ -66,185 +63,80 @@ function setCompactLayout(compact: boolean): void {
 }
 
 describe('OverviewView layout', () => {
-  it('keeps the desktop identity in its final grid slot while telemetry collection resolves', () => {
+  it('renders Weather, Events, Email, Market and Reminders with no News panel', () => {
     setCompactLayout(false)
-    const { rerender } = render(
-      <OverviewView identity={identity} telemetry={telemetry} state="collecting" onCollect={vi.fn()} onRefreshAll={vi.fn()} />,
-    )
+    render(<OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={vi.fn()} onRefreshAll={vi.fn()} onSetUpBriefing={vi.fn()} />)
 
-    const layout = screen.getByRole('region', { name: 'Overview' })
-    const identityCard = layout.querySelector('[data-slot="overview-identity-card"]')
-    expect(layout).toHaveClass('grid-cols-6')
-    expect(identityCard).toHaveClass('col-span-2')
-    expect(identityCard).not.toHaveClass('col-span-6', 'row-start-2')
-    expect(screen.getByRole('heading', { name: 'Reminders' }).closest('section')).toHaveClass('col-span-2')
-
-    rerender(<OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={vi.fn()} onRefreshAll={vi.fn()} />)
-
-    expect(layout.querySelector('[data-slot="overview-identity-card"]')).toHaveClass('col-span-2')
-    expect(screen.getByRole('heading', { name: 'Reminders' }).closest('section')).toHaveClass('col-span-2')
-    expect(screen.getByRole('heading', { name: 'News Wire' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Market' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Email' })).toBeInTheDocument()
-  })
-
-  it('keeps the compact identity first during collection and after telemetry arrives', () => {
-    setCompactLayout(true)
-    const { rerender } = render(
-      <OverviewView identity={identity} telemetry={telemetry} state="collecting" onCollect={vi.fn()} onRefreshAll={vi.fn()} />,
-    )
-
-    const layout = screen.getByRole('region', { name: 'Overview' })
-    const identityCard = layout.querySelector('[data-slot="overview-identity-card"]')
-    expect(identityCard).toHaveClass('order-first', 'md:col-span-2')
-
-    rerender(<OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={vi.fn()} onRefreshAll={vi.fn()} />)
-
-    expect(layout.querySelector('[data-slot="overview-identity-card"]')).toHaveClass('order-first', 'md:col-span-2')
-    expect(layout).toHaveClass('grid-cols-1', 'md:grid-cols-2')
-  })
-
-  it('shows Refresh All only with the telemetry grid and disables it while collection or refresh is active', () => {
-    setCompactLayout(false)
-    const onRefreshAll = vi.fn()
-    const center = render(
-      <OverviewView identity={identity} telemetry={telemetry} state="center" onCollect={vi.fn()} onRefreshAll={onRefreshAll} />,
-    )
-    expect(screen.queryByRole('button', { name: 'Refresh All' })).not.toBeInTheDocument()
-
-    center.rerender(
-      <OverviewView identity={identity} telemetry={telemetry} state="collecting" onCollect={vi.fn()} onRefreshAll={onRefreshAll} />,
-    )
-    const refreshButton = screen.getByRole('button', { name: 'Refresh All' })
-    expect(refreshButton).toBeDisabled()
-    expect(refreshButton.querySelector('svg')).toHaveClass('animate-spin')
-
-    center.rerender(
-      <OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={vi.fn()} onRefreshAll={onRefreshAll} />,
-    )
-    expect(refreshButton).toBeEnabled()
-    expect(refreshButton.querySelector('svg')).not.toHaveClass('animate-spin')
-    fireEvent.click(refreshButton)
-    expect(onRefreshAll).toHaveBeenCalledOnce()
-
-    center.rerender(
-      <OverviewView identity={identity} telemetry={{ ...telemetry, isRefreshingAll: true }} state="ready" onCollect={vi.fn()} onRefreshAll={onRefreshAll} />,
-    )
-    expect(refreshButton).toBeDisabled()
-    expect(refreshButton.querySelector('svg')).toHaveClass('animate-spin')
-
-    center.rerender(
-      <OverviewView identity={identity} telemetry={{ ...telemetry, isRefreshingAnyConnector: true }} state="ready" onCollect={vi.fn()} onRefreshAll={onRefreshAll} />,
-    )
-    expect(refreshButton).toBeDisabled()
-    expect(refreshButton.querySelector('svg')).not.toHaveClass('animate-spin')
-    expect(refreshButton.querySelector('svg')).toHaveClass('motion-reduce:animate-none')
-  })
-})
-
-describe('OverviewView identity mark sizing', () => {
-  function homeIdentity(layout: HTMLElement): HTMLElement {
-    const node = layout.querySelector('[data-slot="home-identity"]')
-    if (!node) {
-      throw new Error('Expected [data-slot="home-identity"]')
+    for (const title of ['Weather', 'Events', 'Email', 'Market', 'Reminders']) {
+      expect(screen.getByRole('heading', { name: title })).toBeVisible()
     }
-    return node as HTMLElement
-  }
-
-  it('uses a large identity mark and Collect Telemetry in center, error, and no-data', () => {
-    setCompactLayout(false)
-    const onCollect = vi.fn()
-
-    const centerView = render(
-      <OverviewView identity={identity} telemetry={telemetry} state="center" onCollect={onCollect} onRefreshAll={vi.fn()} />,
-    )
-    const centerLayout = screen.getByRole('region', { name: 'Overview' })
-    expect(homeIdentity(centerLayout)).toHaveAttribute('data-logo-size', 'large')
-    expect(centerLayout.querySelector('header span')).toHaveTextContent('Ready')
-    expect(centerLayout.querySelector('[data-slot="voice-signal-glyph"] span')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Collect Telemetry' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Refresh All' })).not.toBeInTheDocument()
-    centerView.unmount()
-
-    const errorView = render(
-      <OverviewView
-        identity={identity}
-        telemetry={telemetry}
-        state="error"
-        error="Network down"
-        onCollect={onCollect}
-        onRefreshAll={vi.fn()}
-      />,
-    )
-    const errorLayout = screen.getByRole('region', { name: 'Overview' })
-    expect(homeIdentity(errorLayout)).toHaveAttribute('data-logo-size', 'large')
-    expect(screen.getByRole('button', { name: 'Retry Telemetry' })).toBeInTheDocument()
-    expect(screen.getByRole('alert')).toHaveTextContent('Network down')
-    errorView.unmount()
-
-    const noDataView = render(
-      <OverviewView identity={identity} telemetry={telemetry} state="no-data" onCollect={onCollect} onRefreshAll={vi.fn()} />,
-    )
-    const noDataLayout = screen.getByRole('region', { name: 'Overview' })
-    expect(homeIdentity(noDataLayout)).toHaveAttribute('data-logo-size', 'large')
-    expect(screen.getByRole('button', { name: 'Retry Telemetry' })).toBeInTheDocument()
-    noDataView.unmount()
+    expect(screen.queryByRole('heading', { name: /News Wire/ })).not.toBeInTheDocument()
   })
 
-  it('uses an overview identity mark when the telemetry grid is visible', () => {
-    setCompactLayout(false)
-    const onCollect = vi.fn()
+  it('keeps every card available at compact widths', () => {
+    setCompactLayout(true)
+    render(<OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={vi.fn()} onRefreshAll={vi.fn()} onSetUpBriefing={vi.fn()} />)
 
-    const { rerender } = render(
-      <OverviewView identity={identity} telemetry={telemetry} state="collecting" onCollect={onCollect} onRefreshAll={vi.fn()} />,
-    )
-    const layout = screen.getByRole('region', { name: 'Overview' })
-    expect(homeIdentity(layout)).toHaveAttribute('data-logo-size', 'overview')
-    expect(screen.queryByText(/Gathering telemetry/i)).not.toBeInTheDocument()
-
-    rerender(<OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={onCollect} onRefreshAll={vi.fn()} />)
-    expect(homeIdentity(layout)).toHaveAttribute('data-logo-size', 'overview')
+    for (const title of ['Weather', 'Events', 'Email', 'Market', 'Reminders']) {
+      expect(screen.getByRole('heading', { name: title })).toBeVisible()
+    }
   })
 
-  it('offers collection from the centered state and telemetry cards after collection', () => {
-    const onCollect = vi.fn()
-
-    setCompactLayout(false)
-    const { rerender } = render(
-      <OverviewView identity={identity} telemetry={telemetry} state="center" onCollect={onCollect} onRefreshAll={vi.fn()} />,
-    )
-    expect(screen.getByRole('button', { name: 'Collect Telemetry' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Reminders' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Collect Telemetry' }))
-    expect(onCollect).toHaveBeenCalledOnce()
-
-    rerender(<OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={onCollect} onRefreshAll={vi.fn()} />)
-    expect(screen.queryByRole('button', { name: 'Collect Telemetry' })).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Reminders' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Market' })).toBeInTheDocument()
-  })
-
-  it('presents identity status and an accessible refresh action without a duplicate glyph label', () => {
+  it('disables Refresh All during collection and connector refreshes', () => {
     setCompactLayout(false)
     const onRefreshAll = vi.fn()
-    render(
-      <OverviewView
-        identity={{
-          logoProps: { status: 'idle' },
-          glyphProps: { status: 'idle', isSpeaking: false, activity: 'briefing_ready' },
-        }}
-        telemetry={telemetry}
-        state="ready"
-        onCollect={vi.fn()}
-        onRefreshAll={onRefreshAll}
-      />,
-    )
+    const { rerender } = render(<OverviewView identity={identity} telemetry={telemetry} state="collecting" onCollect={vi.fn()} onRefreshAll={onRefreshAll} onSetUpBriefing={vi.fn()} />)
+    const refresh = screen.getByRole('button', { name: 'Refresh All' })
+    expect(refresh).toBeDisabled()
+    expect(refresh.querySelector('svg')).toHaveClass('animate-spin')
 
-    expect(screen.getByText('Briefing ready')).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh All' }))
+    rerender(<OverviewView identity={identity} telemetry={telemetry} state="ready" onCollect={vi.fn()} onRefreshAll={onRefreshAll} onSetUpBriefing={vi.fn()} />)
+    expect(refresh).toBeEnabled()
+    fireEvent.click(refresh)
     expect(onRefreshAll).toHaveBeenCalledOnce()
-    const glyph = document.querySelector('[data-slot="voice-signal-glyph"]')
-    expect(glyph).toHaveAttribute('aria-hidden', 'true')
-    expect(screen.queryByText('Ready', { exact: true })).not.toBeInTheDocument()
+
+    rerender(<OverviewView identity={identity} telemetry={{ ...telemetry, isRefreshingAnyConnector: true }} state="ready" onCollect={vi.fn()} onRefreshAll={onRefreshAll} onSetUpBriefing={vi.fn()} />)
+    expect(refresh).toBeDisabled()
+    expect(refresh.querySelector('svg')).toHaveClass('motion-reduce:animate-none')
+
+    rerender(<OverviewView identity={identity} telemetry={{ ...telemetry, isRefreshingAll: true }} state="ready" onCollect={vi.fn()} onRefreshAll={onRefreshAll} onSetUpBriefing={vi.fn()} />)
+    expect(refresh).toBeDisabled()
+    expect(refresh.querySelector('svg')).toHaveClass('animate-spin')
+  })
+
+  it('offers setup only after collection and invokes it without collecting telemetry', () => {
+    setCompactLayout(false)
+    const onCollect = vi.fn()
+    const onSetUpBriefing = vi.fn()
+    const { rerender } = render(<OverviewView identity={identity} telemetry={telemetry} state="center" onCollect={onCollect} onRefreshAll={vi.fn()} onSetUpBriefing={onSetUpBriefing} />)
+
+    expect(screen.getByRole('button', { name: 'Collect Telemetry' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Set up briefing' })).not.toBeInTheDocument()
+    expect(screen.getByText('Ready')).toBeVisible()
+    expect(screen.getByRole('region', { name: 'Overview' }).querySelector('[data-slot="home-identity"]')).toHaveAttribute('data-logo-size', 'overview')
+
+    rerender(<OverviewView identity={{
+      ...identity,
+      glyphProps: { ...identity.glyphProps, activity: 'synthesizing' },
+    }} telemetry={telemetry} state="ready" onCollect={onCollect} onRefreshAll={vi.fn()} onSetUpBriefing={onSetUpBriefing} />)
+    const setup = screen.getByRole('button', { name: 'Set up briefing' })
+    expect(setup).toBeEnabled()
+    fireEvent.click(setup)
+    expect(onSetUpBriefing).toHaveBeenCalledOnce()
+    expect(onCollect).not.toHaveBeenCalled()
+    expect(screen.getByText('Synthesizing')).toBeVisible()
+  })
+
+  it('retains the retry message in error and no-data states', () => {
+    setCompactLayout(false)
+    const props = { identity, telemetry, onCollect: vi.fn(), onRefreshAll: vi.fn(), onSetUpBriefing: vi.fn() }
+    const { rerender } = render(<OverviewView {...props} state="error" error="Network down" />)
+    expect(screen.getByRole('alert')).toHaveTextContent('Network down')
+    expect(screen.getByRole('button', { name: 'Retry Telemetry' })).toBeInTheDocument()
+    expect(screen.getByText('Ready')).toBeVisible()
+
+    rerender(<OverviewView {...props} state="no-data" />)
+    expect(screen.getByRole('status')).toHaveTextContent('No telemetry sources are available yet.')
+    expect(screen.getByRole('button', { name: 'Retry Telemetry' })).toBeInTheDocument()
   })
 })

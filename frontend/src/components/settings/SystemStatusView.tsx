@@ -11,7 +11,6 @@ const FEATURE_CONTROLS: readonly {
 }[] = [
   { key: 'weather', label: 'Weather' },
   { key: 'sports', label: 'Sports' },
-  { key: 'news', label: 'News' },
   { key: 'email', label: 'Email' },
   { key: 'calendar', label: 'Calendar' },
   { key: 'market', label: 'Market' },

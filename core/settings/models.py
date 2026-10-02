@@ -189,7 +189,6 @@ class FeaturesSettings(BaseModel):
 
     weather: bool = False
     sports: bool = False
-    news: bool = False
     email: bool = False
     calendar: bool = False
     market: bool = False
@@ -445,7 +444,6 @@ class FeaturesPatch(BaseModel):
 
     weather: bool | None = None
     sports: bool | None = None
-    news: bool | None = None
     email: bool | None = None
     calendar: bool | None = None
     market: bool | None = None

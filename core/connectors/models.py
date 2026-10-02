@@ -12,7 +12,6 @@ ConnectorFreshness = Literal["live", "fresh_cache", "stale", "none"]
 
 CONNECTOR_NAMES = (
     "weather",
-    "news",
     "email",
     "calendar",
     "f1",

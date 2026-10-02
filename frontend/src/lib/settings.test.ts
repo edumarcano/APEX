@@ -86,6 +86,18 @@ describe('settings response parsing', () => {
     )
   })
 
+  it('ignores the retired News feature in older settings responses', () => {
+    const response = buildSettingsResponse()
+    const legacyResponse = {
+      ...response,
+      settings: { ...response.settings, features: { ...response.settings.features, news: true } },
+    }
+
+    const parsedFeatures = parseSettingsResponse(legacyResponse)?.settings.features
+    expect(parsedFeatures).toEqual(BASE_SETTINGS.features)
+    expect(parsedFeatures).not.toHaveProperty('news')
+  })
+
   it.each([
     ['feature boolean', ['settings', 'features', 'weather'], 'yes'],
     ['market boolean', ['settings', 'features', 'market'], 'yes'],

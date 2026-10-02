@@ -18,7 +18,6 @@ from core.connectors.models import (
 
 ModuleName = Literal[
     "weather",
-    "news",
     "email",
     "calendar",
     "f1",

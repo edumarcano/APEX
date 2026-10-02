@@ -220,7 +220,6 @@ function parseFeatures(value: unknown): FeaturesSettings | null {
   if (
     typeof value.weather !== 'boolean' ||
     typeof value.sports !== 'boolean' ||
-    typeof value.news !== 'boolean' ||
     typeof value.email !== 'boolean' ||
     typeof value.calendar !== 'boolean' ||
     typeof value.market !== 'boolean'
@@ -230,7 +229,6 @@ function parseFeatures(value: unknown): FeaturesSettings | null {
   return {
     weather: value.weather,
     sports: value.sports,
-    news: value.news,
     email: value.email,
     calendar: value.calendar,
     market: value.market,

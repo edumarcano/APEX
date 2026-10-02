@@ -770,9 +770,9 @@ def _build_prompt(
             "items. Do not repeat unchanged information. If the comparison identifies first-snapshot information "
             "for a source, label it as current information with no compatible baseline; do not claim it changed "
             "since the prior briefing. If this is an initial snapshot, describe current evidence and say that no "
-            "compatible baseline existed. In the bounded email and news inventories, only treat an unmatched "
-            "message or article as new when its stable ID and received/published timestamp place it after the "
-            "source checkpoint; a refreshed top-items list alone does not prove an item is new."
+            "compatible baseline existed. In bounded email inventories, only treat an unmatched message as new "
+            "when its stable ID and received timestamp place it after the source checkpoint; refreshed inbox "
+            "items alone do not prove a message is new."
         )
     elif profile_id == "deep":
         objective = (

@@ -312,7 +312,7 @@ class DailyInputTests(unittest.TestCase):
         self.assertTrue(weather.truncated)
         self.assertEqual(weather.reason, "source_limit_reached")
 
-    def test_stable_news_article_id_survives_normalization(self) -> None:
+    def test_news_is_not_included_in_current_briefing_inputs(self) -> None:
         snapshot = TelemetrySnapshot(modules={
             "news": TelemetryModuleEntry(
                 name="news", status="healthy", freshness="live",
@@ -330,12 +330,10 @@ class DailyInputTests(unittest.TestCase):
             ),
         })
 
-        _coverage, evidence = _telemetry_inputs(snapshot, None, False)
-        article = next(item for item in evidence if item.source == "news")
+        coverage, evidence = _telemetry_inputs(snapshot, None, False)
 
-        self.assertEqual(article.identity_kind, "provider")
-        self.assertEqual(article.source_id, "news:" + "a" * 64)
-        self.assertEqual(article.effective_at, datetime(2026, 9, 25, 12, tzinfo=timezone.utc))
+        self.assertNotIn("news", [item.source for item in coverage])
+        self.assertNotIn("news", [item.source for item in evidence])
 
     def test_external_report_disposition_does_not_change_its_content_fingerprint(self) -> None:
         content = ActivityReportContent(
@@ -896,7 +894,7 @@ class DailyInputTests(unittest.TestCase):
                         freshness="none",
                         reason_code="disabled_by_settings",
                     )
-                    for source in ("calendar", "email", "weather", "news", "f1", "football", "market")
+                    for source in ("calendar", "email", "weather", "f1", "football", "market")
                 },
             }
         )

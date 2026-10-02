@@ -49,7 +49,6 @@ __all__ = [
     "ENV_PATH",
     "FEATURE_CALENDAR",
     "FEATURE_EMAIL",
-    "FEATURE_NEWS",
     "FEATURE_SPORTS",
     "FEATURE_WEATHER",
     "PRIMARY_TTS",
@@ -159,7 +158,6 @@ DEMO_TTS: Final[DevTtsPlaybackMode] = _parse_dev_tts_playback(
 _FEATURE_KEYS: Final[tuple[str, ...]] = (
     "weather",
     "sports",
-    "news",
     "email",
     "calendar",
 )
@@ -250,7 +248,6 @@ _feature_map = load_feature_flags()
 
 FEATURE_WEATHER: Final[bool] = bool(_feature_map.get("weather", False))
 FEATURE_SPORTS: Final[bool] = bool(_feature_map.get("sports", False))
-FEATURE_NEWS: Final[bool] = bool(_feature_map.get("news", False))
 FEATURE_EMAIL: Final[bool] = bool(_feature_map.get("email", False))
 FEATURE_CALENDAR: Final[bool] = bool(_feature_map.get("calendar", False))
 

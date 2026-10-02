@@ -237,40 +237,6 @@ def _build_weather_module(module: dict[str, Any], *, now: datetime) -> tuple[Tel
     )
 
 
-def _build_news_module(module: dict[str, Any], *, now: datetime) -> tuple[TelemetryModuleEntry, dict[str, Any]]:
-    data = _require_dict(module.get("data"), path="news.data")
-    headlines_raw = data.get("headlines")
-    if not isinstance(headlines_raw, list) or not headlines_raw:
-        raise DemoFixtureError("news.data.headlines must be a non-empty list.")
-
-    headlines: list[dict[str, str]] = []
-    formatted: list[str] = []
-    for index, item in enumerate(headlines_raw):
-        row = _require_dict(item, path=f"news.data.headlines[{index}]")
-        topic = _require_str(row.get("topic"), path=f"news.data.headlines[{index}].topic")
-        headline = _require_str(
-            row.get("headline"),
-            path=f"news.data.headlines[{index}].headline",
-        )
-        headlines.append({"topic": topic, "headline": headline})
-        formatted.append(f"[{topic}] {headline}")
-
-    resolved_data = {"headlines": headlines, "topic_count": len(headlines)}
-    display = "[NEWS TELEMETRY]\n" + " | ".join(formatted)
-    return (
-        TelemetryModuleEntry(
-            name="news",
-            status=module["status"],
-            freshness=module["freshness"],
-            reason_code=module["reason_code"],
-            observed_at=_module_observed_at(module, now=now),
-            display_text=display,
-            data=resolved_data,
-        ),
-        resolved_data,
-    )
-
-
 def _build_email_module(module: dict[str, Any], *, now: datetime) -> tuple[TelemetryModuleEntry, dict[str, Any]]:
     data = _require_dict(module.get("data"), path="email.data")
     count = data.get("count")
@@ -587,9 +553,6 @@ def _build_module(
 ) -> TelemetryModuleEntry:
     if name == "weather":
         entry, _ = _build_weather_module(module, now=now)
-        return entry
-    if name == "news":
-        entry, _ = _build_news_module(module, now=now)
         return entry
     if name == "email":
         entry, _ = _build_email_module(module, now=now)

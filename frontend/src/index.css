@@ -931,3 +931,32 @@
     animation: none;
   }
 }
+
+/* Keep Overview identity proportions together as the card contracts. */
+.overview-identity-mark {
+  width: min(100%, 12.1rem);
+  max-height: 100%;
+}
+.overview-logo {
+  height: auto;
+  object-fit: contain;
+}
+.overview-signal {
+  width: 75%;
+}
+.overview-signal > svg {
+  width: 100%;
+  height: auto;
+}
+@media (min-width: 640px) {
+  .overview-identity-mark { width: min(100%, 13.84rem); }
+}
+@media (min-width: 1280px) {
+  .overview-identity-mark { width: min(100%, 17.3rem); }
+}
+@media (max-height: 820px) {
+  .overview-identity-mark { width: min(100%, 8.65rem); }
+}
+@media (max-width: 767px) {
+  .overview-identity-mark { width: min(100%, 7.35rem); }
+}

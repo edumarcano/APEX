@@ -147,7 +147,7 @@ Briefing profile selection is per session and does not add a Runtime Settings fi
 
 ### PATCH `/api/v1/settings`
 
-Accepts a strict partial patch for the optional user designation, optional agent display name, connectors, sports modules, followed football teams, market symbols, Google Calendar selection and label display, Context vault enablement and scopes, Agent query settings, tool profiles, voice, llama.cpp enablement, loopback host, optional managed-server paths, tracked MCP enablement, and local activity report folder settings. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
+Accepts a strict partial patch for the optional user designation, optional agent display name, connector features, sports modules, followed football teams, market symbols, Google Calendar selection and label display, Context vault enablement and scopes, Agent query settings, tool profiles, voice, llama.cpp enablement, loopback host, optional managed-server paths, tracked MCP enablement, and local activity report folder settings. The supported `features` toggles are `weather`, `sports`, `email`, `calendar`, and `market`; `features.news` is retired and returns `422` as an unknown field. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
 
 ```json
 {
@@ -193,7 +193,7 @@ Returns `{ "reusable": true }` when a normal full refresh would return the curre
 
 ### POST `/api/v1/telemetry/refresh`
 
-Refreshes all enabled connectors or a selected subset.
+Refreshes all enabled connectors or a selected subset. The supported connector IDs are `weather`, `email`, `calendar`, `f1`, `football`, `reminders`, and `market`. `news` is retired: explicitly requesting it returns `400` through the usual unknown-connector validation. Preflight requests naming `news` return an `invalid_input` blocker through the usual connector validation. Omitting the connector list refreshes only the supported connectors.
 
 Market participates in this lifecycle and in Sync Health. Each symbol can make at most one Alpha Vantage request per UTC calendar day after a successful response. Successful results remain fresh cached data for that day even when the latest trading close is older, such as on weekends. Temporary provider throttling retries after a short same-day cooldown, and daily quota exhaustion waits for the next UTC day. Other failed symbols wait until a later UTC date according to their failure backoff. Briefing profiles can use the bounded Market snapshot.
 
@@ -267,7 +267,7 @@ Deep requires capacity for at least two investigation turns, one tool call, and 
 
 Catch Up compares each source with compatible completed sessions that the client has marked presented. Admission freezes up to 100 newest eligible sessions in the active partition. Reading a session does not make it a checkpoint; presentation uses the dedicated acknowledgment route.
 
-The newest complete, untruncated inventory is the source's membership checkpoint. A newer partial or capped snapshot does not replace it, and incomplete membership alone cannot establish new items. Unmatched email or news can count as new only with a stable provider ID and a received/published timestamp after the prior source observation and no later than the current observation. Changed settings or normalization versions make a baseline incompatible.
+The newest complete, untruncated inventory is the source's membership checkpoint. A newer partial or capped snapshot does not replace it, and incomplete membership alone cannot establish new items. Unmatched email can count as new only with a stable provider ID and a received timestamp after the prior source observation and no later than the current observation. News is no longer a collected source for new sessions; saved sessions may still contain historical News evidence and comparison data. Changed settings or normalization versions make a baseline incompatible.
 
 The artifact's `comparison` field reports the overall outcome, each source's status, baseline/current observation times, and limitations. Failed, partial, disabled, stale, or missing sources can make the result limited. Missing values or regressed observation times also prevent a supported no-change claim.
 
@@ -279,7 +279,7 @@ Comparison uses each source's `observed_at`, rather than session creation, compl
 
 See [Architecture](architecture.md#briefing-routes) for the relationship between evidence, presentation checkpoints, and no-change results.
 
-Source inventories are bounded: reminders include at most 8 items in the selected list; calendar includes at most 12 selected-calendar events in its 14-day window; email includes at most 8 unread primary-inbox records; weather includes current conditions and up to 3 forecast days; cached news includes at most 5 headlines; F1 includes the next-race snapshot; football includes at most 6 fixtures; and market includes at most 12 configured symbols. A top-five news rotation alone does not establish that a headline was newly published; unmatched news without a stable article ID and post-checkpoint publication time is not called new. Personal evidence is retrieval/relevance-limited; pending reviews include at most 5 items, external reports select at most 3 relevant reports from the newest 50 candidates, and verified action outcomes include at most 20 records. The persisted observed inventory is capped at 32 evidence records and model synthesis at 18 evidence records; omitted synthesis evidence does not reduce the persisted source-coverage claim.
+Current source inventories are bounded: reminders include at most 8 items in the selected list; calendar includes at most 12 selected-calendar events in its 14-day window; email includes at most 8 unread primary-inbox records; weather includes current conditions and up to 3 forecast days; F1 includes the next-race snapshot; football includes at most 6 fixtures; and market includes at most 12 configured symbols. News is not collected into new sessions. Saved historical sessions may still expose their captured News evidence through the evidence routes. Personal evidence is retrieval/relevance-limited; pending reviews include at most 5 items, external reports select at most 3 relevant reports from the newest 50 candidates, and verified action outcomes include at most 20 records. The persisted observed inventory is capped at 32 evidence records and model synthesis at 18 evidence records; omitted synthesis evidence does not reduce the persisted source-coverage claim.
 
 ### GET `/api/v1/briefing-sessions`
 

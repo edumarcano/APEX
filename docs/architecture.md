@@ -27,6 +27,8 @@ Connector refreshes run sequentially. The shared snapshot records usable data an
 
 Market uses a separate file-backed cache owned by its client. Collection can fetch Alpha Vantage data; the Market API only reads the cache. Per-symbol request gates handle successful daily fetches, throttling, quota exhaustion, and failure backoff. The frontend reloads Market data when telemetry publishes a collection revision. Charts use daily OHLCV history, while briefings use bounded ticker snapshots and price moves. See [Market data](configuration.md#market-data) for cache and request settings.
 
+Overview includes Weather, Events, Email, Market, and Reminders; APEX no longer collects News headlines as telemetry. Independent read tools such as Brave and Alpha Vantage news search remain available under their own tool and provider policies. Previously saved briefings retain their News evidence and remain readable; new briefing collection does not create News evidence.
+
 ## Conversations and model execution
 
 Conversation requests resolve their model and effective controls before entering the Agent loop:
@@ -81,7 +83,7 @@ Daily selects current evidence for an orientation. Catch Up compares current sou
 
 Accepted context, pending reviews, relevant external reports, and verified action outcomes enter evidence selection only when the selected runtime permits personal context and development mode is off. Pending proposals and reports keep their distinct trust labels. They do not become accepted knowledge by appearing in a briefing.
 
-The session stores the canonical artifact, observed evidence, coverage, comparison, model configuration, and limitations. Its opening conversation message is a rendered copy linked to that artifact. Follow-ups use normal conversation history and context policy, with a small, relevance-ranked slice of cited saved evidence inside the untrusted reference boundary and context budget. Personal-context-derived snapshots remain subject to the selected runtime's retrieval setting. The evidence inspector reads full saved snapshots on demand.
+The session stores the canonical artifact, observed evidence, coverage, comparison, model configuration, and limitations. Its opening conversation message is a rendered copy linked to that artifact. Follow-ups use normal conversation history and context policy, with a small, relevance-ranked slice of cited saved evidence inside the untrusted reference boundary and context budget. Personal-context-derived snapshots remain subject to the selected runtime's retrieval setting. The evidence inspector reads full saved snapshots on demand. Existing saved sessions keep their captured News evidence and comparison records; current source collection and new comparisons do not include News.
 
 Briefings do not silently switch models when the requested model is unavailable or cannot fit a useful prompt. Cancellation, global execution limits, invalid synthesis after repair, and persistence errors do not produce a completed artifact. Demo mode supplies deterministic Daily and Catch Up fixtures; Deep is unavailable.
 
