@@ -8,29 +8,25 @@ import re
 from pathlib import Path
 from typing import Any
 
-from core.config import CONFIG_PATH, PROJECT_ROOT
+from core.config import CONFIG_PATH
+from core.config_documents import deep_merge, load_config_documents, read_json_object
 from core.mcp.models import McpRuntimeConfig, McpServerConfig, parse_server_config
-from core.settings.normalize import recursive_overlay
+from core.runtime_paths import get_runtime_paths
 
 _LOGGER = logging.getLogger(__name__)
 
-_LOCAL_CONFIG_PATH: Path = PROJECT_ROOT / "config.local.json"
+_LOCAL_CONFIG_PATH: Path = get_runtime_paths().local_config_path
 _SERVER_ID_PATTERN = re.compile(r"^[a-z][a-z0-9]*$")
 
 
 def _read_json_object(path: Path) -> dict[str, Any]:
     try:
-        with path.open("r", encoding="utf-8") as handle:
-            payload = json.load(handle)
+        return read_json_object(path)
     except FileNotFoundError:
         return {}
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
         _LOGGER.warning("Unable to load MCP config from %s: %s", path, exc)
         return {}
-    if not isinstance(payload, dict):
-        _LOGGER.warning("Config root in %s must be a JSON object; ignoring.", path)
-        return {}
-    return payload
 
 
 def load_mcp_config(
@@ -42,11 +38,19 @@ def load_mcp_config(
 
     Secrets are never read from these files; only env-var name references are kept.
     """
-    base_path = config_path or CONFIG_PATH
-    overlay_path = local_path if local_path is not None else _LOCAL_CONFIG_PATH
-    base = _read_json_object(base_path)
-    local = _read_json_object(overlay_path) if overlay_path.exists() else {}
-    merged = recursive_overlay(base, local)
+    if config_path is None and local_path is None:
+        paths = get_runtime_paths()
+        merged = load_config_documents(
+            paths.defaults_config_path,
+            paths.operator_config_path,
+            paths.local_config_path,
+        )
+    else:
+        base_path = config_path or CONFIG_PATH
+        overlay_path = local_path if local_path is not None else _LOCAL_CONFIG_PATH
+        base = _read_json_object(base_path)
+        local = _read_json_object(overlay_path) if overlay_path.exists() else {}
+        merged = deep_merge(base, local)
     raw_mcp = merged.get("mcp", {})
     if raw_mcp is None:
         return McpRuntimeConfig()

@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from contextlib import closing
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from core.retrieval.docs import (
     DOCS_NAMESPACE,
@@ -76,6 +78,16 @@ class DocumentationRetrievalTests(unittest.TestCase):
         architecture = next(item for item in items if item.title == "docs/architecture.md")
         self.assertEqual(architecture.metadata["line_start"], 1)
         self.assertIn(":L", architecture.locator)
+
+    def test_default_document_discovery_uses_managed_resource_root(self) -> None:
+        with patch(
+            "core.retrieval.docs.get_runtime_paths",
+            return_value=SimpleNamespace(resource_root=self.root),
+        ):
+            items = build_documentation_items()
+
+        self.assertTrue(items)
+        self.assertTrue(any(item.title == "README.md" for item in items))
 
     def test_search_refreshes_incrementally_and_uses_cached_embeddings(self) -> None:
         first = search_documentation("alpha", self.service, root=self.root)

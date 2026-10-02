@@ -23,6 +23,7 @@ import pygame
 import pyttsx3
 
 from core import config
+from core.runtime_paths import get_runtime_paths
 from core.settings import get_settings_store
 
 # Headless SDL so pygame.mixer can initialize without a display.
@@ -196,7 +197,7 @@ def chunk_text(text: str, *, max_chars: int = TTS_CHUNK_MAX_CHARS) -> list[str]:
 
 
 def _kokoro_paths() -> tuple[Path, Path]:
-    weights_dir = (config.PROJECT_ROOT / "core" / "weights" / "kokoro").resolve()
+    weights_dir = get_runtime_paths().kokoro_weights_dir.resolve()
     return (
         (weights_dir / "kokoro-v1.0.onnx").resolve(),
         (weights_dir / "voices-v1.0.bin").resolve(),

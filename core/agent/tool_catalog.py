@@ -13,6 +13,8 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
+from core.runtime_paths import get_runtime_paths, initialize_environment
+
 from core.agent.capabilities import (
     CapabilityDescriptor,
     get_capability_descriptor,
@@ -33,9 +35,11 @@ from core.agent.types import (
     ToolCatalogTool,
     ToolProfileMetadata,
 )
-from core.config import DEMO_MODE, PROJECT_ROOT, is_dev_mode
+from core.config import DEMO_MODE, is_dev_mode
 from core.mcp import get_mcp_manager, load_mcp_config
 from core.mcp.models import McpRuntimeConfig, McpServerConfig
+
+initialize_environment()
 
 
 @dataclass(frozen=True, slots=True)
@@ -286,8 +290,9 @@ def _native_availability(name: str) -> tuple[bool, str | None]:
         return False, "Weather is not configured (TARGET_LOCATION is missing)."
 
     if name in {"get_upcoming_calendar_events", "search_gmail", "get_gmail_message"}:
-        credentials_path = PROJECT_ROOT / "credentials.json"
-        token_path = PROJECT_ROOT / "token.json"
+        paths = get_runtime_paths()
+        credentials_path = paths.google_credentials_path
+        token_path = paths.google_token_path
         if not credentials_path.exists():
             return False, "Google Workspace credentials are not configured."
         if not token_path.exists():

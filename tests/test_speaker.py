@@ -184,6 +184,31 @@ class SpeakerReadinessTests(unittest.TestCase):
 
         self.assertFalse(speaker.readiness_snapshot()["kokoro"]["ready"])
 
+    def test_kokoro_asset_paths_use_managed_data_root(self) -> None:
+        import tempfile
+        from types import SimpleNamespace
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Exercise normalization even on hosts whose temporary path has
+            # no short-name/long-name alias difference.
+            weights_dir = (
+                Path(temp_dir) / "uncreated" / ".." / "core" / "weights" / "kokoro"
+            )
+            expected_dir = Path(temp_dir).resolve() / "core" / "weights" / "kokoro"
+            with patch(
+                "core.speaker.get_runtime_paths",
+                return_value=SimpleNamespace(kokoro_weights_dir=weights_dir),
+            ):
+                paths = speaker._kokoro_paths()
+                self.assertEqual(
+                    paths,
+                    (
+                        expected_dir / "kokoro-v1.0.onnx",
+                        expected_dir / "voices-v1.0.bin",
+                    ),
+                )
+                self.assertFalse(expected_dir.exists())
+
 
 class SpeakerCachedAudioTests(unittest.TestCase):
     def tearDown(self) -> None:

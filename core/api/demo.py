@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -15,8 +14,8 @@ from core.agent.types import (
 )
 from core.agent.model_catalog import ModelProfile
 from core.mock.demo_fixture import DemoBundle, DemoFixtureError, load_demo_bundle
+from core.runtime_paths import get_runtime_paths
 
-_MOCK_ASSISTANT_PATH = Path(__file__).resolve().parent.parent / "mock" / "assistant.json"
 
 
 def _validate_mock_agent_response(
@@ -125,7 +124,7 @@ def load_demo_bundle_or_raise() -> DemoBundle:
 def load_mock_agent_responses() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Load deterministic Agent responses from ``core/mock/assistant.json``."""
     try:
-        with open(_MOCK_ASSISTANT_PATH, encoding="utf-8") as mock_file:
+        with open(get_runtime_paths().demo_assistant_path, encoding="utf-8") as mock_file:
             payload = json.load(mock_file)
     except (OSError, json.JSONDecodeError):
         raise HTTPException(

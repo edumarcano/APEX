@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 from typing import TYPE_CHECKING
 
-from core.config import PROJECT_ROOT
+from core.runtime_paths import get_runtime_paths
 from core.retrieval.models import RetrievalItem
 
 if TYPE_CHECKING:
@@ -41,7 +41,9 @@ def _within(path: Path, root: Path) -> bool:
         return False
 
 
-def documentation_paths(root: Path = PROJECT_ROOT) -> list[Path]:
+def documentation_paths(root: Path | None = None) -> list[Path]:
+    if root is None:
+        root = get_runtime_paths().resource_root
     root = root.resolve()
     candidates = [root / "README.md"]
     docs_root = root / "docs"
@@ -123,7 +125,9 @@ def _chunk_section(section: _Section) -> list[tuple[int, int, str]]:
     return chunks
 
 
-def build_documentation_items(root: Path = PROJECT_ROOT) -> list[RetrievalItem]:
+def build_documentation_items(root: Path | None = None) -> list[RetrievalItem]:
+    if root is None:
+        root = get_runtime_paths().resource_root
     root = root.resolve()
     items: list[RetrievalItem] = []
     for path in documentation_paths(root):
@@ -158,7 +162,7 @@ def build_documentation_items(root: Path = PROJECT_ROOT) -> list[RetrievalItem]:
     return items
 
 
-def search_documentation(query: str, service: "RetrievalService", *, root: Path = PROJECT_ROOT) -> dict[str, object]:
+def search_documentation(query: str, service: "RetrievalService", *, root: Path | None = None) -> dict[str, object]:
     service.sync_namespace(DOCS_NAMESPACE, build_documentation_items(root))
     hits = service.search(query, namespace=DOCS_NAMESPACE, source_type=DOCS_SOURCE_TYPE, partition="shared", limit=5)
     return {

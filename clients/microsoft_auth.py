@@ -14,6 +14,8 @@ from typing import Any
 import msal
 from msal_extensions import PersistedTokenCache, build_encrypted_persistence
 
+from core.runtime_paths import get_runtime_paths, initialize_environment
+
 from clients.microsoft_todo_models import (
     MicrosoftAuthState,
     MicrosoftTodoAuthErrorCode,
@@ -25,6 +27,7 @@ from clients.microsoft_todo_models import (
 MICROSOFT_TODO_SCOPES = ("Tasks.ReadWrite",)
 _DEFAULT_TENANT = "common"
 _LOGGER = logging.getLogger(__name__)
+initialize_environment()
 
 _AUTH_FAILURES: dict[str, tuple[MicrosoftTodoAuthErrorCode, str]] = {
     "access_denied": ("cancelled", "Microsoft sign-in was cancelled or permission was declined."),
@@ -54,9 +57,14 @@ def _create_msal_application(
     if not config.cache_path.is_absolute():
         raise ValueError("Microsoft token cache path must be absolute.")
     resolved_cache = config.cache_path.resolve()
-    project_root = Path(__file__).resolve().parent.parent
-    if resolved_cache == project_root or project_root in resolved_cache.parents:
-        raise ValueError("Microsoft token cache path must be outside the repository.")
+    paths = get_runtime_paths()
+    protected_roots = (paths.resource_root, paths.installation_root)
+    if any(
+        root is not None
+        and (resolved_cache == root.resolve() or root.resolve() in resolved_cache.parents)
+        for root in protected_roots
+    ):
+        raise ValueError("Microsoft token cache path must be outside the APEX installation.")
     resolved_cache.parent.mkdir(parents=True, exist_ok=True)
     persistence = build_encrypted_persistence(str(resolved_cache))
     cache = PersistedTokenCache(persistence)

@@ -30,9 +30,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from dotenv import load_dotenv
+from core.runtime_paths import initialize_environment
 
-load_dotenv()
+initialize_environment()
 
 from core.agent.model_catalog import get_model_profile
 from core.agent.pricing import estimate_inference_cost

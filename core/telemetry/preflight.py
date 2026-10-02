@@ -7,7 +7,7 @@ import os
 import sqlite3
 from typing import Iterable
 
-from dotenv import load_dotenv
+from core.runtime_paths import get_runtime_paths, initialize_environment
 
 from core import config, database, scanner
 from core.agent.local_runtime.coordinator import (
@@ -24,7 +24,7 @@ from core.agent.catalog import (
     resolve_model_selection,
 )
 from core.agent.model_catalog import get_model_profile, model_has_credentials
-from core.config import ENV_PATH, is_dev_mode
+from core.config import is_dev_mode
 from core.settings import get_settings_store
 from core.connectors.models import CONNECTOR_NAMES, EXTERNAL_CONNECTOR_NAMES
 from core.settings import RuntimeSettingsSnapshot, get_settings_store
@@ -39,7 +39,7 @@ from core.telemetry.models import (
 )
 from core.telemetry.service import get_telemetry_service
 
-load_dotenv(dotenv_path=ENV_PATH)
+initialize_environment()
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -254,9 +254,10 @@ def _connector_credential_blockers(names: set[str]) -> list[PreflightBlocker]:
     if "football" in names and not os.getenv("FOOTBALL_API_KEY"):
         missing.append("football")
     if names & {"email", "calendar"}:
+        paths = get_runtime_paths()
         oauth_files = (
-            config.PROJECT_ROOT / "token.json",
-            config.PROJECT_ROOT / "credentials.json",
+            paths.google_token_path,
+            paths.google_credentials_path,
         )
         if not any(path.is_file() for path in oauth_files):
             missing.extend(sorted(names & {"email", "calendar"}))

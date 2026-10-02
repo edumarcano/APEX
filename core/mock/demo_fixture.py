@@ -6,14 +6,13 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from core.connectors.models import CONNECTOR_NAMES, utc_now_iso
+from core.runtime_paths import get_runtime_paths
 from core.telemetry.models import TelemetryModuleEntry
 
-_FIXTURE_PATH = Path(__file__).resolve().parent / "telemetry.json"
 _OFFSET_PATTERN = re.compile(
     r"^(?P<base>now|next[_-]sunday)(?P<offset>.*)?$",
     re.IGNORECASE,
@@ -135,7 +134,7 @@ def _relative_week_label(dt_utc: datetime, *, now: datetime) -> str:
 
 def _load_raw_fixture() -> dict[str, Any]:
     try:
-        with open(_FIXTURE_PATH, encoding="utf-8") as fixture_file:
+        with open(get_runtime_paths().demo_telemetry_path, encoding="utf-8") as fixture_file:
             payload = json.load(fixture_file)
     except (OSError, json.JSONDecodeError) as exc:
         raise DemoFixtureError("Demo telemetry payload unavailable.") from exc
