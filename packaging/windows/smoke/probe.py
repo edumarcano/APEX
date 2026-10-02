@@ -153,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"schema_version": 1, "scenario": args.scenario, "status": "passed", "evidence": evidence}, ensure_ascii=False, separators=(",", ":")))
         return 0
     except Exception as exc:
-        print(json.dumps({"schema_version": 1, "scenario": args.scenario, "status": "failed", "error_type": type(exc).__name__, "error": str(exc)[:512]}, ensure_ascii=False, separators=(",", ":")))
+        print(json.dumps({"schema_version": 1, "scenario": args.scenario, "status": "failed", "error_type": type(exc).__name__, "error": str(exc)[:4096]}, ensure_ascii=False, separators=(",", ":")))
         return 1
 
 
