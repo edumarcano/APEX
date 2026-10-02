@@ -78,13 +78,15 @@ Once APEX is running, open Runtime Settings to choose a model and enable the fea
 
 The launcher:
 
-1. Starts FastAPI on `127.0.0.1:8000`.
+1. Starts a managed backend on `127.0.0.1:8000`.
 2. Starts the compiled frontend on `127.0.0.1:5500`.
-3. Waits for API readiness and frontend availability.
+3. Matches API runtime identity to its launched child, then waits for API readiness and frontend availability.
 4. Opens a supported browser in an application window when possible.
 5. Stops both child servers when the tracked browser closes.
 
 If the launcher uses the operating-system default browser, it cannot track that browser process. Press `Ctrl+C` in the launcher terminal to stop the servers.
+
+Stopping the launcher requests graceful backend shutdown and waits through the backend's advertised timeout. A port conflict or another backend owning the selected data profile stops startup without attaching to or terminating that process. Stop the existing instance yourself, or select a different data profile after freeing port 8000; the host does not choose another port.
 
 The Windows shortcut wrapper uses the same path:
 
@@ -93,6 +95,16 @@ The Windows shortcut wrapper uses the same path:
 ```
 
 For a desktop shortcut, set the shortcut's **Start in** field to the repository root so relative paths resolve correctly.
+
+## Run the backend without the browser
+
+For API and CLI use without the launcher or frontend server:
+
+```powershell
+uv run python -m core.backend_host serve --standalone
+```
+
+`uv run python -m core.api` is the equivalent standalone entrypoint. Both retain the configured development/demo behavior and selected data directory. Stop the host with `Ctrl+C`; see [Backend hosting](architecture.md#backend-hosting) for ownership and shutdown behavior.
 
 ## Run the servers manually
 

@@ -10,6 +10,20 @@ APEX resolves immutable application resources separately from operator data. In 
 
 Path resolution does not create directories or files. Startup reads the selected profile's `.env` after choosing the data directory. The `.env` file cannot retarget that choice, and `PYTHON_DOTENV_DISABLED` disables loading. Writers create their required data directories when persistence is initialized. APEX does not copy or migrate operator state when the selected data directory changes. See [Configuration](configuration.md#where-settings-live) for the configuration-layer order and operator controls.
 
+## Backend hosting
+
+The backend host supports standalone serving and a managed child with private stdin/stdout control. Both serve the existing HTTP API on `127.0.0.1:8000`. The source launcher uses managed hosting while retaining its static frontend server and browser presentation. The CLI remains an independent HTTP client.
+
+Before application startup, the host reserves the loopback socket and acquires an OS lock in the selected data directory. A port conflict leaves the existing listener untouched. The profile lease prevents another backend from initializing or recovering the same profile; its `.apex-host.lock` marker remains after shutdown, and file existence alone does not imply an active owner. Direct ASGI development also acquires the lease before lifespan startup writes.
+
+Managed control uses version 1 UTF-8 newline-delimited JSON with request correlation, a 64 KiB frame limit, and bounded queues. Ordinary Python and native-library output goes to stderr; stdout is reserved for protocol frames. The parent supplies a launch UUID and compares the child’s private readiness identity with [runtime identity](api.md#get-apiv1runtime) over HTTP before opening the interface. No HTTP shutdown endpoint is exposed.
+
+Parent-channel loss and explicit shutdown use the same bounded lifecycle path. The host advertises the configured application drain interval plus thirty seconds for HTTP task shutdown, dependency cleanup, and forced exit. If work cannot drain, it leaves dependencies and the profile lease intact until process termination. Forced cleanup targets explicitly registered speech-export and managed llama.cpp children, preserving external services and browsers.
+
+Successful Cortex and Briefing runs can emit a private completion event after durable finalization. The event contains only instance identity, run identity, and completion status. Delivery failure does not change the committed run, and the channel does not add desktop notifications or device acquisition.
+
+Speech export is an allowlisted worker subcommand dispatched before backend startup or profile ownership. Source operation invokes Python; frozen operation invokes the bundled application executable. Packaging and native desktop presentation are separate work.
+
 ## System components
 
 The browser opens on Launch and provides four peer workspaces: Overview, Briefing, Cortex, and Reports. Navigation does not start telemetry collection or briefing generation. The shared conversation runtime and app-level state owners stay mounted while workspace presentations load on demand. Loading and retry states remain within the requested workspace; see [Presentation loading](../frontend/README.md#presentation-loading).
@@ -153,7 +167,7 @@ The opt-in loopback gateway exposes submission through JSON HTTP and Streamable 
 
 SQLite owns conversations, runs, briefing sessions, knowledge and review history, actions, external reports, and derived retrieval records. The browser owns presentation state; vault notes, retrieval indexes, and speech output are derived from application records rather than replacing them.
 
-On shutdown, FastAPI signals speech cancellation and closes run admission. It drains active runs and application-owned tasks, then the speech worker, before releasing stores, connectors, and other dependencies. A bounded shutdown window reports failure and leaves dependencies open if work remains active, avoiding cleanup underneath a running worker.
+On shutdown, FastAPI signals speech cancellation and closes run admission. It drains active runs and application-owned tasks, then the speech worker, before releasing stores, connectors, and other dependencies. A failed drain leaves dependencies open, avoiding cleanup underneath a running worker. The [backend host](#backend-hosting) enforces the overall shutdown deadline and retains profile ownership until it can release safely or the process exits.
 
 ### Persistence compatibility
 
