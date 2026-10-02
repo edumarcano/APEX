@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 import os
 import queue
 import socket
@@ -11,6 +12,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import textwrap
 import unittest
 import uuid
 import urllib.request
@@ -20,9 +22,21 @@ from pathlib import Path
 from core.host.protocol import ControlEnvelope, decode_frame, encode_envelope
 from core.backend_host import _HardStopWatchdog, _host_uvicorn_server_type
 from core.host.processes import python_child_invocation
+from core.host.profile_lock import ProfileLock
 
 
 class BackendHostSubprocessTests(unittest.TestCase):
+    def _assert_api_port_available(self) -> None:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            probe.bind(("127.0.0.1", 8000))
+        except OSError:
+            self.skipTest("127.0.0.1:8000 is already owned by another process")
+        finally:
+            probe.close()
+
     def test_watchdog_exit_is_not_blocked_by_timeout_report(self) -> None:
         report_entered = threading.Event()
         release_report = threading.Event()
@@ -80,7 +94,14 @@ class BackendHostSubprocessTests(unittest.TestCase):
         asyncio.run(cancel_wait())
         self.assertTrue(app.state.http_shutdown_timed_out)
 
-    def _start_managed_host(self, data_root: Path):
+    def _spawn_managed_host(
+        self,
+        data_root: Path,
+        *,
+        demo_mode: bool = False,
+        bootstrap_script: str | None = None,
+        drain_seconds: int = 30,
+    ):
         environment = {
             key: os.environ[key]
             for key in (
@@ -94,16 +115,19 @@ class BackendHostSubprocessTests(unittest.TestCase):
         environment["PYTHONFAULTHANDLER"] = "1"
         environment["APEX_DATA_DIR"] = str(data_root)
         environment["DEV_MODE"] = "true"
-        environment["DEMO_MODE"] = "false"
+        environment["DEMO_MODE"] = "true" if demo_mode else "false"
         data_root.mkdir(parents=True, exist_ok=True)
         (data_root / "config.json").write_text(
             '{"ollama":{"enabled":false},"llama_cpp":{"enabled":false},'
-            '"cortex_runs":{"shutdown_drain_seconds":1}}',
+            f'"cortex_runs":{{"shutdown_drain_seconds":{drain_seconds}}}}}',
             encoding="utf-8",
         )
-        command, environment = python_child_invocation(
-            ["-B", "-m", "core.backend_host", "serve", "--managed"], env=environment
+        python_args = (
+            ["-B", "-c", bootstrap_script]
+            if bootstrap_script is not None
+            else ["-B", "-m", "core.backend_host", "serve", "--managed"]
         )
+        command, environment = python_child_invocation(python_args, env=environment)
         process = subprocess.Popen(
             command,
             cwd=Path(__file__).resolve().parents[1],
@@ -115,6 +139,7 @@ class BackendHostSubprocessTests(unittest.TestCase):
         )
         assert process.stdin is not None and process.stdout is not None
         messages: queue.Queue[bytes | None] = queue.Queue()
+        stderr_tail: deque[str] = deque(maxlen=64)
 
         def drain() -> None:
             assert process.stdout is not None
@@ -125,7 +150,33 @@ class BackendHostSubprocessTests(unittest.TestCase):
                     return
 
         threading.Thread(target=drain, daemon=True).start()
+        def drain_stderr() -> None:
+            assert process.stderr is not None
+            while True:
+                line = process.stderr.readline(4096)
+                if not line:
+                    return
+                stderr_tail.append(line.decode("utf-8", errors="replace").rstrip())
+
+        threading.Thread(target=drain_stderr, daemon=True).start()
+        return process, messages, stderr_tail
+
+    def _start_managed_host(
+        self,
+        data_root: Path,
+        *,
+        demo_mode: bool = False,
+        bootstrap_script: str | None = None,
+        drain_seconds: int = 30,
+    ):
+        process, messages, stderr_tail = self._spawn_managed_host(
+            data_root,
+            demo_mode=demo_mode,
+            bootstrap_script=bootstrap_script,
+            drain_seconds=drain_seconds,
+        )
         launch_id = str(uuid.uuid4())
+        assert process.stdin is not None
         process.stdin.write(
             encode_envelope(
                 ControlEnvelope(
@@ -137,7 +188,7 @@ class BackendHostSubprocessTests(unittest.TestCase):
             )
         )
         process.stdin.flush()
-        return process, messages, launch_id
+        return process, messages, launch_id, stderr_tail
 
     def _next_message(self, messages: queue.Queue[bytes | None], timeout: float = 60):
         deadline = time.monotonic() + timeout
@@ -153,7 +204,12 @@ class BackendHostSubprocessTests(unittest.TestCase):
             if envelope.type in {"ready", "stopped"}:
                 return envelope
 
-    def _stop_managed_host(self, process, messages: queue.Queue[bytes | None]) -> None:
+    def _stop_managed_host(
+        self,
+        process,
+        messages: queue.Queue[bytes | None],
+        stderr_tail: deque[str],
+    ) -> None:
         assert process.stdin is not None
         request_id = str(uuid.uuid4())
         process.stdin.write(
@@ -167,7 +223,7 @@ class BackendHostSubprocessTests(unittest.TestCase):
             )
         )
         process.stdin.flush()
-        deadline = time.monotonic() + 40
+        deadline = time.monotonic() + 70
         seen: list[str] = []
         while time.monotonic() < deadline:
             try:
@@ -175,31 +231,36 @@ class BackendHostSubprocessTests(unittest.TestCase):
             except queue.Empty:
                 self.fail(
                     "backend host did not finish control shutdown; "
-                    f"frames={seen}, exit_code={process.poll()}"
+                    f"frames={seen}, exit_code={process.poll()}, stderr={list(stderr_tail)}"
                 )
             self.assertIsNotNone(raw, "backend host closed control channel before stopped")
             envelope = decode_frame(raw)
             seen.append(envelope.type)
             if envelope.type == "error":
-                self.fail(f"backend host reported shutdown error: {envelope.payload}")
+                self.fail(
+                    f"backend host reported shutdown error: {envelope.payload}; "
+                    f"stderr={list(stderr_tail)}"
+                )
             if envelope.type == "stopped":
                 self.assertEqual(envelope.request_id, request_id)
                 break
         else:
             self.fail("backend host did not report stopped")
         exit_code = process.wait(timeout=10)
-        stderr = process.stderr.read().decode("utf-8", errors="replace") if process.stderr else ""
-        self.assertEqual(exit_code, 0, stderr)
+        self.assertEqual(exit_code, 0, list(stderr_tail))
         if process.stdin is not None:
             process.stdin.close()
         if process.stdout is not None:
             process.stdout.close()
+        if process.stderr is not None:
+            process.stderr.close()
 
     def test_managed_api_startup_shutdown_and_restart_preserve_profile(self) -> None:
+        self._assert_api_port_available()
         with tempfile.TemporaryDirectory() as temp_dir:
             data_root = Path(temp_dir) / "profile"
             marker = data_root / "operator-sentinel.txt"
-            process, messages, launch_id = self._start_managed_host(data_root)
+            process, messages, launch_id, stderr_tail = self._start_managed_host(data_root)
             try:
                 ready = self._next_message(messages)
                 identity = ready.payload
@@ -215,23 +276,165 @@ class BackendHostSubprocessTests(unittest.TestCase):
 
                     self.assertEqual(json.loads(response.read(64 * 1024)), identity)
 
-                self._stop_managed_host(process, messages)
+                self._stop_managed_host(process, messages, stderr_tail)
+                self.assertTrue((data_root / "apex_memory.db").is_file())
             finally:
                 if process.poll() is None:
                     process.kill()
                     process.wait(timeout=10)
+                for stream in (process.stdin, process.stdout, process.stderr):
+                    if stream is not None and not stream.closed:
+                        stream.close()
 
-            restarted, restart_messages, restart_launch_id = self._start_managed_host(data_root)
+            restarted, restart_messages, restart_launch_id, restart_stderr = (
+                self._start_managed_host(data_root, demo_mode=True)
+            )
             try:
                 ready = self._next_message(restart_messages)
                 self.assertEqual(ready.request_id, restart_launch_id)
                 self.assertNotEqual(ready.payload["instance_id"], identity["instance_id"])
                 self.assertEqual(marker.read_text(encoding="utf-8"), "preserve")
-                self._stop_managed_host(restarted, restart_messages)
+                self._stop_managed_host(restarted, restart_messages, restart_stderr)
             finally:
                 if restarted.poll() is None:
                     restarted.kill()
                     restarted.wait(timeout=10)
+                for stream in (restarted.stdin, restarted.stdout, restarted.stderr):
+                    if stream is not None and not stream.closed:
+                        stream.close()
+
+    def test_malformed_start_frame_is_rejected_before_profile_writes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_root = Path(temp_dir) / "profile"
+            process, messages, _stderr_tail = self._spawn_managed_host(data_root)
+            try:
+                assert process.stdin is not None
+                process.stdin.write(
+                    b'{"version":2,"type":"start","request_id":"bad",'
+                    b'"payload":{"launch_id":"00000000-0000-0000-0000-000000000000"}}\n'
+                )
+                process.stdin.flush()
+                raw = messages.get(timeout=5)
+                self.assertIsNotNone(raw)
+                response = decode_frame(raw)
+                self.assertEqual(response.type, "error")
+                self.assertEqual(response.payload, {"code": "protocol_error"})
+                self.assertNotEqual(process.wait(timeout=5), 0)
+                self.assertFalse((data_root / "apex_memory.db").exists())
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=5)
+                for stream in (process.stdin, process.stdout, process.stderr):
+                    if stream is not None and not stream.closed:
+                        stream.close()
+
+    def test_parent_eof_after_ready_uses_the_orderly_shutdown_path(self) -> None:
+        self._assert_api_port_available()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_root = Path(temp_dir) / "profile"
+            process, messages, launch_id, stderr_tail = self._start_managed_host(
+                data_root, demo_mode=True
+            )
+            try:
+                ready = self._next_message(messages)
+                self.assertEqual(ready.request_id, launch_id)
+                assert process.stdin is not None
+                process.stdin.close()
+                seen: list[object] = []
+                deadline = time.monotonic() + 20
+                while time.monotonic() < deadline:
+                    raw = messages.get(timeout=max(0.1, deadline - time.monotonic()))
+                    self.assertIsNotNone(raw)
+                    envelope = decode_frame(raw)
+                    seen.append(envelope)
+                    if envelope.type == "error":
+                        self.assertEqual(envelope.payload, {"code": "protocol_error"})
+                        self.assertEqual(envelope.request_id, launch_id)
+                        break
+                else:
+                    self.fail(f"parent EOF did not complete shutdown: {list(stderr_tail)}")
+                self.assertNotEqual(process.wait(timeout=10), 0)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=5)
+                for stream in (process.stdin, process.stdout, process.stderr):
+                    if stream is not None and not stream.closed:
+                        stream.close()
+
+    def test_hard_deadline_exits_process_and_releases_profile_lease(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_root = Path(temp_dir) / "profile"
+            script = textwrap.dedent(
+                """
+                import threading
+                import core.backend_host as host
+                from core.tracing import set_tracing_service
+
+                class BlockedTracing:
+                    def initialize(self):
+                        pass
+                    def shutdown(self):
+                        threading.Event().wait()
+
+                host.HTTP_GRACE_SECONDS = 0.1
+                host.DEPENDENCY_CLEANUP_SECONDS = 0.1
+                host.FORCED_CHILD_CLEANUP_SECONDS = 0.1
+                set_tracing_service(BlockedTracing())
+                raise SystemExit(host.serve(hosting_mode="managed"))
+                """
+            )
+            process, messages, _launch_id, stderr_tail = self._start_managed_host(
+                data_root,
+                demo_mode=True,
+                bootstrap_script=script,
+                drain_seconds=1,
+            )
+            try:
+                ready = self._next_message(messages)
+                self.assertEqual(ready.type, "ready")
+                assert process.stdin is not None
+                shutdown_id = str(uuid.uuid4())
+                process.stdin.write(
+                    encode_envelope(
+                        ControlEnvelope(1, "shutdown", shutdown_id, {})
+                    )
+                )
+                process.stdin.flush()
+                self.assertNotEqual(process.wait(timeout=8), 0, list(stderr_tail))
+                with ProfileLock(data_root):
+                    pass
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=5)
+                for stream in (process.stdin, process.stdout, process.stderr):
+                    if stream is not None and not stream.closed:
+                        stream.close()
+
+    def test_duplicate_profile_owner_is_rejected_before_database_creation(self) -> None:
+        self._assert_api_port_available()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_root = Path(temp_dir) / "profile"
+            process = None
+            with ProfileLock(data_root):
+                process, messages, _launch_id, _stderr_tail = self._start_managed_host(data_root)
+                try:
+                    raw = messages.get(timeout=5)
+                    self.assertIsNotNone(raw)
+                    response = decode_frame(raw)
+                    self.assertEqual(response.type, "error")
+                    self.assertEqual(response.payload, {"code": "profile_in_use"})
+                    self.assertNotEqual(process.wait(timeout=5), 0)
+                    self.assertFalse((data_root / "apex_memory.db").exists())
+                finally:
+                    if process.poll() is None:
+                        process.kill()
+                        process.wait(timeout=5)
+                    for stream in (process.stdin, process.stdout, process.stderr):
+                        if stream is not None and not stream.closed:
+                            stream.close()
 
     def test_port_conflict_is_reported_before_profile_or_database_writes(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -239,7 +442,11 @@ class BackendHostSubprocessTests(unittest.TestCase):
             occupied = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
                 occupied.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-            occupied.bind(("127.0.0.1", 8000))
+            try:
+                occupied.bind(("127.0.0.1", 8000))
+            except OSError:
+                occupied.close()
+                self.skipTest("127.0.0.1:8000 is already owned by another process")
             occupied.listen(1)
             process = None
             try:
@@ -296,6 +503,8 @@ class BackendHostSubprocessTests(unittest.TestCase):
                 self.assertFalse(data_root.exists())
                 process.stdin.close()
                 process.stdout.close()
+                if process.stderr is not None:
+                    process.stderr.close()
             finally:
                 if process is not None and process.poll() is None:
                     process.kill()

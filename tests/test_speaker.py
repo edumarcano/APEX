@@ -34,6 +34,9 @@ class SpeakerTextTests(unittest.TestCase):
 
 
 class SpeakerAdmissionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        speaker._CANCEL_EVENT.clear()
+
     def tearDown(self) -> None:
         speaker._CANCEL_EVENT.clear()
 

@@ -13,7 +13,6 @@ from pathlib import Path
 
 from core.runtime_paths import initialize_environment
 
-import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from clients.microsoft_todo_client import MicrosoftTodoClient, set_microsoft_todo_client

@@ -146,6 +146,55 @@ class LauncherHelperTests(unittest.TestCase):
             reason = launcher.wait_for_services(backend, static)
         self.assertIn("control channel", reason or "")
 
+    def test_wait_for_services_admits_only_matching_runtime_and_build_profile(self) -> None:
+        backend = mock.Mock(spec=subprocess.Popen)
+        static = mock.Mock(spec=subprocess.Popen)
+        backend.pid = 100
+        backend.poll.return_value = None
+        static.poll.return_value = None
+        launch_id = str(uuid.uuid4())
+        identity = {
+            "pid": backend.pid,
+            "launch_id": launch_id,
+            "hosting_mode": "managed",
+            "build_id": "expected-build",
+            "data_root_fingerprint": "a" * 64,
+        }
+        control = SimpleNamespace(
+            identity=identity,
+            launch_id=launch_id,
+            error_code=None,
+            failed=False,
+        )
+        with mock.patch.object(launcher, "_control_for", return_value=control), mock.patch.object(
+            launcher, "_expected_profile_build", return_value=("expected-build", "a" * 64)
+        ), mock.patch.object(launcher, "_http_json", return_value=identity), mock.patch.object(
+            launcher, "_http_ok", return_value=True
+        ):
+            self.assertIsNone(launcher.wait_for_services(backend, static))
+
+        for key, value in (
+            ("build_id", "other-build"),
+            ("data_root_fingerprint", "b" * 64),
+        ):
+            bad_identity = {**identity, key: value}
+            control.identity = bad_identity
+            with mock.patch.object(launcher, "_control_for", return_value=control), mock.patch.object(
+                launcher, "_expected_profile_build", return_value=("expected-build", "a" * 64)
+            ):
+                reason = launcher.wait_for_services(backend, static)
+            self.assertIn("identity did not match", reason or "")
+
+        control.identity = identity
+        wrong_runtime = {**identity, "instance_id": str(uuid.uuid4())}
+        with mock.patch.object(launcher, "_control_for", return_value=control), mock.patch.object(
+            launcher, "_expected_profile_build", return_value=("expected-build", "a" * 64)
+        ), mock.patch.object(launcher, "_http_json", return_value=wrong_runtime), mock.patch.object(
+            launcher, "_http_ok", return_value=True
+        ):
+            reason = launcher.wait_for_services(backend, static)
+        self.assertIn("runtime identity", reason or "")
+
     def test_runtime_monitor_fails_when_owned_control_pipe_closes(self) -> None:
         backend = mock.Mock(spec=subprocess.Popen)
         backend.poll.return_value = None

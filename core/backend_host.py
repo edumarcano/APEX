@@ -10,7 +10,6 @@ import logging
 import os
 import signal
 import socket
-import subprocess
 import sys
 import threading
 import time
@@ -41,7 +40,7 @@ def bind_api_socket() -> socket.socket:
         if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
             listener.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         else:
-            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         listener.bind((HOST, PORT))
         listener.listen(socket.SOMAXCONN)
         return listener
@@ -206,10 +205,6 @@ def _http_json(url: str, *, timeout: float = 0.5) -> dict[str, object] | None:
     return value if isinstance(value, dict) else None
 
 
-def _identity_matches_runtime(identity: dict[str, object], runtime: dict[str, object] | None) -> bool:
-    return runtime is not None and runtime == identity
-
-
 def _host_uvicorn_server_type(server_base, app):
     """Make the owned server's signal and bounded-HTTP-drain hooks testable."""
 
@@ -232,8 +227,6 @@ def _host_uvicorn_server_type(server_base, app):
 
 async def _serve(
     *,
-    hosting_mode: str,
-    launch_id: str | None,
     start_request_id: str | None,
     correlation: dict[str, str | None],
     channel: ControlChannel | None,
@@ -475,7 +468,6 @@ def serve(
 ) -> int:
     """Reserve the API endpoint and selected profile, then serve one worker."""
     channel: ControlChannel | None = None
-    control_reader = None
     protocol_writer = None
     shutdown_requested = threading.Event()
     correlation: dict[str, str | None] = {
@@ -526,10 +518,8 @@ def serve(
             channel.flush(0.25)
             channel.close()
             protocol_writer.close()
-            watchdog.cancel()
             return 2
     if shutdown_requested.is_set():
-        watchdog.cancel()
         if channel is not None:
             channel.close()
         if protocol_writer is not None:
@@ -544,7 +534,6 @@ def serve(
         try:
             listener = bind_api_socket()
         except OSError as exc:
-            watchdog.cancel()
             code = "port_in_use" if exc.errno in {48, 98, 10048, 10013} else "startup_failed"
             if channel is None:
                 print(
@@ -566,7 +555,6 @@ def serve(
                 shutdown_timeout_seconds=shutdown_timeout_seconds,
             )
         except Exception as exc:
-            watchdog.cancel()
             listener.close()
             from core.host.profile_lock import ProfileAlreadyRunningError
 
@@ -585,8 +573,6 @@ def serve(
             return 1
         result = asyncio.run(
             _serve(
-                hosting_mode=hosting_mode,
-                launch_id=launch_id,
                 start_request_id=start_request_id,
                 correlation=correlation,
                 channel=channel,
@@ -596,10 +582,6 @@ def serve(
                 watchdog=watchdog,
             )
         )
-        # asyncio.run has fully shut down async generators and its executor.
-        # A retained lease means cleanup was unsafe and the watchdog must stay.
-        if not context.profile_lock.acquired:
-            watchdog.cancel()
         return result
     except BaseException:
         if context is not None:
@@ -612,13 +594,13 @@ def serve(
         if channel is not None:
             channel.flush(0.5)
             channel.close()
-        if control_reader is not None:
-            try:
-                control_reader.close()
-            except OSError:
-                pass
         if protocol_writer is not None:
             protocol_writer.close()
+        # Keep the watchdog armed through bounded protocol cleanup. Never close
+        # the raw input stream here: its daemon reader may still be blocked in
+        # FileIO.readline(), and Windows waits for that read lock on close.
+        if context is None or not context.profile_lock.acquired:
+            watchdog.cancel()
 
 
 def _parser() -> argparse.ArgumentParser:
