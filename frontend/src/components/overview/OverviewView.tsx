@@ -84,14 +84,14 @@ export function OverviewView({
               <RefreshCw className={`size-3.5 motion-reduce:animate-none ${state === 'collecting' || telemetry.isRefreshingAll ? 'animate-spin' : ''}`} strokeWidth={2} aria-hidden />
             </button>
           </header>
-          <div className={`flex min-h-0 flex-1 flex-col items-center justify-center filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)] ${compact ? 'gap-3' : 'gap-4'}`} data-slot="home-identity" data-logo-size="overview">
-            <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center">
+          <div className={`flex min-h-0 flex-1 flex-col items-center justify-center filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] transform-gpu hover:filter hover:drop-shadow-[0_0_32px_rgba(var(--logo-glow-color),0.6)] gap-6`} data-slot="home-identity" data-logo-size="overview">
+            <div className="overview-identity-mark flex min-h-0 min-w-0 flex-col items-center justify-center gap-1">
               <ApexLogo
                 {...identity.logoProps}
-                className="hud-logo-mark h-56 w-auto max-h-full max-w-full aspect-[5208/5420] sm:h-64 xl:h-80 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+                className="overview-logo w-full min-h-0 shrink aspect-[5208/5420] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
               />
+              <VoiceSignalGlyph {...identity.glyphProps} className="overview-signal shrink-0" />
             </div>
-            <VoiceSignalGlyph {...identity.glyphProps} />
             <button
               type="button"
               onClick={onSetUpBriefing}
@@ -105,14 +105,14 @@ export function OverviewView({
       ) : (
         <>
           <header className="min-h-7 shrink-0" aria-hidden="true" />
-          <div className={`flex min-h-0 flex-1 flex-col items-center justify-center ${compact ? 'gap-3' : 'gap-4'}`} data-slot="home-identity" data-logo-size="overview">
-          <div className="filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] flex min-h-0 min-w-0 flex-1 items-center justify-center">
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6" data-slot="home-identity" data-logo-size="overview">
+          <div className="filter drop-shadow-[0_0_24px_rgba(var(--logo-glow-color),0.45)] overview-identity-mark flex min-h-0 min-w-0 flex-col items-center justify-center gap-1">
             <ApexLogo
               {...identity.logoProps}
-              className="hud-logo-mark h-56 w-auto max-h-full max-w-full aspect-[5208/5420] sm:h-64 xl:h-80 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+              className="overview-logo w-full min-h-0 shrink aspect-[5208/5420] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
             />
+            <VoiceSignalGlyph {...identity.glyphProps} className="overview-signal shrink-0" />
           </div>
-          <VoiceSignalGlyph {...identity.glyphProps} />
           {state === 'error' ? <div className="max-w-sm text-center" role="alert"><p className="font-mono text-sm text-rose-300">{error || 'I couldn’t collect telemetry just now.'}</p></div> : null}
           {state === 'no-data' ? <p className="font-mono text-sm text-zinc-400" role="status">No telemetry sources are available yet.</p> : null}
           {state === 'center' || state === 'error' || state === 'no-data' ? <TelemetryCollectionAction
