@@ -268,6 +268,7 @@ class BackendHostSubprocessTests(unittest.TestCase):
                 self.assertEqual(identity["pid"], process.pid)
                 self.assertEqual(identity["hosting_mode"], "managed")
                 self.assertEqual(identity["launch_id"], launch_id)
+                self.assertEqual(identity["shutdown_timeout_seconds"], 60)
                 marker.write_text("preserve", encoding="utf-8")
 
                 opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
