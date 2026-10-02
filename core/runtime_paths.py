@@ -7,7 +7,6 @@ operator environment files should first call :func:`initialize_environment`.
 from __future__ import annotations
 
 import os
-import os
 import sys
 from dataclasses import dataclass
 from functools import lru_cache
@@ -112,20 +111,14 @@ def resolve_runtime_paths(
 
     override = env.get("APEX_DATA_DIR")
     if override is not None and override.strip():
-        raw_data = override.strip().strip("'\"")
-        data = Path(raw_data).expanduser()
-        if not data.is_absolute():
-            raise ValueError("APEX_DATA_DIR must be an absolute path when set.")
-        data = data.resolve()
+        data = _validated_absolute_path(override, key="APEX_DATA_DIR")
     elif is_frozen:
         local_app_data = env.get("LOCALAPPDATA", "").strip()
         if not local_app_data:
             raise RuntimeError(
                 "LOCALAPPDATA is required to select the default frozen APEX data directory."
             )
-        base = Path(local_app_data).expanduser()
-        if not base.is_absolute():
-            raise ValueError("LOCALAPPDATA must be an absolute path for frozen APEX.")
+        base = _validated_absolute_path(local_app_data, key="LOCALAPPDATA")
         data = (base / "APEX").resolve()
     else:
         data = resources
@@ -138,6 +131,19 @@ def resolve_runtime_paths(
         data_root=data,
         installation_root=installation_root,
     )
+
+
+def _validated_absolute_path(raw: str, *, key: str) -> Path:
+    value = raw.strip().strip("'\"")
+    if "\0" in value:
+        raise ValueError(f"{key} must not contain a NUL character.")
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        raise ValueError(f"{key} must be an absolute path when set.")
+    is_reserved = getattr(os.path, "isreserved", None)
+    if is_reserved is not None and any(is_reserved(part) for part in path.parts):
+        raise ValueError(f"{key} contains a reserved or invalid Windows path component.")
+    return path.resolve()
 
 
 def _reject_installation_data(

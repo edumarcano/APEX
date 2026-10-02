@@ -12,7 +12,8 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Final, Literal, cast
 
-from dotenv import load_dotenv
+from core.config_documents import load_config_documents
+from core.runtime_paths import get_runtime_paths, initialize_environment
 
 __all__ = [
     "CORTEX_RUNS_CONFIG",
@@ -61,11 +62,10 @@ __all__ = [
 
 _LOGGER = logging.getLogger(__name__)
 
-PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
-CONFIG_PATH: Final[Path] = PROJECT_ROOT / "config.json"
-ENV_PATH: Final[Path] = PROJECT_ROOT / ".env"
-
-load_dotenv(dotenv_path=ENV_PATH)
+_RUNTIME_PATHS = initialize_environment()
+PROJECT_ROOT: Final[Path] = _RUNTIME_PATHS.resource_root
+CONFIG_PATH: Final[Path] = _RUNTIME_PATHS.defaults_config_path
+ENV_PATH: Final[Path] = _RUNTIME_PATHS.env_path
 
 _TRUTHY_ENV_VALUES: Final[frozenset[str]] = frozenset({"1", "true", "yes", "on"})
 _FALSY_ENV_VALUES: Final[frozenset[str]] = frozenset({"0", "false", "no", "off"})
@@ -168,16 +168,14 @@ _MODULE_KEYS: Final[tuple[str, ...]] = (
 )
 
 try:
-    with open(CONFIG_PATH, "r", encoding="utf-8") as config_file:
-        _CONFIG_DATA: dict[str, Any] = json.load(config_file)
-    if not isinstance(_CONFIG_DATA, dict):
-        _LOGGER.warning("Config root must be a JSON object; using defaults.")
-        _CONFIG_DATA = {}
-except FileNotFoundError:
-    _CONFIG_DATA = {}
-except (OSError, json.JSONDecodeError) as exc:
-    _LOGGER.warning("Unable to load config from %s: %s", CONFIG_PATH, exc)
-    _CONFIG_DATA = {}
+    _CONFIG_DATA = load_config_documents(
+        _RUNTIME_PATHS.defaults_config_path,
+        _RUNTIME_PATHS.operator_config_path,
+        _RUNTIME_PATHS.local_config_path,
+    )
+except (OSError, ValueError, json.JSONDecodeError) as exc:
+    _LOGGER.warning("Unable to load application config: %s; using defaults.", exc)
+    _CONFIG_DATA: dict[str, Any] = {}
 
 def _valid_prompt(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
@@ -203,6 +201,9 @@ LOCAL_AGENT_SYSTEM_PROMPT: Final[str] = _required_prompt(
 )
 
 tts_settings = _CONFIG_DATA.get("tts_settings", {})
+if not isinstance(tts_settings, dict):
+    _LOGGER.warning('Config key "tts_settings" must be a JSON object; using defaults.')
+    tts_settings = {}
 PRIMARY_TTS: Final[str] = tts_settings.get("primary_tts", "pyttsx3")
 VOICE_GENDER: Final[str] = tts_settings.get("voice_gender", "female")
 CUSTOM_BROWSER_PATH: Final[str] = os.getenv("CUSTOM_BROWSER_PATH", "")

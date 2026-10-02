@@ -16,6 +16,10 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+from core.runtime_paths import get_runtime_paths, initialize_environment
+
+initialize_environment()
+
 _CURRENT_STOP_REASONS = frozenset(
     {
         "end_turn",
@@ -365,16 +369,16 @@ def normalize_database(
 
 
 def main(argv: list[str] | None = None) -> int:
-    default_database = Path(__file__).resolve().parents[1] / "apex_memory.db"
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--database", type=Path, default=default_database)
+    parser.add_argument("--database", type=Path)
     parser.add_argument(
         "--apply", action="store_true",
         help="rebuild the supported cortex_runs constraint after stopping APEX",
     )
     args = parser.parse_args(argv)
     try:
-        print(normalize_database(args.database, apply=args.apply))
+        database = args.database or get_runtime_paths().database_path
+        print(normalize_database(database, apply=args.apply))
     except (ConstraintCleanupError, OSError, sqlite3.Error) as exc:
         print(f"run constraint cleanup failed: {exc}", file=sys.stderr)
         return 1

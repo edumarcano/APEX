@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import copy
 import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from core.config_documents import deep_merge
 from urllib.parse import urlparse
 
 from core.agent.model_catalog import (
@@ -100,17 +101,7 @@ class NormalizationIssues:
 
 def recursive_overlay(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
     """Deep-merge ``overlay`` onto ``base``; overlay wins for non-dict values."""
-    result = copy.deepcopy(base)
-    for key, value in overlay.items():
-        if (
-            key in result
-            and isinstance(result[key], dict)
-            and isinstance(value, dict)
-        ):
-            result[key] = recursive_overlay(result[key], value)
-        else:
-            result[key] = copy.deepcopy(value)
-    return result
+    return deep_merge(base, overlay)
 
 
 def normalize_layer(

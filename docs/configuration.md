@@ -6,15 +6,22 @@ Use Runtime Settings for everyday preferences and `.env` for credentials and env
 
 | Location | Purpose |
 |---|---|
-| `config.json` | Tracked defaults, Agent prompts, and file-only execution settings |
-| `config.local.json` | Gitignored overrides written by Runtime Settings, including local model paths and report-folder preferences |
-| `.env` or process environment | Credentials, development/demo switches, and paths such as the Context vault destination |
+| File | Purpose |
+|---|---|
+| Resource `config.json` | Bundled or tracked defaults, Agent prompts, and file-only execution settings |
+| Source checkout `config.json`; frozen `%LOCALAPPDATA%\APEX\config.json` | Optional operator configuration, read when it is separate from resource defaults |
+| Source checkout `config.local.json`; frozen `%LOCALAPPDATA%\APEX\config.local.json` | Runtime Settings overrides, including local model paths and report-folder preferences |
+| Selected data directory `.env` or process environment | Credentials, development/demo switches, and paths such as the Context vault destination |
 
-For editable settings, APEX reads `config.json` and overlays supported values from `config.local.json`. Runtime Settings saves changes to the local file and applies them in the running process. An invalid local override is discarded in favor of tracked defaults, with a warning. File-only settings such as run limits and Ollama configuration are read from `config.json`.
+The selected data directory is the checkout in source runs. Set `APEX_DATA_DIR` in the process environment before starting APEX to keep data elsewhere; the value must be absolute, and a relative nonempty value stops startup. A frozen Windows app defaults to `%LOCALAPPDATA%\APEX` and rejects a data directory inside the resources or executable installation directory. The selector is read before `.env` is loaded, so `.env` cannot change the active profile. Path selection does not copy or migrate existing data. Microsoft To Do's configured encrypted token-cache path, the Context vault destination, managed model executable and preset paths, and the external activity report folder remain operator-selected destinations.
+
+Configuration layers apply in this order: resource `config.json`, data `config.json` when it is a different file, then data `config.local.json`. Later values override earlier values recursively. Missing optional files are skipped; unreadable or malformed optional files are ignored with a warning. Runtime Settings validates its editable values and writes only to `config.local.json`; an invalid local editable layer is discarded in favor of lower layers. File-only settings such as run limits and Ollama configuration remain read from the JSON layers.
+
+APEX loads only the selected data directory's `.env`. Existing process environment values take precedence, including during variable interpolation. `PYTHON_DOTENV_DISABLED` disables `.env` loading. Restart after editing configuration files or `.env` directly.
 
 The retired `features.news` setting in an older `config.json` or `config.local.json` is ignored. It does not prevent other saved preferences from loading or being updated.
 
-Restart after editing configuration files or `.env` directly. Existing process environment values take precedence over `.env`. Keep credentials out of both JSON files, and keep machine-specific paths and model weights out of source control.
+Runtime Settings changes apply in the running process. Keep credentials out of both JSON files, and keep machine-specific paths and model weights out of source control.
 
 ## Runtime Settings
 
@@ -115,7 +122,7 @@ Enable only the services you intend to use. Disabled telemetry connectors do not
 |---|---|
 | Weather | `TARGET_LOCATION` in `.env`; Open-Meteo needs no API key |
 | Football | `FOOTBALL_API_KEY` in `.env` and followed teams in Runtime Settings |
-| Gmail and Google Calendar | Desktop OAuth `credentials.json` in the repository root; first authorization creates `token.json` |
+| Gmail and Google Calendar | Desktop OAuth `credentials.json` in the selected data directory; first authorization creates `token.json` there |
 | Microsoft To Do | `MICROSOFT_TODO_CLIENT_ID`, optional tenant and token-cache path; a public/native Entra app with device-code flow and delegated `Tasks.ReadWrite` |
 | Google Cloud speech | Service-account key with its absolute path in `GOOGLE_APPLICATION_CREDENTIALS` |
 | MCP services | Enable MCP and the chosen server preset, then configure its environment credential or OAuth authorization |

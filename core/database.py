@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, Iterator
 
-from core.config import PROJECT_ROOT
+from core.runtime_paths import get_runtime_paths
 from core.persistence_schema import validate_table_columns
 
-DB_NAME = str(PROJECT_ROOT / "apex_memory.db")
+DB_NAME = str(get_runtime_paths().database_path)
 @contextmanager
 def _connection() -> Iterator[sqlite3.Connection]:
     """Open a short-lived SQLite connection with WAL enabled."""
@@ -50,6 +51,7 @@ def initialize_db(
             connection.execute("BEGIN")
             _init_db_schema(connection, include_actions=include_actions)
         return
+    Path(DB_NAME).parent.mkdir(parents=True, exist_ok=True)
     with _connection() as conn:
         with conn:
             conn.execute("BEGIN")

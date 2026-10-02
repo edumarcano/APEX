@@ -12,20 +12,22 @@ from pathlib import Path
 from typing import Any
 
 from core.settings.models import RuntimeSettingsSnapshot, SettingsPatch
+from core.config_documents import deep_merge, read_json_object
+from core.runtime_paths import get_runtime_paths
 from core.settings.normalize import (
     EDITABLE_ROOT_KEYS,
     NormalizationIssues,
     normalize_layer,
     patch_to_ondisk,
-    recursive_overlay,
     snapshot_from_merged,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-_PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
-_DEFAULT_CONFIG_PATH: Path = _PROJECT_ROOT / "config.json"
-_DEFAULT_LOCAL_CONFIG_PATH: Path = _PROJECT_ROOT / "config.local.json"
+_DEFAULT_PATHS = get_runtime_paths()
+_DEFAULT_CONFIG_PATH: Path = _DEFAULT_PATHS.defaults_config_path
+_DEFAULT_OPERATOR_CONFIG_PATH: Path = _DEFAULT_PATHS.operator_config_path
+_DEFAULT_LOCAL_CONFIG_PATH: Path = _DEFAULT_PATHS.local_config_path
 
 _REPLACE_MAX_ATTEMPTS = 3
 _REPLACE_BACKOFF_SECONDS = (0.05, 0.1, 0.2)
@@ -48,9 +50,16 @@ class RuntimeSettingsStore:
         *,
         config_path: Path | None = None,
         local_config_path: Path | None = None,
+        operator_config_path: Path | None = None,
     ) -> None:
         self._config_path = config_path or _DEFAULT_CONFIG_PATH
         self._local_config_path = local_config_path or _DEFAULT_LOCAL_CONFIG_PATH
+        self._custom_paths = any(
+            path is not None for path in (config_path, local_config_path, operator_config_path)
+        )
+        self._operator_config_path = operator_config_path or (
+            None if self._custom_paths else _DEFAULT_OPERATOR_CONFIG_PATH
+        )
         self._lock = threading.RLock()
         self._snapshot: RuntimeSettingsSnapshot = RuntimeSettingsSnapshot()
         self._base_ondisk: dict[str, Any] = {}
@@ -98,6 +107,30 @@ class RuntimeSettingsStore:
             base_normalized = normalize_layer(base_raw, layer_name="config.json")
             self._base_ondisk = base_normalized
 
+            if self._operator_config_path is not None and self._operator_config_path != self._config_path:
+                operator_raw, operator_warning = self._load_json_file(
+                    self._operator_config_path, missing_ok=True
+                )
+                if operator_warning:
+                    warning = operator_warning
+                else:
+                    operator_issues = NormalizationIssues()
+                    operator_normalized = normalize_layer(
+                        operator_raw,
+                        layer_name="config.json",
+                        issues=operator_issues,
+                    )
+                    if operator_issues.errors:
+                        warning = (
+                            "Invalid operator config.json; using bundled defaults: "
+                            + "; ".join(operator_issues.errors)
+                        )
+                        _LOGGER.warning(warning)
+                    else:
+                        self._base_ondisk = deep_merge(
+                            self._base_ondisk, operator_normalized
+                        )
+
             local_normalized: dict[str, Any] = {}
             local_raw: dict[str, Any] = {}
             local_present = self._local_config_path.is_file()
@@ -137,7 +170,7 @@ class RuntimeSettingsStore:
             else:
                 local_normalized = {}
 
-            merged = recursive_overlay(base_normalized, local_normalized)
+            merged = deep_merge(self._base_ondisk, local_normalized)
             snapshot = snapshot_from_merged(merged)
 
             self._local_ondisk = local_normalized
@@ -219,7 +252,7 @@ class RuntimeSettingsStore:
             return None
 
         latest_raw = self._load_latest_raw_for_write()
-        next_raw = recursive_overlay(latest_raw, patch_ondisk)
+        next_raw = deep_merge(latest_raw, patch_ondisk)
         next_issues = NormalizationIssues()
         next_local = normalize_layer(
             next_raw,
@@ -231,7 +264,7 @@ class RuntimeSettingsStore:
                 "Refusing to persist invalid settings: "
                 + "; ".join(next_issues.errors)
             )
-        next_merged = recursive_overlay(self._base_ondisk, next_local)
+        next_merged = deep_merge(self._base_ondisk, next_local)
         llama_merged = (
             next_merged.get("llama_cpp")
             if isinstance(next_merged.get("llama_cpp"), dict)
@@ -293,13 +326,12 @@ class RuntimeSettingsStore:
         self, path: Path, *, missing_ok: bool
     ) -> tuple[dict[str, Any], str | None]:
         try:
-            with open(path, "r", encoding="utf-8") as handle:
-                data = json.load(handle)
+            data = read_json_object(path, missing_ok=missing_ok)
         except FileNotFoundError:
             if missing_ok:
                 return {}, None
             return {}, f"Missing configuration file: {path}"
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
             message = f"Unable to load configuration from {path}: {exc}"
             _LOGGER.warning(message)
             return {}, message
@@ -381,6 +413,7 @@ def get_settings_store(
     *,
     config_path: Path | None = None,
     local_config_path: Path | None = None,
+    operator_config_path: Path | None = None,
     force_new: bool = False,
 ) -> RuntimeSettingsStore:
     """
@@ -391,10 +424,16 @@ def get_settings_store(
     default project paths.
     """
     global _STORE
-    if force_new or config_path is not None or local_config_path is not None:
+    if (
+        force_new
+        or config_path is not None
+        or local_config_path is not None
+        or operator_config_path is not None
+    ):
         return RuntimeSettingsStore(
             config_path=config_path,
             local_config_path=local_config_path,
+            operator_config_path=operator_config_path,
         )
 
     with _STORE_LOCK:

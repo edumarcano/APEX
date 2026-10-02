@@ -48,6 +48,29 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertEqual(settings.cloud.effort, "low")
         self.assertEqual(settings.local.context_window, 16384)
 
+    def test_operator_config_layer_survives_reload_and_unrelated_runtime_patch(self) -> None:
+        root = self._temp_root()
+        defaults = root / "resources" / "config.json"
+        operator = root / "profile" / "config.json"
+        local = root / "profile" / "config.local.json"
+        defaults.parent.mkdir(parents=True)
+        operator.parent.mkdir(parents=True)
+        _write_json(defaults, {"features": {"weather": False, "sports": False}})
+        _write_json(operator, {"features": {"weather": True}})
+        store = RuntimeSettingsStore(
+            config_path=defaults,
+            operator_config_path=operator,
+            local_config_path=local,
+        )
+
+        self.assertTrue(store.get_snapshot().features.weather)
+        self.assertTrue(store.reload().features.weather)
+        patched = store.apply_patch(
+            SettingsPatch.model_validate({"features": {"sports": True}})
+        )
+        self.assertTrue(patched.features.weather)
+        self.assertTrue(patched.features.sports)
+
     def test_retired_news_feature_in_disk_config_is_ignored_without_losing_preferences(self) -> None:
         _write_json(self.config_path, {
             "features": {

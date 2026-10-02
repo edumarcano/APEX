@@ -4,6 +4,12 @@ APEX is a local-first personal intelligence workspace. React provides the interf
 
 This document explains how collection, conversations, briefings, and personal context fit together. Use [Configuration](configuration.md) for settings, [API](api.md) for HTTP behavior, and the [frontend guide](../frontend/README.md) for browser state and presentation loading.
 
+## Runtime resource and data paths
+
+APEX resolves immutable application resources separately from operator data. In a source checkout, the backend module locates resources and the data directory defaults to that checkout, independent of the current working directory. An absolute `APEX_DATA_DIR` selects another source data directory. Frozen Windows runs use bundled resources and default data to `%LOCALAPPDATA%\APEX`; their data directory cannot be inside the resources or executable installation directory.
+
+Path resolution does not create directories or files. Startup reads the selected profile's `.env` after choosing the data directory. The `.env` file cannot retarget that choice, and `PYTHON_DOTENV_DISABLED` disables loading. Writers create their required data directories when persistence is initialized. APEX does not copy or migrate operator state when the selected data directory changes. See [Configuration](configuration.md#where-settings-live) for the configuration-layer order and operator controls.
+
 ## System components
 
 The browser opens on Launch and provides four peer workspaces: Overview, Briefing, Cortex, and Reports. Navigation does not start telemetry collection or briefing generation. The shared conversation runtime and app-level state owners stay mounted while workspace presentations load on demand. Loading and retry states remain within the requested workspace; see [Presentation loading](../frontend/README.md#presentation-loading).

@@ -10,8 +10,9 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from core.runtime_paths import initialize_environment
+
 import uvicorn
-from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from clients.microsoft_todo_client import MicrosoftTodoClient, set_microsoft_todo_client
@@ -37,7 +38,6 @@ from core.config import (
     CORTEX_RUNS_MAX_CONCURRENT_RUNS,
     CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS,
     DEMO_MODE,
-    ENV_PATH,
     MAX_RECENT_CONVERSATION_MESSAGES,
     APEX_CONTEXT_VAULT_PATH,
 )
@@ -75,7 +75,7 @@ from core.reminders import ReminderService, set_reminder_service
 from core.settings.store import get_settings_store
 from core.tracing import get_tracing_service
 
-load_dotenv(dotenv_path=ENV_PATH)
+initialize_environment()
 
 _LOGGER = logging.getLogger(__name__)
 
