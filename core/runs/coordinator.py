@@ -298,8 +298,15 @@ ExecuteRun = Callable[[RunExecutionControl], Any]
 class CortexRunCoordinator:
     """Own bounded worker admission and run lifecycle without an internal queue."""
 
-    def __init__(self, service: RunService, *, max_workers: int) -> None:
+    def __init__(
+        self,
+        service: RunService,
+        *,
+        max_workers: int,
+        completion_sink: Callable[[dict[str, str]], None] | None = None,
+    ) -> None:
         self.service = service
+        self._completion_sink = completion_sink
         self._slots = threading.BoundedSemaphore(max_workers)
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="apex-run")
         self._lock = threading.RLock()
@@ -781,6 +788,16 @@ class CortexRunCoordinator:
             record=record,
         )
         self.events.complete(record.id, record)
+        if record.status == "completed" and self._completion_sink is not None:
+            try:
+                self._completion_sink(
+                    {"run_id": str(record.id), "status": "completed"}
+                )
+            except Exception as exc:
+                _LOGGER.warning(
+                    "Cortex run completion sink failed: error_type=%s",
+                    type(exc).__name__,
+                )
 
 
 def _tool_outcomes(response: Any) -> dict[str, int]:
