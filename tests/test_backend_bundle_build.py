@@ -54,6 +54,35 @@ class BackendBundleBuildTests(unittest.TestCase):
             self.assertNotIn("apex_memory.db", selected_paths)
             self.assertNotIn("docs/notes.txt", selected_paths)
 
+    def test_onnxruntime_collection_excludes_only_example_dataset_subtree(self) -> None:
+        self.assertTrue(
+            COLLECTION.is_onnxruntime_example_data_path(
+                "_internal/onnxruntime/datasets/logreg_iris.onnx"
+            )
+        )
+        self.assertTrue(
+            COLLECTION.is_onnxruntime_example_data_path(
+                r"onnxruntime\datasets\__init__.py"
+            )
+        )
+        self.assertFalse(
+            COLLECTION.is_onnxruntime_example_data_path(
+                "_internal/onnxruntime/capi/onnxruntime_providers_shared.dll"
+            )
+        )
+        self.assertFalse(
+            COLLECTION.is_onnxruntime_example_data_path(
+                "_internal/espeakng_loader/espeak-ng-data/phondata"
+            )
+        )
+        self.assertTrue(COLLECTION.include_onnxruntime_submodule("onnxruntime.capi"))
+        self.assertFalse(
+            COLLECTION.include_onnxruntime_submodule("onnxruntime.datasets")
+        )
+        self.assertFalse(
+            COLLECTION.include_onnxruntime_submodule("onnxruntime.datasets.example")
+        )
+
     def test_build_info_is_deterministic_and_contains_no_machine_path(self) -> None:
         toolchain = builder._load_toolchain()
         lock_digest = "a" * 64

@@ -50,6 +50,25 @@ _HIDDEN_IMPORTS = (
 )
 
 
+def is_onnxruntime_example_data_path(value: str | Path) -> bool:
+    """Identify only ONNX Runtime's packaged example dataset subtree."""
+    parts = str(value).replace("\\", "/").casefold().split("/")
+    return any(
+        parts[index : index + 2] == ["onnxruntime", "datasets"]
+        for index in range(len(parts) - 1)
+    )
+
+
+def include_onnxruntime_submodule(name: str) -> bool:
+    """Keep runtime modules while excluding ONNX Runtime example datasets."""
+    normalized = name.casefold()
+    return (
+        not any(part in {"test", "tests", "testing"} for part in normalized.split("."))
+        and normalized != "onnxruntime.datasets"
+        and not normalized.startswith("onnxruntime.datasets.")
+    )
+
+
 def bundle_datas(resource_root: Path) -> list[tuple[str, str]]:
     """Return only the approved resource files, rooted at their runtime paths."""
     root = resource_root.resolve()

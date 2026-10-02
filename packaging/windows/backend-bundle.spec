@@ -17,6 +17,8 @@ collection_module = importlib.util.module_from_spec(collection_spec)
 collection_spec.loader.exec_module(collection_module)
 bundle_datas = collection_module.bundle_datas
 bundle_hidden_imports = collection_module.bundle_hidden_imports
+include_onnxruntime_submodule = collection_module.include_onnxruntime_submodule
+is_onnxruntime_example_data_path = collection_module.is_onnxruntime_example_data_path
 
 
 probe_mode = os.environ.get("APEX_BUNDLE_PROBE_BUILD") == "1"
@@ -49,6 +51,8 @@ def sanitize_analysis_datas(analysis):
     for item in analysis.datas:
         destination = str(item[0]).replace("\\", "/")
         parts = destination.split("/")
+        if is_onnxruntime_example_data_path(destination):
+            continue
         dist_info = next(
             (part for part in parts if part.lower().endswith(".dist-info")),
             None,
@@ -72,11 +76,18 @@ for package in (
     "kokoro_onnx",
     "espeakng_loader",
 ):
+    submodule_filter = (
+        include_onnxruntime_submodule if package == "onnxruntime" else include_non_test_module
+    )
     package_datas, package_binaries, package_hidden = collect_all(
         package,
-        filter_submodules=include_non_test_module,
+        filter_submodules=submodule_filter,
         exclude_datas=["**/test/**", "**/tests/**", "**/testing/**"],
     )
+    if package == "onnxruntime":
+        package_datas = [
+            item for item in package_datas if not is_onnxruntime_example_data_path(item[1])
+        ]
     datas.extend(package_datas)
     binaries.extend(package_binaries)
     hiddenimports.extend(package_hidden)
