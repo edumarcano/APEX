@@ -6,11 +6,9 @@ Use Runtime Settings for everyday preferences and `.env` for credentials and env
 
 | Location | Purpose |
 |---|---|
-| File | Purpose |
-|---|---|
 | Resource `config.json` | Bundled or tracked defaults, Agent prompts, and file-only execution settings |
-| Source checkout `config.json`; frozen `%LOCALAPPDATA%\APEX\config.json` | Optional operator configuration, read when it is separate from resource defaults |
-| Source checkout `config.local.json`; frozen `%LOCALAPPDATA%\APEX\config.local.json` | Runtime Settings overrides, including local model paths and report-folder preferences |
+| Selected data directory `config.json` | Optional operator configuration, read when separate from resource defaults; defaults to the checkout in source runs or `%LOCALAPPDATA%\APEX` when frozen |
+| Selected data directory `config.local.json` | Runtime Settings overrides, including local model paths and report-folder preferences |
 | Selected data directory `.env` or process environment | Credentials, development/demo switches, and paths such as the Context vault destination |
 
 The selected data directory is the checkout in source runs. Set `APEX_DATA_DIR` in the process environment before starting APEX to keep data elsewhere; the value must be absolute, and a relative nonempty value stops startup. A frozen Windows app defaults to `%LOCALAPPDATA%\APEX` and rejects a data directory inside the resources or executable installation directory. The selector is read before `.env` is loaded, so `.env` cannot change the active profile. Path selection does not copy or migrate existing data. Microsoft To Do's configured encrypted token-cache path, the Context vault destination, managed model executable and preset paths, and the external activity report folder remain operator-selected destinations.
@@ -18,6 +16,18 @@ The selected data directory is the checkout in source runs. Set `APEX_DATA_DIR` 
 Configuration layers apply in this order: resource `config.json`, data `config.json` when it is a different file, then data `config.local.json`. Later values override earlier values recursively. Missing optional files are skipped; unreadable or malformed optional files are ignored with a warning. Runtime Settings validates its editable values and writes only to `config.local.json`; an invalid local editable layer is discarded in favor of lower layers. File-only settings such as run limits and Ollama configuration remain read from the JSON layers.
 
 APEX loads only the selected data directory's `.env`. Existing process environment values take precedence, including during variable interpolation. `PYTHON_DOTENV_DISABLED` disables `.env` loading. Restart after editing configuration files or `.env` directly.
+
+The main writable paths follow the selected data directory:
+
+| Data | Path |
+|---|---|
+| SQLite database | `apex_memory.db` |
+| Google OAuth files | `credentials.json` and `token.json` |
+| Connector caches | `clients/.market_cache.json`, `clients/.f1_cache.json`, and `clients/.football_cache.json` |
+| FastEmbed cache | `weights/fastembed/` |
+| Kokoro weights | `core/weights/kokoro/` |
+
+Documentation and demo fixtures remain under the resource directory, including `docs/` and `core/mock/`.
 
 The retired `features.news` setting in an older `config.json` or `config.local.json` is ignored. It does not prevent other saved preferences from loading or being updated.
 

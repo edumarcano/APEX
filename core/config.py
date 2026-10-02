@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Any, Final, Literal, cast
 
 from core.config_documents import load_config_documents
-from core.runtime_paths import get_runtime_paths, initialize_environment
+from core.runtime_paths import initialize_environment
 
 __all__ = [
     "CORTEX_RUNS_CONFIG",

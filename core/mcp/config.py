@@ -27,7 +27,6 @@ def _read_json_object(path: Path) -> dict[str, Any]:
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         _LOGGER.warning("Unable to load MCP config from %s: %s", path, exc)
         return {}
-    return {}
 
 
 def load_mcp_config(

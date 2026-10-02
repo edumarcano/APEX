@@ -336,10 +336,6 @@ class RuntimeSettingsStore:
             _LOGGER.warning(message)
             return {}, message
 
-        if not isinstance(data, dict):
-            message = f"Configuration root in {path} must be a JSON object"
-            _LOGGER.warning(message)
-            return {}, message
         return data, None
 
     def _atomic_write_local(self, payload: dict[str, Any]) -> None:
