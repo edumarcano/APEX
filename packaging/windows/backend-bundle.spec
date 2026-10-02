@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import sys
 
-from PyInstaller.utils.hooks import collect_all, copy_metadata
+from PyInstaller.utils.hooks import collect_all, collect_data_files, copy_metadata
 
 
 ROOT = Path(SPECPATH).resolve().parents[1]
@@ -86,6 +86,9 @@ for package in (
     datas.extend(package_datas)
     binaries.extend(package_binaries)
     hiddenimports.extend(package_hidden)
+
+# language_tags.data.get opens package-relative JSON dynamically during Kokoro setup.
+datas.extend(collect_data_files("language_tags"))
 
 datas.extend(copy_metadata("apex", recursive=True))
 datas.extend(copy_metadata("fastembed"))
