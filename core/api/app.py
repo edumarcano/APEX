@@ -7,12 +7,12 @@ import logging
 import os
 import sqlite3
 import threading
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from core.runtime_paths import initialize_environment
 
-import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from clients.microsoft_todo_client import MicrosoftTodoClient, set_microsoft_todo_client
@@ -80,6 +80,50 @@ initialize_environment()
 _LOGGER = logging.getLogger(__name__)
 
 
+class _HttpRequestTracker:
+    """Track ASGI request tasks through cancellation and response completion."""
+
+    def __init__(self) -> None:
+        self._condition = threading.Condition()
+        self._active = 0
+
+    def enter(self) -> None:
+        with self._condition:
+            self._active += 1
+
+    def leave(self) -> None:
+        with self._condition:
+            self._active = max(0, self._active - 1)
+            if self._active == 0:
+                self._condition.notify_all()
+
+    @property
+    def active(self) -> int:
+        with self._condition:
+            return self._active
+
+
+_HTTP_REQUEST_TRACKER = _HttpRequestTracker()
+
+
+class _HttpRequestTrackingMiddleware:
+    """Keep shutdown aware of in-flight HTTP handlers, including sync workers."""
+
+    def __init__(self, app, tracker: _HttpRequestTracker) -> None:
+        self.app = app
+        self.tracker = tracker
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        self.tracker.enter()
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            self.tracker.leave()
+
+
 def _validate_persistence_before_startup(
     *, connection: sqlite3.Connection | None = None, include_actions: bool
 ) -> bool:
@@ -143,11 +187,38 @@ async def _drain_application_tasks(
     return True
 
 
+def _ensure_host_context(_app: FastAPI):
+    """Acquire or validate the exclusive profile lease before startup work."""
+    from core.host.identity import create_host_context
+    from core.runtime_paths import get_runtime_paths
+
+    context = getattr(_app.state, "host_context", None)
+    owns_context = context is None
+    if context is None:
+        context = create_host_context(
+            get_runtime_paths(),
+            shutdown_timeout_seconds=(
+                int(CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS) + 5 + 20 + 5
+            ),
+        )
+        _app.state.host_context = context
+    if not context.profile_lock.acquired:
+        raise RuntimeError("APEX host profile lease is not acquired.")
+    expected_root = get_runtime_paths().data_root.resolve(strict=False)
+    if context.profile_lock.data_root != expected_root:
+        raise RuntimeError("APEX host profile lease does not match the selected data profile.")
+    _app.state.lifecycle_entered = True
+    _app.state.lifecycle_established = False
+    _app.state.lifecycle_cleanup_complete = False
+    _app.state.http_request_tracker = _HTTP_REQUEST_TRACKER
+    _app.state.http_shutdown_timed_out = False
+    return context, owns_context
+
+
 @asynccontextmanager
 async def _app_lifespan(_app: FastAPI):
     """Start application-owned resources and release them in dependency order."""
-    configure_logging()
-    get_tracing_service().initialize()
+    host_context, owns_host_context = _ensure_host_context(_app)
     idle_model_task: asyncio.Task[None] | None = None
     idle_model_stop: asyncio.Event | None = None
     startup_tasks: list[asyncio.Task[None]] = []
@@ -170,11 +241,14 @@ async def _app_lifespan(_app: FastAPI):
     activity_report_folder_task: asyncio.Task[None] | None = None
     context_vault_runtime: ContextVaultRuntime | None = None
     conversation_retention_stop: asyncio.Event | None = None
-    llama_supervisor = get_llama_cpp_server_supervisor()
+    llama_supervisor = None
     lifecycle_error: BaseException | None = None
     retrieval_schema_supported = True
 
     try:
+        configure_logging()
+        get_tracing_service().initialize()
+        llama_supervisor = get_llama_cpp_server_supervisor()
         if DEMO_MODE:
             demo_db = sqlite3.connect(":memory:", check_same_thread=False)
             demo_db.execute("PRAGMA foreign_keys=ON;")
@@ -218,7 +292,9 @@ async def _app_lifespan(_app: FastAPI):
             run_service.recover_interrupted()
         set_run_service(run_service)
         run_coordinator = CortexRunCoordinator(
-            run_service, max_workers=CORTEX_RUNS_MAX_CONCURRENT_RUNS
+            run_service,
+            max_workers=CORTEX_RUNS_MAX_CONCURRENT_RUNS,
+            completion_sink=getattr(_app.state, "completion_sink", None),
         )
         set_run_coordinator(run_coordinator)
         briefing_session_store = BriefingSessionStore(
@@ -430,11 +506,14 @@ async def _app_lifespan(_app: FastAPI):
 
         connector_sessions = ConnectorHttpSessions()
         set_connector_http_sessions(connector_sessions)
+        _app.state.lifecycle_established = True
         yield
     except BaseException as exc:
+        _app.state.lifecycle_established = False
         lifecycle_error = exc
         raise
     finally:
+        _app.state.lifecycle_established = False
         cleanup_error: Exception | None = None
 
         async def _cleanup(step: str, operation):
@@ -508,15 +587,22 @@ async def _app_lifespan(_app: FastAPI):
                 raise RuntimeError(
                     "Briefing speech shutdown drain timed out; application dependencies remain open."
                 )
+        if _HTTP_REQUEST_TRACKER.active or getattr(
+            _app.state, "http_shutdown_timed_out", False
+        ):
+            raise RuntimeError(
+                "HTTP request shutdown drain timed out; application dependencies remain open."
+            )
         await _cleanup("stopping speech runtime", speaker.shutdown)
         if mcp_manager is not None:
             await _cleanup("stopping MCP client runtime", mcp_manager.shutdown)
             set_mcp_manager(None)
             _LOGGER.info("Stopped MCP client runtime")
-        await _cleanup(
-            "stopping owned llama.cpp process",
-            lambda: asyncio.to_thread(llama_supervisor.shutdown_owned),
-        )
+        if llama_supervisor is not None:
+            await _cleanup(
+                "stopping owned llama.cpp process",
+                lambda: asyncio.to_thread(llama_supervisor.shutdown_owned),
+            )
         if microsoft_auth is not None:
             await _cleanup("stopping Microsoft authentication", microsoft_auth.shutdown)
         if microsoft_todo_client is not None:
@@ -559,9 +645,14 @@ async def _app_lifespan(_app: FastAPI):
         await _cleanup("stopping tracing", get_tracing_service().shutdown)
         if cleanup_error is not None and lifecycle_error is None:
             raise cleanup_error
+        _app.state.lifecycle_cleanup_complete = cleanup_error is None
+        if cleanup_error is None and owns_host_context:
+            host_context.release()
+            _app.state.host_context = None
 
 
 app = FastAPI(title="APEX API", lifespan=_app_lifespan)
+app.add_middleware(_HttpRequestTrackingMiddleware, tracker=_HTTP_REQUEST_TRACKER)
 
 
 DEFAULT_ALLOWED_ORIGINS = (
@@ -609,8 +700,10 @@ app.include_router(voice.router)
 
 
 def main() -> None:
-    """Run the API server bound to localhost."""
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    """Run the standalone API through the lifecycle-owning host."""
+    from core.backend_host import main as host_main
+
+    raise SystemExit(host_main(["serve", "--standalone"]))
 
 
 if __name__ == "__main__":

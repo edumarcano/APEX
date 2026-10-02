@@ -34,6 +34,9 @@ class SpeakerTextTests(unittest.TestCase):
 
 
 class SpeakerAdmissionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        speaker._CANCEL_EVENT.clear()
+
     def tearDown(self) -> None:
         speaker._CANCEL_EVENT.clear()
 
@@ -492,7 +495,10 @@ class SpeakerCachedAudioTests(unittest.TestCase):
             "text": "A short saved briefing.",
             "gender": "female",
         })
-        self.assertEqual(command[1:3], ["-m", "core.speaker_export"])
+        self.assertEqual(
+            command[1:],
+            ["-m", "core.backend_host", "worker", "speech-export", command[-1]],
+        )
         self.assertEqual(popen.call_args.kwargs["stdin"], subprocess.PIPE)
         self.assertEqual(len(temporary_paths), 1)
         self.assertFalse(os.path.exists(temporary_paths[0]))

@@ -559,7 +559,24 @@ class RunCoordinatorTests(unittest.TestCase):
         self, mock_assembler, mock_query, _dev_mode, _mock_retrieval, _mock_knowledge
     ) -> None:
         mock_assembler.return_value.assemble.return_value = MagicMock()
-        coordinator = CortexRunCoordinator(self.service, max_workers=1)
+        completion_observations: list[tuple[dict[str, str], str, str]] = []
+        conv_service: ConversationService
+
+        def observe_completion(payload: dict[str, str]) -> None:
+            durable_run = self.service.get_run(UUID(payload["run_id"]))
+            detail = conv_service.detail(durable_run.conversation_id)
+            agent_message = next(
+                message for message in detail.messages
+                if message.id == durable_run.agent_message_id
+            )
+            completion_observations.append(
+                (payload, durable_run.status, agent_message.status)
+            )
+            raise RuntimeError("private sink failure")
+
+        coordinator = CortexRunCoordinator(
+            self.service, max_workers=1, completion_sink=observe_completion
+        )
         self.addCleanup(coordinator.close)
         set_run_coordinator(coordinator)
         self.addCleanup(set_run_coordinator, None)
@@ -593,6 +610,19 @@ class RunCoordinatorTests(unittest.TestCase):
         mock_query.side_effect = observe_and_return
         conversation_id, agent_id, _record, future = submit()
         self.assertEqual(future.result(timeout=3).status, "completed")
+        self.assertEqual(
+            completion_observations,
+            [
+                (
+                    {"run_id": str(_record.id), "status": "completed"},
+                    "completed",
+                    "completed",
+                )
+            ],
+        )
+        events, _gap, terminal = coordinator.events.get(_record.id).replay(0)
+        self.assertTrue(terminal)
+        self.assertEqual(events[-1].type, "run.completed")
         completed = next(message for message in conv_service.detail(conversation_id).messages if message.id == agent_id)
         success_steps = completed.response_metadata["activity_steps"]
         self.assertEqual(success_steps[-1]["payload"]["status"], "completed")
@@ -607,6 +637,7 @@ class RunCoordinatorTests(unittest.TestCase):
         mock_query.side_effect = observe_and_fail
         conversation_id, agent_id, _record, future = submit()
         self.assertEqual(future.result(timeout=3).status, "failed")
+        self.assertEqual(len(completion_observations), 1)
         failed = next(message for message in conv_service.detail(conversation_id).messages if message.id == agent_id)
         self.assertEqual(failed.response_metadata["activity_steps"][-1]["payload"]["status"], "failed")
         self.assertNotIn("response.started", [step["type"] for step in failed.response_metadata["activity_steps"]])
@@ -628,6 +659,7 @@ class RunCoordinatorTests(unittest.TestCase):
         coordinator.cancel(record.id)
         release.set()
         self.assertEqual(future.result(timeout=3).status, "cancelled")
+        self.assertEqual(len(completion_observations), 1)
         cancelled = next(message for message in conv_service.detail(conversation_id).messages if message.id == agent_id)
         self.assertEqual(cancelled.response_metadata["activity_steps"][-1]["payload"]["status"], "cancelled")
         self.assertNotIn("response.started", [step["type"] for step in cancelled.response_metadata["activity_steps"]])

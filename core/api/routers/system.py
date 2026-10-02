@@ -7,7 +7,7 @@ import logging
 import sqlite3
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 
 from core import config, database, scanner
 from core.config import DEMO_MODE, is_dev_mode
@@ -34,6 +34,7 @@ from core.agent.providers.llama_cpp_supervisor import (
     get_llama_cpp_server_supervisor,
 )
 from core.mcp import get_mcp_manager, load_mcp_config
+from core.api.models import RuntimeIdentityResponse
 
 router = APIRouter(tags=["system"])
 _LOGGER = logging.getLogger(__name__)
@@ -51,6 +52,18 @@ def health_check() -> dict[str, Any]:
 def liveness() -> dict[str, str]:
     """Return process liveness without checking dependencies."""
     return {"status": "live"}
+
+
+@router.get("/api/v1/runtime", response_model=RuntimeIdentityResponse)
+def runtime_identity(request: Request) -> RuntimeIdentityResponse:
+    """Identify the host only after its application lifecycle is established."""
+    context = getattr(request.app.state, "host_context", None)
+    if context is None or not getattr(request.app.state, "lifecycle_established", False):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Runtime identity is unavailable until startup completes.",
+        )
+    return RuntimeIdentityResponse(**context.identity.as_dict())
 
 
 @router.get("/api/v1/health/ready")

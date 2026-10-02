@@ -26,6 +26,20 @@ class ActivityReportResponse(BaseModel):
     report: ActivityReportContent
 
 
+class RuntimeIdentityResponse(BaseModel):
+    """Non-sensitive identity for the API process serving this request."""
+
+    app_id: Literal["apex"]
+    app_version: str
+    build_id: str
+    instance_id: UUID
+    pid: int
+    hosting_mode: Literal["standalone", "managed"]
+    launch_id: UUID | None
+    data_root_fingerprint: str
+    shutdown_timeout_seconds: int = Field(ge=1, le=3600)
+
+
 class ActivityReportFolderStatusResponse(BaseModel):
     """Local report folder readiness and result of its latest completed scan."""
 

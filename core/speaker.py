@@ -8,7 +8,6 @@ import os
 import queue
 import re
 import subprocess
-import sys
 import tempfile
 import threading
 import time
@@ -25,6 +24,7 @@ import pyttsx3
 from core import config
 from core.runtime_paths import get_runtime_paths
 from core.settings import get_settings_store
+from core.host.worker_dispatch import worker_invocation
 
 # Headless SDL so pygame.mixer can initialize without a display.
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -546,15 +546,25 @@ def _synthesize_pyttsx3_wav(
 ) -> bytes:
     with tempfile.TemporaryDirectory(prefix="apex-speech-") as directory:
         output_path = os.path.join(directory, "speech.wav")
+        from core.host.processes import (
+            register_owned_process,
+            unregister_owned_process,
+        )
+
+        command, worker_env = worker_invocation(output_path)
         process = subprocess.Popen(
-            [sys.executable, "-m", "core.speaker_export", output_path],
+            command,
+            env=worker_env,
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        payload = json.dumps({"text": text, "gender": gender}).encode("utf-8")
-        deadline = time.monotonic() + TTS_SYNTHESIS_TIMEOUT_SECONDS
+        registered = False
         try:
+            register_owned_process(process, kind="speech-export")
+            registered = True
+            payload = json.dumps({"text": text, "gender": gender}).encode("utf-8")
+            deadline = time.monotonic() + TTS_SYNTHESIS_TIMEOUT_SECONDS
             input_bytes: bytes | None = payload
             while process.poll() is None:
                 if cancellation_event.is_set():
@@ -583,9 +593,23 @@ def _synthesize_pyttsx3_wav(
                 raise ValueError("pyttsx3_audio_size_invalid")
             return audio
         finally:
-            if process.poll() is None:
-                process.kill()
-                process.wait(timeout=1.0)
+            try:
+                if process.poll() is None:
+                    try:
+                        process.terminate()
+                        process.wait(timeout=1.0)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=1.0)
+                    except OSError:
+                        # A concurrently exited process may reject termination;
+                        # poll/wait below still reap it before the temp directory closes.
+                        if process.poll() is None:
+                            process.kill()
+                            process.wait(timeout=1.0)
+            finally:
+                if registered and process.poll() is not None:
+                    unregister_owned_process(process)
 
 
 def _admit_kokoro_for_event(cancellation_event: threading.Event) -> tuple[bool, str | None]:

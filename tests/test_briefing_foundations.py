@@ -229,7 +229,25 @@ class BriefingSessionLifecycleTests(unittest.TestCase):
         self.session_store = BriefingSessionStore(self.db_path)
         self.session_store.initialize()
         self.run_service = RunService(self.run_store)
-        self.coordinator = CortexRunCoordinator(self.run_service, max_workers=2)
+        self.completion_events: list[dict[str, str]] = []
+        self.completion_observations: list[tuple[str, bool]] = []
+
+        def observe_completion(payload: dict[str, str]) -> None:
+            self.completion_events.append(payload)
+            with closing(sqlite3.connect(self.db_path)) as connection:
+                row = connection.execute(
+                    "SELECT r.status, s.artifact_json FROM briefing_sessions s "
+                    "JOIN cortex_runs r ON r.id = s.run_id WHERE s.run_id = ?",
+                    (payload["run_id"],),
+                ).fetchone()
+            if row is not None:
+                self.completion_observations.append(
+                    (row[0], row[1] is not None)
+                )
+
+        self.coordinator = CortexRunCoordinator(
+            self.run_service, max_workers=2, completion_sink=observe_completion
+        )
 
     def tearDown(self) -> None:
         self.coordinator.close(timeout_seconds=2)
@@ -326,6 +344,11 @@ class BriefingSessionLifecycleTests(unittest.TestCase):
         agent_message = next(message for message in conversation.messages if message.role == "agent")
         self.assertEqual(saved.run_status, "completed")
         self.assertIsNotNone(saved.artifact)
+        self.assertEqual(
+            self.completion_events,
+            [{"run_id": str(run.id), "status": "completed"}],
+        )
+        self.assertEqual(self.completion_observations, [("completed", True)])
         self.assertEqual(len(saved.evidence), 1)
         self.assertEqual(agent_message.status, "completed")
         self.assertEqual(agent_message.content, render_artifact_text(saved.artifact))
@@ -721,6 +744,7 @@ class BriefingSessionLifecycleTests(unittest.TestCase):
         )
         agent_message = next(message for message in conversation.messages if message.role == "agent")
         self.assertEqual(run.status, "failed")
+        self.assertEqual(self.completion_events, [])
         self.assertEqual(saved.run_status, "failed")
         self.assertIsNone(saved.artifact)
         self.assertEqual(saved.evidence, [])
@@ -746,6 +770,7 @@ class BriefingSessionLifecycleTests(unittest.TestCase):
 
         saved = self.session_store.get(started.session.id, "production")
         self.assertEqual(run.status, "cancelled")
+        self.assertEqual(self.completion_events, [])
         self.assertIsNone(saved.artifact)
         self.assertEqual(saved.evidence, [])
         conversation = self.conversations.detail(saved.conversation_id, "production")
@@ -775,6 +800,7 @@ class BriefingSessionLifecycleTests(unittest.TestCase):
         )
         agent_message = next(message for message in conversation.messages if message.role == "agent")
         self.assertEqual(run.status, "failed")
+        self.assertEqual(self.completion_events, [])
         self.assertEqual(saved.run_status, "failed")
         self.assertIsNone(saved.artifact)
         self.assertEqual(saved.evidence, [])

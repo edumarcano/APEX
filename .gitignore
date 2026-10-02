@@ -2,6 +2,7 @@ venv/
 .venv/
 .env
 config.local.json
+.apex-host.lock
 __pycache__/
 .pytest_cache/
 .mypy_cache/

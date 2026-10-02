@@ -20,6 +20,7 @@ Use the sections below for operation behavior and examples. For a typical integr
 | GET | `/` | Compatibility health response |
 | GET | `/api/v1/health/live` | Process liveness |
 | GET | `/api/v1/health/ready` | Local runtime readiness |
+| GET | `/api/v1/runtime` | Identity of the backend serving the selected data profile |
 | GET | `/api/v1/config` | Interface boot configuration |
 | GET | `/api/v1/settings` | Resolved runtime settings |
 | PATCH | `/api/v1/settings` | Persist runtime-setting changes |
@@ -130,6 +131,12 @@ Loads the runtime settings snapshot and executes a lightweight SQLite query. The
 - `503` — settings or database readiness failed.
 
 Optional external services are deliberately excluded.
+
+### GET `/api/v1/runtime`
+
+Returns the backend's application/version/build identity, per-process instance UUID and PID, `hosting_mode` (`standalone` or `managed`), managed parent `launch_id` or `null`, opaque `data_root_fingerprint`, and `shutdown_timeout_seconds`. It returns `503` until application lifecycle identity is established. It includes no data-directory path, credentials, or configuration contents.
+
+A managed parent compares this identity with its child's private `ready` event, launch UUID, and process handle before admitting the interface. A successful health probe alone does not establish that the listener is the process it launched. Runtime identity is public status, not a shutdown capability; lifecycle control uses private process pipes. See [Backend hosting](architecture.md#backend-hosting).
 
 ### GET `/api/v1/config`
 

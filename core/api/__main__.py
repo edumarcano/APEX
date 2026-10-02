@@ -1,4 +1,4 @@
-"""Run the local API server with ``python -m core.api``."""
+"""Run the local API server through the lifecycle-owning host."""
 
 from core.api.app import main
 

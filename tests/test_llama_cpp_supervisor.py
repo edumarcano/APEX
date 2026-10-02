@@ -28,6 +28,25 @@ def _write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
+def _fake_process(pid: int):
+    """Model a child that exits when production code terminates it."""
+    process = mock.Mock()
+    process.returncode = None
+    process.poll.side_effect = lambda: process.returncode
+    process.wait.side_effect = lambda timeout=None: _finish_fake_process(process)
+    process.terminate.side_effect = lambda: _finish_fake_process(process)
+    process.kill.side_effect = lambda: _finish_fake_process(process)
+    process.stdout = iter(())
+    process.stderr = iter(())
+    process.pid = pid
+    return process
+
+
+def _finish_fake_process(process):
+    process.returncode = 0
+    return 0
+
+
 class LlamaCppSupervisorHelpersTests(unittest.TestCase):
     def test_bind_derives_host_and_port(self) -> None:
         bind = parse_loopback_bind("http://127.0.0.1:8080")
@@ -160,11 +179,7 @@ class LlamaCppSupervisorBehaviorTests(unittest.TestCase):
 
     def test_managed_unreachable_starts_with_expected_args(self) -> None:
         self._enable(managed=True)
-        fake_proc = mock.Mock()
-        fake_proc.poll.return_value = None
-        fake_proc.stdout = iter(())
-        fake_proc.stderr = iter(())
-        fake_proc.pid = 4242
+        fake_proc = _fake_process(4242)
 
         probe = mock.Mock(side_effect=[False, True])
         with mock.patch.object(
@@ -198,11 +213,7 @@ class LlamaCppSupervisorBehaviorTests(unittest.TestCase):
         exe.write_text("x", encoding="utf-8")
         preset.write_text("[*]\n", encoding="utf-8")
         self._enable(managed=True, executable=str(exe), preset=str(preset))
-        fake_proc = mock.Mock()
-        fake_proc.poll.return_value = None
-        fake_proc.stdout = iter(())
-        fake_proc.stderr = iter(())
-        fake_proc.pid = 1
+        fake_proc = _fake_process(1)
         with mock.patch.object(
             supervisor_mod, "probe_router_reachable", side_effect=[False, True]
         ), mock.patch.object(
@@ -235,11 +246,7 @@ class LlamaCppSupervisorBehaviorTests(unittest.TestCase):
 
     def test_startup_timeout_leaves_unavailable_without_crash(self) -> None:
         self._enable(managed=True)
-        fake_proc = mock.Mock()
-        fake_proc.poll.return_value = None
-        fake_proc.stdout = iter(())
-        fake_proc.stderr = iter(())
-        fake_proc.pid = 7
+        fake_proc = _fake_process(7)
         with mock.patch.object(
             supervisor_mod, "probe_router_reachable", return_value=False
         ), mock.patch.object(
@@ -266,11 +273,7 @@ class LlamaCppSupervisorBehaviorTests(unittest.TestCase):
                 launch_count += 1
             started.set()
             release.wait(timeout=2)
-            proc = mock.Mock()
-            proc.poll.return_value = None
-            proc.stdout = iter(())
-            proc.stderr = iter(())
-            proc.pid = 99
+            proc = _fake_process(99)
             return proc
 
         probe_calls = {"n": 0}
@@ -306,11 +309,7 @@ class LlamaCppSupervisorBehaviorTests(unittest.TestCase):
 
     def test_shutdown_only_owned_process(self) -> None:
         self._enable(managed=True)
-        fake_proc = mock.Mock()
-        fake_proc.poll.return_value = None
-        fake_proc.stdout = iter(())
-        fake_proc.stderr = iter(())
-        fake_proc.pid = 11
+        fake_proc = _fake_process(11)
         with mock.patch.object(
             supervisor_mod, "probe_router_reachable", side_effect=[False, True]
         ), mock.patch.object(
@@ -333,7 +332,8 @@ class LlamaCppSupervisorBehaviorTests(unittest.TestCase):
     def test_managed_process_exit_reflected_in_status(self) -> None:
         self._enable(managed=True)
         fake_proc = mock.Mock()
-        fake_proc.poll.side_effect = [None, None, 1]
+        poll_results = iter([None, None, 1])
+        fake_proc.poll.side_effect = lambda: next(poll_results, 1)
         fake_proc.stdout = iter(())
         fake_proc.stderr = iter(())
         fake_proc.pid = 12
@@ -349,11 +349,8 @@ class LlamaCppSupervisorBehaviorTests(unittest.TestCase):
 
     def test_no_endless_automatic_restart_loop(self) -> None:
         self._enable(managed=True)
-        fake_proc = mock.Mock()
-        fake_proc.poll.return_value = 1
-        fake_proc.stdout = iter(())
-        fake_proc.stderr = iter(())
-        fake_proc.pid = 13
+        fake_proc = _fake_process(13)
+        fake_proc.returncode = 1
 
         with mock.patch.object(
             supervisor_mod, "probe_router_reachable", return_value=False
@@ -460,11 +457,7 @@ class LlamaCppSettingsTransitionTests(unittest.TestCase):
 
     def test_deferred_shutdown_runs_after_local_execution_ends(self) -> None:
         self._enable_managed()
-        fake_proc = mock.Mock()
-        fake_proc.poll.return_value = None
-        fake_proc.stdout = iter(())
-        fake_proc.stderr = iter(())
-        fake_proc.pid = 21
+        fake_proc = _fake_process(21)
         previous = self.store.get_snapshot().llama_cpp
         current = previous.model_copy(update={"enabled": False})
         from core.agent.local_runtime import coordinator as coord

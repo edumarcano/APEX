@@ -22,6 +22,7 @@ The main writable paths follow the selected data directory:
 | Data | Path |
 |---|---|
 | SQLite database | `apex_memory.db` |
+| Backend ownership marker | `.apex-host.lock` (OS lock; marker retained after release) |
 | Google OAuth files | `credentials.json` and `token.json` |
 | Connector caches | `clients/.market_cache.json`, `clients/.f1_cache.json`, and `clients/.football_cache.json` |
 | FastEmbed cache | `weights/fastembed/` |
@@ -263,7 +264,7 @@ Keep this listener on loopback. Do not place it behind a tunnel, reverse proxy, 
 }
 ```
 
-`max_concurrent_runs` limits active execution slots before the API returns `429`. `event_replay_limit` sets the in-memory event buffer size per run for Server-Sent Events reconnects. `shutdown_drain_seconds` bounds the full application shutdown window for cancelled run workers and application-owned startup tasks; if either remains active, APEX reports shutdown failure and leaves their dependencies open. The remaining fields define the immutable stop-limit snapshot applied to each run.
+`max_concurrent_runs` limits active execution slots before the API returns `429`. `event_replay_limit` sets the in-memory event buffer size per run for Server-Sent Events reconnects. `shutdown_drain_seconds` bounds the application drain for cancelled run workers, application-owned tasks, report-folder work, and speech. If work remains active, APEX reports shutdown failure and leaves its dependencies open. The backend host advertises and enforces a total shutdown timeout of this interval plus thirty seconds, including HTTP-task shutdown, dependency cleanup, and forced exit (sixty seconds with the default). A managed parent waits through that advertised timeout before forced fallback. The remaining fields define the immutable stop-limit snapshot applied to each run.
 
 `total_tokens` remains cumulative usage accounting for every provider turn. It does not stop a run: multi-turn requests may resend conversation context, while the provider's context-window checks still protect each individual request. Historical run snapshots retain their recorded token ceiling for history inspection; new snapshots have no cumulative-token limit.
 
