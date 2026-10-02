@@ -51,7 +51,7 @@ def _retrieval() -> dict[str, object]:
     service = RetrievalService(RetrievalStore(db_path), enabled=True)
     service.initialize()
     result = search_documentation("APEX local first workspace", service)
-    if result.get("retrieval_mode") != "fts" or not result.get("results"):
+    if result.get("retrieval_mode") != "fts_only" or not result.get("results"):
         raise RuntimeError("production documentation search did not return FTS results")
     return {"documentation_files": len(paths), "documentation_items": len(items), "retrieval_mode": result["retrieval_mode"], "results": len(result["results"])}
 
@@ -90,6 +90,11 @@ def _optional_assets() -> dict[str, object]:
     adapter = FastEmbedAdapter(paths.fastembed_cache_dir)
     service = RetrievalService(RetrievalStore(paths.data_root / "smoke-retrieval-semantic.db"), adapter=adapter, enabled=True)
     service.initialize()
+    # Index the documentation through the production sync/search path before
+    # preparing embeddings; an empty store correctly reports fts_only.
+    initial = search_documentation("APEX local first workspace", service)
+    if initial.get("retrieval_mode") != "fts_only" or not initial.get("results"):
+        raise RuntimeError("production documentation sync did not return initial FTS results")
     status = service.prepare(allow_download=False)
     if status.mode != "semantic":
         raise RuntimeError(f"FastEmbed model assets did not enable semantic retrieval: {status.error_category or status.mode}")

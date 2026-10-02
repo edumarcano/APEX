@@ -283,7 +283,7 @@ def _stop_host(process: subprocess.Popen[bytes], frames: queue.Queue[bytes | Non
         raise RuntimeError(f"managed host did not complete graceful shutdown (stopped={stopped}, code={process.returncode}); stderr tail: {stderr.text()}")
 
 
-def _cli(exe: Path, argv: list[str], cwd: Path, env: dict[str, str]) -> str:
+def _cli(exe: Path, argv: list[str], cwd: Path, env: dict[str, str], *, timeout_seconds: int = 30) -> str:
     result = subprocess.Popen([str(exe), *argv], cwd=cwd, env=env, stdin=subprocess.DEVNULL,
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     assert result.stdout is not None and result.stderr is not None
@@ -295,11 +295,11 @@ def _cli(exe: Path, argv: list[str], cwd: Path, env: dict[str, str]) -> str:
     for thread in threads: thread.start()
     try:
         try:
-            code = result.wait(timeout=30)
+            code = result.wait(timeout=timeout_seconds)
         except subprocess.TimeoutExpired as exc:
             result.kill()
             result.wait(timeout=5)
-            raise RuntimeError(f"CLI {argv[0]} exceeded its 30 second timeout") from exc
+            raise RuntimeError(f"CLI {argv[0]} exceeded its {timeout_seconds} second timeout") from exc
     finally:
         for thread in threads:
             thread.join(timeout=2)
@@ -317,7 +317,10 @@ def _cli(exe: Path, argv: list[str], cwd: Path, env: dict[str, str]) -> str:
                 if not stream.closed:
                     stream.close()
     if code:
-        raise RuntimeError(f"CLI {argv[0]} exited {code}: {stderr.text()[-2048:]}")
+        raise RuntimeError(
+            f"CLI {argv[0]} exited {code}; stdout tail: {stdout.text()[-2048:]}; "
+            f"stderr tail: {stderr.text()[-2048:]}"
+        )
     return stdout.text()
 
 
@@ -441,7 +444,7 @@ def _run_once(bundle: Path, report: Report, *, dev: bool = False, demo: bool = F
                 kokoro_target = probe_root / "core" / "weights" / "kokoro"
                 shutil.copytree(fastembed_cache, fastembed_target, dirs_exist_ok=True)
                 shutil.copytree(kokoro_assets, kokoro_target, dirs_exist_ok=True)
-                output = _cli(probe, ["optional-assets"], cwd, probe_env)
+                output = _cli(probe, ["optional-assets"], cwd, probe_env, timeout_seconds=120)
                 result = json.loads(output)
                 if result.get("status") != "passed":
                     raise RuntimeError(f"real optional asset probe failed: {result}")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import socket
 import subprocess
@@ -79,6 +80,30 @@ class BackendBundleSmokeHarnessTests(unittest.TestCase):
     def test_envelope_queue_deadline_uses_timeout_error_contract(self) -> None:
         with self.assertRaisesRegex(TimeoutError, "timed out waiting"):
             smoke._next_envelope(smoke.queue.Queue(), smoke.time.monotonic() + 0.01)
+
+    def test_source_probe_verifies_real_fts_documentation_search(self) -> None:
+        project = Path(__file__).resolve().parents[1]
+        probe = project / "packaging" / "windows" / "smoke" / "probe.py"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            profile = root / "profile"
+            env = smoke._sanitized_environment(root, profile)
+            result = subprocess.run(
+                [sys.executable, str(probe), "retrieval"],
+                cwd=root,
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr[-2048:])
+            evidence = json.loads(result.stdout)["evidence"]
+            self.assertEqual(evidence["retrieval_mode"], "fts_only")
+            self.assertGreater(evidence["results"], 0)
+            self.assertTrue((profile / "smoke-retrieval-fts.db").exists())
 
 
 if __name__ == "__main__":
