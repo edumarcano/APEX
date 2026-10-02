@@ -11,7 +11,6 @@ import multiprocessing
 import sys
 import threading
 import time
-import traceback
 from contextlib import redirect_stdout
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -121,14 +120,6 @@ def _optional_assets() -> dict[str, object]:
         "voices_exists": voices_path.is_file(),
         "voices_bytes": voices_path.stat().st_size if voices_path.is_file() else 0,
     }
-    try:
-        speaker._get_kokoro_client()
-    except Exception as exc:
-        diagnostic = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))[-2048:]
-        raise RuntimeError(
-            f"Kokoro client initialization failed; paths={assets}; "
-            f"{type(exc).__name__}: {exc}; traceback={diagnostic}"
-        ) from exc
     logger = logging.getLogger("core.speaker")
     previous_level = logger.level
     previous_propagate = logger.propagate
