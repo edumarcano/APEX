@@ -6,7 +6,7 @@ import ctypes
 import os
 from pathlib import Path
 import sys
-from typing import Callable
+from typing import Any, Callable
 
 
 def _get_short_path_name(path: str) -> str | None:
@@ -63,18 +63,24 @@ def _ascii_alias_error() -> RuntimeError:
     )
 
 
-def _patch_loader(loader: object, *, short_path_resolver: Callable[[str], str | None] = _get_short_path_name) -> None:
-    original_get_data_path = loader.get_data_path
+def _patch_espeak_api(
+    api_module: Any,
+    *,
+    short_path_resolver: Callable[[str], str | None] = _get_short_path_name,
+) -> None:
+    original_init = api_module.EspeakAPI.__init__
 
-    def get_frozen_data_path() -> str:
-        # Resolve lazily when Kokoro asks for eSpeak data; do not probe or load
-        # model assets during the frozen backend's startup.
-        return _resolve_data_path(original_get_data_path(), short_path_resolver=short_path_resolver)
+    def init(self: Any, library: Any, data_path: Any) -> Any:
+        # EspeakWrapper resolves its configured data path before constructing
+        # EspeakAPI. Normalize at this native boundary, after that resolution.
+        if data_path is not None:
+            data_path = _resolve_data_path(data_path, short_path_resolver=short_path_resolver)
+        return original_init(self, library, data_path)
 
-    loader.get_data_path = get_frozen_data_path
+    api_module.EspeakAPI.__init__ = init
 
 
 if sys.platform == "win32" and getattr(sys, "frozen", False):
-    import espeakng_loader
+    from phonemizer.backend.espeak import api as espeak_api
 
-    _patch_loader(espeakng_loader)
+    _patch_espeak_api(espeak_api)

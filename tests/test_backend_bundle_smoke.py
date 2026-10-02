@@ -54,6 +54,83 @@ class BackendBundleSmokeHarnessTests(unittest.TestCase):
             self.assertEqual(result, str(data_path))
             resolver.assert_not_called()
 
+    def test_espeak_api_hook_preserves_ascii_argument_and_forwards_none(self) -> None:
+        received = []
+
+        def original_init(_self: object, library: str, data_path: str | None) -> str:
+            received.append((library, data_path))
+            return "native initializer result"
+
+        api_module = SimpleNamespace(EspeakAPI=SimpleNamespace(__init__=original_init))
+        resolver = Mock(side_effect=AssertionError("ASCII and None paths must not be resolved"))
+        espeak_hook._patch_espeak_api(api_module, short_path_resolver=resolver)
+
+        self.assertEqual(resolver.call_count, 0)
+        result = api_module.EspeakAPI.__init__(object(), "espeak.dll", None)
+        self.assertEqual(result, "native initializer result")
+        self.assertEqual(received[-1], ("espeak.dll", None))
+        resolver.assert_not_called()
+
+        with self._ascii_temporary_directory() as temporary:
+            data_path = Path(temporary) / "espeak-ng-data"
+            data_path.mkdir()
+            (data_path / "phontab").write_bytes(b"eSpeak data")
+            self.assertEqual(
+                api_module.EspeakAPI.__init__(object(), "espeak.dll", str(data_path)),
+                "native initializer result",
+            )
+            self.assertEqual(received[-1], ("espeak.dll", str(data_path)))
+            resolver.assert_not_called()
+
+    def test_espeak_api_hook_preserves_original_exceptions(self) -> None:
+        def original_init(_self: object, _library: str, _data_path: str | None) -> None:
+            raise ValueError("native initialization failed")
+
+        api_module = SimpleNamespace(EspeakAPI=SimpleNamespace(__init__=original_init))
+        espeak_hook._patch_espeak_api(api_module)
+
+        with self.assertRaisesRegex(ValueError, "native initialization failed"):
+            api_module.EspeakAPI.__init__(object(), "espeak.dll", None)
+
+    def test_espeak_api_hook_restores_ascii_alias_after_wrapper_path_resolution(self) -> None:
+        try:
+            from phonemizer.backend.espeak import api as espeak_api
+            from phonemizer.backend.espeak.wrapper import EspeakWrapper
+        except ImportError:
+            self.skipTest("Kokoro phonemizer extra is not installed in this test environment")
+
+        with self._ascii_temporary_directory() as temporary:
+            data_path = Path(temporary) / "eSpeak 測試" / "espeak-ng-data"
+            data_path.mkdir(parents=True)
+            (data_path / "phontab").write_bytes(b"eSpeak data")
+            alias_path = espeak_hook._get_short_path_name(str(data_path))
+            if not alias_path or not alias_path.isascii() or not os.path.samefile(alias_path, data_path):
+                self.skipTest("Windows did not provide an ASCII short-path alias for this fixture")
+
+            received: list[str | None] = []
+            original_data_path = EspeakWrapper._ESPEAK_DATA_PATH
+            original_library = EspeakWrapper._ESPEAK_LIBRARY
+
+            def capture_init(_self: object, _library: str, native_path: str | None) -> None:
+                received.append(native_path)
+
+            resolver = Mock(wraps=espeak_hook._get_short_path_name)
+            try:
+                with patch.object(espeak_api.EspeakAPI, "__init__", capture_init):
+                    espeak_hook._patch_espeak_api(espeak_api, short_path_resolver=resolver)
+                    EspeakWrapper.set_data_path(str(data_path))
+                    EspeakWrapper.set_library("espeak-ng.dll")
+                    resolver.assert_not_called()
+                    EspeakWrapper()
+
+                resolver.assert_called_once_with(str(data_path.resolve()))
+                self.assertEqual(len(received), 1)
+                self.assertTrue(received[0].isascii())
+                self.assertEqual(received[0], alias_path)
+            finally:
+                EspeakWrapper._ESPEAK_DATA_PATH = original_data_path
+                EspeakWrapper._ESPEAK_LIBRARY = original_library
+
     def test_espeak_hook_requires_a_verified_ascii_alias_for_unicode_path(self) -> None:
         with self._ascii_temporary_directory() as temporary:
             data_path = Path(temporary) / "eSpeak 測試" / "espeak-ng-data"
@@ -88,25 +165,6 @@ class BackendBundleSmokeHarnessTests(unittest.TestCase):
 
             with self.assertRaisesRegex(RuntimeError, "ASCII-only path"):
                 espeak_hook._resolve_data_path(data_path, short_path_resolver=lambda _path: str(other_path))
-
-    def test_espeak_hook_defers_path_resolution_until_loader_call(self) -> None:
-        with self._ascii_temporary_directory() as temporary:
-            data_path = Path(temporary) / "espeak-ng-data"
-            data_path.mkdir()
-            (data_path / "phontab").write_bytes(b"eSpeak data")
-            calls = 0
-
-            def original_get_data_path() -> str:
-                nonlocal calls
-                calls += 1
-                return str(data_path)
-
-            loader = SimpleNamespace(get_data_path=original_get_data_path)
-            espeak_hook._patch_loader(loader)
-
-            self.assertEqual(calls, 0)
-            self.assertEqual(loader.get_data_path(), str(data_path))
-            self.assertEqual(calls, 1)
 
     def test_espeak_hook_rejects_a_data_directory_without_phontab(self) -> None:
         with self._ascii_temporary_directory() as temporary:
