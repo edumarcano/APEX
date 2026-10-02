@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime, timezone
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest import mock
 
 from clients import market_client
-from core.mock.demo_fixture import load_demo_bundle, resolve_relative_time
+from core.api.demo import load_mock_agent_responses
+from core.mock.demo_fixture import _load_raw_fixture, load_demo_bundle, resolve_relative_time
 from core.settings.models import FeaturesSettings, MarketSettings, RuntimeSettingsSnapshot
 from core.telemetry.service import get_telemetry_service, reset_telemetry_service_for_tests
 
@@ -41,6 +45,36 @@ class RelativeTimeResolutionTests(unittest.TestCase):
             resolve_relative_time("next_sunday+15h", now=sunday).isoformat(),
             "2026-08-16T15:00:00+00:00",
         )
+
+    def test_demo_fixture_is_read_from_runtime_resource_path(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            fixture = Path(temp_dir) / "core" / "mock" / "telemetry.json"
+            fixture.parent.mkdir(parents=True)
+            fixture.write_text('{"fixture": true}', encoding="utf-8")
+            with mock.patch(
+                "core.mock.demo_fixture.get_runtime_paths",
+                return_value=SimpleNamespace(demo_telemetry_path=fixture),
+            ):
+                payload = _load_raw_fixture()
+
+        self.assertEqual(payload, {"fixture": True})
+
+    def test_demo_assistant_is_read_from_runtime_resource_path(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            assistant = Path(temp_dir) / "core" / "mock" / "assistant.json"
+            assistant.parent.mkdir(parents=True)
+            assistant.write_text(
+                '{"responses": [], "fallback": {"answer": "fallback", "tool_trace": []}}',
+                encoding="utf-8",
+            )
+            with mock.patch(
+                "core.api.demo.get_runtime_paths",
+                return_value=SimpleNamespace(demo_assistant_path=assistant),
+            ):
+                responses, fallback = load_mock_agent_responses()
+
+        self.assertEqual(responses, [])
+        self.assertEqual(fallback["answer"], "fallback")
 
 
 class DemoFixtureNormalizationTests(unittest.TestCase):

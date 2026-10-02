@@ -152,6 +152,19 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(vector, [1.0, 0.0])
         self.assertTrue(all(type(value) is float for value in vector))
 
+    def test_default_embedding_cache_uses_managed_data_path_without_creating_it(self) -> None:
+        from types import SimpleNamespace
+
+        cache_dir = self.path.parent / "managed-data" / "weights" / "fastembed"
+        with mock.patch(
+            "core.retrieval.service.get_runtime_paths",
+            return_value=SimpleNamespace(fastembed_cache_dir=cache_dir),
+        ):
+            service = RetrievalService(self.store)
+
+        self.assertEqual(service.adapter.cache_dir, cache_dir)
+        self.assertFalse(cache_dir.exists())
+
     def test_corrupt_persisted_vector_degrades_to_fts(self) -> None:
         item_id = self.store.upsert_item(self._item("m1", "alpha text"))
         service = RetrievalService(self.store, adapter=FakeEmbeddingAdapter())

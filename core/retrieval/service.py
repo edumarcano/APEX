@@ -8,13 +8,13 @@ import logging
 import math
 import numbers
 import threading
-from pathlib import Path
 from typing import Iterable, Mapping
 
-from core.config import DEMO_MODE, PROJECT_ROOT
+from core.config import DEMO_MODE
 from core.connectors.models import utc_now_iso
 from core.conversations.models import ConversationMessage
 from core.conversations.store import ConversationStore
+from core.runtime_paths import get_runtime_paths
 from core.retrieval.embedding import EmbeddingAdapter, EmbeddingError, FastEmbedAdapter
 from core.retrieval.models import RetrievalHit, RetrievalItem, RetrievalStatus
 from core.retrieval.store import (
@@ -58,7 +58,7 @@ class RetrievalService:
     ) -> None:
         self.store = store
         self.conversation_store = conversation_store
-        self.adapter = adapter or FastEmbedAdapter(PROJECT_ROOT / "weights" / "fastembed")
+        self.adapter = adapter or FastEmbedAdapter(get_runtime_paths().fastembed_cache_dir)
         self.enabled = enabled and not DEMO_MODE
         self.initialization_error = initialization_error
         self.batch_size = max(1, batch_size)
