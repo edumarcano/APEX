@@ -561,8 +561,8 @@ def _run_once(bundle: Path, report: Report, *, dev: bool = False, demo: bool = F
             eof_process, eof_frames, _eof_stdout, eof_stderr, eof_launch_id = _spawn_host(
                 bundle / "apex-backend.exe", eof_root / "profile", eof_root
             )
-            eof_starting = _next_envelope(eof_frames, time.monotonic() + DEFAULT_TIMEOUT)
-            eof_ready = _next_envelope(eof_frames, time.monotonic() + DEFAULT_TIMEOUT)
+            eof_starting = _next_startup_envelope(eof_frames, eof_process, eof_stderr, stage="parent-EOF starting")
+            eof_ready = _next_startup_envelope(eof_frames, eof_process, eof_stderr, stage="parent-EOF ready")
             if eof_starting.get("type") != "starting" or eof_ready.get("type") != "ready" or eof_ready.get("request_id") != eof_launch_id:
                 raise RuntimeError("parent-EOF host did not become ready")
             assert eof_process.stdin is not None
