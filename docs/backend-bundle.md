@@ -81,6 +81,7 @@ The manifest records the source commit, reproducibility seed, staged notices, an
 - If notice staging reports a missing distribution license file, inspect that installed wheel's `RECORD` and upstream package before adding any material. Do not infer a license from package metadata.
 - If notice staging reports that an archive hash or source revision differs, compare the checked-in source archive and manifest to `uv.lock` and the upstream build workflow. Do not replace an exact source with a newer release.
 - If the packaged API cannot start, read its stderr output and confirm the complete `_internal` installation is beside the executables. The caller's working directory may be elsewhere. Run `apex-backend.exe --help` to confirm the packaged entrypoint.
+- If Kokoro falls back with an eSpeak `phontab` path error, check whether the installation path contains non-ASCII characters. The frozen Windows runtime uses an existing ASCII short-path alias for eSpeak data when Windows provides one. If it cannot verify an alias, install APEX under an ASCII-only path such as `C:\Apps\APEX` and retry. The adapter does not copy eSpeak data or write into the installation.
 - If a smoke check needs a model file, supply the external file to the smoke command; model files are not downloaded or copied into the bundle by this build.
 
 For source development, environment setup, and the ordinary browser workflow, see [Getting Started](getting-started.md). For CLI commands and behavior, see the [CLI guide](cli.md).

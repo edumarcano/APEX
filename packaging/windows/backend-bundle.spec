@@ -108,7 +108,10 @@ analysis = Analysis(
     hiddenimports=sorted(set(hiddenimports)),
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[str(ROOT / "packaging" / "windows" / "rthook_comtypes.py")],
+    runtime_hooks=[
+        str(ROOT / "packaging" / "windows" / "rthook_comtypes.py"),
+        str(ROOT / "packaging" / "windows" / "rthook_espeak.py"),
+    ],
     excludes=bundle_analysis_excludes(),
     noarchive=False,
 )

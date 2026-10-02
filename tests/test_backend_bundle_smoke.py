@@ -12,7 +12,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "smoke_backend_bundle.py"
 _spec = importlib.util.spec_from_file_location("smoke_backend_bundle", MODULE_PATH)
@@ -26,9 +27,97 @@ assert _probe_spec is not None and _probe_spec.loader is not None
 probe = importlib.util.module_from_spec(_probe_spec)
 sys.modules[_probe_spec.name] = probe
 _probe_spec.loader.exec_module(probe)
+ESPEAK_HOOK_PATH = Path(__file__).resolve().parents[1] / "packaging" / "windows" / "rthook_espeak.py"
+_espeak_hook_spec = importlib.util.spec_from_file_location("backend_bundle_espeak_hook", ESPEAK_HOOK_PATH)
+assert _espeak_hook_spec is not None and _espeak_hook_spec.loader is not None
+espeak_hook = importlib.util.module_from_spec(_espeak_hook_spec)
+_espeak_hook_spec.loader.exec_module(espeak_hook)
 
 
 class BackendBundleSmokeHarnessTests(unittest.TestCase):
+    def _ascii_temporary_directory(self) -> tempfile.TemporaryDirectory[str]:
+        temporary = tempfile.TemporaryDirectory(dir=Path.cwd())
+        if not Path(temporary.name).as_posix().isascii():
+            temporary.cleanup()
+            self.skipTest("the checkout path does not provide an ASCII temporary root")
+        return temporary
+
+    def test_espeak_hook_preserves_ascii_data_path_without_resolving_alias(self) -> None:
+        with self._ascii_temporary_directory() as temporary:
+            data_path = Path(temporary) / "espeak-ng-data"
+            data_path.mkdir()
+            (data_path / "phontab").write_bytes(b"eSpeak data")
+            resolver = Mock(side_effect=AssertionError("ASCII path must remain unchanged"))
+
+            result = espeak_hook._resolve_data_path(data_path, short_path_resolver=resolver)
+
+            self.assertEqual(result, str(data_path))
+            resolver.assert_not_called()
+
+    def test_espeak_hook_requires_a_verified_ascii_alias_for_unicode_path(self) -> None:
+        with self._ascii_temporary_directory() as temporary:
+            data_path = Path(temporary) / "eSpeak 測試" / "espeak-ng-data"
+            data_path.mkdir(parents=True)
+            (data_path / "phontab").write_bytes(b"eSpeak data")
+            alias_path = espeak_hook._get_short_path_name(str(data_path))
+
+            if not alias_path or not alias_path.isascii() or not os.path.samefile(alias_path, data_path):
+                self.skipTest("Windows did not provide an ASCII short-path alias for this fixture")
+            self.assertEqual(espeak_hook._resolve_data_path(data_path), alias_path)
+
+    def test_espeak_hook_fails_actionably_when_no_alias_is_available(self) -> None:
+        with self._ascii_temporary_directory() as temporary:
+            data_path = Path(temporary) / "eSpeak 測試" / "espeak-ng-data"
+            data_path.mkdir(parents=True)
+            (data_path / "phontab").write_bytes(b"eSpeak data")
+            resolver = Mock(return_value=None)
+
+            with self.assertRaisesRegex(RuntimeError, "ASCII-only path"):
+                espeak_hook._resolve_data_path(data_path, short_path_resolver=resolver)
+            resolver.assert_called_once_with(str(data_path))
+
+    def test_espeak_hook_rejects_an_alias_to_another_complete_directory(self) -> None:
+        with self._ascii_temporary_directory() as temporary:
+            root = Path(temporary)
+            data_path = root / "eSpeak 測試" / "espeak-ng-data"
+            other_path = root / "other" / "espeak-ng-data"
+            data_path.mkdir(parents=True)
+            other_path.mkdir(parents=True)
+            (data_path / "phontab").write_bytes(b"data")
+            (other_path / "phontab").write_bytes(b"different data")
+
+            with self.assertRaisesRegex(RuntimeError, "ASCII-only path"):
+                espeak_hook._resolve_data_path(data_path, short_path_resolver=lambda _path: str(other_path))
+
+    def test_espeak_hook_defers_path_resolution_until_loader_call(self) -> None:
+        with self._ascii_temporary_directory() as temporary:
+            data_path = Path(temporary) / "espeak-ng-data"
+            data_path.mkdir()
+            (data_path / "phontab").write_bytes(b"eSpeak data")
+            calls = 0
+
+            def original_get_data_path() -> str:
+                nonlocal calls
+                calls += 1
+                return str(data_path)
+
+            loader = SimpleNamespace(get_data_path=original_get_data_path)
+            espeak_hook._patch_loader(loader)
+
+            self.assertEqual(calls, 0)
+            self.assertEqual(loader.get_data_path(), str(data_path))
+            self.assertEqual(calls, 1)
+
+    def test_espeak_hook_rejects_a_data_directory_without_phontab(self) -> None:
+        with self._ascii_temporary_directory() as temporary:
+            data_path = Path(temporary) / "espeak-ng-data"
+            data_path.mkdir()
+            resolver = Mock()
+
+            with self.assertRaisesRegex(RuntimeError, "missing phontab"):
+                espeak_hook._resolve_data_path(data_path, short_path_resolver=resolver)
+            resolver.assert_not_called()
+
     def test_bounded_tail_retains_only_the_most_recent_bytes(self) -> None:
         tail = smoke.BoundedTail(limit=5)
         tail.append(b"abc")

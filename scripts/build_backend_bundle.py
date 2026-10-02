@@ -131,6 +131,7 @@ def _input_digest() -> str:
         ROOT / "packaging" / "windows" / "backend_entry.py",
         ROOT / "packaging" / "windows" / "cli_entry.py",
         ROOT / "packaging" / "windows" / "rthook_comtypes.py",
+        ROOT / "packaging" / "windows" / "rthook_espeak.py",
         ROOT / "config.json",
         ROOT / "README.md",
         ROOT / "core" / "mock" / "assistant.json",
