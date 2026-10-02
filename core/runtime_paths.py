@@ -7,6 +7,7 @@ operator environment files should first call :func:`initialize_environment`.
 from __future__ import annotations
 
 import os
+import os
 import sys
 from dataclasses import dataclass
 from functools import lru_cache
@@ -14,7 +15,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Mapping
 
-from dotenv import load_dotenv
+from dotenv.main import DotEnv
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +24,7 @@ class RuntimePaths:
 
     resource_root: Path
     data_root: Path
+    installation_root: Path | None = None
 
     @property
     def defaults_config_path(self) -> Path:
@@ -128,9 +130,14 @@ def resolve_runtime_paths(
     else:
         data = resources
 
+    installation_root = executable.parent if is_frozen else None
     if is_frozen:
-        _reject_installation_data(data, resources, executable.parent)
-    return RuntimePaths(resource_root=resources, data_root=data)
+        _reject_installation_data(data, resources, installation_root)
+    return RuntimePaths(
+        resource_root=resources,
+        data_root=data,
+        installation_root=installation_root,
+    )
 
 
 def _reject_installation_data(
@@ -160,7 +167,18 @@ def initialize_environment() -> RuntimePaths:
         return paths
     with _initialization_lock:
         if not _environment_initialized:
-            load_dotenv(dotenv_path=paths.env_path, override=False)
+            # Resolve the profile selector from the process environment before
+            # loading this file. Never allow its own .env to retarget this or
+            # an inherited child process to another data profile.
+            disabled = os.environ.get("PYTHON_DOTENV_DISABLED", "").casefold()
+            values = (
+                {}
+                if disabled in {"1", "true", "t", "yes", "y"}
+                else DotEnv(dotenv_path=paths.env_path, override=False).dict()
+            )
+            for key, value in values.items():
+                if key != "APEX_DATA_DIR" and value is not None:
+                    os.environ.setdefault(key, value)
             _environment_initialized = True
     return paths
 
