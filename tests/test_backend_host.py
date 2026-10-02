@@ -276,6 +276,16 @@ class BackendHostSubprocessTests(unittest.TestCase):
 
                     self.assertEqual(json.loads(response.read(64 * 1024)), identity)
 
+                create_request = urllib.request.Request(
+                    "http://127.0.0.1:8000/api/v1/cortex/conversations",
+                    data=b'{"title":"host persistence sentinel"}',
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with opener.open(create_request, timeout=3) as response:
+                    self.assertEqual(response.status, 201)
+                    conversation_id = json.loads(response.read(64 * 1024))["id"]
+
                 self._stop_managed_host(process, messages, stderr_tail)
                 self.assertTrue((data_root / "apex_memory.db").is_file())
             finally:
@@ -286,14 +296,22 @@ class BackendHostSubprocessTests(unittest.TestCase):
                     if stream is not None and not stream.closed:
                         stream.close()
 
-            restarted, restart_messages, restart_launch_id, restart_stderr = (
-                self._start_managed_host(data_root, demo_mode=True)
-            )
+            restarted, restart_messages, restart_launch_id, restart_stderr = self._start_managed_host(data_root)
             try:
                 ready = self._next_message(restart_messages)
                 self.assertEqual(ready.request_id, restart_launch_id)
                 self.assertNotEqual(ready.payload["instance_id"], identity["instance_id"])
                 self.assertEqual(marker.read_text(encoding="utf-8"), "preserve")
+
+                opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+                with opener.open(
+                    f"http://127.0.0.1:8000/api/v1/cortex/conversations/{conversation_id}",
+                    timeout=3,
+                ) as response:
+                    persisted = json.loads(response.read(64 * 1024))
+                self.assertEqual(persisted["id"], conversation_id)
+                self.assertEqual(persisted["title"], "host persistence sentinel")
+
                 self._stop_managed_host(restarted, restart_messages, restart_stderr)
             finally:
                 if restarted.poll() is None:
