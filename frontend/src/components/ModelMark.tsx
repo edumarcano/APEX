@@ -4,7 +4,7 @@ import GemmaColor from '@lobehub/icons/es/Gemma/components/Color'
 import OllamaMono from '@lobehub/icons/es/Ollama/components/Mono'
 import OpenAIMono from '@lobehub/icons/es/OpenAI/components/Mono'
 import QwenColor from '@lobehub/icons/es/Qwen/components/Color'
-import ZhipuColor from '@lobehub/icons/es/Zhipu/components/Color'
+import ZAIMono from '@lobehub/icons/es/ZAI/components/Mono'
 import { Cpu } from 'lucide-react'
 import type { ReactElement } from 'react'
 
@@ -42,15 +42,15 @@ export function ModelMark({
     )
   }
 
-  // Zhipu / GLM family / OpenRouter default
+  // Z.ai / GLM family / OpenRouter default
   if (
     normalizedModel.startsWith('z-ai') ||
     normalizedModel.includes('glm') ||
     normalizedProvider === 'openrouter'
   ) {
     return (
-      <span className={`inline-flex shrink-0 items-center justify-center ${className}`} aria-hidden>
-        <ZhipuColor size={size} />
+      <span className={`inline-flex shrink-0 items-center justify-center text-zinc-100 ${className}`} aria-hidden>
+        <ZAIMono size={size} />
       </span>
     )
   }

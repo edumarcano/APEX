@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { ModelMark } from './ModelMark'
 
 describe('ModelMark component', () => {
-  it('renders ZhipuColor icon for z-ai/glm-5.3-flash even when provider is openrouter', () => {
+  it('renders ZAIMono icon for z-ai/glm-5.3-flash even when provider is openrouter', () => {
     const { container } = render(
       <ModelMark modelId="z-ai/glm-5.3-flash" provider="openrouter" size={20} className="custom-mark" />,
     )
@@ -15,7 +15,7 @@ describe('ModelMark component', () => {
     expect(svg).toBeTruthy()
   })
 
-  it('renders ZhipuColor icon for model starting with z-ai or containing glm', () => {
+  it('renders ZAIMono icon for model starting with z-ai or containing glm', () => {
     const { container: c1 } = render(<ModelMark modelId="z-ai/something" />)
     expect(c1.querySelector('svg')).toBeTruthy()
 
@@ -23,7 +23,7 @@ describe('ModelMark component', () => {
     expect(c2.querySelector('svg')).toBeTruthy()
   })
 
-  it('renders ZhipuColor icon for openrouter provider', () => {
+  it('renders ZAIMono icon for openrouter provider', () => {
     const { container } = render(
       <ModelMark modelId="openrouter-generic" provider="openrouter" />,
     )
