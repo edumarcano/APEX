@@ -7,7 +7,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from clients import market_client, sports_client
 
@@ -71,8 +71,12 @@ class ConnectorCacheRuntimePathTests(unittest.TestCase):
                 google_credentials_path=root / "credentials.json",
                 google_token_path=root / "token.json",
             )
+            telemetry_service = Mock(latest=Mock(return_value=None))
             with patch.object(preflight, "get_runtime_paths", return_value=paths), patch.object(
                 tool_catalog, "get_runtime_paths", return_value=paths
+            ), patch(
+                "core.telemetry.service.get_telemetry_service",
+                return_value=telemetry_service,
             ):
                 blockers = preflight._connector_credential_blockers({"email"})
                 available_without_markers = tool_catalog._native_availability("search_gmail")
