@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import multiprocessing
 import sys
 import threading
@@ -120,9 +121,29 @@ def _optional_assets() -> dict[str, object]:
             f"Kokoro client initialization failed; paths={assets}; "
             f"{type(exc).__name__}: {exc}; traceback={diagnostic}"
         ) from exc
-    chunks, engine = speaker.synthesize_audio("APEX frozen speech smoke.", tts_override="kokoro", voice_gender="female", cancellation_event=threading.Event())
+    logger = logging.getLogger("core.speaker")
+    previous_level = logger.level
+    previous_propagate = logger.propagate
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    try:
+        chunks, engine = speaker.synthesize_audio("APEX frozen speech smoke.", tts_override="kokoro", voice_gender="female", cancellation_event=threading.Event())
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous_level)
+        logger.propagate = previous_propagate
+        handler.close()
     if engine != "kokoro" or not chunks or chunks[0].get("content_type") != "audio/wav":
-        raise RuntimeError("Kokoro did not produce real WAV output")
+        ram_percent, cpu_percent = speaker._kokoro_pressure_snapshot()
+        raise RuntimeError(
+            "Kokoro did not produce real WAV output; "
+            f"returned_engine={engine}; readiness={speaker.readiness_snapshot()}; "
+            f"pressure_snapshot={{'ram_percent': {ram_percent}, 'cpu_percent': {cpu_percent}}}"
+        )
     audio = chunks[0]["audio"]
     if not isinstance(audio, bytes) or not audio.startswith(b"RIFF") or b"WAVE" not in audio[:16]:
         raise RuntimeError("Kokoro result was not a valid WAV file")
