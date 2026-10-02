@@ -465,12 +465,33 @@ def _run_once(bundle: Path, report: Report, *, dev: bool = False, demo: bool = F
                 kokoro_target = probe_root / "core" / "weights" / "kokoro"
                 shutil.copytree(fastembed_cache, fastembed_target, dirs_exist_ok=True)
                 shutil.copytree(kokoro_assets, kokoro_target, dirs_exist_ok=True)
-                output = _cli(probe, ["optional-assets"], cwd, probe_env, timeout_seconds=120)
-                result = json.loads(output)
-                if result.get("status") != "passed":
-                    raise RuntimeError(f"real optional asset probe failed: {result}")
+                semantic_output = _cli(probe, ["semantic-assets"], cwd, probe_env, timeout_seconds=120)
+                semantic_result = json.loads(semantic_output)
+                semantic_evidence = semantic_result.get("evidence", {})
+                if (
+                    semantic_result.get("status") != "passed"
+                    or semantic_result.get("scenario") != "semantic-assets"
+                    or semantic_evidence.get("retrieval_mode") != "semantic"
+                    or not semantic_evidence.get("semantic_results")
+                ):
+                    raise RuntimeError(f"real FastEmbed semantic probe failed: {semantic_result}")
+                report.add("fastembed_real_semantic_search", "passed", f"{semantic_evidence['semantic_results']} results")
+
+                kokoro_output = _cli(probe, ["kokoro-assets"], cwd, probe_env, timeout_seconds=120)
+                kokoro_result = json.loads(kokoro_output)
+                kokoro_evidence = kokoro_result.get("evidence", {})
+                if (
+                    kokoro_result.get("status") != "passed"
+                    or kokoro_result.get("scenario") != "kokoro-assets"
+                    or kokoro_evidence.get("kokoro_engine") != "kokoro"
+                    or not kokoro_evidence.get("wav_bytes")
+                ):
+                    raise RuntimeError(f"real Kokoro synthesis probe failed: {kokoro_result}")
+                report.add("kokoro_real_wav_synthesis", "passed", f"{kokoro_evidence['wav_bytes']} bytes")
                 report.add("fastembed_and_kokoro_real_assets", "passed")
             else:
+                report.add("fastembed_real_semantic_search", "unverified", "supply --fastembed-cache to execute real semantic inference")
+                report.add("kokoro_real_wav_synthesis", "unverified", "supply --kokoro-assets to execute real Kokoro synthesis")
                 report.add("fastembed_and_kokoro_real_assets", "unverified", "supply --fastembed-cache and --kokoro-assets to execute real inference")
         elif run_probe:
             report.add("frozen_probe_imports_retrieval_worker", "unverified", "build probe at build/backend-bundle/smoke-probe/apex-bundle-probe.exe or pass --probe")

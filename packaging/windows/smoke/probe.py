@@ -88,13 +88,12 @@ def _no_model_assets() -> dict[str, object]:
     return {"package": "loaded", "model_status": "available"}
 
 
-def _optional_assets() -> dict[str, object]:
+def _semantic_assets() -> dict[str, object]:
     from core.retrieval.docs import search_documentation
     from core.retrieval.embedding import FastEmbedAdapter
     from core.retrieval.service import RetrievalService
     from core.retrieval.store import RetrievalStore
     from core.runtime_paths import get_runtime_paths
-    import core.speaker as speaker
     paths = get_runtime_paths()
     adapter = FastEmbedAdapter(paths.fastembed_cache_dir)
     service = RetrievalService(RetrievalStore(paths.data_root / "smoke-retrieval-semantic.db"), adapter=adapter, enabled=True)
@@ -111,6 +110,12 @@ def _optional_assets() -> dict[str, object]:
     if result.get("retrieval_mode") != "semantic" or not result.get("results"):
         raise RuntimeError("FastEmbed-backed production documentation search returned no results")
     semantic_results = len(result["results"])
+
+    return {"retrieval_mode": "semantic", "semantic_results": semantic_results}
+
+
+def _kokoro_assets() -> dict[str, object]:
+    import core.speaker as speaker
     model_path, voices_path = speaker._kokoro_paths()
     assets = {
         "model_path": str(model_path),
@@ -146,7 +151,7 @@ def _optional_assets() -> dict[str, object]:
     audio = chunks[0]["audio"]
     if not isinstance(audio, bytes) or not audio.startswith(b"RIFF") or b"WAVE" not in audio[:16]:
         raise RuntimeError("Kokoro result was not a valid WAV file")
-    return {"retrieval_mode": "semantic", "semantic_results": semantic_results, "kokoro_assets": assets, "kokoro_engine": engine, "wav_bytes": len(audio)}
+    return {"kokoro_assets": assets, "kokoro_engine": engine, "wav_bytes": len(audio)}
 
 
 def _lifecycle() -> dict[str, object]:
@@ -352,13 +357,13 @@ def main(argv: list[str] | None = None) -> int:
     if worker is not None:
         return worker
     parser = argparse.ArgumentParser(description="Constrained frozen APEX packaging checks.")
-    parser.add_argument("scenario", choices=("imports", "retrieval", "audio-worker", "no-model-assets", "optional-assets", "lifecycle", "managed-host-diagnostic"))
+    parser.add_argument("scenario", choices=("imports", "retrieval", "audio-worker", "no-model-assets", "semantic-assets", "kokoro-assets", "lifecycle", "managed-host-diagnostic"))
     args = parser.parse_args(values)
     if args.scenario == "managed-host-diagnostic":
         return _managed_host_diagnostic()
     try:
         with redirect_stdout(sys.stderr):
-            evidence = {"imports": _imports, "retrieval": _retrieval, "audio-worker": _audio_worker, "no-model-assets": _no_model_assets, "optional-assets": _optional_assets, "lifecycle": _lifecycle}[args.scenario]()
+            evidence = {"imports": _imports, "retrieval": _retrieval, "audio-worker": _audio_worker, "no-model-assets": _no_model_assets, "semantic-assets": _semantic_assets, "kokoro-assets": _kokoro_assets, "lifecycle": _lifecycle}[args.scenario]()
         _write_json_line({"schema_version": 1, "scenario": args.scenario, "status": "passed", "evidence": evidence})
         return 0
     except Exception as exc:
