@@ -29,6 +29,7 @@ from core.host.protocol import decode_frame
 MAX_CAPTURE = 64 * 1024
 MAX_HTTP_BODY = 1024 * 1024
 DEFAULT_TIMEOUT = 35.0
+STARTUP_TIMEOUT = 60.0
 
 
 @dataclass
@@ -188,6 +189,26 @@ def _next_envelope(lines: queue.Queue[bytes | None], deadline: float) -> dict[st
         if raw is None:
             raise RuntimeError("managed host closed its control stream before readiness")
         return decode_frame(raw).as_dict()
+
+
+def _next_startup_envelope(
+    lines: queue.Queue[bytes | None],
+    process: subprocess.Popen[bytes],
+    stderr: BoundedTail,
+    *,
+    stage: str,
+    timeout: float = STARTUP_TIMEOUT,
+) -> dict[str, Any]:
+    started = time.monotonic()
+    try:
+        return _next_envelope(lines, started + timeout)
+    except (TimeoutError, RuntimeError) as exc:
+        elapsed = time.monotonic() - started
+        raise RuntimeError(
+            f"managed host startup failed while waiting for {stage} envelope "
+            f"after {elapsed:.1f}s (pid={process.pid}, exit_code={process.poll()}): "
+            f"{exc}; stderr tail: {stderr.text()[-MAX_CAPTURE:]}"
+        ) from exc
 
 
 def _spawn_host(exe: Path, profile: Path, root: Path, *, dev: bool = False, demo: bool = False, environment: dict[str, str] | None = None) -> tuple[subprocess.Popen[bytes], queue.Queue[bytes | None], BoundedTail, BoundedTail, str]:
@@ -388,10 +409,10 @@ def _run_once(bundle: Path, report: Report, *, dev: bool = False, demo: bool = F
     try:
         process, frames, _stdout, stderr, launch_id = _spawn_host(bundle / "apex-backend.exe", profile, root, dev=dev, demo=demo)
         spawned.append(process)
-        started = _next_envelope(frames, time.monotonic() + DEFAULT_TIMEOUT)
+        started = _next_startup_envelope(frames, process, stderr, stage="starting")
         if started.get("type") != "starting" or started.get("request_id") != launch_id:
             raise RuntimeError("managed host did not acknowledge the launch with a starting envelope")
-        ready = _next_envelope(frames, time.monotonic() + DEFAULT_TIMEOUT)
+        ready = _next_startup_envelope(frames, process, stderr, stage="ready")
         if ready.get("type") != "ready" or ready.get("request_id") != launch_id:
             raise RuntimeError(f"managed host failed readiness: {ready.get('type')} {ready.get('payload')}")
         identity = ready.get("payload")

@@ -81,6 +81,31 @@ class BackendBundleSmokeHarnessTests(unittest.TestCase):
         with self.assertRaisesRegex(TimeoutError, "timed out waiting"):
             smoke._next_envelope(smoke.queue.Queue(), smoke.time.monotonic() + 0.01)
 
+    def test_startup_deadline_reports_envelope_stage_process_and_stderr(self) -> None:
+        process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(2)"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        stderr = smoke.BoundedTail()
+        stderr.append(b"host diagnostic")
+        try:
+            with self.assertRaisesRegex(
+                RuntimeError,
+                r"waiting for ready envelope.*pid=.*exit_code=None.*host diagnostic",
+            ):
+                smoke._next_startup_envelope(
+                    smoke.queue.Queue(),
+                    process,
+                    stderr,
+                    stage="ready",
+                    timeout=0.01,
+                )
+        finally:
+            process.kill()
+            process.wait(timeout=5)
+
     def test_source_probe_verifies_real_fts_documentation_search(self) -> None:
         project = Path(__file__).resolve().parents[1]
         probe = project / "packaging" / "windows" / "smoke" / "probe.py"

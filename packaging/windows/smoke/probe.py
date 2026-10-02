@@ -7,6 +7,7 @@ import json
 import multiprocessing
 import sys
 import threading
+import traceback
 from contextlib import redirect_stdout
 from pathlib import Path
 
@@ -85,7 +86,7 @@ def _optional_assets() -> dict[str, object]:
     from core.retrieval.service import RetrievalService
     from core.retrieval.store import RetrievalStore
     from core.runtime_paths import get_runtime_paths
-    from core.speaker import synthesize_audio
+    import core.speaker as speaker
     paths = get_runtime_paths()
     adapter = FastEmbedAdapter(paths.fastembed_cache_dir)
     service = RetrievalService(RetrievalStore(paths.data_root / "smoke-retrieval-semantic.db"), adapter=adapter, enabled=True)
@@ -102,13 +103,30 @@ def _optional_assets() -> dict[str, object]:
     if result.get("retrieval_mode") != "semantic" or not result.get("results"):
         raise RuntimeError("FastEmbed-backed production documentation search returned no results")
     semantic_results = len(result["results"])
-    chunks, engine = synthesize_audio("APEX frozen speech smoke.", tts_override="kokoro", voice_gender="female", cancellation_event=threading.Event())
+    model_path, voices_path = speaker._kokoro_paths()
+    assets = {
+        "model_path": str(model_path),
+        "model_exists": model_path.is_file(),
+        "model_bytes": model_path.stat().st_size if model_path.is_file() else 0,
+        "voices_path": str(voices_path),
+        "voices_exists": voices_path.is_file(),
+        "voices_bytes": voices_path.stat().st_size if voices_path.is_file() else 0,
+    }
+    try:
+        speaker._get_kokoro_client()
+    except Exception as exc:
+        diagnostic = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))[-2048:]
+        raise RuntimeError(
+            f"Kokoro client initialization failed; paths={assets}; "
+            f"{type(exc).__name__}: {exc}; traceback={diagnostic}"
+        ) from exc
+    chunks, engine = speaker.synthesize_audio("APEX frozen speech smoke.", tts_override="kokoro", voice_gender="female", cancellation_event=threading.Event())
     if engine != "kokoro" or not chunks or chunks[0].get("content_type") != "audio/wav":
         raise RuntimeError("Kokoro did not produce real WAV output")
     audio = chunks[0]["audio"]
     if not isinstance(audio, bytes) or not audio.startswith(b"RIFF") or b"WAVE" not in audio[:16]:
         raise RuntimeError("Kokoro result was not a valid WAV file")
-    return {"retrieval_mode": "semantic", "semantic_results": semantic_results, "kokoro_engine": engine, "wav_bytes": len(audio)}
+    return {"retrieval_mode": "semantic", "semantic_results": semantic_results, "kokoro_assets": assets, "kokoro_engine": engine, "wav_bytes": len(audio)}
 
 
 def main(argv: list[str] | None = None) -> int:
