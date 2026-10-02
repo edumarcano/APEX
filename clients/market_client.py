@@ -15,17 +15,17 @@ from pathlib import Path
 from typing import Any
 
 import requests
-from dotenv import load_dotenv
+
+from core.runtime_paths import get_runtime_paths, initialize_environment
 
 from clients.http_sessions import get_connector_http_session
 from core.config import DEMO_MODE
 from core.connectors.models import ConnectorResult, utc_now_iso
 from core.settings import get_settings_store
 
-load_dotenv()
+initialize_environment()
 
 _MARKET_LOCK = threading.Lock()
-_CACHE_FILENAME = ".market_cache.json"
 _CACHE_VERSION = 3
 _ALPHA_VANTAGE_BASE = "https://www.alphavantage.co/query"
 _REQUEST_TIMEOUT_SECONDS = 10.0
@@ -40,7 +40,7 @@ _DEMO_BASE_PRICES: dict[str, float] = {"SPY": 520.0, "AAPL": 190.0, "MSFT": 420.
 
 
 def _cache_path() -> Path:
-    return Path(__file__).resolve().parent / _CACHE_FILENAME
+    return get_runtime_paths().market_cache_path
 
 
 def _now_utc() -> datetime:
@@ -138,6 +138,7 @@ def _write_cache(cache: dict[str, Any]) -> bool:
     path = _cache_path()
     temporary = path.with_suffix(".tmp")
     try:
+        path.parent.mkdir(parents=True, exist_ok=True)
         with temporary.open("w", encoding="utf-8") as handle:
             json.dump(cache, handle, separators=(",", ":"))
         temporary.replace(path)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import tempfile
 import threading
 import unittest
 from pathlib import Path
@@ -17,6 +18,7 @@ from clients.microsoft_auth import (
     MicrosoftTodoAuthenticationRequiredError,
     MicrosoftTodoAuthenticationService,
     MicrosoftTodoNotConfiguredError,
+    _create_msal_application,
     get_microsoft_auth_service,
     set_microsoft_auth_service,
 )
@@ -326,6 +328,24 @@ class MicrosoftTodoAuthenticationTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(service.status_snapshot().state, "degraded")
         persistence.assert_not_called()
+
+    def test_frozen_installation_sibling_cache_remains_excluded(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="apex-msal-install-") as temporary:
+            installation = Path(temporary) / "APEX"
+            resources = installation / "_internal"
+            cache_path = installation / "auth" / "microsoft_cache.bin"
+            paths = mock.Mock(resource_root=resources, installation_root=installation)
+            config = MicrosoftTodoAuthConfig(
+                client_id="client",
+                tenant_id="common",
+                cache_path=cache_path,
+            )
+            with mock.patch("clients.microsoft_auth.get_runtime_paths", return_value=paths), mock.patch(
+                "clients.microsoft_auth.build_encrypted_persistence"
+            ) as persistence:
+                with self.assertRaisesRegex(ValueError, "outside the APEX installation"):
+                    _create_msal_application(config)
+            persistence.assert_not_called()
 
     def test_scope_is_exactly_tasks_read_write(self) -> None:
         self.assertEqual(MICROSOFT_TODO_SCOPES, ("Tasks.ReadWrite",))

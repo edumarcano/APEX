@@ -9,12 +9,13 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
-from dotenv import load_dotenv
+
+from core.runtime_paths import initialize_environment
 
 from clients.http_sessions import get_connector_http_session
 from core.connectors.models import ConnectorResult, utc_now_iso
 
-load_dotenv()
+initialize_environment()
 
 _GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 _FORECAST_URL = "https://api.open-meteo.com/v1/forecast"

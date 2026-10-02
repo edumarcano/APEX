@@ -10,18 +10,16 @@ from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo
 
 import requests
-from dotenv import load_dotenv
+
+from core.runtime_paths import get_runtime_paths, initialize_environment
 
 from clients.http_sessions import get_connector_http_session
 from core.connectors.models import ConnectorResult, utc_now_iso
 from core.settings import get_settings_store
 
-load_dotenv()
+initialize_environment()
 
-
-F1_CACHE_FILENAME = ".f1_cache.json"
 F1_CACHE_TTL = timedelta(hours=24)
-FOOTBALL_CACHE_FILENAME = ".football_cache.json"
 FOOTBALL_CACHE_TTL = timedelta(hours=6)
 FOOTBALL_HORIZON = timedelta(days=14)
 FOOTBALL_FIXTURE_CAP_PER_TEAM = 5
@@ -33,7 +31,7 @@ except Exception:
 
 
 def _get_f1_cache_path() -> str:
-    return os.path.join(os.path.dirname(__file__), F1_CACHE_FILENAME)
+    return str(get_runtime_paths().f1_cache_path)
 
 
 def _read_f1_cache() -> Optional[Dict[str, Any]]:
@@ -55,6 +53,7 @@ def _write_f1_cache(f1_map: Dict[str, Any]) -> None:
             "f1_map": f1_map,
         }
         cache_path = _get_f1_cache_path()
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
         with open(cache_path, "w", encoding="utf-8") as cache_file:
             json.dump(cache_payload, cache_file, separators=(",", ":"))
     except (OSError, TypeError):
@@ -219,7 +218,7 @@ def collect_f1() -> ConnectorResult:
 
 
 def _get_football_cache_path() -> str:
-    return os.path.join(os.path.dirname(__file__), FOOTBALL_CACHE_FILENAME)
+    return str(get_runtime_paths().football_cache_path)
 
 
 def _parse_utc_datetime(value: object) -> datetime | None:
@@ -287,7 +286,9 @@ def _write_football_cache(entries: dict[int, list[dict[str, Any]]]) -> None:
                 for team_id, fixtures in entries.items()
             }
         }
-        with open(_get_football_cache_path(), "w", encoding="utf-8") as cache_file:
+        cache_path = _get_football_cache_path()
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        with open(cache_path, "w", encoding="utf-8") as cache_file:
             json.dump(payload, cache_file, separators=(",", ":"))
     except (OSError, TypeError):
         sys.stderr.write("[SPORTS][FOOTBALL][CACHE] write_failed\n")
