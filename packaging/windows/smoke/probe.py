@@ -10,9 +10,11 @@ import logging
 import multiprocessing
 import sys
 import threading
+import time
 import traceback
 from contextlib import redirect_stdout
 from pathlib import Path
+from urllib.parse import urlsplit
 
 multiprocessing.freeze_support()
 
@@ -215,6 +217,126 @@ def _run_lifecycle() -> dict[str, object]:
     return asyncio.run(run())
 
 
+def _managed_host_diagnostic() -> int:
+    """Run the real managed host while collecting private startup diagnostics.
+
+    This entry point intentionally speaks the production v1 control protocol
+    on stdin/stdout. Diagnostic output is limited to stderr.
+    """
+    faulthandler.dump_traceback_later(15, repeat=True, file=sys.stderr)
+    host = None
+    original_serve = None
+    original_http_json = None
+    try:
+        import core.backend_host as host
+
+        original_serve = host._serve
+        original_http_json = host._http_json
+
+        def diagnostic_http_json(url: str, *, timeout: float = 0.5):
+            started = time.monotonic()
+            value = original_http_json(url, timeout=timeout)
+            path = urlsplit(url).path
+            if value is None:
+                outcome = "no_json"
+            elif path.endswith("/health/ready"):
+                outcome = str(value.get("status", "json"))
+            else:
+                outcome = "identity_json" if {"app_id", "build_id", "pid"}.issubset(value) else "json"
+            print(
+                "APEX_MANAGED_HOST_DIAG " + json.dumps({
+                    "kind": "http_self_probe",
+                    "path": path,
+                    "elapsed_ms": round((time.monotonic() - started) * 1000, 1),
+                    "timeout_seconds": timeout,
+                    "outcome": outcome,
+                }, ensure_ascii=True, separators=(",", ":")),
+                file=sys.stderr,
+                flush=True,
+            )
+            return value
+
+        async def diagnostic_serve(*args, **kwargs):
+            phase = {"name": "production_serve_running"}
+            serve_started = time.monotonic()
+
+            def task_snapshot() -> list[dict[str, object]]:
+                current = asyncio.current_task()
+                snapshot = []
+                for task in asyncio.all_tasks():
+                    if task is current or task.get_name() == "bundle-managed-host-task-observer":
+                        continue
+                    coroutine = task.get_coro()
+                    snapshot.append({
+                        "name": task.get_name(),
+                        "done": task.done(),
+                        "coroutine": getattr(coroutine, "__qualname__", type(coroutine).__name__),
+                        "stack": [
+                            {"function": frame.f_code.co_name, "file": frame.f_code.co_filename, "line": frame.f_lineno}
+                            for frame in task.get_stack(limit=6)
+                        ],
+                    })
+                return sorted(snapshot, key=lambda item: str(item["name"]))
+
+            async def observe_tasks() -> None:
+                while True:
+                    await asyncio.sleep(5)
+                    print(
+                        "APEX_MANAGED_HOST_TASKS " + json.dumps({
+                            "phase": phase["name"],
+                            "elapsed_seconds": round(time.monotonic() - serve_started, 1),
+                            "tasks": task_snapshot(),
+                        }, ensure_ascii=True, separators=(",", ":")),
+                        file=sys.stderr,
+                        flush=True,
+                    )
+
+            print("APEX_MANAGED_HOST_DIAG {\"kind\":\"serve_enter\"}", file=sys.stderr, flush=True)
+            observer = asyncio.create_task(observe_tasks(), name="bundle-managed-host-task-observer")
+            try:
+                result = await original_serve(*args, **kwargs)
+                phase["name"] = "production_serve_returned"
+                print(
+                    "APEX_MANAGED_HOST_DIAG " + json.dumps({
+                        "kind": "serve_return", "elapsed_seconds": round(time.monotonic() - serve_started, 1),
+                        "exit_code": result,
+                    }, separators=(",", ":")),
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return result
+            except BaseException as exc:
+                phase["name"] = "production_serve_raised"
+                print(
+                    "APEX_MANAGED_HOST_DIAG " + json.dumps({
+                        "kind": "serve_exception", "elapsed_seconds": round(time.monotonic() - serve_started, 1),
+                        "error_type": type(exc).__name__,
+                    }, separators=(",", ":")),
+                    file=sys.stderr,
+                    flush=True,
+                )
+                raise
+            finally:
+                observer.cancel()
+                try:
+                    await observer
+                except asyncio.CancelledError:
+                    pass
+
+        host._serve = diagnostic_serve
+        host._http_json = diagnostic_http_json
+        # This invokes the exact production managed-host entry point. The host
+        # owns protocol stdout redirection and will preserve its control frames.
+        return host.main(["serve", "--managed"])
+    finally:
+        if host is not None:
+            if original_serve is not None:
+                host._serve = original_serve
+            if original_http_json is not None:
+                host._http_json = original_http_json
+        faulthandler.cancel_dump_traceback_later()
+
+
 def _write_json_line(payload: dict[str, object], stream: object = None) -> None:
     print(json.dumps(payload, ensure_ascii=True, separators=(",", ":")), file=stream if stream is not None else sys.stdout)
 
@@ -235,8 +357,10 @@ def main(argv: list[str] | None = None) -> int:
     if worker is not None:
         return worker
     parser = argparse.ArgumentParser(description="Constrained frozen APEX packaging checks.")
-    parser.add_argument("scenario", choices=("imports", "retrieval", "audio-worker", "no-model-assets", "optional-assets", "lifecycle"))
+    parser.add_argument("scenario", choices=("imports", "retrieval", "audio-worker", "no-model-assets", "optional-assets", "lifecycle", "managed-host-diagnostic"))
     args = parser.parse_args(values)
+    if args.scenario == "managed-host-diagnostic":
+        return _managed_host_diagnostic()
     try:
         with redirect_stdout(sys.stderr):
             evidence = {"imports": _imports, "retrieval": _retrieval, "audio-worker": _audio_worker, "no-model-assets": _no_model_assets, "optional-assets": _optional_assets, "lifecycle": _lifecycle}[args.scenario]()
