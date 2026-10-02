@@ -17,6 +17,10 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 multiprocessing.freeze_support()
+if getattr(sys, "frozen", False):
+    # Match the production bootstrap: avoid importing NumPy after a worker
+    # thread begins reading the frozen process's piped stdin.
+    import numpy  # noqa: F401
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(_PROJECT_ROOT) not in sys.path:
