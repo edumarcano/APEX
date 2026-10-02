@@ -532,13 +532,6 @@ async def _app_lifespan(_app: FastAPI):
             asyncio.get_running_loop().time() + CORTEX_RUNS_SHUTDOWN_DRAIN_SECONDS
         )
 
-        if _HTTP_REQUEST_TRACKER.active or getattr(
-            _app.state, "http_shutdown_timed_out", False
-        ):
-            raise RuntimeError(
-                "HTTP request shutdown drain timed out; application dependencies remain open."
-            )
-
         def _remaining_shutdown_seconds() -> float:
             return max(0.0, shutdown_deadline - asyncio.get_running_loop().time())
 
@@ -594,6 +587,12 @@ async def _app_lifespan(_app: FastAPI):
                 raise RuntimeError(
                     "Briefing speech shutdown drain timed out; application dependencies remain open."
                 )
+        if _HTTP_REQUEST_TRACKER.active or getattr(
+            _app.state, "http_shutdown_timed_out", False
+        ):
+            raise RuntimeError(
+                "HTTP request shutdown drain timed out; application dependencies remain open."
+            )
         await _cleanup("stopping speech runtime", speaker.shutdown)
         if mcp_manager is not None:
             await _cleanup("stopping MCP client runtime", mcp_manager.shutdown)

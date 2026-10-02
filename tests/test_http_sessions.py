@@ -233,6 +233,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         manager = mock.Mock()
         manager.start = mock.AsyncMock()
         manager.shutdown = mock.AsyncMock()
+        speech_service.close.return_value = True
         demo_db = mock.Mock()
 
         with ExitStack() as stack:
@@ -282,7 +283,9 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             stack.enter_context(mock.patch("core.api.app.ActivityService", return_value=mock.Mock()))
             stack.enter_context(mock.patch("core.api.app.get_settings_store"))
             stack.enter_context(mock.patch("core.api.app.speaker.initialize"))
-            stack.enter_context(mock.patch("core.api.app.speaker.shutdown"))
+            speaker_shutdown = stack.enter_context(
+                mock.patch("core.api.app.speaker.shutdown")
+            )
             stack.enter_context(
                 mock.patch("core.api.app.get_llama_cpp_server_supervisor", return_value=mock.Mock())
             )
@@ -325,7 +328,11 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         conversation_store.close.assert_not_called()
         run_store.close.assert_not_called()
         briefing_session_store.close.assert_not_called()
-        speech_service.close.assert_not_called()
+        if http_timeout:
+            speech_service.close.assert_called_once()
+            speaker_shutdown.assert_not_called()
+        else:
+            speech_service.close.assert_not_called()
         retrieval_store.close.assert_not_called()
         knowledge_store.close.assert_not_called()
         activity_store.close.assert_not_called()
@@ -350,14 +357,40 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         self.assertIn("activity-report-folder-poller", {task.get_name() for task in drained_tasks})
 
     def test_http_grace_timeout_preserves_dependencies_after_request_task_cancellation(self) -> None:
+        call_order: list[str] = []
         coordinator = mock.Mock()
-        coordinator.close.return_value = True
+
+        def drain_runs(**_kwargs) -> bool:
+            call_order.append("runs")
+            return True
+
+        coordinator.close.side_effect = drain_runs
+        speech_service = mock.Mock()
+        speech_service.close.return_value = True
+        speech_service.request_shutdown.side_effect = lambda: call_order.append(
+            "speech_cancel"
+        )
+
+        async def drain_application_tasks(*_args, **_kwargs) -> bool:
+            call_order.append("application_tasks")
+            return True
+
+        task_drain = mock.AsyncMock(side_effect=drain_application_tasks)
         self._assert_lifespan_preserves_dependencies_on_drain_failure(
             coordinator=coordinator,
             expected_error="HTTP request shutdown drain timed out",
             http_timeout=True,
+            task_drain=task_drain,
+            speech_service=speech_service,
         )
-        coordinator.close.assert_not_called()
+        coordinator.close.assert_called_once()
+        task_drain.assert_awaited_once()
+        speech_service.request_shutdown.assert_called_once()
+        speech_service.close.assert_called_once()
+        self.assertEqual(
+            call_order,
+            ["speech_cancel", "runs", "application_tasks"],
+        )
 
     def test_request_tracker_keeps_a_blocked_handler_active_until_it_finishes(self) -> None:
         from core.api.app import _HttpRequestTracker, _HttpRequestTrackingMiddleware
