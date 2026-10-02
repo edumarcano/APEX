@@ -10,7 +10,8 @@ import types
 
 
 if getattr(sys, "frozen", False):
-    wrapper_cache = Path(tempfile.gettempdir()) / "APEX" / "comtypes"
+    cache_name = f"python{sys.version_info.major}{sys.version_info.minor}-{os.getpid()}"
+    wrapper_cache = Path(tempfile.gettempdir()) / "APEX" / "comtypes" / cache_name
     resolved_cache = wrapper_cache.resolve()
     for root in (getattr(sys, "_MEIPASS", None), Path(sys.executable).resolve().parent):
         if root is not None and resolved_cache.is_relative_to(Path(root).resolve()):

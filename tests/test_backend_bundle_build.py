@@ -86,14 +86,14 @@ class BackendBundleBuildTests(unittest.TestCase):
     def test_backend_and_cli_entrypoints_expose_the_existing_commands(self) -> None:
         backend = subprocess.run(
             [sys.executable, str(ROOT / "packaging" / "windows" / "backend_entry.py"), "--help"],
-            cwd=ROOT,
+            cwd=self.temp_root,
             capture_output=True,
             text=True,
             check=False,
         )
         cli = subprocess.run(
             [sys.executable, str(ROOT / "packaging" / "windows" / "cli_entry.py"), "--help"],
-            cwd=ROOT,
+            cwd=self.temp_root,
             capture_output=True,
             text=True,
             check=False,
