@@ -116,6 +116,8 @@ Terminal 1: API
 uv run python -m uvicorn core.api:app --host 127.0.0.1 --port 8000 --reload
 ```
 
+This reload workflow lets Uvicorn manage development-process exit. Use the standalone host above for its enforced shutdown timeout and socket ownership checks.
+
 Terminal 2: compiled frontend
 
 ```powershell
