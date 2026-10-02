@@ -153,6 +153,14 @@ def _optional_assets() -> dict[str, object]:
 
 
 def _lifecycle() -> dict[str, object]:
+    faulthandler.dump_traceback_later(15, repeat=True, file=sys.stderr)
+    try:
+        return _run_lifecycle()
+    finally:
+        faulthandler.cancel_dump_traceback_later()
+
+
+def _run_lifecycle() -> dict[str, object]:
     from core.api.app import _app_lifespan, app
 
     phase = {"name": "before_startup"}
@@ -204,11 +212,7 @@ def _lifecycle() -> dict[str, object]:
             except asyncio.CancelledError:
                 pass
 
-    faulthandler.dump_traceback_later(15, repeat=True, file=sys.stderr)
-    try:
-        return asyncio.run(run())
-    finally:
-        faulthandler.cancel_dump_traceback_later()
+    return asyncio.run(run())
 
 
 def _write_json_line(payload: dict[str, object], stream: object = None) -> None:
