@@ -59,7 +59,7 @@ class ReportReadAccessTests(unittest.TestCase):
             (True, None),
         )
         allowed, reason = report_read_availability(
-            model_id="deepseek/deepseek-v4-flash-0731", partition="production"
+            model_id="z-ai/glm-5.3-flash", partition="production"
         )
         self.assertFalse(allowed)
         self.assertIsNotNone(reason)
@@ -68,26 +68,26 @@ class ReportReadAccessTests(unittest.TestCase):
         with mock.patch("core.config.DEMO_MODE", True):
             self.assertFalse(
                 report_read_availability(
-                    model_id="deepseek/deepseek-v4-flash-0731",
+                    model_id="z-ai/glm-5.3-flash",
                     partition="production",
                 )[0]
             )
         with mock.patch("core.config.is_dev_mode", return_value=True):
             self.assertFalse(
                 report_read_availability(
-                    model_id="deepseek/deepseek-v4-flash-0731",
+                    model_id="z-ai/glm-5.3-flash",
                     partition="production",
                 )[0]
             )
         self.assertFalse(
             report_read_availability(
-                model_id="deepseek/deepseek-v4-flash-0731", partition="sandbox"
+                model_id="z-ai/glm-5.3-flash", partition="sandbox"
             )[0]
         )
         self.mocks[3].side_effect = RuntimeError("not ready")
         self.assertFalse(
             report_read_availability(
-                model_id="deepseek/deepseek-v4-flash-0731",
+                model_id="z-ai/glm-5.3-flash",
                 partition="production",
             )[0]
         )
@@ -99,7 +99,7 @@ class ReportReadAccessTests(unittest.TestCase):
 
         self.mocks[2].return_value.get_snapshot.return_value = _settings(cloud=False)
         context = make_report_read_context(
-            model_id="deepseek/deepseek-v4-flash-0731", partition="production"
+            model_id="z-ai/glm-5.3-flash", partition="production"
         )
         self.assertFalse(context.permitted)
         self.mocks[2].return_value.get_snapshot.return_value = _settings(cloud=True)
@@ -108,7 +108,7 @@ class ReportReadAccessTests(unittest.TestCase):
 
     def test_live_privacy_revocation_blocks_an_admitted_context(self) -> None:
         context = make_report_read_context(
-            model_id="deepseek/deepseek-v4-flash-0731", partition="production"
+            model_id="z-ai/glm-5.3-flash", partition="production"
         )
         self.assertTrue(context.permitted)
         self.mocks[2].return_value.get_snapshot.return_value = _settings(cloud=False)
@@ -147,7 +147,7 @@ class ReportReadAccessTests(unittest.TestCase):
 
         contexts = (
             ReportReadExecutionContext(
-                "production", "deepseek/deepseek-v4-flash-0731", True
+                "production", "z-ai/glm-5.3-flash", True
             ),
             ReportReadExecutionContext(
                 "production", "gemma-4-E2B-Q4_K_M.gguf", True
@@ -157,7 +157,7 @@ class ReportReadAccessTests(unittest.TestCase):
             results = list(executor.map(invoke, contexts))
         self.assertCountEqual(
             results,
-            ["deepseek/deepseek-v4-flash-0731", "gemma-4-E2B-Q4_K_M.gguf"],
+            ["z-ai/glm-5.3-flash", "gemma-4-E2B-Q4_K_M.gguf"],
         )
 
     def test_query_admission_uses_trusted_partition_not_payload_partition(self) -> None:

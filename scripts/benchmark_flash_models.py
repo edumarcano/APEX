@@ -1,4 +1,4 @@
-"""Benchmark comparing DeepSeek V4 Flash 0731 and GLM 5.3 Flash on OpenRouter.
+"""Benchmark flash models on OpenRouter.
 
 Executes 3 scenarios per model, once each (no loops/averages):
 - Scenario 1: Simple Cortex Query (no tools)
@@ -45,7 +45,6 @@ from core.briefings.runtime import resolve_briefing_configuration
 
 
 MODELS = [
-    "deepseek/deepseek-v4-flash-0731",
     "z-ai/glm-5.3-flash",
 ]
 

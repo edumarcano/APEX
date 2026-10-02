@@ -117,7 +117,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self._temp_dir.cleanup()
 
     def test_catalog_groups_native_and_configured_mcp_tools(self) -> None:
-        catalog = build_tool_catalog("apex", model_id="deepseek/deepseek-v4-flash-0731")
+        catalog = build_tool_catalog("apex", model_id="z-ai/glm-5.3-flash")
         self.assertEqual(catalog.default_profile_id, "all_allowed")
         self.assertTrue(any(group.kind == "apex_family" for group in catalog.groups))
         self.assertTrue(any(group.kind == "mcp_server" for group in catalog.groups))
@@ -148,7 +148,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
 
         with patch("core.api.cortex.DEMO_MODE", True):
             cloud_response = query_agent(
-                AgentQueryRequest(prompt="reminders", model_id="deepseek/deepseek-v4-flash-0731")
+                AgentQueryRequest(prompt="reminders", model_id="z-ai/glm-5.3-flash")
             )
         self.assertEqual(cloud_response.agent_used["runtime"], "cloud")
         self.assertEqual(
@@ -162,14 +162,14 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         cloud_preflight = build_tool_preflight(
             ToolPreflightRequest(
                 agent="apex",
-                model_id="deepseek/deepseek-v4-flash-0731",
+                model_id="z-ai/glm-5.3-flash",
                 prompt="reminders",
             )
         )
         self.assertEqual(cloud_preflight.selection.active_profile_id, "cloud_default")
 
         self.store.apply_patch(
-            SettingsPatch(ask_apex={"selected_model": "deepseek/deepseek-v4-flash-0731"})
+            SettingsPatch(ask_apex={"selected_model": "z-ai/glm-5.3-flash"})
         )
         with patch("core.api.cortex.DEMO_MODE", True):
             local_response = query_agent(
@@ -194,7 +194,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertEqual(prepared.model_id, "gemma-4-E2B-Q4_K_M.gguf")
 
     def test_microsoft_todo_actions_are_in_the_todo_family(self) -> None:
-        catalog = build_tool_catalog("apex", model_id="deepseek/deepseek-v4-flash-0731")
+        catalog = build_tool_catalog("apex", model_id="z-ai/glm-5.3-flash")
         groups_by_id = {group.id: group for group in catalog.groups}
         todo_tools = {
             tool.name for tool in groups_by_id["family:microsoft_todo"].tools
@@ -222,7 +222,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
     def test_catalog_groups_render_each_capability_once_without_duplicate_mcp_families(
         self,
     ) -> None:
-        catalog = build_tool_catalog("apex", model_id="deepseek/deepseek-v4-flash-0731")
+        catalog = build_tool_catalog("apex", model_id="z-ai/glm-5.3-flash")
         rendered = [tool.name for group in catalog.groups for tool in group.tools]
         self.assertEqual(len(rendered), len(set(rendered)))
         self.assertEqual(set(rendered), {tool.name for tool in catalog.tools})
@@ -260,7 +260,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertEqual(selection.diagnostics.rejected_tools, [])
 
     def test_empty_selection_is_tool_free_and_has_zero_schema_tokens(self) -> None:
-        selection = resolve_selected_tools("apex", [], model_id="deepseek/deepseek-v4-flash-0731")
+        selection = resolve_selected_tools("apex", [], model_id="z-ai/glm-5.3-flash")
         self.assertEqual(selection.descriptors, ())
         self.assertEqual(selection.diagnostics.offered_tool_names, [])
         self.assertEqual(selection.diagnostics.selected_schema_tokens, 0)
@@ -278,7 +278,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             "core.agent.tool_catalog.is_dev_mode", return_value=True
         ):
             store.return_value.get_snapshot.return_value = snapshot
-            selection = resolve_selected_tools("apex", ["get_active_reminders"], model_id="deepseek/deepseek-v4-flash-0731")
+            selection = resolve_selected_tools("apex", ["get_active_reminders"], model_id="z-ai/glm-5.3-flash")
         self.assertEqual(selection.descriptors, ())
         self.assertEqual(selection.diagnostics.rejected_tools[0].code, "policy")
 
@@ -297,7 +297,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             selection = resolve_selected_tools(
                 "apex",
                 ["get_active_reminders"],
-                model_id="deepseek/deepseek-v4-flash-0731",
+                model_id="z-ai/glm-5.3-flash",
                 execution_partition=accepted_partition,
             )
 
@@ -316,7 +316,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             return_value=(True, None),
         ):
             store.return_value.get_snapshot.return_value = snapshot
-            catalog = build_tool_catalog("apex", model_id="deepseek/deepseek-v4-flash-0731")
+            catalog = build_tool_catalog("apex", model_id="z-ai/glm-5.3-flash")
 
         reminders = next(
             tool for tool in catalog.tools if tool.name == "get_active_reminders"
@@ -353,7 +353,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             return_value=(False, "The MCP tool was not discovered."),
         ):
             store.return_value.get_snapshot.return_value = snapshot
-            catalog = build_tool_catalog("apex", model_id="deepseek/deepseek-v4-flash-0731")
+            catalog = build_tool_catalog("apex", model_id="z-ai/glm-5.3-flash")
 
         github_tool = next(
             tool
@@ -365,7 +365,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertIn("selected Agent policy", github_tool.unavailable_reason or "")
 
     def test_disconnected_mcp_selection_reports_runtime_reason(self) -> None:
-        selection = resolve_selected_tools("apex", ["brave_brave_web_search"], model_id="deepseek/deepseek-v4-flash-0731")
+        selection = resolve_selected_tools("apex", ["brave_brave_web_search"], model_id="z-ai/glm-5.3-flash")
         self.assertEqual(selection.descriptors, ())
         self.assertIn(
             selection.diagnostics.rejected_tools[0].code,
@@ -398,7 +398,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertIn("without asking for confirmation", projected.description)
         self.assertIn("Retrieve upcoming events.", projected.description)
 
-        cloud_projection = project_descriptor_for_model("deepseek/deepseek-v4-flash-0731", descriptor)
+        cloud_projection = project_descriptor_for_model("z-ai/glm-5.3-flash", descriptor)
         self.assertEqual(cloud_projection.description, descriptor.description)
 
     def test_brave_projection_is_compact_for_ollama_models_only(self) -> None:
@@ -414,7 +414,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertIn("Read-only", llama_projection.description)
         self.assertIn("Search the full public web.", llama_projection.description)
 
-        cloud = project_descriptor_for_model("deepseek/deepseek-v4-flash-0731", descriptor)
+        cloud = project_descriptor_for_model("z-ai/glm-5.3-flash", descriptor)
         self.assertEqual(cloud.input_schema, descriptor.input_schema)
         self.assertEqual(cloud.description, descriptor.description)
         self.assertNotIn("Read-only", cloud.description)
@@ -512,14 +512,14 @@ class UnifiedToolSelectionTests(unittest.TestCase):
 
     def test_preflight_profile_only_resolution_preserves_empty_and_dynamic_profiles(self) -> None:
         no_tools = build_tool_preflight(
-            ToolPreflightRequest(agent="apex", model_id="deepseek/deepseek-v4-flash-0731", tool_profile_id="no_tools")
+            ToolPreflightRequest(agent="apex", model_id="z-ai/glm-5.3-flash", tool_profile_id="no_tools")
         )
         self.assertTrue(no_tools.can_proceed)
         self.assertEqual(no_tools.selection.requested_tool_names, [])
         self.assertEqual(no_tools.selection.active_profile_id, "no_tools")
 
         all_allowed = build_tool_preflight(
-            ToolPreflightRequest(agent="apex", model_id="deepseek/deepseek-v4-flash-0731", tool_profile_id="all_allowed")
+            ToolPreflightRequest(agent="apex", model_id="z-ai/glm-5.3-flash", tool_profile_id="all_allowed")
         )
         self.assertTrue(all_allowed.can_proceed)
         self.assertEqual(
@@ -549,14 +549,14 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertEqual(result.selection.rejected_tools[0].code, "profile-invalid")
 
     def test_namespaced_catalog_groups_do_not_collide(self) -> None:
-        catalog = build_tool_catalog("apex", model_id="deepseek/deepseek-v4-flash-0731")
+        catalog = build_tool_catalog("apex", model_id="z-ai/glm-5.3-flash")
         group_ids = {group.id for group in catalog.groups}
         self.assertTrue(all(group_id.startswith(("family:", "mcp:")) for group_id in group_ids))
         self.assertEqual(len(group_ids), len(catalog.groups))
 
     def test_native_catalog_uses_configuration_without_authenticating(self) -> None:
         with patch.dict("os.environ", {"TARGET_LOCATION": ""}, clear=False):
-            catalog = build_tool_catalog("apex", model_id="deepseek/deepseek-v4-flash-0731")
+            catalog = build_tool_catalog("apex", model_id="z-ai/glm-5.3-flash")
         weather = next(
             tool for tool in catalog.tools if tool.name == "get_weather_forecast"
         )
@@ -647,7 +647,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
                     "apex",
                     None,
                     tool_profile_id="stale_custom",
-                    model_id="deepseek/deepseek-v4-flash-0731",
+                    model_id="z-ai/glm-5.3-flash",
                 )
         self.assertEqual(
             selection.diagnostics.active_profile_id,

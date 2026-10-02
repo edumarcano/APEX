@@ -795,13 +795,13 @@ class ConversationMigrationTests(unittest.TestCase):
             conn.execute(
                 "INSERT INTO conversation_messages VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (str(user_id), str(conversation_id), None, "user", "Weather?", "completed", None,
-                 json.dumps({"model_id": "deepseek/deepseek-v4-flash-0731"}), None, timestamp, timestamp),
+                 json.dumps({"model_id": "z-ai/glm-5.3-flash"}), None, timestamp, timestamp),
             )
             conn.execute(
                 "INSERT INTO conversation_messages VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (str(agent_id), str(conversation_id), str(user_id), "agent", "Checking.", "pending", "legacy",
-                 json.dumps({"model_id": "deepseek/deepseek-v4-flash-0731"}),
-                 json.dumps({"agent_used": {"key": "legacy", "provider": "openrouter", "model_id": "deepseek/deepseek-v4-flash-0731", "runtime": "cloud"}}),
+                 json.dumps({"model_id": "z-ai/glm-5.3-flash"}),
+                 json.dumps({"agent_used": {"key": "legacy", "provider": "openrouter", "model_id": "z-ai/glm-5.3-flash", "runtime": "cloud"}}),
                  timestamp, timestamp),
             )
 
@@ -812,7 +812,7 @@ class ConversationMigrationTests(unittest.TestCase):
         with closing(sqlite3.connect(path)) as conn:
             self.assertEqual(conn.execute("SELECT version FROM schema_versions WHERE domain='conversations'").fetchone()[0], 1)
             self.assertEqual(conn.execute("SELECT agent FROM conversations WHERE id=?", (str(conversation_id),)).fetchone()[0], "legacy")
-            self.assertEqual(conn.execute("SELECT response_metadata_json FROM conversation_messages WHERE id=?", (str(agent_id),)).fetchone()[0], json.dumps({"agent_used": {"key": "legacy", "provider": "openrouter", "model_id": "deepseek/deepseek-v4-flash-0731", "runtime": "cloud"}}))
+            self.assertEqual(conn.execute("SELECT response_metadata_json FROM conversation_messages WHERE id=?", (str(agent_id),)).fetchone()[0], json.dumps({"agent_used": {"key": "legacy", "provider": "openrouter", "model_id": "z-ai/glm-5.3-flash", "runtime": "cloud"}}))
 
 
 if __name__ == "__main__":

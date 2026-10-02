@@ -106,7 +106,7 @@ describe('useToolPreflight', () => {
     })
     const fetchMock = vi.fn()
       .mockReturnValueOnce(firstResponse)
-      .mockResolvedValueOnce(responseFor('deepseek/deepseek-v4-flash-0731'))
+      .mockResolvedValueOnce(responseFor('z-ai/glm-5.3-flash'))
     vi.stubGlobal('fetch', fetchMock)
 
     const hook = renderHook(
@@ -121,7 +121,7 @@ describe('useToolPreflight', () => {
       { initialProps: { modelId: 'gemma-4-E2B-Q4_K_M.gguf' } },
     )
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
-    hook.rerender({ modelId: 'deepseek/deepseek-v4-flash-0731' })
+    hook.rerender({ modelId: 'z-ai/glm-5.3-flash' })
     await waitFor(() => {
       expect(hook.result.current.estimate).toBeNull()
       expect(hook.result.current.error).toBeNull()

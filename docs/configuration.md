@@ -21,14 +21,14 @@ Briefing and Cortex use the same APEX Agent model selection. The following `ask_
 ```json
 {
   "enabled": true,
-  "selected_model": "deepseek/deepseek-v4-flash-0731",
+  "selected_model": "z-ai/glm-5.3-flash",
   "sandbox_mode": false,
-  "cloud": { "last_model": "deepseek/deepseek-v4-flash-0731", "effort": "low" },
+  "cloud": { "last_model": "z-ai/glm-5.3-flash", "effort": "low" },
   "local": { "last_model": "gemma-4-E2B-Q4_K_M.gguf", "context_window": 16384, "reasoning_mode": "none" }
 }
 ```
 
-The default model mapping is `apex` -> `deepseek/deepseek-v4-flash-0731`; `selected_model` chooses the model for new requests. Selecting a cloud or local model remembers that choice and its controls in the matching runtime section. Cloud and local personal-context preferences are independent. `tool_profiles.default_profile_by_runtime` selects the default tool profile for cloud and local requests. Fresh defaults are All APEX Tools for cloud and No APEX Tools for local; a per-turn model override uses its own runtime's default without changing saved settings.
+The default model mapping is `apex` -> `z-ai/glm-5.3-flash`; `selected_model` chooses the model for new requests. Selecting a cloud or local model remembers that choice and its controls in the matching runtime section. Cloud and local personal-context preferences are independent. `tool_profiles.default_profile_by_runtime` selects the default tool profile for cloud and local requests. Fresh defaults are All APEX Tools for cloud and No APEX Tools for local; a per-turn model override uses its own runtime's default without changing saved settings.
 
 Optional `user_designation` and `agent_display_name` are machine-local personalization fields stored only in `config.local.json`. An empty `agent_display_name` keeps the default visible name Lynx.
 
@@ -36,7 +36,7 @@ Overview collects telemetry without running a model. Briefing follow-ups use the
 
 ## Models and credentials
 
-The default model is OpenRouter DeepSeek V4 Flash with Low reasoning. Configure the credential for the provider of the model you select:
+The default model is OpenRouter GLM 5.3 Flash with Low reasoning. Configure the credential for the provider of the model you select:
 
 | Provider | Environment variable |
 |---|---|

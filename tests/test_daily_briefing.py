@@ -82,7 +82,7 @@ def _model_configuration() -> BriefingGenerationConfiguration:
     return BriefingGenerationConfiguration(
         profile=BUILTIN_BRIEFING_PROFILES["daily"],
         model=BriefingModelConfiguration(
-            model_id="deepseek/deepseek-v4-flash-0731",
+            model_id="z-ai/glm-5.3-flash",
             provider="openrouter",
             runtime="cloud",
             reasoning="high",
@@ -925,7 +925,7 @@ class DailyInputTests(unittest.TestCase):
         def response_for(content: str):
             response = Mock()
             response.model_dump.return_value = {
-                "model": "deepseek/deepseek-v4-flash-0731",
+                "model": "z-ai/glm-5.3-flash",
                 "choices": [{"message": {"content": content}}],
             }
             return response
@@ -958,7 +958,7 @@ class DailyInputTests(unittest.TestCase):
         )
         model_profile = OpenRouterModelProfile(
             display_name="Lynx",
-            api_model="deepseek/deepseek-v4-flash-0731",
+            api_model="z-ai/glm-5.3-flash",
             max_tool_turns=0,
             max_tool_calls=0,
             system_instruction="Daily briefing fixture system instruction.",
@@ -971,7 +971,7 @@ class DailyInputTests(unittest.TestCase):
         request = BriefingGenerationRequest(
             idempotency_key=uuid4(),
             profile_id="daily",
-            model_id="deepseek/deepseek-v4-flash-0731",
+            model_id="z-ai/glm-5.3-flash",
             reasoning="high",
         )
         with (

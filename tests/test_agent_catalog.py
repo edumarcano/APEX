@@ -19,7 +19,7 @@ class ApexAgentCatalogTests(unittest.TestCase):
 
     def test_response_metadata_runtime_comes_from_the_resolved_model(self) -> None:
         cloud = build_agent_used_metadata(
-            "apex", provider="openrouter", configured_model="deepseek/deepseek-v4-flash-0731",
+            "apex", provider="openrouter", configured_model="z-ai/glm-5.3-flash",
             resolved_model=None, requested_effort="low", resolved_effort="low", runtime="cloud",
         )
         local = build_agent_used_metadata(
@@ -114,7 +114,6 @@ class ApexAgentCatalogTests(unittest.TestCase):
     def test_cloud_profiles_keep_provider_specific_credentials(self) -> None:
         expected = {
             "gpt-5.6-luna": "OPENAI_API_KEY",
-            "deepseek/deepseek-v4-flash-0731": "OPENROUTER_API_KEY",
             "z-ai/glm-5.3-flash": "OPENROUTER_API_KEY",
             "gemini-3.7-flash": "GEMINI_API_KEY",
         }
@@ -154,7 +153,7 @@ class ApexAgentCatalogTests(unittest.TestCase):
         self.assertEqual(payload["key"], "apex")
         self.assertEqual(payload["display_name"], "Lynx")
         self.assertEqual(payload["canonical_name"], "APEX Agent")
-        self.assertEqual(payload["selected_model"], "deepseek/deepseek-v4-flash-0731")
+        self.assertEqual(payload["selected_model"], "z-ai/glm-5.3-flash")
         self.assertTrue(payload["model_catalog"])
         runtimes = {model["runtime"] for model in payload["model_catalog"]}
         self.assertIn("cloud", runtimes)

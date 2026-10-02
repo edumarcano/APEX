@@ -325,7 +325,7 @@ class Branch3StreamingTests(unittest.TestCase):
     def test_catalog_capabilities_are_provider_truthful(self):
         self.assertEqual(_profile_to_catalog_entry(ALL_MODEL_PROFILES["gemini-3.7-flash"]).streaming, "native")
         self.assertEqual(_profile_to_catalog_entry(ALL_MODEL_PROFILES["qwen3:1.7b"]).streaming, "completed_turn")
-        self.assertEqual(_profile_to_catalog_entry(ALL_MODEL_PROFILES["deepseek/deepseek-v4-flash-0731"]).structured_output, "unavailable")
+        self.assertEqual(_profile_to_catalog_entry(ALL_MODEL_PROFILES["z-ai/glm-5.3-flash"]).structured_output, "unavailable")
 
     @patch("core.agent.providers.responses_api.OpenAI")
     def test_openai_responses_stream_preserves_final_output_metadata(self, client_cls):

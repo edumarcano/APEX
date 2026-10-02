@@ -35,10 +35,10 @@ export const BASE_SETTINGS: RuntimeSettings = {
   },
   ask_apex: {
     enabled: true,
-    selected_model: 'deepseek/deepseek-v4-flash-0731',
+    selected_model: 'z-ai/glm-5.3-flash',
     sandbox_mode: false,
     cloud: {
-      last_model: 'deepseek/deepseek-v4-flash-0731',
+      last_model: 'z-ai/glm-5.3-flash',
       effort: 'low',
       personal_context_enabled: false,
       hosted_tools: { google_search: true, google_maps: true },

@@ -181,14 +181,14 @@ describe('usePreflight', () => {
 
     await act(async () => {
       await result.current.requestOperation('cortex_query', {
-        model_id: 'deepseek/deepseek-v4-flash-0731',
+        model_id: 'z-ai/glm-5.3-flash',
       })
     })
 
     const body = JSON.parse(String((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body))
     expect(body).toMatchObject({
       operation: 'cortex_query',
-      model_id: 'deepseek/deepseek-v4-flash-0731',
+      model_id: 'z-ai/glm-5.3-flash',
     })
   })
 

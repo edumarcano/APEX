@@ -33,19 +33,24 @@ export function ModelMark({
     )
   }
 
-  // Zhipu / GLM family
-  if (normalizedModel.startsWith('z-ai') || normalizedModel.includes('glm')) {
+  // DeepSeek family
+  if (normalizedModel.startsWith('deepseek')) {
     return (
       <span className={`inline-flex shrink-0 items-center justify-center ${className}`} aria-hidden>
-        <ZhipuColor size={size} />
+        <DeepSeekColor size={size} />
       </span>
     )
   }
 
-  if (normalizedModel.startsWith('deepseek') || normalizedProvider === 'openrouter') {
+  // Zhipu / GLM family / OpenRouter default
+  if (
+    normalizedModel.startsWith('z-ai') ||
+    normalizedModel.includes('glm') ||
+    normalizedProvider === 'openrouter'
+  ) {
     return (
       <span className={`inline-flex shrink-0 items-center justify-center ${className}`} aria-hidden>
-        <DeepSeekColor size={size} />
+        <ZhipuColor size={size} />
       </span>
     )
   }

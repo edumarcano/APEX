@@ -46,9 +46,9 @@ class BriefingModelResolutionTests(unittest.TestCase):
         request = BriefingGenerationRequest(
             idempotency_key=uuid4(),
             profile_id="deep",
-            model_id="deepseek/deepseek-v4-flash-0731",
+            model_id="z-ai/glm-5.3-flash",
             reasoning="high",
-            context_window=1_310_720,
+            context_window=1_048_576,
         )
         with (
             patch("core.briefings.runtime.get_settings_store", return_value=SimpleNamespace(get_snapshot=lambda: self.settings)),
@@ -56,7 +56,7 @@ class BriefingModelResolutionTests(unittest.TestCase):
         ):
             configuration = resolve_briefing_configuration(request)
 
-        self.assertEqual(configuration.model.context_window, 1_310_720)
+        self.assertEqual(configuration.model.context_window, 1_048_576)
         self.assertEqual(configuration.model.reasoning, "high")
         self.assertEqual(configuration.profile.id, "deep")
         self.assertEqual(configuration.model.output_token_limit, 16384)
@@ -65,7 +65,7 @@ class BriefingModelResolutionTests(unittest.TestCase):
         cloud_req = BriefingGenerationRequest(
             idempotency_key=uuid4(),
             profile_id="deep",
-            model_id="deepseek/deepseek-v4-flash-0731",
+            model_id="z-ai/glm-5.3-flash",
         )
         local_req = BriefingGenerationRequest(
             idempotency_key=uuid4(),
@@ -104,14 +104,14 @@ class BriefingModelResolutionTests(unittest.TestCase):
         invalid_reasoning = BriefingGenerationRequest(
             idempotency_key=uuid4(),
             profile_id="daily",
-            model_id="deepseek/deepseek-v4-flash-0731",
+            model_id="z-ai/glm-5.3-flash",
             reasoning="medium",
         )
         excessive_context = BriefingGenerationRequest(
             idempotency_key=uuid4(),
             profile_id="daily",
-            model_id="deepseek/deepseek-v4-flash-0731",
-            context_window=1_310_721,
+            model_id="z-ai/glm-5.3-flash",
+            context_window=1_048_577,
         )
         with patch("core.briefings.runtime.get_settings_store", return_value=SimpleNamespace(get_snapshot=lambda: self.settings)):
             with self.assertRaises(BriefingModelConfigurationError):
@@ -152,7 +152,7 @@ class BriefingSingleCallTests(unittest.TestCase):
         return BriefingGenerationConfiguration(
             profile=profile,
             model=BriefingModelConfiguration(
-                model_id="deepseek/deepseek-v4-flash-0731",
+                model_id="z-ai/glm-5.3-flash",
                 provider="openrouter",
                 runtime="cloud",
                 reasoning="high",
@@ -183,7 +183,7 @@ class BriefingSingleCallTests(unittest.TestCase):
         messages, tools, model_profile, kwargs = provider.calls[0]
         self.assertEqual(len(messages), 1)
         self.assertEqual(tools, [])
-        self.assertEqual(model_profile.api_model, "deepseek/deepseek-v4-flash-0731")
+        self.assertEqual(model_profile.api_model, "z-ai/glm-5.3-flash")
         self.assertEqual(model_profile.reasoning_effort, "high")
         self.assertEqual(model_profile.hosted_tools, frozenset())
         self.assertEqual(kwargs["output_token_limit"], 48)

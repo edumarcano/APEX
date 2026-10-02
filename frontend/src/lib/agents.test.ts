@@ -71,8 +71,8 @@ describe('agents helpers', () => {
 
   it('uses shared cloud and local reasoning preferences for shared Agent turns', () => {
     const cloudEntry: ModelCatalogEntry = {
-      model_id: 'deepseek/deepseek-v4-flash-0731',
-      display_name: 'DeepSeek V4 Flash',
+      model_id: 'z-ai/glm-5.3-flash',
+      display_name: 'GLM 5.3 Flash',
       provider: 'openrouter',
       runtime: 'cloud',
       stability: 'stable',
@@ -83,7 +83,7 @@ describe('agents helpers', () => {
     const preferences = { effort: 'high' as const, contextWindow: 32768, localReasoningMode: 'focused' as const }
     expect(resolveAgentTurnOverrides(cloudEntry, preferences)).toEqual({
       agent: 'apex',
-      modelId: 'deepseek/deepseek-v4-flash-0731',
+      modelId: 'z-ai/glm-5.3-flash',
       effort: 'high',
       contextWindow: null,
       localReasoningMode: null,

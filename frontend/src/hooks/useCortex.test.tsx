@@ -11,9 +11,9 @@ const catalogResponse = {
 
 const cloudSelectedWithResidentLocal = {
   ...catalogResponse,
-  selected_model: 'deepseek/deepseek-v4-flash-0731',
+  selected_model: 'z-ai/glm-5.3-flash',
   model_catalog: [
-    { model_id: 'deepseek/deepseek-v4-flash-0731', display_name: 'DeepSeek V4 Flash', provider: 'openrouter', runtime: 'cloud', stability: 'stable', hosted_capabilities: [], status: 'available', active: false, loading: false },
+    { model_id: 'z-ai/glm-5.3-flash', display_name: 'GLM 5.3 Flash', provider: 'openrouter', runtime: 'cloud', stability: 'stable', hosted_capabilities: [], status: 'available', active: false, loading: false },
     { ...catalogResponse.model_catalog[0], active: true, loaded_model: { provider: 'llama_cpp', name: modelId, model: modelId, state: 'loaded', context_window: 16384 }, idle_unload_remaining_seconds: 240 },
   ],
 }
@@ -53,7 +53,7 @@ describe('useCortex model lifecycle', () => {
 
     await act(async () => { await result.current.refreshAgentsStatus() })
 
-    expect(result.current.cortexAgent?.selected_model).toBe('deepseek/deepseek-v4-flash-0731')
+    expect(result.current.cortexAgent?.selected_model).toBe('z-ai/glm-5.3-flash')
     expect(result.current.modelCatalog).toContainEqual(expect.objectContaining({
       model_id: modelId,
       active: true,

@@ -38,7 +38,7 @@ describe('assistant boot hydration', () => {
     expect(resolveAppliedAgentSelection(response, 'apex', true)).toEqual({
       runtime: 'cloud',
       agent: 'apex',
-      modelId: 'deepseek/deepseek-v4-flash-0731',
+      modelId: 'z-ai/glm-5.3-flash',
       effort: 'low',
       sandboxMode: true,
     })
@@ -51,7 +51,7 @@ describe('assistant boot hydration', () => {
     expect(resolveAppliedAgentSelection(response, 'apex', false)).toEqual({
       runtime: 'cloud',
       agent: 'apex',
-      modelId: 'deepseek/deepseek-v4-flash-0731',
+      modelId: 'z-ai/glm-5.3-flash',
       effort: 'low',
       sandboxMode: false,
     })

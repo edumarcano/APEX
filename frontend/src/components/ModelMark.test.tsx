@@ -23,9 +23,17 @@ describe('ModelMark component', () => {
     expect(c2.querySelector('svg')).toBeTruthy()
   })
 
+  it('renders ZhipuColor icon for openrouter provider', () => {
+    const { container } = render(
+      <ModelMark modelId="openrouter-generic" provider="openrouter" />,
+    )
+    const svg = container.querySelector('svg')
+    expect(svg).toBeTruthy()
+  })
+
   it('renders DeepSeekColor for deepseek models', () => {
     const { container } = render(
-      <ModelMark modelId="deepseek/deepseek-v4-flash-0731" provider="openrouter" />,
+      <ModelMark modelId="deepseek-chat" />,
     )
     const svg = container.querySelector('svg')
     expect(svg).toBeTruthy()

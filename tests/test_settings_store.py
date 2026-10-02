@@ -44,7 +44,7 @@ class SettingsStoreTests(unittest.TestCase):
     def test_fresh_settings_use_apex_and_the_default_cloud_model(self) -> None:
         settings = self._store().get_snapshot().ask_apex
 
-        self.assertEqual(settings.selected_model, "deepseek/deepseek-v4-flash-0731")
+        self.assertEqual(settings.selected_model, "z-ai/glm-5.3-flash")
         self.assertEqual(settings.cloud.effort, "low")
         self.assertEqual(settings.local.context_window, 16384)
 
@@ -184,7 +184,7 @@ class SettingsStoreTests(unittest.TestCase):
         settings = store.get_snapshot().ask_apex
 
         self.assertFalse(store.local_override_active)
-        self.assertEqual(settings.selected_model, "deepseek/deepseek-v4-flash-0731")
+        self.assertEqual(settings.selected_model, "z-ai/glm-5.3-flash")
         self.assertIn("obsolete_agent", store.load_warning or "")
         self.assertEqual(
             json.loads(self.local_path.read_text(encoding="utf-8")),

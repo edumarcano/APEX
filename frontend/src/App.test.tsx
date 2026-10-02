@@ -12,7 +12,7 @@ import { BASE_SETTINGS, buildSettingsResponse } from './test/settingsFixtures'
 
 const appMocks = vi.hoisted(() => ({
   initialAgent: 'apex' as AgentKey,
-  initialModelId: 'deepseek/deepseek-v4-flash-0731',
+  initialModelId: 'z-ai/glm-5.3-flash',
   initialModelRuntime: 'cloud' as 'cloud' | 'local',
   localBriefingModel: null as ModelCatalogEntry | null,
   cortexLifecycleBusy: false,
@@ -254,10 +254,10 @@ vi.mock('./hooks/useCortex', () => ({
       key: 'apex' as AgentKey,
       display_name: 'Lynx',
       description: 'Native assistant.',
-      selected_model: 'deepseek/deepseek-v4-flash-0731',
+      selected_model: 'z-ai/glm-5.3-flash',
       model_catalog: [{
-        model_id: 'deepseek/deepseek-v4-flash-0731',
-        display_name: 'DeepSeek V4 Flash',
+        model_id: 'z-ai/glm-5.3-flash',
+        display_name: 'GLM 5.3 Flash',
         provider: 'openrouter',
         runtime: 'cloud',
         stability: 'stable',
@@ -268,8 +268,8 @@ vi.mock('./hooks/useCortex', () => ({
     },
     modelCatalog: appMocks.noModels ? [] : [
       {
-        model_id: 'deepseek/deepseek-v4-flash-0731',
-        display_name: 'DeepSeek V4 Flash',
+        model_id: 'z-ai/glm-5.3-flash',
+        display_name: 'GLM 5.3 Flash',
         provider: 'openrouter',
         runtime: 'cloud',
         stability: 'stable',
@@ -395,10 +395,10 @@ function settingsResponse(
       market: { symbols: [] },
       ask_apex: {
         enabled: true,
-        selected_model: 'deepseek/deepseek-v4-flash-0731',
+        selected_model: 'z-ai/glm-5.3-flash',
         sandbox_mode: sandboxMode,
         cloud: {
-          last_model: 'deepseek/deepseek-v4-flash-0731',
+          last_model: 'z-ai/glm-5.3-flash',
           effort: 'low',
           personal_context_enabled: false,
           hosted_tools: {
@@ -647,7 +647,7 @@ async function selectBriefingEffort(user: ReturnType<typeof userEvent.setup>, ef
 describe('App catalog-affecting settings', () => {
   afterEach(() => {
     appMocks.initialAgent = 'apex'
-    appMocks.initialModelId = 'deepseek/deepseek-v4-flash-0731'
+    appMocks.initialModelId = 'z-ai/glm-5.3-flash'
     appMocks.initialModelRuntime = 'cloud'
     appMocks.localBriefingModel = null
     appMocks.devModeActive = false
@@ -676,7 +676,7 @@ describe('App catalog-affecting settings', () => {
         if (url.pathname.endsWith('/cortex/tool-catalog')) {
           const modelId = url.searchParams.get('model_id')
           catalogRequests.push(modelId)
-          const googleSearchEnabled = modelId === 'deepseek/deepseek-v4-flash-0731' && apexCatalogRequests++ > 0
+          const googleSearchEnabled = modelId === 'z-ai/glm-5.3-flash' && apexCatalogRequests++ > 0
           return Promise.resolve(new Response(
             JSON.stringify(catalogFor('apex', googleSearchEnabled)),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -692,17 +692,17 @@ describe('App catalog-affecting settings', () => {
     renderOverviewApp()
 
     await selectWorkspace(user, 'Cortex')
-    await waitFor(() => expect(catalogRequests).toContain('deepseek/deepseek-v4-flash-0731'))
+    await waitFor(() => expect(catalogRequests).toContain('z-ai/glm-5.3-flash'))
     await waitFor(() => expect(screen.getByTestId('active-agent')).toHaveTextContent('apex'))
     expect(screen.getByTestId('provider-hosted-tools')).toHaveTextContent('')
 
     await user.click(screen.getByRole('button', { name: 'Enable Google Search' }))
-    expect(catalogRequests.filter((modelId) => modelId === 'deepseek/deepseek-v4-flash-0731')).toHaveLength(1)
+    expect(catalogRequests.filter((modelId) => modelId === 'z-ai/glm-5.3-flash')).toHaveLength(1)
 
     settingsPatch.resolve(settingsResponse(true))
 
     await waitFor(() => {
-      expect(catalogRequests.filter((modelId) => modelId === 'deepseek/deepseek-v4-flash-0731')).toHaveLength(2)
+      expect(catalogRequests.filter((modelId) => modelId === 'z-ai/glm-5.3-flash')).toHaveLength(2)
       expect(screen.getByTestId('provider-hosted-tools')).toHaveTextContent('google_search')
     })
   })
@@ -718,7 +718,7 @@ describe('App catalog-affecting settings', () => {
     withHighCloudEffort.ask_apex.cloud.effort = 'high'
     await applySavedSettings(buildSettingsResponse(withHighCloudEffort), baseline)
     await waitFor(() => expect(appMocks.toolPreflight.mock.lastCall?.[0]).toMatchObject({
-      modelId: 'deepseek/deepseek-v4-flash-0731',
+      modelId: 'z-ai/glm-5.3-flash',
       effort: 'high',
       contextWindow: null,
       localReasoningMode: null,
@@ -808,13 +808,13 @@ describe('App catalog-affecting settings', () => {
     renderOverviewApp()
 
     await selectWorkspace(user, 'Cortex')
-    await waitFor(() => expect(catalogRequests).toContain('deepseek/deepseek-v4-flash-0731'))
+    await waitFor(() => expect(catalogRequests).toContain('z-ai/glm-5.3-flash'))
 
     await user.click(screen.getByRole('checkbox', { name: 'Sandbox mode' }))
 
     await waitFor(() => {
       expect(sandboxPatch).toEqual({ ask_apex: { sandbox_mode: true } })
-      expect(catalogRequests.filter((modelId) => modelId === 'deepseek/deepseek-v4-flash-0731')).toHaveLength(2)
+      expect(catalogRequests.filter((modelId) => modelId === 'z-ai/glm-5.3-flash')).toHaveLength(2)
     })
   })
 
@@ -1612,7 +1612,7 @@ describe('App Overview and Briefing states', () => {
 
 describe('App active local briefing lifecycle', () => {
   afterEach(() => {
-    appMocks.initialModelId = 'deepseek/deepseek-v4-flash-0731'
+    appMocks.initialModelId = 'z-ai/glm-5.3-flash'
     appMocks.initialModelRuntime = 'cloud'
     appMocks.localBriefingModel = null
     appMocks.cortexLifecycleBusy = false
@@ -1713,7 +1713,7 @@ describe('App briefing session flow', () => {
     const sessionSummary = {
       id: sessionId,
       profile_id: 'daily',
-      model_id: 'deepseek/deepseek-v4-flash-0731',
+      model_id: 'z-ai/glm-5.3-flash',
       conversation_id: conversationId,
       run_id: '00000000-0000-4000-8000-000000000075',
       run_status: 'running',
@@ -1906,14 +1906,14 @@ describe('App briefing session flow', () => {
 
     await waitFor(() => expect(admissionBody).not.toBeNull())
     expect(appMocks.requestOperation).toHaveBeenCalledWith('generate_briefing_session', expect.objectContaining({
-      model_id: 'deepseek/deepseek-v4-flash-0731',
+      model_id: 'z-ai/glm-5.3-flash',
       involves_cloud: true,
     }))
     expect(settingsPatchBody).toEqual({ ask_apex: {
-      selected_model: 'deepseek/deepseek-v4-flash-0731',
-      cloud: { last_model: 'deepseek/deepseek-v4-flash-0731', effort: 'high' },
+      selected_model: 'z-ai/glm-5.3-flash',
+      cloud: { last_model: 'z-ai/glm-5.3-flash', effort: 'high' },
     } })
-    expect(admissionBody).toMatchObject({ profile_id: 'daily', model_id: 'deepseek/deepseek-v4-flash-0731', reasoning: 'high' })
+    expect(admissionBody).toMatchObject({ profile_id: 'daily', model_id: 'z-ai/glm-5.3-flash', reasoning: 'high' })
     expect(eventOrder.indexOf('preflight:generate_briefing_session')).toBeLessThan(eventOrder.indexOf('settings-patch'))
     expect(eventOrder.indexOf('settings-patch')).toBeLessThan(eventOrder.indexOf('session-post'))
     await waitFor(() => expect(detailReads).toBeGreaterThan(0))
@@ -2088,7 +2088,7 @@ describe('App Repeat last briefing', () => {
     const makeSummary = (id: string, profileId: string, runStatus: string, createdAt: string) => ({
       id,
       profile_id: profileId,
-      model_id: 'deepseek/deepseek-v4-flash-0731',
+      model_id: 'z-ai/glm-5.3-flash',
       conversation_id: id === olderId ? olderConversationId : id === newId ? newConversationId : conversationId,
       run_id: `run-${id.slice(-3)}`,
       run_status: runStatus,
@@ -2185,24 +2185,24 @@ describe('App Repeat last briefing', () => {
     renderOverviewApp()
     await selectWorkspace(user, 'Briefing')
     await waitFor(() => expect(screen.getByRole('button', { name: 'Repeat last briefing' })).toBeEnabled())
-    expect(screen.getByText(/Catch Up · DeepSeek V4 Flash · failed/)).toBeInTheDocument()
+    expect(screen.getByText(/Catch Up · GLM 5\.3 Flash · failed/)).toBeInTheDocument()
     const savedSessions = await screen.findByRole('navigation', { name: 'Saved briefing sessions' })
     await user.click(within(savedSessions).getByRole('button', { name: /Daily/ }))
-    expect(screen.getByText(/Catch Up · DeepSeek V4 Flash · failed/)).toBeInTheDocument()
+    expect(screen.getByText(/Catch Up · GLM 5\.3 Flash · failed/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Repeat last briefing' }))
 
     await waitFor(() => expect(admissionBody).not.toBeNull())
     expect(settingsPatchBody).toEqual({ ask_apex: {
-      selected_model: 'deepseek/deepseek-v4-flash-0731',
-      cloud: { last_model: 'deepseek/deepseek-v4-flash-0731', effort: 'high' },
+      selected_model: 'z-ai/glm-5.3-flash',
+      cloud: { last_model: 'z-ai/glm-5.3-flash', effort: 'high' },
     } })
     expect(admissionBody).toMatchObject({
       profile_id: 'catch_up',
-      model_id: 'deepseek/deepseek-v4-flash-0731',
+      model_id: 'z-ai/glm-5.3-flash',
       reasoning: 'high',
     })
     expect(appMocks.requestOperation).toHaveBeenCalledWith('generate_briefing_session', expect.objectContaining({
-      model_id: 'deepseek/deepseek-v4-flash-0731',
+      model_id: 'z-ai/glm-5.3-flash',
       involves_cloud: true,
     }))
   })

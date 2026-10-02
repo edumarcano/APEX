@@ -33,7 +33,7 @@ describe('useToolCatalog model-aware hydration', () => {
     }))
     const hook = renderHook(
       ({ modelId, runtime }: { modelId: string; runtime: 'cloud' | 'local' }) => useToolCatalog('apex', modelId, runtime),
-      { initialProps: { modelId: 'deepseek/deepseek-v4-flash-0731', runtime: 'cloud' as 'cloud' | 'local' } },
+      { initialProps: { modelId: 'z-ai/glm-5.3-flash', runtime: 'cloud' as 'cloud' | 'local' } },
     )
     await waitFor(() => expect(hook.result.current.selectionReady).toBe(true))
     expect(hook.result.current.selectedToolNames).toEqual(['get_weather_forecast'])
@@ -50,7 +50,7 @@ describe('useToolCatalog model-aware hydration', () => {
       .mockResolvedValueOnce({ ok: true, json: async () => catalogFor('cloud', [unavailable]) })
       .mockResolvedValueOnce({ ok: true, json: async () => catalogFor('cloud') }))
     const hook = renderHook(
-      ({ availabilityVersion }: { availabilityVersion: string | null }) => useToolCatalog('apex', 'deepseek/deepseek-v4-flash-0731', 'cloud', availabilityVersion),
+      ({ availabilityVersion }: { availabilityVersion: string | null }) => useToolCatalog('apex', 'z-ai/glm-5.3-flash', 'cloud', availabilityVersion),
       { initialProps: { availabilityVersion: null as string | null } },
     )
     await waitFor(() => expect(hook.result.current.selectionReady).toBe(true))
@@ -65,7 +65,7 @@ describe('useToolCatalog model-aware hydration', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise<CatalogResponse>((resolve) => { pending.push(resolve) })))
     const hook = renderHook(
       ({ modelId, runtime }: { modelId: string; runtime: 'cloud' | 'local' }) => useToolCatalog('apex', modelId, runtime),
-      { initialProps: { modelId: 'deepseek/deepseek-v4-flash-0731', runtime: 'cloud' as 'cloud' | 'local' } },
+      { initialProps: { modelId: 'z-ai/glm-5.3-flash', runtime: 'cloud' as 'cloud' | 'local' } },
     )
     await waitFor(() => expect(pending).toHaveLength(1))
     hook.rerender({ modelId: 'gemma-4-E2B-Q4_K_M.gguf', runtime: 'local' })

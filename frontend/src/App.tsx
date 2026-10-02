@@ -193,7 +193,7 @@ export default function App(): ReactElement {
     setWorkspace(nextWorkspace)
   }, [])
   const [linkedReviewId, setLinkedReviewId] = useState<string | null>(null)
-  const [selectedModel, setSelectedModel] = useState('deepseek/deepseek-v4-flash-0731')
+  const [selectedModel, setSelectedModel] = useState('z-ai/glm-5.3-flash')
   const [sandboxMode, setSandboxMode] = useState(false)
   const [hostedTools, setHostedTools] = useState<CloudHostedToolsSettings>({
     google_search: true,

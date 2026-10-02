@@ -111,23 +111,6 @@ class CloudModelVerificationTests(unittest.TestCase):
     def test_openrouter_probe_requires_a_zdr_route_for_the_selected_model(self) -> None:
         response = mock.Mock(ok=True)
         response.json.return_value = {
-            "data": [{"model_id": "deepseek/deepseek-v4-flash-0731"}]
-        }
-        with mock.patch("core.agent.providers.cloud_verification.requests.get", return_value=response) as get:
-            from core.agent.providers.cloud_verification import _probe_model
-
-            status, reason = _probe_model("openrouter", "deepseek/deepseek-v4-flash-0731", "secret")
-
-        self.assertEqual((status, reason), ("verified", None))
-        get.assert_called_once_with(
-            "https://openrouter.ai/api/v1/endpoints/zdr",
-            headers={"Authorization": "Bearer secret"},
-            timeout=5,
-        )
-
-    def test_openrouter_probe_supports_glm_5_3_flash(self) -> None:
-        response = mock.Mock(ok=True)
-        response.json.return_value = {
             "data": [{"model_id": "z-ai/glm-5.3-flash"}]
         }
         with mock.patch("core.agent.providers.cloud_verification.requests.get", return_value=response) as get:
@@ -158,7 +141,7 @@ class CloudModelVerificationTests(unittest.TestCase):
                     return_value=response,
                 ):
                     status, _reason = _probe_model(
-                        "openrouter", "deepseek/deepseek-v4-flash-0731", "secret"
+                        "openrouter", "z-ai/glm-5.3-flash", "secret"
                     )
                 self.assertEqual(status, expected_status)
 
@@ -172,7 +155,7 @@ class CloudModelVerificationTests(unittest.TestCase):
                     return_value=response,
                 ):
                     status, _reason = _probe_model(
-                        "openrouter", "deepseek/deepseek-v4-flash-0731", "secret"
+                        "openrouter", "z-ai/glm-5.3-flash", "secret"
                     )
                 self.assertEqual(status, expected_status)
 
@@ -181,7 +164,7 @@ class CloudModelVerificationTests(unittest.TestCase):
             side_effect=requests.Timeout,
         ):
             status, _reason = _probe_model(
-                "openrouter", "deepseek/deepseek-v4-flash-0731", "secret"
+                "openrouter", "z-ai/glm-5.3-flash", "secret"
             )
         self.assertEqual(status, "provider_unreachable")
 
