@@ -129,6 +129,10 @@ def _optional_assets() -> dict[str, object]:
     return {"retrieval_mode": "semantic", "semantic_results": semantic_results, "kokoro_assets": assets, "kokoro_engine": engine, "wav_bytes": len(audio)}
 
 
+def _write_json_line(payload: dict[str, object], stream: object = None) -> None:
+    print(json.dumps(payload, ensure_ascii=True, separators=(",", ":")), file=stream if stream is not None else sys.stdout)
+
+
 def main(argv: list[str] | None = None) -> int:
     multiprocessing.freeze_support()
     values = list(sys.argv[1:] if argv is None else argv)
@@ -150,10 +154,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         with redirect_stdout(sys.stderr):
             evidence = {"imports": _imports, "retrieval": _retrieval, "audio-worker": _audio_worker, "no-model-assets": _no_model_assets, "optional-assets": _optional_assets}[args.scenario]()
-        print(json.dumps({"schema_version": 1, "scenario": args.scenario, "status": "passed", "evidence": evidence}, ensure_ascii=False, separators=(",", ":")))
+        _write_json_line({"schema_version": 1, "scenario": args.scenario, "status": "passed", "evidence": evidence})
         return 0
     except Exception as exc:
-        print(json.dumps({"schema_version": 1, "scenario": args.scenario, "status": "failed", "error_type": type(exc).__name__, "error": str(exc)[:4096]}, ensure_ascii=False, separators=(",", ":")))
+        _write_json_line({"schema_version": 1, "scenario": args.scenario, "status": "failed", "error_type": type(exc).__name__, "error": str(exc)[:4096]})
         return 1
 
 

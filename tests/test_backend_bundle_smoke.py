@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import socket
@@ -17,6 +18,12 @@ assert _spec is not None and _spec.loader is not None
 smoke = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = smoke
 _spec.loader.exec_module(smoke)
+PROBE_PATH = Path(__file__).resolve().parents[1] / "packaging" / "windows" / "smoke" / "probe.py"
+_probe_spec = importlib.util.spec_from_file_location("backend_bundle_probe", PROBE_PATH)
+assert _probe_spec is not None and _probe_spec.loader is not None
+probe = importlib.util.module_from_spec(_probe_spec)
+sys.modules[_probe_spec.name] = probe
+_probe_spec.loader.exec_module(probe)
 
 
 class BackendBundleSmokeHarnessTests(unittest.TestCase):
@@ -105,6 +112,29 @@ class BackendBundleSmokeHarnessTests(unittest.TestCase):
         finally:
             process.kill()
             process.wait(timeout=5)
+
+    def test_report_console_json_is_ascii_safe_and_report_file_keeps_unicode(self) -> None:
+        result = {"checks": [{"status": "failed", "detail": "Kokoro 🚀 lookup failed"}]}
+        buffer = io.BytesIO()
+        stream = io.TextIOWrapper(buffer, encoding="cp1252", errors="strict", write_through=True)
+        probe_buffer = io.BytesIO()
+        probe_stream = io.TextIOWrapper(probe_buffer, encoding="cp1252", errors="strict", write_through=True)
+        try:
+            with tempfile.TemporaryDirectory(dir=Path.cwd()) as temporary:
+                report_path = Path(temporary) / "report.json"
+                smoke._emit_report(result, report_path, stream)
+                probe._write_json_line(result, probe_stream)
+                console = json.loads(buffer.getvalue().decode("cp1252"))
+                probe_console = json.loads(probe_buffer.getvalue().decode("cp1252"))
+                report_text = report_path.read_text(encoding="utf-8")
+                saved = json.loads(report_text)
+            self.assertEqual(console, result)
+            self.assertEqual(probe_console, result)
+            self.assertEqual(saved, result)
+            self.assertIn("Kokoro 🚀 lookup failed", report_text)
+        finally:
+            stream.detach()
+            probe_stream.detach()
 
     def test_source_probe_verifies_real_fts_documentation_search(self) -> None:
         project = Path(__file__).resolve().parents[1]

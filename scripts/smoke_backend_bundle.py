@@ -610,6 +610,13 @@ def _run_once(bundle: Path, report: Report, *, dev: bool = False, demo: bool = F
         shutil.rmtree(root, ignore_errors=True)
 
 
+def _emit_report(result: dict[str, object], report_path: Path | None, stream: Any = None) -> None:
+    if report_path:
+        report_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    rendered = json.dumps(result, ensure_ascii=True, indent=2)
+    print(rendered, file=stream if stream is not None else sys.stdout)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run bounded real-process checks against an APEX backend bundle.")
     parser.add_argument("--bundle", type=Path, required=True, help="Directory containing apex-backend.exe, apex.exe, and _internal.")
@@ -673,10 +680,7 @@ def main(argv: list[str] | None = None) -> int:
                 if args.strict:
                     report.add("strict_gate_requirements", "failed", "strict mode stopped before every required frozen check passed")
     result = report.as_dict()
-    rendered = json.dumps(result, ensure_ascii=False, indent=2)
-    print(rendered)
-    if args.report:
-        args.report.write_text(rendered + "\n", encoding="utf-8")
+    _emit_report(result, args.report)
     return 1 if report.failed else 0
 
 
