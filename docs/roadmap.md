@@ -9,7 +9,7 @@
 ## Current Focus
 
 - **Current Phase:** [Phase VI: Native Platform & Interaction](#phase-vi-native-platform--interaction)
-- **Next Milestone:** [v2.1.0 - Native Desktop Foundation](#v210---native-desktop-foundation)
+- **Active Milestone:** [v2.1.0 - Native Desktop Foundation](#v210---native-desktop-foundation)
 - **Current Direction:** [APEX 2.0 Direction](#apex-20-direction)
 
 ### Navigation
@@ -496,7 +496,7 @@ Consolidate the six beta milestones into a stable local-first foundation for per
 
 # Phase VI: Native Platform & Interaction
 
-**Status:** Planned
+**Status:** In Progress
 
 **Core Focus:**
 
@@ -512,7 +512,7 @@ Native capabilities should be added through small platform services with clear b
 
 ## v2.1.0 - Native Desktop Foundation
 
-**Status:** Planned
+**Status:** In Progress
 
 **Objective:**
 
@@ -658,4 +658,4 @@ Models, note applications, sync providers, speech providers, and outside AI prod
 
 APEX is currently in **Phase VI: Native Platform & Interaction**.
 
-**Next milestone:** [v2.1.0 - Native Desktop Foundation](#v210---native-desktop-foundation)
+**Active milestone:** [v2.1.0 - Native Desktop Foundation](#v210---native-desktop-foundation)
