@@ -43,6 +43,21 @@ npm run check:loading
 
 The loading check requires a completed build. For repeated frontend tests during development, use `npm run test:watch`. The [manual server instructions](../docs/getting-started.md#run-the-servers-manually) explain how to serve the compiled build, and the launcher serves it on port 5500.
 
+## Windows desktop shell
+
+The Tauri desktop shell uses the same React build and the locally supervised FastAPI backend. Install the Windows prerequisites in [Getting Started](../docs/getting-started.md), then run these commands from `frontend/`:
+
+```powershell
+npm ci
+npm run desktop:dev
+```
+
+`desktop:dev` verifies and stages the packaged backend, then starts the Tauri development window. Tauri starts Vite on `127.0.0.1:5173` with a strict port so its native origin stays predictable. `npm run dev` remains the ordinary browser workflow and still mounts the interface immediately; the browser does not load the native adapter.
+
+Build the desktop bundle with `npm run desktop:build`. The command verifies and stages the backend package before invoking the locked Tauri CLI, whose build hook compiles the production frontend. These commands prepare and build local artifacts; installed Windows behavior still needs validation in the packaged-shell workflow.
+
+In the native window, APEX waits for the owned backend and checks the fixed local runtime identity endpoint before mounting workspace API hooks. Startup, port/profile conflict, origin rejection, identity mismatch, and backend failure states provide retry or quit actions. Retrying asks first because restarting closes the current workspace and discards unsent text; drafts are not persisted.
+
 ## Source organization
 
 `App.tsx` composes the workspaces and coordinates shared flows. Components own presentation, hooks own focused state and API workflows, and `lib/` holds API endpoints and parsing or presentation helpers. Shared contracts live in `types/`; `test/` supplies test setup and fixtures. `index.css` defines tokens, materials, layout, and motion, while `main.tsx` starts the application.
@@ -72,7 +87,7 @@ Loading and failure states stay within the requested presentation, leaving works
 
 The runtime's default assistant-message Markdown renderer loads separately. Its loading and failure fallback shows escaped plain text so the answer, composer, and activity remain usable. Cortex, Briefing, and Reports retain their own rendering rules inside their deferred presentations.
 
-The production build writes a Vite manifest and a sanitized module report under the repository's `dist/.vite/`. `npm run check:loading` follows static imports and HTML module preloads, verifies that deferred presentations and Markdown dependencies stay outside the initial graph, and reports entry, initial, deferred, and total JavaScript sizes. Gzip totals sum the compressed sizes of individual assets.
+The production build writes a Vite manifest and a sanitized module report under the repository's `dist/.vite/`. `npm run check:loading` follows static imports and HTML module preloads, verifies that deferred presentations and Markdown dependencies stay outside the initial graph, confirms native admission and Tauri API code stay out of browser startup imports, and reports entry, initial, deferred, and total JavaScript sizes. Gzip totals sum the compressed sizes of individual assets.
 
 Its optional `--baseline` argument accepts an absolute directory containing an earlier build and manifest:
 

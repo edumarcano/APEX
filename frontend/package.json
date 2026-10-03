@@ -4,15 +4,20 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "vitest run && node --test scripts/check-loading.node-test.mjs",
+    "test": "vitest run && node --test scripts/check-loading.node-test.mjs scripts/prepare-desktop.node-test.mjs",
     "test:watch": "vitest",
     "build": "tsc -b && vite build",
     "check:loading": "node scripts/check-loading.mjs",
+    "desktop:prepare": "node scripts/prepare-desktop.mjs",
+    "desktop:build": "node scripts/build-desktop.mjs",
+    "desktop:dev": "npm run desktop:prepare && npm run tauri -- dev",
+    "tauri": "tauri",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
     "@assistant-ui/react": "0.15.1",
+    "@tauri-apps/api": "2.8.0",
     "@lobehub/icons": "^5.16.0",
     "lucide-react": "^1.16.0",
     "react": "^19.2.6",
@@ -23,6 +28,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tailwindcss/postcss": "^4.3.0",
+    "@tauri-apps/cli": "2.8.4",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
