@@ -17,6 +17,16 @@ Configuration layers apply in this order: resource `config.json`, data `config.j
 
 APEX loads only the selected data directory's `.env`. Existing process environment values take precedence, including during variable interpolation. `PYTHON_DOTENV_DISABLED` disables `.env` loading. Restart after editing configuration files or `.env` directly.
 
+### Browser and desktop shell origins
+
+The loopback API allows the local web HUD origins by default and also allows `http://tauri.localhost`, the Windows desktop shell's webview origin. If `APEX_ALLOWED_ORIGINS` is set, its comma-separated list replaces all defaults. Include every origin the HUD should use, including `http://tauri.localhost` when the desktop shell needs access. An override that omits it will cause the shell's browser requests to be rejected by CORS. CORS does not authenticate callers or make a non-loopback API binding safe.
+
+For example, this override keeps the default development origins and adds another local web HUD origin:
+
+```dotenv
+APEX_ALLOWED_ORIGINS=http://127.0.0.1:8000,http://localhost:8000,http://127.0.0.1:5500,http://localhost:5500,http://127.0.0.1:5173,http://localhost:5173,http://tauri.localhost,http://localhost:6000
+```
+
 The main writable paths follow the selected data directory:
 
 | Data | Path |
