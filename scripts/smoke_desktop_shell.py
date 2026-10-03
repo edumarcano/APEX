@@ -89,6 +89,12 @@ class SmokeFailure(RuntimeError):
     pass
 
 
+class WebDriverCommandError(SmokeFailure):
+    def __init__(self, error: str, message: str) -> None:
+        super().__init__(f"WebDriver command failed ({error}): {message}")
+        self.error = error
+
+
 class _PROCESSENTRY32W(ctypes.Structure):
     _fields_ = [
         ("dwSize", wintypes.DWORD),
@@ -243,6 +249,16 @@ class WebDriver:
                 result = response.read(MAX_RESPONSE_BYTES + 1)
         except urllib.error.HTTPError as exc:
             message = exc.read(MAX_RESPONSE_BYTES).decode("utf-8", "replace")
+            try:
+                envelope = json.loads(message)
+            except (UnicodeError, json.JSONDecodeError):
+                envelope = None
+            if isinstance(envelope, dict):
+                value = envelope.get("value")
+                if isinstance(value, dict) and isinstance(value.get("error"), str):
+                    raise WebDriverCommandError(
+                        value["error"], str(value.get("message", value["error"]))
+                    ) from None
             raise SmokeFailure(f"WebDriver {method} {path} returned HTTP {exc.code}: {message[:500]}") from None
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             raise SmokeFailure(f"WebDriver {method} {path} failed: {exc}") from None
@@ -256,8 +272,10 @@ class WebDriver:
             raise SmokeFailure(f"WebDriver returned invalid JSON: {exc}") from None
         if isinstance(envelope, dict) and envelope.get("value") is not None:
             value = envelope["value"]
-            if isinstance(value, dict) and value.get("error"):
-                raise SmokeFailure(f"WebDriver command failed: {value.get('message', value['error'])}")
+            if isinstance(value, dict) and isinstance(value.get("error"), str):
+                raise WebDriverCommandError(
+                    value["error"], str(value.get("message", value["error"]))
+                )
             return value
         return envelope
 
@@ -293,8 +311,8 @@ class WebDriver:
     def find(self, using: str, value: str) -> str | None:
         try:
             result = self._command("POST", "/element", {"using": using, "value": value})
-        except SmokeFailure as exc:
-            if "no such element" in str(exc).lower():
+        except WebDriverCommandError as exc:
+            if exc.error == "no such element":
                 return None
             raise
         if not isinstance(result, dict):
@@ -744,15 +762,23 @@ def _terminate_process_handle(handle: int, label: str) -> None:
 
 
 def _click_button(driver: WebDriver, label: str, timeout: float) -> bool:
-    element = driver.find("xpath", _button_xpath(label))
-    if element is None:
-        if not driver.wait_for("button", lambda: driver.find("xpath", _button_xpath(label)) is not None, timeout):
-            return False
-        element = driver.find("xpath", _button_xpath(label))
-    if element is None:
-        return False
-    driver.click(element)
-    return True
+    locator = _button_xpath(label)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        element = driver.find("xpath", locator)
+        if element is None:
+            time.sleep(POLL_INTERVAL_SECONDS)
+            continue
+        try:
+            driver.click(element)
+            return True
+        except WebDriverCommandError as exc:
+            if exc.error not in {"stale element reference", "no such element"}:
+                raise
+            # The app can replace a transition screen between locator lookup
+            # and click. Reacquire the element on the next bounded iteration.
+            time.sleep(POLL_INTERVAL_SECONDS)
+    return False
 
 
 def _retry_backend(driver: WebDriver, timeout: float) -> bool:
