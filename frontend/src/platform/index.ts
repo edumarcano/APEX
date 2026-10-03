@@ -5,4 +5,3 @@ export async function loadDesktopPlatform(): Promise<DesktopPlatform> {
   const { createTauriPlatform } = await import('./tauri')
   return createTauriPlatform()
 }
-

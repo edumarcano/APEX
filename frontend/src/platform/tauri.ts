@@ -13,4 +13,3 @@ export function createTauriPlatform(): DesktopPlatform {
     subscribeBackendState: async (onWakeup) => listen(BACKEND_STATE_EVENT, onWakeup),
   }
 }
-

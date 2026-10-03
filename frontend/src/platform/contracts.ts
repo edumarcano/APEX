@@ -26,4 +26,3 @@ export type DesktopPlatform = {
   quit(): Promise<void>
   subscribeBackendState(onWakeup: () => void): Promise<() => void>
 }
-
