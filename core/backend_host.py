@@ -467,6 +467,12 @@ def serve(
     shutdown_timeout_seconds: int = SHUTDOWN_TIMEOUT_SECONDS,
 ) -> int:
     """Reserve the API endpoint and selected profile, then serve one worker."""
+    if sys.platform == "win32":
+        # NumPy's native import can stall with a thread reading piped stdin on
+        # Windows, also blocking subsequent thread starts and API requests.
+        # Load it before the host starts its watchdog or control reader.
+        importlib.import_module("numpy")
+
     channel: ControlChannel | None = None
     protocol_writer = None
     shutdown_requested = threading.Event()

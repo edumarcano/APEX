@@ -26,6 +26,40 @@ from core.host.profile_lock import ProfileLock
 
 
 class BackendHostSubprocessTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "Windows native import ordering")
+    def test_windows_numpy_is_ready_before_host_threads_start(self) -> None:
+        bootstrap = textwrap.dedent("""
+            import sys
+            from unittest.mock import patch
+            from core import backend_host
+
+            class StopBeforeThreads(Exception):
+                pass
+
+            def check_native_import(_watchdog):
+                numpy = sys.modules.get("numpy")
+                assert numpy is not None, "NumPy was not loaded before host threads"
+                assert numpy.arange(3).sum() == 3
+                raise StopBeforeThreads
+
+            with patch.object(backend_host._HardStopWatchdog, "start", check_native_import):
+                try:
+                    backend_host.main(["serve", "--managed"])
+                except StopBeforeThreads:
+                    pass
+                else:
+                    raise AssertionError("host did not reach its first thread start")
+        """)
+        command, environment = python_child_invocation(["-B", "-c", bootstrap])
+        completed = subprocess.run(
+            command,
+            cwd=Path(__file__).resolve().parents[1],
+            env=environment,
+            capture_output=True,
+            timeout=30,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr.decode(errors="replace"))
+
     def _assert_api_port_available(self) -> None:
         probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
