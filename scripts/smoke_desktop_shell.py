@@ -60,9 +60,13 @@ class Check:
 @dataclass
 class Report:
     checks: list[Check] = field(default_factory=list)
+    diagnostics: list[dict[str, str]] = field(default_factory=list)
 
     def add(self, name: str, status: str, detail: str | None = None) -> None:
         self.checks.append(Check(name, status, detail))
+
+    def add_diagnostic(self, name: str, value: str) -> None:
+        self.diagnostics.append({"name": name, "value": value})
 
     @property
     def result(self) -> str:
@@ -77,6 +81,7 @@ class Report:
             "schema_version": 1,
             "result": self.result,
             "checks": [asdict(check) for check in self.checks],
+            "diagnostics": self.diagnostics,
         }
 
 
@@ -311,6 +316,27 @@ class WebDriver:
         )
         return result if isinstance(result, str) else ""
 
+    def current_url(self) -> str:
+        result = self._command("GET", "/url")
+        return result if isinstance(result, str) else ""
+
+    def page_source(self) -> str:
+        result = self._command("GET", "/source")
+        return result if isinstance(result, str) else ""
+
+    def page_context(self) -> dict[str, object]:
+        result = self._command("POST", "/execute/sync", {
+            "script": (
+                "const root = document.getElementById('root');"
+                "return {href: location.href, tauriInternals: Boolean(window.__TAURI_INTERNALS__),"
+                "bodyText: document.body ? document.body.innerText.slice(0, 12000) : '',"
+                "rootHtml: root ? root.innerHTML.slice(0, 12000) : '',"
+                "scripts: Array.from(document.scripts).slice(0, 20).map(item => item.src.slice(0, 1000))};"
+            ),
+            "args": [],
+        })
+        return result if isinstance(result, dict) else {}
+
     def wait_for(self, description: str, predicate: Callable[[], bool], timeout: float) -> bool:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -322,6 +348,64 @@ class WebDriver:
                     return False
             time.sleep(POLL_INTERVAL_SECONDS)
         return False
+
+
+def _capture_failure_diagnostics(
+    report: Report,
+    *,
+    stage: str,
+    driver: WebDriver | None,
+    log_paths: list[tuple[str, Path]],
+) -> dict[str, str]:
+    captured: dict[str, str] = {}
+    if driver is not None and driver.session_id is not None:
+        for key, read in (
+            ("url", driver.current_url),
+            ("visible_text", driver.text),
+            ("page_source", driver.page_source),
+        ):
+            try:
+                value = read()
+            except (SmokeFailure, OSError, ValueError) as exc:
+                value = f"unavailable: {exc}"
+            captured[key] = value[:12_000]
+            report.add_diagnostic(f"{stage}_{key}", captured[key])
+        try:
+            page_context = driver.page_context()
+        except (SmokeFailure, OSError, ValueError) as exc:
+            report.add_diagnostic(f"{stage}_page_context_error", str(exc)[:2_000])
+        else:
+            for key, limit in (
+                ("href", 2_000),
+                ("tauriInternals", 32),
+                ("bodyText", 12_000),
+                ("rootHtml", 12_000),
+                ("scripts", 4_000),
+            ):
+                value = page_context.get(key)
+                if key == "scripts":
+                    rendered = json.dumps(value if isinstance(value, list) else [], ensure_ascii=False)
+                else:
+                    rendered = str(value if value is not None else "")
+                captured[key] = rendered[:limit]
+                report.add_diagnostic(f"{stage}_{key}", captured[key])
+    else:
+        captured["visible_text"] = "unavailable: WebDriver session is no longer active"
+        report.add_diagnostic(f"{stage}_visible_text", captured["visible_text"])
+
+    for label, path in log_paths:
+        try:
+            with path.open("rb") as handle:
+                handle.seek(0, os.SEEK_END)
+                size = handle.tell()
+                handle.seek(max(0, size - 16_384), os.SEEK_SET)
+                value = handle.read(16_384).decode("utf-8", "replace")
+        except OSError as exc:
+            value = f"unavailable: {exc}"
+        if value:
+            report.add_diagnostic(f"{stage}_{label}_log_tail", value[-12_000:])
+            captured[f"{label}_log_tail"] = value[-12_000:]
+    return captured
 
 
 def _http_json(path: str, timeout: float = 2.0) -> object:
@@ -705,6 +789,7 @@ def _run_smoke(
     driver_process: subprocess.Popen[bytes] | None = None
     driver: WebDriver | None = None
     fixture: LlamaCppStreamFixture | None = None
+    driver_log_paths: list[tuple[str, Path]] = []
     held_api_port: socket.socket | None = None
     with tempfile.TemporaryDirectory(prefix="apex-desktop-smoke-") as temp_name:
         root = Path(temp_name)
@@ -715,6 +800,7 @@ def _run_smoke(
         while native_port == control_port:
             native_port = _available_port()
         log_path = root / "tauri-driver.log"
+        driver_log_paths.append(("demo_driver", log_path))
         try:
             with log_path.open("wb") as log_file:
                 driver_process = subprocess.Popen(
@@ -766,7 +852,19 @@ def _run_smoke(
             held_api_port.close()
             held_api_port = None
             if not conflict_visible:
-                report.add("startup_conflict", "failed", "native shell did not show an actionable 127.0.0.1:8000 conflict with Retry backend")
+                diagnostic = _capture_failure_diagnostics(
+                    report,
+                    stage="startup_conflict",
+                    driver=driver,
+                    log_paths=driver_log_paths,
+                )
+                observed = diagnostic.get("visible_text", "")[:3_000]
+                report.add(
+                    "startup_conflict",
+                    "failed",
+                    "native shell did not show an actionable 127.0.0.1:8000 conflict with Retry backend; "
+                    f"observed WebView text: {observed or '(empty)'}",
+                )
                 raise SmokeFailure("port conflict recovery state was not displayed")
             report.add("startup_conflict", "passed", "owned temporary listener triggered recoverable native startup error")
             if not _retry_backend(driver, min(8.0, timeout)):
@@ -863,7 +961,9 @@ def _run_smoke(
             native_port = _available_port()
             while native_port == control_port:
                 native_port = _available_port()
-            with (root / "tauri-driver-stream.log").open("wb") as log_file:
+            stream_log_path = root / "tauri-driver-stream.log"
+            driver_log_paths.append(("stream_driver", stream_log_path))
+            with stream_log_path.open("wb") as log_file:
                 driver_process = subprocess.Popen(
                     [str(tauri_driver), "--port", str(control_port), "--native-port", str(native_port), "--native-driver", str(native_driver)],
                     stdin=subprocess.DEVNULL,
@@ -1009,6 +1109,13 @@ def _run_smoke(
                 report.add("native_shell_cleanup", "failed", "the smoke-owned native shell did not exit after its window close request")
                 report.add("owned_backend_cleanup", "failed", "the exact identity-matched child did not exit or fixed API port remained occupied")
         except (SmokeFailure, OSError, ValueError, subprocess.SubprocessError) as exc:
+            if not report.diagnostics:
+                _capture_failure_diagnostics(
+                    report,
+                    stage="desktop_smoke",
+                    driver=driver,
+                    log_paths=driver_log_paths,
+                )
             report.add("desktop_smoke", "failed", str(exc))
         finally:
             if fixture is not None:
