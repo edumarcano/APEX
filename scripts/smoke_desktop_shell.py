@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
+import shutil
 import socket
 import subprocess
 import sys
@@ -211,7 +212,13 @@ class LlamaCppStreamFixture:
                 except (BrokenPipeError, ConnectionResetError, OSError):
                     return
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        class FixtureHTTPServer(ThreadingHTTPServer):
+            def handle_error(self, request: object, client_address: object) -> None:
+                if isinstance(sys.exc_info()[1], ConnectionResetError):
+                    return
+                super().handle_error(request, client_address)
+
+        self.server = FixtureHTTPServer(("127.0.0.1", 0), Handler)
         self.server.daemon_threads = True
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -745,6 +752,25 @@ def _wait_port_free(timeout: float) -> bool:
     return _api_port_available()
 
 
+def _cleanup_temp_root(path: Path, timeout: float = 5.0) -> list[str]:
+    """Retry only locked entries beneath this run's disposable temp root."""
+    deadline = time.monotonic() + timeout
+    last_error: OSError | None = None
+
+    def propagate_cleanup_error(function: Callable[..., Any], entry: str, error: OSError) -> None:
+        raise error
+
+    while True:
+        try:
+            shutil.rmtree(path, onexc=propagate_cleanup_error)
+            return []
+        except OSError as exc:
+            last_error = exc
+        if time.monotonic() >= deadline:
+            return [f"could not remove {path}: {last_error}"]
+        time.sleep(min(POLL_INTERVAL_SECONDS, max(0.0, deadline - time.monotonic())))
+
+
 def _wait_process_handle(handle: int, timeout: float) -> bool:
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
@@ -817,7 +843,10 @@ def _run_smoke(
     fixture: LlamaCppStreamFixture | None = None
     driver_log_paths: list[tuple[str, Path]] = []
     held_api_port: socket.socket | None = None
-    with tempfile.TemporaryDirectory(prefix="apex-desktop-smoke-") as temp_name:
+    root: Path | None = None
+    with tempfile.TemporaryDirectory(
+        prefix="apex-desktop-smoke-", ignore_cleanup_errors=True
+    ) as temp_name:
         root = Path(temp_name)
         profile_root = root / "profile"
         env = _sanitized_environment(root)
@@ -1201,6 +1230,23 @@ def _run_smoke(
                             report.add("owned_backend_cleanup", "passed", "exception cleanup terminated the verified child and fixed API port is free")
                         else:
                             report.add("owned_backend_cleanup", "failed", "verified child exited but 127.0.0.1:8000 remained occupied")
+
+    if root is not None and root.exists():
+        cleanup_errors = _cleanup_temp_root(root)
+        if root.exists():
+            detail = "disposable smoke directory remains locked after bounded cleanup"
+            if cleanup_errors:
+                detail += ": " + "; ".join(cleanup_errors[:3])
+            report.add("disposable_profile_cleanup", "unverified", detail)
+            report.add_diagnostic("disposable_profile_path", str(root))
+        else:
+            report.add(
+                "disposable_profile_cleanup",
+                "passed",
+                "disposable smoke directory was removed after a bounded retry",
+            )
+    else:
+        report.add("disposable_profile_cleanup", "passed", "disposable smoke directory was removed")
 
     return report
 
