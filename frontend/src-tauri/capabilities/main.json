@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-capability",
+  "description": "APEX main window with local bundled UI and its backend lifecycle commands.",
+  "windows": ["main"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-desktop-backend-status",
+    "allow-desktop-backend-retry",
+    "allow-desktop-quit"
+  ]
+}

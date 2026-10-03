@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "security": {
+      "capabilities": ["main-capability", "development-main-capability"],
+      "csp": "default-src 'self' tauri: http://tauri.localhost http://127.0.0.1:5173; script-src 'self' http://127.0.0.1:5173; style-src 'self' 'unsafe-inline' http://127.0.0.1:5173 https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://cdnjs.cloudflare.com http://127.0.0.1:5173; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:8000 http://127.0.0.1:5173 ws://127.0.0.1:5173; object-src 'none'; base-uri 'self'; frame-src 'none'; form-action 'self'"
+    }
+  }
+}
