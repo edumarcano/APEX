@@ -909,7 +909,7 @@ def _run_smoke(
     held_api_port: socket.socket | None = None
     root: Path | None = None
     with tempfile.TemporaryDirectory(
-        prefix="apex-desktop-smoke-", ignore_cleanup_errors=True
+        prefix="apex-desktop-smoke-", delete=False
     ) as temp_name:
         root = Path(temp_name)
         profile_root = root / "profile"
