@@ -18,7 +18,7 @@ use std::{
 };
 use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader},
     sync::{mpsc, Mutex},
     time::{timeout, Instant},
 };
@@ -30,6 +30,63 @@ const API_HEALTH: &str = "http://127.0.0.1:8000/api/v1/health/ready";
 const NATIVE_ORIGIN: &str = "http://tauri.localhost";
 const STARTUP_LIMIT: Duration = Duration::from_secs(180);
 const MAX_HTTP_BYTES: usize = 64 * 1024;
+const EXIT_FRAME_GRACE: Duration = Duration::from_millis(250);
+
+enum StartupReceive {
+    Frame(Result<protocol::Envelope, &'static str>),
+    Closed,
+    Exited,
+    TimedOut,
+}
+
+async fn receive_startup_frame(
+    receiver: &mut mpsc::Receiver<Result<protocol::Envelope, &'static str>>,
+    wait: Duration,
+    child_exited: bool,
+) -> StartupReceive {
+    match timeout(wait, receiver.recv()).await {
+        Ok(Some(frame)) => StartupReceive::Frame(frame),
+        Ok(None) => StartupReceive::Closed,
+        Err(_) if child_exited => StartupReceive::Exited,
+        Err(_) => StartupReceive::TimedOut,
+    }
+}
+
+fn start_stdout_reader<R>(stdout: R, sender: mpsc::Sender<Result<protocol::Envelope, &'static str>>)
+where
+    R: AsyncRead + Unpin + Send + 'static,
+{
+    tauri::async_runtime::spawn(async move {
+        let mut reader = BufReader::new(stdout);
+        loop {
+            let mut bytes = Vec::new();
+            let read = (&mut reader)
+                .take((protocol::MAX_FRAME_BYTES + 1) as u64)
+                .read_until(b'\n', &mut bytes)
+                .await;
+            match read {
+                Ok(0) => {
+                    let _ = sender.send(Err("backend_crashed")).await;
+                    break;
+                }
+                Ok(_) => {
+                    if bytes.len() > protocol::MAX_FRAME_BYTES {
+                        let _ = sender.send(Err("protocol_error")).await;
+                        break;
+                    }
+                    let parsed = protocol::decode(&bytes);
+                    if sender.send(parsed).await.is_err() {
+                        break;
+                    }
+                }
+                Err(_) => {
+                    let _ = sender.send(Err("protocol_error")).await;
+                    break;
+                }
+            }
+        }
+    });
+}
 
 #[cfg(windows)]
 type OwnedChild = windows_job::OwnedChild;
@@ -231,16 +288,15 @@ async fn run_start(
             )
             .await;
         }
-        if let Ok(Some(_)) = session.child.try_wait() {
-            return safe_event(
-                &app,
-                &state,
-                generation,
-                Phase::Failed,
-                Some("backend_crashed"),
-                None,
-            );
-        }
+        let child_exited = match session.child.try_wait() {
+            Ok(Some(_)) | Err(_) => true,
+            Ok(None) => false,
+        };
+        let receive_wait = (deadline - now).min(if child_exited {
+            EXIT_FRAME_GRACE
+        } else {
+            Duration::from_millis(250)
+        });
         let receive = tokio::select! {
             _ = cancellation.cancelled() => {
                 cleanup_owned(&mut session, identity.as_ref().map(|id| id.shutdown_timeout_seconds).unwrap_or(60)).await;
@@ -248,14 +304,14 @@ async fn run_start(
                 safe_event(&app, &state, generation, Phase::Stopped, None, None);
                 return state.snapshot();
             }
-            received = timeout((deadline - now).min(Duration::from_millis(250)), session.rx.recv()) => received,
+            received = receive_startup_frame(&mut session.rx, receive_wait, child_exited) => received,
         };
         let frame = match receive {
-            Ok(Some(Ok(frame))) => frame,
-            Ok(Some(Err(code))) => {
+            StartupReceive::Frame(Ok(frame)) => frame,
+            StartupReceive::Frame(Err(code)) => {
                 return fail_start(&app, &state, generation, session, code, identity.as_ref()).await
             }
-            Ok(None) => {
+            StartupReceive::Closed => {
                 return fail_start(
                     &app,
                     &state,
@@ -266,7 +322,18 @@ async fn run_start(
                 )
                 .await
             }
-            Err(_) => {
+            StartupReceive::Exited => {
+                return fail_start(
+                    &app,
+                    &state,
+                    generation,
+                    session,
+                    "backend_crashed",
+                    identity.as_ref(),
+                )
+                .await;
+            }
+            StartupReceive::TimedOut => {
                 // The host deadline is for receiving the start request, which was
                 // sent immediately above. Startup may continue while API imports run.
                 continue;
@@ -708,36 +775,7 @@ async fn spawn_backend(
         (child, stdin, stdout, stderr)
     };
     let (tx, rx) = mpsc::channel(32);
-    tauri::async_runtime::spawn(async move {
-        let mut reader = BufReader::new(stdout);
-        loop {
-            let mut bytes = Vec::new();
-            let read = (&mut reader)
-                .take((protocol::MAX_FRAME_BYTES + 1) as u64)
-                .read_until(b'\n', &mut bytes)
-                .await;
-            match read {
-                Ok(0) => {
-                    let _ = tx.send(Err("backend_crashed")).await;
-                    break;
-                }
-                Ok(_) => {
-                    if bytes.len() > protocol::MAX_FRAME_BYTES {
-                        let _ = tx.send(Err("protocol_error")).await;
-                        break;
-                    }
-                    let parsed = protocol::decode(&bytes);
-                    if tx.send(parsed).await.is_err() {
-                        break;
-                    }
-                }
-                Err(_) => {
-                    let _ = tx.send(Err("protocol_error")).await;
-                    break;
-                }
-            }
-        }
-    });
+    start_stdout_reader(stdout, tx);
     tauri::async_runtime::spawn(async move {
         let mut drain = BufReader::new(stderr);
         let mut sink = tokio::io::sink();
@@ -884,4 +922,42 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("failed to run APEX desktop shell");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn queued_host_error_is_received_before_fast_child_exit_is_classified() {
+        let frame = r#"{"version":1,"type":"error","request_id":"start:1","payload":{"code":"port_in_use"}}"#;
+        let script = format!("[Console]::Out.Write('{frame}' + [char]10)");
+        let mut child = tokio::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("Windows PowerShell should launch the fast protocol-error child");
+        let stdout = child.stdout.take().expect("child stdout should be piped");
+        let (sender, mut receiver) = mpsc::channel(32);
+        start_stdout_reader(stdout, sender);
+
+        let exit = child.wait().await.expect("protocol child should exit");
+        assert!(exit.success(), "protocol child should exit successfully");
+        let child_exited = child
+            .try_wait()
+            .expect("exit status should remain observable")
+            .is_some();
+        assert!(child_exited);
+
+        let StartupReceive::Frame(Ok(received)) =
+            receive_startup_frame(&mut receiver, EXIT_FRAME_GRACE, child_exited).await
+        else {
+            panic!("a buffered private error frame must be handled before reporting process exit");
+        };
+        assert_eq!(received.kind, "error");
+        assert_eq!(received.request_id, "start:1");
+        assert_eq!(received.payload["code"], "port_in_use");
+    }
 }
