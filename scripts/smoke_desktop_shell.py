@@ -382,6 +382,10 @@ class WebDriver:
         result = self._command("GET", f"/element/{element_id}/enabled")
         return result is True
 
+    def element_text(self, element_id: str) -> str:
+        result = self._command("GET", f"/element/{element_id}/text")
+        return result if isinstance(result, str) else ""
+
     def click(self, element_id: str) -> None:
         self._command("POST", f"/element/{element_id}/click", {})
 
@@ -907,6 +911,69 @@ def _click_button(driver: WebDriver, label: str, timeout: float) -> bool:
     return False
 
 
+def _continue_once_if_preflight_advisory(
+    driver: WebDriver, fixture: LlamaCppStreamFixture, timeout: float
+) -> str:
+    dialog_locator = "//div[@role='dialog' and @aria-labelledby='preflight-dialog-title']"
+    continue_once_locator = (
+        "//div[@role='dialog' and @aria-labelledby='preflight-dialog-title']"
+        "//button[translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', "
+        "'abcdefghijklmnopqrstuvwxyz')='continue once']"
+    )
+    deadline = time.monotonic() + timeout
+    advisory_seen = False
+    while time.monotonic() < deadline:
+        if fixture.first_delta_sent.is_set():
+            return "not_present"
+        for dialog in driver.find_all("xpath", dialog_locator):
+            try:
+                if not driver.is_displayed(dialog):
+                    continue
+                text = driver.element_text(dialog).casefold()
+            except WebDriverCommandError as exc:
+                if exc.error in {"stale element reference", "no such element"}:
+                    continue
+                raise
+            if "preflight advisory" not in text:
+                continue
+            advisory_seen = True
+            button = _wait_for_ready_element(
+                driver,
+                "xpath",
+                continue_once_locator,
+                max(0.0, deadline - time.monotonic()),
+            )
+            if button is None:
+                return "unavailable"
+            try:
+                driver.click(button)
+            except WebDriverCommandError as exc:
+                if exc.error not in {
+                    "stale element reference",
+                    "no such element",
+                    "element not interactable",
+                }:
+                    raise
+                continue
+            close_deadline = min(deadline, time.monotonic() + 3.0)
+            while time.monotonic() < close_deadline:
+                visible = False
+                for candidate in driver.find_all("xpath", dialog_locator):
+                    try:
+                        visible = driver.is_displayed(candidate)
+                    except WebDriverCommandError as exc:
+                        if exc.error not in {"stale element reference", "no such element"}:
+                            raise
+                    if visible:
+                        break
+                if not visible:
+                    return "continued"
+                time.sleep(POLL_INTERVAL_SECONDS)
+            return "unavailable"
+        time.sleep(POLL_INTERVAL_SECONDS)
+    return "unavailable" if advisory_seen else "not_present"
+
+
 def _retry_backend(driver: WebDriver, timeout: float) -> bool:
     return _click_button(driver, "Retry backend", timeout) and _click_button(driver, "Restart backend", timeout)
 
@@ -1222,47 +1289,66 @@ def _run_smoke(
                     driver.type_text(prompt, "Return a short answer to exercise a streamed response.")
                     if not _click_button(driver, "Send", min(8.0, timeout)):
                         report.add("cortex_stream", "failed", "Cortex Send control was unavailable")
-                    elif not driver.wait_for(
-                        "fixture first delta in WebView",
-                        lambda: fixture.first_delta_sent.is_set() and "first streamed segment" in driver.text().lower(),
-                        min(45.0, timeout),
-                    ):
-                        _capture_cortex_stream_failure(
-                            report,
-                            driver=driver,
-                            fixture=fixture,
-                            log_paths=driver_log_paths,
-                        )
-                        report.add("cortex_stream", "failed", "provider fixture did not produce an incremental delta visible in the native WebView")
                     else:
-                        running = _http_json("/api/v1/cortex/runs?status=running&limit=5")
-                        run_id = next((item.get("id") for item in running if isinstance(item, dict) and isinstance(item.get("id"), str)), None) if isinstance(running, list) else None
-                        if run_id is None:
-                            report.add("cortex_stream", "failed", "no running Cortex record was available while the fixture held its stream")
+                        preflight_result = _continue_once_if_preflight_advisory(
+                            driver, fixture, min(10.0, timeout)
+                        )
+                        if preflight_result == "continued":
+                            report.add(
+                                "cortex_preflight_once",
+                                "passed",
+                                "the actual local-fixture Cortex turn continued through the existing one-time advisory action",
+                            )
+                        if preflight_result == "unavailable":
+                            _capture_cortex_stream_failure(
+                                report,
+                                driver=driver,
+                                fixture=fixture,
+                                log_paths=driver_log_paths,
+                            )
+                            report.add(
+                                "cortex_stream",
+                                "failed",
+                                "Preflight Advisory appeared but its Continue once action was unavailable or did not close the dialog",
+                            )
+                        elif not driver.wait_for(
+                            "fixture first delta in WebView",
+                            lambda: fixture.first_delta_sent.is_set() and "first streamed segment" in driver.text().lower(),
+                            min(45.0, timeout),
+                        ):
+                            _capture_cortex_stream_failure(
+                                report,
+                                driver=driver,
+                                fixture=fixture,
+                                log_paths=driver_log_paths,
+                            )
+                            report.add("cortex_stream", "failed", "provider fixture did not produce an incremental delta visible in the native WebView")
                         else:
-                            if _wait_sse_event_type(run_id, "response.delta", timeout=min(15.0, timeout)):
-                                report.add("cortex_stream", "passed", "first provider delta rendered in WebView and appeared in the public run-event replay")
+                            running = _http_json("/api/v1/cortex/runs?status=running&limit=5")
+                            run_id = next((item.get("id") for item in running if isinstance(item, dict) and isinstance(item.get("id"), str)), None) if isinstance(running, list) else None
+                            if run_id is None:
+                                report.add("cortex_stream", "failed", "no running Cortex record was available while the fixture held its stream")
                             else:
-                                report.add("cortex_stream", "failed", "WebView rendered fixture text but run-event replay lacked response.delta")
-                            if not _click_button(driver, "Stop generation", min(8.0, timeout)):
-                                report.add("cortex_cancel", "failed", "Stop generation control was unavailable while the fixture stream was held")
-                            else:
-                                # The provider checks cancellation between SSE
-                                # chunks; releasing this gate after the real UI
-                                # action lets the production reader observe it.
-                                fixture.release_cancelled_stream.set()
-                                def cancelled() -> bool:
-                                    value = _http_json(f"/api/v1/cortex/runs/{run_id}")
-                                    return isinstance(value, dict) and value.get("status") == "cancelled"
-
-                                if driver.wait_for("persisted cancelled Cortex run", cancelled, min(30.0, timeout)):
-                                    terminal_events = _http_sse_event_types(run_id, timeout=min(15.0, timeout))
-                                    if "run.completed" in terminal_events:
-                                        report.add("cortex_cancel", "passed", "WebView Stop cancelled the held provider run and replay includes terminal activity")
-                                    else:
-                                        report.add("cortex_cancel", "failed", "run was persisted cancelled but terminal event was absent from replay")
+                                if _wait_sse_event_type(run_id, "response.delta", timeout=min(15.0, timeout)):
+                                    report.add("cortex_stream", "passed", "first provider delta rendered in WebView and appeared in the public run-event replay")
                                 else:
-                                    report.add("cortex_cancel", "failed", "Stop generation did not persist cancellation before the bound expired")
+                                    report.add("cortex_stream", "failed", "WebView rendered fixture text but run-event replay lacked response.delta")
+                                if not _click_button(driver, "Stop generation", min(8.0, timeout)):
+                                    report.add("cortex_cancel", "failed", "Stop generation control was unavailable while the fixture stream was held")
+                                else:
+                                    fixture.release_cancelled_stream.set()
+                                    def cancelled() -> bool:
+                                        value = _http_json(f"/api/v1/cortex/runs/{run_id}")
+                                        return isinstance(value, dict) and value.get("status") == "cancelled"
+
+                                    if driver.wait_for("persisted cancelled Cortex run", cancelled, min(30.0, timeout)):
+                                        terminal_events = _http_sse_event_types(run_id, timeout=min(15.0, timeout))
+                                        if "run.completed" in terminal_events:
+                                            report.add("cortex_cancel", "passed", "WebView Stop cancelled the held provider run and replay includes terminal activity")
+                                        else:
+                                            report.add("cortex_cancel", "failed", "run was persisted cancelled but terminal event was absent from replay")
+                                    else:
+                                        report.add("cortex_cancel", "failed", "Stop generation did not persist cancellation before the bound expired")
             fixture.close()
             fixture = None
 
