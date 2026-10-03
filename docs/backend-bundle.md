@@ -1,6 +1,6 @@
 # Windows backend bundle
 
-The backend bundle is an experimental Windows x64 package for running the existing FastAPI backend and CLI without a source checkout. It keeps the backend and command-line client separate from the future desktop shell. The package is built from the locked Python runtime plus every project extra, and includes its configuration defaults, demo fixtures, and documentation resources.
+The Windows x64 backend bundle contains the existing FastAPI backend and CLI for use without a source checkout. The desktop shell packages the same backend runtime alongside its native executable; FastAPI and the CLI remain independent of the shell. The package is built from the locked Python runtime plus every project extra, and includes its configuration defaults, demo fixtures, and documentation resources.
 
 ## Build
 
@@ -75,6 +75,37 @@ The suite relocates the packaged programs under a Unicode path, runs them from a
 The bundle contains the backend runtime, standalone CLI, default configuration, demo JSON fixtures, and the documentation the backend needs at runtime. It excludes model weights, provider credentials, databases, operator configuration, caches, and other personal data. Mutable installed data defaults to `%LOCALAPPDATA%\APEX`; see [runtime paths](architecture.md#runtime-resource-and-data-paths) and [configuration](configuration.md#where-settings-live).
 
 The manifest records the source commit, reproducibility seed, staged notices, and final output files. Rebuild from the same commit and `SOURCE_DATE_EPOCH` to compare output manifests and verify reproducibility.
+
+## Desktop build handoff
+
+Build the backend bundle before starting the Vite build. The desktop preparation step stages the complete `dist/backend-bundle` tree at `frontend/src-tauri/resources/backend-bundle`; Vite clears `frontend/dist`, so prepare must finish first. The native assembly step later copies that staged tree beside `APEX.exe` in `build/desktop-shell/APEX/backend-bundle`. Preserve the executable, its adjacent `_internal` directory, configuration and demo resources, and license notices together. Do not stage only the executable.
+
+From the repository root, prepare the locked backend bundle, then run the desktop commands from `frontend`:
+
+```powershell
+uv sync --locked --all-extras --python 3.14.7
+uv run --locked --all-extras --python 3.14.7 python scripts/build_backend_bundle.py
+Push-Location frontend
+npm run desktop:prepare -- --bundle ..\dist\backend-bundle
+npm run desktop:build
+Pop-Location
+```
+
+For repeat desktop builds, pass `--bundle` an absolute path to the complete previously staged bundle when Vite has cleared `dist`; preparation validates and stages that tree before each frontend build.
+
+The assembled native executable is `build/desktop-shell/APEX/APEX.exe`. The sibling `backend-bundle` directory is part of its runtime and must remain intact. The shell stores mutable operator state in its selected data directory, outside these installed resources.
+
+Run the real WebView2 gate with a `tauri-driver` installation and the Microsoft Edge WebDriver binary matching the host WebView2/Edge version. The smoke launches the supplied executable, guards the fixed API port, sets a disposable data profile and `DEMO_MODE`, and writes a JSON report under the local build directory:
+
+```powershell
+uv run --locked --all-extras --python 3.14.7 python scripts/smoke_desktop_shell.py `
+  --application build/desktop-shell/APEX/APEX.exe `
+  --driver C:\tools\tauri-driver.exe `
+  --native-driver C:\tools\msedgedriver.exe `
+  --report build/desktop-shell/smoke-report.json
+```
+
+The smoke exercises native startup conflict and retry, the four workspaces, a demo Briefing, and Cortex through a disposable loopback llama.cpp-compatible streaming fixture. It waits for the first provider delta before clicking the real WebView Stop control, then checks persisted cancellation and run events. It also checks managed-child crash recovery and graceful close. An essential case reported as `unverified` makes the command exit nonzero; review the JSON report with the build and do not treat an unverified case as a pass.
 
 ## Troubleshooting
 

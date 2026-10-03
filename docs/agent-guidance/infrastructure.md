@@ -1,6 +1,6 @@
 # Infrastructure and Configuration Guidance
 
-- Preserve `launcher.py` as the production entrypoint: FastAPI listens on `127.0.0.1:8000` and the compiled HUD is served on `127.0.0.1:5500`.
+- Preserve the source `launcher.py` workflow: FastAPI listens on `127.0.0.1:8000`, the compiled HUD is served on `127.0.0.1:5500`, and the source launcher opens the ordinary browser presentation. The packaged Windows desktop application uses the native Tauri/WebView2 shell instead of that static server and browser window; it still owns its managed FastAPI child on `127.0.0.1:8000`.
 - Treat loopback binding as part of the security boundary. The API has no authentication, and CORS does not make a remotely bound service private.
 - Keep secrets, tokens, credentials, private keys, credential paths, and environment-only switches in `.env`. Keep tracked non-secret defaults in `config.json`, and keep supported personal or machine-local Runtime Settings in gitignored `config.local.json`. The optional `APEX_CONTEXT_VAULT_PATH` is a machine-specific destination path and belongs in `.env`.
 - Use generic documented placeholders in `.env.example` and never copy local secret values or personal absolute paths into tracked files.
