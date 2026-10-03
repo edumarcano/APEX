@@ -119,6 +119,9 @@ class LlamaCppStreamFixture:
         self.release_cancelled_stream = threading.Event()
         self.hold_timeout = hold_timeout
         self.request_count = 0
+        self.request_metadata: list[dict[str, object]] = []
+        self.response_started_count = 0
+        self.first_delta_error: str | None = None
         self._lock = threading.Lock()
         fixture = self
 
@@ -172,10 +175,27 @@ class LlamaCppStreamFixture:
                 if length <= 0 or length > MAX_RESPONSE_BYTES:
                     self.send_error(413)
                     return
-                self.rfile.read(length)
+                request_body = self.rfile.read(length)
+                try:
+                    payload = json.loads(request_body)
+                except (UnicodeError, json.JSONDecodeError):
+                    payload = None
+                messages = payload.get("messages") if isinstance(payload, dict) else None
+                roles: dict[str, int] = {}
+                if isinstance(messages, list):
+                    for message in messages:
+                        role = message.get("role") if isinstance(message, dict) else None
+                        role = role if isinstance(role, str) and role in {"system", "user", "assistant", "tool"} else "other"
+                        roles[role] = roles.get(role, 0) + 1
                 with fixture._lock:
                     request_number = fixture.request_count
                     fixture.request_count += 1
+                    fixture.request_metadata.append({
+                        "stream": payload.get("stream") if isinstance(payload, dict) else None,
+                        "message_count": len(messages) if isinstance(messages, list) else None,
+                        "message_roles": roles,
+                        "body_valid": isinstance(payload, dict),
+                    })
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
                 self.send_header("Cache-Control", "no-cache")
@@ -183,6 +203,8 @@ class LlamaCppStreamFixture:
                 self.send_header("Connection", "close")
                 self.end_headers()
                 try:
+                    with fixture._lock:
+                        fixture.response_started_count += 1
                     if request_number == 0:
                         self._chunk("The native WebView received the first streamed segment.")
                         # requests.iter_lines buffers 512 bytes by default. Pad
@@ -209,7 +231,10 @@ class LlamaCppStreamFixture:
                         self._write_chunk(b"data: [DONE]\n\n")
                         self.wfile.write(b"0\r\n\r\n")
                         self.wfile.flush()
-                except (BrokenPipeError, ConnectionResetError, OSError):
+                except (BrokenPipeError, ConnectionResetError, OSError) as exc:
+                    if request_number == 0:
+                        with fixture._lock:
+                            fixture.first_delta_error = type(exc).__name__
                     return
 
         class FixtureHTTPServer(ThreadingHTTPServer):
@@ -232,6 +257,17 @@ class LlamaCppStreamFixture:
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=5)
+
+    def diagnostics(self) -> dict[str, object]:
+        with self._lock:
+            return {
+                "request_count": self.request_count,
+                "requests": list(self.request_metadata[:10]),
+                "response_started_count": self.response_started_count,
+                "first_delta_sent": self.first_delta_sent.is_set(),
+                "first_delta_error_type": self.first_delta_error,
+                "release_sent": self.release_cancelled_stream.is_set(),
+            }
 
 
 class WebDriver:
@@ -879,6 +915,58 @@ def _wait_text(driver: WebDriver, text: str, timeout: float) -> bool:
     return driver.wait_for("visible text", lambda: text in driver.text(), timeout)
 
 
+def _capture_cortex_stream_failure(
+    report: Report,
+    *,
+    driver: WebDriver,
+    fixture: LlamaCppStreamFixture,
+    log_paths: list[tuple[str, Path]],
+) -> None:
+    _capture_failure_diagnostics(
+        report,
+        stage="cortex_stream_failure",
+        driver=driver,
+        log_paths=log_paths,
+    )
+    report.add_diagnostic(
+        "cortex_stream_fixture_state",
+        json.dumps(fixture.diagnostics(), ensure_ascii=False)[:8_000],
+    )
+    try:
+        raw_runs = _http_json("/api/v1/cortex/runs?limit=10")
+    except (SmokeFailure, OSError, ValueError) as exc:
+        report.add_diagnostic("cortex_stream_public_runs_error", str(exc)[:2_000])
+        return
+    safe_runs: list[dict[str, object]] = []
+    if isinstance(raw_runs, list):
+        for record in raw_runs[:10]:
+            if not isinstance(record, dict):
+                continue
+            safe: dict[str, object] = {
+                key: record.get(key)
+                for key in (
+                    "status",
+                    "provider",
+                    "runtime",
+                    "turns_count",
+                    "tool_calls_count",
+                    "retries_count",
+                )
+                if isinstance(record.get(key), (str, int, float, type(None)))
+            }
+            error = record.get("error")
+            if isinstance(error, dict):
+                safe["error"] = {
+                    "code": error.get("code") if isinstance(error.get("code"), str) else None,
+                    "message": error.get("message")[:300] if isinstance(error.get("message"), str) else None,
+                }
+            safe_runs.append(safe)
+    report.add_diagnostic(
+        "cortex_stream_public_runs",
+        json.dumps(safe_runs, ensure_ascii=False)[:8_000],
+    )
+
+
 def _run_smoke(
     *,
     application: Path,
@@ -1139,6 +1227,12 @@ def _run_smoke(
                         lambda: fixture.first_delta_sent.is_set() and "first streamed segment" in driver.text().lower(),
                         min(45.0, timeout),
                     ):
+                        _capture_cortex_stream_failure(
+                            report,
+                            driver=driver,
+                            fixture=fixture,
+                            log_paths=driver_log_paths,
+                        )
                         report.add("cortex_stream", "failed", "provider fixture did not produce an incremental delta visible in the native WebView")
                     else:
                         running = _http_json("/api/v1/cortex/runs?status=running&limit=5")
