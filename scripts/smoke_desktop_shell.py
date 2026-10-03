@@ -1336,19 +1336,53 @@ def _run_smoke(
                                 if not _click_button(driver, "Stop generation", min(8.0, timeout)):
                                     report.add("cortex_cancel", "failed", "Stop generation control was unavailable while the fixture stream was held")
                                 else:
+                                    def cancellation_accepted() -> bool:
+                                        value = _http_json(f"/api/v1/cortex/runs/{run_id}")
+                                        return isinstance(value, dict) and value.get("status") in {"cancelling", "cancelled"}
+
+                                    cancel_acknowledged = driver.wait_for(
+                                        "persisted cancellation request",
+                                        cancellation_accepted,
+                                        min(10.0, timeout),
+                                    )
+                                    if not cancel_acknowledged:
+                                        _capture_cortex_stream_failure(
+                                            report,
+                                            driver=driver,
+                                            fixture=fixture,
+                                            log_paths=driver_log_paths,
+                                        )
+                                        report.add(
+                                            "cortex_cancel",
+                                            "failed",
+                                            "the public run record did not acknowledge cancellation before the fixture was released",
+                                        )
                                     fixture.release_cancelled_stream.set()
                                     def cancelled() -> bool:
                                         value = _http_json(f"/api/v1/cortex/runs/{run_id}")
                                         return isinstance(value, dict) and value.get("status") == "cancelled"
 
-                                    if driver.wait_for("persisted cancelled Cortex run", cancelled, min(30.0, timeout)):
-                                        terminal_events = _http_sse_event_types(run_id, timeout=min(15.0, timeout))
-                                        if "run.completed" in terminal_events:
-                                            report.add("cortex_cancel", "passed", "WebView Stop cancelled the held provider run and replay includes terminal activity")
+                                    if cancel_acknowledged:
+                                        if driver.wait_for("persisted cancelled Cortex run", cancelled, min(30.0, timeout)):
+                                            terminal_events = _http_sse_event_types(run_id, timeout=min(15.0, timeout))
+                                            if "run.completed" in terminal_events:
+                                                report.add("cortex_cancel", "passed", "WebView Stop cancelled the held provider run and replay includes terminal activity")
+                                            else:
+                                                report.add("cortex_cancel", "failed", "run was persisted cancelled but terminal event was absent from replay")
                                         else:
-                                            report.add("cortex_cancel", "failed", "run was persisted cancelled but terminal event was absent from replay")
+                                            report.add("cortex_cancel", "failed", "Stop generation did not persist cancellation before the bound expired")
                                     else:
-                                        report.add("cortex_cancel", "failed", "Stop generation did not persist cancellation before the bound expired")
+                                        def terminal_after_failed_cancel() -> bool:
+                                            value = _http_json(f"/api/v1/cortex/runs/{run_id}")
+                                            return isinstance(value, dict) and value.get("status") in {
+                                                "completed", "failed", "cancelled", "interrupted"
+                                            }
+
+                                        driver.wait_for(
+                                            "fixture run terminal cleanup",
+                                            terminal_after_failed_cancel,
+                                            min(30.0, timeout),
+                                        )
             fixture.close()
             fixture = None
 
