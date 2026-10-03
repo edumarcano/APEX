@@ -327,6 +327,25 @@ class WebDriver:
         element_id = result.get(ELEMENT_KEY)
         return element_id if isinstance(element_id, str) else None
 
+    def find_all(self, using: str, value: str) -> list[str]:
+        try:
+            result = self._command("POST", "/elements", {"using": using, "value": value})
+        except WebDriverCommandError as exc:
+            if exc.error == "no such element":
+                return []
+            raise
+        if not isinstance(result, list):
+            return []
+        return [item[ELEMENT_KEY] for item in result if isinstance(item, dict) and isinstance(item.get(ELEMENT_KEY), str)]
+
+    def is_displayed(self, element_id: str) -> bool:
+        result = self._command("GET", f"/element/{element_id}/displayed")
+        return result is True
+
+    def is_enabled(self, element_id: str) -> bool:
+        result = self._command("GET", f"/element/{element_id}/enabled")
+        return result is True
+
     def click(self, element_id: str) -> None:
         self._command("POST", f"/element/{element_id}/click", {})
 
@@ -361,6 +380,22 @@ class WebDriver:
             "args": [],
         })
         return result if isinstance(result, dict) else {}
+
+    def selector_state(self, selector: str) -> list[dict[str, object]]:
+        result = self._command("POST", "/execute/sync", {
+            "script": (
+                "return Array.from(document.querySelectorAll(arguments[0])).slice(0, 10).map(element => {"
+                "const rect = element.getBoundingClientRect();"
+                "const style = getComputedStyle(element);"
+                "return {tag: element.tagName, placeholder: element.getAttribute('placeholder'),"
+                "disabled: Boolean(element.disabled), readOnly: Boolean(element.readOnly),"
+                "display: style.display, visibility: style.visibility, opacity: style.opacity,"
+                "rect: {x: rect.x, y: rect.y, width: rect.width, height: rect.height},"
+                "outerHTML: element.outerHTML.slice(0, 1500)};});"
+            ),
+            "args": [selector],
+        })
+        return result if isinstance(result, list) else []
 
     def wait_for(self, description: str, predicate: Callable[[], bool], timeout: float) -> bool:
         deadline = time.monotonic() + timeout
@@ -730,6 +765,29 @@ def _button_xpath(label: str) -> str:
     return f"//button[normalize-space(.)='{label}' or @aria-label='{label}']"
 
 
+def _wait_for_ready_element(
+    driver: WebDriver,
+    using: str,
+    value: str,
+    timeout: float,
+    *,
+    require_enabled: bool = True,
+) -> str | None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        for element_id in driver.find_all(using, value):
+            try:
+                if driver.is_displayed(element_id) and (
+                    not require_enabled or driver.is_enabled(element_id)
+                ):
+                    return element_id
+            except WebDriverCommandError as exc:
+                if exc.error not in {"stale element reference", "no such element"}:
+                    raise
+        time.sleep(POLL_INTERVAL_SECONDS)
+    return None
+
+
 def _create_port_occupant() -> socket.socket:
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
@@ -791,18 +849,24 @@ def _click_button(driver: WebDriver, label: str, timeout: float) -> bool:
     locator = _button_xpath(label)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        element = driver.find("xpath", locator)
+        element = _wait_for_ready_element(
+            driver, "xpath", locator,
+            max(0.0, deadline - time.monotonic()),
+        )
         if element is None:
-            time.sleep(POLL_INTERVAL_SECONDS)
-            continue
+            return False
         try:
             driver.click(element)
             return True
         except WebDriverCommandError as exc:
-            if exc.error not in {"stale element reference", "no such element"}:
+            if exc.error not in {
+                "stale element reference",
+                "no such element",
+                "element not interactable",
+            }:
                 raise
             # The app can replace a transition screen between locator lookup
-            # and click. Reacquire the element on the next bounded iteration.
+            # and click, or enable it after a state transition. Reacquire it.
             time.sleep(POLL_INTERVAL_SECONDS)
     return False
 
@@ -960,8 +1024,11 @@ def _run_smoke(
                 else:
                     report.add("overview_telemetry", "unverified", "the current Overview did not expose Collect Telemetry")
 
+            setup_dialog = "//div[@role='dialog' and @aria-labelledby='briefing-setup-title']"
             if _click_button(driver, "Briefing", min(8.0, timeout)) and _click_button(driver, "Set up briefing", min(8.0, timeout)):
-                if not _wait_text(driver, "Set up your briefing", min(8.0, timeout)):
+                if _wait_for_ready_element(
+                    driver, "xpath", setup_dialog, min(8.0, timeout), require_enabled=False
+                ) is None:
                     report.add("briefing_setup", "failed", "setup dialog did not open")
                 elif _click_button(driver, "Generate Daily", min(8.0, timeout)):
                     def completed_demo_briefing() -> bool:
@@ -1048,9 +1115,21 @@ def _run_smoke(
             if not _click_button(driver, "Cortex", min(8.0, timeout)):
                 report.add("cortex_stream", "failed", "Cortex workspace was unavailable in the fixture session")
             else:
-                prompt = driver.find("css selector", "textarea[placeholder^='Ask ']")
+                prompt_selector = 'section[aria-label="Cortex workspace"] textarea[placeholder^="Ask "]'
+                prompt = _wait_for_ready_element(
+                    driver, "css selector", prompt_selector, min(20.0, timeout)
+                )
                 if prompt is None:
-                    report.add("cortex_stream", "failed", "Cortex composer input was unavailable")
+                    try:
+                        state = json.dumps(driver.selector_state(prompt_selector), ensure_ascii=False)
+                    except SmokeFailure as exc:
+                        state = f"state unavailable: {exc}"
+                    report.add_diagnostic("cortex_composer_input_state", state[:8_000])
+                    report.add(
+                        "cortex_stream",
+                        "failed",
+                        f"visible and enabled Cortex composer input was unavailable: {state[:2_000]}",
+                    )
                 else:
                     driver.type_text(prompt, "Return a short answer to exercise a streamed response.")
                     if not _click_button(driver, "Send", min(8.0, timeout)):
