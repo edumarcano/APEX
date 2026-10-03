@@ -102,9 +102,10 @@ class _PROCESSENTRY32W(ctypes.Structure):
 class LlamaCppStreamFixture:
     """Loopback OpenAI-compatible stream used to hold a real run at a boundary."""
 
-    def __init__(self) -> None:
+    def __init__(self, hold_timeout: float = 90.0) -> None:
         self.first_delta_sent = threading.Event()
         self.release_cancelled_stream = threading.Event()
+        self.hold_timeout = hold_timeout
         self.request_count = 0
         self._lock = threading.Lock()
         fixture = self
@@ -177,8 +178,9 @@ class LlamaCppStreamFixture:
                         # before the fixture waits for the UI cancellation.
                         self._write_chunk(b":" + b" " * 600 + b"\n\n")
                         fixture.first_delta_sent.set()
-                        if not fixture.release_cancelled_stream.wait(timeout=90):
-                            self._write_chunk(b"0\r\n\r\n")
+                        if not fixture.release_cancelled_stream.wait(timeout=fixture.hold_timeout):
+                            self.wfile.write(b"0\r\n\r\n")
+                            self.wfile.flush()
                             return
                         self._chunk(" The cancellation boundary was released.", finish="stop")
                         self._write_chunk(b"data: [DONE]\n\n")
@@ -358,11 +360,31 @@ def _wait_sse_event_type(run_id: str, expected: str, timeout: float) -> bool:
         headers={"Accept": "text/event-stream"},
     )
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    deadline = time.monotonic() + timeout
+    total_bytes = 0
     try:
         with opener.open(request, timeout=timeout) as response:
-            for raw_line in response:
-                if raw_line.startswith(b"event:") and raw_line[6:].decode("utf-8", "replace").strip() == expected:
-                    return True
+            raw_socket = getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None)
+            if raw_socket is None:
+                raise SmokeFailure("could not apply an overall deadline to the run-event connection")
+            line = bytearray()
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                raw_socket.settimeout(remaining)
+                next_byte = response.read(1)
+                if not next_byte:
+                    return False
+                total_bytes += 1
+                if total_bytes > MAX_RESPONSE_BYTES:
+                    raise SmokeFailure("run-event wait exceeded the smoke-test byte limit")
+                if next_byte == b"\n":
+                    if line.startswith(b"event:") and line[6:].decode("utf-8", "replace").strip() == expected:
+                        return True
+                    line.clear()
+                else:
+                    line.extend(next_byte)
     except (OSError, TimeoutError, urllib.error.URLError):
         return False
     return False
