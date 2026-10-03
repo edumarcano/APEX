@@ -4,6 +4,8 @@ The APEX CLI is a small terminal client for a backend that is already running on
 
 Use the CLI for readiness checks, one-off Agent requests, briefings, context management, and action review. The backend owns validation, persistence, and execution; commands use the same routes as the interface. See [Getting Started](getting-started.md) to start it.
 
+To run the packaged Windows CLI independently of the source checkout, see [Windows backend bundle](backend-bundle.md).
+
 List commands and options with `uv run apex --help`, or add `--help` to a command such as `uv run apex context add --help`. Replace placeholders such as `<record-id>` with an ID returned by APEX.
 
 ## Status and models

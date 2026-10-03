@@ -106,6 +106,8 @@ uv run python -m core.backend_host serve --standalone
 
 `uv run python -m core.api` is the equivalent standalone entrypoint. Both retain the configured development/demo behavior and selected data directory. Stop the host with `Ctrl+C`; see [Backend hosting](architecture.md#backend-hosting) for ownership and shutdown behavior.
 
+For the Windows x64 frozen backend and standalone CLI build, see [Windows backend bundle](backend-bundle.md).
+
 ## Run the servers manually
 
 Use two terminals from the repository root.

@@ -1,0 +1,9 @@
+{
+  "archive": "espeakng-loader-0.2.4-source.tar.gz",
+  "sha256": "c52fde6a08f790dc9f150b68205a35d3ce0aa95dbd5fa8be7b22989b26d1ba09",
+  "upstream_revision": "0ddc87adf77e5850d7eeb542ac8a87d421b64daa",
+  "build_revision": "146599e29be31bf17d99f0bcb7dbb2f92aef3d95",
+  "version": "0.2.4",
+  "license": "MIT",
+  "license_copyright": "Copyright (c) 2025 thewh1teagle"
+}

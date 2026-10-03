@@ -1,0 +1,10 @@
+{
+  "version": "25.12.19",
+  "upstream_tag": "v25.12.19",
+  "upstream_revision": "7e163021e59cca4f8e1e35a7c828b5c6b7915953",
+  "tag_revision": "282dcb1c3266b45600510da4810092f6ec4c85f2",
+  "wheel_sha256": "7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4",
+  "license_file": "flatbuffers-25.12.19-LICENSE.txt",
+  "license_sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+  "license_url": "https://raw.githubusercontent.com/google/flatbuffers/7e163021e59cca4f8e1e35a7c828b5c6b7915953/LICENSE"
+}

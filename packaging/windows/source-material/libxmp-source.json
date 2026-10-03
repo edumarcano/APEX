@@ -1,0 +1,11 @@
+{
+  "component": "libxmp",
+  "version": "4.6.1",
+  "source_revision": "d1c751463a5646f1a8092e432b13377a264d132f",
+  "wheel_dependency": "pygame-ce 2.5.7 Windows x64 wheel",
+  "dll": "pygame/libxmp.dll",
+  "version_marker": "4.6.1",
+  "license_file": "libxmp-4.6.1-COPYING.txt",
+  "license_sha256": "f34309e37033bd4da61f5448d18b7a1280336b00eb18d5e4165c1c509a9c318c",
+  "license_url": "https://github.com/libxmp/libxmp/blob/d1c751463a5646f1a8092e432b13377a264d132f/docs/COPYING"
+}

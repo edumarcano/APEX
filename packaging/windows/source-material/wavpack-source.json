@@ -1,0 +1,11 @@
+{
+  "component": "WavPack",
+  "version": "5.6.0",
+  "source_revision": "e03e8e29dc618e08e7baba9636e57ba1254874ce",
+  "wheel_dependency": "pygame-ce 2.5.7 Windows x64 wheel",
+  "dll": "pygame/libwavpack-1.dll",
+  "version_marker": "5.6.0",
+  "license_file": "WavPack-5.6.0-COPYING.txt",
+  "license_sha256": "275d65ec11a78d552d078b9c26d950e3075892bca895a415ceaaec33bcfabff9",
+  "license_url": "https://github.com/dbry/WavPack/blob/e03e8e29dc618e08e7baba9636e57ba1254874ce/COPYING"
+}
