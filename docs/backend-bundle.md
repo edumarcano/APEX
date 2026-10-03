@@ -78,7 +78,7 @@ The manifest records the source commit, reproducibility seed, staged notices, an
 
 ## Desktop build handoff
 
-Build the backend bundle before starting the Vite build. The desktop preparation step stages the complete `dist/backend-bundle` tree at `frontend/src-tauri/resources/backend-bundle`; Vite clears `frontend/dist`, so prepare must finish first. The native assembly step later copies that staged tree beside `APEX.exe` in `build/desktop-shell/APEX/backend-bundle`. Preserve the executable, its adjacent `_internal` directory, configuration and demo resources, and license notices together. Do not stage only the executable.
+Build the backend bundle before starting the Vite build. The desktop preparation step stages the complete repository-level `dist/backend-bundle` tree at `frontend/src-tauri/resources/backend-bundle`; Vite clears the repository-level `dist` directory, so prepare must finish first. The native assembly step later copies that staged tree beside `APEX.exe` in `build/desktop-shell/APEX/backend-bundle`. Preserve the executable, its adjacent `_internal` directory, configuration and demo resources, and license notices together. Do not stage only the executable.
 
 From the repository root, prepare the locked backend bundle, then run the desktop commands from `frontend`:
 
@@ -86,12 +86,12 @@ From the repository root, prepare the locked backend bundle, then run the deskto
 uv sync --locked --all-extras --python 3.14.7
 uv run --locked --all-extras --python 3.14.7 python scripts/build_backend_bundle.py
 Push-Location frontend
-npm run desktop:prepare -- --bundle ..\dist\backend-bundle
+npm run desktop:prepare
 npm run desktop:build
 Pop-Location
 ```
 
-For repeat desktop builds, pass `--bundle` an absolute path to the complete previously staged bundle when Vite has cleared `dist`; preparation validates and stages that tree before each frontend build.
+For repeat desktop builds after Vite clears repository-level `dist`, `desktop:prepare` reuses and validates the complete staged bundle by default. If you pass `--bundle` explicitly, the value must be an absolute path.
 
 The assembled native executable is `build/desktop-shell/APEX/APEX.exe`. The sibling `backend-bundle` directory is part of its runtime and must remain intact. The shell stores mutable operator state in its selected data directory, outside these installed resources.
 

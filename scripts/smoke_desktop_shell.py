@@ -27,6 +27,9 @@ POLL_INTERVAL_SECONDS = 0.2
 ELEMENT_KEY = "element-6066-11e4-a52e-4f735466cecf"
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 PROCESS_TERMINATE = 0x0001
+SYNCHRONIZE = 0x00100000
+TH32CS_SNAPPROCESS = 0x00000002
+WM_CLOSE = 0x0010
 WAIT_OBJECT_0 = 0
 ESSENTIAL_CHECKS = {
     "startup_conflict",
@@ -42,6 +45,7 @@ ESSENTIAL_CHECKS = {
     "backend_crash_recovery",
     "graceful_quit",
     "fixture_backend_identity",
+    "native_shell_cleanup",
     "owned_backend_cleanup",
 }
 
@@ -78,6 +82,21 @@ class Report:
 
 class SmokeFailure(RuntimeError):
     pass
+
+
+class _PROCESSENTRY32W(ctypes.Structure):
+    _fields_ = [
+        ("dwSize", wintypes.DWORD),
+        ("cntUsage", wintypes.DWORD),
+        ("th32ProcessID", wintypes.DWORD),
+        ("th32DefaultHeapID", ctypes.c_size_t),
+        ("th32ModuleID", wintypes.DWORD),
+        ("cntThreads", wintypes.DWORD),
+        ("th32ParentProcessID", wintypes.DWORD),
+        ("pcPriClassBase", wintypes.LONG),
+        ("dwFlags", wintypes.DWORD),
+        ("szExeFile", wintypes.WCHAR * 260),
+    ]
 
 
 class LlamaCppStreamFixture:
@@ -406,6 +425,15 @@ def _sanitized_environment(root: Path, *, demo: bool = True, local_model_host: s
     return env
 
 
+def _close_handle(handle: int) -> None:
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    if not kernel32.CloseHandle(handle):
+        error = ctypes.get_last_error()
+        raise SmokeFailure(f"CloseHandle failed (Windows error {error})")
+
+
 def _process_image_path(pid: int) -> tuple[int, Path]:
     if os.name != "nt":
         raise SmokeFailure("desktop shell smoke is supported on Windows only")
@@ -422,43 +450,123 @@ def _process_image_path(pid: int) -> tuple[int, Path]:
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
     kernel32.CloseHandle.restype = wintypes.BOOL
     handle = kernel32.OpenProcess(
-        PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
+        PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE | SYNCHRONIZE,
         False,
         pid,
     )
     if not handle:
-        raise SmokeFailure(f"could not open the verified backend child process {pid}")
+        raise SmokeFailure(f"could not open verified process {pid}")
     capacity = wintypes.DWORD(32768)
     buffer = ctypes.create_unicode_buffer(capacity.value)
     if not kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(capacity)):
         error = ctypes.get_last_error()
-        kernel32.CloseHandle(handle)
+        _close_handle(handle)
         raise SmokeFailure(f"could not verify backend child image path (Windows error {error})")
     return handle, Path(buffer.value)
 
 
-def _terminate_verified_backend(pid: int, application_root: Path, profile: Path, instance_id: object) -> None:
+def _expected_backend_image(application: Path) -> Path:
+    return (application.parent / "backend-bundle" / "apex-backend.exe").resolve()
+
+
+def _terminate_verified_backend(pid: int, application: Path, profile: Path, instance_id: object) -> None:
     handle, image = _process_image_path(pid)
     try:
-        try:
-            image.resolve().relative_to(application_root.resolve())
-        except ValueError:
-            raise SmokeFailure("runtime identity PID image is outside the assembled application directory") from None
+        if image.resolve() != _expected_backend_image(application):
+            raise SmokeFailure("runtime identity PID image is not the bundled backend executable")
         current = _runtime_identity(profile, 5.0)
         if current.get("pid") != pid or current.get("instance_id") != instance_id:
             raise SmokeFailure("managed runtime identity changed before termination; refusing to target a reused PID")
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
-        kernel32.TerminateProcess.restype = wintypes.BOOL
-        kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
-        kernel32.WaitForSingleObject.restype = wintypes.DWORD
-        if not kernel32.TerminateProcess(handle, 0xD35C):
-            error = ctypes.get_last_error()
-            raise SmokeFailure(f"could not terminate verified backend child (Windows error {error})")
-        if kernel32.WaitForSingleObject(handle, 10_000) != WAIT_OBJECT_0:
+        _terminate_process_handle(handle, "backend child")
+        if not _wait_process_handle(handle, 10.0):
             raise SmokeFailure("verified backend child did not exit after termination")
     finally:
-        ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(handle)
+        _close_handle(handle)
+
+
+def _descendant_process_ids(root_pid: int) -> set[int]:
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel32.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(_PROCESSENTRY32W)]
+    kernel32.Process32FirstW.restype = wintypes.BOOL
+    kernel32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(_PROCESSENTRY32W)]
+    kernel32.Process32NextW.restype = wintypes.BOOL
+    snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if not snapshot or snapshot == wintypes.HANDLE(-1).value:
+        raise SmokeFailure("could not enumerate processes to find the smoke-owned native shell")
+    entries: list[tuple[int, int]] = []
+    try:
+        entry = _PROCESSENTRY32W()
+        entry.dwSize = ctypes.sizeof(entry)
+        ok = kernel32.Process32FirstW(snapshot, ctypes.byref(entry))
+        while ok:
+            entries.append((int(entry.th32ProcessID), int(entry.th32ParentProcessID)))
+            ok = kernel32.Process32NextW(snapshot, ctypes.byref(entry))
+    finally:
+        _close_handle(snapshot)
+    descendants = {root_pid}
+    changed = True
+    while changed:
+        changed = False
+        for pid, parent in entries:
+            if parent in descendants and pid not in descendants:
+                descendants.add(pid)
+                changed = True
+    descendants.discard(root_pid)
+    return descendants
+
+
+def _request_native_window_close(driver_pid: int, application: Path) -> int:
+    """Post WM_CLOSE only to this run's exact native executable descendant."""
+    if os.name != "nt":
+        raise SmokeFailure("native window close is supported on Windows only")
+    expected_image = application.resolve()
+    matches: list[tuple[int, int]] = []
+    for pid in _descendant_process_ids(driver_pid):
+        try:
+            handle, image = _process_image_path(pid)
+        except SmokeFailure:
+            continue
+        if image.resolve() != expected_image:
+            _close_handle(handle)
+            continue
+        hwnds: list[int] = []
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        enum_proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+        user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+        user32.IsWindowVisible.argtypes = [wintypes.HWND]
+        user32.IsWindowVisible.restype = wintypes.BOOL
+
+        @enum_proc
+        def collect(hwnd: int, _lparam: int) -> bool:
+            window_pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(window_pid))
+            if window_pid.value == pid and user32.IsWindowVisible(hwnd):
+                hwnds.append(int(hwnd))
+            return True
+
+        user32.EnumWindows.argtypes = [enum_proc, wintypes.LPARAM]
+        user32.EnumWindows.restype = wintypes.BOOL
+        user32.EnumWindows(collect, 0)
+        if hwnds:
+            matches.append((handle, hwnds[0]))
+        else:
+            _close_handle(handle)
+    if len(matches) != 1:
+        for handle, _hwnd in matches:
+            _close_handle(handle)
+        raise SmokeFailure(f"expected one visible smoke-owned APEX window, found {len(matches)}")
+    shell_handle, hwnd = matches[0]
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    user32.PostMessageW.restype = wintypes.BOOL
+    if not user32.PostMessageW(hwnd, WM_CLOSE, 0, 0):
+        error = ctypes.get_last_error()
+        _close_handle(shell_handle)
+        raise SmokeFailure(f"could not post WM_CLOSE to the smoke-owned native window (Windows error {error})")
+    return shell_handle
 
 
 def _runtime_identity(profile: Path, timeout: float) -> dict[str, Any]:
@@ -520,6 +628,15 @@ def _wait_process_handle(handle: int, timeout: float) -> bool:
     return kernel32.WaitForSingleObject(handle, int(timeout * 1000)) == WAIT_OBJECT_0
 
 
+def _terminate_process_handle(handle: int, label: str) -> None:
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    kernel32.TerminateProcess.restype = wintypes.BOOL
+    if not kernel32.TerminateProcess(handle, 0xD35C):
+        error = ctypes.get_last_error()
+        raise SmokeFailure(f"could not terminate verified {label} process (Windows error {error})")
+
+
 def _click_button(driver: WebDriver, label: str, timeout: float) -> bool:
     element = driver.find("xpath", _button_xpath(label))
     if element is None:
@@ -562,7 +679,6 @@ def _run_smoke(
         return report
     report.add("api_port_available", "passed", "127.0.0.1:8000 was free before application launch")
 
-    app_root = application.parent.resolve()
     profile_root: Path | None = None
     driver_process: subprocess.Popen[bytes] | None = None
     driver: WebDriver | None = None
@@ -696,18 +812,27 @@ def _run_smoke(
             first_runtime = _runtime_identity(profile_root, min(10.0, timeout))
             first_handle, first_image = _process_image_path(int(first_runtime["pid"]))
             try:
-                if first_image.resolve().parent != app_root.resolve():
-                    raise SmokeFailure("demo backend PID image is outside the assembled application directory")
+                if first_image.resolve() != _expected_backend_image(application):
+                    raise SmokeFailure("demo PID is not the bundled backend executable")
                 confirmed = _runtime_identity(profile_root, 5.0)
                 if confirmed.get("pid") != first_runtime.get("pid") or confirmed.get("instance_id") != first_runtime.get("instance_id"):
                     raise SmokeFailure("demo runtime identity changed before closing its native session")
+                close_budget = first_runtime.get("shutdown_timeout_seconds")
+                if not isinstance(close_budget, (int, float)) or close_budget < 0:
+                    raise SmokeFailure("demo runtime omitted its bounded shutdown timeout")
+                shell_handle = _request_native_window_close(driver_process.pid, application)
+                try:
+                    backend_exited = _wait_process_handle(first_handle, float(close_budget) + 30.0)
+                    shell_exited = _wait_process_handle(shell_handle, float(close_budget) + 30.0)
+                finally:
+                    _close_handle(shell_handle)
                 driver.close()
                 if driver_process.poll() is None:
                     driver_process.terminate()
                     driver_process.wait(timeout=5)
-                exited = _wait_process_handle(first_handle, float(first_runtime["shutdown_timeout_seconds"]) + 30.0)
+                exited = backend_exited and shell_exited
             finally:
-                ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(first_handle)
+                _close_handle(first_handle)
             if not exited or not _wait_port_free(min(30.0, timeout)):
                 raise SmokeFailure("verified demo backend did not exit and release 127.0.0.1:8000")
             stream_root = root / "stream-session"
@@ -796,7 +921,7 @@ def _run_smoke(
             try:
                 before_crash = _runtime_identity(profile_root, min(10.0, timeout))
                 old_pid = int(before_crash["pid"])
-                _terminate_verified_backend(old_pid, app_root, profile_root, before_crash["instance_id"])
+                _terminate_verified_backend(old_pid, application, profile_root, before_crash["instance_id"])
                 try:
                     automatically_recovered = _runtime_identity(profile_root, min(15.0, timeout))
                 except SmokeFailure:
@@ -829,29 +954,37 @@ def _run_smoke(
             except (SmokeFailure, OSError, ValueError) as exc:
                 report.add("backend_crash_recovery", "unverified", str(exc))
 
-            # Closing the WebDriver session closes the app window. Keep a Windows
-            # process handle to the identity-matched child so PID reuse cannot
-            # turn an HTTP failure into false evidence of shutdown.
+            # Send WM_CLOSE to the exact app descendant while the WebDriver
+            # session is still alive. Tauri's real CloseRequested handler must
+            # stop the backend before exiting; DELETE /session is cleanup only.
             final_runtime = _runtime_identity(profile_root, min(10.0, timeout))
             shutdown_budget = final_runtime.get("shutdown_timeout_seconds")
             if not isinstance(shutdown_budget, (int, float)) or shutdown_budget < 0:
                 raise SmokeFailure("runtime identity omitted its bounded shutdown timeout")
             owned_handle, owned_image = _process_image_path(int(final_runtime["pid"]))
             try:
-                if owned_image.resolve().parent != app_root.resolve():
-                    raise SmokeFailure("final backend PID image is outside the assembled application directory")
+                if owned_image.resolve() != _expected_backend_image(application):
+                    raise SmokeFailure("final backend PID is not the bundled backend executable")
                 confirmed = _runtime_identity(profile_root, 5.0)
                 if confirmed.get("pid") != final_runtime.get("pid") or confirmed.get("instance_id") != final_runtime.get("instance_id"):
                     raise SmokeFailure("runtime identity changed while opening the process handle; refusing to claim graceful shutdown")
+                shell_handle = _request_native_window_close(driver_process.pid, application)
+                try:
+                    backend_exited = _wait_process_handle(owned_handle, float(shutdown_budget) + 30.0)
+                    shell_exited = _wait_process_handle(shell_handle, float(shutdown_budget) + 30.0)
+                finally:
+                    _close_handle(shell_handle)
                 driver.close()
-                exited = _wait_process_handle(owned_handle, float(shutdown_budget) + 30.0)
+                exited = backend_exited and shell_exited
             finally:
-                ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(owned_handle)
+                _close_handle(owned_handle)
             if exited and _wait_port_free(min(float(shutdown_budget) + 30.0, timeout + 30.0)):
                 report.add("graceful_quit", "passed", "verified managed backend process exited and released 127.0.0.1:8000")
+                report.add("native_shell_cleanup", "passed", "the smoke-owned native window exited through its CloseRequested handler")
                 report.add("owned_backend_cleanup", "passed", "the exact identity-matched child handle signaled exit and fixed API port is free")
             else:
                 report.add("graceful_quit", "failed", "verified backend process or fixed API port remained after native window close")
+                report.add("native_shell_cleanup", "failed", "the smoke-owned native shell did not exit after its window close request")
                 report.add("owned_backend_cleanup", "failed", "the exact identity-matched child did not exit or fixed API port remained occupied")
         except (SmokeFailure, OSError, ValueError, subprocess.SubprocessError) as exc:
             report.add("desktop_smoke", "failed", str(exc))
@@ -860,6 +993,30 @@ def _run_smoke(
                 fixture.close()
             if held_api_port is not None:
                 held_api_port.close()
+            if not any(check.name == "native_shell_cleanup" for check in report.checks):
+                if driver_process is None:
+                    report.add("native_shell_cleanup", "unverified", "smoke ended before a native shell process was owned")
+                else:
+                    try:
+                        cleanup_shell = _request_native_window_close(driver_process.pid, application)
+                    except SmokeFailure as exc:
+                        report.add("native_shell_cleanup", "unverified", f"could not locate the exact smoke-owned native shell during cleanup: {exc}")
+                    else:
+                        try:
+                            shell_exited = _wait_process_handle(cleanup_shell, 5.0)
+                            if not shell_exited:
+                                _terminate_process_handle(cleanup_shell, "smoke-owned native shell")
+                                shell_exited = _wait_process_handle(cleanup_shell, 5.0)
+                        except SmokeFailure as exc:
+                            report.add("native_shell_cleanup", "failed", str(exc))
+                        else:
+                            status = "passed" if shell_exited else "failed"
+                            detail = "smoke-owned native shell exited during bounded cleanup"
+                            if not shell_exited:
+                                detail = "smoke-owned native shell remained after bounded cleanup"
+                            report.add("native_shell_cleanup", status, detail)
+                        finally:
+                            _close_handle(cleanup_shell)
             if driver is not None:
                 driver.close()
             if driver_process is not None and driver_process.poll() is None:
@@ -878,7 +1035,7 @@ def _run_smoke(
                     try:
                         _terminate_verified_backend(
                             int(remaining["pid"]),
-                            app_root,
+                            application,
                             profile_root,
                             remaining["instance_id"],
                         )
