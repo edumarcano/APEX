@@ -200,7 +200,7 @@ mod tests {
         std::fs::create_dir_all(&resource).unwrap();
         std::fs::write(resource.join("index.json"), b"resource-ok").unwrap();
         let executable = bundle.join("apex-backend.exe");
-        std::fs::hard_link(&test_executable, &executable).unwrap();
+        std::fs::copy(&test_executable, &executable).unwrap();
         let verbatim_exe = PathBuf::from(format!(r"\\?\{}", executable.display()));
         let verbatim_bundle = PathBuf::from(format!(r"\\?\{}", bundle.display()));
         let command = format!(
