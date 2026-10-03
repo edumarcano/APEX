@@ -33,8 +33,16 @@ function pathsOverlap(left, right) {
 
 async function canonicalProspectivePath(target) {
   const resolved = path.resolve(target)
-  const parent = await realpath(path.dirname(resolved))
-  return path.join(parent, path.basename(resolved))
+  const missing = []
+  let existing = resolved
+  while (!(await lstat(existing).catch(() => null))) {
+    missing.unshift(path.basename(existing))
+    const parent = path.dirname(existing)
+    if (parent === existing) fail(`could not resolve the intended path: ${target}`)
+    existing = parent
+  }
+  const canonicalExisting = await realpath(existing)
+  return path.join(canonicalExisting, ...missing)
 }
 
 async function walkFiles(root, relative = '') {
@@ -115,7 +123,7 @@ async function assertStagePaths(sourceRoot, targetRoot, allowedRoot) {
   const sourceInfo = await lstat(sourceRoot).catch(() => null)
   if (!sourceInfo?.isDirectory() || sourceInfo.isSymbolicLink()) fail('source must be a real directory.')
   const sourceCanonical = await realpath(sourceRoot)
-  const allowedCanonical = await realpath(allowedRoot)
+  const allowedCanonical = await canonicalProspectivePath(allowedRoot)
   const targetInfo = await lstat(targetRoot).catch(() => null)
   if (targetInfo?.isSymbolicLink()) fail('staging destination must not be a symbolic link.')
   const targetCanonical = targetInfo ? await realpath(targetRoot) : await canonicalProspectivePath(targetRoot)
@@ -133,7 +141,14 @@ export async function stageBundle(from = source, to = destination, allowedRoot =
   if (isSamePath(paths.sourceCanonical, paths.targetCanonical)) return buildId
 
   await mkdir(paths.allowedCanonical, { recursive: true })
+  await mkdir(path.dirname(paths.targetCanonical), { recursive: true })
+  const allowedAfterCreate = await realpath(paths.allowedCanonical)
   const parent = await realpath(path.dirname(paths.targetCanonical))
+  const targetAfterCreate = path.join(parent, path.basename(paths.targetCanonical))
+  if (!isWithin(allowedAfterCreate, targetAfterCreate)) fail('staging destination must stay inside src-tauri/resources.')
+  if (pathsOverlap(paths.sourceCanonical, targetAfterCreate) && !isSamePath(paths.sourceCanonical, targetAfterCreate)) {
+    fail('source and staging destination must not contain one another.')
+  }
   const temporary = path.join(parent, `.backend-bundle-stage-${randomUUID()}`)
   const backup = path.join(parent, `.backend-bundle-backup-${randomUUID()}`)
   let hasBackup = false

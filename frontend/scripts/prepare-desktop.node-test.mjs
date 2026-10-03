@@ -27,6 +27,18 @@ test('stages the complete bundle after checking hashes and build identity', asyn
   assert.equal(await verifyBundle(destination), 'test-build')
 })
 
+test('creates the ignored resources directory when staging into a fresh checkout', async (t) => {
+  const source = await fixture(t)
+  const parent = await mkdtemp(path.join(os.tmpdir(), 'apex-first-stage-'))
+  t.after(() => rm(parent, { recursive: true, force: true }))
+  const resources = path.join(parent, 'frontend', 'src-tauri', 'resources')
+  const destination = path.join(resources, 'backend-bundle')
+
+  assert.equal(await stageBundle(source, destination, resources), 'test-build')
+  assert.equal(await readFile(path.join(destination, 'apex-backend.exe'), 'utf8'), 'backend')
+  assert.equal(await verifyBundle(destination), 'test-build')
+})
+
 test('rejects a modified packaged file before staging', async (t) => {
   const source = await fixture(t)
   await writeFile(path.join(source, 'apex-backend.exe'), 'modified')
@@ -139,6 +151,7 @@ test('refuses an output directory outside the repository before deleting it', as
   const executable = path.join(root, 'apex-desktop.exe')
   await writeFile(executable, 'desktop executable')
   const outside = path.join(os.tmpdir(), `apex-output-outside-${path.basename(root)}`)
+  t.after(() => rm(outside, { recursive: true, force: true }))
   await mkdir(outside, { recursive: true })
   await writeFile(path.join(outside, 'keep.txt'), 'preserve')
 
