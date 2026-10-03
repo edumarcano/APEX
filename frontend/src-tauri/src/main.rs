@@ -309,7 +309,8 @@ async fn run_start(
         let frame = match receive {
             StartupReceive::Frame(Ok(frame)) => frame,
             StartupReceive::Frame(Err(code)) => {
-                return fail_start(&app, &state, generation, session, code, identity.as_ref()).await
+                return fail_start(&app, &state, generation, session, code, identity.as_ref())
+                    .await;
             }
             StartupReceive::Closed => {
                 return fail_start(
@@ -320,7 +321,7 @@ async fn run_start(
                     "backend_crashed",
                     identity.as_ref(),
                 )
-                .await
+                .await;
             }
             StartupReceive::Exited => {
                 return fail_start(
@@ -745,6 +746,18 @@ async fn spawn_backend(
         .filter(|value| !value.is_empty())
         .ok_or("resource_missing")?
         .to_owned();
+    #[cfg(windows)]
+    let resource_path_reserve = manifest
+        .get("files")
+        .and_then(Value::as_array)
+        .and_then(|files| {
+            files
+                .iter()
+                .filter_map(|file| file.get("path").and_then(Value::as_str))
+                .map(|path| path.encode_utf16().count().saturating_add(1))
+                .max()
+        })
+        .ok_or("resource_missing")?;
     let build_info: Value = serde_json::from_slice(
         &tokio::fs::read(bundle.join("_internal").join("build-info.json"))
             .await
@@ -757,7 +770,8 @@ async fn spawn_backend(
     let launch_id = Uuid::new_v4().to_string();
     #[cfg(windows)]
     let (child, stdin, stdout, stderr) =
-        windows_job::spawn(&exe, &bundle, &launch_id).map_err(|_| "startup_failed")?;
+        windows_job::spawn(&exe, &bundle, &launch_id, resource_path_reserve)
+            .map_err(|_| "startup_failed")?;
     #[cfg(not(windows))]
     let (child, stdin, stdout, stderr) = {
         let mut command = tokio::process::Command::new(exe);
