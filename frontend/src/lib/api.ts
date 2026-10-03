@@ -1,5 +1,7 @@
 export const API_BASE = 'http://127.0.0.1:8000'
 
+export const API_RUNTIME_IDENTITY = `${API_BASE}/api/v1/runtime`
+
 export const API_ENDPOINTS = {
   cortexLocalModelLoad: `${API_BASE}/api/v1/cortex/local-model/load`,
   cortexLocalModelUnload: `${API_BASE}/api/v1/cortex/local-model/unload`,

@@ -2,7 +2,7 @@
 
 This is the behavioral reference for APEX's loopback HTTP API at `http://127.0.0.1:8000`. It explains workflows, ownership, and meaningful errors. FastAPI's generated [`/docs`](http://127.0.0.1:8000/docs) and [`/openapi.json`](http://127.0.0.1:8000/openapi.json) are the canonical exhaustive request and response schemas.
 
-The API has no authentication and is intentionally bound to loopback. `APEX_ALLOWED_ORIGINS` controls browser CORS policy; it does not authorize non-browser clients or make remote binding safe. See [Configuration](configuration.md) and [Privacy](privacy.md).
+The API has no authentication and is intentionally bound to loopback. `APEX_ALLOWED_ORIGINS` controls browser CORS policy, including the Windows desktop shell's `http://tauri.localhost` origin; when set, its comma-separated values replace the defaults. CORS does not authorize non-browser clients or make remote binding safe. See [Configuration](configuration.md) and [Privacy](privacy.md).
 
 The included [`uv run apex`](cli.md) command is a thin loopback client for a focused subset of these routes. It does not add routes or bypass their validation, action version checks, or runtime-mode behavior.
 

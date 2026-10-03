@@ -22,7 +22,15 @@ Parent-channel loss and explicit shutdown use the same bounded lifecycle path. T
 
 Successful Cortex and Briefing runs can emit a private completion event after durable finalization. The event contains only instance identity, run identity, and completion status. Delivery failure does not change the committed run, and the channel does not add desktop notifications or device acquisition.
 
-Speech export is an allowlisted worker subcommand dispatched before backend startup or profile ownership. Source operation invokes Python; frozen operation invokes the bundled application executable. Packaging and native desktop presentation are separate work.
+Speech export is an allowlisted worker subcommand dispatched before backend startup or profile ownership. Source operation invokes Python; frozen operation invokes the bundled application executable. Packaging and desktop presentation are separate from backend API ownership.
+
+## Desktop shell ownership
+
+The packaged Windows desktop application uses Tauri for native presentation and process supervision. It loads the bundled React interface directly in WebView2 and owns one managed backend child on `127.0.0.1:8000`. The shell does not start the source launcher's static frontend server or a separate browser window. The source launcher keeps its existing browser workflow for development and standalone use.
+
+Before admitting API-dependent workspaces, the shell waits for its child and compares the private managed-start identity with `GET /api/v1/runtime`. A port conflict leaves the existing listener untouched and presents a retryable startup state. A child crash returns the shell to a recoverable state; retry must match a new managed backend identity. API requests, Cortex and Briefing streams, and cancellation continue through the existing HTTP contracts. The desktop layer does not own conversations, Briefing artifacts, Agent execution, or persistence.
+
+The WebView uses the native application origin and scoped Tauri capabilities. Frontend platform-specific imports stay behind the platform boundary; the browser path continues to use the ordinary browser presentation. Closing the branch 4 desktop window requests the backend's existing bounded graceful shutdown. Tray behavior and other desktop services belong to the next implementation branch.
 
 ## System components
 

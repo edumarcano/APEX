@@ -51,6 +51,22 @@ test('rejects deferred modules pulled into the HTML preload closure', async () =
   }
 })
 
+test('rejects Tauri desktop code pulled into the browser startup graph', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'apex-loading-'))
+  try {
+    const report = reportFixture()
+    report.chunks.find((chunk) => chunk.fileName === 'assets/shared.js').modules.push('node_modules/@tauri-apps/api/core.js')
+    const dist = path.join(root, 'dist')
+    await createDist(dist, { report })
+
+    const result = run(['--dist', dist])
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /Tauri API dependency is in the browser HTML\/static import closure/)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('rejects a missing production graph report', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'apex-loading-'))
   try {
@@ -139,6 +155,9 @@ function reportFixture() {
       { fileName: 'assets/main.js', imports: ['assets/shared.js'], dynamicImports: ['assets/deferred.js'], modules: ['src/App.tsx'] },
       { fileName: 'assets/shared.js', imports: [], dynamicImports: [], modules: [] },
       { fileName: 'assets/deferred.js', imports: [], dynamicImports: [], modules: [
+        'src/platform/DesktopAdmission.tsx',
+        'src/platform/tauri.ts',
+        'node_modules/@tauri-apps/api/core.js',
         ...sourceBoundaries,
         'node_modules/react-markdown/index.js',
         'node_modules/remark-gfm/index.js',

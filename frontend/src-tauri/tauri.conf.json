@@ -1,0 +1,26 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "APEX",
+  "version": "2.0.0",
+  "identifier": "com.edumarcano.apex",
+  "build": {
+    "beforeDevCommand": "npm run dev -- --host 127.0.0.1 --port 5173 --strictPort",
+    "devUrl": "http://127.0.0.1:5173",
+    "beforeBuildCommand": "node scripts/prepare-desktop.mjs && npm run build",
+    "frontendDist": "../../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "security": {
+      "capabilities": ["main-capability"],
+      "csp": "default-src 'self' tauri: http://tauri.localhost; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://cdnjs.cloudflare.com; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:8000; object-src 'none'; base-uri 'self'; frame-src 'none'; form-action 'self'",
+      "assetProtocol": { "enable": false },
+      "freezePrototype": true
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": ["../public/APEX_icon.ico"],
+    "resources": { "resources/backend-bundle/": "backend-bundle/" }
+  }
+}

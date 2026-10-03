@@ -168,6 +168,14 @@ function assertLoadingBoundaries(build) {
     if (!allModules.some(predicate)) fail(`expected Markdown dependency is absent from production build: ${target}`)
     if (initialModules.some(predicate)) fail(`${target} is in the initial HTML/static import closure`)
   }
+
+  for (const target of ['src/platform/DesktopAdmission.tsx', 'src/platform/tauri.ts']) {
+    if (!allModules.includes(target)) fail(`expected desktop module is absent from production build: ${target}`)
+    if (initialModules.includes(target)) fail(`desktop module is in the browser HTML/static import closure: ${target}`)
+  }
+  const tauriApiModule = (moduleId) => moduleId.startsWith('node_modules/@tauri-apps/api/')
+  if (!allModules.some(tauriApiModule)) fail('expected Tauri API dependency is absent from production build')
+  if (initialModules.some(tauriApiModule)) fail('Tauri API dependency is in the browser HTML/static import closure')
 }
 
 function printMetrics(label, metrics) {
