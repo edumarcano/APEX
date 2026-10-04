@@ -114,9 +114,44 @@ fn validate_payload(frame: &Envelope) -> Result<(), &'static str> {
                 return Err("protocol_error");
             }
         }
+        "desktop_preferences" => {
+            if payload.len() != 3
+                || !payload.contains_key("instance_id")
+                || !payload.contains_key("launch_on_startup")
+                || !payload.contains_key("completion_notifications")
+                || payload
+                    .get("instance_id")
+                    .and_then(Value::as_str)
+                    .and_then(|value| uuid::Uuid::parse_str(value).ok())
+                    .is_none()
+                || payload
+                    .get("launch_on_startup")
+                    .and_then(Value::as_bool)
+                    .is_none()
+                || payload
+                    .get("completion_notifications")
+                    .and_then(Value::as_bool)
+                    .is_none()
+                || !valid_desktop_request(&frame.request_id)
+            {
+                return Err("protocol_error");
+            }
+        }
         _ => return Err("protocol_error"),
     }
     Ok(())
+}
+
+fn valid_desktop_request(request_id: &str) -> bool {
+    let Some(value) = request_id.strip_prefix("desktop:") else {
+        return false;
+    };
+    value
+        .as_bytes()
+        .first()
+        .is_some_and(|first| (b'1'..=b'9').contains(first))
+        && value.bytes().all(|byte| byte.is_ascii_digit())
+        && value.parse::<u64>().is_ok()
 }
 
 #[cfg(test)]
@@ -161,5 +196,32 @@ mod tests {
                 .is_err()
         );
         assert!(parse(b"{\"version\":1,\"type\":\"stopped\",\"request_id\":\"x\",\"payload\":{},\"extra\":1}\n").is_err());
+    }
+
+    #[test]
+    fn desktop_preference_frames_require_exact_payload_and_positive_sequence() {
+        let instance = "581aeb4b-e90e-40d5-9708-1b1fb857fa26";
+        let frame = format!(
+            r#"{{"version":1,"type":"desktop_preferences","request_id":"desktop:1","payload":{{"instance_id":"{instance}","launch_on_startup":true,"completion_notifications":false}}}}"#
+        );
+        assert_eq!(
+            decode(format!("{frame}\n").as_bytes()).unwrap().kind,
+            "desktop_preferences"
+        );
+        for request in ["desktop:0", "desktop:01", "desktop:-1", "start:1"] {
+            let bad = frame.replace("desktop:1", request);
+            assert_eq!(
+                decode(format!("{bad}\n").as_bytes()).unwrap_err(),
+                "protocol_error"
+            );
+        }
+        let bad_payload = frame.replace(
+            "\"completion_notifications\":false",
+            "\"completion_notifications\":false,\"extra\":1",
+        );
+        assert_eq!(
+            decode(format!("{bad_payload}\n").as_bytes()).unwrap_err(),
+            "protocol_error"
+        );
     }
 }

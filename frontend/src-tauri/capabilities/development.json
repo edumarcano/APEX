@@ -9,6 +9,10 @@
     "core:event:allow-unlisten",
     "allow-desktop-backend-status",
     "allow-desktop-backend-retry",
-    "allow-desktop-quit"
+    "allow-desktop-quit",
+    "allow-desktop-services-status",
+    "allow-desktop-services-retry",
+    "allow-desktop-open-external",
+    "allow-desktop-write-clipboard"
   ]
 }
