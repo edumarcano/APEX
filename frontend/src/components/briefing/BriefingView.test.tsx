@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createRef, useEffect, useRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -13,6 +13,13 @@ vi.mock('../../hooks/useCompactLayout', () => ({ useCompactLayout: () => false }
 vi.mock('../overview/HudIdentity', () => ({ HudIdentityMark: () => null }))
 vi.mock('../overview/HudTelemetryRail', () => ({ HudTelemetryRail: () => null }))
 vi.mock('./BriefingProfilePanel', () => ({ BriefingProfilePanel: () => null }))
+
+const desktopPlatform = vi.hoisted(() => ({
+  isNativeDesktop: vi.fn(() => true),
+  openExternal: vi.fn<(...args: string[]) => Promise<void>>().mockResolvedValue(undefined),
+  writeClipboardText: vi.fn<(...args: string[]) => Promise<void>>().mockResolvedValue(undefined),
+}))
+vi.mock('../../platform/services', () => desktopPlatform)
 
 const conversationId = '00000000-0000-4000-8000-000000000211'
 const conversationSummary = {
@@ -172,6 +179,7 @@ describe('BriefingView', () => {
   })
 
   it('shows the configured agent display name on briefing agent messages', async () => {
+    desktopPlatform.openExternal.mockClear()
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: vi.fn() })
     const agentMessageId = '00000000-0000-4000-8000-000000000214'
     const userMessageId = '00000000-0000-4000-8000-000000000215'
@@ -185,7 +193,7 @@ describe('BriefingView', () => {
           active_leaf_message_id: agentMessageId,
           messages: [
             { id: userMessageId, parent_message_id: null, role: 'user', content: 'Follow-up question', status: 'completed', created_at: '2026-09-27T10:00:00Z', response_metadata: null },
-            { id: agentMessageId, parent_message_id: userMessageId, role: 'agent', content: 'Follow-up answer', status: 'completed', created_at: '2026-09-27T10:00:01Z', response_metadata: {} },
+            { id: agentMessageId, parent_message_id: userMessageId, role: 'agent', content: 'Follow-up answer with [a source](https://example.com/briefing)', status: 'completed', created_at: '2026-09-27T10:00:01Z', response_metadata: {} },
           ],
         })
       }
@@ -251,6 +259,9 @@ describe('BriefingView', () => {
     )
 
     await waitFor(() => expect(screen.getByText('Starship Ops')).toBeInTheDocument())
-    expect(screen.getByText('Follow-up answer')).toBeInTheDocument()
+    expect(screen.getByText(/Follow-up answer with/)).toBeInTheDocument()
+    const source = screen.getByRole('link', { name: 'a source' })
+    fireEvent.click(source)
+    expect(desktopPlatform.openExternal).toHaveBeenCalledWith('https://example.com/briefing')
   })
 })
