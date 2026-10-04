@@ -3,6 +3,12 @@ use crate::services::NotificationSetting;
 const COMPLETION_TITLE: &str = "APEX";
 const COMPLETION_BODY: &str = "An APEX run has completed.";
 
+fn completion_xml() -> String {
+    format!(
+        "<toast><visual><binding template=\"ToastGeneric\"><text>{COMPLETION_TITLE}</text><text>{COMPLETION_BODY}</text></binding></visual></toast>"
+    )
+}
+
 pub fn eligible_when_hidden_or_minimized(is_visible: bool, is_minimized: bool) -> bool {
     !is_visible || is_minimized
 }
@@ -74,9 +80,7 @@ pub fn show_completion() -> Result<NotificationSetting, &'static str> {
         return Ok(setting);
     }
     let xml = XmlDocument::new().map_err(|_| "notification_failed")?;
-    let xml_string = format!(
-        "<toast><visual><binding template=\"ToastText02\"><text>{COMPLETION_TITLE}</text><text>{COMPLETION_BODY}</text></binding></visual></toast>"
-    );
+    let xml_string = completion_xml();
     let xml_text = HSTRING::from(xml_string);
     xml.LoadXml(&xml_text).map_err(|_| "notification_failed")?;
     let toast =
@@ -107,6 +111,10 @@ mod tests {
     fn completion_toast_uses_the_fixed_generic_copy() {
         assert_eq!(COMPLETION_TITLE, "APEX");
         assert_eq!(COMPLETION_BODY, "An APEX run has completed.");
+        assert_eq!(
+            completion_xml(),
+            "<toast><visual><binding template=\"ToastGeneric\"><text>APEX</text><text>An APEX run has completed.</text></binding></visual></toast>"
+        );
     }
 
     #[test]

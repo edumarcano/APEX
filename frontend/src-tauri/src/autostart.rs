@@ -1,6 +1,6 @@
 #![cfg_attr(debug_assertions, allow(dead_code))]
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const RUN_KEY: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
 const APPROVED_KEY: &str =
@@ -14,7 +14,24 @@ pub struct Reconciliation {
     pub error_code: Option<&'static str>,
 }
 
+pub fn shell_compatible_executable_path(path: &Path) -> Result<PathBuf, &'static str> {
+    let value = path.to_str().ok_or("autostart_path_invalid")?;
+    let compatible = if let Some(unc) = value.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{unc}")
+    } else if let Some(drive) = value.strip_prefix(r"\\?\") {
+        drive.to_owned()
+    } else {
+        value.to_owned()
+    };
+    let compatible = PathBuf::from(compatible);
+    if !compatible.is_absolute() {
+        return Err("autostart_path_invalid");
+    }
+    Ok(compatible)
+}
+
 pub fn expected_command_line(executable: &Path) -> Result<String, &'static str> {
+    let executable = shell_compatible_executable_path(executable)?;
     let executable = executable.to_str().ok_or("autostart_path_invalid")?;
     if executable.contains('"') || executable.chars().any(char::is_control) {
         return Err("autostart_path_invalid");
@@ -42,7 +59,7 @@ pub fn task_manager_allows(bytes: Option<&[u8]>) -> Result<bool, &'static str> {
 pub fn reconcile(requested: Option<bool>) -> Reconciliation {
     use windows_registry::{Type, CURRENT_USER};
 
-    let executable = match std::env::current_exe().and_then(|path| path.canonicalize()) {
+    let executable = match std::env::current_exe() {
         Ok(path) => path,
         Err(_) => {
             return Reconciliation {
@@ -168,6 +185,20 @@ mod tests {
             r#""C:\Program Files\APEX\apex.exe" --untrusted"#,
             &expected
         ));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn startup_path_normalizes_extended_drive_and_unc_prefixes() {
+        assert_eq!(
+            shell_compatible_executable_path(Path::new(r"\\?\C:\Program Files\APEX\apex.exe"))
+                .unwrap(),
+            PathBuf::from(r"C:\Program Files\APEX\apex.exe")
+        );
+        assert_eq!(
+            shell_compatible_executable_path(Path::new(r"\\?\UNC\server\share\apex.exe")).unwrap(),
+            PathBuf::from(r"\\server\share\apex.exe")
+        );
     }
 
     #[test]

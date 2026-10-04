@@ -119,11 +119,14 @@ struct Supervisor {
 }
 
 #[tauri::command]
-fn desktop_services_status(
+async fn desktop_services_status(
     window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
     services: State<'_, DesktopServicesState>,
 ) -> Result<DesktopServicesStatus, &'static str> {
     validate_caller(&window)?;
+    let generation = app.state::<DesktopState>().snapshot().generation;
+    refresh_services_status(app, services.inner().clone(), generation, false).await;
     Ok(services.snapshot())
 }
 
@@ -135,7 +138,7 @@ async fn desktop_services_retry(
 ) -> Result<DesktopServicesStatus, &'static str> {
     validate_caller(&window)?;
     let generation = app.state::<DesktopState>().snapshot().generation;
-    reconcile_services(app, services.inner().clone(), generation).await;
+    reconcile_services(app, services.inner().clone(), generation, true).await;
     Ok(services.snapshot())
 }
 
@@ -243,6 +246,7 @@ async fn reconcile_services(
     app: tauri::AppHandle,
     services: DesktopServicesState,
     generation: u64,
+    clear_notification_errors: bool,
 ) {
     let _guard = services.reconcile_lock.lock().await;
     if app
@@ -261,14 +265,42 @@ async fn reconcile_services(
         let wanted = snapshot
             .preferences_ready
             .then_some(snapshot.requested.launch_on_startup);
-        let result = autostart::reconcile(wanted);
-        services.set_startup(result.actual_enabled, result.error_code);
-        if result.error_code.is_some() && window_is_hidden_or_minimized(&app) {
-            show_main(&app);
+        let result = tokio::task::spawn_blocking(move || autostart::reconcile(wanted)).await;
+        if app
+            .state::<Supervisor>()
+            .inner()
+            .quitting
+            .load(Ordering::Acquire)
+            || app.state::<DesktopState>().snapshot().generation != generation
+            || services.snapshot().generation != generation
+        {
+            return;
+        }
+        match result {
+            Ok(result) => {
+                if wanted.is_some() {
+                    services.set_startup(result.actual_enabled, result.error_code);
+                } else {
+                    services.refresh_startup(result.actual_enabled, result.error_code);
+                }
+                if result.error_code.is_some() && window_is_hidden_or_minimized(&app) {
+                    show_main(&app);
+                }
+            }
+            Err(_) => {
+                if wanted.is_some() {
+                    services.set_startup(None, Some("autostart_failed"));
+                } else {
+                    services.refresh_startup(None, Some("autostart_failed"));
+                }
+                if window_is_hidden_or_minimized(&app) {
+                    show_main(&app);
+                }
+            }
         }
     }
     #[cfg(any(debug_assertions, not(windows)))]
-    services.set_startup(None, Some("unsupported"));
+    services.refresh_startup(None, Some("unsupported"));
 
     let notification_result = tokio::task::spawn_blocking(notifications::query_setting).await;
     if app
@@ -282,8 +314,17 @@ async fn reconcile_services(
         return;
     }
     match notification_result {
-        Ok(Ok(setting)) => services.set_notifications(setting, None),
-        _ => services.set_notifications(
+        Ok(Ok(setting)) if clear_notification_errors => services.set_notifications(setting, None),
+        Ok(Ok(setting)) => services.refresh_notifications(setting, None),
+        Err(_) if clear_notification_errors => services.set_notifications(
+            NotificationSetting::Unavailable,
+            Some("notification_unavailable"),
+        ),
+        Ok(Err(_)) if clear_notification_errors => services.set_notifications(
+            NotificationSetting::Unavailable,
+            Some("notification_unavailable"),
+        ),
+        _ => services.refresh_notifications(
             NotificationSetting::Unavailable,
             Some("notification_unavailable"),
         ),
@@ -299,6 +340,68 @@ async fn reconcile_services(
         return;
     }
     services.publish(&app);
+}
+
+async fn refresh_services_status(
+    app: tauri::AppHandle,
+    services: DesktopServicesState,
+    generation: u64,
+    publish: bool,
+) {
+    let _guard = services.reconcile_lock.lock().await;
+    if app
+        .state::<Supervisor>()
+        .inner()
+        .quitting
+        .load(Ordering::Acquire)
+        || app.state::<DesktopState>().snapshot().generation != generation
+        || services.snapshot().generation != generation
+    {
+        return;
+    }
+
+    #[cfg(all(windows, not(debug_assertions)))]
+    {
+        let startup = tokio::task::spawn_blocking(|| autostart::reconcile(None)).await;
+        if app
+            .state::<Supervisor>()
+            .inner()
+            .quitting
+            .load(Ordering::Acquire)
+            || app.state::<DesktopState>().snapshot().generation != generation
+            || services.snapshot().generation != generation
+        {
+            return;
+        }
+        match startup {
+            Ok(result) => services.refresh_startup(result.actual_enabled, result.error_code),
+            Err(_) => services.refresh_startup(None, Some("autostart_read_failed")),
+        }
+    }
+    #[cfg(any(debug_assertions, not(windows)))]
+    services.refresh_startup(None, Some("unsupported"));
+
+    let notification = tokio::task::spawn_blocking(notifications::query_setting).await;
+    if app
+        .state::<Supervisor>()
+        .inner()
+        .quitting
+        .load(Ordering::Acquire)
+        || app.state::<DesktopState>().snapshot().generation != generation
+        || services.snapshot().generation != generation
+    {
+        return;
+    }
+    match notification {
+        Ok(Ok(setting)) => services.refresh_notifications(setting, None),
+        _ => services.refresh_notifications(
+            NotificationSetting::Unavailable,
+            Some("notification_unavailable"),
+        ),
+    }
+    if publish {
+        services.publish(&app);
+    }
 }
 
 async fn submit_completion_notification(
@@ -665,6 +768,7 @@ async fn run_start(
                             service_app,
                             services,
                             generation,
+                            false,
                         ));
                         tauri::async_runtime::spawn(monitor_backend(
                             app.clone(),
@@ -876,7 +980,7 @@ async fn monitor_backend(
         }
         if preferences_changed {
             services.publish(&app);
-            reconcile_services(app.clone(), services.clone(), generation).await;
+            reconcile_services(app.clone(), services.clone(), generation, false).await;
         }
         if outcome.is_none() {
             for _ in 0..eligible_completions {
@@ -1223,6 +1327,7 @@ fn main() {
                     app_handle.clone(),
                     app_handle.state::<DesktopServicesState>().inner().clone(),
                     generation,
+                    false,
                 )
                 .await;
             });
@@ -1277,9 +1382,21 @@ fn close_action(tray_available: bool) -> CloseAction {
 
 fn show_main(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
+        ensure_usable_geometry(&window);
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let generation = app.state::<DesktopState>().snapshot().generation;
+            refresh_services_status(
+                app.clone(),
+                app.state::<DesktopServicesState>().inner().clone(),
+                generation,
+                true,
+            )
+            .await;
+        });
     }
 }
 

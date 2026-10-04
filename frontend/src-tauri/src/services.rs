@@ -193,6 +193,7 @@ impl DesktopServicesState {
         unique && completed && hidden_or_minimized && self.should_submit_notification()
     }
 
+    #[cfg_attr(debug_assertions, allow(dead_code))]
     pub fn set_startup(&self, actual: Option<bool>, error: Option<&str>) {
         let mut status = self.status.lock().expect("desktop services mutex poisoned");
         status.startup = StartupStatus {
@@ -202,6 +203,21 @@ impl DesktopServicesState {
         status.revision = status.revision.saturating_add(1);
     }
 
+    pub fn refresh_startup(&self, actual: Option<bool>, error: Option<&str>) {
+        let mut status = self.status.lock().expect("desktop services mutex poisoned");
+        let mut changed = status.startup.actual_enabled != actual;
+        status.startup.actual_enabled = actual;
+        if status.startup.error_code.is_none() {
+            if let Some(error) = error {
+                status.startup.error_code = Some(error.to_owned());
+                changed = true;
+            }
+        }
+        if changed {
+            status.revision = status.revision.saturating_add(1);
+        }
+    }
+
     pub fn set_notifications(&self, setting: NotificationSetting, error: Option<&str>) {
         let mut status = self.status.lock().expect("desktop services mutex poisoned");
         status.notifications = NotificationStatus {
@@ -209,6 +225,21 @@ impl DesktopServicesState {
             error_code: error.map(str::to_owned),
         };
         status.revision = status.revision.saturating_add(1);
+    }
+
+    pub fn refresh_notifications(&self, setting: NotificationSetting, error: Option<&str>) {
+        let mut status = self.status.lock().expect("desktop services mutex poisoned");
+        let mut changed = status.notifications.os_setting != setting;
+        status.notifications.os_setting = setting;
+        if status.notifications.error_code.is_none() {
+            if let Some(error) = error {
+                status.notifications.error_code = Some(error.to_owned());
+                changed = true;
+            }
+        }
+        if changed {
+            status.revision = status.revision.saturating_add(1);
+        }
     }
 }
 
@@ -299,6 +330,41 @@ mod tests {
             snapshot.startup.error_code.as_deref(),
             Some("autostart_failed")
         );
+    }
+
+    #[test]
+    fn read_only_status_refresh_preserves_last_operation_errors() {
+        let state = DesktopServicesState::new(true, true);
+        state.set_startup(Some(false), Some("autostart_failed"));
+        state.set_notifications(NotificationSetting::Unknown, Some("notification_failed"));
+        state.refresh_startup(Some(true), None);
+        state.refresh_notifications(NotificationSetting::DisabledUser, None);
+        let snapshot = state.snapshot();
+        assert_eq!(snapshot.startup.actual_enabled, Some(true));
+        assert_eq!(
+            snapshot.startup.error_code.as_deref(),
+            Some("autostart_failed")
+        );
+        assert_eq!(
+            snapshot.notifications.os_setting,
+            NotificationSetting::DisabledUser
+        );
+        assert_eq!(
+            snapshot.notifications.error_code.as_deref(),
+            Some("notification_failed")
+        );
+        let revision = snapshot.revision;
+        state.refresh_startup(Some(true), Some("autostart_read_failed"));
+        state.refresh_notifications(
+            NotificationSetting::DisabledUser,
+            Some("notification_unavailable"),
+        );
+        assert_eq!(state.snapshot().revision, revision);
+        state.set_startup(Some(true), None);
+        state.set_notifications(NotificationSetting::Enabled, None);
+        let retried = state.snapshot();
+        assert_eq!(retried.startup.error_code, None);
+        assert_eq!(retried.notifications.error_code, None);
     }
 
     #[test]
