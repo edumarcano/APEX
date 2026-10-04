@@ -317,7 +317,6 @@ class DeviceContextService:
                     completed_fix is not None
                     and self._enabled
                     and self._permission == "granted"
-                    and self._availability == "available"
                     and age is not None
                     and age <= LOCATION_FIX_MAX_AGE_SECONDS
                 ):

@@ -300,20 +300,57 @@ class DeviceContextServiceTests(unittest.TestCase):
 
     def test_completed_coalesced_result_keeps_its_own_fix_while_next_request_runs(self) -> None:
         self._grant()
+        delayed_reader_released = threading.Event()
+        allow_delayed_reader = threading.Event()
+        original_wait = self.service._condition.wait
+
+        def pause_first_reader_after_notification(timeout=None):
+            result = original_wait(timeout)
+            if threading.current_thread().name == "delayed-device-reader":
+                self.service._condition.release()
+                try:
+                    delayed_reader_released.set()
+                    self.assertTrue(allow_delayed_reader.wait(2))
+                finally:
+                    self.service._condition.acquire()
+            return result
+
+        self.service._condition.wait = pause_first_reader_after_notification
+        self.addCleanup(setattr, self.service._condition, "wait", original_wait)
+        first_result: list[object] = []
+        second_result: list[object] = []
+        first = threading.Thread(
+            name="delayed-device-reader",
+            target=lambda: first_result.append(self.service.resolve()),
+        )
+        second = threading.Thread(
+            name="second-device-reader",
+            target=lambda: second_result.append(self.service.resolve()),
+        )
+        first.start()
+        self.assertTrue(self._wait_for_request())
+        second.start()
         with self.service._condition:
-            self.service._pending_id = "device:99"
-            self.service._pending_revision = self.service._revision
-            self.service._pending_readers = 2
-            self.service._fix = (1.0, 2.0, self.now, self.monotonic, 0.0)
-            self.service._finish_pending_locked("ok", self.service._fix)
-            first_completion = self.service._completed["device:99"]
-            self.service._pending_id = "device:100"
-            self.service._pending_revision = self.service._revision
-            self.service._pending_readers = 1
-            self.service._fix = None
-            self.service._finish_pending_locked("unavailable")
-            self.assertEqual(self.service._completed["device:99"], first_completion)
-            self.assertIsNone(self.service._completed["device:100"][3])
+            self.assertTrue(self.service._condition.wait_for(lambda: self.service._pending_readers == 2, 2))
+        self.assertTrue(self._reply(self.service, "device:1", latitude=1.0, longitude=2.0))
+        self.assertTrue(delayed_reader_released.wait(2))
+        second.join(2)
+        self.assertFalse(second.is_alive())
+        self.assertEqual(second_result[0].coordinates, (1.0, 2.0))
+
+        third_result: list[object] = []
+        third = threading.Thread(target=lambda: third_result.append(self.service.resolve()))
+        third.start()
+        with self.service._condition:
+            self.assertTrue(self.service._condition.wait_for(lambda: self.service._pending_id == "device:2", 2))
+        self.assertTrue(self._reply(self.service, "device:2", outcome="unavailable"))
+        third.join(2)
+        self.assertEqual(third_result[0].source, "none")
+
+        allow_delayed_reader.set()
+        first.join(2)
+        self.assertFalse(first.is_alive())
+        self.assertEqual(first_result[0].coordinates, (1.0, 2.0))
 
     def _wait_for_request(self) -> bool:
         with self.service._condition:
