@@ -112,6 +112,71 @@ class LauncherHelperTests(unittest.TestCase):
         self.assertTrue(control.failed)
         self.assertEqual(control.error_code, "protocol_error")
 
+    def test_control_reader_accepts_desktop_preferences_and_answers_device_unsupported(self) -> None:
+        from core.host.protocol import decode_frame
+
+        launch_id = str(uuid.uuid4())
+        instance_id = str(uuid.uuid4())
+        identity = {
+            "app_id": "apex",
+            "app_version": "2.1.0",
+            "build_id": "source:2.1.0",
+            "instance_id": instance_id,
+            "pid": 123,
+            "hosting_mode": "managed",
+            "launch_id": launch_id,
+            "data_root_fingerprint": "a" * 64,
+            "shutdown_timeout_seconds": 60,
+        }
+        frames = [
+            ControlEnvelope(1, "starting", launch_id, identity),
+            ControlEnvelope(1, "ready", launch_id, identity),
+            ControlEnvelope(
+                1,
+                "desktop_preferences",
+                "desktop:1",
+                {
+                    "instance_id": instance_id,
+                    "launch_on_startup": False,
+                    "completion_notifications": False,
+                },
+            ),
+            ControlEnvelope(
+                1,
+                "device_preferences",
+                "device-prefs:4",
+                {"instance_id": instance_id, "revision": 4, "location_enabled": True},
+            ),
+            ControlEnvelope(1, "stopping", launch_id, {}),
+            ControlEnvelope(1, "stopped", launch_id, {}),
+        ]
+        process = mock.Mock(spec=subprocess.Popen)
+        process.poll.return_value = None
+        process.stdin = io.BytesIO()
+        process.stdout = io.BytesIO(b"".join(encode_envelope(frame) for frame in frames))
+        control = launcher._ManagedBackendControl(process, launch_id)
+        control._reader.join(2)
+
+        self.assertFalse(control._reader.is_alive())
+        self.assertFalse(control.failed)
+        self.assertEqual(control.identity, identity)
+        outgoing = [
+            decode_frame(line)
+            for line in process.stdin.getvalue().splitlines(keepends=True)
+        ]
+        device_states = [frame for frame in outgoing if frame.type == "device_state"]
+        self.assertEqual(len(device_states), 1)
+        self.assertEqual(
+            device_states[0].payload,
+            {
+                "instance_id": instance_id,
+                "revision": 4,
+                "permission": "unsupported",
+                "availability": "unsupported",
+            },
+        )
+        self.assertEqual(device_states[0].request_id, "device-state:1")
+
     def test_wait_for_services_rejects_unowned_pid_and_failed_control(self) -> None:
         backend = mock.Mock(spec=subprocess.Popen)
         static = mock.Mock(spec=subprocess.Popen)

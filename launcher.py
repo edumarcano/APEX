@@ -51,6 +51,8 @@ class _ManagedBackendControl:
         self._stopped = threading.Event()
         self._failed = threading.Event()
         self._identity: dict[str, object] | None = None
+        self._device_preferences_revision = 0
+        self._device_state_sequence = 0
         self._error_code: str | None = None
         self._reader = threading.Thread(
             target=self._read_loop, name="apex-launcher-control-reader", daemon=True
@@ -125,8 +127,37 @@ class _ManagedBackendControl:
                         expected.add(self._shutdown_request_id)
                 elif envelope.type == "completion":
                     expected = {str(envelope.payload.get("run_id", ""))}
+                elif envelope.type in {"desktop_preferences", "device_preferences"}:
+                    if (
+                        self._identity is None
+                        or envelope.payload.get("instance_id")
+                        != self._identity.get("instance_id")
+                    ):
+                        raise ValueError("backend preference instance did not match ready identity")
+                    if envelope.type == "device_preferences":
+                        revision = envelope.payload["revision"]
+                        if revision <= self._device_preferences_revision:
+                            continue
+                        self._device_preferences_revision = revision
+                        self._device_state_sequence += 1
+                        from core.host.protocol import ControlEnvelope
+
+                        response = ControlEnvelope(
+                            version=1,
+                            type="device_state",
+                            request_id=f"device-state:{self._device_state_sequence}",
+                            payload={
+                                "instance_id": str(self._identity["instance_id"]),
+                                "revision": revision,
+                                "permission": "unsupported",
+                                "availability": "unsupported",
+                            },
+                        )
+                        if not self._send(response):
+                            raise BrokenPipeError
                 if not expected or envelope.request_id not in expected:
-                    raise ValueError("backend control response correlation mismatch")
+                    if envelope.type not in {"desktop_preferences", "device_preferences"}:
+                        raise ValueError("backend control response correlation mismatch")
                 if envelope.type == "ready":
                     self._identity = dict(envelope.payload)
                     self._ready.set()
