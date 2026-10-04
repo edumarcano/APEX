@@ -427,6 +427,22 @@ class DesktopPatch(BaseModel):
     completion_notifications: StrictBool | None = None
 
 
+class DeviceContextSettings(BaseModel):
+    """Persisted request to use the permissioned native device context."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    location_enabled: StrictBool = False
+
+
+class DeviceContextPatch(BaseModel):
+    """Partial update for native device-context preferences."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    location_enabled: StrictBool | None = None
+
+
 class RuntimeSettingsSnapshot(BaseModel):
     """Immutable published view of resolved editable settings."""
 
@@ -456,6 +472,7 @@ class RuntimeSettingsSnapshot(BaseModel):
     microsoft_todo: MicrosoftTodoSettings = Field(default_factory=MicrosoftTodoSettings)
     activity_report_folder: ActivityReportFolderSettings = Field(default_factory=ActivityReportFolderSettings)
     desktop: DesktopSettings = Field(default_factory=DesktopSettings)
+    device_context: DeviceContextSettings = Field(default_factory=DeviceContextSettings)
 
 
 class FeaturesPatch(BaseModel):
@@ -717,6 +734,7 @@ class SettingsPatch(BaseModel):
     microsoft_todo: MicrosoftTodoPatch | None = None
     activity_report_folder: ActivityReportFolderPatch | None = None
     desktop: DesktopPatch | None = None
+    device_context: DeviceContextPatch | None = None
 
 
 class SettingsResponse(BaseModel):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sqlite3
 from typing import Any
 
@@ -35,6 +36,8 @@ from core.agent.providers.llama_cpp_supervisor import (
 )
 from core.mcp import get_mcp_manager, load_mcp_config
 from core.api.models import RuntimeIdentityResponse
+from core.api.models import DeviceContextStatusResponse
+from core.device_context import get_device_context_service
 
 router = APIRouter(tags=["system"])
 _LOGGER = logging.getLogger(__name__)
@@ -136,6 +139,23 @@ def get_runtime_settings() -> SettingsResponse:
     return _build_settings_response()
 
 
+@router.get("/api/v1/device-context", response_model=DeviceContextStatusResponse)
+def get_device_context_status() -> DeviceContextStatusResponse:
+    """Return permission and freshness state without requesting device access."""
+    service = get_device_context_service()
+    if service is not None:
+        return DeviceContextStatusResponse(**service.status().as_dict())
+    configured = bool(os.getenv("TARGET_LOCATION", "").strip())
+    return DeviceContextStatusResponse(
+        enabled=get_settings_store().get_snapshot().device_context.location_enabled,
+        permission="unsupported",
+        availability="unsupported",
+        source="configured" if configured else "none",
+        freshness="none",
+        fix_age_seconds=None,
+    )
+
+
 @router.patch("/api/v1/settings", response_model=SettingsResponse)
 async def patch_runtime_settings(
     payload: SettingsPatch, request: Request
@@ -225,6 +245,12 @@ async def patch_runtime_settings(
                 ),
             ) from None
         if committed_snapshot is not previous_snapshot:
+            device_service = get_device_context_service()
+            device_changed = False
+            if payload.device_context is not None and device_service is not None:
+                device_changed = device_service.set_enabled(
+                    committed_snapshot.device_context.location_enabled
+                )
             sink = getattr(request.app.state, "desktop_preferences_sink", None)
             if callable(sink):
                 try:
@@ -234,6 +260,15 @@ async def patch_runtime_settings(
                     _LOGGER.warning(
                         "Desktop preferences publication failed.", exc_info=True
                     )
+            if device_changed:
+                device_sink = getattr(request.app.state, "device_preferences_sink", None)
+                if callable(device_sink):
+                    try:
+                        device_sink()
+                    except Exception:
+                        _LOGGER.warning(
+                            "Device context preferences publication failed.", exc_info=True
+                        )
         if (
             payload.context_vault is not None
             or (payload.ask_apex is not None and payload.ask_apex.sandbox_mode is not None)

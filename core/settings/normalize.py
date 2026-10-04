@@ -33,6 +33,7 @@ from core.settings.models import (
     CalendarSettings,
     ContextVaultSettings,
     DesktopSettings,
+    DeviceContextSettings,
     FeaturesSettings,
     LocalSettings,
     FootballSettings,
@@ -78,6 +79,7 @@ EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
         "microsoft_todo",
         "activity_report_folder",
         "desktop",
+        "device_context",
     }
 )
 _DEFAULT_LLAMA_CPP_HOST = "http://127.0.0.1:8080"
@@ -217,6 +219,10 @@ def normalize_layer(
             desktop = _normalize_desktop(value, issues)
             if desktop is not None:
                 normalized["desktop"] = desktop
+        elif key == "device_context":
+            device_context = _normalize_device_context(value, issues)
+            if device_context is not None:
+                normalized["device_context"] = device_context
 
     return normalized
 
@@ -316,6 +322,27 @@ def _normalize_desktop(
             _record_error(issues, f"desktop.{key} must be a boolean")
         else:
             result[key] = setting
+    return result
+
+
+def _normalize_device_context(
+    value: Any, issues: NormalizationIssues | None
+) -> dict[str, Any] | None:
+    """Normalize the small, local-only native device-context preference."""
+    if not isinstance(value, dict):
+        _record_error(issues, "device_context must be an object")
+        return None
+    allowed = {"location_enabled"}
+    for key in value:
+        if key not in allowed:
+            _record_error(issues, f"device_context contains unsupported field {key!r}")
+    result: dict[str, Any] = {}
+    if "location_enabled" in value:
+        setting = value["location_enabled"]
+        if type(setting) is not bool:
+            _record_error(issues, "device_context.location_enabled must be a boolean")
+        else:
+            result["location_enabled"] = setting
     return result
 
 
@@ -1252,6 +1279,8 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
     )
     desktop_raw = merged.get("desktop") if isinstance(merged.get("desktop"), dict) else {}
     desktop = DesktopSettings.model_validate(desktop_raw)
+    device_context_raw = merged.get("device_context") if isinstance(merged.get("device_context"), dict) else {}
+    device_context = DeviceContextSettings.model_validate(device_context_raw)
     return RuntimeSettingsSnapshot(
         user_designation=(
             merged.get("user_designation", "")
@@ -1277,6 +1306,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         microsoft_todo=microsoft_todo,
         activity_report_folder=activity_report_folder,
         desktop=desktop,
+        device_context=device_context,
     )
 
 
@@ -1395,4 +1425,8 @@ def patch_to_ondisk(patch: SettingsPatch) -> dict[str, Any]:
         desktop = patch.desktop.model_dump(exclude_none=True)
         if desktop:
             ondisk["desktop"] = desktop
+    if patch.device_context is not None:
+        device_context = patch.device_context.model_dump(exclude_none=True)
+        if device_context:
+            ondisk["device_context"] = device_context
     return ondisk

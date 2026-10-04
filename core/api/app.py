@@ -41,6 +41,7 @@ from core.config import (
     MAX_RECENT_CONVERSATION_MESSAGES,
     APEX_CONTEXT_VAULT_PATH,
 )
+from core.device_context import DeviceContextService, set_device_context_service
 from core.agent.local_runtime.coordinator import check_idle_local_models_loop
 from core.agent.local_runtime.registry import any_local_runtime_enabled
 from core.agent.providers.llama_cpp_supervisor import get_llama_cpp_server_supervisor
@@ -244,10 +245,20 @@ async def _app_lifespan(_app: FastAPI):
     llama_supervisor = None
     lifecycle_error: BaseException | None = None
     retrieval_schema_supported = True
+    device_context_service: DeviceContextService | None = None
 
     try:
         configure_logging()
         get_tracing_service().initialize()
+        settings_snapshot = get_settings_store().get_snapshot()
+        device_context_service = DeviceContextService(
+            instance_id=host_context.identity.instance_id,
+            enabled=settings_snapshot.device_context.location_enabled,
+            supported=(host_context.identity.hosting_mode == "managed" and not DEMO_MODE),
+            request_sink=getattr(_app.state, "device_request_sink", None),
+        )
+        set_device_context_service(device_context_service)
+        _app.state.device_context_service = device_context_service
         llama_supervisor = get_llama_cpp_server_supervisor()
         if DEMO_MODE:
             demo_db = sqlite3.connect(":memory:", check_same_thread=False)
@@ -514,6 +525,10 @@ async def _app_lifespan(_app: FastAPI):
         raise
     finally:
         _app.state.lifecycle_established = False
+        if device_context_service is not None:
+            device_context_service.close()
+            set_device_context_service(None)
+            _app.state.device_context_service = None
         cleanup_error: Exception | None = None
 
         async def _cleanup(step: str, operation):

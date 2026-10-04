@@ -248,6 +248,49 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(failed.status_code, 500)
         self.assertEqual(observed, [])
 
+    def test_device_preference_applies_and_publishes_only_after_durable_commit(self) -> None:
+        from core.device_context import DeviceContextService, get_device_context_service, set_device_context_service
+
+        app = self.client.app
+        prior_sink = getattr(app.state, "device_preferences_sink", None)
+        prior_service = get_device_context_service()
+        service = DeviceContextService(
+            instance_id="e783bad3-cd83-4c26-9edc-91f8f67d23e4",
+            enabled=False,
+            supported=True,
+            request_sink=lambda _payload, _request_id: True,
+        )
+        set_device_context_service(service)
+        device_sink = mock.Mock()
+        app.state.device_preferences_sink = device_sink
+        self.addCleanup(setattr, app.state, "device_preferences_sink", prior_sink)
+        self.addCleanup(set_device_context_service, prior_service)
+
+        response = self.client.patch(
+            "/api/v1/settings",
+            json={"device_context": {"location_enabled": True}},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(service.preference_payload()["location_enabled"])
+        self.assertEqual(service.preference_payload()["revision"], 2)
+        self.assertEqual(device_sink.call_count, 1)
+        self.assertTrue(json.loads(self.local_path.read_text(encoding="utf-8"))["device_context"]["location_enabled"])
+
+        device_sink.reset_mock()
+        with mock.patch.object(
+            self.store,
+            "apply_patch",
+            side_effect=SettingsPersistenceError("disk unavailable"),
+        ):
+            failed = self.client.patch(
+                "/api/v1/settings",
+                json={"device_context": {"location_enabled": False}},
+            )
+        self.assertEqual(failed.status_code, 500)
+        self.assertTrue(service.preference_payload()["location_enabled"])
+        self.assertEqual(service.preference_payload()["revision"], 2)
+        device_sink.assert_not_called()
+
     def test_unknown_field_rejected(self) -> None:
         for payload in (
             {"features": {"weather": True, "unknown": True}},
