@@ -44,7 +44,10 @@ ESSENTIAL_CHECKS = {
     "cortex_stream",
     "cortex_cancel",
     "backend_crash_recovery",
-    "graceful_quit",
+    "close_to_tray",
+    "single_instance_activation",
+    "tray_show",
+    "tray_quit",
     "fixture_backend_identity",
     "native_shell_cleanup",
     "owned_backend_cleanup",
@@ -723,12 +726,17 @@ def _descendant_process_ids(root_pid: int) -> set[int]:
     return descendants
 
 
-def _request_native_window_close(driver_pid: int, application: Path) -> int:
-    """Post WM_CLOSE only to this run's exact native executable descendant."""
+def _native_window(driver_pid: int, application: Path) -> tuple[int, int, int]:
+    """Return the exact smoke-owned native process handle, PID, and window handle."""
     if os.name != "nt":
-        raise SmokeFailure("native window close is supported on Windows only")
+        raise SmokeFailure("native window inspection is supported on Windows only")
     expected_image = application.resolve()
-    matches: list[tuple[int, int]] = []
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+    user32.IsWindow.argtypes = [wintypes.HWND]
+    user32.IsWindow.restype = wintypes.BOOL
+    matches: list[tuple[int, int, int]] = []
     for pid in _descendant_process_ids(driver_pid):
         try:
             handle, image = _process_image_path(pid)
@@ -738,41 +746,97 @@ def _request_native_window_close(driver_pid: int, application: Path) -> int:
             _close_handle(handle)
             continue
         hwnds: list[int] = []
-        user32 = ctypes.WinDLL("user32", use_last_error=True)
         enum_proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-        user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
-        user32.GetWindowThreadProcessId.restype = wintypes.DWORD
-        user32.IsWindowVisible.argtypes = [wintypes.HWND]
-        user32.IsWindowVisible.restype = wintypes.BOOL
 
         @enum_proc
         def collect(hwnd: int, _lparam: int) -> bool:
             window_pid = wintypes.DWORD()
             user32.GetWindowThreadProcessId(hwnd, ctypes.byref(window_pid))
-            if window_pid.value == pid and user32.IsWindowVisible(hwnd):
+            if window_pid.value == pid and user32.IsWindow(hwnd):
                 hwnds.append(int(hwnd))
             return True
 
         user32.EnumWindows.argtypes = [enum_proc, wintypes.LPARAM]
         user32.EnumWindows.restype = wintypes.BOOL
         user32.EnumWindows(collect, 0)
-        if hwnds:
-            matches.append((handle, hwnds[0]))
+        if len(hwnds) == 1:
+            matches.append((handle, pid, hwnds[0]))
         else:
             _close_handle(handle)
     if len(matches) != 1:
-        for handle, _hwnd in matches:
+        for handle, _pid, _hwnd in matches:
             _close_handle(handle)
-        raise SmokeFailure(f"expected one visible smoke-owned APEX window, found {len(matches)}")
-    shell_handle, hwnd = matches[0]
+        raise SmokeFailure(f"expected one smoke-owned native window, found {len(matches)}")
+    return matches[0]
+
+
+def _window_visible(hwnd: int) -> bool:
     user32 = ctypes.WinDLL("user32", use_last_error=True)
-    user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
-    user32.PostMessageW.restype = wintypes.BOOL
-    if not user32.PostMessageW(hwnd, WM_CLOSE, 0, 0):
-        error = ctypes.get_last_error()
-        _close_handle(shell_handle)
-        raise SmokeFailure(f"could not post WM_CLOSE to the smoke-owned native window (Windows error {error})")
-    return shell_handle
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.IsWindowVisible.restype = wintypes.BOOL
+    user32.IsWindow.argtypes = [wintypes.HWND]
+    user32.IsWindow.restype = wintypes.BOOL
+    return bool(user32.IsWindow(hwnd) and user32.IsWindowVisible(hwnd))
+
+
+def _invoke_tray_menu_item(label: str, timeout: float) -> None:
+    """Use Windows UI Automation to click the real APEX tray icon and menu item."""
+    if os.name != "nt":
+        raise SmokeFailure("Windows tray interaction is supported on Windows only")
+    script = r'''
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+$root = [System.Windows.Automation.AutomationElement]::RootElement
+$buttons = $root.FindAll([System.Windows.Automation.TreeScope]::Subtree,
+    (New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+        [System.Windows.Automation.ControlType]::Button)))
+$icons = @()
+foreach ($button in $buttons) { if ($button.Current.Name -eq 'APEX') { $icons += $button } }
+if ($icons.Count -ne 1) { throw "expected one APEX notification-area button, found $($icons.Count)" }
+$rect = $icons[0].Current.BoundingRectangle
+if ($rect.IsEmpty) { throw 'APEX notification-area button has no screen bounds' }
+Add-Type @'
+using System.Runtime.InteropServices;
+public static class TrayMouse {
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, System.UIntPtr extra);
+}
+'@
+$x = [int](($rect.Left + $rect.Right) / 2); $y = [int](($rect.Top + $rect.Bottom) / 2)
+if (-not [TrayMouse]::SetCursorPos($x, $y)) { throw 'could not position pointer on APEX tray icon' }
+[TrayMouse]::mouse_event(0x0008, 0, 0, 0, [UIntPtr]::Zero)
+[TrayMouse]::mouse_event(0x0010, 0, 0, 0, [UIntPtr]::Zero)
+$deadline = [DateTime]::UtcNow.AddSeconds(__TIMEOUT__)
+$menuItem = $null
+while ([DateTime]::UtcNow -lt $deadline -and $null -eq $menuItem) {
+  $items = $root.FindAll([System.Windows.Automation.TreeScope]::Subtree,
+      (New-Object System.Windows.Automation.PropertyCondition(
+          [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+          [System.Windows.Automation.ControlType]::MenuItem)))
+  foreach ($item in $items) { if ($item.Current.Name -eq '__LABEL__') { $menuItem = $item; break } }
+  if ($null -eq $menuItem) { Start-Sleep -Milliseconds 100 }
+}
+if ($null -eq $menuItem) { throw 'APEX tray menu item did not become available through UI Automation' }
+$invoke = $menuItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+$invoke.Invoke()
+'''.replace("__TIMEOUT__", str(max(1, int(timeout)))).replace("__LABEL__", label.replace("'", "''"))
+    encoded = __import__("base64").b64encode(script.encode("utf-16le")).decode("ascii")
+    try:
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout + 5.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise SmokeFailure(f"Windows tray UI Automation could not run: {exc}") from None
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="replace")[-600:].strip()
+        raise SmokeFailure(f"could not invoke the actual APEX tray {label} item: {detail or 'PowerShell failed'}")
 
 
 def _runtime_identity(profile: Path, timeout: float) -> dict[str, Any]:
@@ -1217,10 +1281,16 @@ def _run_smoke(
                 close_budget = first_runtime.get("shutdown_timeout_seconds")
                 if not isinstance(close_budget, (int, float)) or close_budget < 0:
                     raise SmokeFailure("demo runtime omitted its bounded shutdown timeout")
-                shell_handle = _request_native_window_close(driver_process.pid, application)
+                shell_handle, _shell_pid, _shell_hwnd = _native_window(driver_process.pid, application)
                 try:
-                    backend_exited = _wait_process_handle(first_handle, float(close_budget) + 30.0)
-                    shell_exited = _wait_process_handle(shell_handle, float(close_budget) + 30.0)
+                    try:
+                        _invoke_tray_menu_item("Quit", min(10.0, timeout))
+                    except SmokeFailure as exc:
+                        report.add("tray_quit", "unverified", f"could not quit the demo shell through the real tray: {exc}")
+                        _terminate_process_handle(shell_handle, "exact smoke-owned demo shell after tray automation failure")
+                    bounded_close = min(float(close_budget) + 30.0, timeout + 30.0)
+                    backend_exited = _wait_process_handle(first_handle, bounded_close)
+                    shell_exited = _wait_process_handle(shell_handle, bounded_close)
                 finally:
                     _close_handle(shell_handle)
                 driver.close()
@@ -1424,38 +1494,146 @@ def _run_smoke(
             except (SmokeFailure, OSError, ValueError) as exc:
                 report.add("backend_crash_recovery", "unverified", str(exc))
 
-            # Send WM_CLOSE to the exact app descendant while the WebDriver
-            # session is still alive. Tauri's real CloseRequested handler must
-            # stop the backend before exiting; DELETE /session is cleanup only.
+            # Closing hides the window. The same managed child and independent
+            # CLI must remain usable until the user chooses tray Quit.
             final_runtime = _runtime_identity(profile_root, min(10.0, timeout))
             shutdown_budget = final_runtime.get("shutdown_timeout_seconds")
             if not isinstance(shutdown_budget, (int, float)) or shutdown_budget < 0:
                 raise SmokeFailure("runtime identity omitted its bounded shutdown timeout")
             owned_handle, owned_image = _process_image_path(int(final_runtime["pid"]))
+            shell_handle = 0
             try:
                 if owned_image.resolve() != _expected_backend_image(application):
                     raise SmokeFailure("final backend PID is not the bundled backend executable")
                 confirmed = _runtime_identity(profile_root, 5.0)
                 if confirmed.get("pid") != final_runtime.get("pid") or confirmed.get("instance_id") != final_runtime.get("instance_id"):
                     raise SmokeFailure("runtime identity changed while opening the process handle; refusing to claim graceful shutdown")
-                shell_handle = _request_native_window_close(driver_process.pid, application)
+                shell_handle, _shell_pid, shell_hwnd = _native_window(driver_process.pid, application)
+                if not _window_visible(shell_hwnd):
+                    raise SmokeFailure("native APEX window was already hidden before the close-to-tray check")
+                user32 = ctypes.WinDLL("user32", use_last_error=True)
+                user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+                user32.PostMessageW.restype = wintypes.BOOL
+                if not user32.PostMessageW(shell_hwnd, WM_CLOSE, 0, 0):
+                    raise SmokeFailure("could not close the smoke-owned native window")
+                hidden_deadline = time.monotonic() + min(15.0, timeout)
+                while time.monotonic() < hidden_deadline and _window_visible(shell_hwnd):
+                    if _wait_process_handle(shell_handle, 0.05):
+                        break
+                    time.sleep(POLL_INTERVAL_SECONDS)
+                if _window_visible(shell_hwnd) or _wait_process_handle(shell_handle, 0):
+                    report.add("close_to_tray", "failed", "close did not leave the same native window hidden and process alive")
+                    raise SmokeFailure("window close did not hide the native window while retaining the shell process")
+                after_hide = _runtime_identity(profile_root, 5.0)
+                health_after_hide = _http_json("/api/v1/health/ready")
+                cli = application.parent / "backend-bundle" / "apex.exe"
+                if not cli.is_file():
+                    report.add("close_to_tray", "unverified", "bundled CLI executable was not found for hidden-session access validation")
+                    raise SmokeFailure("bundled CLI executable is unavailable")
+                cli_result = subprocess.run(
+                    [str(cli), "--json", "status"],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=min(20.0, timeout),
+                    env=env,
+                    check=False,
+                )
+                cli_payload = json.loads(cli_result.stdout.decode("utf-8")) if cli_result.stdout else None
+                if (
+                    cli_result.returncode != 0
+                    or not isinstance(cli_payload, dict)
+                    or cli_payload.get("status") != "ready"
+                    or after_hide.get("pid") != final_runtime.get("pid")
+                    or after_hide.get("instance_id") != final_runtime.get("instance_id")
+                    or health_after_hide != {"status": "ready", "config": "ok", "database": "ok"}
+                ):
+                    report.add("close_to_tray", "failed", "hidden shell lost backend identity, readiness, or independent CLI access")
+                    raise SmokeFailure("backend or CLI access changed after closing the window")
+                report.add("close_to_tray", "passed", "the window is hidden while the same shell, backend identity, API readiness, and CLI remain available")
+
+                # A normal second process launch must activate the original shell.
+                second = subprocess.Popen(
+                    [str(application)],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    env=env,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
                 try:
-                    backend_exited = _wait_process_handle(owned_handle, float(shutdown_budget) + 30.0)
-                    shell_exited = _wait_process_handle(shell_handle, float(shutdown_budget) + 30.0)
+                    try:
+                        second.wait(timeout=min(15.0, timeout))
+                    except subprocess.TimeoutExpired:
+                        report.add("single_instance_activation", "failed", "second native launch remained running instead of forwarding activation")
+                    else:
+                        activation_deadline = time.monotonic() + min(15.0, timeout)
+                        while time.monotonic() < activation_deadline and not _window_visible(shell_hwnd):
+                            time.sleep(POLL_INTERVAL_SECONDS)
+                        same_runtime = _runtime_identity(profile_root, 5.0)
+                        if (
+                            _window_visible(shell_hwnd)
+                            and same_runtime.get("pid") == final_runtime.get("pid")
+                            and same_runtime.get("instance_id") == final_runtime.get("instance_id")
+                            and not _wait_process_handle(shell_handle, 0)
+                        ):
+                            report.add("single_instance_activation", "passed", "second launch restored the original window and retained the original backend")
+                        else:
+                            report.add("single_instance_activation", "failed", "second launch did not restore the original native window and backend identity")
                 finally:
-                    _close_handle(shell_handle)
+                    if second.poll() is None:
+                        second.terminate()
+                        try:
+                            second.wait(timeout=3)
+                        except subprocess.TimeoutExpired:
+                            second.kill()
+                            second.wait(timeout=3)
+
+                # Tray actions must pass through the Windows notification area UI.
+                if _window_visible(shell_hwnd):
+                    user32.PostMessageW(shell_hwnd, WM_CLOSE, 0, 0)
+                    hide_deadline = time.monotonic() + min(10.0, timeout)
+                    while time.monotonic() < hide_deadline and _window_visible(shell_hwnd):
+                        time.sleep(POLL_INTERVAL_SECONDS)
+                try:
+                    _invoke_tray_menu_item("Show", min(10.0, timeout))
+                    show_deadline = time.monotonic() + min(10.0, timeout)
+                    while time.monotonic() < show_deadline and not _window_visible(shell_hwnd):
+                        time.sleep(POLL_INTERVAL_SECONDS)
+                    if _window_visible(shell_hwnd):
+                        report.add("tray_show", "passed", "actual Windows tray Show action restored the original native window")
+                    else:
+                        report.add("tray_show", "failed", "Windows tray Show action did not restore the original window")
+                except SmokeFailure as exc:
+                    report.add("tray_show", "unverified", str(exc))
+
+                try:
+                    _invoke_tray_menu_item("Quit", min(10.0, timeout))
+                except SmokeFailure as exc:
+                    report.add("tray_quit", "unverified", str(exc))
+                quit_unverified = any(
+                    check.name == "tray_quit" and check.status == "unverified"
+                    for check in report.checks
+                )
+                if quit_unverified and not _wait_process_handle(shell_handle, 5.0):
+                    _terminate_process_handle(shell_handle, "exact smoke-owned native shell after failed tray automation")
+                bounded_exit_wait = min(float(shutdown_budget) + 30.0, timeout + 30.0)
+                backend_exited = _wait_process_handle(owned_handle, bounded_exit_wait)
+                shell_exited = _wait_process_handle(shell_handle, bounded_exit_wait)
                 driver.close()
-                exited = backend_exited and shell_exited
+                if backend_exited and shell_exited and _wait_port_free(min(float(shutdown_budget) + 30.0, timeout + 30.0)):
+                    if not any(check.name == "tray_quit" for check in report.checks):
+                        report.add("tray_quit", "passed", "actual Windows tray Quit stopped the shell and its identity-matched backend")
+                    report.add("native_shell_cleanup", "passed", "smoke-owned native shell exited after explicit tray Quit")
+                    report.add("owned_backend_cleanup", "passed", "identity-matched backend exited and released 127.0.0.1:8000")
+                else:
+                    report.add("tray_quit", "failed", "tray Quit did not stop the verified shell, backend, and API listener")
+                    report.add("native_shell_cleanup", "failed", "smoke-owned native shell remained after tray Quit")
+                    report.add("owned_backend_cleanup", "failed", "verified backend remained or fixed API port remained occupied")
             finally:
                 _close_handle(owned_handle)
-            if exited and _wait_port_free(min(float(shutdown_budget) + 30.0, timeout + 30.0)):
-                report.add("graceful_quit", "passed", "verified managed backend process exited and released 127.0.0.1:8000")
-                report.add("native_shell_cleanup", "passed", "the smoke-owned native window exited through its CloseRequested handler")
-                report.add("owned_backend_cleanup", "passed", "the exact identity-matched child handle signaled exit and fixed API port is free")
-            else:
-                report.add("graceful_quit", "failed", "verified backend process or fixed API port remained after native window close")
-                report.add("native_shell_cleanup", "failed", "the smoke-owned native shell did not exit after its window close request")
-                report.add("owned_backend_cleanup", "failed", "the exact identity-matched child did not exit or fixed API port remained occupied")
+                if shell_handle:
+                    _close_handle(shell_handle)
         except (SmokeFailure, OSError, ValueError, subprocess.SubprocessError) as exc:
             if not report.diagnostics:
                 _capture_failure_diagnostics(
@@ -1475,13 +1653,19 @@ def _run_smoke(
                     report.add("native_shell_cleanup", "unverified", "smoke ended before a native shell process was owned")
                 else:
                     try:
-                        cleanup_shell = _request_native_window_close(driver_process.pid, application)
+                        cleanup_shell, _cleanup_pid, _cleanup_hwnd = _native_window(driver_process.pid, application)
                     except SmokeFailure as exc:
                         report.add("native_shell_cleanup", "unverified", f"could not locate the exact smoke-owned native shell during cleanup: {exc}")
                     else:
                         try:
+                            try:
+                                _invoke_tray_menu_item("Quit", 3.0)
+                            except SmokeFailure:
+                                pass
                             shell_exited = _wait_process_handle(cleanup_shell, 5.0)
                             if not shell_exited:
+                                # This is the exact executable descendant of this
+                                # smoke's driver, held by its process handle.
                                 _terminate_process_handle(cleanup_shell, "smoke-owned native shell")
                                 shell_exited = _wait_process_handle(cleanup_shell, 5.0)
                         except SmokeFailure as exc:
@@ -1540,6 +1724,10 @@ def _run_smoke(
             )
     else:
         report.add("disposable_profile_cleanup", "passed", "disposable smoke directory was removed")
+
+    for name in ("close_to_tray", "single_instance_activation", "tray_show", "tray_quit"):
+        if not any(check.name == name for check in report.checks):
+            report.add(name, "unverified", "smoke ended before this desktop-service check could run")
 
     return report
 

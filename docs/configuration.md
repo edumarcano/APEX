@@ -64,6 +64,19 @@ Optional `user_designation` and `agent_display_name` are machine-local personali
 
 Overview collects telemetry without running a model. Briefing follow-ups use the selected model and its saved reasoning and context controls. Per-turn overrides do not change saved preferences.
 
+The packaged Windows desktop shell also has two opt-in preferences, both off by default:
+
+```json
+{
+  "desktop": {
+    "launch_on_startup": false,
+    "completion_notifications": false
+  }
+}
+```
+
+Enable **Launch on startup** to register the installed APEX app for the current Windows user; startup launches hidden to the tray. If startup registration or hidden launch fails, the shell shows a visible recovery window and reports the OS error. Enable **Completion notifications** to show a generic Windows notification after a successful committed Cortex or Briefing run completes while APEX is hidden or minimized. Notifications are session-deduplicated and contain no run content. These controls are available only in the packaged desktop app; backend preferences are stored in the gitignored `config.local.json`, and actual Windows capability or registration errors are reported separately from the saved preference.
+
 ## Models and credentials
 
 The default model is OpenRouter GLM 5.3 Flash with Low reasoning. Configure the credential for the provider of the model you select:

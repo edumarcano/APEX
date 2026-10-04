@@ -6,6 +6,8 @@ APEX stores its settings and history locally, but connected services, cloud mode
 
 `apex_memory.db` holds conversations, run records, briefing artifacts and speech, personal-context evidence and history, review proposals, external activity reports, reminder state, retrieval indexes, and action evidence. Runtime Settings saves non-secret preferences in `config.local.json`.
 
+Windows desktop completion notifications are off by default. When enabled, they reveal only that an APEX run completed, using the fixed title `APEX` and body `An APEX run has completed`; they omit prompts, answers, run identifiers, and provider details. Only successful committed Cortex and Briefing completions qualify, and each completion is notified at most once per app session. Notifications are shown only while the desktop window is hidden or minimized. The preference is stored locally with other Runtime Settings.
+
 Credentials use separate storage:
 
 - Provider keys and environment-specific paths belong in `.env` or the process environment.
