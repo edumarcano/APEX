@@ -20,12 +20,55 @@ from types import SimpleNamespace
 from pathlib import Path
 
 from core.host.protocol import ControlEnvelope, decode_frame, encode_envelope
-from core.backend_host import _HardStopWatchdog, _host_uvicorn_server_type
+from core.backend_host import (
+    _HardStopWatchdog,
+    _host_uvicorn_server_type,
+    _make_desktop_preferences_sink,
+)
 from core.host.processes import python_child_invocation
 from core.host.profile_lock import ProfileLock
 
 
 class BackendHostSubprocessTests(unittest.TestCase):
+    def test_desktop_preferences_sink_waits_for_ready_and_reads_latest_snapshot(self) -> None:
+        sent = []
+
+        class Channel:
+            def send(self, envelope) -> None:
+                sent.append(envelope)
+
+        state = SimpleNamespace(desktop=SimpleNamespace(
+            launch_on_startup=False,
+            completion_notifications=False,
+        ))
+        store = SimpleNamespace(get_snapshot=lambda: SimpleNamespace(desktop=state.desktop))
+        readiness = SimpleNamespace(ready=False)
+        publish = _make_desktop_preferences_sink(
+            Channel(),
+            str(uuid.uuid4()),
+            ready_predicate=lambda: readiness.ready,
+            get_settings_store=lambda: store,
+        )
+
+        publish()
+        self.assertEqual(sent, [])
+        state.desktop = SimpleNamespace(
+            launch_on_startup=True,
+            completion_notifications=True,
+        )
+        readiness.ready = True
+        publish()
+        state.desktop = SimpleNamespace(
+            launch_on_startup=False,
+            completion_notifications=True,
+        )
+        publish()
+
+        self.assertEqual([event.request_id for event in sent], ["desktop:1", "desktop:2"])
+        self.assertEqual(sent[0].payload["launch_on_startup"], True)
+        self.assertEqual(sent[0].payload["completion_notifications"], True)
+        self.assertEqual(sent[1].payload["launch_on_startup"], False)
+
     @unittest.skipUnless(os.name == "nt", "Windows native import ordering")
     def test_windows_numpy_is_ready_before_host_threads_start(self) -> None:
         bootstrap = textwrap.dedent("""

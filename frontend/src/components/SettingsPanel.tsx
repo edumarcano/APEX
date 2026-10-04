@@ -17,6 +17,7 @@ import IntelligenceView from './settings/IntelligenceView'
 import IntegrationsView from './settings/IntegrationsView'
 import VoiceAudioView from './settings/VoiceAudioView'
 import SystemStatusView from './settings/SystemStatusView'
+import DesktopView from './settings/DesktopView'
 import {
   SETTINGS_CATEGORIES,
   getCategoryDirtyMap,
@@ -223,6 +224,7 @@ export default function SettingsPanel({
   const handleSave = useCallback(() => {
     void save().then((saved) => {
       if (saved) {
+        window.dispatchEvent(new Event('desktop-preferences-saved'))
         void mcpRuntime.refresh()
         void refreshActivityReportFolderStatus()
       }
@@ -468,6 +470,10 @@ export default function SettingsPanel({
                     failedConnectors={failedConnectors}
                     hasTelemetryEvidence={hasTelemetryEvidence}
                   />
+                ) : null}
+
+                {activeTab === 'desktop' ? (
+                  <DesktopView titleId={titleId} baseline={baseline} draft={draft} setDraft={setDraft} />
                 ) : null}
               </>
             ) : null}

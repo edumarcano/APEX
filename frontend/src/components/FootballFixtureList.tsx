@@ -2,6 +2,7 @@ import type { ReactElement } from 'react'
 
 import type { FootballTelemetry } from '../lib/footballTelemetry'
 import type { TelemetryModuleEntry } from '../types/telemetry'
+import { ExternalAnchor } from './ExternalAnchor'
 
 interface FootballFixtureListProps {
   telemetry: FootballTelemetry
@@ -14,7 +15,7 @@ interface FootballFixtureListProps {
 export function FootballFixtureList({ telemetry, module, hasSnapshot, stacked = false }: FootballFixtureListProps): ReactElement | null {
   if (!module || module.status === 'disabled') return null
   if (module.status === 'unavailable') return null
-  const attribution = <p className="mt-3 border-t border-white/[0.08] pt-2 text-[10px] text-[color:var(--hud-muted-text)]">Football data provided by the <a href="https://www.football-data.org/" target="_blank" rel="noreferrer" className="text-[#7EB3FF] hover:underline">Football-Data.org API</a>.</p>
+  const attribution = <p className="mt-3 border-t border-white/[0.08] pt-2 text-[10px] text-[color:var(--hud-muted-text)]">Football data provided by the <ExternalAnchor href="https://www.football-data.org/" target="_blank" rel="noreferrer" className="text-[#7EB3FF] hover:underline">Football-Data.org API</ExternalAnchor>.</p>
   if (telemetry.fixtures.length === 0) {
     return (
       <div className="shrink-0">

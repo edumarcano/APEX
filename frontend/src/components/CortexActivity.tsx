@@ -16,6 +16,7 @@ import { useState, type ReactElement } from 'react'
 import type { UseCortexRunsResult } from '../hooks/useCortexRuns'
 import type { RunStatus } from '../types/runs'
 import type { ModelCatalogEntry } from '../types/telemetry'
+import { writeClipboardText } from '../platform/services'
 
 export interface CortexActivityProps {
   runsState: UseCortexRunsResult
@@ -111,16 +112,20 @@ export function CortexActivity({
 }: CortexActivityProps): ReactElement {
   const { runs, selectedRunId, selectedRun, selectRun, refreshRuns, loading } = runsState
   const [copied, setCopied] = useState(false)
+  const [copyError, setCopyError] = useState<string | null>(null)
 
   const residentLocalModel = findResidentLocalModel(modelCatalog)
 
   const handleCopyId = async (id: string): Promise<void> => {
+    setCopied(false)
     try {
-      await navigator.clipboard.writeText(id)
+      setCopyError(null)
+      await writeClipboardText(id)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    } catch {
-      // Clipboard write fallback
+    } catch (error) {
+      setCopied(false)
+      setCopyError(error instanceof Error ? error.message : 'Clipboard is unavailable.')
     }
   }
 
@@ -212,6 +217,8 @@ export function CortexActivity({
                     </h4>
                   </div>
                 </div>
+                {copied ? <p className="sr-only" role="status">Run ID copied.</p> : null}
+                {copyError ? <p className="text-[10px] text-red-300" role="alert">Could not copy run ID: {copyError}</p> : null}
 
                 {/* Run ID with copy affordance */}
                 <div className="flex items-center justify-between gap-2 rounded bg-black/30 border border-white/5 px-2.5 py-1.5 font-mono text-[10px] text-zinc-400">

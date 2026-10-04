@@ -486,6 +486,16 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
   const llama_cpp = parseLlamaCppSettings(value.llama_cpp)
   const microsoft_todo = parseMicrosoftTodoSettings(value.microsoft_todo)
   const activity_report_folder = parseActivityReportFolderSettings(value.activity_report_folder)
+  const desktop = value.desktop === undefined
+    ? { launch_on_startup: false, completion_notifications: false }
+    : isRecord(value.desktop) &&
+        typeof value.desktop.launch_on_startup === 'boolean' &&
+        typeof value.desktop.completion_notifications === 'boolean'
+      ? {
+          launch_on_startup: value.desktop.launch_on_startup,
+          completion_notifications: value.desktop.completion_notifications,
+        }
+      : null
   if (
     !features ||
     !modules ||
@@ -493,6 +503,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     !llama_cpp ||
     !microsoft_todo ||
     !activity_report_folder ||
+    !desktop ||
     !calendar ||
     !context_vault ||
     !isRecord(value.ask_apex) ||
@@ -554,6 +565,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     llama_cpp,
     microsoft_todo,
     activity_report_folder,
+    desktop,
   }
 }
 
@@ -620,6 +632,7 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
     llama_cpp: { ...settings.llama_cpp },
     microsoft_todo: { ...settings.microsoft_todo },
     activity_report_folder: { ...settings.activity_report_folder },
+    desktop: { ...settings.desktop },
   }
 }
 
@@ -794,6 +807,9 @@ export function diffSettingsPatch(
     patch.activity_report_folder = activityReportFolder
   }
 
+  const desktop = diffSection(baseline.desktop, draft.desktop)
+  if (desktop) patch.desktop = desktop
+
   return patch
 }
 
@@ -812,7 +828,8 @@ export function isSettingsPatchEmpty(patch: SettingsPatch): boolean {
     patch.mcp === undefined &&
     patch.llama_cpp === undefined &&
     patch.microsoft_todo === undefined &&
-    patch.activity_report_folder === undefined
+    patch.activity_report_folder === undefined &&
+    patch.desktop === undefined
   )
 }
 

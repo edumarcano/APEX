@@ -30,7 +30,9 @@ The packaged Windows desktop application uses Tauri for native presentation and 
 
 Before admitting API-dependent workspaces, the shell waits for its child and compares the private managed-start identity with `GET /api/v1/runtime`. A port conflict leaves the existing listener untouched and presents a retryable startup state. A child crash returns the shell to a recoverable state; retry must match a new managed backend identity. API requests, Cortex and Briefing streams, and cancellation continue through the existing HTTP contracts. The desktop layer does not own conversations, Briefing artifacts, Agent execution, or persistence.
 
-The WebView uses the native application origin and scoped Tauri capabilities. Frontend platform-specific imports stay behind the platform boundary; the browser path continues to use the ordinary browser presentation. Closing the branch 4 desktop window requests the backend's existing bounded graceful shutdown. Tray behavior and other desktop services belong to the next implementation branch.
+The WebView uses the native application origin and scoped Tauri capabilities. Frontend platform-specific integrations stay behind the platform boundary; the browser presentation does not load native APIs. Closing the desktop window hides it to the tray and leaves the same backend and CLI available. Tray **Show** restores that window; tray **Quit** shuts down its owned backend through the bounded host lifecycle. A second native launch activates the existing window instead of starting another backend. The shell retains and restores window geometry.
+
+Startup and completion notifications are opt-in Runtime Settings stored in the private `desktop_preferences` control message. The native shell applies OS-level settings and reports OS failures separately from saved preferences. Completion notifications are derived only from successful committed Cortex or Briefing completions, deduplicated for the app session, and use the generic title `APEX` and body `An APEX run has completed.` A hidden or minimized session can show them; run text, identifiers, and provider details are not included.
 
 ## System components
 

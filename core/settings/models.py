@@ -10,6 +10,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     StrictInt,
     StrictStr,
     field_validator,
@@ -407,6 +408,25 @@ class ActivityReportFolderSettings(BaseModel):
     def validate_folder_path(cls, value: str) -> str:
         return _normalize_report_folder_path(value)
 
+
+class DesktopSettings(BaseModel):
+    """Local desktop integration preferences owned by the native shell."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    launch_on_startup: StrictBool = False
+    completion_notifications: StrictBool = False
+
+
+class DesktopPatch(BaseModel):
+    """Partial update for desktop integration preferences."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    launch_on_startup: StrictBool | None = None
+    completion_notifications: StrictBool | None = None
+
+
 class RuntimeSettingsSnapshot(BaseModel):
     """Immutable published view of resolved editable settings."""
 
@@ -435,6 +455,7 @@ class RuntimeSettingsSnapshot(BaseModel):
     llama_cpp: LlamaCppSettings = Field(default_factory=LlamaCppSettings)
     microsoft_todo: MicrosoftTodoSettings = Field(default_factory=MicrosoftTodoSettings)
     activity_report_folder: ActivityReportFolderSettings = Field(default_factory=ActivityReportFolderSettings)
+    desktop: DesktopSettings = Field(default_factory=DesktopSettings)
 
 
 class FeaturesPatch(BaseModel):
@@ -695,6 +716,7 @@ class SettingsPatch(BaseModel):
     llama_cpp: LlamaCppPatch | None = None
     microsoft_todo: MicrosoftTodoPatch | None = None
     activity_report_folder: ActivityReportFolderPatch | None = None
+    desktop: DesktopPatch | None = None
 
 
 class SettingsResponse(BaseModel):

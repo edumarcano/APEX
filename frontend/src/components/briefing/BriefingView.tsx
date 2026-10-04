@@ -1,5 +1,3 @@
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { useCallback, useState, type ReactElement, type ReactNode } from 'react'
 
 import { useCompactLayout } from '../../hooks/useCompactLayout'
@@ -8,6 +6,7 @@ import { parseAgentQueryResponse } from '../../lib/cortexResponse'
 import type { BriefingSessionDetail, BriefingSpeechState } from '../../types/briefings'
 import type { BriefingPreviewSection } from '../../types/runs'
 import { ApexAssistantThread, type ApexAssistantComposerProps } from '../ApexAssistantRuntime'
+import AssistantMarkdown from '../AssistantMarkdown'
 import { AgentResponseName } from '../AgentResponseName'
 import { CompactToolResults } from '../CompactToolResults'
 import { BriefingArtifactMessage } from './BriefingArtifactMessage'
@@ -50,7 +49,7 @@ function BriefingAgentMessage({ text, metadata, agentDisplayName }: { text: stri
   const toolOutputs = parseAgentQueryResponse({ ...metadata, answer: text }).tool_outputs ?? []
   return <>
     <AgentResponseName name={agentDisplayName} />
-    <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+    <AssistantMarkdown text={text} />
     <CompactToolResults toolOutputs={toolOutputs} />
   </>
 }

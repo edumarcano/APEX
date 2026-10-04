@@ -32,6 +32,7 @@ from core.settings.models import (
     AgentSettings,
     CalendarSettings,
     ContextVaultSettings,
+    DesktopSettings,
     FeaturesSettings,
     LocalSettings,
     FootballSettings,
@@ -76,6 +77,7 @@ EDITABLE_ROOT_KEYS: frozenset[str] = frozenset(
         "llama_cpp",
         "microsoft_todo",
         "activity_report_folder",
+        "desktop",
     }
 )
 _DEFAULT_LLAMA_CPP_HOST = "http://127.0.0.1:8080"
@@ -211,6 +213,10 @@ def normalize_layer(
             report_folder = _normalize_activity_report_folder(value, layer_name, issues)
             if report_folder is not None:
                 normalized["activity_report_folder"] = report_folder
+        elif key == "desktop":
+            desktop = _normalize_desktop(value, issues)
+            if desktop is not None:
+                normalized["desktop"] = desktop
 
     return normalized
 
@@ -288,6 +294,29 @@ def _normalize_activity_report_folder(
                 normalized["folder_path"] = folder_path
 
     return normalized
+
+
+def _normalize_desktop(
+    value: Any, issues: NormalizationIssues | None
+) -> dict[str, Any] | None:
+    """Normalize native desktop preferences shared with the shell."""
+    if not isinstance(value, dict):
+        _record_error(issues, "desktop must be an object")
+        return None
+    allowed = {"launch_on_startup", "completion_notifications"}
+    for key in value:
+        if key not in allowed:
+            _record_error(issues, f"desktop contains unsupported field {key!r}")
+    result: dict[str, Any] = {}
+    for key in allowed:
+        if key not in value:
+            continue
+        setting = value[key]
+        if type(setting) is not bool:
+            _record_error(issues, f"desktop.{key} must be a boolean")
+        else:
+            result[key] = setting
+    return result
 
 
 def _normalize_calendar(
@@ -1221,6 +1250,8 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
             else ""
         ),
     )
+    desktop_raw = merged.get("desktop") if isinstance(merged.get("desktop"), dict) else {}
+    desktop = DesktopSettings.model_validate(desktop_raw)
     return RuntimeSettingsSnapshot(
         user_designation=(
             merged.get("user_designation", "")
@@ -1245,6 +1276,7 @@ def snapshot_from_merged(merged: dict[str, Any]) -> RuntimeSettingsSnapshot:
         llama_cpp=llama_cpp,
         microsoft_todo=microsoft_todo,
         activity_report_folder=activity_report_folder,
+        desktop=desktop,
     )
 
 
@@ -1359,4 +1391,8 @@ def patch_to_ondisk(patch: SettingsPatch) -> dict[str, Any]:
         activity_report_folder = patch.activity_report_folder.model_dump(exclude_none=True)
         if activity_report_folder:
             ondisk["activity_report_folder"] = activity_report_folder
+    if patch.desktop is not None:
+        desktop = patch.desktop.model_dump(exclude_none=True)
+        if desktop:
+            ondisk["desktop"] = desktop
     return ondisk

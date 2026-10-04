@@ -72,6 +72,8 @@ npm run desktop:build -- --bundle "C:\path\to\backend-bundle"
 
 In the native window, APEX waits for the owned backend and checks the fixed local runtime identity endpoint before mounting workspace API hooks. Startup, port/profile conflict, origin rejection, identity mismatch, and backend failure states provide retry or quit actions. Retrying asks first because restarting closes the current workspace and discards unsent text; drafts are not persisted.
 
+In the packaged app, closing the window hides it to the tray while its backend remains available to the CLI. Tray **Show** restores the window and **Quit** shuts down the owned backend. A second app launch activates the existing window, and the shell restores saved geometry. Runtime Settings includes opt-in Windows startup and completion notifications. Startup launches hidden; OS integration failures are surfaced separately from the saved preferences. Completion notifications contain only generic text and are limited to successful committed runs while the app is hidden or minimized. Validate these installed Windows integrations with the packaged-app gate in [Backend Bundle](../docs/backend-bundle.md#build); browser development does not exercise OS tray, startup, or notification behavior.
+
 ## Source organization
 
 `App.tsx` composes the workspaces and coordinates shared flows. Components own presentation, hooks own focused state and API workflows, and `lib/` holds API endpoints and parsing or presentation helpers. Shared contracts live in `types/`; `test/` supplies test setup and fixtures. `index.css` defines tokens, materials, layout, and motion, while `main.tsx` starts the application.

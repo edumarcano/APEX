@@ -101,6 +101,10 @@
   "microsoft_todo": {
     "reminder_list_id": ""
   },
+  "desktop": {
+    "launch_on_startup": false,
+    "completion_notifications": false
+  },
   "mcp": {
     "enabled": false,
     "servers": {

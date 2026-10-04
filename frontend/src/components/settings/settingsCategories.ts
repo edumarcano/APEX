@@ -4,6 +4,7 @@ import {
   Database,
   Sparkles,
   Volume2,
+  MonitorCog,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -15,6 +16,7 @@ export type SettingsCategoryKey =
   | 'intelligence'
   | 'integrations'
   | 'voice_audio'
+  | 'desktop'
   | 'system_status'
 
 export interface SettingsCategoryConfig {
@@ -50,6 +52,12 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategoryConfig[] = [
     description: 'Speech synthesis, engine, audio',
   },
   {
+    key: 'desktop',
+    label: 'Desktop',
+    icon: MonitorCog,
+    description: 'Startup, tray, notifications',
+  },
+  {
     key: 'system_status',
     label: 'System Status',
     icon: Activity,
@@ -67,6 +75,7 @@ export function getCategoryDirtyMap(
       intelligence: false,
       integrations: false,
       voice_audio: false,
+      desktop: false,
       system_status: false,
     }
   }
@@ -93,6 +102,7 @@ export function getCategoryDirtyMap(
       patch.activity_report_folder,
     ),
     voice_audio: Boolean(patch.voice),
+    desktop: Boolean(patch.desktop),
     system_status: false,
   }
 }

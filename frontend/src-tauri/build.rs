@@ -4,6 +4,10 @@ fn main() {
             "desktop_backend_status",
             "desktop_backend_retry",
             "desktop_quit",
+            "desktop_services_status",
+            "desktop_services_retry",
+            "desktop_open_external",
+            "desktop_write_clipboard",
         ]),
     ))
     .expect("failed to build the Tauri application manifest")

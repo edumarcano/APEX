@@ -1,13 +1,21 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod autostart;
+mod external;
+mod notifications;
 mod protocol;
 mod security;
+mod services;
 mod state;
+mod window_geometry;
 #[cfg(windows)]
 mod windows_job;
 
 use futures_util::StreamExt;
 use serde_json::{json, Value};
+use services::{
+    DesktopServicesState, DesktopServicesStatus, NotificationSetting, NotificationSettingProbe,
+};
 use state::{BackendStatus, DesktopState, Phase, RuntimeIdentity};
 use std::{
     sync::{
@@ -17,6 +25,8 @@ use std::{
     time::Duration,
 };
 use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_opener::OpenerExt;
 use tokio::{
     io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader},
     sync::{mpsc, Mutex},
@@ -111,6 +121,58 @@ struct Supervisor {
 }
 
 #[tauri::command]
+async fn desktop_services_status(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    services: State<'_, DesktopServicesState>,
+) -> Result<DesktopServicesStatus, &'static str> {
+    validate_caller(&window)?;
+    let generation = app.state::<DesktopState>().snapshot().generation;
+    refresh_services_status(app, services.inner().clone(), generation, false).await;
+    Ok(services.snapshot())
+}
+
+#[tauri::command]
+async fn desktop_services_retry(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    services: State<'_, DesktopServicesState>,
+) -> Result<DesktopServicesStatus, &'static str> {
+    validate_caller(&window)?;
+    let generation = app.state::<DesktopState>().snapshot().generation;
+    reconcile_services(app, services.inner().clone(), generation, true).await;
+    Ok(services.snapshot())
+}
+
+#[tauri::command]
+fn desktop_open_external(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    url: String,
+) -> Result<(), &'static str> {
+    validate_caller(&window)?;
+    let url = external::validate_external_url(&url)?;
+    app.opener()
+        .open_url(url.as_str(), None::<&str>)
+        .map_err(|_| "open_failed")
+}
+
+#[tauri::command]
+fn desktop_write_clipboard(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    text: String,
+) -> Result<(), &'static str> {
+    validate_caller(&window)?;
+    if text.len() > 1_048_576 {
+        return Err("clipboard_failed");
+    }
+    app.clipboard()
+        .write_text(text)
+        .map_err(|_| "clipboard_failed")
+}
+
+#[tauri::command]
 fn desktop_backend_status(
     window: tauri::WebviewWindow,
     status: State<'_, DesktopState>,
@@ -138,16 +200,17 @@ async fn desktop_quit(
     supervisor: State<'_, Supervisor>,
 ) -> Result<(), &'static str> {
     validate_caller(&window)?;
-    supervisor.quitting.store(true, Ordering::Release);
-    cancel_start(supervisor.inner()).await;
-    run_shutdown(
-        app.clone(),
-        status.inner().clone(),
-        supervisor.inner().clone(),
-    )
-    .await;
-    app.exit(0);
+    quit_app(app, status.inner().clone(), supervisor.inner().clone()).await;
     Ok(())
+}
+
+async fn quit_app(app: tauri::AppHandle, status: DesktopState, supervisor: Supervisor) {
+    if supervisor.quitting.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    cancel_start(&supervisor).await;
+    run_shutdown(app.clone(), status, supervisor).await;
+    app.exit(0);
 }
 
 fn validate_caller(window: &tauri::WebviewWindow) -> Result<(), &'static str> {
@@ -167,13 +230,228 @@ fn safe_event(
     error: Option<&str>,
     identity: Option<RuntimeIdentity>,
 ) -> BackendStatus {
-    status.transition(
+    let failed = phase == Phase::Failed;
+    let snapshot = status.transition(
         app,
         generation,
         phase,
         error.map(state::safe_error_code),
         identity,
-    )
+    );
+    if failed {
+        show_main(app);
+    }
+    snapshot
+}
+
+async fn reconcile_services(
+    app: tauri::AppHandle,
+    services: DesktopServicesState,
+    generation: u64,
+    clear_notification_errors: bool,
+) {
+    let _guard = services.reconcile_lock.lock().await;
+    if app
+        .state::<Supervisor>()
+        .inner()
+        .quitting
+        .load(Ordering::Acquire)
+        || app.state::<DesktopState>().snapshot().generation != generation
+        || services.snapshot().generation != generation
+    {
+        return;
+    }
+    #[cfg(all(windows, not(debug_assertions)))]
+    {
+        let snapshot = services.snapshot();
+        let wanted = snapshot
+            .preferences_ready
+            .then_some(snapshot.requested.launch_on_startup);
+        let result = tokio::task::spawn_blocking(move || autostart::reconcile(wanted)).await;
+        if app
+            .state::<Supervisor>()
+            .inner()
+            .quitting
+            .load(Ordering::Acquire)
+            || app.state::<DesktopState>().snapshot().generation != generation
+            || services.snapshot().generation != generation
+        {
+            return;
+        }
+        match result {
+            Ok(result) => {
+                if wanted.is_some() {
+                    services.set_startup(result.actual_enabled, result.error_code);
+                } else {
+                    services.refresh_startup(result.actual_enabled, result.error_code);
+                }
+                if result.error_code.is_some() && window_is_hidden_or_minimized(&app) {
+                    show_main(&app);
+                }
+            }
+            Err(_) => {
+                if wanted.is_some() {
+                    services.set_startup(None, Some("autostart_failed"));
+                } else {
+                    services.refresh_startup(None, Some("autostart_failed"));
+                }
+                if window_is_hidden_or_minimized(&app) {
+                    show_main(&app);
+                }
+            }
+        }
+    }
+    #[cfg(any(debug_assertions, not(windows)))]
+    services.refresh_startup(None, Some("unsupported"));
+
+    let notification_result = tokio::task::spawn_blocking(notifications::query_setting).await;
+    if app
+        .state::<Supervisor>()
+        .inner()
+        .quitting
+        .load(Ordering::Acquire)
+        || app.state::<DesktopState>().snapshot().generation != generation
+        || services.snapshot().generation != generation
+    {
+        return;
+    }
+    match notification_result {
+        Ok(Ok(probe)) if clear_notification_errors => {
+            let error = notification_probe_error(&probe);
+            services.set_notification_probe(probe, error);
+        }
+        Ok(Ok(probe)) => {
+            let error = notification_probe_error(&probe);
+            services.refresh_notification_probe(probe, error);
+        }
+        Err(_) if clear_notification_errors => services.set_notifications(
+            NotificationSetting::Unavailable,
+            Some("notification_unavailable"),
+        ),
+        Ok(Err(_)) if clear_notification_errors => services.set_notifications(
+            NotificationSetting::Unavailable,
+            Some("notification_unavailable"),
+        ),
+        _ => services.refresh_notifications(
+            NotificationSetting::Unavailable,
+            Some("notification_unavailable"),
+        ),
+    }
+    if app
+        .state::<Supervisor>()
+        .inner()
+        .quitting
+        .load(Ordering::Acquire)
+        || app.state::<DesktopState>().snapshot().generation != generation
+        || services.snapshot().generation != generation
+    {
+        return;
+    }
+    services.publish(&app);
+}
+
+async fn refresh_services_status(
+    app: tauri::AppHandle,
+    services: DesktopServicesState,
+    generation: u64,
+    publish: bool,
+) {
+    let _guard = services.reconcile_lock.lock().await;
+    if app
+        .state::<Supervisor>()
+        .inner()
+        .quitting
+        .load(Ordering::Acquire)
+        || app.state::<DesktopState>().snapshot().generation != generation
+        || services.snapshot().generation != generation
+    {
+        return;
+    }
+
+    #[cfg(all(windows, not(debug_assertions)))]
+    {
+        let startup = tokio::task::spawn_blocking(|| autostart::reconcile(None)).await;
+        if app
+            .state::<Supervisor>()
+            .inner()
+            .quitting
+            .load(Ordering::Acquire)
+            || app.state::<DesktopState>().snapshot().generation != generation
+            || services.snapshot().generation != generation
+        {
+            return;
+        }
+        match startup {
+            Ok(result) => services.refresh_startup(result.actual_enabled, result.error_code),
+            Err(_) => services.refresh_startup(None, Some("autostart_read_failed")),
+        }
+    }
+    #[cfg(any(debug_assertions, not(windows)))]
+    services.refresh_startup(None, Some("unsupported"));
+
+    let notification = tokio::task::spawn_blocking(notifications::query_setting).await;
+    if app
+        .state::<Supervisor>()
+        .inner()
+        .quitting
+        .load(Ordering::Acquire)
+        || app.state::<DesktopState>().snapshot().generation != generation
+        || services.snapshot().generation != generation
+    {
+        return;
+    }
+    match notification {
+        Ok(Ok(probe)) => {
+            let error = notification_probe_error(&probe);
+            services.refresh_notification_probe(probe, error);
+        }
+        _ => services.refresh_notifications(
+            NotificationSetting::Unavailable,
+            Some("notification_unavailable"),
+        ),
+    }
+    if publish {
+        services.publish(&app);
+    }
+}
+
+async fn submit_completion_notification(
+    app: tauri::AppHandle,
+    services: DesktopServicesState,
+    supervisor: Supervisor,
+    generation: u64,
+) {
+    if supervisor.quitting.load(Ordering::Acquire)
+        || app.state::<DesktopState>().snapshot().generation != generation
+        || services.snapshot().generation != generation
+        || !services.should_submit_notification()
+        || !window_is_hidden_or_minimized(&app)
+    {
+        return;
+    }
+    let result = tokio::task::spawn_blocking(notifications::show_completion).await;
+    if supervisor.quitting.load(Ordering::Acquire)
+        || app.state::<DesktopState>().snapshot().generation != generation
+        || services.snapshot().generation != generation
+    {
+        return;
+    }
+    match result {
+        Ok(Ok(attempt)) => {
+            let error = notification_probe_error(&attempt.probe);
+            services.refresh_notification_probe(attempt.probe, error);
+        }
+        Ok(Err(code)) => services.set_notification_error(code),
+        Err(_) => services.set_notification_error("notification_failed"),
+    }
+    services.publish(&app);
+}
+
+fn notification_probe_error(probe: &NotificationSettingProbe) -> Option<&'static str> {
+    match probe {
+        NotificationSettingProbe::Known(_) => None,
+        NotificationSettingProbe::IdentityNotFound => Some("notification_identity_unregistered"),
+    }
 }
 
 async fn stop_previous(
@@ -235,6 +513,9 @@ async fn run_start(
     }
     stop_previous(&app, &state, generation, &supervisor).await;
     safe_event(&app, &state, generation, Phase::Starting, None, None);
+    let services = app.state::<DesktopServicesState>().inner().clone();
+    services.set_generation(generation);
+    services.publish(&app);
     let spawned = tokio::select! {
         biased;
         value = spawn_backend(&app) => value,
@@ -346,7 +627,7 @@ async fn run_start(
             if run_id != Some(frame.request_id.as_str())
                 || identity
                     .as_ref()
-                    .is_some_and(|item| Some(item.instance_id.as_str()) != instance_id)
+                    .is_none_or(|item| Some(item.instance_id.as_str()) != instance_id)
             {
                 return fail_start(
                     &app,
@@ -358,6 +639,37 @@ async fn run_start(
                 )
                 .await;
             }
+            let services = app.state::<DesktopServicesState>().inner().clone();
+            let _ = services.take_completion(
+                instance_id.unwrap_or(""),
+                run_id.unwrap_or(""),
+                identity
+                    .as_ref()
+                    .map(|item| item.instance_id.as_str())
+                    .unwrap_or(""),
+            );
+            continue;
+        }
+        if frame.kind == "desktop_preferences" {
+            let Some(instance) = identity.as_ref().map(|item| item.instance_id.as_str()) else {
+                return fail_start(
+                    &app,
+                    &state,
+                    generation,
+                    session,
+                    "protocol_error",
+                    identity.as_ref(),
+                )
+                .await;
+            };
+            let services = app.state::<DesktopServicesState>().inner().clone();
+            if let Err(code) =
+                services.accept_preferences(&frame.request_id, frame.payload, instance)
+            {
+                return fail_start(&app, &state, generation, session, code, identity.as_ref())
+                    .await;
+            }
+            services.publish(&app);
             continue;
         }
         if frame.request_id != request_id {
@@ -465,8 +777,16 @@ async fn run_start(
                     Ok(()) => {
                         let result =
                             safe_event(&app, &state, generation, Phase::Ready, None, Some(ready));
+                        let services = app.state::<DesktopServicesState>().inner().clone();
                         *supervisor.session.lock().await = Some(session);
                         *supervisor.cancellation.lock().await = None;
+                        let service_app = app.clone();
+                        tauri::async_runtime::spawn(reconcile_services(
+                            service_app,
+                            services,
+                            generation,
+                            false,
+                        ));
                         tauri::async_runtime::spawn(monitor_backend(
                             app.clone(),
                             state.clone(),
@@ -566,11 +886,14 @@ async fn monitor_backend(
             .as_ref()
             .map(|id| id.instance_id.as_str())
             .unwrap_or("");
+        let services = app.state::<DesktopServicesState>().inner().clone();
         let mut owned = supervisor.session.lock().await;
         let Some(session) = owned.as_mut() else {
             return;
         };
         let mut outcome: Option<(bool, &'static str)> = None;
+        let mut preferences_changed = false;
+        let mut eligible_completions = 0usize;
         match session.child.try_wait() {
             Ok(Some(_)) | Err(_) => outcome = Some((false, "backend_crashed")),
             Ok(None) => {}
@@ -578,18 +901,43 @@ async fn monitor_backend(
         if outcome.is_none() {
             loop {
                 match session.rx.try_recv() {
-                    Ok(Ok(frame))
-                        if frame.kind == "completion"
-                            && frame.request_id
-                                == frame
-                                    .payload
-                                    .get("run_id")
-                                    .and_then(Value::as_str)
-                                    .unwrap_or("")
-                            && frame.payload.get("instance_id").and_then(Value::as_str)
-                                == Some(expected_instance) =>
-                    {
-                        continue
+                    Ok(Ok(frame)) if frame.kind == "completion" => {
+                        let run_id = frame
+                            .payload
+                            .get("run_id")
+                            .and_then(Value::as_str)
+                            .unwrap_or("");
+                        let frame_instance = frame
+                            .payload
+                            .get("instance_id")
+                            .and_then(Value::as_str)
+                            .unwrap_or("");
+                        if frame.request_id != run_id || frame_instance != expected_instance {
+                            outcome = Some((false, "protocol_error"));
+                        } else {
+                            let completed = frame.payload.get("status").and_then(Value::as_str)
+                                == Some("completed");
+                            let hidden = completed && window_is_hidden_or_minimized(&app);
+                            if services.record_completion_eligibility(
+                                frame_instance,
+                                run_id,
+                                expected_instance,
+                                completed,
+                                hidden,
+                            ) {
+                                eligible_completions = eligible_completions.saturating_add(1);
+                            }
+                        }
+                    }
+                    Ok(Ok(frame)) if frame.kind == "desktop_preferences" => {
+                        match services.accept_preferences(
+                            &frame.request_id,
+                            frame.payload,
+                            expected_instance,
+                        ) {
+                            Ok(_) => preferences_changed = true,
+                            Err(code) => outcome = Some((false, code)),
+                        }
                     }
                     Ok(Ok(frame))
                         if frame.kind == "stopping"
@@ -635,10 +983,42 @@ async fn monitor_backend(
                 }
             }
         }
+        if outcome.is_none() && matches!(session.child.try_wait(), Ok(Some(_)) | Err(_)) {
+            outcome = Some((false, "backend_crashed"));
+        }
+        drop(owned);
+        if app
+            .state::<Supervisor>()
+            .inner()
+            .quitting
+            .load(Ordering::Acquire)
+        {
+            return;
+        }
+        if preferences_changed {
+            services.publish(&app);
+            reconcile_services(app.clone(), services.clone(), generation, false).await;
+        }
+        if outcome.is_none() {
+            for _ in 0..eligible_completions {
+                if supervisor.quitting.load(Ordering::Acquire)
+                    || state.snapshot().generation != generation
+                {
+                    return;
+                }
+                if services.should_submit_notification() && window_is_hidden_or_minimized(&app) {
+                    tauri::async_runtime::spawn(submit_completion_notification(
+                        app.clone(),
+                        services.clone(),
+                        supervisor.clone(),
+                        generation,
+                    ));
+                }
+            }
+        }
         let Some((stopped_frame, code)) = outcome else {
             continue;
         };
-        drop(owned);
         let _operation = supervisor.operation.lock().await;
         if state.snapshot().generation != generation {
             return;
@@ -900,20 +1280,73 @@ fn main() {
     tauri::Builder::default()
         .manage(status.clone())
         .manage(supervisor.clone())
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main(app);
+        }))
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::SIZE
+                        | tauri_plugin_window_state::StateFlags::POSITION
+                        | tauri_plugin_window_state::StateFlags::MAXIMIZED,
+                )
+                .build(),
+        )
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .app_name("APEX")
+                .args(["--autostart"])
+                .build(),
+        )
         .setup(move |app| {
             let handle = app.handle().clone();
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                .title("APEX")
-                .inner_size(1440.0, 900.0)
-                .min_inner_size(1024.0, 700.0)
-                .use_https_scheme(false)
-                .on_navigation(|url| security::is_trusted_url(url.as_str(), cfg!(debug_assertions)))
-                .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-                .build()?;
+            let window =
+                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                    .title("APEX")
+                    .inner_size(1440.0, 900.0)
+                    .min_inner_size(320.0, 240.0)
+                    .use_https_scheme(false)
+                    .on_navigation(|url| {
+                        security::is_trusted_url(url.as_str(), cfg!(debug_assertions))
+                    })
+                    .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+                    .build()?;
+            let tray_available = create_tray(app);
+            let services = DesktopServicesState::new(
+                tray_available,
+                cfg!(all(windows, not(debug_assertions))),
+            );
+            app.manage(services);
+            if cfg!(not(debug_assertions))
+                && tray_available
+                && std::env::args().any(|argument| argument == "--autostart")
+            {
+                let _ = window.hide();
+            } else {
+                let _ = window.show();
+            }
+            let restore_window = window.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                ensure_usable_geometry(&restore_window);
+            });
             let initial_status = app.state::<DesktopState>().inner().clone();
             let initial_supervisor = app.state::<Supervisor>().inner().clone();
             tauri::async_runtime::spawn(async move {
                 let _ = run_start(handle, initial_status, initial_supervisor).await;
+            });
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let generation = app_handle.state::<DesktopState>().snapshot().generation;
+                reconcile_services(
+                    app_handle.clone(),
+                    app_handle.state::<DesktopServicesState>().inner().clone(),
+                    generation,
+                    false,
+                )
+                .await;
             });
             Ok(())
         })
@@ -921,26 +1354,231 @@ fn main() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let app = window.app_handle().clone();
-                let status = app.state::<DesktopState>().inner().clone();
-                let supervisor = app.state::<Supervisor>().inner().clone();
-                tauri::async_runtime::spawn(async move {
-                    run_shutdown(app.clone(), status, supervisor).await;
-                    app.exit(0);
-                });
+                let has_tray = app
+                    .state::<DesktopServicesState>()
+                    .snapshot()
+                    .tray_available;
+                match close_action(has_tray) {
+                    CloseAction::Hide => {
+                        let _ = window.hide();
+                    }
+                    CloseAction::Quit => {
+                        let status = app.state::<DesktopState>().inner().clone();
+                        let supervisor = app.state::<Supervisor>().inner().clone();
+                        tauri::async_runtime::spawn(quit_app(app, status, supervisor));
+                    }
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
             desktop_backend_status,
             desktop_backend_retry,
-            desktop_quit
+            desktop_quit,
+            desktop_services_status,
+            desktop_services_retry,
+            desktop_open_external,
+            desktop_write_clipboard
         ])
         .run(tauri::generate_context!())
         .expect("failed to run APEX desktop shell");
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CloseAction {
+    Hide,
+    Quit,
+}
+
+fn close_action(tray_available: bool) -> CloseAction {
+    if tray_available {
+        CloseAction::Hide
+    } else {
+        CloseAction::Quit
+    }
+}
+
+fn show_main(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        ensure_usable_geometry(&window);
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let generation = app.state::<DesktopState>().snapshot().generation;
+            refresh_services_status(
+                app.clone(),
+                app.state::<DesktopServicesState>().inner().clone(),
+                generation,
+                true,
+            )
+            .await;
+        });
+    }
+}
+
+fn window_is_hidden_or_minimized(app: &tauri::AppHandle) -> bool {
+    app.get_webview_window("main").is_some_and(|window| {
+        let visible = window.is_visible().unwrap_or(true);
+        let minimized = window.is_minimized().unwrap_or(false);
+        notifications::eligible_when_hidden_or_minimized(visible, minimized)
+    })
+}
+
+fn create_tray(app: &mut tauri::App) -> bool {
+    use tauri::{
+        menu::{Menu, MenuItem},
+        tray::TrayIconBuilder,
+    };
+    let show = match MenuItem::with_id(app, "show", "Show", true, None::<&str>) {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+    let quit = match MenuItem::with_id(app, "quit", "Quit", true, None::<&str>) {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+    let menu = match Menu::with_items(app, &[&show, &quit]) {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+    let mut builder = TrayIconBuilder::with_id("apex-tray")
+        .tooltip("APEX")
+        .menu(&menu)
+        .show_menu_on_left_click(true)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "show" => show_main(app),
+            "quit" => {
+                let status = app.state::<DesktopState>().inner().clone();
+                let supervisor = app.state::<Supervisor>().inner().clone();
+                let app = app.clone();
+                tauri::async_runtime::spawn(quit_app(app, status, supervisor));
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let tauri::tray::TrayIconEvent::Click {
+                button: tauri::tray::MouseButton::Left,
+                ..
+            } = event
+            {
+                show_main(tray.app_handle());
+            }
+        });
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    }
+    builder.build(app).is_ok()
+}
+
+fn ensure_usable_geometry(window: &tauri::WebviewWindow) {
+    let was_maximized = window.is_maximized().unwrap_or(false);
+    if window.is_minimized().unwrap_or(false) {
+        let _ = window.unminimize();
+    }
+    let Ok(position) = window.outer_position() else {
+        return;
+    };
+    let Ok(size) = window.outer_size() else {
+        return;
+    };
+    let Some(area) = usable_work_area(window, position, size) else {
+        return;
+    };
+    let Some(bounds) = window_geometry::clamp_saved_bounds(
+        window_geometry::WindowBounds {
+            x: position.x,
+            y: position.y,
+            width: size.width,
+            height: size.height,
+        },
+        area,
+        (1440, 900),
+    ) else {
+        return;
+    };
+    if area.width < 640 || area.height < 480 {
+        let _ = window.set_min_size(Some(tauri::PhysicalSize::new(
+            area.width.min(320),
+            area.height.min(240),
+        )));
+    }
+    if !was_maximized && (bounds.width != size.width || bounds.height != size.height) {
+        let _ = window.set_size(tauri::PhysicalSize::new(bounds.width, bounds.height));
+    }
+    if bounds.x != position.x || bounds.y != position.y {
+        let _ = window.set_position(tauri::PhysicalPosition::new(bounds.x, bounds.y));
+    }
+    if was_maximized {
+        let _ = window.maximize();
+    }
+}
+
+#[cfg(windows)]
+fn usable_work_area(
+    _window: &tauri::WebviewWindow,
+    position: tauri::PhysicalPosition<i32>,
+    size: tauri::PhysicalSize<u32>,
+) -> Option<window_geometry::WorkArea> {
+    use windows::Win32::{
+        Foundation::RECT,
+        Graphics::Gdi::{GetMonitorInfoW, MonitorFromRect, MONITORINFO, MONITOR_DEFAULTTONEAREST},
+    };
+    let rect = RECT {
+        left: position.x,
+        top: position.y,
+        right: position
+            .x
+            .saturating_add(size.width.min(i32::MAX as u32) as i32),
+        bottom: position
+            .y
+            .saturating_add(size.height.min(i32::MAX as u32) as i32),
+    };
+    let monitor = unsafe { MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST) };
+    if monitor.0.is_null() {
+        return None;
+    }
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    if !unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
+        return None;
+    }
+    Some(window_geometry::WorkArea {
+        x: info.rcWork.left,
+        y: info.rcWork.top,
+        width: info.rcWork.right.saturating_sub(info.rcWork.left).max(0) as u32,
+        height: info.rcWork.bottom.saturating_sub(info.rcWork.top).max(0) as u32,
+    })
+}
+
+#[cfg(not(windows))]
+fn usable_work_area(
+    window: &tauri::WebviewWindow,
+    _position: tauri::PhysicalPosition<i32>,
+    _size: tauri::PhysicalSize<u32>,
+) -> Option<window_geometry::WorkArea> {
+    let monitor = window.primary_monitor().ok().flatten()?;
+    let position = monitor.position();
+    let size = monitor.size();
+    Some(window_geometry::WorkArea {
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn close_hides_only_when_a_recovery_tray_is_available() {
+        assert_eq!(close_action(true), CloseAction::Hide);
+        assert_eq!(close_action(false), CloseAction::Quit);
+    }
 
     #[cfg(windows)]
     #[tokio::test]

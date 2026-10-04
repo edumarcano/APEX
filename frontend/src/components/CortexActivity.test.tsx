@@ -7,6 +7,9 @@ import type { RunRecord } from '../types/runs'
 import type { ModelCatalogEntry } from '../types/telemetry'
 import { CortexActivity } from './CortexActivity'
 
+const clipboard = vi.hoisted(() => ({ writeClipboardText: vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined) }))
+vi.mock('../platform/services', () => ({ writeClipboardText: clipboard.writeClipboardText }))
+
 function createMockRun(overrides: Partial<RunRecord> = {}): RunRecord {
   return {
     id: overrides.id ?? 'run-act-1',
@@ -166,14 +169,37 @@ describe('CortexActivity', () => {
       selectedRunId: run.id,
       selectedRun: run,
     })
-    const writeSpy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
+    clipboard.writeClipboardText.mockResolvedValue(undefined)
     const user = userEvent.setup()
 
     render(<CortexActivity runsState={runsState} />)
 
     const copyBtn = screen.getByRole('button', { name: 'Copy run ID' })
     await user.click(copyBtn)
-    expect(writeSpy).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000042')
+    expect(clipboard.writeClipboardText).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000042')
     expect(screen.getByText('Copied')).toBeInTheDocument()
+  })
+
+  it('reports unavailable clipboard writes accessibly without showing success', async () => {
+    const run = createMockRun()
+    clipboard.writeClipboardText.mockRejectedValueOnce(new Error('Clipboard access denied.'))
+    const user = userEvent.setup()
+    render(<CortexActivity runsState={createMockRunsState({ runs: [run], selectedRunId: run.id, selectedRun: run })} />)
+    await user.click(screen.getByRole('button', { name: 'Copy run ID' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Clipboard access denied.')
+    expect(screen.queryByText('Copied')).not.toBeInTheDocument()
+  })
+
+  it('clears prior copy success when a later clipboard write fails', async () => {
+    const run = createMockRun()
+    clipboard.writeClipboardText.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('Clipboard access denied.'))
+    const user = userEvent.setup()
+    render(<CortexActivity runsState={createMockRunsState({ runs: [run], selectedRunId: run.id, selectedRun: run })} />)
+    const button = screen.getByRole('button', { name: 'Copy run ID' })
+    await user.click(button)
+    expect(screen.getByText('Copied')).toBeInTheDocument()
+    await user.click(button)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Clipboard access denied.')
+    expect(screen.queryByText('Copied')).not.toBeInTheDocument()
   })
 })

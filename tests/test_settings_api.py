@@ -203,6 +203,51 @@ class SettingsApiTests(unittest.TestCase):
         persisted = json.loads(self.local_path.read_text(encoding="utf-8"))
         self.assertFalse(persisted["features"]["market"])
 
+    def test_desktop_preferences_publish_only_after_successful_commit(self) -> None:
+        app = self.client.app
+        prior_sink = getattr(app.state, "desktop_preferences_sink", None)
+        observed: list[tuple[bool, bool, bool]] = []
+        def observe_committed_preferences() -> None:
+            settings = self.store.get_snapshot().desktop
+            observed.append((
+                settings.launch_on_startup,
+                settings.completion_notifications,
+                self.local_path.is_file(),
+            ))
+
+        app.state.desktop_preferences_sink = observe_committed_preferences
+        self.addCleanup(setattr, app.state, "desktop_preferences_sink", prior_sink)
+
+        response = self.client.patch(
+            "/api/v1/settings",
+            json={"desktop": {"launch_on_startup": True}},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(observed, [(True, False, True)])
+
+        observed.clear()
+        app.state.desktop_preferences_sink = mock.Mock(side_effect=BrokenPipeError())
+        pipe_failure = self.client.patch(
+            "/api/v1/settings",
+            json={"desktop": {"completion_notifications": True}},
+        )
+        self.assertEqual(pipe_failure.status_code, 200)
+        self.assertTrue(self.store.get_snapshot().desktop.completion_notifications)
+        saved = json.loads(self.local_path.read_text(encoding="utf-8"))
+        self.assertTrue(saved["desktop"]["completion_notifications"])
+
+        with mock.patch.object(
+            self.store,
+            "apply_patch",
+            side_effect=SettingsPersistenceError("disk unavailable"),
+        ):
+            failed = self.client.patch(
+                "/api/v1/settings",
+                json={"desktop": {"completion_notifications": True}},
+            )
+        self.assertEqual(failed.status_code, 500)
+        self.assertEqual(observed, [])
+
     def test_unknown_field_rejected(self) -> None:
         for payload in (
             {"features": {"weather": True, "unknown": True}},
