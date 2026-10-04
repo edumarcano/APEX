@@ -340,7 +340,8 @@ async fn handle_device_request(
     request_id: String,
 ) {
     let location = app.state::<location::LocationState>().inner().clone();
-    let mut read_cancellation = None;
+    let initial_status = location.status();
+    let mut read_permit = None;
     let result = if !context.enabled {
         Err(location::ReadOutcome::PermissionRequired)
     } else {
@@ -350,67 +351,80 @@ async fn handle_device_request(
             location::Permission::Revoked => Err(location::ReadOutcome::Revoked),
             location::Permission::Unsupported => Err(location::ReadOutcome::Unsupported),
             location::Permission::Granted => {
-                let cancellation = location.cancellation_token().child_token();
-                read_cancellation = Some(cancellation.clone());
-                location::read_current(cancellation).await
+                let Some(permit) = location.begin_read(&context) else {
+                    if location.status() != initial_status {
+                        let _ = app.emit("desktop-device-state", json!({}));
+                    }
+                    return;
+                };
+                let result = location::read_current(permit.cancellation.clone()).await;
+                read_permit = Some(permit);
+                result
             }
         }
-    };
-    let result = if location.status().permission == location::Permission::Revoked && result.is_err()
-    {
-        Err(location::ReadOutcome::Revoked)
-    } else {
-        result
     };
     if !location.is_current(&context)
         || backend.snapshot().generation != context.generation
         || supervisor.quitting.load(Ordering::Acquire)
-        || (result.is_ok()
-            && (location.status().permission != location::Permission::Granted
-                || read_cancellation
-                    .as_ref()
-                    .is_some_and(tokio_util::sync::CancellationToken::is_cancelled)))
     {
+        if location.status() != initial_status {
+            let _ = app.emit("desktop-device-state", json!({}));
+        }
         return;
     }
-    let next_status = match &result {
-        Ok(_) => location::PublicStatus {
-            permission: location::Permission::Granted,
-            availability: location::Availability::Available,
-        },
-        Err(location::ReadOutcome::PermissionRequired) => location::PublicStatus {
-            permission: location::Permission::Unknown,
-            availability: location::Availability::Unknown,
-        },
-        Err(location::ReadOutcome::Denied) => location::PublicStatus {
-            permission: location::Permission::Denied,
-            availability: location::Availability::Unavailable,
-        },
-        Err(location::ReadOutcome::Revoked) => location::PublicStatus {
-            permission: location::Permission::Revoked,
-            availability: location::Availability::Unavailable,
-        },
-        Err(location::ReadOutcome::TimedOut) => location::PublicStatus {
-            permission: location::Permission::Granted,
-            availability: location::Availability::TimedOut,
-        },
-        Err(location::ReadOutcome::Unsupported) => location::PublicStatus {
-            permission: location::Permission::Unsupported,
-            availability: location::Availability::Unsupported,
-        },
-        Err(location::ReadOutcome::Unavailable) => location::PublicStatus {
-            permission: location::Permission::Granted,
-            availability: location::Availability::Unavailable,
-        },
-        Err(location::ReadOutcome::Expired) => location::PublicStatus {
-            permission: location::Permission::Granted,
-            availability: location::Availability::Available,
-        },
-    };
-    let status_changed =
-        next_status != location.status() && location.set_status(&context, next_status);
-    if status_changed {
-        let _ = send_location_state(&app, &backend, &supervisor, &location, &context).await;
+    let mut read_receipt = None;
+    if let Some(permit) = read_permit.as_ref() {
+        let next_status = match &result {
+            Ok(_) => location::PublicStatus {
+                permission: location::Permission::Granted,
+                availability: location::Availability::Available,
+            },
+            Err(location::ReadOutcome::PermissionRequired) => location::PublicStatus {
+                permission: location::Permission::Unknown,
+                availability: location::Availability::Unknown,
+            },
+            Err(location::ReadOutcome::Denied) => location::PublicStatus {
+                permission: location::Permission::Denied,
+                availability: location::Availability::Unavailable,
+            },
+            Err(location::ReadOutcome::Revoked) => location::PublicStatus {
+                permission: location::Permission::Revoked,
+                availability: location::Availability::Unavailable,
+            },
+            Err(location::ReadOutcome::TimedOut) => location::PublicStatus {
+                permission: location::Permission::Granted,
+                availability: location::Availability::TimedOut,
+            },
+            Err(location::ReadOutcome::Unsupported) => location::PublicStatus {
+                permission: location::Permission::Unsupported,
+                availability: location::Availability::Unsupported,
+            },
+            Err(location::ReadOutcome::Unavailable) => location::PublicStatus {
+                permission: location::Permission::Granted,
+                availability: location::Availability::Unavailable,
+            },
+            Err(location::ReadOutcome::Expired) => location::PublicStatus {
+                permission: location::Permission::Granted,
+                availability: location::Availability::Available,
+            },
+        };
+        let Some(receipt) = location.apply_read_status(&context, permit, next_status) else {
+            if location.status() != initial_status {
+                let _ = app.emit("desktop-device-state", json!({}));
+            }
+            return;
+        };
+        if receipt.changed {
+            let _ = send_location_state(&app, &backend, &supervisor, &location, &context).await;
+            let _ = app.emit("desktop-device-state", json!({}));
+        }
+        if !location.read_status_is_current(&context, &receipt) {
+            if receipt.changed || location.status() != initial_status {
+                let _ = app.emit("desktop-device-state", json!({}));
+            }
+            return;
+        }
+        read_receipt = Some(receipt);
     }
     let (outcome, fix) = match result {
         Ok(fix) => ("ok", Some(fix)),
@@ -432,12 +446,13 @@ async fn handle_device_request(
     if !location.is_current(&context)
         || backend.snapshot().generation != context.generation
         || supervisor.quitting.load(Ordering::Acquire)
-        || (outcome == "ok"
-            && (location.status().permission != location::Permission::Granted
-                || read_cancellation
-                    .as_ref()
-                    .is_some_and(tokio_util::sync::CancellationToken::is_cancelled)))
+        || read_receipt
+            .as_ref()
+            .is_some_and(|receipt| !location.read_status_is_current(&context, receipt))
     {
+        if location.status() != initial_status {
+            let _ = app.emit("desktop-device-state", json!({}));
+        }
         return;
     }
     let Some(session) = session.as_mut() else {

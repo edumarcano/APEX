@@ -58,6 +58,7 @@ struct Session {
     status: PublicStatus,
     last_request_sequence: u64,
     cancellation: tokio_util::sync::CancellationToken,
+    read_generation: u64,
 }
 
 #[derive(Clone)]
@@ -73,6 +74,7 @@ impl Default for LocationState {
             status: PublicStatus::default(),
             last_request_sequence: 0,
             cancellation: tokio_util::sync::CancellationToken::new(),
+            read_generation: 0,
         })))
     }
 }
@@ -97,12 +99,14 @@ impl LocationState {
             status: PublicStatus::default(),
             last_request_sequence: 0,
             cancellation: tokio_util::sync::CancellationToken::new(),
+            read_generation: 0,
         };
     }
 
     pub fn cancel_pending(&self) {
-        if let Ok(state) = self.0.lock() {
+        if let Ok(mut state) = self.0.lock() {
             state.cancellation.cancel();
+            state.read_generation = state.read_generation.wrapping_add(1);
         }
     }
 
@@ -144,6 +148,7 @@ impl LocationState {
         if changed {
             state.cancellation.cancel();
             state.cancellation = tokio_util::sync::CancellationToken::new();
+            state.read_generation = state.read_generation.wrapping_add(1);
             state.status = PublicStatus::default();
             state.last_request_sequence = 0;
         }
@@ -168,6 +173,71 @@ impl LocationState {
         self.context().as_ref() == Some(context)
     }
 
+    pub fn begin_read(&self, context: &RequestContext) -> Option<ReadPermit> {
+        let state = self.0.lock().ok()?;
+        if !context_matches(&state, context)
+            || !state.enabled
+            || state.status.permission != Permission::Granted
+            || state.cancellation.is_cancelled()
+        {
+            return None;
+        }
+        Some(ReadPermit {
+            generation: state.read_generation,
+            cancellation: state.cancellation.child_token(),
+        })
+    }
+
+    /// Applies a bounded read's status only while its permission grant and
+    /// context are still authoritative. A prior revoke/regrant receives a new
+    /// generation, so completion of an old read cannot overwrite that state.
+    pub fn apply_read_status(
+        &self,
+        context: &RequestContext,
+        permit: &ReadPermit,
+        status: PublicStatus,
+    ) -> Option<ReadStatusReceipt> {
+        let mut state = self.0.lock().ok()?;
+        if !context_matches(&state, context)
+            || !state.enabled
+            || state.status.permission != Permission::Granted
+            || state.read_generation != permit.generation
+            || state.cancellation.is_cancelled()
+            || permit.cancellation.is_cancelled()
+        {
+            return None;
+        }
+        let changed = state.status != status;
+        if changed {
+            state.status = status;
+            if status.permission != Permission::Granted {
+                state.cancellation.cancel();
+                state.cancellation = tokio_util::sync::CancellationToken::new();
+                state.read_generation = state.read_generation.wrapping_add(1);
+            }
+        }
+        Some(ReadStatusReceipt {
+            generation: state.read_generation,
+            status: state.status,
+            changed,
+            cancellation: permit.cancellation.clone(),
+        })
+    }
+
+    pub fn read_status_is_current(
+        &self,
+        context: &RequestContext,
+        receipt: &ReadStatusReceipt,
+    ) -> bool {
+        self.0.lock().is_ok_and(|state| {
+            context_matches(&state, context)
+                && state.read_generation == receipt.generation
+                && state.status == receipt.status
+                && (receipt.status.permission != Permission::Granted
+                    || (!state.cancellation.is_cancelled() && !receipt.cancellation.is_cancelled()))
+        })
+    }
+
     pub fn set_status(&self, context: &RequestContext, status: PublicStatus) -> bool {
         let Ok(mut state) = self.0.lock() else {
             return false;
@@ -178,13 +248,16 @@ impl LocationState {
         {
             return false;
         }
-        if matches!(state.status.permission, Permission::Granted)
-            && matches!(status.permission, Permission::Denied | Permission::Revoked)
-        {
-            state.cancellation.cancel();
-            state.cancellation = tokio_util::sync::CancellationToken::new();
+        if state.status != status {
+            if state.status.permission != status.permission
+                || status.permission != Permission::Granted
+            {
+                state.cancellation.cancel();
+                state.cancellation = tokio_util::sync::CancellationToken::new();
+                state.read_generation = state.read_generation.wrapping_add(1);
+            }
+            state.status = status;
         }
-        state.status = status;
         true
     }
 
@@ -202,6 +275,26 @@ impl LocationState {
         state.last_request_sequence = sequence;
         true
     }
+}
+
+fn context_matches(state: &Session, context: &RequestContext) -> bool {
+    state.generation == context.generation
+        && state.instance_id.as_deref() == Some(context.instance_id.as_str())
+        && state.revision == context.revision
+        && state.enabled == context.enabled
+}
+
+pub struct ReadPermit {
+    generation: u64,
+    pub cancellation: tokio_util::sync::CancellationToken,
+}
+
+#[derive(Clone)]
+pub struct ReadStatusReceipt {
+    generation: u64,
+    status: PublicStatus,
+    pub changed: bool,
+    cancellation: tokio_util::sync::CancellationToken,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -629,6 +722,96 @@ mod tests {
         assert!(state.is_current(&context));
         assert!(old_read.is_cancelled());
         assert!(!state.cancellation_token().is_cancelled());
+    }
+
+    #[test]
+    fn stale_read_failures_cannot_restore_grant_after_revoke_or_denial() {
+        for revoked_status in [Permission::Revoked, Permission::Denied] {
+            let state = LocationState::default();
+            state.reset(9);
+            assert!(state.accept_preferences(9, "instance", 2, true));
+            let context = state.context().unwrap();
+            assert!(state.set_status(
+                &context,
+                PublicStatus {
+                    permission: Permission::Granted,
+                    availability: Availability::Available,
+                }
+            ));
+            let old_read = state.begin_read(&context).unwrap();
+
+            assert!(state.set_status(
+                &context,
+                PublicStatus {
+                    permission: revoked_status,
+                    availability: Availability::Unavailable,
+                }
+            ));
+            assert!(old_read.cancellation.is_cancelled());
+            assert!(state
+                .apply_read_status(
+                    &context,
+                    &old_read,
+                    PublicStatus {
+                        permission: Permission::Granted,
+                        availability: Availability::TimedOut,
+                    },
+                )
+                .is_none());
+            assert_eq!(state.status().permission, revoked_status);
+
+            if revoked_status == Permission::Revoked {
+                assert!(state.set_status(
+                    &context,
+                    PublicStatus {
+                        permission: Permission::Granted,
+                        availability: Availability::Available,
+                    }
+                ));
+                assert!(state
+                    .apply_read_status(
+                        &context,
+                        &old_read,
+                        PublicStatus {
+                            permission: Permission::Granted,
+                            availability: Availability::Unavailable,
+                        },
+                    )
+                    .is_none());
+                assert_eq!(state.status().permission, Permission::Granted);
+                assert_eq!(state.status().availability, Availability::Available);
+            }
+        }
+    }
+
+    #[test]
+    fn current_read_can_commit_a_revocation_reported_by_the_os() {
+        let state = LocationState::default();
+        state.reset(10);
+        assert!(state.accept_preferences(10, "instance", 3, true));
+        let context = state.context().unwrap();
+        assert!(state.set_status(
+            &context,
+            PublicStatus {
+                permission: Permission::Granted,
+                availability: Availability::Available,
+            }
+        ));
+        let permit = state.begin_read(&context).unwrap();
+        let receipt = state
+            .apply_read_status(
+                &context,
+                &permit,
+                PublicStatus {
+                    permission: Permission::Revoked,
+                    availability: Availability::Unavailable,
+                },
+            )
+            .unwrap();
+
+        assert!(receipt.changed);
+        assert_eq!(state.status().permission, Permission::Revoked);
+        assert!(state.read_status_is_current(&context, &receipt));
     }
 
     #[test]
