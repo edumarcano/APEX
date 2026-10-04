@@ -32,7 +32,7 @@ Before admitting API-dependent workspaces, the shell waits for its child and com
 
 The WebView uses the native application origin and scoped Tauri capabilities. Frontend platform-specific integrations stay behind the platform boundary; the browser presentation does not load native APIs. Closing the desktop window hides it to the tray and leaves the same backend and CLI available. Tray **Show** restores that window; tray **Quit** shuts down its owned backend through the bounded host lifecycle. A second native launch activates the existing window instead of starting another backend. The shell retains and restores window geometry.
 
-Startup and completion notifications are opt-in Runtime Settings stored in the private `desktop_preferences` control message. The native shell applies OS-level settings and reports OS failures separately from saved preferences. Completion notifications are derived only from successful committed Cortex or Briefing completions, deduplicated for the app session, and use the generic title `APEX` and body `An APEX run has completed`. A hidden or minimized session can show them; run text, identifiers, and provider details are not included.
+Startup and completion notifications are opt-in Runtime Settings stored in the private `desktop_preferences` control message. The native shell applies OS-level settings and reports OS failures separately from saved preferences. Completion notifications are derived only from successful committed Cortex or Briefing completions, deduplicated for the app session, and use the generic title `APEX` and body `An APEX run has completed.` A hidden or minimized session can show them; run text, identifiers, and provider details are not included.
 
 ## System components
 

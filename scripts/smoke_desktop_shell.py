@@ -736,6 +736,10 @@ def _native_window(driver_pid: int, application: Path) -> tuple[int, int, int]:
     user32.GetWindowThreadProcessId.restype = wintypes.DWORD
     user32.IsWindow.argtypes = [wintypes.HWND]
     user32.IsWindow.restype = wintypes.BOOL
+    user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    user32.GetWindowTextLengthW.restype = ctypes.c_int
+    user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.GetWindowTextW.restype = ctypes.c_int
     matches: list[tuple[int, int, int]] = []
     for pid in _descendant_process_ids(driver_pid):
         try:
@@ -753,7 +757,11 @@ def _native_window(driver_pid: int, application: Path) -> tuple[int, int, int]:
             window_pid = wintypes.DWORD()
             user32.GetWindowThreadProcessId(hwnd, ctypes.byref(window_pid))
             if window_pid.value == pid and user32.IsWindow(hwnd):
-                hwnds.append(int(hwnd))
+                title_length = user32.GetWindowTextLengthW(hwnd)
+                title = ctypes.create_unicode_buffer(title_length + 1)
+                user32.GetWindowTextW(hwnd, title, len(title))
+                if title.value == "APEX":
+                    hwnds.append(int(hwnd))
             return True
 
         user32.EnumWindows.argtypes = [enum_proc, wintypes.LPARAM]
@@ -766,7 +774,7 @@ def _native_window(driver_pid: int, application: Path) -> tuple[int, int, int]:
     if len(matches) != 1:
         for handle, _pid, _hwnd in matches:
             _close_handle(handle)
-        raise SmokeFailure(f"expected one smoke-owned native window, found {len(matches)}")
+        raise SmokeFailure(f"expected one smoke-owned APEX main window, found {len(matches)}")
     return matches[0]
 
 
@@ -794,6 +802,26 @@ $buttons = $root.FindAll([System.Windows.Automation.TreeScope]::Subtree,
         [System.Windows.Automation.ControlType]::Button)))
 $icons = @()
 foreach ($button in $buttons) { if ($button.Current.Name -eq 'APEX') { $icons += $button } }
+if ($icons.Count -eq 0) {
+  $overflowButtons = @()
+  foreach ($button in $buttons) {
+    if ($button.Current.Name -in @('Show hidden icons', 'Hidden icons')) { $overflowButtons += $button }
+  }
+  if ($overflowButtons.Count -gt 1) { throw "ambiguous hidden-notification controls found: $($overflowButtons.Count)" }
+  if ($overflowButtons.Count -eq 1) {
+    $overflowInvoke = $overflowButtons[0].GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+    $overflowInvoke.Invoke()
+    $overflowDeadline = [DateTime]::UtcNow.AddSeconds(__OVERFLOW_TIMEOUT__)
+    while ([DateTime]::UtcNow -lt $overflowDeadline -and $icons.Count -eq 0) {
+      $buttons = $root.FindAll([System.Windows.Automation.TreeScope]::Subtree,
+          (New-Object System.Windows.Automation.PropertyCondition(
+              [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+              [System.Windows.Automation.ControlType]::Button)))
+      foreach ($button in $buttons) { if ($button.Current.Name -eq 'APEX') { $icons += $button } }
+      if ($icons.Count -eq 0) { Start-Sleep -Milliseconds 100 }
+    }
+  }
+}
 if ($icons.Count -ne 1) { throw "expected one APEX notification-area button, found $($icons.Count)" }
 $rect = $icons[0].Current.BoundingRectangle
 if ($rect.IsEmpty) { throw 'APEX notification-area button has no screen bounds' }
@@ -821,7 +849,9 @@ while ([DateTime]::UtcNow -lt $deadline -and $null -eq $menuItem) {
 if ($null -eq $menuItem) { throw 'APEX tray menu item did not become available through UI Automation' }
 $invoke = $menuItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
 $invoke.Invoke()
-'''.replace("__TIMEOUT__", str(max(1, int(timeout)))).replace("__LABEL__", label.replace("'", "''"))
+'''.replace("__TIMEOUT__", str(max(1, int(timeout)))).replace(
+        "__OVERFLOW_TIMEOUT__", str(max(1, int(min(timeout, 3.0))))
+    ).replace("__LABEL__", label.replace("'", "''"))
     encoded = __import__("base64").b64encode(script.encode("utf-16le")).decode("ascii")
     try:
         result = subprocess.run(
@@ -1286,7 +1316,7 @@ def _run_smoke(
                     try:
                         _invoke_tray_menu_item("Quit", min(10.0, timeout))
                     except SmokeFailure as exc:
-                        report.add("tray_quit", "unverified", f"could not quit the demo shell through the real tray: {exc}")
+                        report.add_diagnostic("demo_tray_quit", f"real tray cleanup unavailable; exact shell handle used for bounded cleanup: {exc}")
                         _terminate_process_handle(shell_handle, "exact smoke-owned demo shell after tray automation failure")
                     bounded_close = min(float(close_budget) + 30.0, timeout + 30.0)
                     backend_exited = _wait_process_handle(first_handle, bounded_close)
@@ -1611,11 +1641,10 @@ def _run_smoke(
                     _invoke_tray_menu_item("Quit", min(10.0, timeout))
                 except SmokeFailure as exc:
                     report.add("tray_quit", "unverified", str(exc))
-                quit_unverified = any(
-                    check.name == "tray_quit" and check.status == "unverified"
-                    for check in report.checks
-                )
-                if quit_unverified and not _wait_process_handle(shell_handle, 5.0):
+                    tray_quit_unverified = True
+                else:
+                    tray_quit_unverified = False
+                if tray_quit_unverified and not _wait_process_handle(shell_handle, 5.0):
                     _terminate_process_handle(shell_handle, "exact smoke-owned native shell after failed tray automation")
                 bounded_exit_wait = min(float(shutdown_budget) + 30.0, timeout + 30.0)
                 backend_exited = _wait_process_handle(owned_handle, bounded_exit_wait)
