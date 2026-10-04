@@ -787,71 +787,169 @@ def _window_visible(hwnd: int) -> bool:
     return bool(user32.IsWindow(hwnd) and user32.IsWindowVisible(hwnd))
 
 
-def _invoke_tray_menu_item(label: str, timeout: float) -> None:
-    """Use Windows UI Automation to click the real APEX tray icon and menu item."""
+def _invoke_tray_menu_item(label: str, timeout: float, *, expected_pid: int) -> None:
+    """Invoke a real APEX tray menu item through its exact Windows UIA host."""
     if os.name != "nt":
         raise SmokeFailure("Windows tray interaction is supported on Windows only")
+    if label not in {"Show", "Quit"} or expected_pid <= 0:
+        raise ValueError("tray interaction requires a supported menu item and exact APEX PID")
     script = r'''
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class TrayNative {
+  [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+  public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string className, string title);
+  [DllImport("user32.dll", SetLastError=true)]
+  public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")]
+  public static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
+}
+'@
+$expectedPid = [int]__EXPECTED_PID__
+$null = Get-Process -Id $expectedPid -ErrorAction Stop
 $root = [System.Windows.Automation.AutomationElement]::RootElement
-$buttons = $root.FindAll([System.Windows.Automation.TreeScope]::Subtree,
-    (New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-        [System.Windows.Automation.ControlType]::Button)))
-$icons = @()
-foreach ($button in $buttons) { if ($button.Current.Name -eq 'APEX') { $icons += $button } }
-if ($icons.Count -eq 0) {
-  $overflowButtons = @()
-  foreach ($button in $buttons) {
-    if ($button.Current.Name -in @('Show hidden icons', 'Hidden icons')) { $overflowButtons += $button }
-  }
-  if ($overflowButtons.Count -gt 1) { throw "ambiguous hidden-notification controls found: $($overflowButtons.Count)" }
-  if ($overflowButtons.Count -eq 1) {
-    $overflowInvoke = $overflowButtons[0].GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
-    $overflowInvoke.Invoke()
-    $overflowDeadline = [DateTime]::UtcNow.AddSeconds(__OVERFLOW_TIMEOUT__)
-    while ([DateTime]::UtcNow -lt $overflowDeadline -and $icons.Count -eq 0) {
-      $buttons = $root.FindAll([System.Windows.Automation.TreeScope]::Subtree,
-          (New-Object System.Windows.Automation.PropertyCondition(
-              [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-              [System.Windows.Automation.ControlType]::Button)))
-      foreach ($button in $buttons) { if ($button.Current.Name -eq 'APEX') { $icons += $button } }
-      if ($icons.Count -eq 0) { Start-Sleep -Milliseconds 100 }
+$shellCondition = New-Object System.Windows.Automation.PropertyCondition(
+  [System.Windows.Automation.AutomationElement]::ClassNameProperty, 'Shell_TrayWnd')
+$shellWindows = $root.FindAll([System.Windows.Automation.TreeScope]::Children, $shellCondition)
+if ($shellWindows.Count -ne 1) { throw "expected one Windows taskbar, found $($shellWindows.Count)" }
+$shell = $shellWindows.Item(0)
+$explorerPid = [int]$shell.Current.ProcessId
+$explorer = Get-Process -Id $explorerPid -ErrorAction Stop
+$expectedExplorerPath = [IO.Path]::GetFullPath((Join-Path $env:WINDIR 'explorer.exe'))
+if ([IO.Path]::GetFullPath($explorer.Path) -ine $expectedExplorerPath) { throw 'taskbar UIA host was not Windows Explorer' }
+$xamlHwnd = [TrayNative]::FindWindowEx(
+  [IntPtr]$shell.Current.NativeWindowHandle, [IntPtr]::Zero,
+  'Windows.UI.Composition.DesktopWindowContentBridge', 'DesktopWindowXamlSource')
+if ($xamlHwnd -eq [IntPtr]::Zero) { throw 'taskbar XAML UIA host was not found' }
+$taskbarHost = [System.Windows.Automation.AutomationElement]::FromHandle($xamlHwnd)
+$buttonCondition = New-Object System.Windows.Automation.PropertyCondition(
+  [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+  [System.Windows.Automation.ControlType]::Button)
+$icons = [System.Collections.ArrayList]::new()
+function Add-APEXTrayIcons($scopeRoot, $destination, $ownerPid) {
+  $elements = $scopeRoot.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+    [System.Windows.Automation.Condition]::TrueCondition)
+  for ($i = 0; $i -lt $elements.Count; $i++) {
+    $element = $elements.Item($i)
+    $current = $element.Current
+    if ($current.Name -ceq 'APEX' -and
+        $current.ControlType -eq [System.Windows.Automation.ControlType]::Button -and
+        $current.ClassName -ceq 'SystemTray.NormalButton' -and
+        $current.AutomationId -ceq 'NotifyItemIcon' -and
+        $current.ProcessId -eq $ownerPid -and
+        -not $current.IsOffscreen) {
+      [void]$destination.Add($element)
     }
   }
 }
-if ($icons.Count -ne 1) { throw "expected one APEX notification-area button, found $($icons.Count)" }
-$rect = $icons[0].Current.BoundingRectangle
-if ($rect.IsEmpty) { throw 'APEX notification-area button has no screen bounds' }
-Add-Type @'
-using System.Runtime.InteropServices;
-public static class TrayMouse {
-  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
-  [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, System.UIntPtr extra);
+function Get-APEXOverflowHosts($automationRoot, $ownerPid) {
+  $condition = New-Object System.Windows.Automation.PropertyCondition(
+    [System.Windows.Automation.AutomationElement]::ClassNameProperty,
+    'TopLevelWindowForOverflowXamlIsland')
+  $windows = $automationRoot.FindAll([System.Windows.Automation.TreeScope]::Children, $condition)
+  $hosts = [System.Collections.ArrayList]::new()
+  for ($i = 0; $i -lt $windows.Count; $i++) {
+    $window = $windows.Item($i)
+    if ($window.Current.ProcessId -eq $ownerPid -and -not $window.Current.IsOffscreen) {
+      [void]$hosts.Add($window)
+    }
+  }
+  return ,$hosts
 }
-'@
+$overflowHosts = Get-APEXOverflowHosts $root $explorerPid
+if ($overflowHosts.Count -gt 1) { throw "ambiguous visible notification overflow windows: $($overflowHosts.Count)" }
+Add-APEXTrayIcons $taskbarHost $icons $explorerPid
+if ($overflowHosts.Count -eq 1) { Add-APEXTrayIcons $overflowHosts[0] $icons $explorerPid }
+if ($icons.Count -eq 0) {
+  if ($overflowHosts.Count -eq 1) { throw 'visible notification overflow did not contain the APEX tray icon' }
+  $buttons = $taskbarHost.FindAll([System.Windows.Automation.TreeScope]::Descendants, $buttonCondition)
+  $hiddenButtons = [System.Collections.ArrayList]::new()
+  for ($i = 0; $i -lt $buttons.Count; $i++) {
+    $button = $buttons.Item($i)
+    $current = $button.Current
+    if ($current.ClassName -ceq 'SystemTray.NormalButton' -and
+        $current.AutomationId -ceq 'SystemTrayIcon' -and
+        $current.ProcessId -eq $explorerPid -and
+        $current.Name -match '^Show Hidden Icons(?: Hide)?$') {
+      [void]$hiddenButtons.Add($button)
+    }
+  }
+  if ($hiddenButtons.Count -ne 1) { throw "expected one real taskbar Show Hidden Icons control, found $($hiddenButtons.Count)" }
+  if ($hiddenButtons[0].Current.Name -ceq 'Show Hidden Icons Hide') {
+    throw 'notification overflow reports open but its visible UIA host was absent; refusing to toggle it closed'
+  }
+  $toggle = $hiddenButtons[0].GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+  $toggle.Invoke()
+  $overflowDeadline = [DateTime]::UtcNow.AddSeconds(__OVERFLOW_TIMEOUT__)
+  while ([DateTime]::UtcNow -lt $overflowDeadline -and $icons.Count -eq 0) {
+    $overflowHosts = Get-APEXOverflowHosts $root $explorerPid
+    if ($overflowHosts.Count -gt 1) { throw "ambiguous visible notification overflow windows: $($overflowHosts.Count)" }
+    if ($overflowHosts.Count -eq 1) { Add-APEXTrayIcons $overflowHosts[0] $icons $explorerPid }
+    if ($icons.Count -eq 0) { Start-Sleep -Milliseconds 100 }
+  }
+}
+if ($icons.Count -ne 1) { throw "expected one actual APEX notification-area icon, found $($icons.Count)" }
+$rect = $icons[0].Current.BoundingRectangle
+if ($rect.IsEmpty -or $rect.Width -le 0 -or $rect.Height -le 0) { throw 'APEX tray icon has no usable screen bounds' }
+$existingWindows = $root.FindAll([System.Windows.Automation.TreeScope]::Children,
+  [System.Windows.Automation.Condition]::TrueCondition)
+for ($i = 0; $i -lt $existingWindows.Count; $i++) {
+  $current = $existingWindows.Item($i).Current
+  if ($current.ProcessId -eq $expectedPid -and $current.ClassName -ceq '#32768') {
+    throw 'an APEX popup menu was already open before the tray action'
+  }
+}
 $x = [int](($rect.Left + $rect.Right) / 2); $y = [int](($rect.Top + $rect.Bottom) / 2)
-if (-not [TrayMouse]::SetCursorPos($x, $y)) { throw 'could not position pointer on APEX tray icon' }
-[TrayMouse]::mouse_event(0x0008, 0, 0, 0, [UIntPtr]::Zero)
-[TrayMouse]::mouse_event(0x0010, 0, 0, 0, [UIntPtr]::Zero)
+if (-not [TrayNative]::SetCursorPos($x, $y)) { throw 'could not position pointer on the actual APEX tray icon' }
+[TrayNative]::mouse_event(0x0008, 0, 0, 0, [UIntPtr]::Zero)
+[TrayNative]::mouse_event(0x0010, 0, 0, 0, [UIntPtr]::Zero)
 $deadline = [DateTime]::UtcNow.AddSeconds(__TIMEOUT__)
 $menuItem = $null
 while ([DateTime]::UtcNow -lt $deadline -and $null -eq $menuItem) {
-  $items = $root.FindAll([System.Windows.Automation.TreeScope]::Subtree,
+  $topWindows = $root.FindAll([System.Windows.Automation.TreeScope]::Children,
+    [System.Windows.Automation.Condition]::TrueCondition)
+  $ownedMenus = [System.Collections.ArrayList]::new()
+  for ($i = 0; $i -lt $topWindows.Count; $i++) {
+    $window = $topWindows.Item($i)
+    $current = $window.Current
+    if ($current.ProcessId -eq $expectedPid -and $current.ClassName -ceq '#32768') {
+      [void]$ownedMenus.Add($window)
+    }
+  }
+  if ($ownedMenus.Count -gt 1) { throw "ambiguous APEX-owned popup menus: $($ownedMenus.Count)" }
+  if ($ownedMenus.Count -eq 1) {
+    $items = $ownedMenus[0].FindAll([System.Windows.Automation.TreeScope]::Descendants,
       (New-Object System.Windows.Automation.PropertyCondition(
-          [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-          [System.Windows.Automation.ControlType]::MenuItem)))
-  foreach ($item in $items) { if ($item.Current.Name -eq '__LABEL__') { $menuItem = $item; break } }
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+        [System.Windows.Automation.ControlType]::MenuItem)))
+    $showItems = [System.Collections.ArrayList]::new()
+    $quitItems = [System.Collections.ArrayList]::new()
+    for ($i = 0; $i -lt $items.Count; $i++) {
+      $item = $items.Item($i)
+      if ($item.Current.ProcessId -eq $expectedPid) {
+        if ($item.Current.Name -ceq 'Show') { [void]$showItems.Add($item) }
+        if ($item.Current.Name -ceq 'Quit') { [void]$quitItems.Add($item) }
+      }
+    }
+    if ($showItems.Count -ne 1 -or $quitItems.Count -ne 1) {
+      throw 'the APEX-owned tray menu did not expose exactly one Show and one Quit action'
+    }
+    if ('__LABEL__' -ceq 'Show') { $menuItem = $showItems[0] } else { $menuItem = $quitItems[0] }
+  }
   if ($null -eq $menuItem) { Start-Sleep -Milliseconds 100 }
 }
-if ($null -eq $menuItem) { throw 'APEX tray menu item did not become available through UI Automation' }
+if ($null -eq $menuItem) { throw 'the exact APEX process did not expose its real tray menu through UI Automation' }
 $invoke = $menuItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
 $invoke.Invoke()
-'''.replace("__TIMEOUT__", str(max(1, int(timeout)))).replace(
-        "__OVERFLOW_TIMEOUT__", str(max(1, int(min(timeout, 3.0))))
-    ).replace("__LABEL__", label.replace("'", "''"))
+'''.replace("__EXPECTED_PID__", str(expected_pid)).replace(
+        "__TIMEOUT__", str(max(1, int(timeout)))
+    ).replace("__OVERFLOW_TIMEOUT__", str(max(1, int(min(timeout, 3.0))))).replace(
+        "__LABEL__", label
+    )
     encoded = __import__("base64").b64encode(script.encode("utf-16le")).decode("ascii")
     try:
         result = subprocess.run(
@@ -859,7 +957,7 @@ $invoke.Invoke()
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=timeout + 5.0,
+            timeout=timeout + min(timeout, 3.0) + 5.0,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -1311,10 +1409,10 @@ def _run_smoke(
                 close_budget = first_runtime.get("shutdown_timeout_seconds")
                 if not isinstance(close_budget, (int, float)) or close_budget < 0:
                     raise SmokeFailure("demo runtime omitted its bounded shutdown timeout")
-                shell_handle, _shell_pid, _shell_hwnd = _native_window(driver_process.pid, application)
+                shell_handle, shell_pid, _shell_hwnd = _native_window(driver_process.pid, application)
                 try:
                     try:
-                        _invoke_tray_menu_item("Quit", min(10.0, timeout))
+                        _invoke_tray_menu_item("Quit", min(10.0, timeout), expected_pid=shell_pid)
                     except SmokeFailure as exc:
                         report.add_diagnostic("demo_tray_quit", f"real tray cleanup unavailable; exact shell handle used for bounded cleanup: {exc}")
                         _terminate_process_handle(shell_handle, "exact smoke-owned demo shell after tray automation failure")
@@ -1538,7 +1636,7 @@ def _run_smoke(
                 confirmed = _runtime_identity(profile_root, 5.0)
                 if confirmed.get("pid") != final_runtime.get("pid") or confirmed.get("instance_id") != final_runtime.get("instance_id"):
                     raise SmokeFailure("runtime identity changed while opening the process handle; refusing to claim graceful shutdown")
-                shell_handle, _shell_pid, shell_hwnd = _native_window(driver_process.pid, application)
+                shell_handle, shell_pid, shell_hwnd = _native_window(driver_process.pid, application)
                 if not _window_visible(shell_hwnd):
                     raise SmokeFailure("native APEX window was already hidden before the close-to-tray check")
                 user32 = ctypes.WinDLL("user32", use_last_error=True)
@@ -1626,7 +1724,7 @@ def _run_smoke(
                     while time.monotonic() < hide_deadline and _window_visible(shell_hwnd):
                         time.sleep(POLL_INTERVAL_SECONDS)
                 try:
-                    _invoke_tray_menu_item("Show", min(10.0, timeout))
+                    _invoke_tray_menu_item("Show", min(10.0, timeout), expected_pid=shell_pid)
                     show_deadline = time.monotonic() + min(10.0, timeout)
                     while time.monotonic() < show_deadline and not _window_visible(shell_hwnd):
                         time.sleep(POLL_INTERVAL_SECONDS)
@@ -1638,14 +1736,16 @@ def _run_smoke(
                     report.add("tray_show", "unverified", str(exc))
 
                 try:
-                    _invoke_tray_menu_item("Quit", min(10.0, timeout))
+                    _invoke_tray_menu_item("Quit", min(10.0, timeout), expected_pid=shell_pid)
                 except SmokeFailure as exc:
                     report.add("tray_quit", "unverified", str(exc))
                     tray_quit_unverified = True
                 else:
                     tray_quit_unverified = False
+                forced_shell_cleanup = False
                 if tray_quit_unverified and not _wait_process_handle(shell_handle, 5.0):
                     _terminate_process_handle(shell_handle, "exact smoke-owned native shell after failed tray automation")
+                    forced_shell_cleanup = True
                 bounded_exit_wait = min(float(shutdown_budget) + 30.0, timeout + 30.0)
                 backend_exited = _wait_process_handle(owned_handle, bounded_exit_wait)
                 shell_exited = _wait_process_handle(shell_handle, bounded_exit_wait)
@@ -1653,7 +1753,13 @@ def _run_smoke(
                 if backend_exited and shell_exited and _wait_port_free(min(float(shutdown_budget) + 30.0, timeout + 30.0)):
                     if not any(check.name == "tray_quit" for check in report.checks):
                         report.add("tray_quit", "passed", "actual Windows tray Quit stopped the shell and its identity-matched backend")
-                    report.add("native_shell_cleanup", "passed", "smoke-owned native shell exited after explicit tray Quit")
+                    if forced_shell_cleanup:
+                        shell_cleanup_detail = "exact smoke-owned native shell was force-terminated after tray Quit could not be verified"
+                    elif tray_quit_unverified:
+                        shell_cleanup_detail = "smoke-owned native shell exited, but tray Quit could not be verified"
+                    else:
+                        shell_cleanup_detail = "smoke-owned native shell exited after verified tray Quit"
+                    report.add("native_shell_cleanup", "passed", shell_cleanup_detail)
                     report.add("owned_backend_cleanup", "passed", "identity-matched backend exited and released 127.0.0.1:8000")
                 else:
                     report.add("tray_quit", "failed", "tray Quit did not stop the verified shell, backend, and API listener")
@@ -1687,21 +1793,30 @@ def _run_smoke(
                         report.add("native_shell_cleanup", "unverified", f"could not locate the exact smoke-owned native shell during cleanup: {exc}")
                     else:
                         try:
+                            tray_cleanup_verified = False
                             try:
-                                _invoke_tray_menu_item("Quit", 3.0)
+                                _invoke_tray_menu_item("Quit", 3.0, expected_pid=_cleanup_pid)
+                                tray_cleanup_verified = True
                             except SmokeFailure:
                                 pass
                             shell_exited = _wait_process_handle(cleanup_shell, 5.0)
+                            forced_shell_cleanup = False
                             if not shell_exited:
                                 # This is the exact executable descendant of this
                                 # smoke's driver, held by its process handle.
                                 _terminate_process_handle(cleanup_shell, "smoke-owned native shell")
+                                forced_shell_cleanup = True
                                 shell_exited = _wait_process_handle(cleanup_shell, 5.0)
                         except SmokeFailure as exc:
                             report.add("native_shell_cleanup", "failed", str(exc))
                         else:
                             status = "passed" if shell_exited else "failed"
-                            detail = "smoke-owned native shell exited during bounded cleanup"
+                            if forced_shell_cleanup:
+                                detail = "exact smoke-owned native shell was force-terminated during bounded cleanup"
+                            elif tray_cleanup_verified:
+                                detail = "smoke-owned native shell exited after verified tray Quit during bounded cleanup"
+                            else:
+                                detail = "smoke-owned native shell exited during bounded cleanup; tray Quit was unverified"
                             if not shell_exited:
                                 detail = "smoke-owned native shell remained after bounded cleanup"
                             report.add("native_shell_cleanup", status, detail)
