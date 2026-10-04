@@ -69,4 +69,16 @@ describe('weatherTelemetry', () => {
     expect(resolveClearArchetype('clear_day')).toMatchObject({ detail: 'Clear Sky', condition: 'clear_day' })
     expect(resolveClearArchetype('clear_night')).toMatchObject({ detail: 'Clear Sky', condition: 'clear_night' })
   })
+
+  it('labels the active weather location source without exposing device coordinates', () => {
+    expect(resolveWeatherFromModule({ display_text: '', data: {
+      location_source: 'device', location: 'Current area',
+    } })).toMatchObject({
+      locationSource: 'device', locationLabel: 'Current area · Device location',
+    })
+    expect(resolveWeatherFromModule({ display_text: '', data: {
+      location_source: 'configured', location: 'Seattle',
+    } }).locationLabel).toBe('Seattle · Configured location')
+    expect(resolveWeatherFromModule({ display_text: '', data: { location: 'Legacy City' } }).locationLabel).toBeNull()
+  })
 })

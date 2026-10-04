@@ -34,6 +34,10 @@ export interface DesktopSettings {
   completion_notifications: boolean
 }
 
+export interface DeviceContextSettings {
+  location_enabled: boolean
+}
+
 export type ActivityReportFolderState =
   | 'disabled'
   | 'demo_mode'
@@ -171,6 +175,7 @@ export interface RuntimeSettings {
   microsoft_todo: MicrosoftTodoSettings
   activity_report_folder: ActivityReportFolderSettings
   desktop: DesktopSettings
+  device_context: DeviceContextSettings
 }
 
 export interface FeaturesPatch {
@@ -278,6 +283,10 @@ export interface DesktopPatch {
   completion_notifications?: boolean
 }
 
+export interface DeviceContextPatch {
+  location_enabled?: boolean
+}
+
 export type LlamaCppServerState =
   | 'disabled'
   | 'external_connected'
@@ -314,6 +323,7 @@ export interface SettingsPatch {
   microsoft_todo?: MicrosoftTodoPatch
   activity_report_folder?: ActivityReportFolderPatch
   desktop?: DesktopPatch
+  device_context?: DeviceContextPatch
 }
 
 export interface SettingsResponse {

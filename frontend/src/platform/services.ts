@@ -1,5 +1,5 @@
 import { loadDesktopPlatform } from './index'
-import type { DesktopServicesStatus } from './contracts'
+import type { DesktopLocationCheck, DesktopServicesStatus } from './contracts'
 import { safeExternalUrl } from '../lib/externalLinks'
 
 export function isNativeDesktop(): boolean {
@@ -19,6 +19,16 @@ export async function retryDesktopServices(): Promise<DesktopServicesStatus | nu
 export async function subscribeDesktopServicesState(onWakeup: () => void): Promise<() => void> {
   if (!isNativeDesktop()) return () => undefined
   return (await loadDesktopPlatform()).subscribeServicesState(onWakeup)
+}
+
+export async function checkDesktopLocationPermission(): Promise<DesktopLocationCheck | null> {
+  if (!isNativeDesktop()) return null
+  return (await loadDesktopPlatform()).checkLocationPermission()
+}
+
+export async function subscribeDesktopDeviceState(onWakeup: () => void): Promise<() => void> {
+  if (!isNativeDesktop()) return () => undefined
+  return (await loadDesktopPlatform()).subscribeDeviceState(onWakeup)
 }
 
 export async function writeClipboardText(text: string): Promise<void> {

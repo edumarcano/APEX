@@ -81,6 +81,7 @@ export const API_ENDPOINTS = {
   briefingSessionPresented: (sessionId: string) => API_BASE + '/api/v1/briefing-sessions/' + encodeURIComponent(sessionId) + '/presented',
   config: `${API_BASE}/api/v1/config`,
   diagnostics: `${API_BASE}/api/v1/diagnostics`,
+  deviceContext: `${API_BASE}/api/v1/device-context`,
   googleCalendarCalendars: `${API_BASE}/api/v1/google-calendar/calendars`,
   market: `${API_BASE}/api/v1/market`,
   mcpStatus: `${API_BASE}/api/v1/mcp/status`,

@@ -1,10 +1,11 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 
-import type { DesktopBackendState, DesktopPlatform, DesktopServicesStatus } from './contracts'
+import type { DesktopBackendState, DesktopLocationCheck, DesktopPlatform, DesktopServicesStatus } from './contracts'
 
 const BACKEND_STATE_EVENT = 'desktop-backend-state'
 const SERVICES_STATE_EVENT = 'desktop-services-state'
+const DEVICE_STATE_EVENT = 'desktop-device-state'
 
 export function createTauriPlatform(): DesktopPlatform {
   return {
@@ -17,5 +18,7 @@ export function createTauriPlatform(): DesktopPlatform {
     subscribeServicesState: async (onWakeup) => listen(SERVICES_STATE_EVENT, onWakeup),
     openExternal: (url) => invoke<void>('desktop_open_external', { url }),
     writeClipboardText: (text) => invoke<void>('desktop_write_clipboard', { text }),
+    checkLocationPermission: () => invoke<DesktopLocationCheck>('desktop_check_location_permission'),
+    subscribeDeviceState: async (onWakeup) => listen(DEVICE_STATE_EVENT, onWakeup),
   }
 }

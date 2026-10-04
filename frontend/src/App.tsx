@@ -1181,13 +1181,8 @@ export default function App(): ReactElement {
     : DEFAULT_WEATHER_INFO
   const weatherBody = (() => {
     const detail = weatherInfo.detail.trim()
-    if (detail.length > 0) {
-      return detail
-    }
-    if (weatherRefreshing) {
-      return 'Loading weather…'
-    }
-    return 'Weather unavailable.'
+    const condition = detail.length > 0 ? detail : weatherRefreshing ? 'Loading weather…' : 'Weather unavailable.'
+    return weatherInfo.locationLabel ? `${condition} · ${weatherInfo.locationLabel}` : condition
   })()
 
 

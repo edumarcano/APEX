@@ -100,6 +100,7 @@ describe('settings response parsing', () => {
 
   it.each([
     ['feature boolean', ['settings', 'features', 'weather'], 'yes'],
+    ['device location preference', ['settings', 'device_context', 'location_enabled'], 'yes'],
     ['market boolean', ['settings', 'features', 'market'], 'yes'],
     ['module boolean', ['settings', 'modules', 'f1'], 1],
     ['Agent queries enabled', ['settings', 'ask_apex', 'enabled'], null],
@@ -142,6 +143,16 @@ describe('settings response parsing', () => {
     delete (body.settings as Record<string, unknown>).voice
 
     expect(parseSettingsResponse(body)).toBeNull()
+  })
+
+  it('requires the new device context section and rejects extra location fields', () => {
+    const missing = structuredClone(buildSettingsResponse()) as unknown as Record<string, unknown>
+    delete (missing.settings as Record<string, unknown>).device_context
+    expect(parseSettingsResponse(missing)).toBeNull()
+
+    const extra = structuredClone(buildSettingsResponse()) as unknown as Record<string, unknown>
+    ;((extra.settings as Record<string, unknown>).device_context as Record<string, unknown>).latitude = 47.6
+    expect(parseSettingsResponse(extra)).toBeNull()
   })
 })
 
@@ -296,6 +307,13 @@ describe('settings cloning and mutations', () => {
       desktop: { launch_on_startup: true, completion_notifications: true },
     })
     expect(parseSettingsResponse(buildSettingsResponse(draft))?.settings.desktop).toEqual(draft.desktop)
+  })
+
+  it('round-trips and patches only the device location preference', () => {
+    const draft = cloneRuntimeSettings(BASE_SETTINGS)
+    draft.device_context.location_enabled = true
+    expect(parseSettingsResponse(buildSettingsResponse(draft))?.settings.device_context).toEqual({ location_enabled: true })
+    expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({ device_context: { location_enabled: true } })
   })
 
   it('reports no patch when settings are equal', () => {

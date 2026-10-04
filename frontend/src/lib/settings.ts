@@ -496,6 +496,11 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
           completion_notifications: value.desktop.completion_notifications,
         }
       : null
+  const device_context = isRecord(value.device_context) &&
+      typeof value.device_context.location_enabled === 'boolean' &&
+      Object.keys(value.device_context).every((key) => key === 'location_enabled')
+    ? { location_enabled: value.device_context.location_enabled }
+    : null
   if (
     !features ||
     !modules ||
@@ -504,6 +509,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     !microsoft_todo ||
     !activity_report_folder ||
     !desktop ||
+    !device_context ||
     !calendar ||
     !context_vault ||
     !isRecord(value.ask_apex) ||
@@ -566,6 +572,7 @@ function parseRuntimeSettings(value: unknown): RuntimeSettings | null {
     microsoft_todo,
     activity_report_folder,
     desktop,
+    device_context,
   }
 }
 
@@ -633,6 +640,7 @@ export function cloneRuntimeSettings(settings: RuntimeSettings): RuntimeSettings
     microsoft_todo: { ...settings.microsoft_todo },
     activity_report_folder: { ...settings.activity_report_folder },
     desktop: { ...settings.desktop },
+    device_context: { ...settings.device_context },
   }
 }
 
@@ -810,6 +818,9 @@ export function diffSettingsPatch(
   const desktop = diffSection(baseline.desktop, draft.desktop)
   if (desktop) patch.desktop = desktop
 
+  const deviceContext = diffSection(baseline.device_context, draft.device_context)
+  if (deviceContext) patch.device_context = deviceContext
+
   return patch
 }
 
@@ -829,7 +840,8 @@ export function isSettingsPatchEmpty(patch: SettingsPatch): boolean {
     patch.llama_cpp === undefined &&
     patch.microsoft_todo === undefined &&
     patch.activity_report_folder === undefined &&
-    patch.desktop === undefined
+    patch.desktop === undefined &&
+    patch.device_context === undefined
   )
 }
 
