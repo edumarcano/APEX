@@ -788,7 +788,7 @@ def _window_visible(hwnd: int) -> bool:
 
 
 def _invoke_tray_menu_item(label: str, timeout: float, *, expected_pid: int) -> None:
-    """Invoke a real APEX tray menu item through its exact Windows UIA host."""
+    """Click a verified menu item on the exact APEX Windows tray popup."""
     if os.name != "nt":
         raise SmokeFailure("Windows tray interaction is supported on Windows only")
     if label not in {"Show", "Quit"} or expected_pid <= 0:
@@ -801,6 +801,23 @@ Add-Type @'
 using System;
 using System.Runtime.InteropServices;
 public static class TrayNative {
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
+  [StructLayout(LayoutKind.Sequential)] public struct MENUBARINFO {
+    public uint cbSize; public RECT rect; public IntPtr hMenu, hwndMenu; public uint flags;
+  }
+  [StructLayout(LayoutKind.Sequential)] public struct MENUITEMINFO {
+    public uint cbSize, fMask, fType, fState, wID;
+    public IntPtr hSubMenu, hbmpChecked, hbmpUnchecked, dwItemData, dwTypeData;
+    public uint cch; public IntPtr hbmpItem;
+  }
+  [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+  [DllImport("user32.dll", SetLastError=true)] public static extern bool GetMenuBarInfo(IntPtr hwnd, int objectId, int item, ref MENUBARINFO info);
+  [DllImport("user32.dll", SetLastError=true)] public static extern int GetMenuItemCount(IntPtr menu);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool GetMenuItemInfoW(IntPtr menu, uint item, bool byPosition, ref MENUITEMINFO info);
+  [DllImport("user32.dll", SetLastError=true)] public static extern bool GetMenuItemRect(IntPtr hwnd, IntPtr menu, uint item, out RECT rect);
+  [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT point);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
   [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
   public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string className, string title);
   [DllImport("user32.dll", SetLastError=true)]
@@ -809,6 +826,7 @@ public static class TrayNative {
   public static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
 }
 '@
+$null = [TrayNative]::SetThreadDpiAwarenessContext([IntPtr](-4))
 $expectedPid = [int]__EXPECTED_PID__
 $null = Get-Process -Id $expectedPid -ErrorAction Stop
 $root = [System.Windows.Automation.AutomationElement]::RootElement
@@ -893,8 +911,30 @@ if ($icons.Count -eq 0) {
   }
 }
 if ($icons.Count -ne 1) { throw "expected one actual APEX notification-area icon, found $($icons.Count)" }
-$rect = $icons[0].Current.BoundingRectangle
-if ($rect.IsEmpty -or $rect.Width -le 0 -or $rect.Height -le 0) { throw 'APEX tray icon has no usable screen bounds' }
+# Explorer publishes transient bounds during the overflow animation. Reacquire
+# the exact icon until its usable physical bounds have stayed still for 400 ms.
+$stableDeadline = [DateTime]::UtcNow.AddSeconds(__OVERFLOW_TIMEOUT__)
+$stableSince = [DateTime]::UtcNow
+$lastBounds = ''
+$rect = $null
+while ([DateTime]::UtcNow -lt $stableDeadline) {
+  $icons.Clear()
+  Add-APEXTrayIcons $taskbarHost $icons $explorerPid
+  $overflowHosts = Get-APEXOverflowHosts $root $explorerPid
+  if ($overflowHosts.Count -gt 1) { throw 'ambiguous notification overflow windows during animation' }
+  if ($overflowHosts.Count -eq 1) { Add-APEXTrayIcons $overflowHosts[0] $icons $explorerPid }
+  if ($icons.Count -ne 1) { throw 'the exact APEX tray icon disappeared or became ambiguous' }
+  $candidate = $icons[0].Current.BoundingRectangle
+  if ($candidate.IsEmpty -or $candidate.Width -le 0 -or $candidate.Height -le 0) {
+    $lastBounds = ''; $stableSince = [DateTime]::UtcNow
+  } else {
+    $bounds = $candidate.ToString()
+    if ($bounds -cne $lastBounds) { $lastBounds = $bounds; $stableSince = [DateTime]::UtcNow }
+    if (([DateTime]::UtcNow - $stableSince).TotalMilliseconds -ge 400) { $rect = $candidate; break }
+  }
+  Start-Sleep -Milliseconds 100
+}
+if ($null -eq $rect) { throw 'APEX tray icon did not settle at usable screen bounds' }
 $existingWindows = $root.FindAll([System.Windows.Automation.TreeScope]::Children,
   [System.Windows.Automation.Condition]::TrueCondition)
 for ($i = 0; $i -lt $existingWindows.Count; $i++) {
@@ -922,46 +962,70 @@ while ([DateTime]::UtcNow -lt $deadline -and $null -eq $menuItem) {
   }
   if ($ownedMenus.Count -gt 1) { throw "ambiguous APEX-owned popup menus: $($ownedMenus.Count)" }
   if ($ownedMenus.Count -eq 1) {
-    $items = $ownedMenus[0].FindAll([System.Windows.Automation.TreeScope]::Descendants,
-      (New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-        [System.Windows.Automation.ControlType]::MenuItem)))
-    $showItems = [System.Collections.ArrayList]::new()
-    $quitItems = [System.Collections.ArrayList]::new()
-    for ($i = 0; $i -lt $items.Count; $i++) {
-      $item = $items.Item($i)
-      if ($item.Current.ProcessId -eq $expectedPid) {
-        if ($item.Current.Name -ceq 'Show') { [void]$showItems.Add($item) }
-        if ($item.Current.Name -ceq 'Quit') { [void]$quitItems.Add($item) }
+    # Standard popup menus can have no UIA descendants on Windows 11. Read
+    # their real HMENU labels and bounds, then click the selected enabled item.
+    $popupHwnd = [IntPtr]$ownedMenus[0].Current.NativeWindowHandle
+    $bar = [TrayNative+MENUBARINFO]::new()
+    $bar.cbSize = [Runtime.InteropServices.Marshal]::SizeOf($bar)
+    if ([TrayNative]::GetMenuBarInfo($popupHwnd, -4, 0, [ref]$bar) -and
+        [TrayNative]::GetMenuItemCount($bar.hMenu) -eq 2) {
+      $actions = @{}
+      for ($position = 0; $position -lt 2; $position++) {
+        $info = [TrayNative+MENUITEMINFO]::new()
+        $info.cbSize = [Runtime.InteropServices.Marshal]::SizeOf($info)
+        $info.fMask = 0x147 # MIIM_STRING | MIIM_ID | MIIM_STATE | MIIM_SUBMENU | MIIM_FTYPE
+        $info.cch = 256
+        $info.dwTypeData = [Runtime.InteropServices.Marshal]::AllocHGlobal(514)
+        try {
+          if (-not [TrayNative]::GetMenuItemInfoW($bar.hMenu, $position, $true, [ref]$info)) { throw 'could not read the real APEX menu item' }
+          $name = [Runtime.InteropServices.Marshal]::PtrToStringUni($info.dwTypeData, [int]$info.cch)
+          if ($name -cnotin @('Show', 'Quit') -or $actions.ContainsKey($name) -or
+              ($info.fState -band 3) -ne 0 -or $info.fType -ne 0 -or $info.hSubMenu -ne [IntPtr]::Zero) {
+            throw 'the exact APEX popup did not contain two distinct enabled Show/Quit actions'
+          }
+          $itemRect = [TrayNative+RECT]::new()
+          if (-not [TrayNative]::GetMenuItemRect($popupHwnd, $bar.hMenu, $position, [ref]$itemRect) -or
+              $itemRect.Right -le $itemRect.Left -or $itemRect.Bottom -le $itemRect.Top) { throw 'APEX menu item had no usable bounds' }
+          $actions[$name] = $itemRect
+        } finally { [Runtime.InteropServices.Marshal]::FreeHGlobal($info.dwTypeData) }
       }
+      if ($actions.Count -eq 2) { $menuItem = $actions['__LABEL__'] }
     }
-    if ($showItems.Count -ne 1 -or $quitItems.Count -ne 1) {
-      throw 'the APEX-owned tray menu did not expose exactly one Show and one Quit action'
-    }
-    if ('__LABEL__' -ceq 'Show') { $menuItem = $showItems[0] } else { $menuItem = $quitItems[0] }
   }
   if ($null -eq $menuItem) { Start-Sleep -Milliseconds 100 }
 }
-if ($null -eq $menuItem) { throw 'the exact APEX process did not expose its real tray menu through UI Automation' }
-$invoke = $menuItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
-$invoke.Invoke()
+if ($null -eq $menuItem) { throw 'the exact APEX process did not expose its verified tray menu' }
+$point = [TrayNative+POINT]::new()
+$point.X = [int](($menuItem.Left + $menuItem.Right) / 2)
+$point.Y = [int](($menuItem.Top + $menuItem.Bottom) / 2)
+$hitHwnd = [TrayNative]::WindowFromPoint($point)
+$hitPid = [uint32]0
+$null = [TrayNative]::GetWindowThreadProcessId($hitHwnd, [ref]$hitPid)
+if ($hitHwnd -ne $popupHwnd -or $hitPid -ne $expectedPid) { throw 'verified tray action was obscured by another window' }
+if (-not [TrayNative]::SetCursorPos($point.X, $point.Y)) { throw 'could not position pointer on the verified tray action' }
+[TrayNative]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+[TrayNative]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
 '''.replace("__EXPECTED_PID__", str(expected_pid)).replace(
         "__TIMEOUT__", str(max(1, int(timeout)))
     ).replace("__OVERFLOW_TIMEOUT__", str(max(1, int(min(timeout, 3.0))))).replace(
         "__LABEL__", label
     )
-    encoded = __import__("base64").b64encode(script.encode("utf-16le")).decode("ascii")
     try:
-        result = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=timeout + min(timeout, 3.0) + 5.0,
-            check=False,
-        )
+        # Keep the generated script off the Windows command line: encoded UIA
+        # scripts can exceed CreateProcess's 32,767-character limit.
+        with tempfile.TemporaryDirectory(prefix="apex-tray-smoke-") as temp_root:
+            script_path = Path(temp_root) / "tray-action.ps1"
+            script_path.write_text(script, encoding="utf-8")
+            result = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-NonInteractive", "-File", str(script_path)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout + 2 * min(timeout, 3.0) + 5.0,
+                check=False,
+            )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        raise SmokeFailure(f"Windows tray UI Automation could not run: {exc}") from None
+        raise SmokeFailure(f"Windows tray interaction could not run: {exc}") from None
     if result.returncode != 0:
         detail = result.stderr.decode("utf-8", errors="replace")[-600:].strip()
         raise SmokeFailure(f"could not invoke the actual APEX tray {label} item: {detail or 'PowerShell failed'}")
