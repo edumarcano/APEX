@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 import requests
@@ -205,6 +206,7 @@ class OpenMeteoWeatherClientTests(unittest.TestCase):
             result,
             {
                 "location": "Boston",
+                "location_source": "configured",
                 "current": {
                     "temp_f": 72,
                     "apparent_temp_f": 75,
@@ -277,6 +279,110 @@ class OpenMeteoWeatherClientTests(unittest.TestCase):
         self.assertEqual(result["forecast"][0]["temp_max"], 88.0)
         self.assertEqual(session.calls[0][1]["params"]["name"], "Tokyo")
         self.assertEqual(session.calls[1][1]["params"]["forecast_days"], 1)
+
+    def test_device_forecast_sends_coordinates_only_to_provider_and_returns_safe_metadata(self) -> None:
+        marker = (12.3456, 98.7654)
+        session = _Session(
+            _Response({
+                "latitude": marker[0],
+                "longitude": marker[1],
+                "current": {"temperature_2m": 72, "weather_code": 0},
+                "daily": {
+                    "time": ["2026-08-10"],
+                    "temperature_2m_max": [81],
+                    "temperature_2m_min": [65],
+                    "weather_code": [0],
+                },
+            })
+        )
+        resolved = SimpleNamespace(
+            location="Current area",
+            source="device",
+            coordinates=marker,
+            revision=42,
+        )
+
+        with mock.patch(
+            "clients.weather_client.resolve_weather_location", return_value=resolved
+        ) as resolve, mock.patch.object(
+            weather_client, "get_connector_http_session", return_value=session
+        ):
+            result = weather_client.fetch_weather_forecast()
+
+        resolve.assert_called_once_with(explicit_location=None)
+        self.assertEqual(len(session.calls), 1)
+        self.assertEqual(session.calls[0][0], weather_client._FORECAST_URL)
+        self.assertEqual(session.calls[0][1]["params"]["latitude"], marker[0])
+        self.assertEqual(session.calls[0][1]["params"]["longitude"], marker[1])
+        self.assertEqual(result["location"], "Current area")
+        self.assertEqual(result["location_source"], "device")
+        self.assertNotIn("latitude", result)
+        self.assertNotIn("longitude", result)
+        self.assertNotIn(str(marker[0]), str(result))
+        self.assertNotIn(str(marker[1]), str(result))
+
+    def test_explicit_forecast_location_is_passed_to_resolver(self) -> None:
+        resolved = SimpleNamespace(
+            location="Tokyo", source="explicit", coordinates=None, revision=0
+        )
+        session = _Session(
+            _Response({"results": [{"latitude": 35.6, "longitude": 139.6}]}),
+            _Response({
+                "daily": {
+                    "time": ["2026-08-10"],
+                    "temperature_2m_max": [81],
+                    "temperature_2m_min": [65],
+                    "weather_code": [0],
+                },
+            }),
+        )
+        with mock.patch(
+            "clients.weather_client.resolve_weather_location", return_value=resolved
+        ) as resolve, mock.patch.object(
+            weather_client, "get_connector_http_session", return_value=session
+        ):
+            result = weather_client.fetch_weather_forecast(location="Tokyo", days=1)
+
+        resolve.assert_called_once_with(explicit_location="Tokyo")
+        self.assertEqual(result["location_source"], "explicit")
+        self.assertEqual(session.calls[0][1]["params"]["name"], "Tokyo")
+
+    def test_device_telemetry_result_contains_no_coordinates(self) -> None:
+        marker = (12.3456, 98.7654)
+        session = _Session(
+            _Response({
+                "latitude": marker[0],
+                "longitude": marker[1],
+                "timezone": "Etc/UTC",
+                "current": {"temperature_2m": 72, "weather_code": 0},
+                "daily": {
+                    "time": ["2026-08-10"],
+                    "temperature_2m_max": [81],
+                    "temperature_2m_min": [65],
+                    "weather_code": [0],
+                },
+            })
+        )
+        resolved = SimpleNamespace(
+            location="Current area",
+            source="device",
+            coordinates=marker,
+            revision=42,
+        )
+        with mock.patch(
+            "clients.weather_client.resolve_weather_location", return_value=resolved
+        ), mock.patch.object(
+            weather_client, "get_connector_http_session", return_value=session
+        ):
+            result = weather_client.collect_weather()
+
+        self.assertEqual(result.status, "healthy")
+        self.assertEqual(result.data["location"], "Current area")
+        self.assertEqual(result.data["location_source"], "device")
+        self.assertNotIn("latitude", result.data)
+        self.assertNotIn("longitude", result.data)
+        self.assertNotIn(str(marker[0]), str(result.model_dump()))
+        self.assertNotIn(str(marker[1]), str(result.model_dump()))
 
     def test_weather_code_mapping_covers_clear_cloud_fog_rain_snow_and_thunderstorm(self) -> None:
         self.assertEqual(weather_client._weather_condition(0), ("clear sky", "clear_day"))

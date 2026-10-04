@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import os
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -14,6 +13,7 @@ from core.runtime_paths import initialize_environment
 
 from clients.http_sessions import get_connector_http_session
 from core.connectors.models import ConnectorResult, utc_now_iso
+from core.device_context import resolve_weather_location
 
 initialize_environment()
 
@@ -84,11 +84,6 @@ def _request_json(url: str, params: dict[str, Any]) -> tuple[int, dict[str, Any]
     if not isinstance(payload, dict):
         raise ValueError("Weather provider returned a non-object payload.")
     return response.status_code, payload
-
-
-def _configured_location() -> str | None:
-    location = os.getenv("TARGET_LOCATION", "").strip()
-    return location or None
 
 
 def _as_finite_float(value: Any) -> float | None:
@@ -338,7 +333,8 @@ def _provider_current_time(current: object, *, timezone_name: str) -> datetime:
 
 def collect_weather() -> ConnectorResult:
     """Collect current weather as a typed connector result."""
-    location = _configured_location()
+    resolved = resolve_weather_location()
+    location = resolved.location
     if location is None:
         return _weather_result(
             status="unavailable",
@@ -347,7 +343,7 @@ def collect_weather() -> ConnectorResult:
         )
 
     try:
-        coordinates = _resolve_coordinates(location)
+        coordinates = resolved.coordinates or _resolve_coordinates(location)
         if coordinates is None:
             return _weather_result(
                 status="unavailable",
@@ -395,6 +391,7 @@ def collect_weather() -> ConnectorResult:
         data: dict[str, Any] = {
             **current_data,
             "location": location,
+            "location_source": resolved.source,
             "timeline": timeline,
             "timezone": timezone_name,
         }
@@ -458,13 +455,14 @@ def collect_weather() -> ConnectorResult:
 
 def fetch_weather_forecast(location: str | None = None, days: int = 5) -> dict[str, Any]:
     """Fetch an enriched multi-day Open-Meteo forecast and current conditions for any location or configured default."""
-    resolved_location = location.strip() if isinstance(location, str) and location.strip() else _configured_location()
+    resolved = resolve_weather_location(explicit_location=location)
+    resolved_location = resolved.location
     if resolved_location is None:
         return {"error": "Weather forecast offline: Missing target location."}
 
     max_days = max(1, min(14, days))
     try:
-        coordinates = _resolve_coordinates(resolved_location)
+        coordinates = resolved.coordinates or _resolve_coordinates(resolved_location)
         if coordinates is None:
             return {"error": "Weather forecast unavailable."}
 
@@ -528,6 +526,7 @@ def fetch_weather_forecast(location: str | None = None, days: int = 5) -> dict[s
 
         result: dict[str, Any] = {
             "location": resolved_location,
+            "location_source": resolved.source,
             "forecast": forecast,
         }
         if current_data is not None:

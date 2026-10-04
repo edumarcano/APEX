@@ -249,8 +249,11 @@ def _effective_connector_names(
 def _connector_credential_blockers(names: set[str]) -> list[PreflightBlocker]:
     """Return one blocker describing missing configuration for requested connectors."""
     missing: list[str] = []
-    if "weather" in names and not os.getenv("TARGET_LOCATION"):
-        missing.append("weather")
+    if "weather" in names:
+        from core.device_context import default_weather_available
+
+        if not default_weather_available():
+            missing.append("weather")
     if "football" in names and not os.getenv("FOOTBALL_API_KEY"):
         missing.append("football")
     if names & {"email", "calendar"}:
