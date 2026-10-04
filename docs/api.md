@@ -21,6 +21,7 @@ Use the sections below for operation behavior and examples. For a typical integr
 | GET | `/api/v1/health/live` | Process liveness |
 | GET | `/api/v1/health/ready` | Local runtime readiness |
 | GET | `/api/v1/runtime` | Identity of the backend serving the selected data profile |
+| GET | `/api/v1/device-context` | Coordinate-free location permission, availability, source, and freshness |
 | GET | `/api/v1/config` | Interface boot configuration |
 | GET | `/api/v1/settings` | Resolved runtime settings |
 | PATCH | `/api/v1/settings` | Persist runtime-setting changes |
@@ -138,6 +139,12 @@ Returns the backend's application/version/build identity, per-process instance U
 
 A managed parent compares this identity with its child's private `ready` event, launch UUID, and process handle before admitting the interface. A successful health probe alone does not establish that the listener is the process it launched. Runtime identity is public status, not a shutdown capability; lifecycle control uses private process pipes. See [Backend hosting](architecture.md#backend-hosting).
 
+### GET `/api/v1/device-context`
+
+Returns `enabled`, `permission`, `availability`, effective default `source`, `freshness`, and optional `fix_age_seconds`. Coordinates and paths are omitted. This read does not acquire location or request Windows permission. Permission distinguishes unknown, granted, denied, revoked, and unsupported; acquisition availability separately reports unknown, available, unavailable, timed out, or unsupported. Source is device, configured, or none; freshness describes the in-memory device fix.
+
+The saved `device_context.location_enabled` preference defaults to `false`. Native permission checks require an explicit foreground Settings action after saving it and again in each native app session. Browser, standalone, and demo runtimes retain configured-location fallback. See [Configuration](configuration.md#device-location-for-weather).
+
 ### GET `/api/v1/config`
 
 Returns boot-time interface values such as Agent query enablement, the effective model selection, voice defaults, market enablement, message limits, runtime modes, and `cortex_initial_selection` containing `canonical_name` ("APEX Agent"), default or resolved `display_name` ("Lynx"), and the saved model/runtime selection.
@@ -154,7 +161,7 @@ Briefing profile selection is per session and does not add a Runtime Settings fi
 
 ### PATCH `/api/v1/settings`
 
-Accepts a strict partial patch for the optional user designation, optional agent display name, connector features, sports modules, followed football teams, market symbols, Google Calendar selection and label display, Context vault enablement and scopes, Agent query settings, tool profiles, voice, desktop launch and completion-notification preferences, llama.cpp enablement, loopback host, optional managed-server paths, tracked MCP enablement, and local activity report folder settings. Desktop preferences are `desktop.launch_on_startup` and `desktop.completion_notifications`, both defaulting to `false`; they configure the native shell and do not change backend process lifecycle. The supported `features` toggles are `weather`, `sports`, `email`, `calendar`, and `market`; `features.news` is retired and returns `422` as an unknown field. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
+Accepts a strict partial patch for the optional user designation, optional agent display name, connector features, sports modules, followed football teams, market symbols, Google Calendar selection and label display, Context vault enablement and scopes, Agent query settings, tool profiles, voice, desktop launch and completion-notification preferences, device-location enablement, llama.cpp enablement, loopback host, optional managed-server paths, tracked MCP enablement, and local activity report folder settings. Desktop preferences are `desktop.launch_on_startup` and `desktop.completion_notifications`, both defaulting to `false`; they configure the native shell and do not change backend process lifecycle. `device_context.location_enabled` defaults to `false`; saving it does not request OS permission. A committed disable clears pending acquisition and the in-memory fix. The supported `features` toggles are `weather`, `sports`, `email`, `calendar`, and `market`; `features.news` is retired and returns `422` as an unknown field. Unknown fields return `422`. An empty object returns the current envelope without writing. Prefer the dedicated Cortex tool-profile routes for profile creation, editing, deletion, and default assignment.
 
 ```json
 {
