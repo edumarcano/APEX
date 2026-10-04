@@ -11,6 +11,7 @@ import argparse
 import ctypes
 from ctypes import wintypes
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -119,12 +120,30 @@ def _http_json(method: str, path: str, body: object | None = None, timeout: floa
 
 def _device_status() -> dict[str, object]:
     value = _http_json("GET", "/api/v1/device-context")
-    if not isinstance(value, dict):
-        raise SmokeFailure("device-context status was not an object")
-    permission = value.get("permission")
-    availability = value.get("availability")
-    if permission not in PERMISSIONS or availability not in AVAILABILITIES:
-        raise SmokeFailure("device-context status contained an unsupported state")
+    expected_keys = {
+        "enabled", "permission", "availability", "source", "freshness", "fix_age_seconds"
+    }
+    if set(value) != expected_keys:
+        raise SmokeFailure("device-context status did not match its coordinate-free contract")
+    if not isinstance(value["enabled"], bool):
+        raise SmokeFailure("device-context enabled state was not a boolean")
+    permission = value["permission"]
+    availability = value["availability"]
+    source = value["source"]
+    freshness = value["freshness"]
+    if not isinstance(permission, str) or permission not in PERMISSIONS:
+        raise SmokeFailure("device-context status contained an unsupported permission state")
+    if not isinstance(availability, str) or availability not in AVAILABILITIES:
+        raise SmokeFailure("device-context status contained an unsupported permission state")
+    if not isinstance(source, str) or source not in {"device", "configured", "none"}:
+        raise SmokeFailure("device-context status contained an unsupported source")
+    if not isinstance(freshness, str) or freshness not in {"none", "fresh", "expired"}:
+        raise SmokeFailure("device-context status contained an unsupported freshness state")
+    age = value["fix_age_seconds"]
+    if age is not None and (
+        isinstance(age, bool) or not isinstance(age, (int, float)) or not math.isfinite(age) or age < 0
+    ):
+        raise SmokeFailure("device-context fix age was invalid")
     return value
 
 
@@ -144,13 +163,13 @@ def _switch_checked(driver: WebDriver, label: str) -> bool:
         "POST",
         "/execute/sync",
         {
-            "script": "const e = document.querySelector('[role=\\\"switch\\\"][aria-label=\\\"' + arguments[0] + '\\\"]'); return e ? e.getAttribute('aria-checked') === 'true' : null;",
+            "script": "const e = Array.from(document.querySelectorAll('[role=switch]')).find((item) => item.getAttribute('aria-label') === arguments[0]); return e ? e.getAttribute('aria-checked') : null;",
             "args": [label],
         },
     )
-    if not isinstance(result, bool):
+    if result not in {"true", "false"}:
         raise SmokeFailure(f"the {label} switch was not available")
-    return result
+    return result == "true"
 
 
 def _click_switch(driver: WebDriver, label: str, timeout: float) -> None:
@@ -209,6 +228,35 @@ def _focus_owned_window(driver_process: subprocess.Popen[bytes], application: Pa
         _close_handle(handle)
 
 
+def _smoke_environment(profile_root: Path) -> dict[str, str]:
+    env = _sanitized_environment(profile_root, demo=False)
+    env["TARGET_LOCATION"] = "London"
+    local_profile = Path(env["APEX_DATA_DIR"])
+    local_config = local_profile / "config.local.json"
+    if not local_config.exists():
+        local_config.write_text(
+            json.dumps(
+                {
+                    "features": {
+                        "weather": True,
+                        "sports": False,
+                        "email": False,
+                        "calendar": False,
+                        "market": False,
+                    },
+                    "modules": {"football": False, "f1": False},
+                    "ask_apex": {"enabled": False},
+                    "ollama": {"enabled": False},
+                    "llama_cpp": {"enabled": False},
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    return env
+
+
 def _start_driver(
     application: Path,
     tauri_driver: Path,
@@ -216,29 +264,7 @@ def _start_driver(
     profile_root: Path,
     timeout: float,
 ) -> tuple[subprocess.Popen[bytes], WebDriver]:
-    env = _sanitized_environment(profile_root, demo=False)
-    env["TARGET_LOCATION"] = "London"
-    local_profile = Path(env["APEX_DATA_DIR"])
-    (local_profile / "config.local.json").write_text(
-        json.dumps(
-            {
-                "features": {
-                    "weather": True,
-                    "sports": False,
-                    "email": False,
-                    "calendar": False,
-                    "market": False,
-                },
-                "modules": {"football": False, "f1": False},
-                "ask_apex": {"enabled": False},
-                "ollama": {"enabled": False},
-                "llama_cpp": {"enabled": False},
-            },
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
+    env = _smoke_environment(profile_root)
     control_port = _available_port()
     native_port = _available_port()
     while native_port == control_port:
@@ -261,16 +287,25 @@ def _start_driver(
         log_file.close()
     driver = WebDriver(control_port, min(20.0, timeout))
     deadline = time.monotonic() + min(30.0, timeout)
-    while time.monotonic() < deadline:
-        if process.poll() is not None:
-            raise SmokeFailure("tauri-driver exited before accepting WebDriver commands")
-        try:
-            driver.request("GET", "/status")
-            driver.start(application)
-            return process, driver
-        except SmokeFailure:
-            time.sleep(POLL_INTERVAL_SECONDS)
-    raise SmokeFailure("tauri-driver did not become ready within the startup bound")
+    try:
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise SmokeFailure("tauri-driver exited before accepting WebDriver commands")
+            try:
+                driver.request("GET", "/status")
+                return process, driver
+            except SmokeFailure:
+                time.sleep(POLL_INTERVAL_SECONDS)
+        raise SmokeFailure("tauri-driver did not become ready within the startup bound")
+    except BaseException:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+        raise
 
 
 def _quit_app(driver: WebDriver, driver_process: subprocess.Popen[bytes], application: Path, timeout: float) -> None:
@@ -327,6 +362,7 @@ def _run_smoke(
     driver: WebDriver | None = None
     try:
         driver_process, driver = _start_driver(application, tauri_driver, native_driver, root, timeout)
+        driver.start(application)
         identity = _runtime_identity(profile, min(timeout, 45.0))
         report.add("managed_backend_identity", "passed", "API belongs to the managed child using the disposable profile")
         initial = _wait_device_enabled(False, min(timeout, 45.0))
@@ -389,37 +425,49 @@ def _run_smoke(
         else:
             report.add("expected_permission", "unverified", "no permission state was requested for this run")
 
-        if permission == "granted":
-            try:
-                weather = _http_json(
-                    "POST", "/api/v1/telemetry/refresh",
-                    {"connectors": ["weather"], "force": True}, timeout=min(90.0, timeout),
-                )
-                if _contains_private_coordinate_key(weather):
-                    report.add("weather_response_privacy", "failed", "public Weather response contained a coordinate key")
-                else:
-                    report.add("weather_response_privacy", "passed", "public Weather response contained no coordinate keys")
-                modules = weather.get("modules") if isinstance(weather, dict) else None
-                weather_module = modules.get("weather") if isinstance(modules, dict) else None
-                weather_state = weather_module.get("status") if isinstance(weather_module, dict) else "unavailable"
-                after_weather = _device_status()
-                report.observations["weather"] = {
-                    "provider_status": weather_state,
-                    "location_source": after_weather.get("source"),
-                    "location_freshness": after_weather.get("freshness"),
-                }
-                if after_weather.get("source") == "device" and after_weather.get("freshness") == "fresh":
-                    report.add("native_location_acquisition", "passed", "Weather refresh produced a fresh device-derived location")
-                else:
-                    report.add("native_location_acquisition", "unverified", "Weather refresh completed without a fresh device location; configured fallback may have been used")
-                if weather_state != "healthy":
-                    report.add("weather_provider", "unverified", f"Weather provider status was {weather_state}; location acquisition is reported separately")
-                else:
-                    report.add("weather_provider", "passed", "Weather provider returned a healthy result")
-            except (SmokeFailure, OSError, ValueError) as exc:
-                report.add("weather_refresh", "unverified", f"Weather refresh did not complete: {type(exc).__name__}")
+        weather: dict[str, object] | None = None
+        try:
+            weather = _http_json(
+                "POST", "/api/v1/telemetry/refresh",
+                {"connectors": ["weather"]}, timeout=min(90.0, timeout),
+            )
+        except (SmokeFailure, OSError, ValueError) as exc:
+            report.add("weather_refresh", "unverified", f"Weather refresh did not complete: {type(exc).__name__}")
+        if weather is None:
+            report.add("weather_response_privacy", "unverified", "no public Weather response was available for privacy inspection")
+            weather_state = "unavailable"
         else:
-            report.add("weather_refresh", "unverified", "permission was not granted, so no location-dependent Weather refresh was attempted")
+            if _contains_private_coordinate_key(weather):
+                report.add("weather_response_privacy", "failed", "public Weather response contained a coordinate key")
+            else:
+                report.add("weather_response_privacy", "passed", "public Weather response contained no coordinate keys")
+            modules = weather.get("modules")
+            weather_module = modules.get("weather") if isinstance(modules, dict) else None
+            candidate_state = weather_module.get("status") if isinstance(weather_module, dict) else None
+            weather_state = (
+                candidate_state
+                if isinstance(candidate_state, str)
+                and candidate_state in {"healthy", "degraded", "unavailable", "disabled"}
+                else "unavailable"
+            )
+        after_weather = _device_status()
+        report.observations["weather"] = {
+            "provider_status": weather_state,
+            "location_source": after_weather.get("source"),
+            "location_freshness": after_weather.get("freshness"),
+        }
+        if after_weather.get("source") == "device" and after_weather.get("freshness") == "fresh":
+            report.add("native_location_acquisition", "passed", "Weather refresh produced a fresh device-derived location")
+        else:
+            report.add("native_location_acquisition", "unverified", "no fresh device location was observed after Weather refresh")
+        if after_weather.get("source") == "configured" and after_weather.get("freshness") == "none":
+            report.add("configured_fallback", "passed", "Weather refresh retained the configured fallback without a fresh device fix")
+        else:
+            report.add("configured_fallback", "unverified", "configured fallback was not observed after Weather refresh")
+        if weather_state != "healthy":
+            report.add("weather_provider", "unverified", f"Weather provider status was {weather_state}; location status is reported separately")
+        else:
+            report.add("weather_provider", "passed", "Weather provider returned a healthy result")
 
         # Verify disable clears the session fix and reports the configured fallback.
         _focus_owned_window(driver_process, application)
@@ -444,6 +492,7 @@ def _run_smoke(
             driver_process.kill()
             driver_process.wait(timeout=5)
         driver_process, driver = _start_driver(application, tauri_driver, native_driver, root, timeout)
+        driver.start(application)
         restarted = _wait_device_enabled(True, min(timeout, 45.0))
         if restarted.get("permission") != "unknown":
             raise SmokeFailure("restarted app did not remain permission-unknown until a new user action")
