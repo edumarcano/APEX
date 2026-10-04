@@ -30,7 +30,7 @@ from core.host.profile_lock import ProfileLock
 
 
 class BackendHostSubprocessTests(unittest.TestCase):
-    def test_desktop_preferences_sink_reads_latest_snapshot_and_sequences_events(self) -> None:
+    def test_desktop_preferences_sink_waits_for_ready_and_reads_latest_snapshot(self) -> None:
         sent = []
 
         class Channel:
@@ -42,24 +42,32 @@ class BackendHostSubprocessTests(unittest.TestCase):
             completion_notifications=False,
         ))
         store = SimpleNamespace(get_snapshot=lambda: SimpleNamespace(desktop=state.desktop))
+        readiness = SimpleNamespace(ready=False)
         publish = _make_desktop_preferences_sink(
-            Channel(), str(uuid.uuid4()), get_settings_store=lambda: store
+            Channel(),
+            str(uuid.uuid4()),
+            ready_predicate=lambda: readiness.ready,
+            get_settings_store=lambda: store,
         )
 
         publish()
+        self.assertEqual(sent, [])
         state.desktop = SimpleNamespace(
             launch_on_startup=True,
+            completion_notifications=True,
+        )
+        readiness.ready = True
+        publish()
+        state.desktop = SimpleNamespace(
+            launch_on_startup=False,
             completion_notifications=True,
         )
         publish()
 
         self.assertEqual([event.request_id for event in sent], ["desktop:1", "desktop:2"])
-        self.assertEqual(sent[0].payload["launch_on_startup"], False)
-        self.assertEqual(sent[1].payload, {
-            "instance_id": sent[0].payload["instance_id"],
-            "launch_on_startup": True,
-            "completion_notifications": True,
-        })
+        self.assertEqual(sent[0].payload["launch_on_startup"], True)
+        self.assertEqual(sent[0].payload["completion_notifications"], True)
+        self.assertEqual(sent[1].payload["launch_on_startup"], False)
 
     @unittest.skipUnless(os.name == "nt", "Windows native import ordering")
     def test_windows_numpy_is_ready_before_host_threads_start(self) -> None:

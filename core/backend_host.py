@@ -170,6 +170,7 @@ def _make_desktop_preferences_sink(
     channel: ControlChannel,
     instance_id: str,
     *,
+    ready_predicate: Callable[[], bool],
     get_settings_store: Callable[[], Any] | None = None,
 ) -> Callable[[], None]:
     """Publish the latest committed desktop preferences in sequence order."""
@@ -180,6 +181,8 @@ def _make_desktop_preferences_sink(
         nonlocal sequence
         try:
             with lock:
+                if not ready_predicate():
+                    return
                 if get_settings_store is None:
                     from core.settings.store import (
                         get_settings_store as resolve_store,
@@ -297,6 +300,7 @@ async def _serve(
     app.state.lifecycle_entered = False
     app.state.lifecycle_established = False
     app.state.lifecycle_cleanup_complete = False
+    ready_sent = False
 
     if channel is not None:
         identity = context.identity.as_dict()
@@ -311,7 +315,9 @@ async def _serve(
 
         app.state.completion_sink = completion_sink
         app.state.desktop_preferences_sink = _make_desktop_preferences_sink(
-            channel, str(identity["instance_id"])
+            channel,
+            str(identity["instance_id"]),
+            ready_predicate=lambda: ready_sent,
         )
         _send(channel, "starting", identity, start_request_id)
     else:
@@ -413,7 +419,6 @@ async def _serve(
     exit_code = 0
     try:
         server_task = asyncio.create_task(server.serve(sockets=[listener]), name="apex-uvicorn-server")
-        ready_sent = False
         identity = context.identity.as_dict()
         while not server_task.done():
             if shutdown_requested.is_set():

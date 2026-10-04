@@ -119,10 +119,17 @@ def _validate_type_payload(message_type: str, payload: Mapping[str, object]) -> 
             raise ControlProtocolError(
                 "Desktop preferences payload does not match the lifecycle contract."
             )
+        instance_id = payload["instance_id"]
+        if not isinstance(instance_id, str):
+            raise ControlProtocolError(
+                "Desktop preferences payload does not match the lifecycle contract."
+            )
         try:
-            uuid.UUID(str(payload["instance_id"]))
+            uuid.UUID(instance_id)
         except (ValueError, TypeError, AttributeError) as exc:
-            raise ControlProtocolError("Desktop preferences payload does not match the lifecycle contract.") from exc
+            raise ControlProtocolError(
+                "Desktop preferences payload does not match the lifecycle contract."
+            ) from exc
         if (
             type(payload["launch_on_startup"]) is not bool
             or type(payload["completion_notifications"]) is not bool
@@ -149,6 +156,10 @@ def validate_envelope(
     request_id = value["request_id"]
     if not isinstance(request_id, str) or not _REQUEST_ID.fullmatch(request_id):
         raise ControlProtocolError("Control frame has an invalid request identifier.")
+    if message_type == "desktop_preferences" and not re.fullmatch(
+        r"desktop:[1-9][0-9]*", request_id
+    ):
+        raise ControlProtocolError("Desktop preferences request identifier is invalid.")
     if expected_request_id is not None and request_id != expected_request_id:
         raise ControlProtocolError("Control frame correlation did not match the request.")
     payload = value["payload"]

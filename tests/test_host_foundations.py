@@ -228,6 +228,15 @@ class HostProtocolTests(unittest.TestCase):
         ):
             with self.subTest(payload=invalid), self.assertRaises(ControlProtocolError):
                 validate_envelope({**desktop_preferences, "payload": invalid})
+        for request_id in ("desktop:0", "desktop:01", "desktop:-1", "desktop:next"):
+            with self.subTest(request_id=request_id), self.assertRaises(ControlProtocolError):
+                validate_envelope({**desktop_preferences, "request_id": request_id})
+        non_string_instance = {
+            **desktop_preferences["payload"],
+            "instance_id": uuid.UUID(desktop_preferences["payload"]["instance_id"]),
+        }
+        with self.assertRaises(ControlProtocolError):
+            validate_envelope({**desktop_preferences, "payload": non_string_instance})
         with self.assertRaises(ControlProtocolError):
             validate_envelope({**completion, "payload": {**completion["payload"], "detail": "private"}})
         with self.assertRaises(ControlProtocolError):
