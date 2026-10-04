@@ -473,7 +473,7 @@ export default function SettingsPanel({
                 ) : null}
 
                 {activeTab === 'desktop' ? (
-                  <DesktopView titleId={titleId} draft={draft} setDraft={setDraft} />
+                  <DesktopView titleId={titleId} baseline={baseline} draft={draft} setDraft={setDraft} />
                 ) : null}
               </>
             ) : null}

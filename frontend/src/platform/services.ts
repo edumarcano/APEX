@@ -1,5 +1,6 @@
 import { loadDesktopPlatform } from './index'
 import type { DesktopServicesStatus } from './contracts'
+import { safeExternalUrl } from '../lib/externalLinks'
 
 export function isNativeDesktop(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
@@ -30,6 +31,15 @@ export async function writeClipboardText(text: string): Promise<void> {
 }
 
 export async function openExternal(url: string): Promise<void> {
-  if (!isNativeDesktop()) throw new Error('External link service is unavailable.')
-  await (await loadDesktopPlatform()).openExternal(url)
+  const safeUrl = safeExternalUrl(url)
+  if (!safeUrl) throw new Error('The link address is not a valid HTTP(S) URL.')
+  if (isNativeDesktop()) {
+    await (await loadDesktopPlatform()).openExternal(safeUrl)
+    return
+  }
+  const opened = window.open(safeUrl, '_blank')
+  if (!opened) {
+    throw new Error('The browser could not open this link. Check its popup settings.')
+  }
+  opened.opener = null
 }

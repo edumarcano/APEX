@@ -189,4 +189,17 @@ describe('CortexActivity', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Clipboard access denied.')
     expect(screen.queryByText('Copied')).not.toBeInTheDocument()
   })
+
+  it('clears prior copy success when a later clipboard write fails', async () => {
+    const run = createMockRun()
+    clipboard.writeClipboardText.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('Clipboard access denied.'))
+    const user = userEvent.setup()
+    render(<CortexActivity runsState={createMockRunsState({ runs: [run], selectedRunId: run.id, selectedRun: run })} />)
+    const button = screen.getByRole('button', { name: 'Copy run ID' })
+    await user.click(button)
+    expect(screen.getByText('Copied')).toBeInTheDocument()
+    await user.click(button)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Clipboard access denied.')
+    expect(screen.queryByText('Copied')).not.toBeInTheDocument()
+  })
 })

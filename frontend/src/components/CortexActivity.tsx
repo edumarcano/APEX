@@ -117,12 +117,14 @@ export function CortexActivity({
   const residentLocalModel = findResidentLocalModel(modelCatalog)
 
   const handleCopyId = async (id: string): Promise<void> => {
+    setCopied(false)
     try {
       setCopyError(null)
       await writeClipboardText(id)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (error) {
+      setCopied(false)
       setCopyError(error instanceof Error ? error.message : 'Clipboard is unavailable.')
     }
   }

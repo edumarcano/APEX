@@ -1199,6 +1199,8 @@ function ApexAssistantMessage(): ReactNode {
     .join('\n')
 
   const copyMessage = async (): Promise<void> => {
+    setCopyState('idle')
+    setCopyError(null)
     try {
       await writeClipboardText(text)
       setCopyState('copied')
