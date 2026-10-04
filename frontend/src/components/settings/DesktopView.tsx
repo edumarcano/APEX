@@ -219,7 +219,9 @@ export default function DesktopView({
           : 'Windows returned a result; the device status is still updating.')
       }
     } catch (error) {
-      if (mounted.current) setDeviceError(locationPermissionErrorMessage(error))
+      if (mounted.current && generation === actionGeneration.current) {
+        setDeviceError(locationPermissionErrorMessage(error))
+      }
     } finally {
       locationCheckRef.current = false
       if (mounted.current) setCheckingLocation(false)

@@ -14,6 +14,8 @@ export interface DeviceContextStatus {
   fix_age_seconds: number | null
 }
 
+export const DEVICE_CONTEXT_STATUS_TIMEOUT_MS = 3_000
+
 /** Convert known native command failures to safe, actionable UI copy. */
 export function locationPermissionErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : typeof error === 'string' ? error : ''
@@ -57,9 +59,26 @@ export function parseDeviceContextStatus(value: unknown): DeviceContextStatus | 
 }
 
 export async function fetchDeviceContextStatus(signal?: AbortSignal): Promise<DeviceContextStatus> {
-  const response = await fetch(API_ENDPOINTS.deviceContext, { signal })
-  if (!response.ok) throw new Error('Device location status could not be loaded.')
-  const status = parseDeviceContextStatus(await response.json())
-  if (!status) throw new Error('Device location status response was malformed.')
-  return status
+  const controller = new AbortController()
+  let timedOut = false
+  const abortFromCaller = () => controller.abort(signal?.reason)
+  if (signal?.aborted) abortFromCaller()
+  else signal?.addEventListener('abort', abortFromCaller, { once: true })
+  const timeoutId = globalThis.setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, DEVICE_CONTEXT_STATUS_TIMEOUT_MS)
+  try {
+    const response = await fetch(API_ENDPOINTS.deviceContext, { signal: controller.signal })
+    if (!response.ok) throw new Error('Device location status could not be loaded.')
+    const status = parseDeviceContextStatus(await response.json())
+    if (!status) throw new Error('Device location status response was malformed.')
+    return status
+  } catch (error) {
+    if (timedOut) throw new Error('Device location status request timed out.', { cause: error })
+    throw error
+  } finally {
+    globalThis.clearTimeout(timeoutId)
+    signal?.removeEventListener('abort', abortFromCaller)
+  }
 }
