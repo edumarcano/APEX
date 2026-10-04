@@ -25,7 +25,8 @@ tauri-plugin-window-state = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Pipes", "Win32_System_Threading"] }
-windows = { version = "0.61", features = ["Foundation", "UI_Notifications", "Data_Xml_Dom", "Win32_System_WinRT"] }
+windows = { version = "0.61", features = ["Foundation", "UI_Notifications", "Data_Xml_Dom", "Win32_System_WinRT", "Win32_Graphics_Gdi"] }
+windows-registry = "0.6"
 
 [profile.release]
 panic = "unwind"

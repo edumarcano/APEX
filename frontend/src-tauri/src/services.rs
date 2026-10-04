@@ -181,6 +181,18 @@ impl DesktopServicesState {
             && status.notifications.os_setting == NotificationSetting::Enabled
     }
 
+    pub fn record_completion_eligibility(
+        &self,
+        instance_id: &str,
+        run_id: &str,
+        current_instance: &str,
+        completed: bool,
+        hidden_or_minimized: bool,
+    ) -> bool {
+        let unique = self.take_completion(instance_id, run_id, current_instance);
+        unique && completed && hidden_or_minimized && self.should_submit_notification()
+    }
+
     pub fn set_startup(&self, actual: Option<bool>, error: Option<&str>) {
         let mut status = self.status.lock().expect("desktop services mutex poisoned");
         status.startup = StartupStatus {
@@ -303,5 +315,31 @@ mod tests {
         assert!(!state.should_submit_notification());
         state.set_notifications(NotificationSetting::Enabled, None);
         assert!(state.should_submit_notification());
+    }
+
+    #[test]
+    fn receipt_eligibility_is_not_recomputed_after_a_disabled_run_was_suppressed() {
+        let state = DesktopServicesState::new(true, true);
+        state
+            .accept_preferences(
+                "desktop:1",
+                json!({"instance_id":INSTANCE,"launch_on_startup":false,"completion_notifications":false}),
+                INSTANCE,
+            )
+            .unwrap();
+        state.set_notifications(NotificationSetting::Enabled, None);
+        assert!(!state.record_completion_eligibility(INSTANCE, RUN, INSTANCE, true, true));
+        state
+            .accept_preferences(
+                "desktop:2",
+                json!({"instance_id":INSTANCE,"launch_on_startup":false,"completion_notifications":true}),
+                INSTANCE,
+            )
+            .unwrap();
+        assert!(!state.record_completion_eligibility(INSTANCE, RUN, INSTANCE, true, true));
+        let second = "651aeb4b-e90e-40d5-9708-1b1fb857fa27";
+        assert!(state.record_completion_eligibility(INSTANCE, second, INSTANCE, true, true));
+        let third = "751aeb4b-e90e-40d5-9708-1b1fb857fa28";
+        assert!(state.record_completion_eligibility(INSTANCE, third, INSTANCE, true, true));
     }
 }

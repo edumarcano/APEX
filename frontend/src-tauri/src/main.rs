@@ -1,11 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod autostart;
 mod external;
 mod notifications;
 mod protocol;
 mod security;
 mod services;
 mod state;
+mod window_geometry;
 #[cfg(windows)]
 mod windows_job;
 
@@ -255,57 +257,15 @@ async fn reconcile_services(
     }
     #[cfg(all(windows, not(debug_assertions)))]
     {
-        use tauri_plugin_autostart::ManagerExt as _;
         let snapshot = services.snapshot();
-        let mut error = None;
-        if snapshot.preferences_ready {
-            let manager = app.autolaunch();
-            match manager.is_enabled() {
-                Ok(current) if current == snapshot.requested.launch_on_startup => {}
-                Ok(_)
-                    if !app
-                        .state::<Supervisor>()
-                        .inner()
-                        .quitting
-                        .load(Ordering::Acquire) =>
-                {
-                    let operation = if snapshot.requested.launch_on_startup {
-                        manager.enable()
-                    } else {
-                        manager.disable()
-                    };
-                    if operation.is_err() {
-                        error = Some("autostart_failed");
-                    }
-                }
-                Ok(_) => return,
-                Err(_) => error = Some("autostart_read_failed"),
-            }
+        let wanted = snapshot
+            .preferences_ready
+            .then_some(snapshot.requested.launch_on_startup);
+        let result = autostart::reconcile(wanted);
+        services.set_startup(result.actual_enabled, result.error_code);
+        if result.error_code.is_some() && window_is_hidden_or_minimized(&app) {
+            show_main(&app);
         }
-        if app
-            .state::<Supervisor>()
-            .inner()
-            .quitting
-            .load(Ordering::Acquire)
-        {
-            return;
-        }
-        let actual = match app.autolaunch().is_enabled() {
-            Ok(actual) => Some(actual),
-            Err(_) => {
-                if error.is_none() {
-                    error = Some("autostart_read_failed");
-                }
-                None
-            }
-        };
-        if snapshot.preferences_ready
-            && actual != Some(snapshot.requested.launch_on_startup)
-            && error.is_none()
-        {
-            error = Some("autostart_mismatch");
-        }
-        services.set_startup(actual, error);
     }
     #[cfg(any(debug_assertions, not(windows)))]
     services.set_startup(None, Some("unsupported"));
@@ -362,12 +322,15 @@ async fn submit_completion_notification(
     {
         return;
     }
-    let error = match result {
-        Ok(Ok(())) => None,
-        _ => Some("notification_failed"),
+    let (setting, error) = match result {
+        Ok(Ok(setting)) => (setting, None),
+        Ok(Err(code)) => (services.snapshot().notifications.os_setting, Some(code)),
+        Err(_) => (
+            services.snapshot().notifications.os_setting,
+            Some("notification_failed"),
+        ),
     };
-    let previous = services.snapshot().notifications.os_setting;
-    services.set_notifications(previous, error);
+    services.set_notifications(setting, error);
     services.publish(&app);
 }
 
@@ -809,7 +772,7 @@ async fn monitor_backend(
         };
         let mut outcome: Option<(bool, &'static str)> = None;
         let mut preferences_changed = false;
-        let mut completed_run = false;
+        let mut eligible_completions = 0usize;
         match session.child.try_wait() {
             Ok(Some(_)) | Err(_) => outcome = Some((false, "backend_crashed")),
             Ok(None) => {}
@@ -830,14 +793,19 @@ async fn monitor_backend(
                             .unwrap_or("");
                         if frame.request_id != run_id || frame_instance != expected_instance {
                             outcome = Some((false, "protocol_error"));
-                        } else if services.take_completion(
-                            frame_instance,
-                            run_id,
-                            expected_instance,
-                        ) && frame.payload.get("status").and_then(Value::as_str)
-                            == Some("completed")
-                        {
-                            completed_run = true;
+                        } else {
+                            let completed = frame.payload.get("status").and_then(Value::as_str)
+                                == Some("completed");
+                            let hidden = completed && window_is_hidden_or_minimized(&app);
+                            if services.record_completion_eligibility(
+                                frame_instance,
+                                run_id,
+                                expected_instance,
+                                completed,
+                                hidden,
+                            ) {
+                                eligible_completions = eligible_completions.saturating_add(1);
+                            }
                         }
                     }
                     Ok(Ok(frame)) if frame.kind == "desktop_preferences" => {
@@ -894,6 +862,9 @@ async fn monitor_backend(
                 }
             }
         }
+        if outcome.is_none() && matches!(session.child.try_wait(), Ok(Some(_)) | Err(_)) {
+            outcome = Some((false, "backend_crashed"));
+        }
         drop(owned);
         if app
             .state::<Supervisor>()
@@ -907,16 +878,22 @@ async fn monitor_backend(
             services.publish(&app);
             reconcile_services(app.clone(), services.clone(), generation).await;
         }
-        if completed_run
-            && services.should_submit_notification()
-            && window_is_hidden_or_minimized(&app)
-        {
-            tauri::async_runtime::spawn(submit_completion_notification(
-                app.clone(),
-                services,
-                supervisor.clone(),
-                generation,
-            ));
+        if outcome.is_none() {
+            for _ in 0..eligible_completions {
+                if supervisor.quitting.load(Ordering::Acquire)
+                    || state.snapshot().generation != generation
+                {
+                    return;
+                }
+                if services.should_submit_notification() && window_is_hidden_or_minimized(&app) {
+                    tauri::async_runtime::spawn(submit_completion_notification(
+                        app.clone(),
+                        services.clone(),
+                        supervisor.clone(),
+                        generation,
+                    ));
+                }
+            }
         }
         let Some((stopped_frame, code)) = outcome else {
             continue;
@@ -1198,6 +1175,7 @@ fn main() {
         )
         .plugin(
             tauri_plugin_autostart::Builder::new()
+                .app_name("APEX")
                 .args(["--autostart"])
                 .build(),
         )
@@ -1207,7 +1185,7 @@ fn main() {
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                     .title("APEX")
                     .inner_size(1440.0, 900.0)
-                    .min_inner_size(800.0, 600.0)
+                    .min_inner_size(320.0, 240.0)
                     .use_https_scheme(false)
                     .on_navigation(|url| {
                         security::is_trusted_url(url.as_str(), cfg!(debug_assertions))
@@ -1254,12 +1232,19 @@ fn main() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let app = window.app_handle().clone();
-                if app
+                let has_tray = app
                     .state::<DesktopServicesState>()
                     .snapshot()
-                    .tray_available
-                {
-                    let _ = window.hide();
+                    .tray_available;
+                match close_action(has_tray) {
+                    CloseAction::Hide => {
+                        let _ = window.hide();
+                    }
+                    CloseAction::Quit => {
+                        let status = app.state::<DesktopState>().inner().clone();
+                        let supervisor = app.state::<Supervisor>().inner().clone();
+                        tauri::async_runtime::spawn(quit_app(app, status, supervisor));
+                    }
                 }
             }
         })
@@ -1274,6 +1259,20 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("failed to run APEX desktop shell");
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CloseAction {
+    Hide,
+    Quit,
+}
+
+fn close_action(tray_available: bool) -> CloseAction {
+    if tray_available {
+        CloseAction::Hide
+    } else {
+        CloseAction::Quit
+    }
 }
 
 fn show_main(app: &tauri::AppHandle) {
@@ -1339,53 +1338,113 @@ fn create_tray(app: &mut tauri::App) -> bool {
 }
 
 fn ensure_usable_geometry(window: &tauri::WebviewWindow) {
+    let was_maximized = window.is_maximized().unwrap_or(false);
+    if window.is_minimized().unwrap_or(false) {
+        let _ = window.unminimize();
+    }
     let Ok(position) = window.outer_position() else {
         return;
     };
     let Ok(size) = window.outer_size() else {
         return;
     };
-    let Ok(monitors) = window.available_monitors() else {
+    let Some(area) = usable_work_area(window, position, size) else {
         return;
     };
-    let visible = monitors.iter().any(|monitor| {
-        let origin = monitor.position();
-        let extent = monitor.size();
-        let right = position.x.saturating_add(size.width as i32);
-        let bottom = position.y.saturating_add(size.height as i32);
-        let overlap_width = right
-            .min(origin.x.saturating_add(extent.width as i32))
-            .saturating_sub(position.x.max(origin.x));
-        let overlap_height = bottom
-            .min(origin.y.saturating_add(extent.height as i32))
-            .saturating_sub(position.y.max(origin.y));
-        overlap_width >= 320 && overlap_height >= 200 && size.width >= 640 && size.height >= 480
-    });
-    if visible {
+    let Some(bounds) = window_geometry::clamp_saved_bounds(
+        window_geometry::WindowBounds {
+            x: position.x,
+            y: position.y,
+            width: size.width,
+            height: size.height,
+        },
+        area,
+        (1440, 900),
+    ) else {
         return;
+    };
+    if area.width < 640 || area.height < 480 {
+        let _ = window.set_min_size(Some(tauri::PhysicalSize::new(
+            area.width.min(320),
+            area.height.min(240),
+        )));
     }
-    let monitor = window
-        .primary_monitor()
-        .ok()
-        .flatten()
-        .or_else(|| monitors.first().cloned());
-    let Some(monitor) = monitor else {
-        return;
+    if !was_maximized && (bounds.width != size.width || bounds.height != size.height) {
+        let _ = window.set_size(tauri::PhysicalSize::new(bounds.width, bounds.height));
+    }
+    if bounds.x != position.x || bounds.y != position.y {
+        let _ = window.set_position(tauri::PhysicalPosition::new(bounds.x, bounds.y));
+    }
+    if was_maximized {
+        let _ = window.maximize();
+    }
+}
+
+#[cfg(windows)]
+fn usable_work_area(
+    _window: &tauri::WebviewWindow,
+    position: tauri::PhysicalPosition<i32>,
+    size: tauri::PhysicalSize<u32>,
+) -> Option<window_geometry::WorkArea> {
+    use windows::Win32::{
+        Foundation::RECT,
+        Graphics::Gdi::{GetMonitorInfoW, MonitorFromRect, MONITORINFO, MONITOR_DEFAULTTONEAREST},
     };
-    let origin = monitor.position();
-    let extent = monitor.size();
-    let width = 1200.min(extent.width).max(800);
-    let height = 800.min(extent.height).max(600);
-    let _ = window.set_size(tauri::PhysicalSize::new(width, height));
-    let _ = window.set_position(tauri::PhysicalPosition::new(
-        origin.x + ((extent.width - width) / 2) as i32,
-        origin.y + ((extent.height - height) / 2) as i32,
-    ));
+    let rect = RECT {
+        left: position.x,
+        top: position.y,
+        right: position
+            .x
+            .saturating_add(size.width.min(i32::MAX as u32) as i32),
+        bottom: position
+            .y
+            .saturating_add(size.height.min(i32::MAX as u32) as i32),
+    };
+    let monitor = unsafe { MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST) };
+    if monitor.0.is_null() {
+        return None;
+    }
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    if !unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
+        return None;
+    }
+    Some(window_geometry::WorkArea {
+        x: info.rcWork.left,
+        y: info.rcWork.top,
+        width: info.rcWork.right.saturating_sub(info.rcWork.left).max(0) as u32,
+        height: info.rcWork.bottom.saturating_sub(info.rcWork.top).max(0) as u32,
+    })
+}
+
+#[cfg(not(windows))]
+fn usable_work_area(
+    window: &tauri::WebviewWindow,
+    _position: tauri::PhysicalPosition<i32>,
+    _size: tauri::PhysicalSize<u32>,
+) -> Option<window_geometry::WorkArea> {
+    let monitor = window.primary_monitor().ok().flatten()?;
+    let position = monitor.position();
+    let size = monitor.size();
+    Some(window_geometry::WorkArea {
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn close_hides_only_when_a_recovery_tray_is_available() {
+        assert_eq!(close_action(true), CloseAction::Hide);
+        assert_eq!(close_action(false), CloseAction::Quit);
+    }
 
     #[cfg(windows)]
     #[tokio::test]

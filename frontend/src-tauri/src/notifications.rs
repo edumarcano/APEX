@@ -1,5 +1,8 @@
 use crate::services::NotificationSetting;
 
+const COMPLETION_TITLE: &str = "APEX";
+const COMPLETION_BODY: &str = "An APEX run has completed.";
+
 pub fn eligible_when_hidden_or_minimized(is_visible: bool, is_minimized: bool) -> bool {
     !is_visible || is_minimized
 }
@@ -28,23 +31,26 @@ impl Drop for Apartment {
 
 #[cfg(windows)]
 pub fn query_setting() -> Result<NotificationSetting, &'static str> {
-    use windows::{
-        core::HSTRING,
-        UI::Notifications::{NotificationSetting as OsSetting, ToastNotificationManager},
-    };
+    use windows::{core::HSTRING, UI::Notifications::ToastNotificationManager};
     let _apartment = Apartment::initialize().map_err(|_| "notification_unavailable")?;
     let aumid = HSTRING::from("com.edumarcano.apex");
     let notifier = ToastNotificationManager::CreateToastNotifierWithId(&aumid)
         .map_err(|_| "notification_unavailable")?;
     let setting = notifier.Setting().map_err(|_| "notification_unavailable")?;
-    Ok(match setting {
+    Ok(map_os_setting(setting))
+}
+
+#[cfg(windows)]
+fn map_os_setting(setting: windows::UI::Notifications::NotificationSetting) -> NotificationSetting {
+    use windows::UI::Notifications::NotificationSetting as OsSetting;
+    match setting {
         OsSetting::Enabled => NotificationSetting::Enabled,
         OsSetting::DisabledForApplication => NotificationSetting::DisabledApp,
         OsSetting::DisabledForUser => NotificationSetting::DisabledUser,
         OsSetting::DisabledByGroupPolicy => NotificationSetting::DisabledPolicy,
         OsSetting::DisabledByManifest => NotificationSetting::DisabledManifest,
         _ => NotificationSetting::Unknown,
-    })
+    }
 }
 
 #[cfg(not(windows))]
@@ -53,7 +59,7 @@ pub fn query_setting() -> Result<NotificationSetting, &'static str> {
 }
 
 #[cfg(windows)]
-pub fn show_completion() -> Result<(), &'static str> {
+pub fn show_completion() -> Result<NotificationSetting, &'static str> {
     use windows::{
         core::HSTRING,
         Data::Xml::Dom::XmlDocument,
@@ -63,18 +69,24 @@ pub fn show_completion() -> Result<(), &'static str> {
     let aumid = HSTRING::from("com.edumarcano.apex");
     let notifier = ToastNotificationManager::CreateToastNotifierWithId(&aumid)
         .map_err(|_| "notification_failed")?;
+    let setting = map_os_setting(notifier.Setting().map_err(|_| "notification_unavailable")?);
+    if setting != NotificationSetting::Enabled {
+        return Ok(setting);
+    }
     let xml = XmlDocument::new().map_err(|_| "notification_failed")?;
-    let xml_text = HSTRING::from(
-        "<toast><visual><binding template=\"ToastText02\"><text>APEX</text><text>An APEX run has completed</text></binding></visual></toast>",
+    let xml_string = format!(
+        "<toast><visual><binding template=\"ToastText02\"><text>{COMPLETION_TITLE}</text><text>{COMPLETION_BODY}</text></binding></visual></toast>"
     );
+    let xml_text = HSTRING::from(xml_string);
     xml.LoadXml(&xml_text).map_err(|_| "notification_failed")?;
     let toast =
         ToastNotification::CreateToastNotification(&xml).map_err(|_| "notification_failed")?;
-    notifier.Show(&toast).map_err(|_| "notification_failed")
+    notifier.Show(&toast).map_err(|_| "notification_failed")?;
+    Ok(setting)
 }
 
 #[cfg(not(windows))]
-pub fn show_completion() -> Result<(), &'static str> {
+pub fn show_completion() -> Result<NotificationSetting, &'static str> {
     Err("notification_unavailable")
 }
 
@@ -89,6 +101,12 @@ mod tests {
             NotificationSetting::Unavailable,
             NotificationSetting::Enabled
         );
+    }
+
+    #[test]
+    fn completion_toast_uses_the_fixed_generic_copy() {
+        assert_eq!(COMPLETION_TITLE, "APEX");
+        assert_eq!(COMPLETION_BODY, "An APEX run has completed.");
     }
 
     #[test]
