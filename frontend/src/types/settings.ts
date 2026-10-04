@@ -29,6 +29,11 @@ export interface ActivityReportFolderSettings {
   folder_path: string
 }
 
+export interface DesktopSettings {
+  launch_on_startup: boolean
+  completion_notifications: boolean
+}
+
 export type ActivityReportFolderState =
   | 'disabled'
   | 'demo_mode'
@@ -165,6 +170,7 @@ export interface RuntimeSettings {
   llama_cpp: LlamaCppSettings
   microsoft_todo: MicrosoftTodoSettings
   activity_report_folder: ActivityReportFolderSettings
+  desktop: DesktopSettings
 }
 
 export interface FeaturesPatch {
@@ -267,6 +273,11 @@ export interface ActivityReportFolderPatch {
   folder_path?: string
 }
 
+export interface DesktopPatch {
+  launch_on_startup?: boolean
+  completion_notifications?: boolean
+}
+
 export type LlamaCppServerState =
   | 'disabled'
   | 'external_connected'
@@ -302,6 +313,7 @@ export interface SettingsPatch {
   llama_cpp?: LlamaCppPatch
   microsoft_todo?: MicrosoftTodoPatch
   activity_report_folder?: ActivityReportFolderPatch
+  desktop?: DesktopPatch
 }
 
 export interface SettingsResponse {

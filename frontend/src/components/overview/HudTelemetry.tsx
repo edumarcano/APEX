@@ -13,6 +13,7 @@ import { ReminderListRow } from '../ReminderListRow'
 import { ReminderQuickAdd } from '../ReminderQuickAdd'
 import { ScrollFadeContainer } from '../ScrollFadeContainer'
 import { TelemetryCard } from '../TelemetryCard'
+import { ExternalAnchor } from '../ExternalAnchor'
 
 type LedState = ReturnType<typeof resolveModuleLedState>
 type Surface = 'weather' | 'events' | 'market' | 'email' | 'reminders'
@@ -97,11 +98,11 @@ export function WeatherTelemetry({ data, variant, className, narrow = false, dat
       aria-label="Weather by Open-Meteo. Location by GeoNames. Licensed under CC BY 4.0. Adapted by APEX."
     >
       <span>Weather by</span>
-      <a href="https://open-meteo.com/" target="_blank" rel="noreferrer" className="hover:text-[color:var(--hud-text)]">Open-Meteo</a>
+      <ExternalAnchor href="https://open-meteo.com/" target="_blank" rel="noreferrer" className="hover:text-[color:var(--hud-text)]">Open-Meteo</ExternalAnchor>
       <span>· Location by</span>
-      <a href="https://www.geonames.org/" target="_blank" rel="noreferrer" className="hover:text-[color:var(--hud-text)]">GeoNames</a>
+      <ExternalAnchor href="https://www.geonames.org/" target="_blank" rel="noreferrer" className="hover:text-[color:var(--hud-text)]">GeoNames</ExternalAnchor>
       <span>·</span>
-      <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer" className="hover:text-[color:var(--hud-text)]">CC BY 4.0</a>
+      <ExternalAnchor href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer" className="hover:text-[color:var(--hud-text)]">CC BY 4.0</ExternalAnchor>
       <span>· adapted by APEX</span>
     </span>
   )

@@ -25,6 +25,7 @@ import { ClearNightIcon } from './weather/ClearNightIcon'
 import { CloudsIcon } from './weather/CloudsIcon'
 import { RainIcon } from './weather/RainIcon'
 import { ThunderstormIcon } from './weather/ThunderstormIcon'
+import { ExternalAnchor } from './ExternalAnchor'
 
 /** Variable Typography Engine — closed interval for ambient temperature (°F). */
 const VTE_TEMP_MIN_F = 40
@@ -787,7 +788,7 @@ export function TelemetryCard({
                     </span>
                   ) : null}
                 </div>
-                <p className="mt-2 border-t border-white/[0.08] pt-2 text-[10px] text-zinc-500">Formula 1 data provided by <a href="https://api.jolpi.ca/ergast/f1/" target="_blank" rel="noreferrer" className="text-[#7EB3FF] hover:underline">Jolpica F1 API</a> under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noreferrer" className="text-[#7EB3FF] hover:underline">CC BY-NC-SA 4.0</a>.</p>
+                <p className="mt-2 border-t border-white/[0.08] pt-2 text-[10px] text-zinc-500">Formula 1 data provided by <ExternalAnchor href="https://api.jolpi.ca/ergast/f1/" target="_blank" rel="noreferrer" className="text-[#7EB3FF] hover:underline">Jolpica F1 API</ExternalAnchor> under <ExternalAnchor href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noreferrer" className="text-[#7EB3FF] hover:underline">CC BY-NC-SA 4.0</ExternalAnchor>.</p>
               </div>
             ) : null}
             {children}

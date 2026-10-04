@@ -76,6 +76,10 @@ export const BASE_SETTINGS: RuntimeSettings = {
     enabled: false,
     folder_path: '',
   },
+  desktop: {
+    launch_on_startup: false,
+    completion_notifications: false,
+  },
 }
 
 export function buildSettingsResponse(

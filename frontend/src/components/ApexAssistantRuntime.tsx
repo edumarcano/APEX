@@ -32,6 +32,7 @@ import { OPERATION_PROMPT_CHIPS } from '../lib/promptChips'
 import { Send, Square, Trash2 } from 'lucide-react'
 import { ApexLogo, type ApexLogoProps } from './ApexLogo'
 import { DeferredPresentation } from './DeferredPresentation'
+import { writeClipboardText } from '../platform/services'
 
 const loadAssistantMarkdown = () => import('./AssistantMarkdown')
 
@@ -1190,10 +1191,23 @@ function ApexAssistantMessage(): ReactNode {
   const branchNumber = useAuiState((state) => state.message.branchNumber)
   const editing = useAuiState((state) => state.composer.isEditing)
   const metadata = useAuiState((state) => state.message.metadata.custom?.apex as Record<string, unknown> | undefined) ?? {}
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
+  const [copyError, setCopyError] = useState<string | null>(null)
   const text = content
     .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
     .map((part) => part.text)
     .join('\n')
+
+  const copyMessage = async (): Promise<void> => {
+    try {
+      await writeClipboardText(text)
+      setCopyState('copied')
+      setCopyError(null)
+    } catch (error) {
+      setCopyState('error')
+      setCopyError(error instanceof Error ? error.message : 'Clipboard is unavailable.')
+    }
+  }
 
   const hasScrolledRef = useRef(false)
   useEffect(() => {
@@ -1233,7 +1247,9 @@ function ApexAssistantMessage(): ReactNode {
       {role === 'assistant' ? <ActivityTimeline steps={metadata.activity_steps} toolLabels={toolLabels} collapsed /> : null}
       {role === 'assistant' && status?.type === 'incomplete' ? <ApexAssistantError /> : null}
       <div className="mt-2 flex items-center gap-2 font-mono text-[10px] text-zinc-500">
-        <button type="button" onClick={() => void navigator.clipboard?.writeText(text)} className="hover:text-white">Copy</button>
+        <button type="button" onClick={() => void copyMessage()} className="hover:text-white">{copyState === 'copied' ? 'Copied' : 'Copy'}</button>
+        {copyError ? <span role="alert" className="text-red-300">Copy failed: {copyError}</span> : null}
+        {copyState === 'copied' ? <span role="status" className="sr-only">Message copied.</span> : null}
         {role === 'user' ? <button type="button" disabled={context?.isTurnLocked} onClick={() => aui.message().composer().beginEdit()} className="hover:text-white disabled:cursor-not-allowed disabled:opacity-40">Edit</button> : <button type="button" disabled={context?.isTurnLocked} onClick={() => aui.message().reload()} className="hover:text-white disabled:cursor-not-allowed disabled:opacity-40">Retry</button>}
         {branchCount > 1 ? <><button type="button" aria-label="Previous branch" disabled={context?.isTurnLocked} onClick={() => selectBranch('previous')} className="hover:text-white disabled:cursor-not-allowed disabled:opacity-40">‹</button><span>{branchNumber + 1}/{branchCount}</span><button type="button" aria-label="Next branch" disabled={context?.isTurnLocked} onClick={() => selectBranch('next')} className="hover:text-white disabled:cursor-not-allowed disabled:opacity-40">›</button></> : null}
       </div>

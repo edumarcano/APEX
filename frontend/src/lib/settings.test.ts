@@ -287,6 +287,17 @@ describe('settings cloning and mutations', () => {
     expect(isSettingsPatchEmpty(diffSettingsPatch(BASE_SETTINGS, draft))).toBe(false)
   })
 
+  it('clones, parses, and patches desktop preferences', () => {
+    const draft = cloneRuntimeSettings(BASE_SETTINGS)
+    draft.desktop.launch_on_startup = true
+    draft.desktop.completion_notifications = true
+    expect(cloneRuntimeSettings(draft).desktop).toEqual(draft.desktop)
+    expect(diffSettingsPatch(BASE_SETTINGS, draft)).toEqual({
+      desktop: { launch_on_startup: true, completion_notifications: true },
+    })
+    expect(parseSettingsResponse(buildSettingsResponse(draft))?.settings.desktop).toEqual(draft.desktop)
+  })
+
   it('reports no patch when settings are equal', () => {
     expect(settingsAreEqual(BASE_SETTINGS, cloneRuntimeSettings(BASE_SETTINGS))).toBe(true)
     expect(isSettingsPatchEmpty(diffSettingsPatch(BASE_SETTINGS, BASE_SETTINGS))).toBe(true)

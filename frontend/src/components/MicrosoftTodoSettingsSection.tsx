@@ -3,6 +3,7 @@ import { ExternalLink } from 'lucide-react'
 
 import type { useMicrosoftTodoStatus } from '../hooks/useMicrosoftTodoStatus'
 import { SectionHeading, StatusRow, type SettingsStatusTone } from './SettingsControls'
+import { ExternalAnchor } from './ExternalAnchor'
 
 type TodoRuntime = ReturnType<typeof useMicrosoftTodoStatus>
 
@@ -44,14 +45,14 @@ export default function MicrosoftTodoSettingsSection({
           <div className="mt-2 space-y-2 rounded-md border border-amber-400/20 bg-amber-500/5 p-2.5">
             <p className="text-[11px] text-zinc-300">Enter this one-time code on Microsoft’s sign-in page:</p>
             <p className="font-mono text-base tracking-[0.2em] text-amber-100">{runtime.authorization.user_code}</p>
-            <a
+            <ExternalAnchor
               href={runtime.authorization.verification_uri}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1 text-xs text-[color:var(--hud-accent)] underline-offset-2 hover:underline"
             >
               Open Microsoft sign-in <ExternalLink className="size-3" aria-hidden />
-            </a>
+            </ExternalAnchor>
           </div>
         ) : null}
         {runtime.status?.auth_error_message ? (

@@ -217,7 +217,7 @@ describe('SettingsPanel', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
-  it('allows tab switching between all five categories with breadcrumb updates', async () => {
+  it('allows tab switching between settings categories with breadcrumb updates', async () => {
     mockSettingsPanelFetches()
     const user = userEvent.setup()
     renderPanel()
@@ -245,6 +245,11 @@ describe('SettingsPanel', () => {
     expect(screen.getByRole('tab', { name: /voice & audio/i })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('heading', { name: 'Voice' })).toBeVisible()
     expect(screen.getByRole('heading', { name: 'Operational Notes' })).toBeVisible()
+
+    await user.click(screen.getByRole('tab', { name: /^desktop/i }))
+    expect(screen.getByRole('heading', { name: 'Desktop services' })).toBeVisible()
+    expect(screen.getByRole('switch', { name: 'Launch APEX at sign-in' })).toBeDisabled()
+    expect(screen.getByRole('switch', { name: 'Completion notifications' })).toBeDisabled()
 
     // Switch to System Status
     await user.click(screen.getByRole('tab', { name: /system status/i }))

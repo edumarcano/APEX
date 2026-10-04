@@ -14,6 +14,7 @@ import type { ReactElement, ReactNode } from 'react'
 
 import type { ActiveReminder, ToolOutputItem } from '../types/telemetry'
 import { parseActionProposalToolOutput, type ActionProposalToolOutput } from '../lib/toolOutputs'
+import { ExternalAnchor } from './ExternalAnchor'
 
 interface WeatherCurrentConditions {
   temp_f: number
@@ -917,32 +918,32 @@ function WeatherForecastCard({
       </ul>
       <p className="mt-3 text-[10px] leading-relaxed text-zinc-500">
         Weather by{' '}
-        <a
+        <ExternalAnchor
           href="https://open-meteo.com/"
           target="_blank"
           rel="noreferrer"
           className="text-[#7EB3FF] hover:underline"
         >
           Open-Meteo
-        </a>
+        </ExternalAnchor>
         {' · '}Location by{' '}
-        <a
+        <ExternalAnchor
           href="https://www.geonames.org/"
           target="_blank"
           rel="noreferrer"
           className="text-[#7EB3FF] hover:underline"
         >
           GeoNames
-        </a>
+        </ExternalAnchor>
         {' · '}
-        <a
+        <ExternalAnchor
           href="https://creativecommons.org/licenses/by/4.0/"
           target="_blank"
           rel="noreferrer"
           className="text-[#7EB3FF] hover:underline"
         >
           CC BY 4.0
-        </a>
+        </ExternalAnchor>
         {' · adapted by APEX'}
       </p>
     </ToolCardFrame>
