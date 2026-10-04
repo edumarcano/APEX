@@ -20,12 +20,47 @@ from types import SimpleNamespace
 from pathlib import Path
 
 from core.host.protocol import ControlEnvelope, decode_frame, encode_envelope
-from core.backend_host import _HardStopWatchdog, _host_uvicorn_server_type
+from core.backend_host import (
+    _HardStopWatchdog,
+    _host_uvicorn_server_type,
+    _make_desktop_preferences_sink,
+)
 from core.host.processes import python_child_invocation
 from core.host.profile_lock import ProfileLock
 
 
 class BackendHostSubprocessTests(unittest.TestCase):
+    def test_desktop_preferences_sink_reads_latest_snapshot_and_sequences_events(self) -> None:
+        sent = []
+
+        class Channel:
+            def send(self, envelope) -> None:
+                sent.append(envelope)
+
+        state = SimpleNamespace(desktop=SimpleNamespace(
+            launch_on_startup=False,
+            completion_notifications=False,
+        ))
+        store = SimpleNamespace(get_snapshot=lambda: SimpleNamespace(desktop=state.desktop))
+        publish = _make_desktop_preferences_sink(
+            Channel(), str(uuid.uuid4()), get_settings_store=lambda: store
+        )
+
+        publish()
+        state.desktop = SimpleNamespace(
+            launch_on_startup=True,
+            completion_notifications=True,
+        )
+        publish()
+
+        self.assertEqual([event.request_id for event in sent], ["desktop:1", "desktop:2"])
+        self.assertEqual(sent[0].payload["launch_on_startup"], False)
+        self.assertEqual(sent[1].payload, {
+            "instance_id": sent[0].payload["instance_id"],
+            "launch_on_startup": True,
+            "completion_notifications": True,
+        })
+
     @unittest.skipUnless(os.name == "nt", "Windows native import ordering")
     def test_windows_numpy_is_ready_before_host_threads_start(self) -> None:
         bootstrap = textwrap.dedent("""

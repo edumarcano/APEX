@@ -137,7 +137,9 @@ def get_runtime_settings() -> SettingsResponse:
 
 
 @router.patch("/api/v1/settings", response_model=SettingsResponse)
-async def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
+async def patch_runtime_settings(
+    payload: SettingsPatch, request: Request
+) -> SettingsResponse:
     """
     Merge dirty nested fields into the runtime settings store.
 
@@ -204,8 +206,9 @@ async def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
                     detail=str(exc),
                 ) from None
 
+        previous_snapshot = store.get_snapshot()
         try:
-            await asyncio.to_thread(store.apply_patch, payload)
+            committed_snapshot = await asyncio.to_thread(store.apply_patch, payload)
         except SettingsPersistenceError as exc:
             _LOGGER.exception("Settings persistence failed")
             detail = str(exc)
@@ -221,6 +224,16 @@ async def patch_runtime_settings(payload: SettingsPatch) -> SettingsResponse:
                     "Active settings were not changed."
                 ),
             ) from None
+        if committed_snapshot is not previous_snapshot:
+            sink = getattr(request.app.state, "desktop_preferences_sink", None)
+            if callable(sink):
+                try:
+                    sink()
+                except Exception:
+                    # Config is durable; native integration failures cannot undo it.
+                    _LOGGER.warning(
+                        "Desktop preferences publication failed.", exc_info=True
+                    )
         if (
             payload.context_vault is not None
             or (payload.ask_apex is not None and payload.ask_apex.sandbox_mode is not None)

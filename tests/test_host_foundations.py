@@ -208,6 +208,26 @@ class HostProtocolTests(unittest.TestCase):
             },
         }
         validate_envelope(completion)
+        desktop_preferences = {
+            "version": 1,
+            "type": "desktop_preferences",
+            "request_id": "desktop:1",
+            "payload": {
+                "instance_id": str(uuid.uuid4()),
+                "launch_on_startup": False,
+                "completion_notifications": True,
+            },
+        }
+        self.assertEqual(
+            decode_frame(encode_envelope(desktop_preferences)).payload,
+            desktop_preferences["payload"],
+        )
+        for invalid in (
+            {**desktop_preferences["payload"], "launch_on_startup": 1},
+            {**desktop_preferences["payload"], "extra": False},
+        ):
+            with self.subTest(payload=invalid), self.assertRaises(ControlProtocolError):
+                validate_envelope({**desktop_preferences, "payload": invalid})
         with self.assertRaises(ControlProtocolError):
             validate_envelope({**completion, "payload": {**completion["payload"], "detail": "private"}})
         with self.assertRaises(ControlProtocolError):

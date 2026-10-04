@@ -166,6 +166,45 @@ def _send(
         return False
 
 
+def _make_desktop_preferences_sink(
+    channel: ControlChannel,
+    instance_id: str,
+    *,
+    get_settings_store: Callable[[], Any] | None = None,
+) -> Callable[[], None]:
+    """Publish the latest committed desktop preferences in sequence order."""
+    lock = threading.Lock()
+    sequence = 0
+
+    def publish() -> None:
+        nonlocal sequence
+        try:
+            with lock:
+                if get_settings_store is None:
+                    from core.settings.store import (
+                        get_settings_store as resolve_store,
+                    )
+                    store = resolve_store()
+                else:
+                    store = get_settings_store()
+                settings = store.get_snapshot().desktop
+                sequence += 1
+                payload: dict[str, object] = {
+                    "instance_id": instance_id,
+                    "launch_on_startup": settings.launch_on_startup,
+                    "completion_notifications": settings.completion_notifications,
+                }
+                if not _send(
+                    channel, "desktop_preferences", payload, f"desktop:{sequence}"
+                ):
+                    _LOGGER.warning("Desktop preferences could not be sent to the native shell.")
+        except Exception:
+            # A native pipe failure cannot undo an already committed config write.
+            _LOGGER.warning("Desktop preferences publication failed.", exc_info=True)
+
+    return publish
+
+
 def _wait_start(channel: ControlChannel) -> tuple[str, str]:
     deadline = time.monotonic() + START_HANDSHAKE_SECONDS
     while True:
@@ -271,9 +310,13 @@ async def _serve(
             _send(channel, "completion", payload, event["run_id"])
 
         app.state.completion_sink = completion_sink
+        app.state.desktop_preferences_sink = _make_desktop_preferences_sink(
+            channel, str(identity["instance_id"])
+        )
         _send(channel, "starting", identity, start_request_id)
     else:
         app.state.completion_sink = None
+        app.state.desktop_preferences_sink = None
 
     if shutdown_requested.is_set():
         context.release()
@@ -396,6 +439,8 @@ async def _serve(
                     ready_sent = _send(channel, "ready", identity, start_request_id)
                     if not ready_sent:
                         request_shutdown("control_channel_failed")
+                    else:
+                        app.state.desktop_preferences_sink()
             await asyncio.sleep(0.05)
         await server_task
         lifespan = getattr(server, "lifespan", None)

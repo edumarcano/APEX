@@ -48,6 +48,43 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertEqual(settings.cloud.effort, "low")
         self.assertEqual(settings.local.context_window, 16384)
 
+    def test_desktop_preferences_default_false_and_round_trip_in_local_override(self) -> None:
+        store = self._store()
+        self.assertFalse(store.get_snapshot().desktop.launch_on_startup)
+        self.assertFalse(store.get_snapshot().desktop.completion_notifications)
+
+        updated = store.apply_patch(SettingsPatch.model_validate({
+            "desktop": {
+                "launch_on_startup": True,
+                "completion_notifications": True,
+            }
+        }))
+        self.assertTrue(updated.desktop.launch_on_startup)
+        self.assertTrue(updated.desktop.completion_notifications)
+        self.assertEqual(
+            json.loads(self.local_path.read_text(encoding="utf-8"))["desktop"],
+            {"launch_on_startup": True, "completion_notifications": True},
+        )
+        self.assertTrue(self._store().get_snapshot().desktop.completion_notifications)
+
+    def test_desktop_preferences_require_real_booleans_and_known_fields(self) -> None:
+        for value in (
+            {"desktop": {"launch_on_startup": 1}},
+            {"desktop": {"completion_notifications": "true"}},
+            {"desktop": {"unknown": False}},
+        ):
+            with self.subTest(value=value), self.assertRaises(ValidationError):
+                SettingsPatch.model_validate(value)
+
+    def test_malformed_local_desktop_preferences_fail_closed(self) -> None:
+        _write_json(self.local_path, {"desktop": {"launch_on_startup": "yes"}})
+        store = self._store()
+
+        self.assertFalse(store.local_override_active)
+        self.assertFalse(store.get_snapshot().desktop.launch_on_startup)
+        self.assertFalse(store.get_snapshot().desktop.completion_notifications)
+        self.assertIn("desktop.launch_on_startup", store.load_warning or "")
+
     def test_operator_config_layer_survives_reload_and_unrelated_runtime_patch(self) -> None:
         root = self._temp_root()
         defaults = root / "resources" / "config.json"
