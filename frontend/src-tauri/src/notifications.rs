@@ -1,4 +1,29 @@
-use crate::services::NotificationSetting;
+use crate::services::{NotificationSetting, NotificationSettingProbe};
+
+const HRESULT_ELEMENT_NOT_FOUND: u32 = 0x8007_0490;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CompletionAttempt {
+    pub probe: NotificationSettingProbe,
+}
+
+pub fn classify_setting_result(
+    result: Result<NotificationSetting, u32>,
+) -> Result<NotificationSettingProbe, &'static str> {
+    match result {
+        Ok(setting) => Ok(NotificationSettingProbe::Known(setting)),
+        Err(HRESULT_ELEMENT_NOT_FOUND) => Ok(NotificationSettingProbe::IdentityNotFound),
+        Err(_) => Err("notification_unavailable"),
+    }
+}
+
+fn may_attempt_show(probe: &NotificationSettingProbe) -> bool {
+    matches!(
+        probe,
+        NotificationSettingProbe::IdentityNotFound
+            | NotificationSettingProbe::Known(NotificationSetting::Enabled)
+    )
+}
 
 const COMPLETION_TITLE: &str = "APEX";
 const COMPLETION_BODY: &str = "An APEX run has completed.";
@@ -36,14 +61,18 @@ impl Drop for Apartment {
 }
 
 #[cfg(windows)]
-pub fn query_setting() -> Result<NotificationSetting, &'static str> {
+pub fn query_setting() -> Result<NotificationSettingProbe, &'static str> {
     use windows::{core::HSTRING, UI::Notifications::ToastNotificationManager};
     let _apartment = Apartment::initialize().map_err(|_| "notification_unavailable")?;
     let aumid = HSTRING::from("com.edumarcano.apex");
     let notifier = ToastNotificationManager::CreateToastNotifierWithId(&aumid)
         .map_err(|_| "notification_unavailable")?;
-    let setting = notifier.Setting().map_err(|_| "notification_unavailable")?;
-    Ok(map_os_setting(setting))
+    classify_setting_result(
+        notifier
+            .Setting()
+            .map(map_os_setting)
+            .map_err(|error| error.code().0 as u32),
+    )
 }
 
 #[cfg(windows)]
@@ -60,12 +89,14 @@ fn map_os_setting(setting: windows::UI::Notifications::NotificationSetting) -> N
 }
 
 #[cfg(not(windows))]
-pub fn query_setting() -> Result<NotificationSetting, &'static str> {
-    Ok(NotificationSetting::Unavailable)
+pub fn query_setting() -> Result<NotificationSettingProbe, &'static str> {
+    Ok(NotificationSettingProbe::Known(
+        NotificationSetting::Unavailable,
+    ))
 }
 
 #[cfg(windows)]
-pub fn show_completion() -> Result<NotificationSetting, &'static str> {
+pub fn show_completion() -> Result<CompletionAttempt, &'static str> {
     use windows::{
         core::HSTRING,
         Data::Xml::Dom::XmlDocument,
@@ -75,9 +106,14 @@ pub fn show_completion() -> Result<NotificationSetting, &'static str> {
     let aumid = HSTRING::from("com.edumarcano.apex");
     let notifier = ToastNotificationManager::CreateToastNotifierWithId(&aumid)
         .map_err(|_| "notification_failed")?;
-    let setting = map_os_setting(notifier.Setting().map_err(|_| "notification_unavailable")?);
-    if setting != NotificationSetting::Enabled {
-        return Ok(setting);
+    let probe = classify_setting_result(
+        notifier
+            .Setting()
+            .map(map_os_setting)
+            .map_err(|error| error.code().0 as u32),
+    )?;
+    if !may_attempt_show(&probe) {
+        return Ok(CompletionAttempt { probe });
     }
     let xml = XmlDocument::new().map_err(|_| "notification_failed")?;
     let xml_string = completion_xml();
@@ -86,11 +122,11 @@ pub fn show_completion() -> Result<NotificationSetting, &'static str> {
     let toast =
         ToastNotification::CreateToastNotification(&xml).map_err(|_| "notification_failed")?;
     notifier.Show(&toast).map_err(|_| "notification_failed")?;
-    Ok(setting)
+    Ok(CompletionAttempt { probe })
 }
 
 #[cfg(not(windows))]
-pub fn show_completion() -> Result<NotificationSetting, &'static str> {
+pub fn show_completion() -> Result<CompletionAttempt, &'static str> {
     Err("notification_unavailable")
 }
 
@@ -122,5 +158,39 @@ mod tests {
         assert!(!eligible_when_hidden_or_minimized(true, false));
         assert!(eligible_when_hidden_or_minimized(false, false));
         assert!(eligible_when_hidden_or_minimized(true, true));
+    }
+
+    #[test]
+    fn only_the_missing_identity_hresult_uses_the_first_submission_path() {
+        assert_eq!(
+            classify_setting_result(Err(HRESULT_ELEMENT_NOT_FOUND)),
+            Ok(NotificationSettingProbe::IdentityNotFound)
+        );
+        assert_eq!(
+            classify_setting_result(Err(0x8007_0005)),
+            Err("notification_unavailable")
+        );
+        assert_eq!(
+            classify_setting_result(Ok(NotificationSetting::Unknown)),
+            Ok(NotificationSettingProbe::Known(
+                NotificationSetting::Unknown
+            ))
+        );
+        assert!(may_attempt_show(
+            &NotificationSettingProbe::IdentityNotFound
+        ));
+        assert!(may_attempt_show(&NotificationSettingProbe::Known(
+            NotificationSetting::Enabled
+        )));
+        for setting in [
+            NotificationSetting::Unknown,
+            NotificationSetting::DisabledApp,
+            NotificationSetting::DisabledUser,
+            NotificationSetting::DisabledPolicy,
+            NotificationSetting::DisabledManifest,
+            NotificationSetting::Unavailable,
+        ] {
+            assert!(!may_attempt_show(&NotificationSettingProbe::Known(setting)));
+        }
     }
 }

@@ -19,6 +19,12 @@ pub enum NotificationSetting {
     Unknown,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NotificationSettingProbe {
+    Known(NotificationSetting),
+    IdentityNotFound,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopServicesStatus {
@@ -73,6 +79,7 @@ pub struct PreferencesFrame {
 pub struct DesktopServicesState {
     status: Arc<Mutex<DesktopServicesStatus>>,
     seen_completions: Arc<Mutex<HashSet<(String, String)>>>,
+    notification_identity_missing: Arc<Mutex<bool>>,
     pub reconcile_lock: Arc<tokio::sync::Mutex<()>>,
     sequence: Arc<Mutex<u64>>,
 }
@@ -97,6 +104,7 @@ impl DesktopServicesState {
                 notifications: NotificationStatus::default(),
             })),
             seen_completions: Arc::new(Mutex::new(HashSet::new())),
+            notification_identity_missing: Arc::new(Mutex::new(false)),
             reconcile_lock: Arc::new(tokio::sync::Mutex::new(())),
             sequence: Arc::new(Mutex::new(0)),
         }
@@ -115,6 +123,10 @@ impl DesktopServicesState {
             .lock()
             .expect("desktop service sequence mutex poisoned") = 0;
         let mut status = self.status.lock().expect("desktop services mutex poisoned");
+        *self
+            .notification_identity_missing
+            .lock()
+            .expect("notification probe mutex poisoned") = false;
         status.generation = generation;
         status.preferences_ready = false;
         status.requested = RequestedPreferences::default();
@@ -178,7 +190,12 @@ impl DesktopServicesState {
         let status = self.status.lock().expect("desktop services mutex poisoned");
         status.preferences_ready
             && status.requested.completion_notifications
-            && status.notifications.os_setting == NotificationSetting::Enabled
+            && (status.notifications.os_setting == NotificationSetting::Enabled
+                || (status.notifications.os_setting == NotificationSetting::Unknown
+                    && *self
+                        .notification_identity_missing
+                        .lock()
+                        .expect("notification probe mutex poisoned")))
     }
 
     pub fn record_completion_eligibility(
@@ -219,7 +236,26 @@ impl DesktopServicesState {
     }
 
     pub fn set_notifications(&self, setting: NotificationSetting, error: Option<&str>) {
+        self.set_notification_probe(NotificationSettingProbe::Known(setting), error);
+    }
+
+    pub fn set_notification_error(&self, error: &str) {
         let mut status = self.status.lock().expect("desktop services mutex poisoned");
+        *self
+            .notification_identity_missing
+            .lock()
+            .expect("notification probe mutex poisoned") = false;
+        status.notifications.error_code = Some(error.to_owned());
+        status.revision = status.revision.saturating_add(1);
+    }
+
+    pub fn set_notification_probe(&self, probe: NotificationSettingProbe, error: Option<&str>) {
+        let (setting, identity_missing) = notification_probe_status(probe);
+        let mut status = self.status.lock().expect("desktop services mutex poisoned");
+        *self
+            .notification_identity_missing
+            .lock()
+            .expect("notification probe mutex poisoned") = identity_missing;
         status.notifications = NotificationStatus {
             os_setting: setting,
             error_code: error.map(str::to_owned),
@@ -228,10 +264,29 @@ impl DesktopServicesState {
     }
 
     pub fn refresh_notifications(&self, setting: NotificationSetting, error: Option<&str>) {
+        self.refresh_notification_probe(NotificationSettingProbe::Known(setting), error);
+    }
+
+    pub fn refresh_notification_probe(&self, probe: NotificationSettingProbe, error: Option<&str>) {
+        let (setting, identity_missing) = notification_probe_status(probe);
         let mut status = self.status.lock().expect("desktop services mutex poisoned");
+        *self
+            .notification_identity_missing
+            .lock()
+            .expect("notification probe mutex poisoned") = identity_missing;
         let mut changed = status.notifications.os_setting != setting;
         status.notifications.os_setting = setting;
-        if status.notifications.error_code.is_none() {
+        if identity_missing {
+            if status.notifications.error_code.is_none() {
+                status.notifications.error_code = error.map(str::to_owned);
+                changed |= status.notifications.error_code.is_some();
+            }
+        } else if status.notifications.error_code.as_deref()
+            == Some("notification_identity_unregistered")
+        {
+            status.notifications.error_code = None;
+            changed = true;
+        } else if status.notifications.error_code.is_none() {
             if let Some(error) = error {
                 status.notifications.error_code = Some(error.to_owned());
                 changed = true;
@@ -240,6 +295,13 @@ impl DesktopServicesState {
         if changed {
             status.revision = status.revision.saturating_add(1);
         }
+    }
+}
+
+fn notification_probe_status(probe: NotificationSettingProbe) -> (NotificationSetting, bool) {
+    match probe {
+        NotificationSettingProbe::Known(setting) => (setting, false),
+        NotificationSettingProbe::IdentityNotFound => (NotificationSetting::Unknown, true),
     }
 }
 
@@ -380,6 +442,91 @@ mod tests {
         state.set_notifications(NotificationSetting::DisabledUser, None);
         assert!(!state.should_submit_notification());
         state.set_notifications(NotificationSetting::Enabled, None);
+        assert!(state.should_submit_notification());
+    }
+
+    #[test]
+    fn only_missing_identity_allows_the_first_opted_in_submission() {
+        let state = DesktopServicesState::new(true, true);
+        state
+            .accept_preferences(
+                "desktop:1",
+                json!({"instance_id":INSTANCE,"launch_on_startup":false,"completion_notifications":true}),
+                INSTANCE,
+            )
+            .unwrap();
+        state.set_notification_probe(
+            NotificationSettingProbe::IdentityNotFound,
+            Some("notification_identity_unregistered"),
+        );
+        assert!(state.should_submit_notification());
+        state.set_notification_error("notification_failed");
+        assert!(!state.should_submit_notification());
+        state.set_notification_probe(
+            NotificationSettingProbe::IdentityNotFound,
+            Some("notification_identity_unregistered"),
+        );
+        let first_submission_status = state.snapshot().notifications;
+        assert_eq!(
+            first_submission_status.os_setting,
+            NotificationSetting::Unknown
+        );
+        assert_eq!(
+            first_submission_status.error_code.as_deref(),
+            Some("notification_identity_unregistered")
+        );
+
+        for setting in [
+            NotificationSetting::Unknown,
+            NotificationSetting::DisabledApp,
+            NotificationSetting::DisabledUser,
+            NotificationSetting::DisabledPolicy,
+            NotificationSetting::DisabledManifest,
+            NotificationSetting::Unavailable,
+        ] {
+            state.set_notifications(setting, None);
+            assert!(!state.should_submit_notification());
+        }
+
+        state.set_notification_probe(
+            NotificationSettingProbe::IdentityNotFound,
+            Some("notification_identity_unregistered"),
+        );
+        state.refresh_notification_probe(
+            NotificationSettingProbe::Known(NotificationSetting::Enabled),
+            None,
+        );
+        assert_eq!(
+            state.snapshot().notifications.os_setting,
+            NotificationSetting::Enabled
+        );
+        assert_eq!(state.snapshot().notifications.error_code, None);
+        assert!(state.should_submit_notification());
+    }
+
+    #[test]
+    fn new_generation_cannot_reuse_the_previous_generation_missing_identity_probe() {
+        let state = DesktopServicesState::new(true, true);
+        let opted_in = json!({"instance_id":INSTANCE,"launch_on_startup":false,"completion_notifications":true});
+        state
+            .accept_preferences("desktop:1", opted_in.clone(), INSTANCE)
+            .unwrap();
+        state.set_notification_probe(
+            NotificationSettingProbe::IdentityNotFound,
+            Some("notification_identity_unregistered"),
+        );
+        assert!(state.should_submit_notification());
+
+        state.set_generation(2);
+        state
+            .accept_preferences("desktop:1", opted_in, INSTANCE)
+            .unwrap();
+        assert!(!state.should_submit_notification());
+
+        state.set_notification_probe(
+            NotificationSettingProbe::IdentityNotFound,
+            Some("notification_identity_unregistered"),
+        );
         assert!(state.should_submit_notification());
     }
 

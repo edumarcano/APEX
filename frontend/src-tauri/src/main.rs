@@ -13,7 +13,9 @@ mod windows_job;
 
 use futures_util::StreamExt;
 use serde_json::{json, Value};
-use services::{DesktopServicesState, DesktopServicesStatus, NotificationSetting};
+use services::{
+    DesktopServicesState, DesktopServicesStatus, NotificationSetting, NotificationSettingProbe,
+};
 use state::{BackendStatus, DesktopState, Phase, RuntimeIdentity};
 use std::{
     sync::{
@@ -314,8 +316,14 @@ async fn reconcile_services(
         return;
     }
     match notification_result {
-        Ok(Ok(setting)) if clear_notification_errors => services.set_notifications(setting, None),
-        Ok(Ok(setting)) => services.refresh_notifications(setting, None),
+        Ok(Ok(probe)) if clear_notification_errors => {
+            let error = notification_probe_error(&probe);
+            services.set_notification_probe(probe, error);
+        }
+        Ok(Ok(probe)) => {
+            let error = notification_probe_error(&probe);
+            services.refresh_notification_probe(probe, error);
+        }
         Err(_) if clear_notification_errors => services.set_notifications(
             NotificationSetting::Unavailable,
             Some("notification_unavailable"),
@@ -393,7 +401,10 @@ async fn refresh_services_status(
         return;
     }
     match notification {
-        Ok(Ok(setting)) => services.refresh_notifications(setting, None),
+        Ok(Ok(probe)) => {
+            let error = notification_probe_error(&probe);
+            services.refresh_notification_probe(probe, error);
+        }
         _ => services.refresh_notifications(
             NotificationSetting::Unavailable,
             Some("notification_unavailable"),
@@ -425,16 +436,22 @@ async fn submit_completion_notification(
     {
         return;
     }
-    let (setting, error) = match result {
-        Ok(Ok(setting)) => (setting, None),
-        Ok(Err(code)) => (services.snapshot().notifications.os_setting, Some(code)),
-        Err(_) => (
-            services.snapshot().notifications.os_setting,
-            Some("notification_failed"),
-        ),
-    };
-    services.set_notifications(setting, error);
+    match result {
+        Ok(Ok(attempt)) => {
+            let error = notification_probe_error(&attempt.probe);
+            services.refresh_notification_probe(attempt.probe, error);
+        }
+        Ok(Err(code)) => services.set_notification_error(code),
+        Err(_) => services.set_notification_error("notification_failed"),
+    }
     services.publish(&app);
+}
+
+fn notification_probe_error(probe: &NotificationSettingProbe) -> Option<&'static str> {
+    match probe {
+        NotificationSettingProbe::Known(_) => None,
+        NotificationSettingProbe::IdentityNotFound => Some("notification_identity_unregistered"),
+    }
 }
 
 async fn stop_previous(
