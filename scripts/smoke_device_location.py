@@ -184,7 +184,7 @@ def _open_desktop_settings(driver: WebDriver, timeout: float) -> None:
     if not _click_button(driver, "Open settings", timeout):
         raise SmokeFailure("could not open Settings from the APEX window")
     desktop_tab = _wait_for_ready_element(
-        driver, "xpath", "//*[@role='tab' and normalize-space(.)='Desktop']", timeout
+        driver, "xpath", "//*[@id='settings-tab-desktop' and @role='tab']", timeout
     )
     if desktop_tab is None:
         raise SmokeFailure("could not find the Desktop Settings tab")
@@ -456,14 +456,22 @@ def _run_smoke(
             "location_source": after_weather.get("source"),
             "location_freshness": after_weather.get("freshness"),
         }
-        if after_weather.get("source") == "device" and after_weather.get("freshness") == "fresh":
-            report.add("native_location_acquisition", "passed", "Weather refresh produced a fresh device-derived location")
-        else:
-            report.add("native_location_acquisition", "unverified", "no fresh device location was observed after Weather refresh")
-        if after_weather.get("source") == "configured" and after_weather.get("freshness") == "none":
-            report.add("configured_fallback", "passed", "Weather refresh retained the configured fallback without a fresh device fix")
-        else:
-            report.add("configured_fallback", "unverified", "configured fallback was not observed after Weather refresh")
+        has_fresh_device_fix = (
+            after_weather.get("source") == "device"
+            and after_weather.get("freshness") == "fresh"
+        )
+        if permission == "granted":
+            if has_fresh_device_fix:
+                report.add("native_location_acquisition", "passed", "Weather refresh produced a fresh device-derived location")
+            else:
+                report.add("native_location_acquisition", "unverified", "Windows granted permission, but no fresh device location was observed after Weather refresh")
+        elif permission in {"denied", "revoked", "unsupported"}:
+            if has_fresh_device_fix:
+                report.add("permission_blocks_acquisition", "failed", f"a fresh device fix was observed despite permission={permission}")
+            else:
+                report.add("permission_blocks_acquisition", "passed", f"permission={permission} prevented a fresh device fix")
+        elif has_fresh_device_fix:
+            report.add("permission_blocks_acquisition", "failed", "a fresh device fix was observed while permission remained unknown")
         if weather_state != "healthy":
             report.add("weather_provider", "unverified", f"Weather provider status was {weather_state}; location status is reported separately")
         else:
