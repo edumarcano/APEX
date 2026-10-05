@@ -205,7 +205,7 @@ describe('desktop backend admission', () => {
     expect(platformMocks.getBackendStatus).not.toHaveBeenCalled()
     expect(fetch).not.toHaveBeenCalled()
 
-    platformMocks.recoverImport.mockResolvedValue(setupState('choice_required'))
+    platformMocks.recoverImport.mockResolvedValue(setupState('choice_required', { revision: 2 }))
     fireEvent.click(screen.getByRole('button', { name: 'Retry setup' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Import from a checkout' }))
     await waitFor(() => expect(platformMocks.pickImportSource).toHaveBeenCalledTimes(1))
@@ -285,7 +285,7 @@ describe('desktop backend admission', () => {
     platformMocks.subscribeSetupState.mockImplementation(async (callback) => { wake = callback; return () => undefined })
     const previewResult = deferred<DesktopSetupState>()
     platformMocks.previewImport.mockReturnValue(previewResult.promise)
-    const freshSnapshot = setupState('importing', { revision: 4, progress: { stage: 'validate', completed_bytes: 0, total_bytes: 2_000 } })
+    const freshSnapshot = setupState('importing', { revision: 4, progress: { stage: 'validating', completed_bytes: 0, total_bytes: 2_000 } })
     platformMocks.getSetupStatus.mockResolvedValueOnce(setupState('choice_required')).mockResolvedValue(freshSnapshot)
     vi.stubGlobal('fetch', vi.fn())
 
@@ -296,7 +296,7 @@ describe('desktop backend admission', () => {
     expect(screen.getByRole('button', { name: 'Quit APEX' })).toBeEnabled()
     expect(platformMocks.pickImportSource).toHaveBeenCalledOnce()
     await act(async () => { wake() })
-    expect(await screen.findByText('validate: 0 B of 2.0 kB')).toBeInTheDocument()
+    expect(await screen.findByText('Validating imported data: 0 B of 2.0 kB')).toBeInTheDocument()
     await act(async () => {
       previewResult.resolve(setupState('preview_ready', { revision: 3, preview: {
         preview_id: 'late', can_import: true, items: [], warnings: [], blockers: [],
