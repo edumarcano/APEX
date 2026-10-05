@@ -632,6 +632,14 @@ def _run_import_preservation_smoke(bundle: Path, root: Path, report: Report, *, 
             helper=helper, probe=probe,
         )
         report.add("import_interrupted_recovery", "passed", "journaled frozen import was terminated during managed-file copying, recovered to source choice, then re-previewed and imported the same destination while preserving unrelated bytes")
+        # Production source readers in the recovery rehearsal can reopen
+        # SQLite sidecars. Confirm a current inventory immediately before copy.
+        preview = _setup_request(
+            bundle / "apex-backend.exe", root, destination, "preview", source=source,
+        )
+        preview_id = preview.get("preview_id")
+        if preview.get("can_import") is not True or not isinstance(preview_id, str) or not preview_id:
+            raise RuntimeError("source did not remain importable after recovery verification")
         imported = _setup_request(
             bundle / "apex-backend.exe", root, destination, "import",
             source=source, preview_id=preview_id,
