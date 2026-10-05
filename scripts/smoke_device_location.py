@@ -174,7 +174,7 @@ def _switch_checked(driver: WebDriver, label: str) -> bool:
             "args": [label],
         },
     )
-    if result not in {"true", "false"}:
+    if not isinstance(result, str) or result not in {"true", "false"}:
         raise SmokeFailure(f"the {label} switch was not available")
     return result == "true"
 
@@ -607,6 +607,12 @@ def _run_smoke(
                 break
             time.sleep(POLL_INTERVAL_SECONDS)
         action_feedback = _permission_check_feedback(driver)
+        print(
+            "Device location permission-check feedback: "
+            + json.dumps(action_feedback, separators=(",", ":")),
+            file=sys.stderr,
+            flush=True,
+        )
         report.observations["permission_check_ui"] = action_feedback
         if action_feedback.get("feedback") == "command_rejected":
             report.add(
