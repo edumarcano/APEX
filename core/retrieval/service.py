@@ -8,6 +8,8 @@ import logging
 import math
 import numbers
 import threading
+import time
+from contextlib import contextmanager
 from typing import Iterable, Mapping
 
 from core.config import DEMO_MODE
@@ -26,6 +28,10 @@ from core.retrieval.store import (
 
 _LOGGER = logging.getLogger(__name__)
 _service: "RetrievalService | None" = None
+
+
+def _monotonic() -> float:
+    return time.monotonic()
 
 
 class RetrievalBusyError(RuntimeError):
@@ -64,6 +70,94 @@ class RetrievalService:
         self.batch_size = max(1, batch_size)
         self._prepare_lock = threading.Lock()
         self._sync_lock = threading.RLock()
+        self._embedding_state = threading.Condition(threading.Lock())
+        self._active_embedding_uses = 0
+        self._last_embedding_use_completed = _monotonic()
+        self._adapter_resident = False
+        self._embedding_closing = False
+        self._embedding_closed = False
+
+    @contextmanager
+    def _embedding_use(self):
+        with self._embedding_state:
+            if self._embedding_closing or self._embedding_closed:
+                raise RuntimeError("retrieval_embedding_session_closed")
+            self._active_embedding_uses += 1
+        try:
+            yield
+        finally:
+            with self._embedding_state:
+                self._active_embedding_uses -= 1
+                self._last_embedding_use_completed = _monotonic()
+                self._embedding_state.notify_all()
+
+    def _release_adapter_locked(self) -> bool:
+        if not self._adapter_has_session():
+            return False
+        release = getattr(self.adapter, "release", None)
+        if not callable(release):
+            return False
+        release()
+        self._adapter_resident = False
+        return not self._adapter_has_session()
+
+    def _adapter_has_session(self) -> bool:
+        loaded = getattr(self.adapter, "is_loaded", None)
+        if loaded is None:
+            loaded = getattr(self.adapter, "loaded", None)
+        if loaded is not None:
+            return bool(loaded() if callable(loaded) else loaded)
+        return bool(getattr(self, "_adapter_resident", False))
+
+    def release_if_idle(self) -> bool:
+        """Release the in-memory embedding session after five idle minutes."""
+        with self._embedding_state:
+            if self._embedding_closing or self._embedding_closed or self._active_embedding_uses:
+                return False
+            if _monotonic() - self._last_embedding_use_completed < 300.0:
+                return False
+            if not self._adapter_has_session():
+                return False
+            try:
+                return self._release_adapter_locked()
+            except Exception:
+                _LOGGER.warning("Embedding session release failed: category=release_failed")
+                return False
+
+    def close(self, *, timeout_seconds: float) -> bool:
+        """Wait for embedding work to finish, then drop its in-memory session."""
+        timeout = max(0.0, float(timeout_seconds))
+        deadline = _monotonic() + timeout
+        with self._embedding_state:
+            if self._embedding_closed:
+                return True
+            if self._embedding_closing:
+                return False
+            self._embedding_closing = True
+        while True:
+            remaining = deadline - _monotonic()
+            with self._embedding_state:
+                if not self._active_embedding_uses:
+                    try:
+                        had_session = self._adapter_has_session()
+                        released = self._release_adapter_locked()
+                    except Exception:
+                        _LOGGER.warning("Embedding session release failed: category=release_failed")
+                        self._embedding_closing = False
+                        self._embedding_state.notify_all()
+                        return False
+                    if had_session and not released:
+                        self._embedding_closing = False
+                        self._embedding_state.notify_all()
+                        return False
+                    self._embedding_closed = True
+                    self._embedding_closing = False
+                    return True
+                if remaining <= 0:
+                    self._embedding_closing = False
+                    self._embedding_state.notify_all()
+                    return False
+                self._embedding_state.wait(remaining)
 
     def initialize(self) -> None:
         if not self.enabled:
@@ -163,6 +257,7 @@ class RetrievalService:
         for offset in range(0, len(pending), self.batch_size):
             batch = pending[offset : offset + self.batch_size]
             vectors = self.adapter.embed((text for _, text in batch), allow_download=False)
+            self._adapter_resident = True
             if len(vectors) != len(batch):
                 raise EmbeddingError("invalid_vector")
             for (item_id, _), vector in zip(batch, vectors):
@@ -178,7 +273,8 @@ class RetrievalService:
             state, fingerprint, _prepared, _error = self.store.model_state()
             if state == "ready" and fingerprint is not None:
                 try:
-                    self._backfill_embeddings(fingerprint, namespace=namespace)
+                    with self._embedding_use():
+                        self._backfill_embeddings(fingerprint, namespace=namespace)
                 except EmbeddingError as exc:
                     category = str(exc) if str(exc) in {"embedding_initialization_failed", "embedding_inference_failed", "invalid_vector"} else "semantic_search_failed"
                     self.store.set_model_state(state="degraded", fingerprint=None, error_category=category)
@@ -202,12 +298,29 @@ class RetrievalService:
         if not self._prepare_lock.acquire(blocking=False):
             raise RetrievalBusyError("retrieval_prepare_in_progress")
         try:
+            with self._embedding_use():
+                return self._prepare_model(allow_download=allow_download, force=True)
+        finally:
+            self._prepare_lock.release()
+
+    def _prepare_model(self, *, allow_download: bool, force: bool) -> RetrievalStatus:
+        """Prepare the adapter while an embedding-use lease prevents eviction."""
+        try:
             with self._sync_lock:
-                self.store.set_model_state(state="preparing", error_category=None)
-                self.reconcile()
-                fingerprint = self.adapter.prepare(allow_download=allow_download)
-                self._backfill_embeddings(fingerprint)
-                self.store.set_model_state(state="ready", fingerprint=fingerprint, prepared_at=utc_now_iso(), error_category=None)
+                state, stored_fingerprint, _prepared, _error = self.store.model_state()
+                fingerprint = self._fingerprint()
+                already_prepared = state == "ready" and stored_fingerprint == fingerprint
+                if force or not already_prepared:
+                    self.store.set_model_state(state="preparing", error_category=None)
+                    self.reconcile()
+                loaded_fingerprint = self.adapter.prepare(allow_download=allow_download)
+                self._adapter_resident = True
+                if force or not already_prepared:
+                    self._backfill_embeddings(loaded_fingerprint)
+                    self.store.set_model_state(
+                        state="ready", fingerprint=loaded_fingerprint,
+                        prepared_at=utc_now_iso(), error_category=None,
+                    )
                 return self.status()
         except EmbeddingError as exc:
             category = str(exc) or "embedding_initialization_failed"
@@ -220,6 +333,18 @@ class RetrievalService:
             self.store.set_model_state(state="degraded", fingerprint=None, error_category="preparation_failed")
             _LOGGER.error("Retrieval preparation failed: category=preparation_failed")
             return self.status()
+
+    def _prepare_cached_for_search(self) -> RetrievalStatus:
+        """Make one cached-only attempt when a real query demands embeddings."""
+        self._prepare_lock.acquire()
+        try:
+            try:
+                state, _fingerprint, _prepared, _error = self.store.model_state()
+            except Exception:
+                return self.status()
+            if state == "degraded":
+                return self.status()
+            return self._prepare_model(allow_download=False, force=False)
         finally:
             self._prepare_lock.release()
 
@@ -241,11 +366,28 @@ class RetrievalService:
         if not self.enabled:
             return []
         lexical = self.store.search_fts(query, namespace=namespace, source_type=source_type, partition=partition, limit=limit)
-        status = self.status()
-        if status.mode != "semantic" or not query.strip():
+        if not query.strip():
             return lexical
         try:
+            with self._embedding_use():
+                status = self._prepare_cached_for_search()
+                if status.mode != "semantic":
+                    return lexical
+                return self._semantic_search(
+                    query, lexical, status, namespace=namespace, partition=partition,
+                    source_type=source_type, limit=limit,
+                )
+        except RuntimeError:
+            # A successful close rejects new model work; lexical search remains usable.
+            return lexical
+
+    def _semantic_search(
+        self, query: str, lexical: list[RetrievalHit], status: RetrievalStatus, *,
+        namespace: str, partition: str, source_type: str | None, limit: int,
+    ) -> list[RetrievalHit]:
+        try:
             query_vector = self.adapter.embed([query], allow_download=False)[0]
+            self._adapter_resident = True
             self._validate_vector(query_vector, int(self.adapter.dimension))
             vector_by_id = {
                 item_id: blob_to_vector(blob, int(self.adapter.dimension))
@@ -278,18 +420,17 @@ class RetrievalService:
             semantic_score = dict(semantic)
             candidates = set(lexical_rank) | set(semantic_rank)
             fused = sorted(candidates, key=lambda item_id: (-(1 / (60 + lexical_rank[item_id]) if item_id in lexical_rank else 0.0) - (1 / (60 + semantic_rank[item_id]) if item_id in semantic_rank else 0.0), item_id))
-            by_id = all_hits
             return [
                 RetrievalHit(
                     **{
-                        **by_id[item_id].__dict__,
+                        **all_hits[item_id].__dict__,
                         "score": (1 / (60 + lexical_rank[item_id]) if item_id in lexical_rank else 0.0) + (1 / (60 + semantic_rank[item_id]) if item_id in semantic_rank else 0.0),
                         "lexical_score": lexical_score.get(item_id),
                         "semantic_score": semantic_score.get(item_id),
                     }
                 )
                 for item_id in fused[: max(1, min(limit, 100))]
-                if item_id in by_id
+                if item_id in all_hits
             ]
         except EmbeddingError as exc:
             category = str(exc) if str(exc) in {"invalid_vector", "embedding_initialization_failed", "embedding_inference_failed"} else "semantic_search_failed"

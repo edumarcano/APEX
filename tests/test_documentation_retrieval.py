@@ -91,7 +91,7 @@ class DocumentationRetrievalTests(unittest.TestCase):
 
     def test_search_refreshes_incrementally_and_uses_cached_embeddings(self) -> None:
         first = search_documentation("alpha", self.service, root=self.root)
-        self.assertEqual(first["retrieval_mode"], "fts_only")
+        self.assertEqual(first["retrieval_mode"], "semantic")
         self.assertEqual(first["trust"], "untrusted_reference")
         self.assertTrue(any(result["path"] == "README.md" for result in first["results"]))
 
