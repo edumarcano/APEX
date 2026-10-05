@@ -1206,9 +1206,9 @@ def _send_dialog_keys(keys: list[tuple[int, int]]) -> None:
     for index, (key, flags) in enumerate(keys):
         events[index].type = 1  # INPUT_KEYBOARD
         if flags & 0x0004:  # KEYEVENTF_UNICODE uses wScan, with wVk set to zero.
-            events[index].union.ki = KeyboardInput(0, key, flags, 0, None)
+            events[index].union.ki = KeyboardInput(0, key, flags, 0, 0)
         else:
-            events[index].union.ki = KeyboardInput(key, 0, flags, 0, None)
+            events[index].union.ki = KeyboardInput(key, 0, flags, 0, 0)
     sent = user32.SendInput(len(events), events, ctypes.sizeof(Input))
     if sent != len(events):
         raise SmokeFailure(f"could not control native folder picker (Windows error {ctypes.get_last_error()})")
@@ -1244,6 +1244,46 @@ def _wait_native_picker(shell_pid: int, timeout: float) -> bool:
     return False
 
 
+def _cancel_native_picker(shell_pid: int, timeout: float) -> None:
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    user32.GetDlgItem.argtypes = (wintypes.HWND, ctypes.c_int)
+    user32.GetDlgItem.restype = wintypes.HWND
+    user32.IsWindowEnabled.argtypes = (wintypes.HWND,)
+    user32.IsWindowVisible.argtypes = (wintypes.HWND,)
+    user32.SendMessageW.argtypes = (wintypes.HWND, wintypes.UINT, ctypes.c_size_t, ctypes.c_ssize_t)
+    user32.SendMessageW.restype = ctypes.c_ssize_t
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if _picker_is_owned_by(shell_pid):
+            cancel = user32.GetDlgItem(user32.GetForegroundWindow(), 2)  # IDCANCEL
+            if cancel and user32.IsWindowEnabled(cancel) and user32.IsWindowVisible(cancel):
+                user32.SendMessageW(cancel, 0x00F5, 0, 0)  # BM_CLICK, the actual Cancel button
+                return
+        time.sleep(POLL_INTERVAL_SECONDS)
+    raise SmokeFailure("the owned native folder picker did not expose an enabled Cancel button")
+
+
+def _open_native_picker(driver: WebDriver, shell_pid: int, timeout: float) -> None:
+    element = _wait_for_ready_element(
+        driver, "xpath", _button_xpath("Import from a checkout"), min(8.0, timeout),
+    )
+    if element is None:
+        raise SmokeFailure("Import source choice was unavailable")
+    click_error = None
+    try:
+        driver.click(element)
+    except WebDriverCommandError as exc:
+        # The native modal can take focus before Edge acknowledges the click.
+        # Observe the owned dialog instead of retrying a non-idempotent action.
+        if exc.error not in {"element not interactable", "stale element reference"}:
+            raise
+        click_error = exc.error
+    if not _wait_native_picker(shell_pid, min(15.0, timeout)):
+        detail = f" after WebDriver {click_error}" if click_error else ""
+        raise SmokeFailure(f"Import did not open its focused shell-owned source picker{detail}")
+
+
 def _type_native_folder_path(path: Path, shell_pid: int, timeout: float) -> None:
     if not _wait_native_picker(shell_pid, timeout):
         raise SmokeFailure("native folder picker did not become the focused shell-owned window")
@@ -1255,8 +1295,47 @@ def _type_native_folder_path(path: Path, shell_pid: int, timeout: float) -> None
     for offset in range(0, len(encoded), 2):
         code_unit = int.from_bytes(encoded[offset:offset + 2], "little")
         sequence.extend(((code_unit, unicode_flag), (code_unit, unicode_flag | key_up)))
-    sequence.extend(((0x0D, key_down), (0x0D, key_up), (0x0D, key_down), (0x0D, key_up)))
+    sequence.extend(((0x0D, key_down), (0x0D, key_up)))
     _send_dialog_keys(sequence)
+    # Navigation is asynchronous. Wait for the selected address before clicking
+    # Select Folder; a second immediate Enter can arrive before navigation ends.
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    user32.GetWindowTextW.argtypes = (wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
+    user32.GetDlgCtrlID.argtypes = (wintypes.HWND,)
+    user32.GetDlgItem.argtypes = (wintypes.HWND, ctypes.c_int)
+    user32.GetDlgItem.restype = wintypes.HWND
+    user32.IsWindowEnabled.argtypes = (wintypes.HWND,)
+    user32.SendMessageW.argtypes = (wintypes.HWND, wintypes.UINT, ctypes.c_size_t, ctypes.c_ssize_t)
+    user32.SendMessageW.restype = ctypes.c_ssize_t
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user32.EnumChildWindows.argtypes = (wintypes.HWND, callback_type, wintypes.LPARAM)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if _picker_is_owned_by(shell_pid):
+            dialog = user32.GetForegroundWindow()
+            navigated = False
+
+            def inspect_address(child: int, _parameter: int) -> bool:
+                nonlocal navigated
+                if user32.GetDlgCtrlID(child) == 1001:
+                    caption = ctypes.create_unicode_buffer(32768)
+                    user32.GetWindowTextW(child, caption, len(caption))
+                    candidate = caption.value.partition(": ")[2]
+                    try:
+                        navigated = bool(candidate) and path.samefile(candidate)
+                    except OSError:
+                        pass
+                return True
+
+            callback = callback_type(inspect_address)
+            user32.EnumChildWindows(dialog, callback, 0)
+            select = user32.GetDlgItem(dialog, 1)  # IDOK, Select Folder
+            if navigated and select and user32.IsWindowEnabled(select):
+                user32.SendMessageW(select, 0x00F5, 0, 0)  # BM_CLICK
+                return
+        time.sleep(POLL_INTERVAL_SECONDS)
+    raise SmokeFailure("the owned folder picker did not finish navigating to the fixture source")
 
 
 def _continue_once_if_preflight_advisory(
@@ -1403,15 +1482,13 @@ def _run_desktop_import_smoke(
             raise SmokeFailure("blank import profile did not show the native first-run choice")
         shell_handle, shell_pid, _shell_hwnd = _native_window(driver_process.pid, application)
 
-        if not _click_button(driver, "Import from a checkout", min(8.0, timeout)) or not _wait_native_picker(shell_pid, min(15.0, timeout)):
-            raise SmokeFailure("Import did not open its native source-folder picker")
-        _send_dialog_keys([(0x1B, 0), (0x1B, 0x0002)])
+        _open_native_picker(driver, shell_pid, timeout)
+        _cancel_native_picker(shell_pid, min(15.0, timeout))
         if not driver.wait_for("canceled picker leaves setup choice", lambda: _clickable(driver, "Fresh Start") and _clickable(driver, "Import from a checkout"), min(10.0, timeout)):
             raise SmokeFailure("canceling the native folder picker did not leave the setup choice available")
         report.add("native_import_picker_cancel", "passed", "canceling the native picker left the blank profile unchanged")
 
-        if not _click_button(driver, "Import from a checkout", min(8.0, timeout)):
-            raise SmokeFailure("Import source picker could not be reopened after cancellation")
+        _open_native_picker(driver, shell_pid, timeout)
         _type_native_folder_path(source, shell_pid, min(15.0, timeout))
         progress_seen = driver.wait_for(
             "native import preview progress",
@@ -1579,7 +1656,8 @@ def _run_desktop_import_smoke(
 
 def _clickable(driver: WebDriver, label: str) -> bool:
     try:
-        return driver.find("xpath", _button_xpath(label)) is not None
+        element = driver.find("xpath", _button_xpath(label))
+        return element is not None and driver.is_displayed(element) and driver.is_enabled(element)
     except SmokeFailure:
         return False
 
@@ -1902,6 +1980,10 @@ def _run_smoke(
             driver.start(application.resolve())
             if not driver.wait_for("fixture WebView", lambda: bool(driver.text()), min(45.0, timeout)):
                 raise SmokeFailure("fixture-session WebView did not expose a document")
+            if not driver.wait_for("fixture first-run choice", lambda: _clickable(driver, "Fresh Start"), min(45.0, timeout)):
+                raise SmokeFailure("blank fixture-session profile did not offer Fresh Start")
+            if not _click_button(driver, "Fresh Start", min(8.0, timeout)):
+                raise SmokeFailure("fixture-session Fresh Start was unavailable")
             profile_root = Path(stream_env["APEX_DATA_DIR"])
             runtime = _runtime_identity(profile_root, min(60.0, timeout))
             report.add("fixture_backend_identity", "passed", "second managed launch used its isolated profile and local provider fixture")
