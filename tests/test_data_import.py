@@ -29,7 +29,7 @@ from core.runtime_paths import RuntimePaths
 class DataImportTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory(prefix="apex-import-")
-        self.base = Path(self.temp.name)
+        self.base = Path(self.temp.name).resolve()
         self.source = self.base / "source"
         self.destination = self.base / "destination"
         self.source.mkdir()
@@ -180,7 +180,7 @@ class DataImportTests(unittest.TestCase):
 
         def altered_read(path: Path) -> bytes:
             raw = original_read(path)
-            if path == self.source / ".env":
+            if path.resolve() == (self.source / ".env").resolve():
                 return raw.replace(b"credentials.json", b"other.json")
             return raw
 
