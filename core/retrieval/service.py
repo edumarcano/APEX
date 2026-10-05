@@ -88,8 +88,12 @@ class RetrievalService:
         finally:
             with self._embedding_state:
                 self._active_embedding_uses -= 1
-                self._last_embedding_use_completed = _monotonic()
                 self._embedding_state.notify_all()
+
+    def _record_native_operation_completed(self) -> None:
+        """Refresh idle time only after an adapter operation actually completes."""
+        with self._embedding_state:
+            self._last_embedding_use_completed = _monotonic()
 
     def _release_adapter_locked(self) -> bool:
         if not self._adapter_has_session():
@@ -256,7 +260,12 @@ class RetrievalService:
         pending = self.store.items_missing_embeddings(fingerprint, namespace=namespace)
         for offset in range(0, len(pending), self.batch_size):
             batch = pending[offset : offset + self.batch_size]
-            vectors = self.adapter.embed((text for _, text in batch), allow_download=False)
+            try:
+                vectors = list(
+                    self.adapter.embed((text for _, text in batch), allow_download=False)
+                )
+            finally:
+                self._record_native_operation_completed()
             self._adapter_resident = True
             if len(vectors) != len(batch):
                 raise EmbeddingError("invalid_vector")
@@ -313,10 +322,16 @@ class RetrievalService:
                 if force or not already_prepared:
                     self.store.set_model_state(state="preparing", error_category=None)
                     self.reconcile()
-                loaded_fingerprint = self.adapter.prepare(allow_download=allow_download)
+                was_resident = self._adapter_has_session()
+                try:
+                    loaded_fingerprint = self.adapter.prepare(allow_download=allow_download)
+                finally:
+                    if not was_resident:
+                        self._record_native_operation_completed()
                 self._adapter_resident = True
-                if force or not already_prepared:
+                if force or not already_prepared or not was_resident:
                     self._backfill_embeddings(loaded_fingerprint)
+                if force or not already_prepared:
                     self.store.set_model_state(
                         state="ready", fingerprint=loaded_fingerprint,
                         prepared_at=utc_now_iso(), error_category=None,
@@ -386,7 +401,11 @@ class RetrievalService:
         namespace: str, partition: str, source_type: str | None, limit: int,
     ) -> list[RetrievalHit]:
         try:
-            query_vector = self.adapter.embed([query], allow_download=False)[0]
+            try:
+                query_vectors = list(self.adapter.embed([query], allow_download=False))
+            finally:
+                self._record_native_operation_completed()
+            query_vector = query_vectors[0]
             self._adapter_resident = True
             self._validate_vector(query_vector, int(self.adapter.dimension))
             vector_by_id = {
