@@ -156,6 +156,14 @@ def _assert_no_reparse_ancestry(path: Path) -> Path:
     return absolute
 
 
+def _comparison_path(path: Path) -> Path:
+    """Canonical spelling for comparisons, without changing filesystem paths."""
+    value = os.path.normcase(os.path.normpath(str(path.resolve())))
+    if os.name == "nt" and value.startswith("\\\\?\\"):
+        value = "\\\\" + value[8:] if value.startswith("\\\\?\\unc\\") else value[4:]
+    return Path(value)
+
+
 @contextmanager
 def _source_lease(root: Path):
     """Hold the existing host lease while inspecting and copying the source."""
@@ -206,7 +214,7 @@ def _source_lease(root: Path):
         if held:
             held[0].close()
         raise ImportOperationError("source_activity_uncertain") from exc
-    expected = os.path.normcase(os.path.normpath(str(root.resolve(strict=True))))
+    expected = str(_comparison_path(root))
     # Native pickers use verbatim paths; process metadata may use normal or
     # short paths. Compare directory identity instead of their spelling.
     def matches_source(value: str | None) -> bool:
@@ -217,9 +225,6 @@ def _source_lease(root: Path):
         except FileNotFoundError:
             return False
 
-    if os.name == "nt" and expected.startswith("\\\\?\\"):
-        expected = ("\\\\" + expected[8:] if expected.startswith("\\\\?\\unc\\")
-                    else expected[4:])
     try:
         for process in psutil.process_iter(("name", "cmdline", "cwd")):
             try:
@@ -1009,16 +1014,18 @@ class ImportEngine:
             source = requested.resolve(strict=True)
         except (OSError, RuntimeError) as exc:
             raise ImportOperationError("source_invalid") from exc
-        if not source.is_dir() or source == self.root:
+        source_comparison = _comparison_path(source)
+        destination_comparison = _comparison_path(self.root)
+        if not source.is_dir() or source_comparison == destination_comparison:
             raise ImportOperationError("source_invalid")
         try:
-            self.root.relative_to(source)
+            destination_comparison.relative_to(source_comparison)
         except ValueError:
             pass
         else:
             raise ImportOperationError("source_invalid")
         try:
-            source.relative_to(self.root)
+            source_comparison.relative_to(destination_comparison)
         except ValueError:
             pass
         else:
@@ -1026,7 +1033,7 @@ class ImportEngine:
         installation = self.paths.installation_root
         if installation is not None:
             try:
-                source.relative_to(installation.resolve())
+                source_comparison.relative_to(_comparison_path(installation))
             except ValueError:
                 pass
             else:

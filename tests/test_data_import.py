@@ -307,6 +307,25 @@ class DataImportTests(unittest.TestCase):
                 self.assertIn("source_active", preview["blockers"])
                 self.assertFalse((self.source / ".apex-host.lock").exists())
 
+    @unittest.skipUnless(os.name == "nt", "Native Windows picker returns verbatim paths")
+    def test_verbatim_source_rejects_destination_and_installation_overlap(self) -> None:
+        source = "\\\\?\\" + str(self.source.resolve())
+        roots = (
+            (self.source, None),
+            (self.source / "nested-destination", None),
+            (self.base, None),
+            (self.destination, self.base),
+        )
+        for destination, installation in roots:
+            with self.subTest(destination=destination, installation=installation):
+                paths = RuntimePaths(
+                    resource_root=self.destination, data_root=destination,
+                    installation_root=installation,
+                )
+                with self.assertRaisesRegex(ImportOperationError, "source_invalid"):
+                    ImportEngine(paths).preview(source)
+                self.assertFalse((self.source / ".apex-host.lock").exists())
+
     @unittest.skipUnless(os.name == "nt", "Windows deny-write handles provide this guard")
     def test_open_legacy_sqlite_writer_is_refused_by_deny_write_guard(self) -> None:
         writer = sqlite3.connect(self.database)
