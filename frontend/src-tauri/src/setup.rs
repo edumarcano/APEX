@@ -105,6 +105,14 @@ pub fn preview_can_commit(
         && source.is_some_and(|source| source.is_absolute())
 }
 
+pub fn operation_allowed(operation: &str, phase: Phase) -> bool {
+    match operation {
+        "preview" | "fresh_start" => phase == Phase::ChoiceRequired,
+        "recover" => matches!(phase, Phase::RecoveryRequired | Phase::Failed),
+        _ => true,
+    }
+}
+
 impl SetupState {
     pub fn snapshot(&self) -> DesktopSetupState {
         self.0.lock().expect("setup state mutex poisoned").clone()
@@ -414,6 +422,26 @@ mod tests {
             Some(std::path::Path::new("relative")),
             "current"
         ));
+    }
+
+    #[test]
+    fn failed_setup_can_retry_recovery_but_transient_and_active_phases_cannot() {
+        assert!(operation_allowed("recover", Phase::RecoveryRequired));
+        assert!(operation_allowed("recover", Phase::Failed));
+        for phase in [
+            Phase::Checking,
+            Phase::Importing,
+            Phase::Ready,
+            Phase::ChoiceRequired,
+            Phase::PreviewReady,
+        ] {
+            assert!(
+                !operation_allowed("recover", phase),
+                "recover must be rejected in {phase:?}"
+            );
+        }
+        assert!(!operation_allowed("preview", Phase::Failed));
+        assert!(!operation_allowed("fresh_start", Phase::Failed));
     }
 
     #[test]

@@ -772,14 +772,8 @@ async fn perform_setup_command(
         return Err("setup_failed");
     }
     let current_setup = setup_state.snapshot();
-    match request.operation {
-        "preview" | "fresh_start" if current_setup.phase != SetupPhase::ChoiceRequired => {
-            return Err("setup_failed");
-        }
-        "recover" if current_setup.phase != SetupPhase::RecoveryRequired => {
-            return Err("setup_failed");
-        }
-        _ => {}
+    if !setup::operation_allowed(request.operation, current_setup.phase) {
+        return Err("setup_failed");
     }
     if request.operation == "import" {
         let source = controller.source();
