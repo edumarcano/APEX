@@ -207,6 +207,19 @@ def _source_lease(root: Path):
             held[0].close()
         raise ImportOperationError("source_activity_uncertain") from exc
     expected = os.path.normcase(os.path.normpath(str(root.resolve(strict=True))))
+    # Native pickers use verbatim paths; process metadata may use normal or
+    # short paths. Compare directory identity instead of their spelling.
+    def matches_source(value: str | None) -> bool:
+        if not value:
+            return False
+        try:
+            return root.samefile(Path(value).expanduser())
+        except FileNotFoundError:
+            return False
+
+    if os.name == "nt" and expected.startswith("\\\\?\\"):
+        expected = ("\\\\" + expected[8:] if expected.startswith("\\\\?\\unc\\")
+                    else expected[4:])
     try:
         for process in psutil.process_iter(("name", "cmdline", "cwd")):
             try:
@@ -220,7 +233,7 @@ def _source_lease(root: Path):
                 if cmdline is None:
                     raise ImportOperationError("source_activity_uncertain")
                 haystack = os.path.normcase(" ".join(str(part) for part in cmdline))
-                cwd = os.path.normcase(str(info.get("cwd") or ""))
+                cwd = str(info.get("cwd") or "")
                 relevant = any(token in haystack.casefold() for token in
                                ("launcher.py", "core.backend_host", "backend_entry", "uvicorn", "core.api.app"))
                 process_data_root = None
@@ -229,11 +242,9 @@ def _source_lease(root: Path):
                         process_data_root = process.environ().get("APEX_DATA_DIR")
                     except psutil.AccessDenied as exc:
                         raise ImportOperationError("source_activity_uncertain") from exc
-                configured = (
-                    os.path.normcase(os.path.normpath(str(Path(process_data_root).expanduser().resolve())))
-                    if process_data_root else None
-                )
-                if configured == expected or (cwd == expected and relevant) or (expected in haystack and relevant):
+                if (matches_source(process_data_root)
+                        or (relevant and matches_source(cwd))
+                        or (expected in haystack and relevant)):
                     if relevant or name.startswith("apex"):
                         raise ImportOperationError("source_active")
             except (psutil.AccessDenied, psutil.ZombieProcess) as exc:

@@ -287,6 +287,26 @@ class DataImportTests(unittest.TestCase):
         self.assertFalse(preview["can_import"])
         self.assertIn("source_active", preview["blockers"])
 
+    @unittest.skipUnless(os.name == "nt", "Native Windows picker returns verbatim paths")
+    def test_verbatim_source_blocks_legacy_host_without_creating_a_lock(self) -> None:
+        source = "\\\\?\\" + str(self.source.resolve())
+        for location in ("environment", "cwd"):
+            with self.subTest(location=location):
+                process = mock.Mock()
+                process.pid = os.getpid() + 1
+                process.info = {
+                    "name": "python.exe", "cmdline": ["python", "-m", "core.backend_host"],
+                    "cwd": str(self.source if location == "cwd" else self.base),
+                }
+                process.environ.return_value = (
+                    {"APEX_DATA_DIR": str(self.source)} if location == "environment" else {}
+                )
+                with mock.patch("psutil.process_iter", return_value=[process]):
+                    preview = self.engine.preview(source)
+                self.assertFalse(preview["can_import"])
+                self.assertIn("source_active", preview["blockers"])
+                self.assertFalse((self.source / ".apex-host.lock").exists())
+
     @unittest.skipUnless(os.name == "nt", "Windows deny-write handles provide this guard")
     def test_open_legacy_sqlite_writer_is_refused_by_deny_write_guard(self) -> None:
         writer = sqlite3.connect(self.database)
