@@ -5,6 +5,7 @@ import {
   type SystemDiagnostics,
 } from '../types/telemetry'
 import { API_ENDPOINTS } from '../lib/api'
+import { usePresentationVisibility } from './usePresentationVisibility'
 
 const DIAGNOSTICS_ENDPOINT = API_ENDPOINTS.diagnostics
 
@@ -41,8 +42,10 @@ export function useSystemDiagnostics(): SystemDiagnosticsState {
     ...DEFAULT_SYSTEM_DIAGNOSTICS,
   })
   const [status, setStatus] = useState<SystemDiagnosticsState['status']>('idle')
+  const presentationVisible = usePresentationVisibility()
 
   useEffect(() => {
+    if (!presentationVisible) return undefined
     let cancelled = false
 
     const pollDiagnostics = async (): Promise<void> => {
@@ -85,7 +88,7 @@ export function useSystemDiagnostics(): SystemDiagnosticsState {
       cancelled = true
       window.clearInterval(intervalId)
     }
-  }, [])
+  }, [presentationVisible])
 
   return { diagnostics, status }
 }

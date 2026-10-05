@@ -23,6 +23,7 @@ import type {
   ContextVaultScopeSettings,
   ContextVaultSettings,
 } from '../types/settings'
+import { usePresentationVisibility } from './usePresentationVisibility'
 
 export type ContextVaultLoadState = 'loading' | 'ready' | 'error'
 
@@ -64,6 +65,7 @@ async function fetchSettings(): Promise<ContextVaultSettings> {
 }
 
 export function useContextVault(enabled = true) {
+  const presentationVisible = usePresentationVisibility()
   const [loadState, setLoadState] = useState<ContextVaultLoadState>(enabled ? 'loading' : 'ready')
   const [settings, setSettings] = useState<ContextVaultSettings | null>(null)
   const baseline = useRef<ContextVaultSettings | null>(null)
@@ -80,6 +82,7 @@ export function useContextVault(enabled = true) {
   const requestId = useRef(0)
   const statusRequestId = useRef(0)
   const statusActionInFlight = useRef(false)
+  const wasPresentationVisible = useRef(presentationVisible)
 
   const loadInitial = useCallback(async (request: number): Promise<void> => {
     try {
@@ -279,10 +282,13 @@ export function useContextVault(enabled = true) {
   }, [isRefreshing, isRemoving])
 
   useEffect(() => {
-    if (!enabled) return
+    const resumed = presentationVisible && !wasPresentationVisible.current
+    wasPresentationVisible.current = presentationVisible
+    if (!enabled || !presentationVisible) return
+    if (resumed && loadState !== 'loading') void refreshStatus()
     const interval = window.setInterval(() => { void refreshStatus() }, 5000)
     return () => window.clearInterval(interval)
-  }, [enabled, refreshStatus])
+  }, [enabled, loadState, presentationVisible, refreshStatus])
 
   const searchEntities = useCallback(async (query: string): Promise<void> => {
     try {

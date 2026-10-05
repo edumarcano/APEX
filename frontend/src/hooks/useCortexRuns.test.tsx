@@ -54,6 +54,8 @@ function createMockRun(overrides: Partial<RunRecord> = {}): RunRecord {
 
 describe('useCortexRuns', () => {
   afterEach(() => {
+    vi.useRealTimers()
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false })
     vi.restoreAllMocks()
   })
 
@@ -136,7 +138,8 @@ describe('useCortexRuns', () => {
     expect(result.current.runs[0].status).toBe('cancelling')
   })
 
-  it('triggers refresh on window focus', async () => {
+  it('pauses the idle list poll while hidden and refreshes once when shown', async () => {
+    vi.useFakeTimers()
     let fetchCount = 0
     vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
       fetchCount += 1
@@ -144,12 +147,38 @@ describe('useCortexRuns', () => {
     })
 
     renderHook(() => useCortexRuns({ pollingEnabled: true }))
-    await waitFor(() => expect(fetchCount).toBe(1))
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+    expect(fetchCount).toBe(1)
 
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true })
     act(() => {
-      window.dispatchEvent(new Event('focus'))
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
+    expect(fetchCount).toBe(1)
+
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false })
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+    expect(fetchCount).toBe(2)
+  })
+
+  it('keeps active-run polling alive while hidden', async () => {
+    vi.useFakeTimers()
+    let fetchCount = 0
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      fetchCount += 1
+      return new Response(JSON.stringify([createMockRun({ status: 'running' })]), { status: 200 })
     })
 
-    await waitFor(() => expect(fetchCount).toBe(2))
+    const { result } = renderHook(() => useCortexRuns({ pollingEnabled: true }))
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+    expect(result.current.activeRuns).toHaveLength(1)
+    expect(fetchCount).toBe(1)
+
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true })
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_500) })
+    expect(fetchCount).toBe(2)
   })
 })

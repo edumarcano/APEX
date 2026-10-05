@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, type ReactElement } from 'react'
+import { usePresentationVisibility } from '../hooks/usePresentationVisibility'
 
 export interface CelestialBackgroundProps {
   isLaunch?: boolean
@@ -196,7 +197,15 @@ function CelestialBackgroundComponent({
   workspace = 'overview',
   atmosphereGlowColor,
 }: CelestialBackgroundProps): ReactElement {
+  const presentationVisible = usePresentationVisibility()
+  const presentationVisibleRef = useRef(presentationVisible)
+  const presentationChangeHandlerRef = useRef<(() => void) | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+
+  useEffect(() => {
+    presentationVisibleRef.current = presentationVisible
+    presentationChangeHandlerRef.current?.()
+  }, [presentationVisible])
 
   // Track props in refs for animation loop
   const propsRef = useRef({ isLaunch, workspace, atmosphereGlowColor })
@@ -432,7 +441,7 @@ function CelestialBackgroundComponent({
         drawFrame(0, true)
         return
       }
-      if (animationFrameId === null && (!document || !document.hidden)) {
+      if (animationFrameId === null && presentationVisibleRef.current && (!document || !document.hidden)) {
         animationFrameId = requestAnimationFrame(renderLoop)
       }
     }
@@ -459,7 +468,7 @@ function CelestialBackgroundComponent({
 
     const handleVisibilityChange = (): void => {
       if (typeof document === 'undefined') return
-      if (document.hidden) {
+      if (document.hidden || !presentationVisibleRef.current) {
         stopLoop()
       } else {
         startLoop()
@@ -492,6 +501,8 @@ function CelestialBackgroundComponent({
       }
     }
 
+    presentationChangeHandlerRef.current = handleVisibilityChange
+
     startLoop()
 
     return () => {
@@ -510,6 +521,7 @@ function CelestialBackgroundComponent({
           motionQuery.removeListener(handleMotionChange)
         }
       }
+      presentationChangeHandlerRef.current = null
     }
   }, [])
 

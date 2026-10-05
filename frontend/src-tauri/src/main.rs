@@ -14,6 +14,7 @@ mod window_geometry;
 mod windows_job;
 
 use futures_util::StreamExt;
+use serde::Serialize;
 use serde_json::{json, Value};
 use services::{
     DesktopServicesState, DesktopServicesStatus, NotificationSetting, NotificationSettingProbe,
@@ -52,6 +53,52 @@ const SETUP_MUTATION_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 const SETUP_TOTAL_TIMEOUT: Duration = Duration::from_secs(86_400);
 const SETUP_MAX_FRAMES: usize = 100_000;
 const HELPER_STDERR_LIMIT: usize = 64 * 1024;
+const VISIBILITY_STATE_EVENT: &str = "desktop-visibility-state";
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+struct DesktopVisibilityState {
+    revision: u64,
+    visible: bool,
+}
+
+#[derive(Default)]
+struct DesktopVisibilityStateStore(std::sync::Mutex<DesktopVisibilityState>);
+
+impl DesktopVisibilityStateStore {
+    fn snapshot(&self) -> DesktopVisibilityState {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn update(&self, visible: bool) -> Option<DesktopVisibilityState> {
+        let mut current = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let next = next_visibility_state(*current, visible)?;
+        *current = next;
+        Some(next)
+    }
+}
+
+fn next_visibility_state(
+    current: DesktopVisibilityState,
+    visible: bool,
+) -> Option<DesktopVisibilityState> {
+    if current.visible == visible {
+        return None;
+    }
+    Some(DesktopVisibilityState {
+        revision: current.revision.saturating_add(1),
+        visible,
+    })
+}
+
+fn is_presentation_visible(window_visible: bool, minimized: bool) -> bool {
+    window_visible && !minimized
+}
 
 enum StartupReceive {
     Frame(Result<protocol::Envelope, &'static str>),
@@ -208,6 +255,30 @@ fn desktop_backend_status(
 ) -> Result<BackendStatus, &'static str> {
     validate_caller(&window)?;
     Ok(status.snapshot())
+}
+
+#[tauri::command]
+fn desktop_visibility_state(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    visibility: State<'_, DesktopVisibilityStateStore>,
+) -> Result<DesktopVisibilityState, &'static str> {
+    validate_caller(&window)?;
+    publish_visibility_state(&app, window.label());
+    Ok(visibility.snapshot())
+}
+
+fn publish_visibility_state(app: &tauri::AppHandle, window_label: &str) {
+    let Some(window) = app.get_webview_window(window_label) else {
+        return;
+    };
+    let visible = is_presentation_visible(
+        window.is_visible().unwrap_or(false),
+        window.is_minimized().unwrap_or(true),
+    );
+    if let Some(snapshot) = app.state::<DesktopVisibilityStateStore>().update(visible) {
+        let _ = app.emit(VISIBILITY_STATE_EVENT, snapshot);
+    }
 }
 
 #[tauri::command]
@@ -2350,6 +2421,7 @@ fn main() {
     };
     tauri::Builder::default()
         .manage(status.clone())
+        .manage(DesktopVisibilityStateStore::default())
         .manage(supervisor.clone())
         .manage(SetupState::default())
         .manage(SetupController::default())
@@ -2405,10 +2477,13 @@ fn main() {
             } else {
                 let _ = window.show();
             }
+            publish_visibility_state(app.handle(), window.label());
             let restore_window = window.clone();
+            let restore_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(Duration::from_millis(300)).await;
                 ensure_usable_geometry(&restore_window);
+                publish_visibility_state(&restore_app, restore_window.label());
             });
             let initial_status = app.state::<DesktopState>().inner().clone();
             let initial_supervisor = app.state::<Supervisor>().inner().clone();
@@ -2428,8 +2503,8 @@ fn main() {
             });
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
                 let app = window.app_handle().clone();
                 let has_tray = app
@@ -2439,6 +2514,7 @@ fn main() {
                 match close_action(has_tray) {
                     CloseAction::Hide => {
                         let _ = window.hide();
+                        publish_visibility_state(&app, window.label());
                     }
                     CloseAction::Quit => {
                         let status = app.state::<DesktopState>().inner().clone();
@@ -2447,8 +2523,13 @@ fn main() {
                     }
                 }
             }
+            tauri::WindowEvent::Focused(_) | tauri::WindowEvent::Resized(_) => {
+                publish_visibility_state(window.app_handle(), window.label());
+            }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
+            desktop_visibility_state,
             desktop_setup_status,
             desktop_import_pick_source,
             desktop_import_preview,
@@ -2488,6 +2569,7 @@ fn show_main(app: &tauri::AppHandle) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
+        publish_visibility_state(app, window.label());
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
             let generation = app.state::<DesktopState>().snapshot().generation;
@@ -2658,6 +2740,46 @@ fn usable_work_area(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn presentation_visibility_tracks_shown_minimized_and_hidden_windows() {
+        assert!(is_presentation_visible(true, false));
+        assert!(!is_presentation_visible(true, true));
+        assert!(!is_presentation_visible(false, false));
+
+        let initial = DesktopVisibilityState::default();
+        assert_eq!(next_visibility_state(initial, false), None);
+        assert_eq!(
+            next_visibility_state(initial, true),
+            Some(DesktopVisibilityState {
+                revision: 1,
+                visible: true
+            }),
+        );
+        assert_eq!(
+            next_visibility_state(
+                DesktopVisibilityState {
+                    revision: 8,
+                    visible: true
+                },
+                true
+            ),
+            None,
+        );
+        assert_eq!(
+            next_visibility_state(
+                DesktopVisibilityState {
+                    revision: 8,
+                    visible: true
+                },
+                false
+            ),
+            Some(DesktopVisibilityState {
+                revision: 9,
+                visible: false
+            }),
+        );
+    }
 
     #[test]
     fn close_hides_only_when_a_recovery_tray_is_available() {

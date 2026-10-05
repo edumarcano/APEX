@@ -40,6 +40,11 @@ export type DesktopServicesStatus = {
   }
 }
 
+export type DesktopVisibilityState = {
+  revision: number
+  visible: boolean
+}
+
 export type DesktopLocationCheck = {
   permission: 'unknown' | 'granted' | 'denied' | 'revoked' | 'unsupported'
   availability: 'unknown' | 'available' | 'unavailable' | 'timed_out' | 'unsupported'
@@ -74,6 +79,8 @@ export type DesktopSetupState = {
 }
 
 export type DesktopPlatform = {
+  getVisibilityState(): Promise<DesktopVisibilityState>
+  subscribeVisibilityState(onChange: (state: DesktopVisibilityState) => void): Promise<() => void>
   getBackendStatus(): Promise<DesktopBackendState>
   retryBackend(): Promise<DesktopBackendState>
   quit(): Promise<void>

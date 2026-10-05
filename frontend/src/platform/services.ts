@@ -1,9 +1,21 @@
 import { loadDesktopPlatform } from './index'
-import type { DesktopLocationCheck, DesktopServicesStatus } from './contracts'
+import type { DesktopLocationCheck, DesktopServicesStatus, DesktopVisibilityState } from './contracts'
 import { safeExternalUrl } from '../lib/externalLinks'
 
 export function isNativeDesktop(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+}
+
+export async function subscribeDesktopVisibilityState(
+  onChange: (state: DesktopVisibilityState) => void,
+): Promise<() => void> {
+  if (!isNativeDesktop()) return () => undefined
+  return (await loadDesktopPlatform()).subscribeVisibilityState(onChange)
+}
+
+export async function getDesktopVisibilityState(): Promise<DesktopVisibilityState | null> {
+  if (!isNativeDesktop()) return null
+  return (await loadDesktopPlatform()).getVisibilityState()
 }
 
 export async function getDesktopServicesStatus(): Promise<DesktopServicesStatus | null> {

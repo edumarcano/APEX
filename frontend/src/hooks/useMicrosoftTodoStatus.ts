@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { API_ENDPOINTS } from '../lib/api'
+import { usePresentationVisibility } from './usePresentationVisibility'
 
 export type MicrosoftTodoState =
   | 'not-configured'
@@ -93,6 +94,7 @@ function parseAuthorization(value: unknown): MicrosoftTodoAuthorization | null {
 }
 
 export function useMicrosoftTodoStatus(open: boolean) {
+  const presentationVisible = usePresentationVisibility()
   const [status, setStatus] = useState<MicrosoftTodoStatus | null>(null)
   const [authorization, setAuthorization] = useState<MicrosoftTodoAuthorization | null>(null)
   const [loading, setLoading] = useState(false)
@@ -139,7 +141,7 @@ export function useMicrosoftTodoStatus(open: boolean) {
   }, [])
 
   useEffect(() => {
-    if (!open) return
+    if (!open || !presentationVisible) return
     const initialTimeout = window.setTimeout(() => void refresh(), 0)
     const interval = window.setInterval(() => void refresh(), 5000)
     return () => {
@@ -147,7 +149,7 @@ export function useMicrosoftTodoStatus(open: boolean) {
       sequence.current += 1
       window.clearTimeout(initialTimeout)
     }
-  }, [open, refresh])
+  }, [open, presentationVisible, refresh])
 
   const connect = useCallback(async () => {
     setLoading(true)

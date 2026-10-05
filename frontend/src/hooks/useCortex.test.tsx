@@ -19,7 +19,40 @@ const cloudSelectedWithResidentLocal = {
 }
 
 describe('useCortex model lifecycle', () => {
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => {
+    vi.useRealTimers()
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false })
+    vi.restoreAllMocks()
+  })
+
+  it('pauses status polling while dormant without requesting model loads', async () => {
+    vi.useFakeTimers()
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false })
+    let statusRequests = 0
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/cortex/agent')) {
+        statusRequests += 1
+        return new Response(JSON.stringify(catalogResponse))
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    renderHook(() => useCortex(true))
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+    expect(statusRequests).toBe(1)
+
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true })
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    await act(async () => { await vi.advanceTimersByTimeAsync(12_000) })
+    expect(statusRequests).toBe(1)
+
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false })
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+    expect(statusRequests).toBe(2)
+    expect(fetchSpy.mock.calls.some((call) => String(call[0]).includes('/local-model/load'))).toBe(false)
+  })
 
   it('refreshes the unified catalog and rechecks it after loading the selected local model', async () => {
     let statusRequests = 0
