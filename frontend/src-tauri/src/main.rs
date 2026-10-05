@@ -7,6 +7,7 @@ mod notifications;
 mod protocol;
 mod security;
 mod services;
+mod setup;
 mod state;
 mod window_geometry;
 #[cfg(windows)]
@@ -17,6 +18,7 @@ use serde_json::{json, Value};
 use services::{
     DesktopServicesState, DesktopServicesStatus, NotificationSetting, NotificationSettingProbe,
 };
+use setup::{HelperPhase, Phase as SetupPhase, Progress, SetupController, SetupState};
 use state::{BackendStatus, DesktopState, Phase, RuntimeIdentity};
 use std::{
     sync::{
@@ -27,9 +29,12 @@ use std::{
 };
 use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
+#[cfg(not(windows))]
+use tokio::process::{Child, ChildStdin};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader},
     sync::{mpsc, Mutex},
     time::{timeout, Instant},
 };
@@ -42,6 +47,11 @@ const NATIVE_ORIGIN: &str = "http://tauri.localhost";
 const STARTUP_LIMIT: Duration = Duration::from_secs(180);
 const MAX_HTTP_BYTES: usize = 64 * 1024;
 const EXIT_FRAME_GRACE: Duration = Duration::from_millis(250);
+const SETUP_STATUS_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
+const SETUP_MUTATION_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+const SETUP_TOTAL_TIMEOUT: Duration = Duration::from_secs(86_400);
+const SETUP_MAX_FRAMES: usize = 100_000;
+const HELPER_STDERR_LIMIT: usize = 64 * 1024;
 
 enum StartupReceive {
     Frame(Result<protocol::Envelope, &'static str>),
@@ -113,6 +123,24 @@ struct ChildSession {
     stdin: ChildInput,
     rx: mpsc::Receiver<Result<protocol::Envelope, &'static str>>,
 }
+
+#[cfg(windows)]
+type HelperChild = windows_job::OwnedChild;
+#[cfg(not(windows))]
+type HelperChild = Child;
+
+#[cfg(windows)]
+type HelperInput = ChildInput;
+#[cfg(not(windows))]
+type HelperInput = ChildStdin;
+
+#[derive(Clone)]
+struct SetupRequest {
+    operation: &'static str,
+    source_dir: Option<String>,
+    preview_id: Option<String>,
+}
+
 #[derive(Clone)]
 struct Supervisor {
     session: Arc<Mutex<Option<ChildSession>>>,
@@ -500,6 +528,218 @@ async fn desktop_backend_retry(
 }
 
 #[tauri::command]
+async fn desktop_setup_status(
+    window: tauri::WebviewWindow,
+    setup: State<'_, SetupState>,
+) -> Result<setup::DesktopSetupState, &'static str> {
+    validate_caller(&window)?;
+    Ok(setup.snapshot())
+}
+
+#[tauri::command]
+async fn desktop_import_pick_source(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    supervisor: State<'_, Supervisor>,
+    setup: State<'_, SetupState>,
+    controller: State<'_, SetupController>,
+) -> Result<Option<String>, &'static str> {
+    validate_caller(&window)?;
+    let _operation = supervisor.operation.lock().await;
+    if supervisor.quitting.load(Ordering::Acquire) {
+        return Err("setup_failed");
+    }
+    if !matches!(
+        setup.snapshot().phase,
+        SetupPhase::ChoiceRequired | SetupPhase::PreviewReady
+    ) {
+        return Err("setup_failed");
+    }
+    let cancellation = CancellationToken::new();
+    {
+        let mut active = supervisor.cancellation.lock().await;
+        if supervisor.quitting.load(Ordering::Acquire) {
+            return Err("setup_failed");
+        }
+        *active = Some(cancellation.clone());
+    }
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    app.dialog().file().pick_folder(move |selection| {
+        let _ = sender.send(selection);
+    });
+    let picked = tokio::select! {
+        biased;
+        _ = cancellation.cancelled() => None,
+        result = receiver => result.ok(),
+    };
+    *supervisor.cancellation.lock().await = None;
+    if cancellation.is_cancelled() || supervisor.quitting.load(Ordering::Acquire) {
+        return Err("setup_failed");
+    }
+    let source = picked.flatten().and_then(|picked| picked.into_path().ok());
+    let Some(source) = source else {
+        controller.select_source(None);
+        setup.transition(&app, SetupPhase::ChoiceRequired, None, None, None);
+        return Ok(None);
+    };
+    let canonical = tokio::task::spawn_blocking(move || std::fs::canonicalize(source))
+        .await
+        .map_err(|_| "invalid_source")?
+        .map_err(|_| "invalid_source")?;
+    if !canonical.is_dir() || canonical.to_str().is_none() {
+        controller.select_source(None);
+        setup.transition(
+            &app,
+            SetupPhase::ChoiceRequired,
+            None,
+            None,
+            Some("invalid_source"),
+        );
+        return Err("invalid_source");
+    }
+    controller.select_source(Some(canonical.clone()));
+    setup.transition(&app, SetupPhase::ChoiceRequired, None, None, None);
+    Ok(Some(canonical.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+async fn desktop_import_preview(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    source_dir: String,
+    supervisor: State<'_, Supervisor>,
+    setup: State<'_, SetupState>,
+    controller: State<'_, SetupController>,
+) -> Result<setup::DesktopSetupState, &'static str> {
+    validate_caller(&window)?;
+    if source_dir.len() > 32 * 1024 {
+        return Err("invalid_source");
+    }
+    let canonical = tokio::task::spawn_blocking(move || std::fs::canonicalize(source_dir))
+        .await
+        .map_err(|_| "invalid_source")?
+        .map_err(|_| "invalid_source")?;
+    if !canonical.is_dir() || canonical.to_str().is_none() {
+        return Err("invalid_source");
+    }
+    if controller.source().as_deref() != Some(canonical.as_path()) {
+        return Err("invalid_source");
+    }
+    perform_setup_command(
+        app,
+        supervisor.inner().clone(),
+        setup.inner().clone(),
+        controller.inner().clone(),
+        SetupRequest {
+            operation: "preview",
+            source_dir: canonical.to_str().map(str::to_owned),
+            preview_id: None,
+        },
+    )
+    .await
+}
+
+#[tauri::command]
+async fn desktop_import_commit(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    preview_id: String,
+    supervisor: State<'_, Supervisor>,
+    setup: State<'_, SetupState>,
+    controller: State<'_, SetupController>,
+) -> Result<setup::DesktopSetupState, &'static str> {
+    validate_caller(&window)?;
+    if preview_id.is_empty() || preview_id.len() > 256 {
+        return Err("stale_preview");
+    }
+    let current = setup.snapshot();
+    let source = controller.source();
+    if !setup::preview_can_commit(&current, source.as_deref(), &preview_id)
+        || source
+            .as_ref()
+            .is_some_and(|source| source.to_str().is_none())
+    {
+        return Err("stale_preview");
+    }
+    let state = perform_setup_command(
+        app.clone(),
+        supervisor.inner().clone(),
+        setup.inner().clone(),
+        controller.inner().clone(),
+        SetupRequest {
+            operation: "import",
+            source_dir: None,
+            preview_id: Some(preview_id),
+        },
+    )
+    .await?;
+    if state.phase == SetupPhase::Ready {
+        let backend = app.state::<DesktopState>().inner().clone();
+        let supervisor = app.state::<Supervisor>().inner().clone();
+        let _ = run_start(app, backend, supervisor).await;
+    }
+    Ok(state)
+}
+
+#[tauri::command]
+async fn desktop_fresh_start(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    supervisor: State<'_, Supervisor>,
+    setup: State<'_, SetupState>,
+    controller: State<'_, SetupController>,
+) -> Result<setup::DesktopSetupState, &'static str> {
+    validate_caller(&window)?;
+    let state = perform_setup_command(
+        app.clone(),
+        supervisor.inner().clone(),
+        setup.inner().clone(),
+        controller.inner().clone(),
+        SetupRequest {
+            operation: "fresh_start",
+            source_dir: None,
+            preview_id: None,
+        },
+    )
+    .await?;
+    if state.phase == SetupPhase::Ready {
+        let backend = app.state::<DesktopState>().inner().clone();
+        let supervisor = app.state::<Supervisor>().inner().clone();
+        let _ = run_start(app, backend, supervisor).await;
+    }
+    Ok(state)
+}
+
+#[tauri::command]
+async fn desktop_import_recover(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    supervisor: State<'_, Supervisor>,
+    setup: State<'_, SetupState>,
+    controller: State<'_, SetupController>,
+) -> Result<setup::DesktopSetupState, &'static str> {
+    validate_caller(&window)?;
+    let state = perform_setup_command(
+        app.clone(),
+        supervisor.inner().clone(),
+        setup.inner().clone(),
+        controller.inner().clone(),
+        SetupRequest {
+            operation: "recover",
+            source_dir: None,
+            preview_id: None,
+        },
+    )
+    .await?;
+    if state.phase == SetupPhase::Ready {
+        let backend = app.state::<DesktopState>().inner().clone();
+        let supervisor = app.state::<Supervisor>().inner().clone();
+        let _ = run_start(app, backend, supervisor).await;
+    }
+    Ok(state)
+}
+
+#[tauri::command]
 async fn desktop_quit(
     window: tauri::WebviewWindow,
     app: tauri::AppHandle,
@@ -518,6 +758,376 @@ async fn quit_app(app: tauri::AppHandle, status: DesktopState, supervisor: Super
     cancel_start(&supervisor).await;
     run_shutdown(app.clone(), status, supervisor).await;
     app.exit(0);
+}
+
+async fn perform_setup_command(
+    app: tauri::AppHandle,
+    supervisor: Supervisor,
+    setup_state: SetupState,
+    controller: SetupController,
+    mut request: SetupRequest,
+) -> Result<setup::DesktopSetupState, &'static str> {
+    let _operation = supervisor.operation.lock().await;
+    if supervisor.quitting.load(Ordering::Acquire) {
+        return Err("setup_failed");
+    }
+    let current_setup = setup_state.snapshot();
+    match request.operation {
+        "preview" | "fresh_start" if current_setup.phase != SetupPhase::ChoiceRequired => {
+            return Err("setup_failed");
+        }
+        "recover" if current_setup.phase != SetupPhase::RecoveryRequired => {
+            return Err("setup_failed");
+        }
+        _ => {}
+    }
+    if request.operation == "import" {
+        let source = controller.source();
+        if !setup::preview_can_commit(
+            &current_setup,
+            source.as_deref(),
+            request.preview_id.as_deref().unwrap_or_default(),
+        ) {
+            return Err("stale_preview");
+        }
+        request.source_dir = source.and_then(|path| path.to_str().map(str::to_owned));
+        if request.source_dir.is_none() {
+            return Err("stale_preview");
+        }
+    }
+    if request.operation == "preview" {
+        let source = request
+            .source_dir
+            .as_deref()
+            .map(std::path::PathBuf::from)
+            .ok_or("invalid_source")?;
+        if !source.is_absolute() {
+            return Err("invalid_source");
+        }
+        if controller.source().as_deref() != Some(source.as_path()) {
+            return Err("invalid_source");
+        }
+    }
+    let cancellation = CancellationToken::new();
+    {
+        let mut active = supervisor.cancellation.lock().await;
+        if supervisor.quitting.load(Ordering::Acquire) {
+            return Err("setup_failed");
+        }
+        *active = Some(cancellation.clone());
+    }
+    let initial_phase = if request.operation == "import" {
+        SetupPhase::Importing
+    } else {
+        SetupPhase::Checking
+    };
+    let prior_preview = setup_state.snapshot().preview;
+    let initial_preview = if request.operation == "status" || request.operation == "import" {
+        prior_preview.clone()
+    } else {
+        None
+    };
+    setup_state.transition(&app, initial_phase, initial_preview, None, None);
+    let result = invoke_setup_helper(&app, &setup_state, &request, &cancellation).await;
+    *supervisor.cancellation.lock().await = None;
+    if cancellation.is_cancelled() || supervisor.quitting.load(Ordering::Acquire) {
+        return Err("setup_failed");
+    }
+    match result {
+        Ok(payload) if request.operation == "preview" => {
+            let preview = setup::parse_preview(payload)?;
+            Ok(setup_state.transition(&app, SetupPhase::PreviewReady, Some(preview), None, None))
+        }
+        Ok(payload) => {
+            let result = setup::parse_result(payload)?;
+            let (phase, error) = helper_state(&result);
+            let preview = if request.operation == "status" && phase == SetupPhase::ChoiceRequired {
+                prior_preview
+            } else {
+                None
+            };
+            let snapshot = setup_state.transition(&app, phase, preview, None, error);
+            if phase == SetupPhase::Ready {
+                controller.select_source(None);
+            }
+            Ok(snapshot)
+        }
+        Err(code) => {
+            let phase = if is_recovery_error(&code) {
+                SetupPhase::RecoveryRequired
+            } else {
+                SetupPhase::Failed
+            };
+            Ok(setup_state.transition(&app, phase, None, None, Some(&code)))
+        }
+    }
+}
+
+fn helper_state(result: &setup::SetupResult) -> (SetupPhase, Option<&'static str>) {
+    let phase = match result.phase {
+        HelperPhase::ChoiceRequired => SetupPhase::ChoiceRequired,
+        HelperPhase::Ready => SetupPhase::Ready,
+        HelperPhase::RecoveryRequired => SetupPhase::RecoveryRequired,
+    };
+    let error = result.error_code.as_deref().map(setup::safe_error_code);
+    (phase, error)
+}
+
+fn is_recovery_error(code: &str) -> bool {
+    matches!(
+        code,
+        "recovery_required"
+            | "import_recovery_required"
+            | "import_journal_invalid"
+            | "import_recovery_unproven"
+            | "setup_marker_invalid"
+    )
+}
+
+async fn invoke_setup_helper(
+    app: &tauri::AppHandle,
+    state: &SetupState,
+    request: &SetupRequest,
+    cancellation: &CancellationToken,
+) -> Result<Value, String> {
+    let (bundle, executable, reserve) = backend_bundle(app).await.map_err(str::to_owned)?;
+    let request_id = Uuid::new_v4().to_string();
+    let mut body = serde_json::Map::new();
+    body.insert("version".into(), json!(1));
+    body.insert("request_id".into(), json!(request_id));
+    body.insert("operation".into(), json!(request.operation));
+    if let Some(source_dir) = &request.source_dir {
+        body.insert("source_dir".into(), json!(source_dir));
+    }
+    if let Some(preview_id) = &request.preview_id {
+        body.insert("preview_id".into(), json!(preview_id));
+    }
+    let mut input =
+        serde_json::to_vec(&Value::Object(body)).map_err(|_| "setup_failed".to_owned())?;
+    input.push(b'\n');
+    if input.len() > setup::MAX_FRAME_BYTES {
+        return Err("invalid_source".to_owned());
+    }
+
+    #[cfg(windows)]
+    let (mut child, mut stdin, stdout, stderr) =
+        windows_job::spawn_setup(&executable, &bundle, reserve)
+            .map_err(|_| "helper_unavailable".to_owned())?;
+    #[cfg(not(windows))]
+    let (mut child, mut stdin, stdout, stderr) = {
+        let mut command = tokio::process::Command::new(&executable);
+        command
+            .arg("setup")
+            .current_dir(&bundle)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
+        let mut child = command
+            .spawn()
+            .map_err(|_| "helper_unavailable".to_owned())?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| "helper_unavailable".to_owned())?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "helper_unavailable".to_owned())?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| "helper_unavailable".to_owned())?;
+        (child, stdin, stdout, stderr)
+    };
+    tauri::async_runtime::spawn(async move {
+        let mut reader = stderr;
+        let mut bytes = [0u8; 4096];
+        let mut retained = 0usize;
+        loop {
+            match reader.read(&mut bytes).await {
+                Ok(0) | Err(_) => break,
+                Ok(count) => retained = retained.saturating_add(count).min(HELPER_STDERR_LIMIT),
+            }
+            let _ = retained;
+        }
+    });
+    let mut stdout = BufReader::new(stdout);
+    let progress_phase = if request.operation == "import" {
+        SetupPhase::Importing
+    } else {
+        SetupPhase::Checking
+    };
+    let operation = async {
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            write_helper_input(&mut stdin, &input),
+        )
+        .await
+        .map_err(|_| "helper_protocol_error".to_owned())?
+        .map_err(|_| "helper_protocol_error".to_owned())?;
+        drop(stdin);
+        let idle_timeout = if request.operation == "status" {
+            SETUP_STATUS_IDLE_TIMEOUT
+        } else {
+            SETUP_MUTATION_IDLE_TIMEOUT
+        };
+        let mut frame_count = 0usize;
+        loop {
+            let bytes = timeout(idle_timeout, read_bounded_frame(&mut stdout))
+                .await
+                .map_err(|_| "setup_failed".to_owned())?
+                .map_err(str::to_owned)?;
+            frame_count = frame_count.saturating_add(1);
+            if frame_count > SETUP_MAX_FRAMES {
+                return Err("helper_protocol_error".to_owned());
+            }
+            let frame = setup::parse_frame(&bytes, &request_id).map_err(str::to_owned)?;
+            match frame.kind.as_str() {
+                "progress" => {
+                    let progress: Progress = serde_json::from_value(frame.payload)
+                        .map_err(|_| "helper_protocol_error".to_owned())?;
+                    state.transition(
+                        app,
+                        progress_phase,
+                        state.snapshot().preview,
+                        Some(progress),
+                        None,
+                    );
+                }
+                "error" => {
+                    let code = frame
+                        .payload
+                        .get("code")
+                        .and_then(Value::as_str)
+                        .unwrap_or("setup_failed");
+                    return Err(setup::safe_error_code(code).to_owned());
+                }
+                "result" => {
+                    let result = if request.operation == "preview" {
+                        setup::parse_preview(frame.payload.clone()).map(|_| frame.payload)
+                    } else {
+                        setup::parse_result(frame.payload.clone()).map(|_| frame.payload)
+                    }
+                    .map_err(str::to_owned)?;
+                    return Ok(result);
+                }
+                _ => return Err("helper_protocol_error".to_owned()),
+            }
+        }
+    };
+    let result = tokio::select! {
+        biased;
+        _ = cancellation.cancelled() => Err("setup_failed".to_owned()),
+        result = timeout(SETUP_TOTAL_TIMEOUT, operation) => result.unwrap_or(Err("setup_failed".to_owned())),
+    };
+    let _ = close_helper(&mut child, result.is_err()).await;
+    result
+}
+
+#[cfg(windows)]
+async fn write_helper_input(writer: &mut HelperInput, bytes: &[u8]) -> Result<(), std::io::Error> {
+    let HelperInput::Pipe(writer) = writer;
+    writer.write_all(bytes).await
+}
+
+#[cfg(not(windows))]
+async fn write_helper_input(writer: &mut HelperInput, bytes: &[u8]) -> Result<(), std::io::Error> {
+    writer.write_all(bytes).await
+}
+
+async fn read_bounded_frame<R: AsyncBufRead + Unpin>(
+    reader: &mut R,
+) -> Result<Vec<u8>, &'static str> {
+    let mut bytes = Vec::with_capacity(512);
+    loop {
+        let available = reader
+            .fill_buf()
+            .await
+            .map_err(|_| "helper_protocol_error")?;
+        if available.is_empty() {
+            return Err("helper_protocol_error");
+        }
+        let newline = available.iter().position(|byte| *byte == b'\n');
+        let count = newline.map_or(available.len(), |index| index + 1);
+        if bytes.len().saturating_add(count) > setup::MAX_FRAME_BYTES {
+            return Err("helper_protocol_error");
+        }
+        bytes.extend_from_slice(&available[..count]);
+        reader.consume(count);
+        if newline.is_some() {
+            return Ok(bytes);
+        }
+    }
+}
+
+async fn close_helper(child: &mut HelperChild, force: bool) -> Result<(), ()> {
+    if force {
+        return timeout(Duration::from_secs(5), child.kill())
+            .await
+            .map_err(|_| ())?
+            .map_err(|_| ());
+    }
+    #[cfg(windows)]
+    let waited = timeout(Duration::from_secs(5), child.wait()).await;
+    #[cfg(not(windows))]
+    let waited = timeout(Duration::from_secs(5), child.wait())
+        .await
+        .map_err(|_| ());
+    if waited.is_err() || matches!(waited, Ok(Err(_))) {
+        return timeout(Duration::from_secs(5), child.kill())
+            .await
+            .map_err(|_| ())?
+            .map_err(|_| ());
+    }
+    Ok(())
+}
+
+async fn backend_bundle(
+    app: &tauri::AppHandle,
+) -> Result<(std::path::PathBuf, std::path::PathBuf, usize), &'static str> {
+    let bundle = app
+        .path()
+        .resource_dir()
+        .map_err(|_| "helper_unavailable")?
+        .join("backend-bundle");
+    let executable = bundle.join("apex-backend.exe");
+    if !executable.is_file() {
+        return Err("helper_unavailable");
+    }
+    let manifest: Value = serde_json::from_slice(
+        &tokio::fs::read(bundle.join("bundle-manifest.json"))
+            .await
+            .map_err(|_| "helper_unavailable")?,
+    )
+    .map_err(|_| "helper_unavailable")?;
+    let expected = manifest
+        .get("build_id")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or("helper_unavailable")?;
+    let reserve = manifest
+        .get("files")
+        .and_then(Value::as_array)
+        .map(|files| {
+            files
+                .iter()
+                .filter_map(|file| file.get("path").and_then(Value::as_str))
+                .map(|path| path.encode_utf16().count().saturating_add(1))
+                .max()
+                .unwrap_or(0)
+        })
+        .ok_or("helper_unavailable")?;
+    let info: Value = serde_json::from_slice(
+        &tokio::fs::read(bundle.join("_internal").join("build-info.json"))
+            .await
+            .map_err(|_| "helper_unavailable")?,
+    )
+    .map_err(|_| "helper_unavailable")?;
+    if info.get("build_id").and_then(Value::as_str) != Some(expected) {
+        return Err("helper_unavailable");
+    }
+    Ok((bundle, executable, reserve))
 }
 
 fn validate_caller(window: &tauri::WebviewWindow) -> Result<(), &'static str> {
@@ -806,6 +1416,50 @@ async fn run_start(
     ) {
         *supervisor.cancellation.lock().await = None;
         return current;
+    }
+    let setup_state = app.state::<SetupState>().inner().clone();
+    setup_state.transition(&app, SetupPhase::Checking, None, None, None);
+    let setup_result = invoke_setup_helper(
+        &app,
+        &setup_state,
+        &SetupRequest {
+            operation: "status",
+            source_dir: None,
+            preview_id: None,
+        },
+        &cancellation,
+    )
+    .await;
+    if cancellation.is_cancelled() || supervisor.quitting.load(Ordering::Acquire) {
+        *supervisor.cancellation.lock().await = None;
+        safe_event(&app, &state, current.generation, Phase::Stopped, None, None);
+        return state.snapshot();
+    }
+    let setup_ready = match setup_result {
+        Ok(payload) => match setup::parse_result(payload) {
+            Ok(result) => {
+                let (phase, error) = helper_state(&result);
+                setup_state.transition(&app, phase, None, None, error);
+                phase == SetupPhase::Ready
+            }
+            Err(code) => {
+                setup_state.transition(&app, SetupPhase::Failed, None, None, Some(code));
+                false
+            }
+        },
+        Err(code) => {
+            let phase = if is_recovery_error(&code) {
+                SetupPhase::RecoveryRequired
+            } else {
+                SetupPhase::Failed
+            };
+            setup_state.transition(&app, phase, None, None, Some(&code));
+            false
+        }
+    };
+    if !setup_ready {
+        *supervisor.cancellation.lock().await = None;
+        return state.snapshot();
     }
     let generation = current.generation.saturating_add(1);
     app.state::<location::LocationState>().reset(generation);
@@ -1703,6 +2357,8 @@ fn main() {
     tauri::Builder::default()
         .manage(status.clone())
         .manage(supervisor.clone())
+        .manage(SetupState::default())
+        .manage(SetupController::default())
         .manage(location::LocationState::default())
         .manage(location::LocationObserver)
         .manage(LocationSequence::default())
@@ -1711,6 +2367,7 @@ fn main() {
             show_main(app);
         }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(
             tauri_plugin_window_state::Builder::default()
@@ -1798,6 +2455,12 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            desktop_setup_status,
+            desktop_import_pick_source,
+            desktop_import_preview,
+            desktop_import_commit,
+            desktop_fresh_start,
+            desktop_import_recover,
             desktop_backend_status,
             desktop_backend_retry,
             desktop_quit,

@@ -415,6 +415,15 @@ pub fn spawn(
     spawn_command(exe, bundle, &command, resource_path_reserve)
 }
 
+pub fn spawn_setup(
+    exe: &Path,
+    bundle: &Path,
+    resource_path_reserve: usize,
+) -> Result<(OwnedChild, ChildInput, File, File), ()> {
+    let command = format!("\"{}\" setup", exe.display());
+    spawn_command(exe, bundle, &command, resource_path_reserve)
+}
+
 fn spawn_command(
     exe: &Path,
     bundle: &Path,
