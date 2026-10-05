@@ -187,6 +187,73 @@ def _click_switch(driver: WebDriver, label: str, timeout: float) -> None:
     driver.click(element)
 
 
+def _permission_check_feedback(driver: WebDriver) -> dict[str, object]:
+    result = driver._command(
+        "POST",
+        "/execute/sync",
+        {
+            "script": (
+                "const row = [...document.querySelectorAll('div')].find((element) => "
+                "element.children.length === 2 && element.children[0].tagName === 'SPAN' && "
+                "element.children[0].textContent.trim() === 'Latest Windows check result');"
+                "const rowValue = row ? row.children[1].textContent.trim() : null;"
+                "const knownErrors = new Set(["
+                "'Bring the APEX window to the foreground before checking location permission.',"
+                "'The saved location preference has not reached the desktop service yet. Try again shortly.',"
+                "'The location permission check became stale. Try again.',"
+                "'The backend is unavailable. Try again when it is ready.',"
+                "'Windows could not check location permission. Try again.'"
+                "]);"
+                "const knownMessages = new Set(["
+                "'Windows permission status updated.',"
+                "'Windows returned a result; the device status is still updating.'"
+                "]);"
+                "const text = (element) => element.textContent.trim();"
+                "const alerts = [...document.querySelectorAll('[role=alert]')].map(text);"
+                "const messages = [...document.querySelectorAll('[role=status]')].map(text);"
+                "return {rowValue, error: alerts.find((value) => knownErrors.has(value)) || null, "
+                "unknownAlert: alerts.some((value) => !knownErrors.has(value)), "
+                "message: messages.find((value) => knownMessages.has(value)) || null};"
+            ),
+            "args": [],
+        },
+    )
+    if not isinstance(result, dict):
+        return {"feedback": "unavailable"}
+
+    latest_result: dict[str, str] | None = None
+    row_value = result.get("rowValue")
+    if isinstance(row_value, str):
+        pieces = row_value.split(" · ")
+        if (
+            len(pieces) == 2
+            and pieces[0] in PERMISSIONS
+            and pieces[1] in AVAILABILITIES
+        ):
+            latest_result = {"permission": pieces[0], "availability": pieces[1]}
+
+    error_catalog = {
+        "Bring the APEX window to the foreground before checking location permission.": "foreground_required",
+        "The saved location preference has not reached the desktop service yet. Try again shortly.": "preferences_unavailable",
+        "The location permission check became stale. Try again.": "stale_request",
+        "The backend is unavailable. Try again when it is ready.": "backend_unavailable",
+        "Windows could not check location permission. Try again.": "native_command_failed_generic",
+    }
+    message_catalog = {
+        "Windows permission status updated.": "status_updated",
+        "Windows returned a result; the device status is still updating.": "status_updating",
+    }
+    error = result.get("error")
+    message = result.get("message")
+    return {
+        "feedback": "command_rejected" if isinstance(error, str) else "native_result_rendered" if latest_result else "no_result_rendered",
+        "latest_result": latest_result,
+        "error_code": error_catalog.get(error) if isinstance(error, str) else None,
+        "unknown_alert_present": result.get("unknownAlert") is True,
+        "message": message_catalog.get(message) if isinstance(message, str) else None,
+    }
+
+
 def _open_desktop_settings(driver: WebDriver, timeout: float) -> None:
     if not _click_button(driver, "Open settings", timeout):
         raise SmokeFailure("could not open Settings from the APEX window")
@@ -539,6 +606,28 @@ def _run_smoke(
             if observed.get("permission") != "unknown" or observed.get("availability") != "unknown":
                 break
             time.sleep(POLL_INTERVAL_SECONDS)
+        action_feedback = _permission_check_feedback(driver)
+        report.observations["permission_check_ui"] = action_feedback
+        if action_feedback.get("feedback") == "command_rejected":
+            report.add(
+                "permission_action_feedback",
+                "failed",
+                f"Desktop Settings reported {action_feedback.get('error_code') or 'a location-check error'}",
+            )
+        elif action_feedback.get("feedback") == "native_result_rendered":
+            latest_result = action_feedback.get("latest_result")
+            if isinstance(latest_result, dict):
+                report.add(
+                    "permission_action_feedback",
+                    "passed",
+                    f"the native action returned permission={latest_result['permission']}, availability={latest_result['availability']}",
+                )
+        else:
+            report.add(
+                "permission_action_feedback",
+                "unverified",
+                "Desktop Settings showed no recognized native result or location-check error",
+            )
         permission = observed.get("permission")
         availability = observed.get("availability")
         report.observations["native_permission"] = permission
