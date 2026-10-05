@@ -66,6 +66,8 @@ MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 PERMISSIONS = {"unknown", "granted", "denied", "revoked", "unsupported"}
 AVAILABILITIES = {"unknown", "available", "unavailable", "timed_out", "unsupported"}
 LOCATION_TOGGLE = "Use device location for Weather"
+FOREGROUND_VERIFY_SECONDS = 0.75
+FOREGROUND_POLL_SECONDS = 0.05
 
 
 class SmokeReport:
@@ -212,12 +214,74 @@ def _foreground_owned_window(hwnd: int) -> None:
     user32 = ctypes.WinDLL("user32", use_last_error=True)
     user32.IsWindow.argtypes = [wintypes.HWND]
     user32.IsWindow.restype = wintypes.BOOL
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.IsWindowVisible.restype = wintypes.BOOL
+    user32.IsIconic.argtypes = [wintypes.HWND]
+    user32.IsIconic.restype = wintypes.BOOL
+    user32.GetForegroundWindow.argtypes = []
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.ShowWindow.restype = wintypes.BOOL
     user32.SetForegroundWindow.argtypes = [wintypes.HWND]
     user32.SetForegroundWindow.restype = wintypes.BOOL
     if not user32.IsWindow(hwnd):
         raise SmokeFailure("the smoke-owned APEX window no longer exists")
-    if not user32.SetForegroundWindow(hwnd):
-        raise SmokeFailure("Windows did not foreground the smoke-owned APEX window")
+
+    def is_foreground() -> bool:
+        return bool(
+            user32.IsWindow(hwnd)
+            and user32.IsWindowVisible(hwnd)
+            and not user32.IsIconic(hwnd)
+            and user32.GetForegroundWindow() == hwnd
+        )
+
+    def wait_until_foreground() -> bool:
+        deadline = time.monotonic() + FOREGROUND_VERIFY_SECONDS
+        while time.monotonic() < deadline:
+            if is_foreground():
+                return True
+            time.sleep(FOREGROUND_POLL_SECONDS)
+        return is_foreground()
+
+    # SW_RESTORE also raises a minimized window. Its Boolean reports the prior
+    # visibility state, so verify the resulting state through the window APIs.
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    if not user32.IsWindow(hwnd):
+        raise SmokeFailure("the smoke-owned APEX window no longer exists")
+    user32.SetForegroundWindow(hwnd)
+    if wait_until_foreground():
+        return
+
+    # Windows can deny SetForegroundWindow while still allowing the ordinary
+    # UI Automation focus request for this exact, already-verified window.
+    focus_script = (
+        "& { param([Int64]$windowHandle) "
+        "$ErrorActionPreference = 'Stop'; "
+        "Add-Type -AssemblyName UIAutomationClient; "
+        "$hwnd = [IntPtr]::new($windowHandle); "
+        "$element = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd); "
+        "if ($null -eq $element) { throw 'UI Automation could not resolve the APEX window' }; "
+        "$element.SetFocus() "
+        f"}} {int(hwnd)}"
+    )
+    try:
+        subprocess.run(
+            ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", focus_script],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=3.0,
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    if wait_until_foreground():
+        return
+    raise SmokeFailure(
+        "Windows did not activate the smoke-owned APEX window; activate that window manually and rerun the smoke"
+    )
 
 
 def _focus_owned_window(driver_process: subprocess.Popen[bytes], application: Path) -> None:
