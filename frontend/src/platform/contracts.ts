@@ -45,6 +45,34 @@ export type DesktopLocationCheck = {
   availability: 'unknown' | 'available' | 'unavailable' | 'timed_out' | 'unsupported'
 }
 
+export type ImportDisposition = 'copy' | 'missing' | 'retain_external' | 'reuse'
+
+export type ImportItem = {
+  path: string
+  category: string
+  disposition: ImportDisposition
+  file_count: number
+  total_bytes: number
+}
+
+export type ImportPreview = {
+  preview_id: string
+  can_import: boolean
+  items: ImportItem[]
+  warnings: string[]
+  blockers: string[]
+}
+
+export type DesktopSetupPhase = 'checking' | 'choice_required' | 'preview_ready' | 'importing' | 'ready' | 'recovery_required' | 'failed'
+
+export type DesktopSetupState = {
+  revision: number
+  phase: DesktopSetupPhase
+  preview: ImportPreview | null
+  progress: { stage: string; completed_bytes: number; total_bytes: number } | null
+  error_code: string | null
+}
+
 export type DesktopPlatform = {
   getBackendStatus(): Promise<DesktopBackendState>
   retryBackend(): Promise<DesktopBackendState>
@@ -57,4 +85,11 @@ export type DesktopPlatform = {
   writeClipboardText(text: string): Promise<void>
   checkLocationPermission(): Promise<DesktopLocationCheck>
   subscribeDeviceState(onWakeup: () => void): Promise<() => void>
+  getSetupStatus(): Promise<DesktopSetupState>
+  pickImportSource(): Promise<string | null>
+  previewImport(sourceDir: string): Promise<DesktopSetupState>
+  importData(previewId: string): Promise<DesktopSetupState>
+  freshStart(): Promise<DesktopSetupState>
+  recoverImport(): Promise<DesktopSetupState>
+  subscribeSetupState(onWakeup: () => void): Promise<() => void>
 }
