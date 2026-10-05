@@ -145,6 +145,9 @@ def create_host_context(
     shutdown_timeout_seconds: int = SHUTDOWN_TIMEOUT_SECONDS,
 ) -> HostContext:
     """Acquire the profile lease before constructing runtime identity."""
+    from core.data_import.guard import refuse_pending_import
+
+    refuse_pending_import(paths.data_root)
     lease = ProfileLock(paths.data_root)
     lease.acquire()
     try:

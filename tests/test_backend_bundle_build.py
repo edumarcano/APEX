@@ -114,6 +114,18 @@ class BackendBundleBuildTests(unittest.TestCase):
             )
         )
 
+    def test_package_collection_keeps_lazy_domain_exports_in_frozen_builds(self) -> None:
+        hidden_imports = set(COLLECTION.bundle_hidden_imports())
+        self.assertTrue({
+            "core.conversations.service", "core.conversations.store",
+            "core.runs.coordinator", "core.runs.models", "core.runs.service", "core.runs.store",
+            "core.briefings.service", "core.briefings.store",
+            "core.knowledge.service", "core.knowledge.store",
+            "core.retrieval.models", "core.retrieval.service", "core.retrieval.store",
+            "core.actions.models", "core.actions.runtime", "core.actions.service", "core.actions.store",
+            "core.activity.models", "core.activity.service", "core.activity.store",
+        }.issubset(hidden_imports))
+
     def test_build_info_is_deterministic_and_contains_no_machine_path(self) -> None:
         toolchain = builder._load_toolchain()
         lock_digest = "a" * 64

@@ -166,9 +166,12 @@ _environment_initialized = False
 
 
 def initialize_environment() -> RuntimePaths:
-    """Load the selected profile's .env once, without dotenv discovery."""
+    """Refuse interrupted imports, then load the selected profile's .env."""
     global _environment_initialized
     paths = get_runtime_paths()
+    from core.data_import.guard import refuse_pending_import
+
+    refuse_pending_import(paths.data_root)
     if _environment_initialized:
         return paths
     with _initialization_lock:

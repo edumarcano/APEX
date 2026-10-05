@@ -13,6 +13,10 @@ from pathlib import Path
 
 from core.runtime_paths import initialize_environment
 
+# This must precede settings, authentication, and store imports: each can read
+# profile state during module initialization.
+initialize_environment()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from clients.microsoft_todo_client import MicrosoftTodoClient, set_microsoft_todo_client
@@ -68,15 +72,12 @@ from core.knowledge.reconciliation import (
     ContextReconciliationVerifier,
 )
 from core.retrieval import RetrievalService, RetrievalStore, set_retrieval_service
-from core.retrieval.store import RetrievalSchemaCompatibilityError
 from core.mcp import load_mcp_config, set_mcp_manager
 from core.mcp.manager import MCPClientManager
 from core.runtime_logging import configure_logging
 from core.reminders import ReminderService, set_reminder_service
 from core.settings.store import get_settings_store
 from core.tracing import get_tracing_service
-
-initialize_environment()
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -141,21 +142,14 @@ def _validate_persistence_before_startup(
         else:
             connection = sqlite3.connect(":memory:")
     try:
-        database.validate_schema(connection, include_actions=include_actions)
-        ConversationStore.validate_schema(connection)
-        RunStore.validate_schema(connection)
-        BriefingSessionStore.validate_schema(connection)
-        KnowledgeStore.validate_schema(connection)
-        ActivityStore.validate_schema(connection)
-        try:
-            RetrievalStore.validate_schema(connection)
-        except RetrievalSchemaCompatibilityError as exc:
+        from core.persistence_validation import validate_persistence
+
+        retrieval_supported = validate_persistence(connection, include_actions=include_actions)
+        if not retrieval_supported:
             _LOGGER.error(
-                "Unsupported retrieval persistence schema; retrieval is disabled for this run: %s",
-                exc,
+                "Unsupported retrieval persistence schema; retrieval is disabled for this run."
             )
-            return False
-        return True
+        return retrieval_supported
     finally:
         if owns_connection:
             connection.close()
