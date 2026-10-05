@@ -137,6 +137,14 @@ npm run dev
 
 Vite serves on its development port and calls the FastAPI process at `127.0.0.1:8000`.
 
+## First run in the Windows desktop app
+
+The desktop app asks whether to start fresh or copy an existing APEX data folder before opening the interface. Choose **Import** to preview a stopped source checkout or another supported data folder, review the managed files, and copy them into the desktop profile. If the source process used `APEX_DATA_DIR`, choose that actual data folder directly; the desktop app does not search a source `.env` to discover it. Import does not merge profiles and leaves the source unchanged. Close APEX in the source folder before importing so its SQLite database is not changing during the copy.
+
+Choose **Fresh Start** to initialize an empty desktop profile. This does not delete or reset a checkout, another profile, or files outside the selected desktop data folder. You can keep using the source checkout separately.
+
+The preview lists the managed files that will be copied. Some destinations remain where configured, including the encrypted Microsoft To Do token cache and external Context vault, report-folder, and model paths. The import flow reuses the existing same-user Microsoft encrypted storage where supported; it leaves those cache bytes in place. Correct any reported credential reference after setup. See [Configuration](configuration.md#desktop-first-run-and-import) for profile and path rules.
+
 ## Explore the workspaces
 
 APEX opens on Launch without collecting telemetry or running a briefing.

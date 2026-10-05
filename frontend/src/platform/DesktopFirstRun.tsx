@@ -41,7 +41,11 @@ export default function DesktopFirstRun({ setup, busy, actionError, onFreshStart
     <section className="w-full max-w-3xl rounded-2xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl sm:p-8" aria-labelledby="desktop-setup-title">
       <p className="font-mono text-xs uppercase tracking-[0.2em] text-amber-300">APEX Desktop</p>
       <h1 id="desktop-setup-title" className="mt-3 text-xl font-semibold text-white">{heading}</h1>
-      {checking ? <p className="mt-3 text-sm text-zinc-300" role="status" aria-live="polite">Checking whether this APEX data folder already has an established setup.</p> : null}
+      {checking ? <p className="mt-3 text-sm text-zinc-300" role="status" aria-live="polite">Checking the selected APEX data profile.</p> : null}
+      {checking && setup.progress ? <div className="mt-5" role="status" aria-live="polite">
+        <p className="text-sm text-zinc-300">{progressStageLabel(setup.progress.stage)}: {formatBytes(setup.progress.completed_bytes)} of {formatBytes(setup.progress.total_bytes)}</p>
+        {setup.progress.total_bytes > 0 ? <progress className="mt-3 h-2 w-full accent-emerald-400" max={setup.progress.total_bytes} value={Math.min(setup.progress.completed_bytes, setup.progress.total_bytes)} aria-label="Setup progress" /> : null}
+      </div> : null}
 
       {setup.phase === 'choice_required' && !preview ? <>
         <p className="mt-3 text-sm leading-relaxed text-zinc-300">Choose Fresh Start for an empty APEX profile, or import data from a stopped APEX checkout. A source checkout stores data in that checkout by default; if it used <code className="text-zinc-100">APEX_DATA_DIR</code>, choose that data folder. APEX will preview managed files before copying anything.</p>
@@ -79,7 +83,7 @@ export default function DesktopFirstRun({ setup, busy, actionError, onFreshStart
       </> : null}
 
       {importing ? <div className="mt-5" role="status" aria-live="polite">
-        <p className="text-sm text-zinc-300">{setup.progress ? `${setup.progress.stage}: ${formatBytes(setup.progress.completed_bytes)} of ${formatBytes(setup.progress.total_bytes)}` : 'Preparing the data import.'}</p>
+        <p className="text-sm text-zinc-300">{setup.progress ? `${progressStageLabel(setup.progress.stage)}: ${formatBytes(setup.progress.completed_bytes)} of ${formatBytes(setup.progress.total_bytes)}` : 'Preparing the data import.'}</p>
         {setup.progress && setup.progress.total_bytes > 0 ? <progress className="mt-3 h-2 w-full accent-emerald-400" max={setup.progress.total_bytes} value={Math.min(setup.progress.completed_bytes, setup.progress.total_bytes)} aria-label="Import progress" /> : null}
       </div> : null}
 
@@ -92,7 +96,6 @@ export default function DesktopFirstRun({ setup, busy, actionError, onFreshStart
         <p className="mt-3 text-sm text-red-200" role="alert">{setupErrorMessage(setup.error_code)}</p>
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="button" disabled={busy} onClick={onRecover} className={buttonClass}>Retry setup</button>
-          {!preview ? <button type="button" disabled={busy} onClick={onChooseImport} className={buttonClass}>Choose another source folder</button> : null}
         </div>
       </> : null}
       {actionError ? <p className="mt-3 text-sm text-red-200" role="alert">{actionError}</p> : null}
@@ -127,6 +130,16 @@ function formatBytes(value: number): string {
   return `${size < 10 ? size.toFixed(1) : Math.round(size)} ${units[index]}`
 }
 
+function progressStageLabel(stage: string): string {
+  if (stage === 'inventory') return 'Reviewing managed files'
+  if (stage === 'copying') return 'Copying files'
+  if (stage === 'database') return 'Checking database'
+  if (stage === 'database_preview') return 'Preparing database preview'
+  if (stage === 'validating') return 'Validating imported data'
+  if (stage === 'recovery_verify') return 'Verifying recovery'
+  return 'Working'
+}
+
 function setupErrorMessage(code: string | null): string {
   if (code === 'source_busy_or_unreadable') return 'APEX could not read the source folder. Stop APEX there and check that you can access the folder, then choose it again.'
   if (code === 'source_activity_uncertain') return 'APEX could not confirm that the source is stopped. Close all APEX processes before trying again.'
@@ -152,11 +165,12 @@ function warningMessage(code: string): string {
   if (code === 'microsoft_cache_path_needs_review') return 'Review Microsoft account and cache paths after import.'
   if (code === 'external_path_needs_review') return 'Some files are stored outside the managed data folder and will stay in their current location.'
   if (code === 'relative_credential_path_needs_review') return 'A credential refers to a relative file path that needs review.'
-  if (code === 'retrieval_schema_unsupported') return 'The retrieval cache uses an unsupported schema and will not be imported; canonical data remains available.'
+  if (code === 'retrieval_schema_unsupported') return 'The retrieval cache uses an unsupported schema. Its database bytes are kept, retrieval remains disabled, and canonical data remains available.'
   return 'APEX marked part of this source for review. Its contents will not be shown in this preview.'
 }
 
 function blockerMessage(code: string): string {
+  if (code === 'source_active' || code === 'source_activity_uncertain') return setupErrorMessage(code)
   if (code === 'source_database_missing') return 'The selected folder does not contain the APEX database.'
   if (code === 'source_database_incompatible') return 'The database’s core schema is not compatible with this APEX version.'
   if (code === 'destination_database_exists') return 'The destination already contains an APEX database; import cannot replace it.'

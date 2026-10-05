@@ -33,6 +33,13 @@ TH32CS_SNAPPROCESS = 0x00000002
 WM_CLOSE = 0x0010
 WAIT_OBJECT_0 = 0
 ESSENTIAL_CHECKS = {
+    "first_run_fresh_start",
+    "native_import_picker_cancel",
+    "native_import_preview",
+    "desktop_import_preservation_after_startup",
+    "desktop_import_quit_cleanup",
+    "desktop_import_repeat_launch",
+    "desktop_import_repeat_cleanup",
     "startup_conflict",
     "startup_retry",
     "managed_backend_identity",
@@ -1167,6 +1174,91 @@ def _click_button(driver: WebDriver, label: str, timeout: float) -> bool:
     return False
 
 
+def _send_dialog_keys(keys: list[tuple[int, int]]) -> None:
+    """Send key events to the already-focused native folder picker."""
+    class KeyboardInput(ctypes.Structure):
+        _fields_ = [
+            ("wVk", wintypes.WORD), ("wScan", wintypes.WORD),
+            ("dwFlags", wintypes.DWORD), ("time", wintypes.DWORD),
+            ("dwExtraInfo", ctypes.c_size_t),
+        ]
+
+    class InputUnion(ctypes.Union):
+        class MouseInput(ctypes.Structure):
+            _fields_ = [
+                ("dx", ctypes.c_long), ("dy", ctypes.c_long),
+                ("mouseData", wintypes.DWORD), ("dwFlags", wintypes.DWORD),
+                ("time", wintypes.DWORD), ("dwExtraInfo", ctypes.c_size_t),
+            ]
+
+        _fields_ = [("mi", MouseInput), ("ki", KeyboardInput)]
+
+    class Input(ctypes.Structure):
+        _fields_ = [("type", wintypes.DWORD), ("union", InputUnion)]
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.SendInput.argtypes = (wintypes.UINT, ctypes.POINTER(Input), ctypes.c_int)
+    user32.SendInput.restype = wintypes.UINT
+    expected_size = 40 if ctypes.sizeof(ctypes.c_void_p) == 8 else 28
+    if ctypes.sizeof(Input) != expected_size:
+        raise SmokeFailure("native keyboard input structure has an unexpected Windows ABI size")
+    events = (Input * len(keys))()
+    for index, (key, flags) in enumerate(keys):
+        events[index].type = 1  # INPUT_KEYBOARD
+        if flags & 0x0004:  # KEYEVENTF_UNICODE uses wScan, with wVk set to zero.
+            events[index].union.ki = KeyboardInput(0, key, flags, 0, None)
+        else:
+            events[index].union.ki = KeyboardInput(key, 0, flags, 0, None)
+    sent = user32.SendInput(len(events), events, ctypes.sizeof(Input))
+    if sent != len(events):
+        raise SmokeFailure(f"could not control native folder picker (Windows error {ctypes.get_last_error()})")
+
+
+def _picker_is_owned_by(shell_pid: int) -> bool:
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    user32.GetAncestor.argtypes = (wintypes.HWND, wintypes.UINT)
+    user32.GetAncestor.restype = wintypes.HWND
+    user32.GetWindowThreadProcessId.argtypes = (wintypes.HWND, ctypes.POINTER(wintypes.DWORD))
+    user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+    user32.GetClassNameW.argtypes = (wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
+    user32.GetClassNameW.restype = ctypes.c_int
+    foreground = user32.GetForegroundWindow()
+    if not foreground:
+        return False
+    class_name = ctypes.create_unicode_buffer(256)
+    if not user32.GetClassNameW(foreground, class_name, len(class_name)) or class_name.value != "#32770":
+        return False
+    owner = user32.GetAncestor(foreground, 3) or foreground  # GA_ROOTOWNER
+    process_id = wintypes.DWORD()
+    user32.GetWindowThreadProcessId(owner, ctypes.byref(process_id))
+    return process_id.value == shell_pid
+
+
+def _wait_native_picker(shell_pid: int, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if _picker_is_owned_by(shell_pid):
+            return True
+        time.sleep(POLL_INTERVAL_SECONDS)
+    return False
+
+
+def _type_native_folder_path(path: Path, shell_pid: int, timeout: float) -> None:
+    if not _wait_native_picker(shell_pid, timeout):
+        raise SmokeFailure("native folder picker did not become the focused shell-owned window")
+    # Ctrl+L focuses the common dialog location field. Unicode SendInput keeps
+    # paths with spaces and non-ASCII characters intact without clipboard use.
+    key_down, key_up, unicode_flag = 0, 0x0002, 0x0004
+    sequence = [(0x11, key_down), (0x4C, key_down), (0x4C, key_up), (0x11, key_up)]
+    encoded = str(path.resolve()).encode("utf-16-le", errors="strict")
+    for offset in range(0, len(encoded), 2):
+        code_unit = int.from_bytes(encoded[offset:offset + 2], "little")
+        sequence.extend(((code_unit, unicode_flag), (code_unit, unicode_flag | key_up)))
+    sequence.extend(((0x0D, key_down), (0x0D, key_up), (0x0D, key_down), (0x0D, key_up)))
+    _send_dialog_keys(sequence)
+
+
 def _continue_once_if_preflight_advisory(
     driver: WebDriver, fixture: LlamaCppStreamFixture, timeout: float
 ) -> str:
@@ -1236,6 +1328,268 @@ def _retry_backend(driver: WebDriver, timeout: float) -> bool:
 
 def _wait_text(driver: WebDriver, text: str, timeout: float) -> bool:
     return driver.wait_for("visible text", lambda: text in driver.text(), timeout)
+
+
+def _run_desktop_import_smoke(
+    *, application: Path, tauri_driver: Path, native_driver: Path, timeout: float, report: Report,
+) -> None:
+    """Exercise Import through the native picker and reopen the imported profile."""
+    if not _api_port_available():
+        report.add("desktop_import_setup", "unverified", "127.0.0.1:8000 was not free after the main shell smoke")
+        return
+    helper = Path(__file__).resolve().with_name("data_import_rehearsal.py")
+    profile_root: Path | None = None
+    shell_handle: int | None = None
+    backend_handle: int | None = None
+    driver_process: subprocess.Popen[bytes] | None = None
+    driver: WebDriver | None = None
+    environment: dict[str, str] | None = None
+    shell_pid: int | None = None
+    root: Path | None = None
+    logs: list[tuple[str, Path]] = []
+    try:
+        with tempfile.TemporaryDirectory(prefix="apex-desktop-import-smoke-", delete=False) as temp_name:
+            root = Path(temp_name)
+        source = root / "source-profile"
+        result = subprocess.run(
+            [sys.executable, str(helper), "seed", str(source)],
+            cwd=Path(__file__).resolve().parents[1],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            timeout=min(60.0, timeout), check=False,
+            env={**os.environ, "PYTHON_DOTENV_DISABLED": "1"},
+        )
+        if result.returncode != 0:
+            raise SmokeFailure("production preservation fixture could not be prepared for desktop Import")
+        seed = json.loads(result.stdout.decode("utf-8"))
+        if not isinstance(seed, dict) or not isinstance(seed.get("source_fingerprint"), str):
+            raise SmokeFailure("production preservation fixture returned malformed seed evidence")
+        source_verify = subprocess.run(
+            [sys.executable, str(helper), "verify", str(source)],
+            cwd=Path(__file__).resolve().parents[1], stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=min(45.0, timeout), check=False,
+            env={**os.environ, "PYTHON_DOTENV_DISABLED": "1"},
+        )
+        if source_verify.returncode != 0:
+            raise SmokeFailure("production fixture could not be read before desktop Import")
+        baseline = json.loads(source_verify.stdout.decode("utf-8"))
+
+        profile_root = root / "profile"
+        environment = _sanitized_environment(root, demo=False)
+        control_port, native_port = _available_port(), _available_port()
+        while native_port == control_port:
+            native_port = _available_port()
+        log_path = root / "tauri-driver-import.log"
+        logs.append(("import_driver", log_path))
+        with log_path.open("wb") as log_file:
+            driver_process = subprocess.Popen(
+                [str(tauri_driver), "--port", str(control_port), "--native-port", str(native_port), "--native-driver", str(native_driver)],
+                stdin=subprocess.DEVNULL, stdout=log_file, stderr=subprocess.STDOUT,
+                env=environment, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        driver = WebDriver(control_port, min(20.0, timeout))
+        service_deadline = time.monotonic() + min(30.0, timeout)
+        while time.monotonic() < service_deadline:
+            if driver_process.poll() is not None:
+                raise SmokeFailure("import tauri-driver exited before accepting WebDriver commands")
+            try:
+                driver.request("GET", "/status")
+                break
+            except SmokeFailure:
+                time.sleep(POLL_INTERVAL_SECONDS)
+        else:
+            raise SmokeFailure("import tauri-driver did not become ready")
+        driver.start(application.resolve())
+        if not driver.wait_for("first-run Import choice", lambda: _clickable(driver, "Import from a checkout"), min(45.0, timeout)):
+            raise SmokeFailure("blank import profile did not show the native first-run choice")
+        shell_handle, shell_pid, _shell_hwnd = _native_window(driver_process.pid, application)
+
+        if not _click_button(driver, "Import from a checkout", min(8.0, timeout)) or not _wait_native_picker(shell_pid, min(15.0, timeout)):
+            raise SmokeFailure("Import did not open its native source-folder picker")
+        _send_dialog_keys([(0x1B, 0), (0x1B, 0x0002)])
+        if not driver.wait_for("canceled picker leaves setup choice", lambda: _clickable(driver, "Fresh Start") and _clickable(driver, "Import from a checkout"), min(10.0, timeout)):
+            raise SmokeFailure("canceling the native folder picker did not leave the setup choice available")
+        report.add("native_import_picker_cancel", "passed", "canceling the native picker left the blank profile unchanged")
+
+        if not _click_button(driver, "Import from a checkout", min(8.0, timeout)):
+            raise SmokeFailure("Import source picker could not be reopened after cancellation")
+        _type_native_folder_path(source, shell_pid, min(15.0, timeout))
+        progress_seen = driver.wait_for(
+            "native import preview progress",
+            lambda: any(label in driver.text() for label in ("Reviewing managed files", "Preparing database preview", "Validating imported data")),
+            min(20.0, timeout),
+        )
+        if not progress_seen:
+            raise SmokeFailure("native Import preview completed without visible progress for the managed fixture")
+        if not driver.wait_for("import preview ready", lambda: _clickable(driver, "Import these files") or "Import cannot continue" in driver.text(), min(90.0, timeout)):
+            raise SmokeFailure("the native picker source did not produce a visible import preview")
+        preview_text = driver.text()
+        if str(source.resolve()).casefold() in preview_text.casefold() or "apex_memory.db" not in preview_text or "Review imported data" not in preview_text:
+            raise SmokeFailure("WebView preview exposed the source path or omitted the managed database label")
+        if not _clickable(driver, "Import these files"):
+            raise SmokeFailure("production fixture import preview contained blockers")
+        # The product refreshes setup snapshots every 2.5 seconds while waiting
+        # for first-run setup. Keep the preview open through one refresh period.
+        refresh_period_deadline = time.monotonic() + 2.7
+        if not driver.wait_for(
+            "preview retained through setup refresh",
+            lambda: time.monotonic() >= refresh_period_deadline
+            and "apex_memory.db" in driver.text()
+            and _clickable(driver, "Import these files"),
+            3.5,
+        ):
+            raise SmokeFailure("import preview was not retained through the setup snapshot refresh period")
+        report.add(
+            "native_import_preview", "passed",
+            "native picker selected the disposable source; managed database preview remained available through setup snapshot refresh",
+        )
+        report.add(
+            "native_import_progress", "passed" if progress_seen else "unverified",
+            "checking-stage progress rendered in WebView" if progress_seen else "preview completed before WebDriver could sample the short-lived checking-stage progress",
+        )
+        if not _click_button(driver, "Import these files", min(8.0, timeout)):
+            raise SmokeFailure("WebView Import confirmation was unavailable")
+        if not driver.wait_for("import commit progress", lambda: "Importing APEX data" in driver.text() or "Copying files:" in driver.text(), min(20.0, timeout)):
+            # Small fixtures can complete before the next WebDriver poll. The
+            # subsequent ready identity is still required for a passing import.
+            pass
+        runtime = _runtime_identity(profile_root, min(180.0, timeout))
+        if runtime.get("hosting_mode") != "managed":
+            raise SmokeFailure("imported desktop profile did not start a managed backend")
+        verify = subprocess.run(
+            [sys.executable, str(helper), "verify", str(profile_root)],
+            cwd=Path(__file__).resolve().parents[1], stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=min(45.0, timeout), check=False,
+            env=environment,
+        )
+        if verify.returncode != 0:
+            raise SmokeFailure("imported-profile production reader verification failed after backend startup")
+        verified = json.loads(verify.stdout.decode("utf-8"))
+        if verified.get("action_status") != "outcome_unknown" or verified.get("action_effects") != baseline.get("action_effects") or verified.get("action_events") != baseline.get("action_events") or verified.get("action_effects") != 1:
+            raise SmokeFailure("normal backend startup changed the uncertain action or replayed its effect")
+        cache_path = root / "local-app-data" / "APEX" / "auth" / "microsoft_todo_token_cache.bin"
+        if hashlib.sha256(cache_path.read_bytes()).hexdigest() != seed.get("microsoft_cache_sha256"):
+            raise SmokeFailure("desktop Import changed the same-user encrypted Microsoft cache bytes")
+        source_fingerprint = subprocess.run(
+            [sys.executable, str(helper), "fingerprint", str(source)],
+            cwd=Path(__file__).resolve().parents[1], stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, check=False, env=environment,
+        )
+        if source_fingerprint.returncode != 0 or json.loads(source_fingerprint.stdout.decode("utf-8")).get("fingerprint") != seed.get("source_fingerprint"):
+            raise SmokeFailure("desktop Import changed source-profile managed bytes")
+        report.add("desktop_import_preservation_after_startup", "passed", "production readers, exact action state, encrypted cache bytes, and source fingerprint survived normal backend startup")
+
+        # Prove Quit owns the managed child, then relaunch the imported profile
+        # through the desktop app and re-read the uncertain action after startup.
+        backend_handle, _image = _process_image_path(int(runtime["pid"]))
+        try:
+            _invoke_tray_menu_item("Quit", min(10.0, timeout), expected_pid=shell_pid)
+        except SmokeFailure as exc:
+            raise SmokeFailure(f"actual tray Quit could not be verified for imported helper cleanup: {exc}") from None
+        if not _wait_process_handle(backend_handle, min(float(runtime.get("shutdown_timeout_seconds", 60)) + 20.0, timeout + 20.0)) or not _wait_process_handle(shell_handle, min(30.0, timeout)):
+            raise SmokeFailure("tray Quit did not stop both the imported backend child and desktop shell")
+        _close_handle(backend_handle)
+        backend_handle = None
+        _close_handle(shell_handle)
+        shell_handle = None
+        driver.close()
+        driver = None
+        if driver_process.poll() is None:
+            driver_process.terminate()
+            driver_process.wait(timeout=5)
+        driver_process = None
+        if not _wait_port_free(min(30.0, timeout)):
+            raise SmokeFailure("tray Quit did not release the imported backend API port")
+        report.add("desktop_import_quit_cleanup", "passed", "tray Quit stopped the imported helper and shell and released its API port")
+
+        # Normal second launch verifies existing imported profile admission.
+        control_port, native_port = _available_port(), _available_port()
+        while native_port == control_port:
+            native_port = _available_port()
+        restart_log = root / "tauri-driver-import-restart.log"
+        logs.append(("import_restart_driver", restart_log))
+        with restart_log.open("wb") as log_file:
+            driver_process = subprocess.Popen(
+                [str(tauri_driver), "--port", str(control_port), "--native-port", str(native_port), "--native-driver", str(native_driver)],
+                stdin=subprocess.DEVNULL, stdout=log_file, stderr=subprocess.STDOUT,
+                env=environment, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        driver = WebDriver(control_port, min(20.0, timeout))
+        driver.wait_for("restart driver", lambda: _driver_ready(driver, driver_process), min(30.0, timeout))
+        driver.start(application.resolve())
+        restarted_runtime = _runtime_identity(profile_root, min(90.0, timeout))
+        if restarted_runtime.get("hosting_mode") != "managed" or restarted_runtime.get("data_root_fingerprint") != runtime.get("data_root_fingerprint"):
+            raise SmokeFailure("repeat desktop launch did not reopen the imported data root")
+        verify = subprocess.run(
+            [sys.executable, str(helper), "verify", str(profile_root)],
+            cwd=Path(__file__).resolve().parents[1], stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=min(45.0, timeout), check=False, env=environment,
+        )
+        replay = json.loads(verify.stdout.decode("utf-8")) if verify.returncode == 0 else {}
+        if replay.get("action_status") != "outcome_unknown" or replay.get("action_events") != baseline.get("action_events") or replay.get("action_effects") != baseline.get("action_effects") or replay.get("action_effects") != 1:
+            raise SmokeFailure("backend restart replayed or changed the uncertain action effect")
+        report.add("desktop_import_repeat_launch", "passed", "existing imported profile reopened and uncertain action remained unchanged after normal backend startup")
+        shell_handle, shell_pid, _ = _native_window(driver_process.pid, application)
+        backend_handle, _ = _process_image_path(int(restarted_runtime["pid"]))
+        _invoke_tray_menu_item("Quit", min(10.0, timeout), expected_pid=shell_pid)
+        if not _wait_process_handle(backend_handle, 90.0) or not _wait_process_handle(shell_handle, 30.0):
+            raise SmokeFailure("repeat-launch tray Quit did not stop its managed child")
+        report.add("desktop_import_repeat_cleanup", "passed", "repeat-launch helper child exited through tray Quit")
+    except (SmokeFailure, OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
+        _capture_failure_diagnostics(report, stage="desktop_import", driver=driver, log_paths=logs)
+        report.add("desktop_import_setup", "failed", str(exc))
+    finally:
+        if shell_handle is not None and not _wait_process_handle(shell_handle, 0):
+            try:
+                if shell_pid is None:
+                    raise SmokeFailure("native shell PID was not captured")
+                _invoke_tray_menu_item("Quit", 3.0, expected_pid=shell_pid)
+            except SmokeFailure:
+                _terminate_process_handle(shell_handle, "exact smoke-owned desktop import shell")
+            _wait_process_handle(shell_handle, 5.0)
+        if backend_handle is not None and not _wait_process_handle(backend_handle, 0):
+            _wait_process_handle(backend_handle, 5.0)
+        for handle in (backend_handle, shell_handle):
+            if handle is not None:
+                _close_handle(handle)
+        if driver is not None:
+            driver.close()
+        if driver_process is not None and driver_process.poll() is None:
+            driver_process.terminate()
+            try:
+                driver_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                driver_process.kill()
+                driver_process.wait(timeout=5)
+        if profile_root is not None and profile_root.exists():
+            try:
+                remaining = _runtime_identity(profile_root, 2.0)
+            except SmokeFailure:
+                pass
+            else:
+                try:
+                    _terminate_verified_backend(int(remaining["pid"]), application, profile_root, remaining["instance_id"])
+                except (SmokeFailure, OSError, ValueError):
+                    pass
+        if root is not None and root.exists():
+            cleanup_errors = _cleanup_temp_root(root)
+            report.add("desktop_import_profile_cleanup", "passed" if not root.exists() else "unverified", "desktop Import fixture directory was removed" if not root.exists() else "desktop Import fixture directory remained after bounded cleanup")
+
+
+def _clickable(driver: WebDriver, label: str) -> bool:
+    try:
+        return driver.find("xpath", _button_xpath(label)) is not None
+    except SmokeFailure:
+        return False
+
+
+def _driver_ready(driver: WebDriver, process: subprocess.Popen[bytes]) -> bool:
+    if process.poll() is not None:
+        raise SmokeFailure("tauri-driver exited before accepting WebDriver commands")
+    try:
+        driver.request("GET", "/status")
+        return True
+    except SmokeFailure:
+        return False
 
 
 def _capture_cortex_stream_failure(
@@ -1369,6 +1723,26 @@ def _run_smoke(
                 held_api_port.close()
                 raise SmokeFailure("native WebView did not expose a document")
             report.add("native_webview_started", "passed")
+
+            # A brand-new desktop data root must wait for an explicit choice.
+            # Select Fresh Start here so the remainder of this established
+            # lifecycle smoke continues to exercise the normal backend path.
+            if not driver.wait_for(
+                "first-run setup choice",
+                lambda: driver.find("xpath", _button_xpath("Fresh Start")) is not None,
+                min(20.0, timeout),
+            ):
+                raise SmokeFailure("blank desktop profile did not show its first-run setup choice")
+            if not _click_button(driver, "Fresh Start", min(8.0, timeout)):
+                raise SmokeFailure("Fresh Start was unavailable for the blank disposable desktop profile")
+            if not driver.wait_for(
+                "first-run Fresh Start completion",
+                lambda: driver.find("xpath", _button_xpath("Retry backend")) is not None
+                or "port" in driver.text().lower(),
+                min(20.0, timeout),
+            ):
+                raise SmokeFailure("explicit Fresh Start did not continue to backend startup")
+            report.add("first_run_fresh_start", "passed", "blank profile proceeded only after the user selected Fresh Start")
 
             conflict_visible = driver.wait_for(
                 "port conflict state",
@@ -1932,6 +2306,11 @@ def _run_smoke(
             )
     else:
         report.add("disposable_profile_cleanup", "passed", "disposable smoke directory was removed")
+
+    _run_desktop_import_smoke(
+        application=application, tauri_driver=tauri_driver,
+        native_driver=native_driver, timeout=timeout, report=report,
+    )
 
     for name in ("close_to_tray", "single_instance_activation", "tray_show", "tray_quit"):
         if not any(check.name == name for check in report.checks):

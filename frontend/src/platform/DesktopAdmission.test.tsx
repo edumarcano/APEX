@@ -112,6 +112,22 @@ describe('desktop backend admission', () => {
     expect(screen.getByRole('button', { name: 'Import from a checkout' })).toBeInTheDocument()
   })
 
+  it('shows readable inventory progress while checking without opening backend admission', async () => {
+    platformMocks.getSetupStatus.mockResolvedValue(setupState('checking', {
+      revision: 2,
+      progress: { stage: 'inventory', completed_bytes: 1_000, total_bytes: 2_000 },
+    }))
+    platformMocks.getBackendStatus.mockResolvedValue(state('ready'))
+    vi.stubGlobal('fetch', vi.fn())
+
+    render(<DesktopAdmission />)
+    expect(await screen.findByText('Reviewing managed files: 1.0 kB of 2.0 kB')).toBeInTheDocument()
+    expect(screen.getByLabelText('Setup progress')).toHaveAttribute('value', '1000')
+    expect(screen.getByText('Checking the selected APEX data profile.')).toBeInTheDocument()
+    expect(platformMocks.getBackendStatus).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it('starts the existing runtime identity admission only after explicit Fresh Start', async () => {
     platformMocks.getSetupStatus.mockResolvedValueOnce(setupState('choice_required')).mockResolvedValue(setupState('ready', { revision: 2 }))
     platformMocks.freshStart.mockResolvedValue(setupState('ready', { revision: 2 }))
@@ -146,7 +162,7 @@ describe('desktop backend admission', () => {
       can_import: false,
       items: [{ path: 'data/apex.db', category: 'database', disposition: 'copy' as const, file_count: 1, total_bytes: 2_000 }],
       warnings: [],
-      blockers: ['destination_database_exists'],
+      blockers: ['destination_database_exists', 'source_active'],
     }
     platformMocks.getSetupStatus.mockResolvedValue(setupState('choice_required'))
     platformMocks.previewImport.mockResolvedValue(setupState('preview_ready', { revision: 2, preview }))
@@ -155,6 +171,7 @@ describe('desktop backend admission', () => {
     render(<DesktopAdmission />)
     fireEvent.click(await screen.findByRole('button', { name: 'Import from a checkout' }))
     expect(await screen.findByRole('region', { name: 'Import blockers' })).toHaveTextContent('destination already contains an APEX database')
+    expect(screen.getByRole('region', { name: 'Import blockers' })).toHaveTextContent('Stop the source APEX process before importing')
     expect(screen.queryByText('destination_database_exists')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Import these files' })).not.toBeInTheDocument()
     expect(platformMocks.importData).not.toHaveBeenCalled()
@@ -174,7 +191,7 @@ describe('desktop backend admission', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it('offers recovery and source reselection after a failed initial setup without opening the backend', async () => {
+  it('requires retry to recover a failed initial setup before source selection without opening the backend', async () => {
     platformMocks.getSetupStatus.mockResolvedValue(setupState('failed', { error_code: 'source_activity_uncertain' }))
     platformMocks.getBackendStatus.mockResolvedValue(state('ready'))
     vi.stubGlobal('fetch', vi.fn())
@@ -183,8 +200,15 @@ describe('desktop backend admission', () => {
     expect(await screen.findByRole('heading', { name: 'APEX setup needs attention' })).toBeInTheDocument()
     expect(screen.getByRole('alert')).toHaveTextContent('could not confirm that the source is stopped')
     expect(screen.getByRole('button', { name: 'Retry setup' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Choose another source folder' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Choose another source folder' })).not.toBeInTheDocument()
     expect(screen.queryByText('source_activity_uncertain')).not.toBeInTheDocument()
+    expect(platformMocks.getBackendStatus).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+
+    platformMocks.recoverImport.mockResolvedValue(setupState('choice_required'))
+    fireEvent.click(screen.getByRole('button', { name: 'Retry setup' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Import from a checkout' }))
+    await waitFor(() => expect(platformMocks.pickImportSource).toHaveBeenCalledTimes(1))
     expect(platformMocks.getBackendStatus).not.toHaveBeenCalled()
     expect(fetch).not.toHaveBeenCalled()
   })
@@ -210,7 +234,7 @@ describe('desktop backend admission', () => {
       preview_id: 'preview-token',
       can_import: true,
       items: [{ path: 'data/apex.db', category: 'database', disposition: 'copy' as const, file_count: 1, total_bytes: 2_000 }],
-      warnings: ['external_path_needs_review'],
+      warnings: ['external_path_needs_review', 'retrieval_schema_unsupported'],
       blockers: [],
     }
     platformMocks.getSetupStatus.mockResolvedValue(setupState('choice_required'))
@@ -218,7 +242,7 @@ describe('desktop backend admission', () => {
     platformMocks.importData.mockResolvedValue(setupState('importing', {
       revision: 3,
       preview,
-      progress: { stage: 'copy', completed_bytes: 1_000, total_bytes: 2_000 },
+      progress: { stage: 'copying', completed_bytes: 1_000, total_bytes: 2_000 },
     }))
     vi.stubGlobal('fetch', vi.fn())
 
@@ -227,13 +251,32 @@ describe('desktop backend admission', () => {
     expect(await screen.findByRole('heading', { name: 'Review imported data' })).toBeInTheDocument()
     expect(screen.getByText('data/apex.db')).toBeInTheDocument()
     expect(screen.getByText('Some files are stored outside the managed data folder and will stay in their current location.')).toBeInTheDocument()
+    expect(screen.getByText('The retrieval cache uses an unsupported schema. Its database bytes are kept, retrieval remains disabled, and canonical data remains available.')).toBeInTheDocument()
     expect(screen.queryByText('external_path_needs_review')).not.toBeInTheDocument()
     expect(platformMocks.importData).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: 'Import these files' }))
-    expect(await screen.findByText('copy: 1.0 kB of 2.0 kB')).toBeInTheDocument()
+    expect(await screen.findByText('Copying files: 1.0 kB of 2.0 kB')).toBeInTheDocument()
     expect(platformMocks.importData).toHaveBeenCalledExactlyOnceWith('preview-token')
     expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('uses a generic label for unknown import progress stages', async () => {
+    const preview = { preview_id: 'preview-token', can_import: true, items: [], warnings: [], blockers: [] }
+    platformMocks.getSetupStatus.mockResolvedValue(setupState('choice_required'))
+    platformMocks.previewImport.mockResolvedValue(setupState('preview_ready', { revision: 2, preview }))
+    platformMocks.importData.mockResolvedValue(setupState('importing', {
+      revision: 3,
+      preview,
+      progress: { stage: 'source-path-private-detail', completed_bytes: 0, total_bytes: 0 },
+    }))
+    vi.stubGlobal('fetch', vi.fn())
+
+    render(<DesktopAdmission />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Import from a checkout' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Import these files' }))
+    expect(await screen.findByText('Working: 0 B of 0 B')).toBeInTheDocument()
+    expect(screen.queryByText(/source-path-private-detail/)).not.toBeInTheDocument()
   })
 
   it('uses wakeups to refresh snapshots and ignores a late preview older than the current revision', async () => {

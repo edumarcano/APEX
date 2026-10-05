@@ -17,6 +17,8 @@ Credentials use separate storage:
 
 Keep credential files, tokens, databases, and local overrides out of source control. Files copied by backups or sync services are governed by those services, including copies of the database or exported notes.
 
+The Windows desktop Import flow copies a selected source profile into its private data folder and leaves the source unchanged. Its preview shows managed file categories and safe labels, not credential values or external absolute paths. Some files stay at external destinations, including the Context vault, report folder, and configured model locations; Microsoft To Do's encrypted token cache uses the existing same-user Windows storage. Later backup or sync copies follow those services' retention and access controls. See [Configuration](configuration.md#desktop-first-run-and-import) for import and recovery behavior.
+
 ## Device location
 
 Device location is off by default and requires a saved opt-in plus an explicit foreground Windows permission check in each native app session. Only actual Weather requests acquire a fix. Settings, status reads, preflight checks, tool catalogs, and background workers do not request permission. APEX does not subscribe to continuous position updates or store a location history.
