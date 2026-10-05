@@ -920,12 +920,12 @@ class ImportEngine:
                             or _sha256(destination) != row["sha256"]
                         ):
                             return {"phase": "recovery_required", "error_code": "import_recovery_unproven"}
-                    except OSError:
+                    except (OSError, ImportOperationError):
                         return {"phase": "recovery_required", "error_code": "import_recovery_unproven"}
                 marker = self.root / MARKER_NAME
                 try:
                     marker_data = json.loads(_read_guarded(marker).decode("utf-8"))
-                except (OSError, UnicodeError, json.JSONDecodeError):
+                except (OSError, ImportOperationError, UnicodeError, json.JSONDecodeError):
                     return {"phase": "recovery_required", "error_code": "import_recovery_unproven"}
                 if (
                     not isinstance(marker_data, dict)
@@ -1168,7 +1168,7 @@ class ImportEngine:
             _assert_no_reparse_ancestry(stage.parent)
             if _is_reparse(stage) or _is_reparse(stage / ".owner") or _read_guarded(stage / ".owner").decode("ascii") != operation_id:
                 return None
-        except OSError:
+        except (OSError, ImportOperationError, UnicodeError):
             return None
         return stage
 

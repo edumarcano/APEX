@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -436,6 +437,32 @@ class DataImportTests(unittest.TestCase):
         self.assertEqual(copied.read_text(encoding="utf-8"), "operator changed file")
         self.assertTrue((self.destination / ".apex-import-journal.json").exists())
 
+    def test_committed_recovery_verifies_final_outputs_when_stage_is_absent(self) -> None:
+        preview = self.engine.preview(str(self.source))
+        original_replace = self.engine._write_json_replace
+
+        def interrupt_after_commit(path: Path, value: object) -> None:
+            original_replace(path, value)
+            if isinstance(value, dict) and value.get("phase") == "committed":
+                raise RuntimeError("simulated crash after commit record")
+
+        with mock.patch.object(self.engine, "_write_json_replace", side_effect=interrupt_after_commit):
+            with self.assertRaises(RuntimeError):
+                self.engine.import_data(str(self.source), str(preview["preview_id"]))
+        journal = json.loads((self.destination / ".apex-import-journal.json").read_text())
+        stage = self.destination / journal["stage"]
+        self.assertTrue(stage.resolve().is_relative_to(self.destination.resolve()))
+        shutil.rmtree(stage)
+        before = {path.name: path.read_bytes() for path in self.destination.iterdir() if path.is_file()}
+
+        result = self.engine.recover()
+
+        self.assertEqual(result["phase"], "ready")
+        self.assertFalse((self.destination / ".apex-import-journal.json").exists())
+        for name in ("apex_memory.db", ".apex-setup.json"):
+            self.assertEqual((self.destination / name).read_bytes(), before[name])
+        self.assertEqual(self.engine.status()["phase"], "ready")
+
     def test_committed_recovery_keeps_changed_database_and_pending_journal(self) -> None:
         preview = self.engine.preview(str(self.source))
         original_replace = self.engine._write_json_replace
@@ -448,6 +475,10 @@ class DataImportTests(unittest.TestCase):
         with mock.patch.object(self.engine, "_write_json_replace", side_effect=interrupt_after_commit):
             with self.assertRaises(RuntimeError):
                 self.engine.import_data(str(self.source), str(preview["preview_id"]))
+        journal = json.loads((self.destination / ".apex-import-journal.json").read_text())
+        stage = self.destination / journal["stage"]
+        self.assertTrue(stage.resolve().is_relative_to(self.destination.resolve()))
+        shutil.rmtree(stage)
         destination_db = self.destination / "apex_memory.db"
         with closing(sqlite3.connect(destination_db)) as connection:
             connection.execute("CREATE TABLE operator_change (value TEXT)")
