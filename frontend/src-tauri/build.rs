@@ -1,6 +1,12 @@
 fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
+            "desktop_setup_status",
+            "desktop_import_pick_source",
+            "desktop_import_preview",
+            "desktop_import_commit",
+            "desktop_fresh_start",
+            "desktop_import_recover",
             "desktop_backend_status",
             "desktop_backend_retry",
             "desktop_quit",

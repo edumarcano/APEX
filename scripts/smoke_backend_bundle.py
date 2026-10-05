@@ -109,7 +109,7 @@ def _drain(stream: Any, tail: BoundedTail) -> None:
         return
 
 
-def _sanitized_environment(root: Path, profile: Path, *, dev: bool = False, demo: bool = False) -> dict[str, str]:
+def _sanitized_environment(root: Path, profile: Path, *, dev: bool = False, demo: bool = False, initialize_local_config: bool = True) -> dict[str, str]:
     env: dict[str, str] = {}
     for key in ("SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT"):
         if os.environ.get(key):
@@ -132,7 +132,7 @@ def _sanitized_environment(root: Path, profile: Path, *, dev: bool = False, demo
         Path(env[key]).mkdir(parents=True, exist_ok=True)
     profile.mkdir(parents=True, exist_ok=True)
     local_config = profile / "config.local.json"
-    if not local_config.exists():
+    if initialize_local_config and not local_config.exists():
         local_config.write_text(json.dumps({
             "ollama": {"enabled": False}, "llama_cpp": {"enabled": False},
         }), encoding="utf-8")
@@ -345,6 +345,368 @@ def _cli(exe: Path, argv: list[str], cwd: Path, env: dict[str, str], *, timeout_
     return stdout.text()
 
 
+def _setup_request(
+    exe: Path,
+    root: Path,
+    profile: Path,
+    operation: str,
+    *,
+    source: Path | None = None,
+    preview_id: str | None = None,
+    expected_error_code: str | None = None,
+    timeout_seconds: int = 180,
+    initialize_local_config: bool = False,
+) -> dict[str, Any]:
+    """Exercise the frozen, bounded first-run helper protocol in a child process."""
+    env = _sanitized_environment(
+        root, profile, initialize_local_config=initialize_local_config
+    )
+    request_id = str(uuid.uuid4())
+    request: dict[str, object] = {
+        "version": 1, "request_id": request_id, "operation": operation,
+    }
+    if source is not None:
+        request["source_dir"] = str(source.resolve())
+    if preview_id is not None:
+        request["preview_id"] = preview_id
+    process = subprocess.Popen(
+        [str(exe), "setup"], cwd=root, env=env, stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    stdout_tail = BoundedTail(4 * 1024 * 1024)
+    stderr_tail = BoundedTail(MAX_CAPTURE)
+    assert process.stdout is not None and process.stderr is not None and process.stdin is not None
+    drain_threads = [
+        threading.Thread(target=_drain, args=(process.stdout, stdout_tail), daemon=True),
+        threading.Thread(target=_drain, args=(process.stderr, stderr_tail), daemon=True),
+    ]
+    for thread in drain_threads:
+        thread.start()
+    try:
+        process.stdin.write(json.dumps(request, separators=(",", ":")).encode("utf-8") + b"\n")
+        process.stdin.close()
+        process.wait(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+        raise RuntimeError(f"frozen setup helper timed out during {operation}") from None
+    finally:
+        for thread in drain_threads:
+            thread.join(timeout=5)
+    stdout, stderr = stdout_tail.text().encode("utf-8"), stderr_tail.text()
+    if process.returncode not in {0, 1}:
+        raise RuntimeError(f"frozen setup helper failed during {operation} (exit={process.returncode}); {stderr[-MAX_CAPTURE:]}")
+    results: list[dict[str, Any]] = []
+    for line in stdout.splitlines():
+        if len(line) > 64 * 1024:
+            raise RuntimeError("frozen setup helper exceeded the protocol frame limit")
+        try:
+            envelope = json.loads(line)
+        except (UnicodeError, json.JSONDecodeError):
+            raise RuntimeError("frozen setup helper returned malformed protocol JSON") from None
+        if not isinstance(envelope, dict) or envelope.get("version") != 1 or envelope.get("request_id") != request_id:
+            raise RuntimeError("frozen setup helper returned a mismatched protocol envelope")
+        if envelope.get("type") == "progress":
+            payload = envelope.get("payload")
+            if not isinstance(payload, dict) or not isinstance(payload.get("stage"), str):
+                raise RuntimeError("frozen setup helper returned malformed progress")
+            continue
+        if envelope.get("type") not in {"result", "error"} or not isinstance(envelope.get("payload"), dict):
+            raise RuntimeError("frozen setup helper returned an invalid terminal envelope")
+        results.append(envelope)
+    if len(results) != 1:
+        code = results[0].get("payload", {}).get("code") if results else "missing_result"
+        raise RuntimeError(f"frozen setup helper operation {operation} did not succeed ({code})")
+    if results[0].get("type") == "error":
+        payload = results[0].get("payload", {})
+        code = payload.get("code") if isinstance(payload, dict) else None
+        if expected_error_code is not None and code == expected_error_code and process.returncode == 1:
+            return payload
+        raise RuntimeError(f"frozen setup helper operation {operation} returned an unexpected error ({code})")
+    if results[0].get("type") != "result":
+        raise RuntimeError(f"frozen setup helper operation {operation} returned an invalid terminal envelope")
+    if process.returncode != 0:
+        raise RuntimeError(f"frozen setup helper operation {operation} returned a result with exit={process.returncode}")
+    if expected_error_code is not None:
+        raise RuntimeError(f"frozen setup helper operation {operation} unexpectedly succeeded")
+    return results[0]["payload"]
+
+
+def _fixture_cli(probe: Path | None, helper: Path, command: str, profile: Path, root: Path) -> dict[str, Any]:
+    if probe is not None and probe.is_file():
+        argv = ["import-fixture", command, str(profile)]
+        executable = probe
+    else:
+        argv = [str(helper), command, str(profile)]
+        executable = Path(sys.executable)
+    result = json.loads(_cli(executable, argv, root, dict(os.environ), timeout_seconds=60))
+    if not isinstance(result, dict):
+        raise RuntimeError("production-data rehearsal fixture returned a non-object result")
+    return result
+
+
+def _run_interrupted_import_recovery(
+    exe: Path, root: Path, source: Path, destination: Path, *,
+    expected_source_fingerprint: str, expected_cache_sha256: str, helper: Path, probe: Path | None,
+) -> None:
+    """Terminate only the setup helper after a journaled production copy begins."""
+    env = _sanitized_environment(root, destination, initialize_local_config=False)
+    request_id = str(uuid.uuid4())
+    request = {
+        "version": 1, "request_id": request_id, "operation": "import",
+        "source_dir": str(source.resolve()),
+        # The preview identity is derived from the stable source inventory, so
+        # the separate helper process can validate the explicit preview result.
+    }
+    preview = _setup_request(exe, root, destination, "preview", source=source)
+    preview_id = preview.get("preview_id")
+    if not preview.get("can_import") or not isinstance(preview_id, str) or not preview_id:
+        raise RuntimeError("interrupt rehearsal source did not produce an importable frozen preview")
+    request["preview_id"] = preview_id
+    process = subprocess.Popen(
+        [str(exe), "setup"], cwd=root, env=env, stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0,
+    )
+    assert process.stdin is not None and process.stdout is not None and process.stderr is not None
+    frames: queue.Queue[bytes | BaseException | None] = queue.Queue(maxsize=64)
+    stderr_tail = BoundedTail(MAX_CAPTURE)
+
+    def read_frames() -> None:
+        try:
+            while True:
+                line = process.stdout.readline(64 * 1024 + 1)
+                if not line:
+                    frames.put(None)
+                    return
+                if len(line) > 64 * 1024:
+                    frames.put(RuntimeError("interrupted helper exceeded the setup protocol frame bound"))
+                    return
+                frames.put(line)
+        except BaseException as exc:
+            frames.put(exc)
+
+    readers = [
+        threading.Thread(target=read_frames, daemon=True),
+        threading.Thread(target=_drain, args=(process.stderr, stderr_tail), daemon=True),
+    ]
+    for thread in readers:
+        thread.start()
+    process.stdin.write(json.dumps(request, separators=(",", ":")).encode("utf-8") + b"\n")
+    process.stdin.close()
+    journal = destination / ".apex-import-journal.json"
+    marker = destination / "smoke-unrelated-destination-marker.txt"
+    interrupted = False
+    deadline = time.monotonic() + 180
+    try:
+        while time.monotonic() < deadline:
+            try:
+                line = frames.get(timeout=0.2)
+            except queue.Empty:
+                if process.poll() is not None:
+                    break
+                continue
+            if line is None:
+                break
+            if isinstance(line, BaseException):
+                raise RuntimeError(f"could not read interrupted helper progress: {type(line).__name__}")
+            try:
+                envelope = json.loads(line)
+            except (UnicodeError, json.JSONDecodeError):
+                raise RuntimeError("interrupted helper emitted malformed setup protocol JSON") from None
+            if not isinstance(envelope, dict) or envelope.get("version") != 1 or envelope.get("request_id") != request_id:
+                raise RuntimeError("interrupted helper emitted a mismatched setup protocol envelope")
+            payload = envelope.get("payload")
+            if envelope.get("type") == "progress" and isinstance(payload, dict) and payload.get("stage") == "copying" and journal.is_file():
+                if process.poll() is not None:
+                    break
+                marker.write_bytes(b"unrelated file created after import journaling\n")
+                if process.poll() is not None:
+                    marker.unlink()
+                    break
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+                interrupted = True
+                break
+            if envelope.get("type") in {"result", "error"}:
+                break
+        if not interrupted:
+            raise RuntimeError("frozen helper completed or timed out before journaled managed-file copying was observable")
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        for thread in readers:
+            thread.join(timeout=5)
+        for stream in (process.stdin, process.stdout, process.stderr):
+            if stream is not None and not stream.closed:
+                stream.close()
+
+    if not journal.is_file() or marker.read_bytes() != b"unrelated file created after import journaling\n":
+        raise RuntimeError("interrupted import did not leave its journal and unrelated destination marker for recovery")
+    status = _setup_request(exe, root, destination, "status")
+    if status.get("phase") != "recovery_required" or status.get("error_code") != "import_recovery_required":
+        raise RuntimeError("frozen helper did not block a profile with an interrupted import journal")
+    recovered = _setup_request(exe, root, destination, "recover")
+    if recovered.get("phase") != "choice_required" or recovered.get("error_code") is not None:
+        raise RuntimeError("frozen helper could not recover the interrupted destination to a known choice-required state")
+    if journal.exists() or marker.read_bytes() != b"unrelated file created after import journaling\n":
+        raise RuntimeError("recovery did not remove its journal or it removed/changed an unrelated destination file")
+    source_fingerprint = _fixture_cli(probe, helper, "fingerprint", source, root).get("fingerprint")
+    cache = root / "local-app-data" / "APEX" / "auth" / "microsoft_todo_token_cache.bin"
+    if source_fingerprint != expected_source_fingerprint or hashlib.sha256(cache.read_bytes()).hexdigest() != expected_cache_sha256:
+        raise RuntimeError("interrupted import or recovery changed source profile bytes or encrypted Microsoft cache bytes")
+    retry_preview = _setup_request(exe, root, destination, "preview", source=source)
+    retry_preview_id = retry_preview.get("preview_id")
+    if retry_preview.get("can_import") is not True or not isinstance(retry_preview_id, str):
+        raise RuntimeError("recovered destination could not produce a fresh import preview")
+    retry_result = _setup_request(
+        exe, root, destination, "import", source=source, preview_id=retry_preview_id,
+    )
+    if retry_result.get("phase") != "ready" or marker.read_bytes() != b"unrelated file created after import journaling\n":
+        raise RuntimeError("retry after recovery did not import the source or preserve the unrelated destination marker")
+    source_read = _fixture_cli(probe, helper, "verify", source, root)
+    recovered_read = _fixture_cli(probe, helper, "verify", destination, root)
+    if (
+        recovered_read.get("action_status") != "outcome_unknown"
+        or recovered_read.get("action_events") != source_read.get("action_events")
+        or recovered_read.get("action_effects") != source_read.get("action_effects")
+        or recovered_read.get("action_effects") != 1
+        or recovered_read.get("historical_news_readable") is not True
+        or recovered_read.get("speech_audio_readable") is not True
+    ):
+        raise RuntimeError("successful retry after recovery did not preserve production domain readers and action state")
+
+
+def _run_import_preservation_smoke(bundle: Path, root: Path, report: Report, *, probe: Path | None) -> None:
+    """Import a production-owned disposable profile and reopen it twice frozen."""
+    source = root / "import-source-profile"
+    destination = root / "imported-disposable-profile"
+    helper = REPOSITORY_ROOT / "scripts" / "data_import_rehearsal.py"
+    try:
+        seed = _fixture_cli(probe, helper, "seed", source, root)
+        if not isinstance(seed, dict) or not isinstance(seed.get("source_fingerprint"), str):
+            raise RuntimeError("rehearsal fixture did not return its source fingerprint")
+        baseline = _fixture_cli(probe, helper, "verify", source, root)
+        status = _setup_request(bundle / "apex-backend.exe", root, destination, "status")
+        if status.get("phase") != "choice_required":
+            raise RuntimeError("blank frozen profile did not require an explicit setup choice")
+        preview = _setup_request(
+            bundle / "apex-backend.exe", root, destination, "preview", source=source,
+        )
+        if preview.get("can_import") is not True or preview.get("blockers"):
+            raise RuntimeError("valid production fixture was blocked during import preview")
+        preview_id = preview.get("preview_id")
+        if not isinstance(preview_id, str) or not preview_id:
+            raise RuntimeError("import preview did not bind an identity token")
+        if str(source.resolve()).casefold() in json.dumps(preview, ensure_ascii=False).casefold():
+            raise RuntimeError("import preview exposed the source's absolute path")
+        refusal = root / "existing-destination-profile"
+        refusal.mkdir()
+        refusal_db = refusal / "apex_memory.db"
+        refusal_bytes = b"operator-owned destination database sentinel"
+        refusal_db.write_bytes(refusal_bytes)
+        refusal_marker = refusal / "keep-me.txt"
+        refusal_marker.write_text("keep", encoding="utf-8")
+        refusal_preview = _setup_request(
+            bundle / "apex-backend.exe", root, refusal, "preview", source=source,
+        )
+        refusal_id = refusal_preview.get("preview_id")
+        if refusal_preview.get("can_import") is not False or not isinstance(refusal_id, str):
+            raise RuntimeError("frozen setup helper did not block preview into a profile with an existing database")
+        _setup_request(
+            bundle / "apex-backend.exe", root, refusal, "import", source=source,
+            preview_id=refusal_id, expected_error_code="destination_database_exists",
+        )
+        if refusal_db.read_bytes() != refusal_bytes or refusal_marker.read_text(encoding="utf-8") != "keep":
+            raise RuntimeError("frozen setup helper changed existing destination files during refusal")
+        report.add("import_existing_destination_refusal", "passed", "frozen helper refused to replace an existing destination database and preserved an unrelated marker")
+        interruption_destination = root / "interrupted-destination-profile"
+        _run_interrupted_import_recovery(
+            bundle / "apex-backend.exe", root, source, interruption_destination,
+            expected_source_fingerprint=str(seed["source_fingerprint"]),
+            expected_cache_sha256=str(seed["microsoft_cache_sha256"]),
+            helper=helper, probe=probe,
+        )
+        report.add("import_interrupted_recovery", "passed", "journaled frozen import was terminated during managed-file copying, recovered to source choice, then re-previewed and imported the same destination while preserving unrelated bytes")
+        # Production source readers in the recovery rehearsal can reopen
+        # SQLite sidecars. Confirm a current inventory immediately before copy.
+        preview = _setup_request(
+            bundle / "apex-backend.exe", root, destination, "preview", source=source,
+        )
+        preview_id = preview.get("preview_id")
+        if preview.get("can_import") is not True or not isinstance(preview_id, str) or not preview_id:
+            raise RuntimeError("source did not remain importable after recovery verification")
+        imported = _setup_request(
+            bundle / "apex-backend.exe", root, destination, "import",
+            source=source, preview_id=preview_id,
+        )
+        if imported.get("phase") != "ready":
+            raise RuntimeError("frozen import did not finish in the ready state")
+
+        def verify_profile() -> dict[str, Any]:
+            return _fixture_cli(probe, helper, "verify", destination, root)
+
+        first = verify_profile()
+        if first.get("action_status") != "outcome_unknown" or first.get("action_events") != baseline.get("action_events") or first.get("action_effects") != baseline.get("action_effects") or first.get("action_effects") != 1:
+            raise RuntimeError("unknown action or its durable effect changed during import")
+        local_cache = root / "local-app-data" / "APEX" / "auth" / "microsoft_todo_token_cache.bin"
+        if not local_cache.is_file() or hashlib.sha256(local_cache.read_bytes()).hexdigest() != seed.get("microsoft_cache_sha256"):
+            raise RuntimeError("same-user encrypted Microsoft cache bytes changed during import")
+        for restart_number in (1, 2):
+            process, frames, _stdout, stderr, launch_id = _spawn_host(
+                bundle / "apex-backend.exe", destination, root,
+            )
+            try:
+                starting = _next_startup_envelope(frames, process, stderr, stage="imported-profile starting")
+                ready = _next_startup_envelope(frames, process, stderr, stage="imported-profile ready")
+                identity = ready.get("payload")
+                if (
+                    starting.get("type") != "starting"
+                    or ready.get("type") != "ready"
+                    or ready.get("request_id") != launch_id
+                    or not isinstance(identity, dict)
+                    or identity.get("pid") != process.pid
+                    or identity.get("launch_id") != launch_id
+                    or identity.get("hosting_mode") != "managed"
+                    or _http_json("http://127.0.0.1:8000/api/v1/runtime") != identity
+                ):
+                    raise RuntimeError("imported-profile runtime identity did not match its managed child")
+                expected = hashlib.sha256(os.path.normcase(str(destination.resolve())).encode("utf-8")).hexdigest()
+                if identity.get("data_root_fingerprint") != expected:
+                    raise RuntimeError("imported-profile runtime identity selected a different data root")
+                _stop_host(
+                    process, frames, stderr, launch_id,
+                    timeout_seconds=int(identity["shutdown_timeout_seconds"]),
+                )
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=5)
+                for stream in (process.stdin, process.stdout, process.stderr):
+                    if stream is not None and not stream.closed:
+                        stream.close()
+            after_startup = verify_profile()
+            if after_startup.get("action_status") != "outcome_unknown" or after_startup.get("action_events") != baseline.get("action_events") or after_startup.get("action_effects") != baseline.get("action_effects") or after_startup.get("action_effects") != 1:
+                raise RuntimeError(f"backend startup {restart_number} replayed or changed an uncertain action effect")
+            if hashlib.sha256(local_cache.read_bytes()).hexdigest() != seed.get("microsoft_cache_sha256"):
+                raise RuntimeError("backend startup changed the same-user encrypted Microsoft cache")
+
+        source_fingerprint = _fixture_cli(probe, helper, "fingerprint", source, root).get("fingerprint")
+        if source_fingerprint != seed.get("source_fingerprint"):
+            raise RuntimeError("import changed managed source bytes")
+        report.add(
+            "import_preservation_and_restart",
+            "passed",
+            "production history, reports, historical News, speech bytes, vault ownership, credentials, local assets, encrypted cache, and unknown action effect survived import and two backend starts",
+        )
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError, KeyError, TypeError) as exc:
+        report.add("import_preservation_and_restart", "failed", str(exc))
+
+
 
 def _check_install_contained_data_root(bundle: Path, scratch: Path, report: Report) -> None:
     invalid_root = (bundle / "_internal" / ".apex-smoke-invalid-data").resolve()
@@ -407,6 +769,13 @@ def _run_once(bundle: Path, report: Report, *, dev: bool = False, demo: bool = F
     shutdown_timeout_seconds = 60
     spawned: list[subprocess.Popen[bytes]] = []
     try:
+        setup_status = _setup_request(bundle / "apex-backend.exe", root, profile, "status")
+        if setup_status.get("phase") != "choice_required":
+            raise RuntimeError("blank frozen profile did not require a first-run choice")
+        fresh_start = _setup_request(bundle / "apex-backend.exe", root, profile, "fresh_start")
+        if fresh_start.get("phase") != "ready":
+            raise RuntimeError("frozen Fresh Start did not ready the blank profile")
+        report.add("first_run_fresh_start", "passed", "explicit Fresh Start readied an empty disposable profile")
         process, frames, _stdout, stderr, launch_id = _spawn_host(bundle / "apex-backend.exe", profile, root, dev=dev, demo=demo)
         spawned.append(process)
         started = _next_startup_envelope(frames, process, stderr, stage="starting")
@@ -617,6 +986,8 @@ def _run_once(bundle: Path, report: Report, *, dev: bool = False, demo: bool = F
                 eof_process.kill()
                 eof_process.wait(timeout=5)
             shutil.rmtree(eof_root, ignore_errors=True)
+        if not report.failed and run_probe:
+            _run_import_preservation_smoke(bundle, root, report, probe=probe)
     finally:
         for child in spawned:
             if child.poll() is None:

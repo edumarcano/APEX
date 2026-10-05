@@ -1,20 +1,24 @@
 """Local retrieval substrate for durable APEX context sources."""
 
-from core.retrieval.models import RetrievalHit, RetrievalStatus
-from core.retrieval.service import (
-    RetrievalBusyError,
-    RetrievalService,
-    get_retrieval_service,
-    set_retrieval_service,
-)
-from core.retrieval.store import RetrievalStore
+from importlib import import_module
 
-__all__ = [
-    "RetrievalBusyError",
-    "RetrievalHit",
-    "RetrievalService",
-    "RetrievalStatus",
-    "RetrievalStore",
-    "get_retrieval_service",
-    "set_retrieval_service",
-]
+_EXPORTS = {
+    "RetrievalHit": "models", "RetrievalStatus": "models",
+    "RetrievalBusyError": "service", "RetrievalService": "service",
+    "get_retrieval_service": "service", "set_retrieval_service": "service",
+    "RetrievalStore": "store",
+}
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name: str):
+    module = _EXPORTS.get(name)
+    if module is None:
+        raise AttributeError(name)
+    value = getattr(import_module(f"core.retrieval.{module}"), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))

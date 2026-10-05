@@ -4,6 +4,8 @@ import App from '../App'
 import { API_RUNTIME_IDENTITY } from '../lib/api'
 import { loadDesktopPlatform } from './index'
 import type { DesktopBackendState, DesktopPlatform, RuntimeIdentity } from './contracts'
+import DesktopFirstRun from './DesktopFirstRun'
+import { useDesktopSetup } from './useDesktopSetup'
 
 const RUNTIME_CHECK_TIMEOUT_MS = 5_000
 const STATUS_REFRESH_MS = 2_500
@@ -18,8 +20,45 @@ type AdmissionState = {
 const EMPTY: AdmissionState = { backend: null, errorCode: null, message: null, admittedKey: null }
 
 export default function DesktopAdmission(): ReactElement {
-  const [admission, setAdmission] = useState(EMPTY)
   const [platform, setPlatform] = useState<DesktopPlatform | null>(null)
+  const [loadFailed, setLoadFailed] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    void loadDesktopPlatform().then((owner) => {
+      if (active) setPlatform(owner)
+    }).catch(() => {
+      if (active) setLoadFailed(true)
+    })
+    return () => { active = false }
+  }, [])
+
+  if (!platform) {
+    if (loadFailed) return <StatusPanel title="The desktop backend is unavailable" description="A required desktop resource could not be loaded. Restart APEX or quit the window." actions={<button type="button" className={buttonClass} onClick={() => window.location.reload()}>Reload APEX</button>} />
+    return <StatusPanel title="Starting APEX" description="Checking desktop setup before opening the workspace." busy />
+  }
+  return <DesktopSetupAdmission platform={platform} />
+}
+
+function DesktopSetupAdmission({ platform }: { platform: DesktopPlatform }): ReactElement {
+  const firstRun = useDesktopSetup(platform)
+  if (firstRun.setup.phase !== 'ready') {
+    return <DesktopFirstRun
+      setup={firstRun.setup}
+      busy={firstRun.busy}
+      actionError={firstRun.actionError}
+      onFreshStart={() => void firstRun.freshStart()}
+      onChooseImport={() => void firstRun.chooseImport()}
+      onImport={() => void firstRun.importData()}
+      onRecover={() => void firstRun.recoverImport()}
+      onQuit={() => platform.quit()}
+    />
+  }
+  return <DesktopBackendAdmission platform={platform} />
+}
+
+function DesktopBackendAdmission({ platform }: { platform: DesktopPlatform }): ReactElement {
+  const [admission, setAdmission] = useState(EMPTY)
   const [confirmRetry, setConfirmRetry] = useState(false)
   const [busy, setBusy] = useState(false)
   const latestRef = useRef<{ generation: number; revision: number; statusRequest: number; admittedKey: string | null }>({
@@ -117,18 +156,15 @@ export default function DesktopAdmission(): ReactElement {
     let active = true
     let unsubscribe: (() => void) | undefined
     let timer = 0
-    let owner: DesktopPlatform | undefined
     const alive = (): boolean => active
     activeRef.current = true
 
     void (async () => {
       try {
-        owner = await loadDesktopPlatform()
-        if (!active) return
-        setPlatform(owner)
+        // This component only mounts after setup status reports ready.
         // The event is only a wakeup. Never trust its payload to admit App.
         try {
-          unsubscribe = await owner.subscribeBackendState(() => { void refresh(owner!, alive) })
+          unsubscribe = await platform.subscribeBackendState(() => { void refresh(platform, alive) })
         } catch {
           // Snapshot polling remains authoritative if event subscription fails.
         }
@@ -136,8 +172,8 @@ export default function DesktopAdmission(): ReactElement {
           unsubscribe?.()
           return
         }
-        void refresh(owner, alive)
-        timer = window.setInterval(() => { void refresh(owner!, alive) }, STATUS_REFRESH_MS)
+        void refresh(platform, alive)
+        timer = window.setInterval(() => { void refresh(platform, alive) }, STATUS_REFRESH_MS)
       } catch {
         if (active) setAdmission({ backend: null, errorCode: 'resource_missing', message: null, admittedKey: null })
       }
@@ -151,7 +187,7 @@ export default function DesktopAdmission(): ReactElement {
       verificationRef.current = null
       unsubscribe?.()
     }
-  }, [refresh])
+  }, [platform, refresh])
 
   const retry = async (): Promise<void> => {
     if (!platform) return

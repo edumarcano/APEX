@@ -1,6 +1,19 @@
 """Persistent briefing session foundations."""
 
-from core.briefings.service import BriefingService
-from core.briefings.store import BriefingSessionStore
+from importlib import import_module
 
-__all__ = ["BriefingService", "BriefingSessionStore"]
+_EXPORTS = {"BriefingService": "service", "BriefingSessionStore": "store"}
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name: str):
+    module = _EXPORTS.get(name)
+    if module is None:
+        raise AttributeError(name)
+    value = getattr(import_module(f"core.briefings.{module}"), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))

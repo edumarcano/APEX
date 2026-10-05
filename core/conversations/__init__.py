@@ -1,15 +1,24 @@
 """Durable Cortex conversation ownership and lifecycle services."""
 
-from core.conversations.service import (
-    ConversationService,
-    get_conversation_service,
-    set_conversation_service,
-)
-from core.conversations.store import ConversationStore
+from importlib import import_module
 
-__all__ = [
-    "ConversationService",
-    "ConversationStore",
-    "get_conversation_service",
-    "set_conversation_service",
-]
+_EXPORTS = {
+    "ConversationService": "service",
+    "get_conversation_service": "service",
+    "set_conversation_service": "service",
+    "ConversationStore": "store",
+}
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name: str):
+    module = _EXPORTS.get(name)
+    if module is None:
+        raise AttributeError(name)
+    value = getattr(import_module(f"core.conversations.{module}"), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))

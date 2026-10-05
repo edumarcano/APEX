@@ -7,6 +7,12 @@
   "permissions": [
     "core:event:allow-listen",
     "core:event:allow-unlisten",
+    "allow-desktop-setup-status",
+    "allow-desktop-import-pick-source",
+    "allow-desktop-import-preview",
+    "allow-desktop-import-commit",
+    "allow-desktop-fresh-start",
+    "allow-desktop-import-recover",
     "allow-desktop-backend-status",
     "allow-desktop-backend-retry",
     "allow-desktop-quit",

@@ -7,7 +7,8 @@ import sys
 
 def main() -> int:
     freeze_support()
-    if getattr(sys, "frozen", False):
+    is_setup = len(sys.argv) > 1 and sys.argv[1] == "setup"
+    if getattr(sys, "frozen", False) and not is_setup:
         # The frozen trace stalls in NumPy's native import while the managed
         # control thread reads piped stdin; preload before that thread starts.
         # Similar upstream report: https://github.com/numpy/numpy/issues/24290

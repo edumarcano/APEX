@@ -34,6 +34,10 @@ The WebView uses the native application origin and scoped Tauri capabilities. Fr
 
 Startup and completion notifications are opt-in Runtime Settings stored in the private `desktop_preferences` control message. The native shell applies OS-level settings and reports OS failures separately from saved preferences. Completion notifications are derived only from successful committed Cortex or Briefing completions, deduplicated for the app session, and use the generic title `APEX` and body `An APEX run has completed.` A hidden or minimized session can show them; run text, identifiers, and provider details are not included.
 
+### Desktop first-run import
+
+The native shell gates its first run on the selected data profile. It offers Fresh Start or a user-selected Import source, while the backend owns preview, validation, copy, and journal recovery. Import takes a consistent SQLite backup and stages managed files before committing; it refuses an active source and any existing destination database. Fresh Start never clears a folder. An incomplete import blocks every host entrypoint from loading profile configuration or persistence until recovery completes. Source data remains intact, and a profile marker records desktop Fresh Start for a database-less profile. External destinations and same-user encrypted Microsoft storage keep their existing ownership rules. See [Configuration](configuration.md#desktop-first-run-and-import) for import inventory and path behavior.
+
 ### Device context and Weather
 
 A lifespan-owned backend device-context service stores opt-in, session permission, and a short-lived in-memory fix. Versioned private control messages carry preference revisions, correlated acquisition requests, native results, and coordinate-free state. Instance identity and preference revision fence late responses across disable, retry, and shutdown. The Windows WinRT adapter requests permission only through an explicit foreground Settings action and uses bounded one-time reads; it subscribes to capability changes without collecting continuous position updates.

@@ -756,6 +756,12 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     """Dispatch the explicitly supported worker or API host command."""
     arguments = list(sys.argv[1:] if argv is None else argv)
+    # Setup is deliberately dispatched before worker initialization, API
+    # imports, or loading the selected profile's environment.
+    if arguments and arguments[0] == "setup":
+        from core.data_import.cli import main as setup_main
+
+        return setup_main()
     worker_dispatch = importlib.import_module("core.host.worker_dispatch")
     worker_result = worker_dispatch.dispatch_worker(arguments)
     if worker_result is not None:

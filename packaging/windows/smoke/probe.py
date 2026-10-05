@@ -25,6 +25,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 from scripts.smoke_backend_bundle import main as _run_smoke_suite
+from scripts import data_import_rehearsal as _data_import_rehearsal
 
 
 def _worker_dispatch(argv: list[str]) -> int | None:
@@ -344,6 +345,10 @@ def _write_json_line(payload: dict[str, object], stream: object = None) -> None:
 def main(argv: list[str] | None = None) -> int:
     multiprocessing.freeze_support()
     values = list(sys.argv[1:] if argv is None else argv)
+    if values and values[0] == "import-fixture":
+        # Build-only fixture entry point used by the frozen smoke controller.
+        # The production backend executable does not include this probe.
+        return _data_import_rehearsal.main(values[1:])
     if values and values[0] == "--run-suite":
         suite_args = values[1:]
         if "--probe" not in suite_args:
