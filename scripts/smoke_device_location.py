@@ -211,7 +211,7 @@ def _permission_check_feedback(driver: WebDriver) -> dict[str, object]:
                 "const text = (element) => element.textContent.trim();"
                 "const alerts = [...document.querySelectorAll('[role=alert]')].map(text);"
                 "const messages = [...document.querySelectorAll('[role=status]')].map(text);"
-                "return {rowValue, error: alerts.find((value) => knownErrors.has(value)) || null, "
+                "return {rowValue, actionError: alerts.find((value) => knownErrors.has(value)) || null, "
                 "unknownAlert: alerts.some((value) => !knownErrors.has(value)), "
                 "message: messages.find((value) => knownMessages.has(value)) || null};"
             ),
@@ -243,7 +243,7 @@ def _permission_check_feedback(driver: WebDriver) -> dict[str, object]:
         "Windows permission status updated.": "status_updated",
         "Windows returned a result; the device status is still updating.": "status_updating",
     }
-    error = result.get("error")
+    error = result.get("actionError")
     message = result.get("message")
     return {
         "feedback": "command_rejected" if isinstance(error, str) else "native_result_rendered" if latest_result else "no_result_rendered",
@@ -252,6 +252,20 @@ def _permission_check_feedback(driver: WebDriver) -> dict[str, object]:
         "unknown_alert_present": result.get("unknownAlert") is True,
         "message": message_catalog.get(message) if isinstance(message, str) else None,
     }
+
+
+def _wait_for_manual_permission_action(driver: WebDriver, wait_seconds: int) -> None:
+    print(
+        "Click Check location permission in Desktop Settings to continue the native location check.",
+        file=sys.stderr,
+        flush=True,
+    )
+    deadline = time.monotonic() + wait_seconds
+    while time.monotonic() < deadline:
+        feedback = _permission_check_feedback(driver)
+        if feedback.get("feedback") in {"native_result_rendered", "command_rejected"}:
+            return
+        time.sleep(min(POLL_INTERVAL_SECONDS, max(0.0, deadline - time.monotonic())))
 
 
 def _open_desktop_settings(driver: WebDriver, timeout: float) -> None:
@@ -537,6 +551,7 @@ def _contains_private_coordinate_key(value: object) -> bool:
 def _run_smoke(
     *, application: Path, tauri_driver: Path, native_driver: Path,
     timeout: float, expected_permission: str | None, foreground_wait_seconds: int = 0,
+    manual_permission_wait_seconds: int = 0,
 ) -> SmokeReport:
     report = SmokeReport()
     if os.name != "nt":
@@ -596,9 +611,18 @@ def _run_smoke(
 
         # The only native permission query in the smoke is this focused UI action.
         _focus_owned_window(driver_process, application, foreground_wait_seconds)
-        if not _click_button(driver, "Check location permission", min(timeout, 20.0)):
+        permission_button = _wait_for_ready_element(
+            driver,
+            "xpath",
+            "//button[normalize-space(.)='Check location permission']",
+            min(timeout, 20.0),
+        )
+        if permission_button is None:
             raise SmokeFailure("the explicit Check location permission action was unavailable")
-        report.add("explicit_permission_action", "passed", "permission check was requested through its visible Settings button")
+        if manual_permission_wait_seconds > 0:
+            _wait_for_manual_permission_action(driver, manual_permission_wait_seconds)
+        else:
+            driver.click(permission_button)
         deadline = time.monotonic() + min(35.0, timeout)
         observed = enabled
         while time.monotonic() < deadline:
@@ -616,7 +640,7 @@ def _run_smoke(
         report.observations["permission_check_ui"] = action_feedback
         if action_feedback.get("feedback") == "command_rejected":
             report.add(
-                "permission_action_feedback",
+                "explicit_permission_action",
                 "failed",
                 f"Desktop Settings reported {action_feedback.get('error_code') or 'a location-check error'}",
             )
@@ -624,15 +648,15 @@ def _run_smoke(
             latest_result = action_feedback.get("latest_result")
             if isinstance(latest_result, dict):
                 report.add(
-                    "permission_action_feedback",
+                    "explicit_permission_action",
                     "passed",
                     f"the native action returned permission={latest_result['permission']}, availability={latest_result['availability']}",
                 )
         else:
             report.add(
-                "permission_action_feedback",
+                "explicit_permission_action",
                 "unverified",
-                "Desktop Settings showed no recognized native result or location-check error",
+                "Desktop Settings showed no recognized native result or location-check error after the action window",
             )
         permission = observed.get("permission")
         availability = observed.get("availability")
@@ -646,8 +670,6 @@ def _run_smoke(
             report.add("expected_permission", "failed", f"expected {expected_permission}; Windows reported {permission}")
         elif expected_permission is not None:
             report.add("expected_permission", "passed", f"Windows reported the requested {expected_permission} state")
-        else:
-            report.add("expected_permission", "unverified", "no permission state was requested for this run")
 
         weather: dict[str, object] | None = None
         try:
@@ -801,6 +823,10 @@ def main(argv: list[str] | None = None) -> int:
         "--foreground-wait", type=int, default=0,
         help="wait up to this many seconds for manual foreground activation (0..600; default: 0)",
     )
+    parser.add_argument(
+        "--manual-permission-wait", type=int, default=0,
+        help="wait up to this many seconds for an operator to click Check location permission (0..600; default: 0)",
+    )
     parser.add_argument("--expected-permission", choices=sorted(PERMISSIONS), help="assert an observed Windows permission state")
     args = parser.parse_args(argv)
     for name, value in (("application", args.application), ("driver", args.driver), ("native-driver", args.native_driver)):
@@ -810,11 +836,14 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--timeout must be between 5 and 600 seconds")
     if not 0 <= args.foreground_wait <= 600:
         parser.error("--foreground-wait must be between 0 and 600 seconds")
+    if not 0 <= args.manual_permission_wait <= 600:
+        parser.error("--manual-permission-wait must be between 0 and 600 seconds")
     report = _run_smoke(
         application=args.application.resolve(), tauri_driver=args.driver.resolve(),
         native_driver=args.native_driver.resolve(), timeout=args.timeout,
         expected_permission=args.expected_permission,
         foreground_wait_seconds=args.foreground_wait,
+        manual_permission_wait_seconds=args.manual_permission_wait,
     )
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report.as_dict(), indent=2) + "\n", encoding="utf-8")
