@@ -15,6 +15,7 @@ import math
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
@@ -32,6 +33,7 @@ if __package__:
         _close_handle,
         _invoke_tray_menu_item,
         _native_window,
+        _process_image_path,
         _runtime_identity,
         _sanitized_environment,
         _terminate_process_handle,
@@ -39,6 +41,7 @@ if __package__:
         _wait_for_ready_element,
         _wait_port_free,
         _wait_process_handle,
+        WebDriverCommandError,
     )
 else:
     from smoke_desktop_shell import (
@@ -52,6 +55,7 @@ else:
         _close_handle,
         _invoke_tray_menu_item,
         _native_window,
+        _process_image_path,
         _runtime_identity,
         _sanitized_environment,
         _terminate_process_handle,
@@ -59,6 +63,7 @@ else:
         _wait_for_ready_element,
         _wait_port_free,
         _wait_process_handle,
+        WebDriverCommandError,
     )
 
 API_ORIGIN = "http://127.0.0.1:8000"
@@ -208,7 +213,7 @@ def _save_settings(driver: WebDriver, timeout: float) -> None:
     raise SmokeFailure("Settings did not return to the saved state after Save changes")
 
 
-def _foreground_owned_window(hwnd: int) -> None:
+def _foreground_owned_window(hwnd: int, wait_seconds: int = 0) -> None:
     if os.name != "nt":
         raise SmokeFailure("foreground activation requires Windows")
     user32 = ctypes.WinDLL("user32", use_last_error=True)
@@ -279,15 +284,32 @@ def _foreground_owned_window(hwnd: int) -> None:
         pass
     if wait_until_foreground():
         return
+    if wait_seconds > 0:
+        print(
+            "Activate the disposable APEX window to continue the foreground location check.",
+            file=sys.stderr,
+            flush=True,
+        )
+        deadline = time.monotonic() + wait_seconds
+        while time.monotonic() < deadline:
+            if is_foreground():
+                return
+            if not user32.IsWindow(hwnd):
+                raise SmokeFailure("the smoke-owned APEX window no longer exists")
+            time.sleep(min(FOREGROUND_POLL_SECONDS, max(0.0, deadline - time.monotonic())))
+        if is_foreground():
+            return
     raise SmokeFailure(
         "Windows did not activate the smoke-owned APEX window; activate that window manually and rerun the smoke"
     )
 
 
-def _focus_owned_window(driver_process: subprocess.Popen[bytes], application: Path) -> None:
+def _focus_owned_window(
+    driver_process: subprocess.Popen[bytes], application: Path, foreground_wait_seconds: int
+) -> None:
     handle, _pid, hwnd = _native_window(driver_process.pid, application)
     try:
-        _foreground_owned_window(hwnd)
+        _foreground_owned_window(hwnd, foreground_wait_seconds)
     finally:
         _close_handle(handle)
 
@@ -372,22 +394,65 @@ def _start_driver(
         raise
 
 
-def _quit_app(driver: WebDriver, driver_process: subprocess.Popen[bytes], application: Path, timeout: float) -> None:
-    _handle, pid, _hwnd = _native_window(driver_process.pid, application)
+def _quit_app(
+    driver: WebDriver,
+    driver_process: subprocess.Popen[bytes],
+    application: Path,
+    profile: Path,
+    timeout: float,
+) -> None:
+    shell_handle, shell_pid, _hwnd = _native_window(driver_process.pid, application)
+    backend_handle: int | None = None
     try:
-        _invoke_tray_menu_item("Quit", min(timeout, 10.0), expected_pid=pid)
+        identity = _runtime_identity(profile, min(timeout, 5.0))
+        backend_pid = int(identity["pid"])
+        backend_handle, backend_image = _process_image_path(backend_pid)
+        expected_backend = (application.parent / "backend-bundle" / "apex-backend.exe").resolve()
+        if backend_image.resolve() != expected_backend:
+            raise SmokeFailure("runtime identity PID image is not the bundled backend executable")
+        current_identity = _runtime_identity(profile, min(timeout, 5.0))
+        if current_identity.get("pid") != backend_pid or current_identity.get("instance_id") != identity.get("instance_id"):
+            raise SmokeFailure("managed runtime identity changed before desktop_quit; refusing a reused PID")
+        command_result: object = None
+        command_error: SmokeFailure | None = None
+        try:
+            command_result = driver._command(
+                "POST",
+                "/execute/sync",
+                {
+                    "script": (
+                        "return window.__TAURI_INTERNALS__.invoke('desktop_quit', {}).then("
+                        "() => 'desktop_quit_returned', "
+                        "() => { throw new Error('desktop_quit rejected') });"
+                    ),
+                    "args": [],
+                },
+            )
+        except SmokeFailure as exc:
+            command_error = exc
     finally:
-        _close_handle(_handle)
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+        try:
+            shell_exited = _wait_process_handle(shell_handle, timeout)
+            backend_exited = backend_handle is not None and _wait_process_handle(backend_handle, timeout)
+        finally:
+            _close_handle(shell_handle)
+            if backend_handle is not None:
+                _close_handle(backend_handle)
         try:
             driver.close()
         except SmokeFailure:
             pass
-        if _api_port_available():
-            return
-        time.sleep(POLL_INTERVAL_SECONDS)
-    raise SmokeFailure("APEX did not release its managed API port after tray Quit")
+    if not shell_exited or not backend_exited or not _wait_port_free(timeout):
+        raise SmokeFailure("desktop_quit did not stop the owned shell and backend or release 127.0.0.1:8000")
+    if command_error is not None:
+        if isinstance(command_error, WebDriverCommandError):
+            if command_error.error not in {"invalid session id", "no such window"}:
+                raise SmokeFailure(f"desktop_quit was rejected by the WebView: {command_error}")
+        elif not str(command_error).startswith("WebDriver POST "):
+            raise SmokeFailure(f"desktop_quit did not return a successful WebView acknowledgment: {command_error}")
+        return
+    if command_result != "desktop_quit_returned":
+        raise SmokeFailure("desktop_quit did not return its successful WebView acknowledgment")
 
 
 def _contains_private_coordinate_key(value: object) -> bool:
@@ -404,7 +469,7 @@ def _contains_private_coordinate_key(value: object) -> bool:
 
 def _run_smoke(
     *, application: Path, tauri_driver: Path, native_driver: Path,
-    timeout: float, expected_permission: str | None,
+    timeout: float, expected_permission: str | None, foreground_wait_seconds: int = 0,
 ) -> SmokeReport:
     report = SmokeReport()
     if os.name != "nt":
@@ -442,7 +507,7 @@ def _run_smoke(
         }
 
         _open_desktop_settings(driver, min(timeout, 45.0))
-        _focus_owned_window(driver_process, application)
+        _focus_owned_window(driver_process, application, foreground_wait_seconds)
         _click_switch(driver, LOCATION_TOGGLE, min(timeout, 20.0))
         if not _switch_checked(driver, LOCATION_TOGGLE):
             raise SmokeFailure("the location switch did not enter its enabled draft state")
@@ -463,7 +528,7 @@ def _run_smoke(
         report.add("save_does_not_request_permission", "passed", "saved enabled state remained permission-unknown")
 
         # The only native permission query in the smoke is this focused UI action.
-        _focus_owned_window(driver_process, application)
+        _focus_owned_window(driver_process, application, foreground_wait_seconds)
         if not _click_button(driver, "Check location permission", min(timeout, 20.0)):
             raise SmokeFailure("the explicit Check location permission action was unavailable")
         report.add("explicit_permission_action", "passed", "permission check was requested through its visible Settings button")
@@ -542,7 +607,7 @@ def _run_smoke(
             report.add("weather_provider", "passed", "Weather provider returned a healthy result")
 
         # Verify disable clears the session fix and reports the configured fallback.
-        _focus_owned_window(driver_process, application)
+        _focus_owned_window(driver_process, application, foreground_wait_seconds)
         if _switch_checked(driver, LOCATION_TOGGLE):
             _click_switch(driver, LOCATION_TOGGLE, min(timeout, 20.0))
         _save_settings(driver, min(timeout, 45.0))
@@ -555,7 +620,7 @@ def _run_smoke(
         _click_switch(driver, LOCATION_TOGGLE, min(timeout, 20.0))
         _save_settings(driver, min(timeout, 45.0))
         _wait_device_enabled(True, min(timeout, 30.0))
-        _quit_app(driver, driver_process, application, min(timeout, 20.0))
+        _quit_app(driver, driver_process, application, profile, min(timeout, 20.0))
         driver.close()
         driver_process.terminate()
         try:
@@ -571,7 +636,7 @@ def _run_smoke(
         report.add("restart_requires_user_action", "passed", "saved opt-in persisted while permission returned to unknown")
 
         _open_desktop_settings(driver, min(timeout, 45.0))
-        _focus_owned_window(driver_process, application)
+        _focus_owned_window(driver_process, application, foreground_wait_seconds)
         if _switch_checked(driver, LOCATION_TOGGLE):
             _click_switch(driver, LOCATION_TOGGLE, min(timeout, 20.0))
         _save_settings(driver, min(timeout, 45.0))
@@ -579,7 +644,7 @@ def _run_smoke(
         if final_status.get("freshness") != "none" or final_status.get("source") != "configured":
             raise SmokeFailure("final saved disable did not clear location freshness")
         report.add("final_disable", "passed", "location ended disabled with configured fallback and no fresh fix")
-        _quit_app(driver, driver_process, application, min(timeout, 20.0))
+        _quit_app(driver, driver_process, application, profile, min(timeout, 20.0))
     except (SmokeFailure, OSError, ValueError, subprocess.SubprocessError) as exc:
         report.add("device_location_smoke", "failed", str(exc))
     finally:
@@ -637,6 +702,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--native-driver", type=Path, required=True, help="absolute msedgedriver.exe path")
     parser.add_argument("--report", type=Path, required=True, help="JSON report output path")
     parser.add_argument("--timeout", type=float, default=120.0, help="bounded per-stage timeout in seconds (5..600)")
+    parser.add_argument(
+        "--foreground-wait", type=int, default=0,
+        help="wait up to this many seconds for manual foreground activation (0..600; default: 0)",
+    )
     parser.add_argument("--expected-permission", choices=sorted(PERMISSIONS), help="assert an observed Windows permission state")
     args = parser.parse_args(argv)
     for name, value in (("application", args.application), ("driver", args.driver), ("native-driver", args.native_driver)):
@@ -644,10 +713,13 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(f"--{name} must be an absolute path")
     if not 5.0 <= args.timeout <= 600.0:
         parser.error("--timeout must be between 5 and 600 seconds")
+    if not 0 <= args.foreground_wait <= 600:
+        parser.error("--foreground-wait must be between 0 and 600 seconds")
     report = _run_smoke(
         application=args.application.resolve(), tauri_driver=args.driver.resolve(),
         native_driver=args.native_driver.resolve(), timeout=args.timeout,
         expected_permission=args.expected_permission,
+        foreground_wait_seconds=args.foreground_wait,
     )
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report.as_dict(), indent=2) + "\n", encoding="utf-8")
