@@ -312,6 +312,27 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertEqual(self.backend.unload_calls, ["qwen-4b-model"])
         self.assertIsNone(coord.get_active_local_model())
 
+    def test_idle_llama_unload_stops_owned_router_under_execution_guard(self) -> None:
+        ref = LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k")
+        self.llama_backend.resident.add(ref.model)
+        coord.register_local_activity(ref)
+        self.clock["now"] = 2000.0
+        supervisor = mock.Mock()
+        def assert_guard_held() -> None:
+            self.assertTrue(coord.is_local_execution_active())
+
+        supervisor.stop_owned_after_verified_idle_unload.side_effect = assert_guard_held
+
+        with mock.patch(
+            "core.agent.providers.llama_cpp_supervisor.get_llama_cpp_server_supervisor",
+            return_value=supervisor,
+        ):
+            coord._maybe_unload_idle_model()
+
+        self.assertEqual(self.llama_backend.unload_calls, [ref.model])
+        supervisor.stop_owned_after_verified_idle_unload.assert_called_once_with()
+        self.assertIsNone(coord.get_active_local_model())
+
     def test_idle_unload_failed_verification_keeps_active(self) -> None:
         ref = LocalModelRef(provider="ollama", model="qwen-4b-model")
         self.backend.resident.add("qwen-4b-model")
@@ -369,10 +390,18 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
 
     def test_restart_reconciliation_adopts_single_resident(self) -> None:
         self.backend.resident.add("qwen-4b-model")
+        self.clock["now"] = 2000.0
         self.assertEqual(
             coord.get_active_local_model(),
             LocalModelRef(provider="ollama", model="qwen-4b-model"),
         )
+        self.assertEqual(coord._last_activity_time, 2000.0)  # noqa: SLF001
+        self.clock["now"] = 3000.0
+        self.assertEqual(
+            coord.get_active_local_model(),
+            LocalModelRef(provider="ollama", model="qwen-4b-model"),
+        )
+        self.assertEqual(coord._last_activity_time, 2000.0)  # noqa: SLF001
 
     def test_restart_reconciliation_leaves_multiple_untracked(self) -> None:
         self.backend.resident.update({"qwen-4b-model", "qwen-17b-model"})

@@ -91,6 +91,9 @@ def _adopt_single_resident(found: list[LocalModelRef]) -> LocalModelRef | None:
             return None
         if len(found) == 1:
             _active_local_model = found[0]
+            # A preexisting resident gets one grace baseline at adoption.
+            # Subsequent status polls see the tracked model above and do not
+            # refresh its use timestamp.
             _last_activity_time = _monotonic()
             return _active_local_model
         return None
@@ -413,6 +416,23 @@ def unload_active_local_model() -> bool:
     return True
 
 
+def _maybe_stop_idle_llama_router_without_resident_model() -> None:
+    """Stop an owned router left empty after a failed local-model demand."""
+    backend = get_local_runtime_backend("llama_cpp")
+    if not backend.enabled:
+        return
+    try:
+        from core.agent.providers.llama_cpp_supervisor import (
+            get_llama_cpp_server_supervisor,
+        )
+
+        get_llama_cpp_server_supervisor().stop_owned_if_idle_without_resident_model(
+            backend.idle_unload_seconds
+        )
+    except Exception:
+        _LOGGER.debug("Deferred idle llama.cpp shutdown check failed", exc_info=True)
+
+
 def _maybe_unload_idle_model() -> None:
     """
     Unload the active model when idle duration exceeds the configured threshold.
@@ -430,6 +450,7 @@ def _maybe_unload_idle_model() -> None:
     try:
         active = get_active_local_model()
         if active is None:
+            _maybe_stop_idle_llama_router_without_resident_model()
             return
 
         backend = get_local_runtime_backend(active.provider)
@@ -459,6 +480,25 @@ def _maybe_unload_idle_model() -> None:
                     model_to_unload.model,
                     _monotonic() - activity_snapshot,
                 )
+                unloaded = True
+            else:
+                unloaded = False
+        if unloaded:
+            if model_to_unload.provider == "llama_cpp":
+                try:
+                    from core.agent.providers.llama_cpp_supervisor import (
+                        get_llama_cpp_server_supervisor,
+                    )
+
+                    supervisor = get_llama_cpp_server_supervisor()
+                    supervisor.stop_owned_after_verified_idle_unload()
+                except Exception:
+                    _LOGGER.debug(
+                        "Idle llama.cpp shutdown after model unload failed",
+                        exc_info=True,
+                    )
+            else:
+                _maybe_stop_idle_llama_router_without_resident_model()
     finally:
         end_local_execution()
 

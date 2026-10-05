@@ -169,6 +169,7 @@ class LlamaCppServerSupervisor:
         # After an unexpected exit, one restart may be consumed by ensure_ready.
         self._restart_allowed = False
         self._stop_after_idle = False
+        self._last_demand_at: float | None = None
         self._launch_identity: tuple[str, str, str, bool] | None = None
         self._reader_threads: list[threading.Thread] = []
 
@@ -177,10 +178,6 @@ class LlamaCppServerSupervisor:
         with self._lock:
             settings = get_llama_cpp_runtime_settings()
             self._reconcile_process_locked()
-            if self._stop_after_idle and not is_local_execution_active():
-                self._stop_after_idle = False
-                if self._owned and self._process_alive_locked():
-                    self._stop_owned_process_locked(force=False)
             return self._snapshot_locked(settings)
 
     def ensure_ready(self, *, allow_restart: bool = False) -> LlamaCppServerStatusResponse:
@@ -194,6 +191,7 @@ class LlamaCppServerSupervisor:
         """
         with self._lock:
             settings = get_llama_cpp_runtime_settings()
+            self._last_demand_at = time.monotonic()
             if not settings.enabled:
                 self._state = "disabled"
                 self._last_error = None
@@ -339,9 +337,6 @@ class LlamaCppServerSupervisor:
             self._last_error = None
             self._state = "managed_stopped"
 
-        if current.enabled and current.managed:
-            self.ensure_ready(allow_restart=True)
-
     def maybe_stop_after_idle(self) -> None:
         """Stop a deferred owned process once local execution is idle."""
         with self._lock:
@@ -354,6 +349,60 @@ class LlamaCppServerSupervisor:
                 self._stop_owned_process_locked(force=False)
             settings = get_llama_cpp_runtime_settings()
             self._state = "disabled" if not settings.enabled else "managed_stopped"
+
+    def stop_owned_after_verified_idle_unload(self) -> None:
+        """Stop this owned router after coordinator-verified idle model unload.
+
+        The coordinator calls this while holding the shared local execution
+        slot, so a new demand cannot begin between unload verification and
+        process shutdown. This is deliberately separate from generic unload,
+        which is also used during model switches.
+        """
+        with self._lock:
+            if not self._owned or not self._process_alive_locked():
+                return
+            if not self._router_has_no_resident_models_locked():
+                return
+            self._stop_owned_process_locked(force=False)
+            settings = get_llama_cpp_runtime_settings()
+            self._state = "disabled" if not settings.enabled else "managed_stopped"
+
+    def stop_owned_if_idle_without_resident_model(self, idle_seconds: int) -> None:
+        """Stop an idle owned router left running after a failed model demand.
+
+        The coordinator calls this while holding the shared local execution
+        slot. A fresh router probe protects unknown or externally loaded model
+        state; only a confirmed empty resident set may be stopped.
+        """
+        with self._lock:
+            if (
+                not self._owned
+                or not self._process_alive_locked()
+                or self._last_demand_at is None
+                or time.monotonic() - self._last_demand_at < max(idle_seconds, 0)
+            ):
+                return
+
+            if not self._router_has_no_resident_models_locked():
+                return
+
+            self._stop_owned_process_locked(force=False)
+            settings = get_llama_cpp_runtime_settings()
+            self._state = "disabled" if not settings.enabled else "managed_stopped"
+
+    def _router_has_no_resident_models_locked(self) -> bool:
+        """Require a fresh reachable snapshot with no loaded router model."""
+        from core.agent.providers.llama_cpp_lifecycle import (
+            get_llama_cpp_runtime_backend,
+        )
+
+        snapshot = get_llama_cpp_runtime_backend().get_status_snapshot(
+            force_refresh=True
+        )
+        return snapshot["reachable"] and not any(
+            row["state"] not in {"unloaded", "sleeping", "failed"}
+            for row in snapshot["loaded_models"]
+        )
 
     def shutdown_owned(self) -> None:
         """Terminate only an APEX-owned child during application shutdown."""
