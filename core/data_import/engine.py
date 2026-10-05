@@ -773,9 +773,12 @@ class ImportEngine:
             self.root.mkdir(parents=True, exist_ok=True)
             journal = {"version": 1, "id": operation_id, "phase": "staging", "source_fingerprint": fingerprint,
                        "stage": stage.name, "outputs": []}
-            self._write_json_exclusive(self.journal, journal)
             stage.mkdir()
             (stage / ".owner").write_text(operation_id, encoding="ascii")
+            # Prepare the ownership proof before making recovery mandatory. A
+            # crash while creating this empty metadata-only stage leaves no
+            # journal and therefore cannot strand the selected profile.
+            self._write_json_exclusive(self.journal, journal)
             expected_total = sum(path.stat().st_size for path in files if not _safe_rel(path, source).startswith(_DATABASE))
             if prepared_env is not None:
                 source_env_size = next((path.stat().st_size for path in files if _safe_rel(path, source) == ".env"), 0)

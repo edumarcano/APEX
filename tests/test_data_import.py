@@ -322,6 +322,37 @@ class DataImportTests(unittest.TestCase):
         self.assertFalse(copied.exists())
         self.assertFalse((self.destination / "apex_memory.db").exists())
 
+    def test_incomplete_stage_owner_before_journal_leaves_profile_selectable(self) -> None:
+        (self.source / "config.json").write_bytes(b"source config")
+        self.destination.mkdir()
+        sentinel = self.destination / "operator.txt"
+        sentinel.write_bytes(b"operator data")
+        source_before = {
+            path.relative_to(self.source).as_posix(): path.read_bytes()
+            for path in self.source.rglob("*") if path.is_file()
+        }
+        preview = self.engine.preview(str(self.source))
+        original_write_text = Path.write_text
+
+        def fail_owner_write(path: Path, *args: object, **kwargs: object) -> int:
+            if path.name == ".owner":
+                raise OSError("simulated interruption before ownership proof")
+            return original_write_text(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "write_text", fail_owner_write):
+            with self.assertRaisesRegex(OSError, "ownership proof"):
+                self.engine.import_data(str(self.source), str(preview["preview_id"]))
+
+        self.assertFalse((self.destination / ".apex-import-journal.json").exists())
+        self.assertEqual(self.engine.status()["phase"], "choice_required")
+        self.assertEqual(sentinel.read_bytes(), b"operator data")
+        self.assertEqual(
+            {path.relative_to(self.source).as_posix(): path.read_bytes()
+             for path in self.source.rglob("*") if path.is_file()},
+            source_before,
+        )
+        self.assertFalse((self.destination / "config.json").exists())
+
     def test_rollback_clears_journal_before_best_effort_stage_cleanup(self) -> None:
         (self.source / "config.json").write_text("source config", encoding="utf-8")
         preview = self.engine.preview(str(self.source))
