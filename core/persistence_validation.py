@@ -62,4 +62,3 @@ def validate_persistence(
 
 
 __all__ = ["PersistenceValidationError", "validate_persistence"]
-
