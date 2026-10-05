@@ -124,8 +124,14 @@ class DataImportTests(unittest.TestCase):
         from dotenv import dotenv_values
 
         values = dotenv_values(self.destination / ".env", interpolate=False)
-        self.assertEqual(values["GOOGLE_APPLICATION_CREDENTIALS"], str(self.destination / "credentials.json"))
-        self.assertEqual(values["MICROSOFT_TODO_TOKEN_CACHE_PATH"], str(self.source / "private/msal.bin"))
+        self.assertEqual(
+            Path(values["GOOGLE_APPLICATION_CREDENTIALS"]).resolve(),
+            (self.destination / "credentials.json").resolve(),
+        )
+        self.assertEqual(
+            Path(values["MICROSOFT_TODO_TOKEN_CACHE_PATH"]).resolve(),
+            (self.source / "private/msal.bin").resolve(),
+        )
         self.assertEqual(values["UNRELATED_SETTING"], "${HOME}")
         self.assertEqual((self.source / ".env").read_text(encoding="utf-8").splitlines()[0], "GOOGLE_APPLICATION_CREDENTIALS=credentials.json")
         self.assertTrue(progress)
