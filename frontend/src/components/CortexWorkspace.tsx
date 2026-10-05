@@ -37,6 +37,7 @@ import { ExternalAnchor } from './ExternalAnchor'
 import { ApexAssistantThread, ApexConversationRail, type ApexAssistantComposerProps, type ApexAssistantRunConfig } from './ApexAssistantRuntime'
 import { useContextInspector } from '../hooks/useContextInspector'
 import { useCortexRuns } from '../hooks/useCortexRuns'
+import { usePresentationVisibility } from '../hooks/usePresentationVisibility'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 
 const INSPECTOR_TABS = ['controls', 'context', 'actions', 'activity'] as const
@@ -364,8 +365,10 @@ function formatCountdown(seconds: number | null): string {
 
 function useIdleUnloadCountdown(seconds: number | null, running: boolean): number | null {
   const [remaining, setRemaining] = useState(seconds)
+  const presentationVisible = usePresentationVisibility()
 
   useEffect(() => {
+    if (!presentationVisible) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Status polling is authoritative and must resynchronize the local display before its next tick.
     setRemaining(seconds)
     if (seconds === null || !running) return
@@ -373,7 +376,7 @@ function useIdleUnloadCountdown(seconds: number | null, running: boolean): numbe
       setRemaining((current) => current === null ? null : Math.max(0, current - 1))
     }, 1_000)
     return () => window.clearInterval(intervalId)
-  }, [running, seconds])
+  }, [presentationVisible, running, seconds])
 
   return remaining
 }
