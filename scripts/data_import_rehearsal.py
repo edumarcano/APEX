@@ -296,6 +296,7 @@ def seed(profile: Path) -> dict[str, Any]:
             "executable_path": str(external_models / "llama-server.exe"),
             "preset_path": str(external_models / "apex-local-models.preset.ini"),
         },
+        "ollama": {"enabled": False, "host": "http://127.0.0.1:11434"},
     }, indent=2) + "\n", encoding="utf-8")
     (profile / ".env").write_text(
         f"APEX_IMPORT_FIXTURE_SECRET={EXPECTED_CREDENTIAL}\n"
@@ -423,6 +424,8 @@ def verify(profile: Path) -> dict[str, Any]:
         raise RuntimeError("local credential JSON did not survive import")
     local_config = json.loads((profile / "config.local.json").read_text(encoding="utf-8"))
     external_models = profile.parent / "external-models"
+    if local_config.get("ollama", {}).get("enabled") is not False:
+        raise RuntimeError("rehearsal profile did not disable operator-local Ollama discovery")
     for key, name, expected_bytes in (
         ("executable_path", "llama-server.exe", b"synthetic external model server reference"),
         ("preset_path", "apex-local-models.preset.ini", b"# synthetic fixture preset\n"),
@@ -464,6 +467,7 @@ def verify(profile: Path) -> dict[str, Any]:
         "vault_ownership": True,
         "credentials_and_managed_files": True,
         "external_model_references": True,
+        "ollama_disabled": True,
         "microsoft_encrypted_cache": "decrypted_with_current_user_dpapi",
     }
 
