@@ -165,11 +165,12 @@ class SpeakerReadinessTests(unittest.TestCase):
         speaker._KOKORO_CLIENT = None
         speaker._CANCEL_EVENT.clear()
 
-    def test_kokoro_readiness_rejects_missing_or_corrupt_assets(self) -> None:
+    def test_kokoro_synthesis_rejects_missing_or_corrupt_assets(self) -> None:
         missing = MagicMock()
         missing.is_file.return_value = False
         with patch.object(speaker, "_kokoro_paths", return_value=(missing, missing)):
-            self.assertFalse(speaker._ensure_kokoro_ready(probe=False))
+            with self.assertRaisesRegex(FileNotFoundError, "Kokoro model asset unavailable"):
+                speaker._synthesize_kokoro_chunk("hello", gender="female")
 
         model = MagicMock()
         voices = MagicMock()
@@ -183,7 +184,8 @@ class SpeakerReadinessTests(unittest.TestCase):
                 {"kokoro_onnx": MagicMock(Kokoro=MagicMock(side_effect=ValueError("corrupt")))},
             ),
         ):
-            self.assertFalse(speaker._ensure_kokoro_ready(probe=False))
+            with self.assertRaisesRegex(ValueError, "corrupt"):
+                speaker._synthesize_kokoro_chunk("hello", gender="female")
 
         self.assertFalse(speaker.readiness_snapshot()["kokoro"]["ready"])
 
@@ -211,6 +213,225 @@ class SpeakerReadinessTests(unittest.TestCase):
                     ),
                 )
                 self.assertFalse(expected_dir.exists())
+
+
+class SpeakerKokoroLifecycleTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._reset_kokoro()
+
+    def tearDown(self) -> None:
+        speaker.close_kokoro(1.0)
+        self._reset_kokoro()
+        speaker._CANCEL_EVENT.clear()
+
+    @staticmethod
+    def _reset_kokoro() -> None:
+        with speaker._KOKORO_STATE:
+            speaker._KOKORO_CLIENT = None
+            speaker._KOKORO_ACTIVE_WORKERS = 0
+            speaker._KOKORO_LAST_COMPLETED_AT = None
+            speaker._KOKORO_CLOSING = False
+        speaker._set_readiness("kokoro", ready=False, reason="not_initialized")
+
+    @staticmethod
+    def _kokoro_paths():
+        model = MagicMock()
+        voices = MagicMock()
+        for path in (model, voices):
+            path.is_file.return_value = True
+            path.stat.return_value.st_size = 10
+        return model, voices
+
+    def test_startup_does_not_construct_or_probe_kokoro(self) -> None:
+        original_initialized = speaker._INITIALIZED
+        speaker._INITIALIZED = False
+        settings = MagicMock()
+        settings.voice.engine = "kokoro"
+        with (
+            patch.object(speaker, "get_settings_store") as settings_store,
+            patch.object(speaker.pygame.mixer, "get_init", return_value=(44100, -16, 2)),
+            patch.object(speaker.pygame.mixer, "init"),
+            patch.object(speaker.config, "is_dev_mode", return_value=False),
+            patch.dict("sys.modules", {"kokoro_onnx": MagicMock(Kokoro=MagicMock())}),
+        ):
+            settings_store.return_value.get_snapshot.return_value = settings
+            constructor = __import__("sys").modules["kokoro_onnx"].Kokoro
+            speaker.initialize()
+        constructor.assert_not_called()
+        self.assertIsNone(speaker._KOKORO_CLIENT)
+        speaker._INITIALIZED = original_initialized
+
+    def test_saved_preparation_loads_on_demand_but_cached_playback_does_not(self) -> None:
+        import numpy as np
+
+        fake_client = MagicMock()
+        fake_client.create.return_value = (np.zeros(8000, dtype=np.float32), 8000)
+        constructor = MagicMock(return_value=fake_client)
+        with (
+            patch.object(speaker, "_kokoro_paths", return_value=self._kokoro_paths()),
+            patch.dict("sys.modules", {"kokoro_onnx": MagicMock(Kokoro=constructor)}),
+            patch.object(speaker, "_admit_kokoro_for_event", return_value=(True, None)),
+            patch.object(speaker, "_play_cached_audio_bytes"),
+        ):
+            self.assertTrue(speaker.try_play_cached_audio(
+                [{"audio": b"saved", "content_type": "audio/wav", "duration_seconds": 1.0}],
+                playback_id="cached",
+                cancellation_event=threading.Event(),
+            ))
+            self.assertIsNone(speaker._KOKORO_CLIENT)
+            constructor.assert_not_called()
+
+            chunks, engine = speaker.synthesize_audio(
+                "Prepare this speech.",
+                tts_override="kokoro",
+                voice_gender="female",
+                cancellation_event=threading.Event(),
+            )
+
+        self.assertEqual(engine, "kokoro")
+        self.assertEqual(len(chunks), 1)
+        constructor.assert_called_once()
+        fake_client.create.assert_called_once()
+        self.assertTrue(speaker.readiness_snapshot()["kokoro"]["ready"])
+
+    def test_idle_boundary_releases_and_next_demand_reloads(self) -> None:
+        import numpy as np
+
+        first_client = MagicMock()
+        second_client = MagicMock()
+        second_client.create.return_value = (np.zeros(8, dtype=np.float32), 8000)
+        speaker._KOKORO_CLIENT = first_client
+        speaker._KOKORO_LAST_COMPLETED_AT = 100.0
+        now = 100.0 + speaker.KOKORO_IDLE_SECONDS - 0.001
+        with patch.object(speaker.time, "monotonic", side_effect=lambda: now):
+            self.assertFalse(speaker.release_kokoro_if_idle())
+        now += 0.001
+        with patch.object(speaker.time, "monotonic", side_effect=lambda: now):
+            self.assertTrue(speaker.release_kokoro_if_idle())
+        self.assertEqual(speaker.readiness_snapshot()["kokoro"], {
+            "ready": False,
+            "reason": "idle_timeout",
+        })
+
+        with (
+            patch.object(speaker, "_kokoro_paths", return_value=self._kokoro_paths()),
+            patch.dict("sys.modules", {"kokoro_onnx": MagicMock(Kokoro=lambda *_: second_client)}),
+            patch.object(speaker.time, "monotonic", side_effect=lambda: now + 1),
+        ):
+            result = speaker._synthesize_kokoro_chunk("hello", gender="female")
+        self.assertTrue(result.startswith(b"RIFF"))
+        second_client.create.assert_called_once()
+        self.assertTrue(speaker.readiness_snapshot()["kokoro"]["ready"])
+
+    def test_timed_out_native_worker_pins_session_until_create_returns(self) -> None:
+        started = threading.Event()
+        release = threading.Event()
+        finished = threading.Event()
+        client = MagicMock()
+
+        def slow_create(*_args, **_kwargs):
+            started.set()
+            if not release.wait(2.0):
+                raise TimeoutError("test watchdog expired")
+            finished.set()
+            return [0.0], 8000
+
+        client.create.side_effect = slow_create
+        outcome: list[Exception] = []
+
+        def synthesize() -> None:
+            try:
+                speaker._synthesize_kokoro_chunk("hello", gender="female")
+            except Exception as exc:  # noqa: BLE001
+                outcome.append(exc)
+
+        with (
+            patch.object(speaker, "_kokoro_paths", return_value=self._kokoro_paths()),
+            patch.dict("sys.modules", {"kokoro_onnx": MagicMock(Kokoro=lambda *_: client)}),
+            patch.object(speaker, "TTS_SYNTHESIS_TIMEOUT_SECONDS", 0.02),
+        ):
+            caller = threading.Thread(target=synthesize)
+            caller.start()
+            self.assertTrue(started.wait(1.0))
+            caller.join(1.0)
+            self.assertFalse(caller.is_alive())
+            self.assertIsInstance(outcome[0], TimeoutError)
+            self.assertFalse(finished.is_set())
+            self.assertIsNone(speaker._KOKORO_LAST_COMPLETED_AT)
+            self.assertFalse(speaker.release_kokoro_if_idle())
+            self.assertFalse(speaker.close_kokoro(0.0))
+            self.assertIs(speaker._KOKORO_CLIENT, client)
+            release.set()
+            self.assertTrue(finished.wait(1.0))
+            self.assertTrue(speaker.close_kokoro(1.0))
+
+        self.assertIsNone(speaker._KOKORO_CLIENT)
+        self.assertEqual(speaker._KOKORO_ACTIVE_WORKERS, 0)
+        self.assertIsNotNone(speaker._KOKORO_LAST_COMPLETED_AT)
+
+    def test_failed_native_create_advances_idle_age_and_can_be_released(self) -> None:
+        client = MagicMock()
+        client.create.side_effect = RuntimeError("native inference failed")
+        now = 50.0
+        with (
+            patch.object(speaker, "_kokoro_paths", return_value=self._kokoro_paths()),
+            patch.dict("sys.modules", {"kokoro_onnx": MagicMock(Kokoro=lambda *_: client)}),
+            patch.object(speaker.time, "monotonic", side_effect=lambda: now),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "native inference failed"):
+                speaker._synthesize_kokoro_chunk("hello", gender="female")
+        self.assertEqual(speaker._KOKORO_LAST_COMPLETED_AT, now)
+
+        with patch.object(
+            speaker.time,
+            "monotonic",
+            side_effect=lambda: now + speaker.KOKORO_IDLE_SECONDS,
+        ):
+            self.assertTrue(speaker.release_kokoro_if_idle())
+        self.assertIsNone(speaker._KOKORO_CLIENT)
+        self.assertEqual(speaker.readiness_snapshot()["kokoro"], {
+            "ready": False,
+            "reason": "idle_timeout",
+        })
+
+    def test_pressure_falls_back_to_local_speech_and_cancellation_does_not(self) -> None:
+        output = io.BytesIO()
+        with wave.open(output, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(8000)
+            wav_file.writeframes(bytes([0, 0]) * 800)
+        local_audio = output.getvalue()
+        with (
+            patch.object(speaker, "_admit_kokoro_for_event", return_value=(False, "kokoro_ram_pressure")),
+            patch.object(speaker, "_synthesize_pyttsx3_wav", return_value=local_audio) as local,
+            patch.object(speaker, "fetch_google_audio") as google,
+        ):
+            chunks, engine = speaker.synthesize_audio(
+                "Use the local fallback.",
+                tts_override="kokoro",
+                voice_gender="female",
+                cancellation_event=threading.Event(),
+            )
+        self.assertEqual(engine, "pyttsx3")
+        self.assertEqual(chunks[0]["audio"], local_audio)
+        local.assert_called_once()
+        google.assert_not_called()
+
+        cancellation = threading.Event()
+        cancellation.set()
+        with (
+            patch.object(speaker, "_admit_kokoro_for_event", return_value=(False, "speech_cancelled")),
+            patch.object(speaker, "_synthesize_pyttsx3_wav") as local,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "speech_cancelled"):
+                speaker.synthesize_audio(
+                    "Do not speak after cancellation.",
+                    tts_override="kokoro",
+                    voice_gender="female",
+                    cancellation_event=cancellation,
+                )
+        local.assert_not_called()
 
 
 class SpeakerCachedAudioTests(unittest.TestCase):
