@@ -48,7 +48,7 @@ export default function DesktopFirstRun({ setup, busy, actionError, onFreshStart
       </div> : null}
 
       {setup.phase === 'choice_required' && !preview ? <>
-        <p className="mt-3 text-sm leading-relaxed text-zinc-300">Choose Fresh Start for an empty APEX profile, or import data from a stopped APEX checkout. A source checkout stores data in that checkout by default; if it used <code className="text-zinc-100">APEX_DATA_DIR</code>, choose that data folder. APEX will preview managed files before copying anything.</p>
+        <p className="mt-3 text-sm leading-relaxed text-zinc-300">Choose Fresh Start to start this profile without importing another, or import data from a stopped APEX checkout. Existing files in this profile are preserved and may still be used. A source checkout stores data in that checkout by default; if it used <code className="text-zinc-100">APEX_DATA_DIR</code>, choose that data folder. APEX will preview managed files before copying anything.</p>
         <div className="mt-6 flex flex-wrap gap-2">
           <button type="button" disabled={busy} onClick={onFreshStart} className={buttonClass}>Fresh Start</button>
           <button type="button" disabled={busy} onClick={onChooseImport} className={buttonClass}>Import from a checkout</button>
@@ -101,7 +101,7 @@ export default function DesktopFirstRun({ setup, busy, actionError, onFreshStart
       {actionError ? <p className="mt-3 text-sm text-red-200" role="alert">{actionError}</p> : null}
       {quitError ? <p className="mt-3 text-sm text-red-200" role="alert">APEX could not quit cleanly. Try again, or wait for setup to finish and quit once more.</p> : null}
       <div className="mt-6 border-t border-white/10 pt-4">
-        <p className="text-xs leading-relaxed text-zinc-400">Fresh Start creates a new profile. It does not remove or reset files from another APEX folder.</p>
+        <p className="text-xs leading-relaxed text-zinc-400">Fresh Start does not import another folder or remove files here. Existing files in this profile are preserved and may still be used.</p>
         <button type="button" disabled={quitPending} onClick={() => void quit()} className={`${buttonClass} mt-4`}>Quit APEX</button>
       </div>
     </section>
@@ -135,6 +135,10 @@ function progressStageLabel(stage: string): string {
   if (stage === 'copying') return 'Copying files'
   if (stage === 'database') return 'Checking database'
   if (stage === 'database_preview') return 'Preparing database preview'
+  if (stage === 'database_preview_transport') return 'Preparing database preview transfer'
+  if (stage === 'database_preview_backup') return 'Preparing database preview backup'
+  if (stage === 'database_transport') return 'Preparing database transfer'
+  if (stage === 'database_backup') return 'Preparing database backup'
   if (stage === 'validating') return 'Validating imported data'
   if (stage === 'recovery_verify') return 'Verifying recovery'
   return 'Working'
