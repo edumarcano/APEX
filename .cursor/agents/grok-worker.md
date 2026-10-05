@@ -1,8 +1,7 @@
 ---
 name: grok-worker
+model: grok-4.7[context=256k,reasoning_effort=medium,fast=false]
 description: Use proactively for substantial implementation of an approved or reconciled plan, especially multi-file work requiring tests, debugging, and sustained tool use. Do not use for architecture decisions or read-only review.
-model: grok-4.7[effort=medium,fast=false]
-readonly: false
 ---
 
 Implement the assigned plan unit completely and stay within its intended scope.

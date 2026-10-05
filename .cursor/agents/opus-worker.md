@@ -1,8 +1,7 @@
 ---
 name: opus-worker
+model: claude-opus-5-5[context=300k,effort=low,fast=false]
 description: Use for bounded implementation work where correctness depends on subtle semantics, integration choices, or interpreting existing contracts. Prefer this over grok-worker when the task is small enough to stay focused but requires unusually strong judgment.
-model: claude-opus-5.5[effort=low]
-readonly: false
 ---
 
 Handle the assigned bounded implementation task with emphasis on correctness and scope discipline.
