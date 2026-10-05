@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
+from clients import weather_client
 from core.activity.models import ActivityReport, ActivityReportContent
 from core.agent.providers.openrouter import OpenRouterModelProfile
 from core.briefings.daily import (
@@ -796,6 +797,49 @@ class DailyInputTests(unittest.TestCase):
         self.assertEqual(by_source["weather"].source_id, "weather:current")
         self.assertEqual(by_source["weather"].identity_kind, "provider")
         self.assertIn("Clear", by_source["weather"].content or "")
+
+    def test_daily_evidence_excludes_device_coordinates_from_weather_provider_payload(self) -> None:
+        marker = (12.3456, 98.7654)
+        provider = Mock()
+        provider.status_code = 200
+        provider.json.return_value = {
+            "latitude": marker[0],
+            "longitude": marker[1],
+            "current": {"temperature_2m": 72, "weather_code": 0},
+            "daily": {
+                "time": ["2026-08-10"],
+                "temperature_2m_max": [81],
+                "temperature_2m_min": [65],
+                "weather_code": [0],
+            },
+        }
+        session = Mock()
+        session.get.return_value = provider
+        resolved = SimpleNamespace(
+            location="Current area", source="device", coordinates=marker, revision=2
+        )
+        with patch(
+            "clients.weather_client.resolve_weather_location", return_value=resolved
+        ), patch.object(
+            weather_client, "get_connector_http_session", return_value=session
+        ):
+            weather = weather_client.collect_weather()
+
+        snapshot = TelemetrySnapshot(
+            modules={
+                "weather": TelemetryModuleEntry.from_connector_result(weather),
+            }
+        )
+        with patch("core.briefings.daily_inputs.is_dev_mode", return_value=False):
+            _coverage, evidence = _telemetry_inputs(snapshot, None, dev_mode=False)
+
+        weather_evidence = next(item for item in evidence if item.source == "weather")
+        self.assertEqual(weather.data["location_source"], "device")
+        self.assertEqual(weather.data["location"], "Current area")
+        self.assertNotIn(str(marker[0]), str(weather.model_dump()))
+        self.assertNotIn(str(marker[1]), str(weather.model_dump()))
+        self.assertNotIn(str(marker[0]), weather_evidence.content or "")
+        self.assertNotIn(str(marker[1]), weather_evidence.content or "")
 
     def test_external_report_selection_is_bounded_and_untrusted(self) -> None:
         reports = []

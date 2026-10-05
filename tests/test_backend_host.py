@@ -24,12 +24,48 @@ from core.backend_host import (
     _HardStopWatchdog,
     _host_uvicorn_server_type,
     _make_desktop_preferences_sink,
+    _make_device_preferences_sink,
 )
 from core.host.processes import python_child_invocation
 from core.host.profile_lock import ProfileLock
 
 
 class BackendHostSubprocessTests(unittest.TestCase):
+    def test_device_preferences_publish_each_meaningful_generation_once_after_ready(self) -> None:
+        sent = []
+
+        class Channel:
+            def send(self, envelope) -> None:
+                sent.append(envelope)
+
+        instance_id = str(uuid.uuid4())
+        state = {"revision": 1, "location_enabled": False}
+        service = SimpleNamespace(
+            preference_payload=lambda: {
+                "instance_id": instance_id,
+                "revision": state["revision"],
+                "location_enabled": state["location_enabled"],
+            }
+        )
+        readiness = SimpleNamespace(ready=False)
+        publish = _make_device_preferences_sink(
+            Channel(),
+            instance_id,
+            ready_predicate=lambda: readiness.ready,
+            get_device_service=lambda: service,
+        )
+        publish()
+        self.assertEqual(sent, [])
+
+        readiness.ready = True
+        publish()
+        publish()
+        state.update(revision=2, location_enabled=True)
+        publish()
+        self.assertEqual([event.request_id for event in sent], ["device-prefs:1", "device-prefs:2"])
+        self.assertEqual(sent[0].payload["location_enabled"], False)
+        self.assertEqual(sent[1].payload["location_enabled"], True)
+
     def test_desktop_preferences_sink_waits_for_ready_and_reads_latest_snapshot(self) -> None:
         sent = []
 

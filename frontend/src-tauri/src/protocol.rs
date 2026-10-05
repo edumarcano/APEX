@@ -137,9 +137,120 @@ fn validate_payload(frame: &Envelope) -> Result<(), &'static str> {
                 return Err("protocol_error");
             }
         }
+        "device_preferences" => {
+            if payload.len() != 3
+                || uuid_value(payload.get("instance_id")).is_none()
+                || positive_u64(payload.get("revision")).is_none()
+                || payload
+                    .get("location_enabled")
+                    .and_then(Value::as_bool)
+                    .is_none()
+                || !valid_sequence(&frame.request_id, "device-prefs:")
+                || frame
+                    .request_id
+                    .strip_prefix("device-prefs:")
+                    .and_then(|value| value.parse::<u64>().ok())
+                    != positive_u64(payload.get("revision"))
+            {
+                return Err("protocol_error");
+            }
+        }
+        "device_request" => {
+            if payload.len() != 2
+                || uuid_value(payload.get("instance_id")).is_none()
+                || positive_u64(payload.get("revision")).is_none()
+                || !valid_sequence(&frame.request_id, "device:")
+            {
+                return Err("protocol_error");
+            }
+        }
+        "device_result" => {
+            let outcome = payload.get("outcome").and_then(Value::as_str);
+            let valid_fix = match (outcome, payload.get("fix")) {
+                (Some("ok"), Some(fix)) => valid_fix(fix),
+                (
+                    Some(
+                        "permission_required"
+                        | "denied"
+                        | "revoked"
+                        | "unavailable"
+                        | "timed_out"
+                        | "expired"
+                        | "unsupported",
+                    ),
+                    Some(Value::Null),
+                ) => true,
+                _ => false,
+            };
+            if payload.len() != 4
+                || uuid_value(payload.get("instance_id")).is_none()
+                || positive_u64(payload.get("revision")).is_none()
+                || !valid_fix
+                || !valid_sequence(&frame.request_id, "device:")
+            {
+                return Err("protocol_error");
+            }
+        }
+        "device_state" => {
+            let permission = payload.get("permission").and_then(Value::as_str);
+            let availability = payload.get("availability").and_then(Value::as_str);
+            if payload.len() != 4
+                || uuid_value(payload.get("instance_id")).is_none()
+                || positive_u64(payload.get("revision")).is_none()
+                || !["unknown", "granted", "denied", "revoked", "unsupported"]
+                    .contains(&permission.unwrap_or(""))
+                || ![
+                    "unknown",
+                    "available",
+                    "unavailable",
+                    "timed_out",
+                    "unsupported",
+                ]
+                .contains(&availability.unwrap_or(""))
+                || !valid_sequence(&frame.request_id, "device-state:")
+            {
+                return Err("protocol_error");
+            }
+        }
         _ => return Err("protocol_error"),
     }
     Ok(())
+}
+
+fn uuid_value(value: Option<&Value>) -> Option<&str> {
+    let value = value?.as_str()?;
+    uuid::Uuid::parse_str(value).ok().map(|_| value)
+}
+
+fn positive_u64(value: Option<&Value>) -> Option<u64> {
+    value?.as_u64().filter(|value| *value > 0)
+}
+
+fn valid_sequence(request_id: &str, prefix: &str) -> bool {
+    let Some(value) = request_id.strip_prefix(prefix) else {
+        return false;
+    };
+    value
+        .as_bytes()
+        .first()
+        .is_some_and(|first| (b'1'..=b'9').contains(first))
+        && value.bytes().all(|byte| byte.is_ascii_digit())
+        && value.parse::<u64>().is_ok()
+}
+
+fn valid_fix(value: &Value) -> bool {
+    let Some(fix) = value.as_object() else {
+        return false;
+    };
+    if fix.len() != 3 {
+        return false;
+    }
+    let latitude = fix.get("latitude").and_then(Value::as_f64);
+    let longitude = fix.get("longitude").and_then(Value::as_f64);
+    let observed_at = fix.get("observed_at").and_then(Value::as_f64);
+    latitude.is_some_and(|v| v.is_finite() && (-90.0..=90.0).contains(&v))
+        && longitude.is_some_and(|v| v.is_finite() && (-180.0..=180.0).contains(&v))
+        && observed_at.is_some_and(f64::is_finite)
 }
 
 fn valid_desktop_request(request_id: &str) -> bool {
@@ -223,5 +334,56 @@ mod tests {
             decode(format!("{bad_payload}\n").as_bytes()).unwrap_err(),
             "protocol_error"
         );
+    }
+
+    #[test]
+    fn device_location_frames_require_exact_identity_revision_and_coordinate_shapes() {
+        let instance = "581aeb4b-e90e-40d5-9708-1b1fb857fa26";
+        let frames = [
+            format!(
+                r#"{{"version":1,"type":"device_preferences","request_id":"device-prefs:1","payload":{{"instance_id":"{instance}","revision":1,"location_enabled":true}}}}"#
+            ),
+            format!(
+                r#"{{"version":1,"type":"device_request","request_id":"device:1","payload":{{"instance_id":"{instance}","revision":1}}}}"#
+            ),
+            format!(
+                r#"{{"version":1,"type":"device_state","request_id":"device-state:1","payload":{{"instance_id":"{instance}","revision":1,"permission":"granted","availability":"available"}}}}"#
+            ),
+            format!(
+                r#"{{"version":1,"type":"device_result","request_id":"device:1","payload":{{"instance_id":"{instance}","revision":1,"outcome":"ok","fix":{{"latitude":1.25,"longitude":-2.5,"observed_at":1800000000.0}}}}}}"#
+            ),
+            format!(
+                r#"{{"version":1,"type":"device_result","request_id":"device:2","payload":{{"instance_id":"{instance}","revision":1,"outcome":"unavailable","fix":null}}}}"#
+            ),
+        ];
+        for frame in frames {
+            assert!(
+                decode(format!("{frame}\n").as_bytes()).is_ok(),
+                "valid protocol frame was rejected"
+            );
+        }
+        let bad = [
+            format!(
+                r#"{{"version":1,"type":"device_preferences","request_id":"device-prefs:01","payload":{{"instance_id":"{instance}","revision":1,"location_enabled":true}}}}"#
+            ),
+            format!(
+                r#"{{"version":1,"type":"device_request","request_id":"device:1","payload":{{"instance_id":"{instance}","revision":0}}}}"#
+            ),
+            format!(
+                r#"{{"version":1,"type":"device_state","request_id":"device-state:1","payload":{{"instance_id":"{instance}","revision":1,"permission":"granted","availability":"available","latitude":1}}}}"#
+            ),
+            format!(
+                r#"{{"version":1,"type":"device_result","request_id":"device:1","payload":{{"instance_id":"{instance}","revision":1,"outcome":"unavailable","fix":{{}}}}}}"#
+            ),
+            format!(
+                r#"{{"version":1,"type":"device_result","request_id":"device:1","payload":{{"instance_id":"{instance}","revision":1,"outcome":"ok","fix":{{"latitude":91,"longitude":0,"observed_at":1}}}}}}"#
+            ),
+        ];
+        for frame in bad {
+            assert_eq!(
+                decode(format!("{frame}\n").as_bytes()).unwrap_err(),
+                "protocol_error"
+            );
+        }
     }
 }

@@ -391,7 +391,7 @@ def _check_install_contained_data_root(bundle: Path, scratch: Path, report: Repo
                 stream.close()
 
 
-def _run_once(bundle: Path, report: Report, *, dev: bool = False, demo: bool = False, probe: Path | None = None, fastembed_cache: Path | None = None, kokoro_assets: Path | None = None, run_probe: bool = True) -> None:
+def _run_once(bundle: Path, report: Report, *, dev: bool = False, demo: bool = False, probe: Path | None = None, fastembed_cache: Path | None = None, kokoro_assets: Path | None = None, run_probe: bool = True, inference_timeout: int = 120) -> None:
     if not _port_available():
         report.add("api_port_available", "failed", "127.0.0.1:8000 is occupied; stop the owner or run the smoke gate on a clear host. The existing process was left untouched.")
         return
@@ -465,7 +465,7 @@ def _run_once(bundle: Path, report: Report, *, dev: bool = False, demo: bool = F
                 kokoro_target = probe_root / "core" / "weights" / "kokoro"
                 shutil.copytree(fastembed_cache, fastembed_target, dirs_exist_ok=True)
                 shutil.copytree(kokoro_assets, kokoro_target, dirs_exist_ok=True)
-                semantic_output = _cli(probe, ["semantic-assets"], cwd, probe_env, timeout_seconds=120)
+                semantic_output = _cli(probe, ["semantic-assets"], cwd, probe_env, timeout_seconds=inference_timeout)
                 semantic_result = json.loads(semantic_output)
                 semantic_evidence = semantic_result.get("evidence", {})
                 if (
@@ -477,7 +477,7 @@ def _run_once(bundle: Path, report: Report, *, dev: bool = False, demo: bool = F
                     raise RuntimeError(f"real FastEmbed semantic probe failed: {semantic_result}")
                 report.add("fastembed_real_semantic_search", "passed", f"{semantic_evidence['semantic_results']} results")
 
-                kokoro_output = _cli(probe, ["kokoro-assets"], cwd, probe_env, timeout_seconds=120)
+                kokoro_output = _cli(probe, ["kokoro-assets"], cwd, probe_env, timeout_seconds=inference_timeout)
                 kokoro_result = json.loads(kokoro_output)
                 kokoro_evidence = kokoro_result.get("evidence", {})
                 if (
@@ -638,7 +638,17 @@ def _emit_report(result: dict[str, object], report_path: Path | None, stream: An
     print(rendered, file=stream if stream is not None else sys.stdout)
 
 
-def main(argv: list[str] | None = None) -> int:
+def _inference_timeout(value: str) -> int:
+    try:
+        timeout = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("must be an integer between 30 and 600 seconds") from None
+    if not 30 <= timeout <= 600:
+        raise argparse.ArgumentTypeError("must be between 30 and 600 seconds")
+    return timeout
+
+
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run bounded real-process checks against an APEX backend bundle.")
     parser.add_argument("--bundle", type=Path, required=True, help="Directory containing apex-backend.exe, apex.exe, and _internal.")
     parser.add_argument("--probe", type=Path, help="Separate build-only frozen probe executable.")
@@ -646,6 +656,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--strict", action="store_true", help="Require real optional model assets and every branch-3 bundle check to pass.")
     parser.add_argument("--fastembed-cache", type=Path, help="Test-only external FastEmbed model cache.")
     parser.add_argument("--kokoro-assets", type=Path, help="Test-only directory containing Kokoro ONNX and voice files.")
+    parser.add_argument(
+        "--inference-timeout",
+        type=_inference_timeout,
+        default=120,
+        help="Timeout in seconds for real semantic and Kokoro asset inference (30..600; default: 120).",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _build_parser()
     args = parser.parse_args(argv)
     report = Report()
     bundle = args.bundle.resolve()
@@ -671,7 +692,14 @@ def main(argv: list[str] | None = None) -> int:
                 before = _snapshot_resources(copied)
                 report.add("copied_outside_checkout_to_unicode_path", "passed")
                 _check_install_contained_data_root(copied, scratch, report)
-                _run_once(copied, report, probe=probe_copy, fastembed_cache=args.fastembed_cache, kokoro_assets=args.kokoro_assets)
+                _run_once(
+                    copied,
+                    report,
+                    probe=probe_copy,
+                    fastembed_cache=args.fastembed_cache,
+                    kokoro_assets=args.kokoro_assets,
+                    inference_timeout=args.inference_timeout,
+                )
                 for mode, kwargs in (("dev_mode_safe_start", {"dev": True}), ("demo_mode_safe_start", {"demo": True})):
                     if not report.failed:
                         new_checks = len(report.checks)

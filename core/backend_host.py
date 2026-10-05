@@ -208,6 +208,58 @@ def _make_desktop_preferences_sink(
     return publish
 
 
+def _make_device_preferences_sink(
+    channel: ControlChannel,
+    instance_id: str,
+    *,
+    ready_predicate: Callable[[], bool],
+    get_device_service: Callable[[], Any] | None = None,
+) -> Callable[[], None]:
+    """Publish initialization and committed device preference generations only."""
+    lock = threading.Lock()
+    published_revision = 0
+
+    def publish() -> None:
+        nonlocal published_revision
+        try:
+            with lock:
+                if not ready_predicate():
+                    return
+                if get_device_service is None:
+                    from core.device_context import get_device_context_service
+                    service = get_device_context_service()
+                else:
+                    service = get_device_service()
+                if service is None:
+                    return
+                payload = service.preference_payload()
+                revision = payload["revision"]
+                if revision == published_revision:
+                    return
+                if payload["instance_id"] != instance_id:
+                    return
+                if not _send(
+                    channel,
+                    "device_preferences",
+                    payload,
+                    f"device-prefs:{revision}",
+                ):
+                    _LOGGER.warning("Device context preferences could not be sent to the native shell.")
+                    return
+                published_revision = int(revision)
+        except Exception:
+            _LOGGER.warning("Device context preferences publication failed.", exc_info=True)
+
+    return publish
+
+
+def _make_device_request_sink(channel: ControlChannel) -> Callable[[dict[str, object], str], bool]:
+    """Send one bounded location read request through the managed host channel."""
+    def send(payload: dict[str, object], request_id: str) -> bool:
+        return _send(channel, "device_request", payload, request_id)
+    return send
+
+
 def _wait_start(channel: ControlChannel) -> tuple[str, str]:
     deadline = time.monotonic() + START_HANDSHAKE_SECONDS
     while True:
@@ -319,10 +371,18 @@ async def _serve(
             str(identity["instance_id"]),
             ready_predicate=lambda: ready_sent,
         )
+        app.state.device_preferences_sink = _make_device_preferences_sink(
+            channel,
+            str(identity["instance_id"]),
+            ready_predicate=lambda: ready_sent,
+        )
+        app.state.device_request_sink = _make_device_request_sink(channel)
         _send(channel, "starting", identity, start_request_id)
     else:
         app.state.completion_sink = None
         app.state.desktop_preferences_sink = None
+        app.state.device_preferences_sink = None
+        app.state.device_request_sink = None
 
     if shutdown_requested.is_set():
         context.release()
@@ -358,6 +418,10 @@ async def _serve(
 
     def request_shutdown(_reason: str = "shutdown") -> None:
         shutdown_requested.set()
+        from core.device_context import get_device_context_service
+        device_service = get_device_context_service()
+        if device_service is not None:
+            device_service.close()
         watchdog.arm()
         server.should_exit = True
 
@@ -365,6 +429,10 @@ async def _serve(
         def channel_failed(reason: str) -> None:
             del reason
             correlation["failure"] = "protocol_error"
+            from core.device_context import get_device_context_service
+            device_service = get_device_context_service()
+            if device_service is not None:
+                device_service.channel_lost()
             mark_failure("protocol_error")
             request_shutdown("control_channel_failed")
 
@@ -376,6 +444,10 @@ async def _serve(
                     incoming = channel.receive(timeout=0.25)
                 except Exception:
                     if channel._failed:
+                        from core.device_context import get_device_context_service
+                        device_service = get_device_context_service()
+                        if device_service is not None:
+                            device_service.channel_lost()
                         mark_failure("protocol_error")
                         request_shutdown("control_channel_failed")
                         return
@@ -384,6 +456,15 @@ async def _serve(
                     correlation["shutdown"] = incoming.request_id
                     request_shutdown("requested")
                     return
+                if incoming.type in {"device_state", "device_result"}:
+                    from core.device_context import get_device_context_service
+                    device_service = get_device_context_service()
+                    if device_service is not None:
+                        if incoming.type == "device_state":
+                            device_service.handle_state(incoming.payload, incoming.request_id)
+                        else:
+                            device_service.handle_result(incoming.payload, incoming.request_id)
+                    continue
                 mark_failure("protocol_error")
                 request_shutdown("invalid_command")
                 return
@@ -446,6 +527,7 @@ async def _serve(
                         request_shutdown("control_channel_failed")
                     else:
                         app.state.desktop_preferences_sink()
+                        app.state.device_preferences_sink()
             await asyncio.sleep(0.05)
         await server_task
         lifespan = getattr(server, "lifespan", None)

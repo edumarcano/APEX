@@ -40,6 +40,11 @@ export type DesktopServicesStatus = {
   }
 }
 
+export type DesktopLocationCheck = {
+  permission: 'unknown' | 'granted' | 'denied' | 'revoked' | 'unsupported'
+  availability: 'unknown' | 'available' | 'unavailable' | 'timed_out' | 'unsupported'
+}
+
 export type DesktopPlatform = {
   getBackendStatus(): Promise<DesktopBackendState>
   retryBackend(): Promise<DesktopBackendState>
@@ -50,4 +55,6 @@ export type DesktopPlatform = {
   subscribeServicesState(onWakeup: () => void): Promise<() => void>
   openExternal(url: string): Promise<void>
   writeClipboardText(text: string): Promise<void>
+  checkLocationPermission(): Promise<DesktopLocationCheck>
+  subscribeDeviceState(onWakeup: () => void): Promise<() => void>
 }

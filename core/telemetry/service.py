@@ -88,6 +88,21 @@ class TelemetryService:
             features=settings.features,
             modules=settings.modules,
         )
+        if "weather" in (names or list(CONNECTOR_NAMES)) and "weather" in enabled_names:
+            from core.device_context import weather_location_eligible
+
+            snapshot = self._store.get()
+            weather = snapshot.modules.get("weather") if snapshot is not None else None
+            location_source = (
+                weather.data.get("location_source")
+                if weather is not None
+                else None
+            )
+            # Device-backed Weather must be reacquired on an actual refresh so
+            # the native service can revalidate permission and fix age. This
+            # check stays passive and never starts native location work.
+            if weather_location_eligible() or location_source == "device":
+                return False
         return self._store.connectors_are_fresh(
             names or list(CONNECTOR_NAMES),
             enabled_names=enabled_names,

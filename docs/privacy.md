@@ -17,6 +17,12 @@ Credentials use separate storage:
 
 Keep credential files, tokens, databases, and local overrides out of source control. Files copied by backups or sync services are governed by those services, including copies of the database or exported notes.
 
+## Device location
+
+Device location is off by default and requires a saved opt-in plus an explicit foreground Windows permission check in each native app session. Only actual Weather requests acquire a fix. Settings, status reads, preflight checks, tool catalogs, and background workers do not request permission. APEX does not subscribe to continuous position updates or store a location history.
+
+Raw coordinates travel over private process pipes and are sent to Open-Meteo as forecast request parameters. They stay out of the frontend, HTTP status responses, logs, model context, Cortex tool records, and saved Briefing evidence. APEX retains fixes only in memory for at most 15 minutes and clears them when location is disabled, permission is revoked, or the session shuts down. Weather results expose a safe **Current area** label and device source attribution; configured and explicit locations keep their ordinary labels.
+
 ## Models and connected services
 
 A cloud model request can include your message, selected conversation history, tool definitions, and the evidence allowed for that request. Local models receive those inputs at the configured Ollama or llama.cpp endpoint. Choosing a local model does not make connected services local: a connector or MCP tool can still contact its external service.

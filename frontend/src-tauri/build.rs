@@ -8,6 +8,7 @@ fn main() {
             "desktop_services_retry",
             "desktop_open_external",
             "desktop_write_clipboard",
+            "desktop_check_location_permission",
         ]),
     ))
     .expect("failed to build the Tauri application manifest")

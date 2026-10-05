@@ -11,6 +11,8 @@ export interface ResolvedWeatherInfo {
   detail: string
   condition: WeatherConditionArchetype | null
   timeline: WeatherTimelinePoint[]
+  locationSource: 'device' | 'configured' | 'explicit' | null
+  locationLabel: string | null
 }
 
 export const DEFAULT_WEATHER_INFO: ResolvedWeatherInfo = {
@@ -24,6 +26,8 @@ export const DEFAULT_WEATHER_INFO: ResolvedWeatherInfo = {
   detail: '',
   condition: null,
   timeline: [],
+  locationSource: null,
+  locationLabel: null,
 }
 
 const VALID_ARCHETYPES: readonly WeatherConditionArchetype[] = [
@@ -108,6 +112,19 @@ export function resolveWeatherFromModule(module: {
         .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ')
     : ''
+  const locationSource = module.data.location_source === 'device' || module.data.location_source === 'configured' || module.data.location_source === 'explicit'
+    ? module.data.location_source
+    : null
+  const rawLocation = typeof module.data.location === 'string' && module.data.location.trim()
+    ? module.data.location.trim()
+    : null
+  const locationLabel = locationSource === 'device'
+    ? 'Current area · Device location'
+    : locationSource === 'configured'
+      ? `${rawLocation ?? 'Configured location'} · Configured location`
+      : locationSource === 'explicit'
+        ? `${rawLocation ?? 'Current area'} · Explicit location`
+        : null
 
   return {
     temperatureF: tempFromData,
@@ -120,5 +137,7 @@ export function resolveWeatherFromModule(module: {
     detail,
     condition: archetype,
     timeline,
+    locationSource,
+    locationLabel,
   }
 }

@@ -77,6 +77,14 @@ The packaged Windows desktop shell also has two opt-in preferences, both off by 
 
 Enable **Launch on startup** to register the installed APEX app for the current Windows user; startup launches hidden to the tray. If startup registration or hidden launch fails, the shell shows a visible recovery window and reports the OS error. Enable **Completion notifications** to show a generic Windows notification after a successful committed Cortex or Briefing run completes while APEX is hidden or minimized. Notifications are session-deduplicated and contain no run content. These controls are available only in the packaged desktop app; backend preferences are stored in the gitignored `config.local.json`, and actual Windows capability or registration errors are reported separately from the saved preference.
 
+### Device location for Weather
+
+Device location is off by default. In Runtime Settings > Desktop, enable **Use device location for Weather**, save the preference, then choose **Check location permission** while APEX is visible and focused. The saved setting is `device_context.location_enabled`. Each native app session requires that explicit check again; saving the setting or opening a workspace does not request Windows permission.
+
+Actual Weather requests use an explicit tool location first, then permitted current device location, then `TARGET_LOCATION`. Device results are labeled **Current area**. Denial, revocation, missing fixes, timeouts, and unsupported or headless operation retain the configured fallback. Permission and availability are shown separately from the saved preference. Turning the setting off clears the in-memory fix and cancels pending acquisition.
+
+APEX reads location on demand, retains fixes in memory for at most 15 minutes, and collects no continuous position history. See [Privacy](privacy.md#device-location) for the provider boundary.
+
 ## Models and credentials
 
 The default model is OpenRouter GLM 5.3 Flash with Low reasoning. Configure the credential for the provider of the model you select:
@@ -154,7 +162,7 @@ Enable only the services you intend to use. Disabled telemetry connectors do not
 
 | Capability | Setup |
 |---|---|
-| Weather | `TARGET_LOCATION` in `.env`; Open-Meteo needs no API key |
+| Weather | Optional permissioned device location in the Windows desktop app, with `TARGET_LOCATION` in `.env` as fallback; Open-Meteo needs no API key |
 | Football | `FOOTBALL_API_KEY` in `.env` and followed teams in Runtime Settings |
 | Gmail and Google Calendar | Desktop OAuth `credentials.json` in the selected data directory; first authorization creates `token.json` there |
 | Microsoft To Do | `MICROSOFT_TODO_CLIENT_ID`, optional tenant and token-cache path; a public/native Entra app with device-code flow and delegated `Tasks.ReadWrite` |

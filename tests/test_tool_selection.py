@@ -555,13 +555,68 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         self.assertEqual(len(group_ids), len(catalog.groups))
 
     def test_native_catalog_uses_configuration_without_authenticating(self) -> None:
-        with patch.dict("os.environ", {"TARGET_LOCATION": ""}, clear=False):
+        with patch.dict("os.environ", {"TARGET_LOCATION": ""}, clear=False), patch(
+            "core.device_context.default_weather_available", return_value=False
+        ), patch(
+            "core.device_context.weather_location_eligible", return_value=False
+        ):
             catalog = build_tool_catalog("apex", model_id="z-ai/glm-5.3-flash")
         weather = next(
             tool for tool in catalog.tools if tool.name == "get_weather_forecast"
         )
         self.assertFalse(weather.available)
         self.assertIn("not configured", weather.unavailable_reason or "")
+
+    def test_weather_catalog_allows_eligible_device_location_without_acquiring_it(self) -> None:
+        unavailable_snapshot = SimpleNamespace(
+            modules={
+                "weather": SimpleNamespace(
+                    status="unavailable", reason_code="missing_credentials"
+                ),
+            }
+        )
+        with patch.dict("os.environ", {"TARGET_LOCATION": ""}, clear=False), patch(
+            "core.device_context.weather_location_eligible", return_value=True
+        ), patch(
+            "core.device_context.default_weather_available", return_value=True
+        ), patch(
+            "core.telemetry.service.get_telemetry_service"
+        ) as get_service, patch(
+            "core.device_context.resolve_weather_location",
+            side_effect=AssertionError("catalog must not acquire device location"),
+        ):
+            get_service.return_value.latest.return_value = unavailable_snapshot
+            catalog = build_tool_catalog("apex", model_id="z-ai/glm-5.3-flash")
+
+        weather = next(
+            tool for tool in catalog.tools if tool.name == "get_weather_forecast"
+        )
+        self.assertTrue(weather.available)
+
+    def test_weather_catalog_preserves_disabled_and_provider_error_statuses(self) -> None:
+        for status, reason in (("disabled", "disabled"), ("unavailable", "provider_error")):
+            with self.subTest(status=status, reason=reason):
+                snapshot = SimpleNamespace(
+                    modules={
+                        "weather": SimpleNamespace(status=status, reason_code=reason),
+                    }
+                )
+                with patch.dict(
+                    "os.environ", {"TARGET_LOCATION": ""}, clear=False
+                ), patch(
+                    "core.device_context.weather_location_eligible", return_value=True
+                ), patch(
+                    "core.device_context.default_weather_available", return_value=True
+                ), patch(
+                    "core.telemetry.service.get_telemetry_service"
+                ) as get_service:
+                    get_service.return_value.latest.return_value = snapshot
+                    catalog = build_tool_catalog("apex", model_id="z-ai/glm-5.3-flash")
+
+                weather = next(
+                    tool for tool in catalog.tools if tool.name == "get_weather_forecast"
+                )
+                self.assertFalse(weather.available)
 
     def test_weather_is_selectable_with_configured_healthy_cached_availability(
         self,

@@ -6,9 +6,11 @@ import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from uuid import uuid4
 
+from clients import weather_client
+from core.agent import tools as agent_tools
 from core.agent.capabilities import CapabilityDescriptor, CapabilityError, CapabilityErrorCategory
 from core.agent.loop import ExecutionStopped
 from core.agent.providers.contract import ProviderTurnResult
@@ -118,6 +120,84 @@ class _FakeControl:
 
 
 class DeepBriefingTests(unittest.TestCase):
+    def test_deep_evidence_excludes_coordinates_from_weather_client_output(self) -> None:
+        marker = (12.3456, 98.7654)
+        provider_response = Mock(status_code=200)
+        provider_response.json.return_value = {
+            "latitude": marker[0],
+            "longitude": marker[1],
+            "current": {"temperature_2m": 72, "weather_code": 0},
+            "daily": {
+                "time": ["2026-08-10"],
+                "temperature_2m_max": [81],
+                "temperature_2m_min": [65],
+                "weather_code": [0],
+            },
+        }
+        session = Mock()
+        session.get.return_value = provider_response
+        resolved = SimpleNamespace(
+            location="Current area", source="device", coordinates=marker, revision=1
+        )
+        descriptor = _capability("get_weather_forecast")
+        plan = _ToolPlan(
+            names=("get_weather_forecast",),
+            descriptors=(descriptor,),
+            diagnostics=ToolSelectionDiagnostics(offered_tool_names=["get_weather_forecast"]),
+        )
+
+        def fake_loop(_request, _provider, _profile, **kwargs):
+            output = kwargs["tools_dispatcher"]("get_weather_forecast", {})
+            return AgentQueryResponse(
+                answer="Weather checked.",
+                agent_used={},
+                tool_trace=[{"name": "get_weather_forecast", "status": "ok"}],
+                tool_outputs=[{
+                    "name": "get_weather_forecast", "status": "ok", "output": output,
+                }],
+            )
+
+        with patch(
+            "clients.weather_client.resolve_weather_location", return_value=resolved
+        ), patch.object(
+            weather_client, "get_connector_http_session", return_value=session
+        ), patch(
+            "core.briefings.investigation._build_agent_profile", return_value=_FakeAgentProfile()
+        ), patch(
+            "core.briefings.investigation._select_deep_tools", return_value=plan
+        ), patch(
+            "core.briefings.investigation._context_window", return_value=16_384
+        ), patch(
+            "core.briefings.investigation.get_visible_model_profile",
+            return_value=SimpleNamespace(credential_env=None),
+        ), patch(
+            "core.briefings.investigation.create_provider", return_value=object()
+        ), patch(
+            "core.briefings.investigation.is_local_profile", return_value=False
+        ), patch(
+            "core.briefings.investigation._recheck_read_permission"
+        ), patch(
+            "core.briefings.investigation.invoke_read_only_capability",
+            side_effect=lambda _name, _arguments, timeout_seconds: agent_tools.get_weather_forecast(),
+        ), patch(
+            "core.briefings.investigation.run_agent_loop", side_effect=fake_loop
+        ):
+            result = investigate_deep(
+                evidence=[BriefingEvidence(
+                    source="weather", source_id="weather:current", trust="observed",
+                    content="Current conditions: clear sky.", comparison_role="current",
+                )],
+                coverage=[],
+                configuration=_configuration(),
+                control=_FakeControl(),  # type: ignore[arg-type]
+                partition="production",
+            )
+
+        self.assertEqual(len(result.evidence), 1)
+        self.assertEqual(result.evidence[0].source, "get_weather_forecast")
+        self.assertNotIn(str(marker[0]), result.evidence[0].content or "")
+        self.assertNotIn(str(marker[1]), result.evidence[0].content or "")
+
     def test_preflight_reserves_two_synthesis_turns_and_requires_a_read(self) -> None:
         configuration = _configuration(max_model_turns=3)
         with patch("core.briefings.investigation._build_agent_profile", return_value=_FakeAgentProfile()), patch(

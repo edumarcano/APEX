@@ -105,6 +105,9 @@
     "launch_on_startup": false,
     "completion_notifications": false
   },
+  "device_context": {
+    "location_enabled": false
+  },
   "mcp": {
     "enabled": false,
     "servers": {

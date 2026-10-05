@@ -271,6 +271,11 @@ def _native_availability(name: str) -> tuple[bool, str | None]:
         "search_gmail": "email",
         "get_gmail_message": "email",
     }.get(name)
+    weather_device_eligible = False
+    if name == "get_weather_forecast":
+        from core.device_context import weather_location_eligible
+
+        weather_device_eligible = weather_location_eligible()
     if connector_name is not None:
         try:
             from core.telemetry.service import get_telemetry_service
@@ -282,12 +287,24 @@ def _native_availability(name: str) -> tuple[bool, str | None]:
         except Exception:
             health = None
         if health is not None and health.status in {"unavailable", "disabled"}:
+            can_replace_missing_location = (
+                name == "get_weather_forecast"
+                and health.status == "unavailable"
+                and health.reason_code == "missing_credentials"
+                and weather_device_eligible
+            )
+            if can_replace_missing_location:
+                health = None
+        if health is not None and health.status in {"unavailable", "disabled"}:
             reason = health.reason_code.replace("_", " ").strip()
             if reason and reason != "ok":
                 return False, f"{connector_name.title()} is unavailable ({reason})."
 
-    if name == "get_weather_forecast" and not os.getenv("TARGET_LOCATION", "").strip():
-        return False, "Weather is not configured (TARGET_LOCATION is missing)."
+    if name == "get_weather_forecast":
+        from core.device_context import default_weather_available
+
+        if not default_weather_available():
+            return False, "Weather is not configured (TARGET_LOCATION is missing)."
 
     if name in {"get_upcoming_calendar_events", "search_gmail", "get_gmail_message"}:
         paths = get_runtime_paths()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import queue
 import re
 import threading
@@ -16,10 +17,12 @@ CONTROL_QUEUE_SIZE = 64
 CONTROL_TYPES = frozenset(
     {
         "start", "starting", "ready", "shutdown", "stopping", "stopped",
-        "error", "completion", "desktop_preferences",
+        "error", "completion", "desktop_preferences", "device_preferences",
+        "device_request", "device_result", "device_state",
     }
 )
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+_MAX_DEVICE_SEQUENCE = (1 << 64) - 1
 _READY_FIELDS = frozenset(
     {
         "app_id", "app_version", "build_id", "instance_id", "pid", "hosting_mode",
@@ -86,6 +89,29 @@ def _validate_identity_payload(payload: Mapping[str, object], *, exact: bool) ->
         raise ControlProtocolError("Ready payload does not match the host identity contract.")
 
 
+def _validate_uuid(value: object, label: str) -> None:
+    if not isinstance(value, str):
+        raise ControlProtocolError(f"{label} payload does not match the device contract.")
+    try:
+        uuid.UUID(value)
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise ControlProtocolError(f"{label} payload does not match the device contract.") from exc
+
+
+def _validate_revision(value: object, label: str) -> None:
+    if type(value) is not int or not 1 <= value <= _MAX_DEVICE_SEQUENCE:
+        raise ControlProtocolError(f"{label} payload does not match the device contract.")
+
+
+def _finite_number(value: object) -> bool:
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (OverflowError, ValueError):
+        return False
+
+
 def _validate_type_payload(message_type: str, payload: Mapping[str, object]) -> None:
     if message_type == "start":
         if set(payload) != {"launch_id"}:
@@ -135,6 +161,50 @@ def _validate_type_payload(message_type: str, payload: Mapping[str, object]) -> 
             or type(payload["completion_notifications"]) is not bool
         ):
             raise ControlProtocolError("Desktop preferences payload does not match the lifecycle contract.")
+    elif message_type == "device_preferences":
+        if set(payload) != {"instance_id", "revision", "location_enabled"}:
+            raise ControlProtocolError("Device preferences payload does not match the device contract.")
+        _validate_uuid(payload.get("instance_id"), "Device preferences")
+        _validate_revision(payload.get("revision"), "Device preferences")
+        if type(payload.get("location_enabled")) is not bool:
+            raise ControlProtocolError("Device preferences payload does not match the device contract.")
+    elif message_type == "device_request":
+        if set(payload) != {"instance_id", "revision"}:
+            raise ControlProtocolError("Device request payload does not match the device contract.")
+        _validate_uuid(payload.get("instance_id"), "Device request")
+        _validate_revision(payload.get("revision"), "Device request")
+    elif message_type == "device_result":
+        if set(payload) != {"instance_id", "revision", "outcome", "fix"}:
+            raise ControlProtocolError("Device result payload does not match the device contract.")
+        _validate_uuid(payload.get("instance_id"), "Device result")
+        _validate_revision(payload.get("revision"), "Device result")
+        outcome = payload.get("outcome")
+        if not isinstance(outcome, str) or outcome not in {
+            "ok", "permission_required", "denied", "revoked", "unavailable",
+            "timed_out", "expired", "unsupported",
+        }:
+            raise ControlProtocolError("Device result payload does not match the device contract.")
+        fix = payload.get("fix")
+        if outcome != "ok":
+            if fix is not None:
+                raise ControlProtocolError("Device result payload does not match the device contract.")
+        else:
+            if not isinstance(fix, dict) or set(fix) != {"latitude", "longitude", "observed_at"}:
+                raise ControlProtocolError("Device result payload does not match the device contract.")
+            latitude, longitude, observed_at = (fix[key] for key in ("latitude", "longitude", "observed_at"))
+            if not all(_finite_number(value) for value in (latitude, longitude, observed_at)):
+                raise ControlProtocolError("Device result payload does not match the device contract.")
+            if not -90 <= float(latitude) <= 90 or not -180 <= float(longitude) <= 180:
+                raise ControlProtocolError("Device result payload does not match the device contract.")
+    elif message_type == "device_state":
+        if set(payload) != {"instance_id", "revision", "permission", "availability"}:
+            raise ControlProtocolError("Device state payload does not match the device contract.")
+        _validate_uuid(payload.get("instance_id"), "Device state")
+        _validate_revision(payload.get("revision"), "Device state")
+        if not isinstance(payload.get("permission"), str) or payload.get("permission") not in {"unknown", "granted", "denied", "revoked", "unsupported"}:
+            raise ControlProtocolError("Device state payload does not match the device contract.")
+        if not isinstance(payload.get("availability"), str) or payload.get("availability") not in {"unknown", "available", "unavailable", "timed_out", "unsupported"}:
+            raise ControlProtocolError("Device state payload does not match the device contract.")
     elif message_type == "shutdown" and payload:
         raise ControlProtocolError("Shutdown payload must be empty.")
 
@@ -160,6 +230,23 @@ def validate_envelope(
         r"desktop:[1-9][0-9]*", request_id
     ):
         raise ControlProtocolError("Desktop preferences request identifier is invalid.")
+    device_request_pattern = {
+        "device_preferences": r"device-prefs:([1-9][0-9]*)",
+        "device_request": r"device:([1-9][0-9]*)",
+        "device_result": r"device:([1-9][0-9]*)",
+        "device_state": r"device-state:([1-9][0-9]*)",
+    }.get(message_type)
+    if device_request_pattern is not None:
+        match = re.fullmatch(device_request_pattern, request_id)
+        if match is None:
+            raise ControlProtocolError("Device control request identifier is invalid.")
+        if message_type == "device_preferences":
+            device_payload = value.get("payload")
+            revision = device_payload.get("revision") if isinstance(device_payload, dict) else None
+            if revision != int(match.group(1)):
+                raise ControlProtocolError("Device preference revision did not match its request identifier.")
+        elif int(match.group(1)) > _MAX_DEVICE_SEQUENCE:
+            raise ControlProtocolError("Device control sequence exceeds the native integer range.")
     if expected_request_id is not None and request_id != expected_request_id:
         raise ControlProtocolError("Control frame correlation did not match the request.")
     payload = value["payload"]

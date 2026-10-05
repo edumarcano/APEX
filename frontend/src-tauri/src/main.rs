@@ -2,6 +2,7 @@
 
 mod autostart;
 mod external;
+mod location;
 mod notifications;
 mod protocol;
 mod security;
@@ -24,7 +25,7 @@ use std::{
     },
     time::Duration,
 };
-use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_opener::OpenerExt;
 use tokio::{
@@ -180,6 +181,312 @@ fn desktop_backend_status(
     validate_caller(&window)?;
     Ok(status.snapshot())
 }
+
+#[tauri::command]
+async fn desktop_check_location_permission(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    status: State<'_, DesktopState>,
+    location: State<'_, location::LocationState>,
+    supervisor: State<'_, Supervisor>,
+) -> Result<location::PublicStatus, &'static str> {
+    validate_caller(&window)?;
+    if !location::foreground_eligible(
+        window.is_visible().unwrap_or(false),
+        window.is_minimized().unwrap_or(true),
+        window.is_focused().unwrap_or(false),
+    ) {
+        return Err("foreground_required");
+    }
+    let backend = status.snapshot();
+    if backend.phase != Phase::Ready || supervisor.quitting.load(Ordering::Acquire) {
+        return Err("backend_unavailable");
+    }
+    let context = location.context().ok_or("preferences_unavailable")?;
+    if context.generation != backend.generation || !context.enabled {
+        return Err("location_disabled");
+    }
+    let permission_check = app.state::<LocationCheckLock>();
+    let _permission_check = permission_check.0.lock().await;
+    if status.snapshot().generation != context.generation
+        || supervisor.quitting.load(Ordering::Acquire)
+        || !location.is_current(&context)
+        || !location::foreground_eligible(
+            window.is_visible().unwrap_or(false),
+            window.is_minimized().unwrap_or(true),
+            window.is_focused().unwrap_or(false),
+        )
+    {
+        return Err("stale_request");
+    }
+    let request_cancellation = location.cancellation_token().child_token();
+    let result = location::request_access(&window, request_cancellation).await?;
+    if !location.is_current(&context)
+        || status.snapshot().generation != context.generation
+        || supervisor.quitting.load(Ordering::Acquire)
+    {
+        return Err("stale_request");
+    }
+    if !location.set_status(&context, result) {
+        return Err("stale_request");
+    }
+    send_location_state(&app, &status, &supervisor, &location, &context).await?;
+    let observer = app.state::<location::LocationObserver>();
+    if result.permission == location::Permission::Granted {
+        observer.observe(app.clone(), context.clone());
+    } else {
+        observer.remove();
+    }
+    let _ = app.emit("desktop-device-state", json!({}));
+    Ok(result)
+}
+
+async fn send_location_state(
+    app: &tauri::AppHandle,
+    backend: &DesktopState,
+    supervisor: &Supervisor,
+    location: &location::LocationState,
+    context: &location::RequestContext,
+) -> Result<(), &'static str> {
+    if !location.is_current(context) || backend.snapshot().generation != context.generation {
+        return Err("stale_request");
+    }
+    let mut session = supervisor.session.lock().await;
+    if !location.is_current(context) || backend.snapshot().generation != context.generation {
+        return Err("stale_request");
+    }
+    let session = session.as_mut().ok_or("backend_unavailable")?;
+    let seq = app.state::<LocationSequence>().next();
+    send_device_control(
+        &mut session.stdin,
+        "device_state",
+        format!("device-state:{seq}"),
+        json!({
+            "instance_id": context.instance_id,
+            "revision": context.revision,
+            "permission": location.status().permission,
+            "availability": location.status().availability,
+        }),
+    )
+    .await
+    .map_err(|_| "backend_unavailable")
+}
+
+async fn send_device_control(
+    stdin: &mut ChildInput,
+    kind: &str,
+    request_id: String,
+    payload: Value,
+) -> Result<(), ()> {
+    let envelope =
+        json!({"version": 1, "type": kind, "request_id": request_id, "payload": payload});
+    let mut bytes = serde_json::to_vec(&envelope).map_err(|_| ())?;
+    bytes.push(b'\n');
+    protocol::decode(&bytes).map_err(|_| ())?;
+    let kind = envelope.get("type").and_then(Value::as_str).ok_or(())?;
+    let request_id = envelope
+        .get("request_id")
+        .and_then(Value::as_str)
+        .ok_or(())?
+        .to_owned();
+    let payload = envelope.get("payload").cloned().ok_or(())?;
+    send_control(stdin, kind, request_id, payload).await
+}
+
+fn accept_location_preferences(
+    app: &tauri::AppHandle,
+    generation: u64,
+    frame: &protocol::Envelope,
+    expected_instance: &str,
+) -> Result<bool, &'static str> {
+    let payload = &frame.payload;
+    let instance = payload
+        .get("instance_id")
+        .and_then(Value::as_str)
+        .ok_or("protocol_error")?;
+    if instance != expected_instance {
+        return Ok(false);
+    }
+    let revision = payload
+        .get("revision")
+        .and_then(Value::as_u64)
+        .ok_or("protocol_error")?;
+    let enabled = payload
+        .get("location_enabled")
+        .and_then(Value::as_bool)
+        .ok_or("protocol_error")?;
+    let location = app.state::<location::LocationState>();
+    let before = location.context();
+    if let Some(before) = &before {
+        if before.instance_id != instance {
+            return Ok(false);
+        }
+        if revision == before.revision && enabled != before.enabled {
+            return Err("protocol_error");
+        }
+    }
+    if !location.accept_preferences(generation, instance, revision, enabled) {
+        return Ok(false);
+    }
+    let after = location.context();
+    Ok(before != after)
+}
+
+async fn handle_device_request(
+    app: tauri::AppHandle,
+    backend: DesktopState,
+    supervisor: Supervisor,
+    context: location::RequestContext,
+    request_id: String,
+) {
+    let location = app.state::<location::LocationState>().inner().clone();
+    let initial_status = location.status();
+    let mut read_permit = None;
+    let result = if !context.enabled {
+        Err(location::ReadOutcome::PermissionRequired)
+    } else {
+        match location.status().permission {
+            location::Permission::Unknown => Err(location::ReadOutcome::PermissionRequired),
+            location::Permission::Denied => Err(location::ReadOutcome::Denied),
+            location::Permission::Revoked => Err(location::ReadOutcome::Revoked),
+            location::Permission::Unsupported => Err(location::ReadOutcome::Unsupported),
+            location::Permission::Granted => {
+                let Some(permit) = location.begin_read(&context) else {
+                    if location.status() != initial_status {
+                        let _ = app.emit("desktop-device-state", json!({}));
+                    }
+                    return;
+                };
+                let result = location::read_current(permit.cancellation.clone()).await;
+                read_permit = Some(permit);
+                result
+            }
+        }
+    };
+    if !location.is_current(&context)
+        || backend.snapshot().generation != context.generation
+        || supervisor.quitting.load(Ordering::Acquire)
+    {
+        if location.status() != initial_status {
+            let _ = app.emit("desktop-device-state", json!({}));
+        }
+        return;
+    }
+    let mut read_receipt = None;
+    if let Some(permit) = read_permit.as_ref() {
+        let next_status = match &result {
+            Ok(_) => location::PublicStatus {
+                permission: location::Permission::Granted,
+                availability: location::Availability::Available,
+            },
+            Err(location::ReadOutcome::PermissionRequired) => location::PublicStatus {
+                permission: location::Permission::Unknown,
+                availability: location::Availability::Unknown,
+            },
+            Err(location::ReadOutcome::Denied) => location::PublicStatus {
+                permission: location::Permission::Denied,
+                availability: location::Availability::Unavailable,
+            },
+            Err(location::ReadOutcome::Revoked) => location::PublicStatus {
+                permission: location::Permission::Revoked,
+                availability: location::Availability::Unavailable,
+            },
+            Err(location::ReadOutcome::TimedOut) => location::PublicStatus {
+                permission: location::Permission::Granted,
+                availability: location::Availability::TimedOut,
+            },
+            Err(location::ReadOutcome::Unsupported) => location::PublicStatus {
+                permission: location::Permission::Unsupported,
+                availability: location::Availability::Unsupported,
+            },
+            Err(location::ReadOutcome::Unavailable) => location::PublicStatus {
+                permission: location::Permission::Granted,
+                availability: location::Availability::Unavailable,
+            },
+            Err(location::ReadOutcome::Expired) => location::PublicStatus {
+                permission: location::Permission::Granted,
+                availability: location::Availability::Available,
+            },
+        };
+        let Some(receipt) = location.apply_read_status(&context, permit, next_status) else {
+            if location.status() != initial_status {
+                let _ = app.emit("desktop-device-state", json!({}));
+            }
+            return;
+        };
+        if receipt.changed {
+            let _ = send_location_state(&app, &backend, &supervisor, &location, &context).await;
+            let _ = app.emit("desktop-device-state", json!({}));
+        }
+        if !location.read_status_is_current(&context, &receipt) {
+            if receipt.changed || location.status() != initial_status {
+                let _ = app.emit("desktop-device-state", json!({}));
+            }
+            return;
+        }
+        read_receipt = Some(receipt);
+    }
+    let (outcome, fix) = match result {
+        Ok(fix) => ("ok", Some(fix)),
+        Err(location::ReadOutcome::PermissionRequired) => ("permission_required", None),
+        Err(location::ReadOutcome::Denied) => ("denied", None),
+        Err(location::ReadOutcome::Revoked) => {
+            app.state::<location::LocationObserver>().remove();
+            ("revoked", None)
+        }
+        Err(location::ReadOutcome::Unavailable) => ("unavailable", None),
+        Err(location::ReadOutcome::TimedOut) => ("timed_out", None),
+        Err(location::ReadOutcome::Expired) => ("expired", None),
+        Err(location::ReadOutcome::Unsupported) => ("unsupported", None),
+    };
+    if !location.is_current(&context) || backend.snapshot().generation != context.generation {
+        return;
+    }
+    let mut session = supervisor.session.lock().await;
+    if !location.is_current(&context)
+        || backend.snapshot().generation != context.generation
+        || supervisor.quitting.load(Ordering::Acquire)
+        || read_receipt
+            .as_ref()
+            .is_some_and(|receipt| !location.read_status_is_current(&context, receipt))
+    {
+        if location.status() != initial_status {
+            let _ = app.emit("desktop-device-state", json!({}));
+        }
+        return;
+    }
+    let Some(session) = session.as_mut() else {
+        return;
+    };
+    if send_device_control(
+        &mut session.stdin,
+        "device_result",
+        request_id,
+        json!({
+            "instance_id": context.instance_id,
+            "revision": context.revision,
+            "outcome": outcome,
+            "fix": fix,
+        }),
+    )
+    .await
+    .is_ok()
+    {
+        let _ = app.emit("desktop-device-state", json!({}));
+    }
+}
+
+#[derive(Clone, Default)]
+struct LocationSequence(Arc<std::sync::atomic::AtomicU64>);
+
+impl LocationSequence {
+    fn next(&self) -> u64 {
+        self.0.fetch_add(1, Ordering::AcqRel).saturating_add(1)
+    }
+}
+
+#[derive(Clone, Default)]
+struct LocationCheckLock(Arc<Mutex<()>>);
 
 #[tauri::command]
 async fn desktop_backend_retry(
@@ -501,6 +808,8 @@ async fn run_start(
         return current;
     }
     let generation = current.generation.saturating_add(1);
+    app.state::<location::LocationState>().reset(generation);
+    app.state::<location::LocationObserver>().remove();
     if current.runtime.is_some() {
         safe_event(
             &app,
@@ -672,6 +981,65 @@ async fn run_start(
             services.publish(&app);
             continue;
         }
+        if frame.kind == "device_preferences" {
+            let Some(instance) = identity.as_ref().map(|item| item.instance_id.as_str()) else {
+                return fail_start(
+                    &app,
+                    &state,
+                    generation,
+                    session,
+                    "protocol_error",
+                    identity.as_ref(),
+                )
+                .await;
+            };
+            if let Err(code) = accept_location_preferences(&app, generation, &frame, instance) {
+                return fail_start(&app, &state, generation, session, code, identity.as_ref())
+                    .await;
+            }
+            continue;
+        }
+        if frame.kind == "device_request" {
+            let Some(identity) = identity.as_ref() else {
+                return fail_start(&app, &state, generation, session, "protocol_error", None).await;
+            };
+            let location = app.state::<location::LocationState>();
+            let context = location.context();
+            let request_matches = frame.payload.get("instance_id").and_then(Value::as_str)
+                == Some(identity.instance_id.as_str())
+                && context.as_ref().is_some_and(|context| {
+                    context.generation == generation
+                        && context.instance_id == identity.instance_id
+                        && frame.payload.get("revision").and_then(Value::as_u64)
+                            == Some(context.revision)
+                });
+            if request_matches
+                && send_device_control(
+                    &mut session.stdin,
+                    "device_result",
+                    frame.request_id,
+                    json!({
+                        "instance_id": identity.instance_id,
+                        "revision": context.as_ref().map(|context| context.revision).unwrap_or(1),
+                        "outcome": "permission_required",
+                        "fix": null,
+                    }),
+                )
+                .await
+                .is_err()
+            {
+                return fail_start(
+                    &app,
+                    &state,
+                    generation,
+                    session,
+                    "backend_crashed",
+                    Some(identity),
+                )
+                .await;
+            }
+            continue;
+        }
         if frame.request_id != request_id {
             return fail_start(
                 &app,
@@ -836,6 +1204,8 @@ async fn run_start(
 
 async fn run_shutdown(app: tauri::AppHandle, state: DesktopState, supervisor: Supervisor) {
     supervisor.quitting.store(true, Ordering::Release);
+    app.state::<location::LocationState>().cancel_pending();
+    app.state::<location::LocationObserver>().remove();
     cancel_start(&supervisor).await;
     let _operation = supervisor.operation.lock().await;
     let generation = state.snapshot().generation;
@@ -893,6 +1263,8 @@ async fn monitor_backend(
         };
         let mut outcome: Option<(bool, &'static str)> = None;
         let mut preferences_changed = false;
+        let mut location_preferences_changed = false;
+        let mut pending_device_requests = Vec::new();
         let mut eligible_completions = 0usize;
         match session.child.try_wait() {
             Ok(Some(_)) | Err(_) => outcome = Some((false, "backend_crashed")),
@@ -937,6 +1309,39 @@ async fn monitor_backend(
                         ) {
                             Ok(_) => preferences_changed = true,
                             Err(code) => outcome = Some((false, code)),
+                        }
+                    }
+                    Ok(Ok(frame)) if frame.kind == "device_preferences" => {
+                        match accept_location_preferences(
+                            &app,
+                            generation,
+                            &frame,
+                            expected_instance,
+                        ) {
+                            Ok(changed) => location_preferences_changed |= changed,
+                            Err(code) => outcome = Some((false, code)),
+                        }
+                    }
+                    Ok(Ok(frame)) if frame.kind == "device_request" => {
+                        let location = app.state::<location::LocationState>();
+                        let sequence = frame
+                            .request_id
+                            .strip_prefix("device:")
+                            .and_then(|value| value.parse::<u64>().ok())
+                            .unwrap_or(0);
+                        if frame.payload.get("instance_id").and_then(Value::as_str)
+                            == Some(expected_instance)
+                        {
+                            if let Some(context) = location.context() {
+                                if context.generation == generation
+                                    && context.instance_id == expected_instance
+                                    && frame.payload.get("revision").and_then(Value::as_u64)
+                                        == Some(context.revision)
+                                    && location.accept_request_sequence(&context, sequence)
+                                {
+                                    pending_device_requests.push((context, frame.request_id));
+                                }
+                            }
                         }
                     }
                     Ok(Ok(frame))
@@ -999,6 +1404,22 @@ async fn monitor_backend(
             services.publish(&app);
             reconcile_services(app.clone(), services.clone(), generation, false).await;
         }
+        if location_preferences_changed {
+            app.state::<location::LocationObserver>().remove();
+            let location = app.state::<location::LocationState>();
+            if let Some(context) = location.context() {
+                let _ = send_location_state(&app, &state, &supervisor, &location, &context).await;
+                let _ = app.emit("desktop-device-state", json!({}));
+            }
+        }
+        for (context, request_id) in pending_device_requests {
+            let app = app.clone();
+            let state = state.clone();
+            let supervisor = supervisor.clone();
+            tauri::async_runtime::spawn(async move {
+                handle_device_request(app, state, supervisor, context, request_id).await;
+            });
+        }
         if outcome.is_none() {
             for _ in 0..eligible_completions {
                 if supervisor.quitting.load(Ordering::Acquire)
@@ -1028,6 +1449,8 @@ async fn monitor_backend(
             return;
         };
         let snapshot = state.snapshot();
+        app.state::<location::LocationState>().cancel_pending();
+        app.state::<location::LocationObserver>().remove();
         safe_event(
             &app,
             &state,
@@ -1280,6 +1703,10 @@ fn main() {
     tauri::Builder::default()
         .manage(status.clone())
         .manage(supervisor.clone())
+        .manage(location::LocationState::default())
+        .manage(location::LocationObserver)
+        .manage(LocationSequence::default())
+        .manage(LocationCheckLock::default())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_main(app);
         }))
@@ -1377,7 +1804,8 @@ fn main() {
             desktop_services_status,
             desktop_services_retry,
             desktop_open_external,
-            desktop_write_clipboard
+            desktop_write_clipboard,
+            desktop_check_location_permission
         ])
         .run(tauri::generate_context!())
         .expect("failed to run APEX desktop shell");

@@ -80,6 +80,7 @@ export const BASE_SETTINGS: RuntimeSettings = {
     launch_on_startup: false,
     completion_notifications: false,
   },
+  device_context: { location_enabled: false },
 }
 
 export function buildSettingsResponse(

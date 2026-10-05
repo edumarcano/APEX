@@ -40,6 +40,19 @@ class RuntimeIdentityResponse(BaseModel):
     shutdown_timeout_seconds: int = Field(ge=1, le=3600)
 
 
+class DeviceContextStatusResponse(BaseModel):
+    """Sanitized permission and freshness state; device coordinates are omitted."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+    permission: Literal["unknown", "granted", "denied", "revoked", "unsupported"]
+    availability: Literal["unknown", "available", "unavailable", "timed_out", "unsupported"]
+    source: Literal["device", "configured", "none"]
+    freshness: Literal["none", "fresh", "expired"]
+    fix_age_seconds: float | None = Field(default=None, ge=0)
+
+
 class ActivityReportFolderStatusResponse(BaseModel):
     """Local report folder readiness and result of its latest completed scan."""
 

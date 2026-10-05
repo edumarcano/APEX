@@ -95,12 +95,16 @@ export function WeatherTelemetry({ data, variant, className, narrow = false, dat
   const attribution = (
     <span
       className={`${variant === 'card' ? 'justify-end' : ''} flex min-w-0 flex-wrap items-center gap-x-1 text-[9px] leading-tight text-[color:var(--hud-muted-text)]`}
-      aria-label="Weather by Open-Meteo. Location by GeoNames. Licensed under CC BY 4.0. Adapted by APEX."
+      aria-label={weather.info.locationSource === 'device'
+        ? 'Weather by Open-Meteo. Licensed under CC BY 4.0. Adapted by APEX.'
+        : 'Weather by Open-Meteo. Location by GeoNames. Licensed under CC BY 4.0. Adapted by APEX.'}
     >
       <span>Weather by</span>
       <ExternalAnchor href="https://open-meteo.com/" target="_blank" rel="noreferrer" className="hover:text-[color:var(--hud-text)]">Open-Meteo</ExternalAnchor>
-      <span>· Location by</span>
-      <ExternalAnchor href="https://www.geonames.org/" target="_blank" rel="noreferrer" className="hover:text-[color:var(--hud-text)]">GeoNames</ExternalAnchor>
+      {weather.info.locationSource === 'device' ? null : <>
+        <span>· Location by</span>
+        <ExternalAnchor href="https://www.geonames.org/" target="_blank" rel="noreferrer" className="hover:text-[color:var(--hud-text)]">GeoNames</ExternalAnchor>
+      </>}
       <span>·</span>
       <ExternalAnchor href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer" className="hover:text-[color:var(--hud-text)]">CC BY 4.0</ExternalAnchor>
       <span>· adapted by APEX</span>

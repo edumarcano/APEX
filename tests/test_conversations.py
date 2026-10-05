@@ -10,8 +10,14 @@ import unittest
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest import mock
 from uuid import uuid4
 
+from core.agent.capabilities import get_capability_descriptor
+from core.agent.loop import run_agent_loop
+from core.agent.providers.contract import ProviderTurnResult
+from core.agent.tools import register_native_capabilities
+from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
 from core.conversations.store import (
     ConversationBusyError,
     ConversationConflictError,
@@ -25,6 +31,7 @@ from core.retrieval import RetrievalStore
 from core.retrieval.models import RetrievalItem
 from core.runs import RunStore
 from core.runs.models import RunLimitSnapshot
+from tests.support.agent_fixtures import GEMINI_FLASH_MODEL, build_cloud_profile
 
 
 class ConversationStoreTests(unittest.TestCase):
@@ -80,6 +87,75 @@ class ConversationStoreTests(unittest.TestCase):
         stored_agent = next(message for message in detail.messages if message.id == agent.id)
         self.assertEqual(stored_agent.response_metadata, {"tool_outputs": [{"name": "example"}]})
         self.assertEqual(second_user.parent_message_id, agent.id)
+
+    def test_device_weather_tool_output_stays_coordinate_free_in_durable_response_metadata(self) -> None:
+        from clients import weather_client
+
+        marker = (12.3456, 98.7654)
+        provider_response = mock.Mock(status_code=200)
+        provider_response.json.return_value = {
+            "latitude": marker[0],
+            "longitude": marker[1],
+            "current": {"temperature_2m": 72, "weather_code": 0},
+            "daily": {
+                "time": ["2026-08-10"],
+                "temperature_2m_max": [81],
+                "temperature_2m_min": [65],
+                "weather_code": [0],
+            },
+        }
+        session = mock.Mock()
+        session.get.return_value = provider_response
+        resolved = mock.Mock(
+            location="Current area",
+            source="device",
+            coordinates=marker,
+            revision=3,
+        )
+        register_native_capabilities()
+
+        class Provider:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def generate_turn(self, *_args, **_kwargs):
+                self.calls += 1
+                if self.calls == 1:
+                    return ProviderTurnResult(message=AgentMessage(
+                        role="agent",
+                        tool_calls=[ToolCall(id="weather-call", name="get_weather_forecast", arguments={})],
+                    ))
+                return ProviderTurnResult(message=AgentMessage(role="agent", content="Weather checked."))
+
+        with mock.patch(
+            "clients.weather_client.resolve_weather_location", return_value=resolved
+        ), mock.patch.object(
+            weather_client, "get_connector_http_session", return_value=session
+        ):
+            response = run_agent_loop(
+                AgentQueryRequest(prompt="Check the weather", agent="apex"),
+                Provider(),
+                build_cloud_profile(model=GEMINI_FLASH_MODEL),
+                selected_tools=[get_capability_descriptor("get_weather_forecast")],
+            )
+
+        user, agent, _, _ = self._begin()
+        self.store.finalize(
+            conversation_id=self.conversation_id,
+            agent_id=agent.id,
+            answer=response.answer,
+            status="completed",
+            response_metadata={"tool_outputs": response.tool_outputs},
+        )
+        detail = self.store.detail(self.conversation_id, "production")
+        stored_agent = next(message for message in detail.messages if message.id == agent.id)
+        serialized = json.dumps(stored_agent.response_metadata)
+        self.assertEqual(user.id, stored_agent.parent_message_id)
+        self.assertNotIn(str(marker[0]), serialized)
+        self.assertNotIn(str(marker[1]), serialized)
+        self.assertEqual(
+            response.tool_outputs[0]["output"]["location_source"], "device"
+        )
 
     def test_exact_replay_does_not_create_a_second_message(self) -> None:
         user_id, agent_id = uuid4(), uuid4()

@@ -109,13 +109,14 @@ def get_activity_report(report_id: str, cursor: str | None = None) -> dict[str, 
 def get_weather_forecast(location: str | None = None, days: int = 5) -> dict[str, Any]:
     """Retrieve real-time atmospheric conditions and multi-day weather forecast.
 
-    Queries Open-Meteo for any global location (or default configured home)
+    Queries Open-Meteo for any global location (or the current area when
+    device location is enabled, otherwise the configured default)
     and returns current temperature, atmospheric metrics, and daily forecasts.
 
     Args:
         location: Optional location name, city, or coordinates (e.g. 'Paris',
             'Tokyo', 'Austin, TX'). When omitted or null, defaults to the
-            configured target location.
+            current area when permitted, or the configured target location.
         days: Number of forecast days to return (1 to 14). Values below 1 are
             raised to 1; values above 14 are lowered to 14. Defaults to 5.
 
@@ -602,7 +603,7 @@ def register_native_capabilities() -> None:
             title="Weather Forecast",
             description=(
                 "Retrieve real-time atmospheric conditions and multi-day weather "
-                "forecasts for any location or configured default."
+                "forecasts for any location, permitted current area, or configured default."
             ),
             input_schema={
                 "type": "object",
@@ -611,7 +612,7 @@ def register_native_capabilities() -> None:
                         "type": "string",
                         "description": (
                             "Optional location or city name (e.g. 'Paris', 'Tokyo', 'Austin, TX'). "
-                            "When omitted or null, defaults to the configured target location."
+                            "When omitted or null, uses the permitted current area or configured target location."
                         ),
                     },
                     "days": {

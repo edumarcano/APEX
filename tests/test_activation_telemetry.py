@@ -8,6 +8,7 @@ import threading
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from fastapi.testclient import TestClient
@@ -32,6 +33,7 @@ def _result(
     freshness: str = "live",
     display_text: str | None = None,
     observed_at: str | None = None,
+    data: dict | None = None,
 ) -> ConnectorResult:
     return ConnectorResult(
         name=name,
@@ -40,7 +42,7 @@ def _result(
         reason_code=reason_code,
         observed_at=observed_at or utc_now_iso(),
         display_text=display_text or f"{name}:{status}",
-        data={"marker": name},
+        data=data if data is not None else {"marker": name},
     )
 
 
@@ -48,7 +50,12 @@ class SnapshotStoreUnitTests(unittest.TestCase):
     def test_partial_failure_retains_prior_healthy_module(self) -> None:
         prior = build_snapshot_from_results(
             {
-                "weather": _result("weather", "healthy", display_text="72 clear"),
+                "weather": _result(
+                    "weather",
+                    "healthy",
+                    display_text="72 clear",
+                    data={"location": "Current area", "location_source": "device"},
+                ),
             }
         )
         merged = build_snapshot_from_results(
@@ -67,6 +74,7 @@ class SnapshotStoreUnitTests(unittest.TestCase):
         self.assertEqual(weather.freshness, "stale")
         self.assertEqual(weather.display_text, "72 clear")
         self.assertEqual(weather.reason_code, "network_error")
+        self.assertEqual(weather.data["location_source"], "device")
 
     def test_partial_failure_replaces_prior_degraded_reason(self) -> None:
         prior = build_snapshot_from_results(
@@ -229,6 +237,49 @@ class TelemetryApiTests(unittest.TestCase):
         self.assertEqual(latest.status_code, 200)
         self.assertEqual(latest.json()["snapshot_id"], payload["snapshot_id"])
 
+    def test_device_weather_coordinates_are_absent_from_telemetry_response(self) -> None:
+        from clients import weather_client
+
+        marker = (12.3456, 98.7654)
+        provider_response = mock.Mock(status_code=200)
+        provider_response.json.return_value = {
+            "latitude": marker[0],
+            "longitude": marker[1],
+            "current": {"temperature_2m": 72, "weather_code": 0},
+            "daily": {
+                "time": ["2026-08-10"],
+                "temperature_2m_max": [81],
+                "temperature_2m_min": [65],
+                "weather_code": [0],
+            },
+        }
+        session = mock.Mock()
+        session.get.return_value = provider_response
+        resolved = SimpleNamespace(
+            location="Current area",
+            source="device",
+            coordinates=marker,
+            revision=3,
+        )
+        with mock.patch(
+            "clients.weather_client.resolve_weather_location", return_value=resolved
+        ), mock.patch.object(
+            weather_client, "get_connector_http_session", return_value=session
+        ):
+            response = self.client.post(
+                "/api/v1/telemetry/refresh", json={"force": True}
+            )
+
+        self.assertEqual(response.status_code, 200)
+        serialized = json.dumps(response.json())
+        weather = response.json()["modules"]["weather"]["data"]
+        self.assertEqual(weather["location"], "Current area")
+        self.assertEqual(weather["location_source"], "device")
+        self.assertNotIn("latitude", weather)
+        self.assertNotIn("longitude", weather)
+        self.assertNotIn(str(marker[0]), serialized)
+        self.assertNotIn(str(marker[1]), serialized)
+
     def test_freshness_window_skips_connector_calls(self) -> None:
         weather = _result("weather", "healthy")
         reminders = _result("reminders", "healthy")
@@ -249,6 +300,72 @@ class TelemetryApiTests(unittest.TestCase):
         self.assertEqual(second.status_code, 200)
         self.assertEqual(first.json()["snapshot_id"], second.json()["snapshot_id"])
         self.assertEqual(collect_weather.call_count, 1)
+
+    def test_device_weather_snapshot_is_recollected_and_revocation_switches_source(self) -> None:
+        device_weather = _result(
+            "weather",
+            "healthy",
+            data={"location": "Current area", "location_source": "device"},
+        )
+        configured_weather = _result(
+            "weather",
+            "healthy",
+            data={"location": "Boston", "location_source": "configured"},
+        )
+        collect_weather = mock.Mock(side_effect=[device_weather, configured_weather])
+        with mock.patch(
+            "core.telemetry.collector.weather_client.collect_weather", collect_weather
+        ), mock.patch(
+            "core.telemetry.collector.collect_reminders",
+            return_value=_result("reminders", "healthy"),
+        ), mock.patch(
+            "core.device_context.weather_location_eligible", return_value=False
+        ), mock.patch(
+            "core.device_context.resolve_weather_location",
+            side_effect=AssertionError("reuse/status checks must not acquire location"),
+        ):
+            first = self.client.post("/api/v1/telemetry/refresh", json={"force": True})
+            reusable = self.client.get("/api/v1/telemetry/reuse")
+            second = self.client.post("/api/v1/telemetry/refresh", json={})
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(reusable.json(), {"reusable": False})
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(collect_weather.call_count, 2)
+        self.assertEqual(
+            second.json()["modules"]["weather"]["data"]["location_source"],
+            "configured",
+        )
+
+    def test_new_device_eligibility_invalidates_fresh_configured_weather(self) -> None:
+        configured_weather = _result(
+            "weather",
+            "healthy",
+            data={"location": "Boston", "location_source": "configured"},
+        )
+        device_weather = _result(
+            "weather",
+            "healthy",
+            data={"location": "Current area", "location_source": "device"},
+        )
+        collect_weather = mock.Mock(side_effect=[configured_weather, device_weather])
+        with mock.patch(
+            "core.telemetry.collector.weather_client.collect_weather", collect_weather
+        ), mock.patch(
+            "core.telemetry.collector.collect_reminders",
+            return_value=_result("reminders", "healthy"),
+        ), mock.patch(
+            "core.device_context.weather_location_eligible", return_value=True
+        ):
+            self.client.post("/api/v1/telemetry/refresh", json={"force": True})
+            refreshed = self.client.post("/api/v1/telemetry/refresh", json={})
+
+        self.assertEqual(refreshed.status_code, 200)
+        self.assertEqual(collect_weather.call_count, 2)
+        self.assertEqual(
+            refreshed.json()["modules"]["weather"]["data"]["location_source"],
+            "device",
+        )
 
     def test_reuse_check_matches_what_a_normal_refresh_would_do(self) -> None:
         self.assertEqual(self.client.get("/api/v1/telemetry/reuse").json(), {"reusable": False})
@@ -703,6 +820,8 @@ class TelemetryApiTests(unittest.TestCase):
             "os.environ",
             {"TARGET_LOCATION": ""},
             clear=False,
+        ), mock.patch(
+            "core.device_context.default_weather_available", return_value=False
         ):
             response = self.client.post(
                 "/api/v1/preflight",
@@ -715,6 +834,24 @@ class TelemetryApiTests(unittest.TestCase):
         payload = response.json()
         self.assertFalse(payload["can_proceed"])
         self.assertIn("missing_credentials", {item["code"] for item in payload["blockers"]})
+
+    def test_preflight_accepts_eligible_device_weather_without_acquiring_location(self) -> None:
+        with mock.patch("core.telemetry.preflight.config.DEMO_MODE", False), mock.patch(
+            "core.telemetry.preflight.is_dev_mode", return_value=True
+        ), mock.patch.dict("os.environ", {"TARGET_LOCATION": ""}, clear=False), mock.patch(
+            "core.device_context.default_weather_available", return_value=True
+        ), mock.patch(
+            "core.device_context.resolve_weather_location",
+            side_effect=AssertionError("preflight must not acquire device location"),
+        ):
+            response = self.client.post(
+                "/api/v1/preflight",
+                json={"operation": "refresh_telemetry", "connectors": ["weather"]},
+            )
+
+        payload = response.json()
+        self.assertTrue(payload["can_proceed"])
+        self.assertNotIn("missing_credentials", {item["code"] for item in payload["blockers"]})
 
     def test_preflight_rejects_unknown_model(self) -> None:
         with mock.patch("core.telemetry.preflight.is_dev_mode", return_value=True), mock.patch(

@@ -59,7 +59,7 @@ const appMocks = vi.hoisted(() => ({
     modules: {
       weather: {
         status: string
-        data: { temp_f: number; condition?: string }
+        data: { temp_f: number; condition?: string; location?: string; location_source?: 'device' | 'configured' | 'explicit' }
         display_text: string
       }
     }
@@ -981,6 +981,27 @@ describe('App weather attribution', () => {
     )
     expect(screen.getByText(/adapted by APEX/)).toBeInTheDocument()
     expect(screen.getAllByText('Mainly Clear')).toHaveLength(1)
+  })
+
+  it('shows device location as the Weather source and omits GeoNames attribution', async () => {
+    appMocks.weatherSnapshot = {
+      modules: {
+        weather: {
+          status: 'healthy',
+          data: { temp_f: 72, condition: 'mainly clear', location: 'Current area', location_source: 'device' },
+          display_text: 'Current temperature is 72 degrees with mainly clear.',
+        },
+      },
+    }
+    appMocks.refreshAllWithOutcome.mockResolvedValue({ kind: 'success', snapshot: usableTelemetrySnapshot() })
+    const user = userEvent.setup()
+    renderOverviewApp()
+    await collectOverview(user)
+
+    expect(screen.getByText(/Current area · Device location/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open-Meteo' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'CC BY 4.0' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'GeoNames' })).not.toBeInTheDocument()
   })
 })
 

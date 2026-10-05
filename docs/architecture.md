@@ -20,7 +20,7 @@ Managed control uses version 1 UTF-8 newline-delimited JSON with request correla
 
 Parent-channel loss and explicit shutdown use the same bounded lifecycle path. The host advertises the configured application drain interval plus thirty seconds for HTTP task shutdown, dependency cleanup, and forced exit. If work cannot drain, it leaves dependencies and the profile lease intact until process termination. Forced cleanup targets explicitly registered speech-export and managed llama.cpp children, preserving external services and browsers.
 
-Successful Cortex and Briefing runs can emit a private completion event after durable finalization. The event contains only instance identity, run identity, and completion status. Delivery failure does not change the committed run, and the channel does not add desktop notifications or device acquisition.
+Successful Cortex and Briefing runs can emit a private completion event after durable finalization. The event contains only instance identity, run identity, and completion status. Delivery failure does not change the committed run, and the completion event contains no location data.
 
 Speech export is an allowlisted worker subcommand dispatched before backend startup or profile ownership. Source operation invokes Python; frozen operation invokes the bundled application executable. Packaging and desktop presentation are separate from backend API ownership.
 
@@ -33,6 +33,12 @@ Before admitting API-dependent workspaces, the shell waits for its child and com
 The WebView uses the native application origin and scoped Tauri capabilities. Frontend platform-specific integrations stay behind the platform boundary; the browser presentation does not load native APIs. Closing the desktop window hides it to the tray and leaves the same backend and CLI available. Tray **Show** restores that window; tray **Quit** shuts down its owned backend through the bounded host lifecycle. A second native launch activates the existing window instead of starting another backend. The shell retains and restores window geometry.
 
 Startup and completion notifications are opt-in Runtime Settings stored in the private `desktop_preferences` control message. The native shell applies OS-level settings and reports OS failures separately from saved preferences. Completion notifications are derived only from successful committed Cortex or Briefing completions, deduplicated for the app session, and use the generic title `APEX` and body `An APEX run has completed.` A hidden or minimized session can show them; run text, identifiers, and provider details are not included.
+
+### Device context and Weather
+
+A lifespan-owned backend device-context service stores opt-in, session permission, and a short-lived in-memory fix. Versioned private control messages carry preference revisions, correlated acquisition requests, native results, and coordinate-free state. Instance identity and preference revision fence late responses across disable, retry, and shutdown. The Windows WinRT adapter requests permission only through an explicit foreground Settings action and uses bounded one-time reads; it subscribes to capability changes without collecting continuous position updates.
+
+Weather telemetry and default-location forecast tools share the resolver: explicit location, permitted current device location, then configured `TARGET_LOCATION`. Preflight and catalog checks inspect eligibility without acquiring a fix. Device-backed snapshots are revalidated on an actual Weather refresh, including refreshes within ordinary telemetry cache windows. Configured and headless collection preserve their existing cache behavior. Raw fixes remain private to acquisition and provider parameters; public status and saved Weather evidence contain only source and freshness information. See [Device location](configuration.md#device-location-for-weather) and [Privacy](privacy.md#device-location).
 
 ## System components
 
