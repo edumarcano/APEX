@@ -816,7 +816,7 @@ def _run_once(bundle: Path, report: Report, *, dev: bool = False, demo: bool = F
         if run_probe and probe is not None and probe.is_file():
             probe_root = root / "frozen-probe-profile"
             probe_env = _sanitized_environment(root, probe_root, dev=dev, demo=demo)
-            for scenario in ("imports", "retrieval", "audio-worker", "no-model-assets"):
+            for scenario in ("imports", "retrieval", "audio-worker", "no-model-assets", "startup-no-optional-models"):
                 output = _cli(probe, [scenario], cwd, probe_env)
                 result = json.loads(output)
                 if result.get("status") != "passed" or result.get("scenario") != scenario:

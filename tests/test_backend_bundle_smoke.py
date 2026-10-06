@@ -35,6 +35,40 @@ _espeak_hook_spec.loader.exec_module(espeak_hook)
 
 
 class BackendBundleSmokeHarnessTests(unittest.TestCase):
+    def test_semantic_assets_accepts_baseline_and_lazy_first_search_contracts(self) -> None:
+        fts = {"retrieval_mode": "fts_only", "results": [{"id": "fts"}]}
+        semantic = {"retrieval_mode": "semantic", "results": [{"id": "semantic"}]}
+        with patch("core.retrieval.docs.search_documentation", side_effect=(fts, semantic)), \
+                patch("core.retrieval.embedding.FastEmbedAdapter"), \
+                patch("core.retrieval.service.RetrievalService") as service_factory, \
+                patch("core.retrieval.store.RetrievalStore"), \
+                patch("core.runtime_paths.get_runtime_paths", return_value=SimpleNamespace(
+                    fastembed_cache_dir=Path("cached-model"), data_root=Path("profile")
+                )):
+            service = service_factory.return_value
+            service.prepare.return_value = SimpleNamespace(mode="semantic", error_category=None)
+
+            evidence = probe._semantic_assets()
+
+        self.assertEqual(evidence["initial_retrieval_mode"], "fts_only")
+        self.assertEqual(evidence["retrieval_mode"], "semantic")
+        service.prepare.assert_called_once_with(allow_download=False)
+
+        with patch("core.retrieval.docs.search_documentation", side_effect=(semantic, semantic)), \
+                patch("core.retrieval.embedding.FastEmbedAdapter"), \
+                patch("core.retrieval.service.RetrievalService") as service_factory, \
+                patch("core.retrieval.store.RetrievalStore"), \
+                patch("core.runtime_paths.get_runtime_paths", return_value=SimpleNamespace(
+                    fastembed_cache_dir=Path("cached-model"), data_root=Path("profile")
+                )):
+            service = service_factory.return_value
+
+            evidence = probe._semantic_assets()
+
+        self.assertEqual(evidence["initial_retrieval_mode"], "semantic")
+        self.assertEqual(evidence["retrieval_mode"], "semantic")
+        service.prepare.assert_not_called()
+
     def _ascii_temporary_directory(self) -> tempfile.TemporaryDirectory[str]:
         temporary = tempfile.TemporaryDirectory(dir=Path.cwd())
         if not Path(temporary.name).as_posix().isascii():

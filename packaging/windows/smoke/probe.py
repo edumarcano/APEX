@@ -99,20 +99,64 @@ def _semantic_assets() -> dict[str, object]:
     adapter = FastEmbedAdapter(paths.fastembed_cache_dir)
     service = RetrievalService(RetrievalStore(paths.data_root / "smoke-retrieval-semantic.db"), adapter=adapter, enabled=True)
     service.initialize()
-    # Index the documentation through the production sync/search path before
-    # preparing embeddings; an empty store correctly reports fts_only.
     initial = search_documentation("APEX local first workspace", service)
-    if initial.get("retrieval_mode") != "fts_only" or not initial.get("results"):
-        raise RuntimeError("production documentation sync did not return initial FTS results")
-    status = service.prepare(allow_download=False)
-    if status.mode != "semantic":
-        raise RuntimeError(f"FastEmbed model assets did not enable semantic retrieval: {status.error_category or status.mode}")
+    initial_mode = initial.get("retrieval_mode")
+    if initial_mode == "fts_only" and initial.get("results"):
+        # Baseline bundles prepare explicitly. The idle-runtime implementation
+        # prepares on the first cached-only semantic search instead.
+        status = service.prepare(allow_download=False)
+        if status.mode != "semantic":
+            raise RuntimeError(f"FastEmbed model assets did not enable semantic retrieval: {status.error_category or status.mode}")
+    elif initial_mode != "semantic" or not initial.get("results"):
+        raise RuntimeError(f"first production documentation search returned no usable results: {initial_mode}")
     result = search_documentation("APEX local first workspace", service)
     if result.get("retrieval_mode") != "semantic" or not result.get("results"):
         raise RuntimeError("FastEmbed-backed production documentation search returned no results")
     semantic_results = len(result["results"])
 
-    return {"retrieval_mode": "semantic", "semantic_results": semantic_results}
+    return {"initial_retrieval_mode": initial_mode, "retrieval_mode": "semantic", "semantic_results": semantic_results}
+
+
+def _startup_no_optional_model_construction() -> dict[str, object]:
+    """Observe real lifespan/status while intercepting only native constructors."""
+    import fastembed
+    import kokoro_onnx
+    from unittest.mock import patch
+
+    calls = {"fastembed": 0, "kokoro": 0}
+
+    def constructed(name: str):
+        def reject(*_args: object, **_kwargs: object) -> None:
+            calls[name] += 1
+            raise RuntimeError("native model constructor intercepted by the build-only probe")
+        return reject
+
+    async def exercise() -> dict[str, object]:
+        from core.api.app import _app_lifespan, app
+        from core.api.routers.cortex import retrieval_status
+
+        lifecycle = _app_lifespan(app)
+        entered = False
+        try:
+            await lifecycle.__aenter__()
+            entered = True
+            # Yield to lifespan-created tasks, then queue a worker barrier so a
+            # submitted retrieval warmup gets its opportunity before status.
+            await asyncio.sleep(0)
+            await asyncio.to_thread(lambda: None)
+            status = retrieval_status()
+            await asyncio.sleep(0)
+            return {"retrieval_mode": status.mode, "fastembed_constructor_calls": calls["fastembed"], "kokoro_constructor_calls": calls["kokoro"]}
+        finally:
+            if entered:
+                await lifecycle.__aexit__(None, None, None)
+
+    with patch.object(fastembed, "TextEmbedding", side_effect=constructed("fastembed")), \
+            patch.object(kokoro_onnx, "Kokoro", side_effect=constructed("kokoro")):
+        evidence = asyncio.run(exercise())
+    if calls["fastembed"] or calls["kokoro"]:
+        raise RuntimeError("application startup or runtime status constructed an optional model")
+    return evidence
 
 
 def _kokoro_assets() -> dict[str, object]:
@@ -362,13 +406,13 @@ def main(argv: list[str] | None = None) -> int:
     if worker is not None:
         return worker
     parser = argparse.ArgumentParser(description="Constrained frozen APEX packaging checks.")
-    parser.add_argument("scenario", choices=("imports", "retrieval", "audio-worker", "no-model-assets", "semantic-assets", "kokoro-assets", "lifecycle", "managed-host-diagnostic"))
+    parser.add_argument("scenario", choices=("imports", "retrieval", "audio-worker", "no-model-assets", "startup-no-optional-models", "semantic-assets", "kokoro-assets", "lifecycle", "managed-host-diagnostic"))
     args = parser.parse_args(values)
     if args.scenario == "managed-host-diagnostic":
         return _managed_host_diagnostic()
     try:
         with redirect_stdout(sys.stderr):
-            evidence = {"imports": _imports, "retrieval": _retrieval, "audio-worker": _audio_worker, "no-model-assets": _no_model_assets, "semantic-assets": _semantic_assets, "kokoro-assets": _kokoro_assets, "lifecycle": _lifecycle}[args.scenario]()
+            evidence = {"imports": _imports, "retrieval": _retrieval, "audio-worker": _audio_worker, "no-model-assets": _no_model_assets, "startup-no-optional-models": _startup_no_optional_model_construction, "semantic-assets": _semantic_assets, "kokoro-assets": _kokoro_assets, "lifecycle": _lifecycle}[args.scenario]()
         _write_json_line({"schema_version": 1, "scenario": args.scenario, "status": "passed", "evidence": evidence})
         return 0
     except Exception as exc:
