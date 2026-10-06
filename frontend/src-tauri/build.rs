@@ -15,6 +15,7 @@ fn main() {
             "desktop_open_external",
             "desktop_write_clipboard",
             "desktop_check_location_permission",
+            "desktop_visibility_state",
         ]),
     ))
     .expect("failed to build the Tauri application manifest")

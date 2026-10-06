@@ -19,6 +19,7 @@
     "allow-desktop-services-retry",
     "allow-desktop-open-external",
     "allow-desktop-write-clipboard",
-    "allow-desktop-check-location-permission"
+    "allow-desktop-check-location-permission",
+    "allow-desktop-visibility-state"
   ]
 }
