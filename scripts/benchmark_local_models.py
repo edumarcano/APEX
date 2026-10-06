@@ -558,7 +558,6 @@ def _build_candidate_configuration(
         DEFAULT_LOCAL_MODEL,
         display_name="Benchmark candidate",
         api_model=model_name,
-        stability=default_profile.stability,
         max_tool_turns=default_profile.max_tool_turns,
         max_tool_calls=default_profile.max_tool_calls,
         system_instruction=LOCAL_AGENT_SYSTEM_PROMPT,

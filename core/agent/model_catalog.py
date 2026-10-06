@@ -13,7 +13,6 @@ from core.config import (
     CORTEX_RUNS_MAX_MODEL_TURNS,
 )
 
-ModelStability = Literal["stable", "preview", "experimental"]
 CloudProvider = Literal["gemini", "openrouter"]
 LocalRuntime = Literal["llama_cpp"]
 HostedTool = Literal["google_search", "google_maps"]
@@ -26,7 +25,6 @@ class ModelProfile:
     display_name: str
     provider: InferenceProvider
     runtime: Literal["cloud", "local"]
-    stability: ModelStability
     credential_env: str | None
     max_tool_turns: int
     max_tool_calls: int
@@ -43,7 +41,6 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         display_name="GLM 5.3 Flash",
         provider="openrouter",
         runtime="cloud",
-        stability="stable",
         credential_env="OPENROUTER_API_KEY",
         max_tool_turns=min(6, CORTEX_RUNS_MAX_MODEL_TURNS),
         max_tool_calls=min(10, CORTEX_RUNS_MAX_TOOL_CALLS),
@@ -58,7 +55,6 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         display_name="GPT-6 Luna",
         provider="openrouter",
         runtime="cloud",
-        stability="stable",
         credential_env="OPENROUTER_API_KEY",
         max_tool_turns=min(6, CORTEX_RUNS_MAX_MODEL_TURNS),
         max_tool_calls=min(10, CORTEX_RUNS_MAX_TOOL_CALLS),
@@ -73,7 +69,6 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         display_name="Gemini 3.7 Flash",
         provider="gemini",
         runtime="cloud",
-        stability="stable",
         credential_env="GEMINI_API_KEY",
         max_tool_turns=min(4, CORTEX_RUNS_MAX_MODEL_TURNS),
         max_tool_calls=min(6, CORTEX_RUNS_MAX_TOOL_CALLS),
@@ -92,7 +87,6 @@ LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
         display_name="Gemma 4 E2B",
         provider="llama_cpp",
         runtime="local",
-        stability="stable",
         credential_env=None,
         max_tool_turns=min(4, CORTEX_RUNS_MAX_MODEL_TURNS),
         max_tool_calls=min(4, CORTEX_RUNS_MAX_TOOL_CALLS),

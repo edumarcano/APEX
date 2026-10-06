@@ -126,7 +126,7 @@ class Branch3StreamingTests(unittest.TestCase):
         client = Mock()
         client.models.generate_content_stream.return_value = _Stream(chunks)
         client_cls.return_value = client
-        profile = GeminiModelProfile(display_name="Gemini", api_model="gemini", stability="stable", thinking_level="low", system_instruction="")
+        profile = GeminiModelProfile(display_name="Gemini", api_model="gemini", thinking_level="low", system_instruction="")
         control = _Control()
         result = GeminiProvider("key").generate_turn([AgentMessage(role="user", content="x")], [], profile, execution_control=control)
         self.assertEqual(result.message.content, "hello")
@@ -160,7 +160,7 @@ class Branch3StreamingTests(unittest.TestCase):
         client.models.generate_content_stream.return_value = _Stream([chunk])
         client_cls.return_value = client
         profile = GeminiModelProfile(
-            display_name="Gemini", api_model="gemini", stability="stable",
+            display_name="Gemini", api_model="gemini",
             thinking_level="low", system_instruction="",
         )
         events = []
@@ -186,7 +186,7 @@ class Branch3StreamingTests(unittest.TestCase):
         client.models.generate_content_stream.return_value = stream
         client_cls.return_value = client
         profile = GeminiModelProfile(
-            display_name="Gemini", api_model="gemini", stability="stable",
+            display_name="Gemini", api_model="gemini",
             thinking_level="low", system_instruction="",
         )
         with self.assertRaisesRegex(ValueError, "native stream returned no chunks"):
@@ -226,7 +226,7 @@ class Branch3StreamingTests(unittest.TestCase):
         client.models.generate_content.return_value = recovered
         client_cls.return_value = client
         profile = GeminiModelProfile(
-            display_name="Gemini", api_model="gemini", stability="stable",
+            display_name="Gemini", api_model="gemini",
             thinking_level="low", system_instruction="",
         )
         control = _Control()
@@ -261,7 +261,7 @@ class Branch3StreamingTests(unittest.TestCase):
         client.models.generate_content_stream.return_value = _Stream([chunk])
         client_cls.return_value = client
         profile = GeminiModelProfile(
-            display_name="Gemini", api_model="gemini", stability="stable",
+            display_name="Gemini", api_model="gemini",
             thinking_level="low", system_instruction="",
         )
 
@@ -301,7 +301,7 @@ class Branch3StreamingTests(unittest.TestCase):
         client.models.generate_content_stream.return_value = _Stream([chunk])
         client_cls.return_value = client
         profile = GeminiModelProfile(
-            display_name="Gemini", api_model="gemini", stability="stable",
+            display_name="Gemini", api_model="gemini",
             thinking_level="low", system_instruction="",
         )
         events = []
@@ -354,7 +354,7 @@ class Branch3StreamingTests(unittest.TestCase):
             'data: [DONE]',
         ]
         session_factory.return_value.post.return_value = response
-        profile = build_llama_cpp_profile("gemma-4-E2B-Q4_K_M.gguf", display_name="Gemma", api_model="gemma", stability="stable", max_tool_turns=1, max_tool_calls=2, system_instruction="")
+        profile = build_llama_cpp_profile("gemma-4-E2B-Q4_K_M.gguf", display_name="Gemma", api_model="gemma", max_tool_turns=1, max_tool_calls=2, system_instruction="")
         events: list[ProviderStreamEvent] = []
         result = LlamaCppProvider().generate_turn([AgentMessage(role="user", content="x")], [], profile, stream_observer=events.append)
         self.assertEqual(result.message.content, "hello")
@@ -401,7 +401,7 @@ class Branch3StreamingTests(unittest.TestCase):
         response.status_code = 502
         response.json.return_value = {"error": {"message": "upstream server error"}}
         session_factory.return_value.post.return_value = response
-        profile = build_llama_cpp_profile("gemma-4-E2B-Q4_K_M.gguf", display_name="Gemma", api_model="gemma", stability="stable", max_tool_turns=1, max_tool_calls=1, system_instruction="")
+        profile = build_llama_cpp_profile("gemma-4-E2B-Q4_K_M.gguf", display_name="Gemma", api_model="gemma", max_tool_turns=1, max_tool_calls=1, system_instruction="")
         from core.agent.providers.llama_cpp import LlamaCppRequestError
         with self.assertRaises(LlamaCppRequestError) as raised:
             LlamaCppProvider().generate_turn([AgentMessage(role="user", content="x")], [], profile, stream_observer=lambda _event: None)
@@ -414,7 +414,7 @@ class Branch3StreamingTests(unittest.TestCase):
         response = Mock()
         response.iter_lines.return_value = ['data: {"choices":[{"delta":{"content":"one"}}]}']
         session_factory.return_value.post.return_value = response
-        profile = build_llama_cpp_profile("gemma-4-E2B-Q4_K_M.gguf", display_name="Gemma", api_model="gemma", stability="stable", max_tool_turns=1, max_tool_calls=1, system_instruction="")
+        profile = build_llama_cpp_profile("gemma-4-E2B-Q4_K_M.gguf", display_name="Gemma", api_model="gemma", max_tool_turns=1, max_tool_calls=1, system_instruction="")
 
         class CancelAfterFirst(_Control):
             checks = 0

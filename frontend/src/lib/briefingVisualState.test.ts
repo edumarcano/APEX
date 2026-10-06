@@ -93,7 +93,6 @@ describe('resolveActiveBriefingActivity', () => {
         display_name: 'Gemma 4 E2B',
         provider: 'llama_cpp',
         runtime: 'local',
-        stability: 'stable',
         hosted_capabilities: [],
       }],
     })

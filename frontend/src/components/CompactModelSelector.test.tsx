@@ -6,9 +6,9 @@ import type { ModelCatalogEntry } from '../types/telemetry'
 import { CompactModelSelector } from './CompactModelSelector'
 
 const catalog: ModelCatalogEntry[] = [
-  { model_id: 'z-ai/glm-5.3-flash', display_name: 'GLM 5.3 Flash', provider: 'openrouter', runtime: 'cloud', stability: 'stable', reasoning_options: ['none', 'low', 'high', 'max'], default_reasoning: 'high', pricing: { currency: 'USD', pricing_version: 'test', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 0.4, cached_input_per_million: null, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null }, hosted_capabilities: [], status: 'configured' },
-  { model_id: 'openai/gpt-6-luna', display_name: 'GPT-6 Luna', provider: 'openrouter', runtime: 'cloud', stability: 'preview', reasoning_options: ['none', 'low', 'high'], default_reasoning: 'low', hosted_capabilities: [], status: 'verified' },
-  { model_id: 'gemma-4-E2B-Q4_K_M.gguf', display_name: 'Gemma 4 E2B', provider: 'llama_cpp', runtime: 'local', stability: 'experimental', reasoning_options: null, default_reasoning: null, maximum_context_window: 131072, hosted_capabilities: [], status: 'available' },
+  { model_id: 'z-ai/glm-5.3-flash', display_name: 'GLM 5.3 Flash', provider: 'openrouter', runtime: 'cloud', reasoning_options: ['none', 'low', 'high', 'max'], default_reasoning: 'high', pricing: { currency: 'USD', pricing_version: 'test', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 0.4, cached_input_per_million: null, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null }, hosted_capabilities: [], status: 'configured' },
+  { model_id: 'openai/gpt-6-luna', display_name: 'GPT-6 Luna', provider: 'openrouter', runtime: 'cloud', reasoning_options: ['none', 'low', 'high'], default_reasoning: 'low', hosted_capabilities: [], status: 'verified' },
+  { model_id: 'gemma-4-E2B-Q4_K_M.gguf', display_name: 'Gemma 4 E2B', provider: 'llama_cpp', runtime: 'local', reasoning_options: null, default_reasoning: null, maximum_context_window: 131072, hosted_capabilities: [], status: 'available' },
 ]
 
 describe('CompactModelSelector', () => {

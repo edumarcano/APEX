@@ -260,7 +260,6 @@ vi.mock('./hooks/useCortex', () => ({
         display_name: 'GLM 5.3 Flash',
         provider: 'openrouter',
         runtime: 'cloud',
-        stability: 'stable',
         reasoning_options: ['low', 'medium', 'high'],
         default_reasoning: 'low',
         hosted_capabilities: [],
@@ -272,7 +271,6 @@ vi.mock('./hooks/useCortex', () => ({
         display_name: 'GLM 5.3 Flash',
         provider: 'openrouter',
         runtime: 'cloud',
-        stability: 'stable',
         reasoning_options: ['low', 'medium', 'high'],
         default_reasoning: 'low',
         hosted_capabilities: [],
@@ -736,7 +734,6 @@ describe('App catalog-affecting settings', () => {
       display_name: 'Gemma 4 E2B',
       provider: 'llama_cpp',
       runtime: 'local',
-      stability: 'stable',
       reasoning_modes: ['none', 'focused'],
       context_options: [16384, 32768],
       hosted_capabilities: [],
@@ -1675,7 +1672,6 @@ describe('App active local briefing lifecycle', () => {
       display_name: 'Gemma 4 E2B',
       provider: 'llama_cpp',
       runtime: 'local',
-      stability: 'stable',
       hosted_capabilities: [],
     }
     const activeSummary = {

@@ -58,7 +58,6 @@ class ApexAgentCatalogTests(unittest.TestCase):
             display_name=model_id,
             provider=provider,
             runtime=runtime,
-            stability="stable",
             credential_env=None,
             max_tool_turns=2,
             max_tool_calls=2,
@@ -105,7 +104,6 @@ class ApexAgentCatalogTests(unittest.TestCase):
         self.assertEqual(profile.display_name, "GPT-6 Luna")
         self.assertEqual(profile.provider, "openrouter")
         self.assertEqual(profile.runtime, "cloud")
-        self.assertEqual(profile.stability, "stable")
         self.assertEqual(profile.credential_env, "OPENROUTER_API_KEY")
         self.assertEqual(profile.reasoning_options, ("none", "low", "medium", "high", "xhigh", "max"))
         self.assertEqual(profile.default_reasoning, "medium")
@@ -120,7 +118,6 @@ class ApexAgentCatalogTests(unittest.TestCase):
         self.assertEqual(profile.display_name, "GLM 5.3 Flash")
         self.assertEqual(profile.provider, "openrouter")
         self.assertEqual(profile.runtime, "cloud")
-        self.assertEqual(profile.stability, "stable")
         self.assertEqual(profile.credential_env, "OPENROUTER_API_KEY")
         self.assertEqual(profile.reasoning_options, ("low", "high", "max"))
         self.assertEqual(profile.default_reasoning, "low")

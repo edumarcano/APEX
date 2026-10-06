@@ -222,7 +222,6 @@ def build_provider_profile(
         return GeminiModelProfile(
             display_name=resolved_display_name,
             api_model=model_profile.model_id,
-            stability=model_profile.stability,
             thinking_level=thinking,
             max_tool_turns=model_profile.max_tool_turns,
             max_tool_calls=model_profile.max_tool_calls,
@@ -241,7 +240,6 @@ def build_provider_profile(
             model_profile.model_id,
             display_name=resolved_display_name,
             api_model=model_profile.model_id,
-            stability=model_profile.stability,
             max_tool_turns=model_profile.max_tool_turns,
             max_tool_calls=model_profile.max_tool_calls,
             system_instruction=system_instruction,
@@ -274,7 +272,6 @@ def build_agent_used_metadata(
     requested_effort: NativeEffort | None,
     resolved_effort: NativeEffort | None,
     runtime: AgentRuntime,
-    model_stability: str | None = None,
     hosted_tools: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     if agent_key not in AGENT_SPECS:
@@ -288,8 +285,6 @@ def build_agent_used_metadata(
         "resolved_effort": resolved_effort,
         "runtime": runtime,
     }
-    if model_stability is not None:
-        metadata["model_stability"] = model_stability
     if hosted_tools is not None:
         metadata["hosted_tools"] = sorted(hosted_tools)
     return metadata
