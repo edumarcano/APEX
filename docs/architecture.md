@@ -84,7 +84,7 @@ Conversation turn
 
 Conversation storage owns prompts and answers. Request metadata records the model, provider, runtime, controls, and accepted production or sandbox partition. Idempotent replay uses those choices as well as the Agent identity. Once an asynchronous run is accepted, later settings changes affect subsequent requests rather than changing that run's execution choices.
 
-Provider profiles, tool defaults, hosted capabilities, and schema projections follow the effective request model, including an explicit override. Gemini, OpenRouter, and llama.cpp consume native streams even without a live browser observer. Providers own stream cleanup and bounded retries. Gemini can recover an empty non-structured STOP result with one bounded unary call.
+Provider profiles, tool defaults, hosted capabilities, and schema projections follow the effective request model, including an explicit override. Google AI Studio (Gemini), OpenRouter, and llama.cpp consume native streams even without a live browser observer. Providers own stream cleanup and bounded retries. Google AI Studio can recover an empty non-structured STOP result with one bounded unary call.
 
 ### Tools and actions
 

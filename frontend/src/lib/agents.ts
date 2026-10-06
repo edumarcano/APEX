@@ -27,7 +27,7 @@ export function providerDisplayName(provider: string | null | undefined): string
     return 'OpenRouter'
   }
   if (provider === 'gemini') {
-    return 'Google'
+    return 'Google AI Studio'
   }
   return provider || 'Provider'
 }

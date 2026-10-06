@@ -23,7 +23,7 @@ export function ModelMark({
   const normalizedModel = (modelId ?? '').toLowerCase()
   const normalizedProvider = (provider ?? '').toLowerCase()
 
-  // Gemini family
+  // Gemini / Google AI Studio family
   if (normalizedModel.startsWith('gemini') || normalizedProvider === 'gemini') {
     return (
       <span className={`inline-flex shrink-0 items-center justify-center ${className}`} aria-hidden>

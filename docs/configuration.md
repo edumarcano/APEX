@@ -100,7 +100,7 @@ The default model is OpenRouter GLM 5.3 Flash with Low reasoning. Configure the 
 | Provider | Environment variable |
 |---|---|
 | OpenRouter | `OPENROUTER_API_KEY` |
-| Google Gemini | `GEMINI_API_KEY` |
+| Google AI Studio | `GEMINI_API_KEY` |
 
 Local models use llama.cpp. Cortex reports availability for each model. APEX does not install these runtimes or download model weights.
 

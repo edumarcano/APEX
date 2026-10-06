@@ -494,7 +494,7 @@ Assigns an existing built-in or custom profile as the default for one runtime (`
 
 ### GET `/api/v1/cortex/agent`
 
-Returns the single APEX Agent and its ordered model catalog. Its `canonical_name` is "APEX Agent", and `display_name` defaults to "Lynx" unless a custom `agent_display_name` is saved. Each entry supplies model/provider/runtime, stability, supported reasoning and local controls, grounded-tool state, pricing, and availability/lifecycle diagnostics. Provider capability fields describe `streaming` (`native` or `completed_turn`), `structured_output` (`native` or `unavailable`), `usage_reporting` (`reported`, `estimated`, or `unavailable`), and the allowlisted `supported_runtime_measurements`. Native streaming is available for OpenRouter, Gemini, and llama.cpp. Structured output is enforced only on final tool-free turns by providers whose `structured_output` capability is `native`.
+Returns the single APEX Agent and its ordered model catalog. Its `canonical_name` is "APEX Agent", and `display_name` defaults to "Lynx" unless a custom `agent_display_name` is saved. Each entry supplies model/provider/runtime, stability, supported reasoning and local controls, grounded-tool state, pricing, and availability/lifecycle diagnostics. Provider capability fields describe `streaming` (`native` or `completed_turn`), `structured_output` (`native` or `unavailable`), `usage_reporting` (`reported`, `estimated`, or `unavailable`), and the allowlisted `supported_runtime_measurements`. Native streaming is available for OpenRouter, Google AI Studio (Gemini), and llama.cpp. Structured output is enforced only on final tool-free turns by providers whose `structured_output` capability is `native`.
 
 Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Local availability distinguishes an unreachable runtime, missing model, loading model, busy execution slot, and provider-reported residency. Local catalog entries publish model-specific context and reasoning values, options, and defaults.
 
@@ -508,7 +508,7 @@ Runs one user-triggered, non-generative metadata check for a visible credential-
 { "model_id": "z-ai/glm-5.3-flash" }
 ```
 
-Google uses the Gemini API model metadata endpoint. OpenRouter uses authenticated `GET /api/v1/endpoints/zdr` and verifies that the selected model has a ZDR route. The five-second probe sends no prompt, context, or provider tool call. Results are sanitized and cached; polling never triggers a probe.
+Google AI Studio uses the Gemini API model metadata endpoint. OpenRouter uses authenticated `GET /api/v1/endpoints/zdr` and verifies that the selected model has a ZDR route. The five-second probe sends no prompt, context, or provider tool call. Results are sanitized and cached; polling never triggers a probe.
 
 - `400` / `422` — the model is local or has no supported verification path.
 - `403` — demo mode disallows provider contact.

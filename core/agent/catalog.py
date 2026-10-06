@@ -39,7 +39,7 @@ NativeEffort: TypeAlias = Literal["none", "minimal", "low", "medium", "high", "x
 VALID_AGENT_KEYS: frozenset[str] = frozenset({"apex"})
 
 _PROVIDER_DISPLAY_NAMES: dict[InferenceProvider, str] = {
-    "gemini": "Google",
+    "gemini": "Google AI Studio",
     "llama_cpp": "llama.cpp",
     "openrouter": "OpenRouter",
 }

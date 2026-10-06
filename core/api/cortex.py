@@ -120,7 +120,7 @@ _PROFILE_STATUS_REASONS: dict[AgentAvailabilityStatus, str] = {
 }
 
 _PROVIDER_DISPLAY_NAMES: dict[str, str] = {
-    "gemini": "Google",
+    "gemini": "Google AI Studio",
     "llama_cpp": "llama.cpp",
     "openrouter": "OpenRouter",
 }

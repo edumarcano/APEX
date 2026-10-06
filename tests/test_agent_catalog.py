@@ -163,3 +163,10 @@ class ApexAgentCatalogTests(unittest.TestCase):
         self.assertEqual(resolve_agent_display_name(""), "Lynx")
         self.assertEqual(resolve_agent_display_name("   "), "Lynx")
         self.assertEqual(resolve_agent_display_name("Nova"), "Nova")
+
+    def test_provider_display_names_mapping(self) -> None:
+        from core.agent.catalog import _PROVIDER_DISPLAY_NAMES
+
+        self.assertEqual(_PROVIDER_DISPLAY_NAMES["gemini"], "Google AI Studio")
+        self.assertEqual(_PROVIDER_DISPLAY_NAMES["openrouter"], "OpenRouter")
+        self.assertEqual(_PROVIDER_DISPLAY_NAMES["llama_cpp"], "llama.cpp")
