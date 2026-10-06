@@ -47,11 +47,13 @@ class BackendBundleSmokeHarnessTests(unittest.TestCase):
                 )):
             service = service_factory.return_value
             service.prepare.return_value = SimpleNamespace(mode="semantic", error_category=None)
+            service.release_if_idle = None
 
             evidence = probe._semantic_assets()
 
         self.assertEqual(evidence["initial_retrieval_mode"], "fts_only")
         self.assertEqual(evidence["retrieval_mode"], "semantic")
+        self.assertEqual(evidence["idle_release_status"], "baseline_unavailable")
         service.prepare.assert_called_once_with(allow_download=False)
 
         with patch("core.retrieval.docs.search_documentation", side_effect=(semantic, semantic)), \
@@ -62,11 +64,13 @@ class BackendBundleSmokeHarnessTests(unittest.TestCase):
                     fastembed_cache_dir=Path("cached-model"), data_root=Path("profile")
                 )):
             service = service_factory.return_value
+            service.release_if_idle = None
 
             evidence = probe._semantic_assets()
 
         self.assertEqual(evidence["initial_retrieval_mode"], "semantic")
         self.assertEqual(evidence["retrieval_mode"], "semantic")
+        self.assertEqual(evidence["idle_release_status"], "baseline_unavailable")
         service.prepare.assert_not_called()
 
     def _ascii_temporary_directory(self) -> tempfile.TemporaryDirectory[str]:

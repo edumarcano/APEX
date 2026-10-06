@@ -269,5 +269,3 @@ class OwnedProcessSampler:
             "unverified_cpu_intervals": unverified_intervals,
             "samples": samples,
         }
-
-

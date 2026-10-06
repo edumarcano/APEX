@@ -114,6 +114,13 @@ class SmokeFailure(RuntimeError):
     pass
 
 
+class IdleDemandFailure(SmokeFailure):
+    def __init__(self, category: str, diagnostics: dict[str, object]) -> None:
+        self.category = category
+        self.diagnostics = diagnostics
+        super().__init__(f"{category}: {json.dumps(diagnostics, ensure_ascii=True, separators=(',', ':'))}")
+
+
 class WebDriverCommandError(SmokeFailure):
     def __init__(self, error: str, message: str) -> None:
         super().__init__(f"WebDriver command failed ({error}): {message}")
@@ -623,37 +630,138 @@ def _stage_idle_assets(profile: Path, fastembed_cache: Path | None, kokoro_asset
     return True
 
 
-def _exercise_semantic_retrieval(fixture: LlamaCppStreamFixture) -> dict[str, object]:
-    conversation = _http_post_json("/api/v1/cortex/conversations", {
-        "origin": "hud",
-        "agent": "apex",
-        "title": "Idle runtime validation",
-        "selected_tool_names": ["search_apex_docs"],
-        "tool_profile_id": "research",
-    })
-    conversation_id = conversation.get("id") if isinstance(conversation, dict) else None
-    if not isinstance(conversation_id, str):
-        raise SmokeFailure("could not create the disposable retrieval measurement conversation")
-    fixture.search_tool_requests.add(fixture.request_count)
-    result = _http_post_json(f"/api/v1/cortex/conversations/{conversation_id}/turns", {
+def _start_cortex_run(conversation_id: str, prompt: str) -> dict[str, object]:
+    result = _http_post_json(f"/api/v1/cortex/conversations/{conversation_id}/runs", {
         "user_message_id": str(uuid4()),
         "agent_message_id": str(uuid4()),
-        "prompt": "Use search_apex_docs to find the local-first workspace guidance and summarize it.",
+        "prompt": prompt,
         "selected_tool_names": ["search_apex_docs"],
         "tool_profile_id": "research",
-    }, timeout=180.0)
-    trace = result.get("tool_trace") if isinstance(result, dict) else None
-    successful_trace_names = [
-        item.get("name") for item in trace
-        if isinstance(item, dict)
-        and isinstance(item.get("name"), str)
-        and item.get("status") == "ok"
-    ] if isinstance(trace, list) else []
-    retrieval_status = _http_json("/api/v1/cortex/retrieval/status", timeout=10.0)
-    mode = retrieval_status.get("mode") if isinstance(retrieval_status, dict) else None
-    if "search_apex_docs" not in successful_trace_names or mode != "semantic":
-        raise SmokeFailure("the real FastEmbed-backed documentation tool did not return semantic results")
-    return {"conversation_id": conversation_id, "tool_called": True, "retrieval_mode": mode}
+    }, timeout=30.0)
+    run_id = result.get("id") if isinstance(result, dict) else None
+    if not isinstance(run_id, str):
+        raise SmokeFailure("asynchronous Cortex run creation returned no run identity")
+    return result
+
+
+def _wait_cortex_run(run_id: str, timeout: float) -> dict[str, object]:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        record = _http_json(f"/api/v1/cortex/runs/{run_id}", timeout=10.0)
+        if not isinstance(record, dict):
+            raise SmokeFailure("Cortex run status did not return an object")
+        if record.get("status") in {"completed", "failed", "cancelled", "interrupted"}:
+            return record
+        time.sleep(0.2)
+    raise SmokeFailure("Cortex run did not reach a persisted terminal state before the deadline")
+
+
+def _run_completion_replayed(run_id: str) -> bool:
+    return "run.completed" in _http_sse_event_types(run_id, timeout=15.0)
+
+
+def _conversation_agent_result(conversation_id: str, agent_message_id: str) -> dict[str, object] | None:
+    detail = _http_json(f"/api/v1/cortex/conversations/{conversation_id}", timeout=10.0)
+    messages = detail.get("messages") if isinstance(detail, dict) else None
+    if not isinstance(messages, list):
+        return None
+    return next((message for message in messages if isinstance(message, dict) and message.get("id") == agent_message_id), None)
+
+
+def _trace_summary(message: dict[str, object] | None) -> list[dict[str, str]]:
+    metadata = message.get("response_metadata") if isinstance(message, dict) else None
+    trace = metadata.get("tool_trace") if isinstance(metadata, dict) else None
+    result: list[dict[str, str]] = []
+    if isinstance(trace, list):
+        for item in trace:
+            if not isinstance(item, dict):
+                continue
+            name, status = item.get("name"), item.get("status")
+            if isinstance(name, str) and isinstance(status, str):
+                result.append({"name": name[:80], "status": status[:40]})
+    return result
+
+
+def _exercise_semantic_retrieval(fixture: LlamaCppStreamFixture) -> dict[str, object]:
+    conversation_id: str | None = None
+    run: dict[str, object] = {}
+    terminal: dict[str, object] = {}
+    message: dict[str, object] | None = None
+    retrieval_status: dict[str, object] = {}
+    completion_event = False
+    stage = "conversation_create"
+    caught: Exception | None = None
+    try:
+        conversation = _http_post_json("/api/v1/cortex/conversations", {
+            "origin": "hud",
+            "agent": "apex",
+            "title": "Idle runtime validation",
+            "selected_tool_names": ["search_apex_docs"],
+            "tool_profile_id": "research",
+        })
+        conversation_id = conversation.get("id") if isinstance(conversation, dict) else None
+        if not isinstance(conversation_id, str):
+            raise SmokeFailure("conversation response omitted its identity")
+        stage = "run_submission"
+        fixture.search_tool_requests.add(fixture.request_count)
+        run = _start_cortex_run(
+            conversation_id,
+            "Use search_apex_docs to find the local-first workspace guidance and summarize it.",
+        )
+        run_id = str(run["id"])
+        stage = "run_completion"
+        terminal = _wait_cortex_run(run_id, 180.0)
+        stage = "conversation_persistence"
+        message = _conversation_agent_result(conversation_id, str(run.get("agent_message_id", "")))
+        stage = "retrieval_status"
+        status_value = _http_json("/api/v1/cortex/retrieval/status", timeout=10.0)
+        retrieval_status = status_value if isinstance(status_value, dict) else {}
+        stage = "run_completion_event"
+        completion_event = terminal.get("status") == "completed" and _run_completion_replayed(run_id)
+    except Exception as exc:
+        caught = exc
+        try:
+            if not retrieval_status:
+                status_value = _http_json("/api/v1/cortex/retrieval/status", timeout=5.0)
+                retrieval_status = status_value if isinstance(status_value, dict) else {}
+        except Exception:
+            pass
+
+    trace = _trace_summary(message)
+    mode = retrieval_status.get("mode")
+    retrieval_state = retrieval_status.get("state")
+    retrieval_error = retrieval_status.get("error_category")
+    message_status = message.get("status") if isinstance(message, dict) else None
+    successful_tool = any(item["name"] == "search_apex_docs" and item["status"] == "ok" for item in trace)
+    evidence = terminal.get("evidence")
+    persisted = evidence.get("answer_persisted") if isinstance(evidence, dict) else None
+    terminal_error = terminal.get("error")
+    error_category = terminal_error.get("code") if isinstance(terminal_error, dict) else None
+    if caught is not None and error_category is None:
+        error_category = type(caught).__name__
+    diagnostics = {
+        "run_status": terminal.get("status"),
+        "message_status": message_status,
+        "error_category": error_category,
+        "tool_trace": trace,
+        "retrieval_mode": mode,
+        "retrieval_state": retrieval_state,
+        "retrieval_error_category": retrieval_error,
+        "answer_persisted": persisted,
+        "completion_event_replayed": completion_event,
+    }
+    if caught is not None:
+        raise IdleDemandFailure(f"semantic_{stage}_failed", diagnostics) from None
+    if not (
+        terminal.get("status") == "completed"
+        and message_status == "completed"
+        and persisted is True
+        and successful_tool
+        and mode == "semantic"
+        and completion_event
+    ):
+        raise IdleDemandFailure("semantic_retrieval_demand_failed", diagnostics)
+    return {"conversation_id": conversation_id, "run_id": str(run["id"]), "tool_called": True, "retrieval_mode": mode}
 
 
 def _exercise_kokoro_synthesis() -> dict[str, object]:
@@ -663,14 +771,14 @@ def _exercise_kokoro_synthesis() -> dict[str, object]:
     return {"engine": "kokoro", "status": result.get("status")}
 
 
-def _start_completed_fixture_turn(conversation_id: str) -> tuple[threading.Thread, dict[str, object], threading.Event]:
+def _start_completed_fixture_run(conversation_id: str) -> tuple[threading.Thread, dict[str, object], threading.Event]:
     outcome: dict[str, object] = {}
     done = threading.Event()
 
     def submit() -> None:
         try:
             outcome["result"] = _http_post_json(
-                f"/api/v1/cortex/conversations/{conversation_id}/turns",
+                f"/api/v1/cortex/conversations/{conversation_id}/runs",
                 {
                     "user_message_id": str(uuid4()),
                     "agent_message_id": str(uuid4()),
@@ -678,7 +786,7 @@ def _start_completed_fixture_turn(conversation_id: str) -> tuple[threading.Threa
                     "selected_tool_names": [],
                     "tool_profile_id": "no_tools",
                 },
-                timeout=120.0,
+                timeout=30.0,
             )
         except Exception as exc:
             outcome["error_type"] = type(exc).__name__
@@ -717,8 +825,13 @@ def _run_idle_workload_scenario(
         })
         return
 
-    first_semantic = _exercise_semantic_retrieval(fixture)
-    first_speech = _exercise_kokoro_synthesis()
+    try:
+        first_semantic = _exercise_semantic_retrieval(fixture)
+        first_speech = _exercise_kokoro_synthesis()
+    except IdleDemandFailure as exc:
+        report.add("idle_semantic_and_kokoro_demand", "failed", exc.category)
+        report.idle_measurements.append({"name": "semantic_retrieval_with_kokoro_synthesis", "status": "failed", **exc.diagnostics})
+        raise
     report.add("idle_semantic_and_kokoro_demand", "passed", "production Cortex retrieval and voice routes acquired real FastEmbed and Kokoro assets")
     report.idle_measurements.append({
         "name": "semantic_retrieval_with_kokoro_synthesis",
@@ -733,8 +846,13 @@ def _run_idle_workload_scenario(
     _show_native_window(shell_pid, shell_hwnd, min(10.0, timeout))
     report.add("idle_tray_show_after_boundary", "passed", "actual tray Show restored the original native window after idle sampling")
 
-    second_semantic = _exercise_semantic_retrieval(fixture)
-    second_speech = _exercise_kokoro_synthesis()
+    try:
+        second_semantic = _exercise_semantic_retrieval(fixture)
+        second_speech = _exercise_kokoro_synthesis()
+    except IdleDemandFailure as exc:
+        report.add("idle_repeat_demand_after_tray", "failed", exc.category)
+        report.idle_measurements.append({"name": "tray_show_after_idle_and_repeat_demand", "status": "failed", **exc.diagnostics})
+        raise
     report.add("idle_repeat_demand_after_tray", "passed", "semantic retrieval and Kokoro synthesis succeeded after the full tray idle interval")
     report.idle_measurements.append({
         "name": "tray_show_after_idle_and_repeat_demand",
@@ -744,20 +862,36 @@ def _run_idle_workload_scenario(
     })
 
     fixture.active_request_number = fixture.request_count
-    worker, outcome, done = _start_completed_fixture_turn(str(first_semantic["conversation_id"]))
+    worker, outcome, done = _start_completed_fixture_run(str(first_semantic["conversation_id"]))
     if not fixture.active_request_started.wait(timeout=min(45.0, timeout)):
         fixture.release_active_request.set()
         raise SmokeFailure("active fixture did not reach its hidden-window completion boundary")
-    _hide_native_window(shell_hwnd, min(15.0, timeout))
-    fixture.release_active_request.set()
+    try:
+        _hide_native_window(shell_hwnd, min(15.0, timeout))
+    finally:
+        fixture.release_active_request.set()
     if not done.wait(timeout=min(120.0, timeout + 60.0)):
-        raise SmokeFailure("fixture turn did not finish after the window was hidden")
+        raise SmokeFailure("fixture run submission did not return after the window was hidden")
     worker.join(timeout=1.0)
     active_result = outcome.get("result")
-    if outcome.get("error_type") or not isinstance(active_result, dict) or active_result.get("message_status") != "completed":
-        raise SmokeFailure("hidden-window fixture work did not persist a completed turn")
-    report.add("idle_hidden_active_completion", "passed", "a real managed Cortex turn completed while its native window was hidden")
-    report.idle_measurements.append({"name": "active_fixture_hidden_completion", "status": "passed", "completion_preserved": True})
+    if outcome.get("error_type") or not isinstance(active_result, dict) or not isinstance(active_result.get("id"), str):
+        raise SmokeFailure("hidden-window fixture run was not accepted by the managed backend")
+    active_run_id = str(active_result["id"])
+    active_terminal = _wait_cortex_run(active_run_id, min(120.0, timeout + 60.0))
+    active_message = _conversation_agent_result(str(first_semantic["conversation_id"]), str(active_result.get("agent_message_id", "")))
+    active_evidence = active_terminal.get("evidence") if isinstance(active_terminal.get("evidence"), dict) else {}
+    completion_event = active_terminal.get("status") == "completed" and _run_completion_replayed(active_run_id)
+    active_completed = (
+        active_terminal.get("status") == "completed"
+        and isinstance(active_message, dict)
+        and active_message.get("status") == "completed"
+        and active_evidence.get("answer_persisted") is True
+        and completion_event
+    )
+    if not active_completed:
+        raise SmokeFailure("hidden-window fixture run did not persist completion and replay its terminal completion event")
+    report.add("idle_hidden_active_completion", "passed", "a hidden-window managed run persisted its answer and terminal completion event")
+    report.idle_measurements.append({"name": "active_fixture_hidden_completion", "status": "passed", "completion_preserved": True, "run_status": active_terminal.get("status"), "answer_persisted": active_evidence.get("answer_persisted"), "completion_event_replayed": completion_event})
     _show_native_window(shell_pid, shell_hwnd, min(10.0, timeout))
     report.add("idle_tray_show_after_active_completion", "passed", "actual tray Show restored the completed session")
 
@@ -2768,10 +2902,27 @@ def _run_smoke(
     else:
         report.add("disposable_profile_cleanup", "passed", "disposable smoke directory was removed")
 
-    _run_desktop_import_smoke(
-        application=application, tauri_driver=tauri_driver,
-        native_driver=native_driver, timeout=timeout, report=report,
+    cleanup_statuses = {
+        check.name: check.status
+        for check in report.checks
+        if check.name in {"native_shell_cleanup", "owned_backend_cleanup"}
+    }
+    exact_fixture_cleanup_verified = (
+        cleanup_statuses.get("native_shell_cleanup") == "passed"
+        and cleanup_statuses.get("owned_backend_cleanup") == "passed"
+        and _api_port_available()
     )
+    if measure_idle and not exact_fixture_cleanup_verified:
+        report.add(
+            "desktop_import_smoke",
+            "unverified",
+            "imported-profile launch skipped because exact fixture shell/backend cleanup or API-port release was not verified",
+        )
+    else:
+        _run_desktop_import_smoke(
+            application=application, tauri_driver=tauri_driver,
+            native_driver=native_driver, timeout=timeout, report=report,
+        )
 
     for name in ("close_to_tray", "single_instance_activation", "tray_show", "tray_quit"):
         if not any(check.name == name for check in report.checks):

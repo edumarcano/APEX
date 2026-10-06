@@ -8,12 +8,14 @@ import faulthandler
 import json
 import logging
 import multiprocessing
+import os
 import sys
 import threading
 import time
 from contextlib import redirect_stdout
 from pathlib import Path
 from urllib.parse import urlsplit
+from unittest.mock import patch
 
 multiprocessing.freeze_support()
 if getattr(sys, "frozen", False):
@@ -92,6 +94,7 @@ def _no_model_assets() -> dict[str, object]:
 def _semantic_assets() -> dict[str, object]:
     from core.retrieval.docs import search_documentation
     from core.retrieval.embedding import FastEmbedAdapter
+    import core.retrieval.service as retrieval_service_module
     from core.retrieval.service import RetrievalService
     from core.retrieval.store import RetrievalStore
     from core.runtime_paths import get_runtime_paths
@@ -112,18 +115,74 @@ def _semantic_assets() -> dict[str, object]:
     result = search_documentation("APEX local first workspace", service)
     if result.get("retrieval_mode") != "semantic" or not result.get("results"):
         raise RuntimeError("FastEmbed-backed production documentation search returned no results")
-    semantic_results = len(result["results"])
+    before_signature = [
+        (item.get("path"), item.get("heading"), item.get("line_start"), item.get("line_end"))
+        for item in result["results"] if isinstance(item, dict)
+    ]
+    before_status = service.status()
+    before_model_state = service.store.model_state()
+    release = getattr(service, "release_if_idle", None)
+    idle_release_status = "baseline_unavailable"
+    reloaded_results = len(before_signature)
+    if callable(release):
+        class IdleClock:
+            def __init__(self) -> None:
+                self.base = time.monotonic
+                self.offset = 0.0
 
-    return {"initial_retrieval_mode": initial_mode, "retrieval_mode": "semantic", "semantic_results": semantic_results}
+            def __call__(self) -> float:
+                return self.base() + self.offset
+
+        clock = IdleClock()
+        with patch.object(retrieval_service_module, "_monotonic", side_effect=clock):
+            clock.offset = 301.0
+            if release() is not True:
+                raise RuntimeError("FastEmbed cached session did not release after the patched idle boundary")
+            reloaded = search_documentation("APEX local first workspace", service)
+        after_signature = [
+            (item.get("path"), item.get("heading"), item.get("line_start"), item.get("line_end"))
+            for item in reloaded.get("results", []) if isinstance(item, dict)
+        ]
+        after_status = service.status()
+        after_model_state = service.store.model_state()
+        if (
+            reloaded.get("retrieval_mode") != "semantic"
+            or before_signature != after_signature
+            or before_status.indexed_items != after_status.indexed_items
+            or before_status.embedding_items != after_status.embedding_items
+            or before_model_state != after_model_state
+        ):
+            raise RuntimeError("semantic retrieval results, persisted index counts, or model metadata changed after release and reload")
+        idle_release_status = "passed"
+        reloaded_results = len(after_signature)
+    elif os.environ.get("APEX_SMOKE_REQUIRE_IDLE_RELEASE") == "1":
+        raise RuntimeError("candidate frozen probe requires RetrievalService.release_if_idle")
+    close = getattr(service, "close", None)
+    if callable(close):
+        close(timeout_seconds=30.0)
+    return {
+        "initial_retrieval_mode": initial_mode,
+        "retrieval_mode": "semantic",
+        "semantic_results": len(before_signature),
+        "idle_release_status": idle_release_status,
+        "reload_results_preserved": reloaded_results == len(before_signature),
+    }
 
 
 def _startup_no_optional_model_construction() -> dict[str, object]:
     """Observe real lifespan/status while intercepting only native constructors."""
     import fastembed
     import kokoro_onnx
-    from unittest.mock import patch
-
     calls = {"fastembed": 0, "kokoro": 0}
+    from core.runtime_paths import get_runtime_paths
+    import core.speaker as speaker
+    from core.settings.store import get_settings_store
+    paths = get_runtime_paths()
+    model_path, voices_path = speaker._kokoro_paths()
+    fastembed_assets_present = paths.fastembed_cache_dir.is_dir() and any(
+        path.is_file() for path in paths.fastembed_cache_dir.rglob("*")
+    )
+    kokoro_assets_present = model_path.is_file() and voices_path.is_file()
 
     def constructed(name: str):
         def reject(*_args: object, **_kwargs: object) -> None:
@@ -146,7 +205,11 @@ def _startup_no_optional_model_construction() -> dict[str, object]:
             await asyncio.to_thread(lambda: None)
             status = retrieval_status()
             await asyncio.sleep(0)
-            return {"retrieval_mode": status.mode, "fastembed_constructor_calls": calls["fastembed"], "kokoro_constructor_calls": calls["kokoro"]}
+            return {
+                "retrieval_mode": status.mode,
+                "fastembed_constructor_calls": calls["fastembed"],
+                "kokoro_constructor_calls": calls["kokoro"],
+            }
         finally:
             if entered:
                 await lifecycle.__aexit__(None, None, None)
@@ -156,6 +219,9 @@ def _startup_no_optional_model_construction() -> dict[str, object]:
         evidence = asyncio.run(exercise())
     if calls["fastembed"] or calls["kokoro"]:
         raise RuntimeError("application startup or runtime status constructed an optional model")
+    evidence["fastembed_assets_present"] = bool(fastembed_assets_present)
+    evidence["kokoro_assets_present"] = bool(kokoro_assets_present)
+    evidence["configured_voice_engine"] = get_settings_store().get_snapshot().voice.engine
     return evidence
 
 
@@ -196,7 +262,28 @@ def _kokoro_assets() -> dict[str, object]:
     audio = chunks[0]["audio"]
     if not isinstance(audio, bytes) or not audio.startswith(b"RIFF") or b"WAVE" not in audio[:16]:
         raise RuntimeError("Kokoro result was not a valid WAV file")
-    return {"kokoro_assets": assets, "kokoro_engine": engine, "wav_bytes": len(audio)}
+    release = getattr(speaker, "release_kokoro_if_idle", None)
+    idle_release_status = "baseline_unavailable"
+    if callable(release):
+        original_speaker_time = speaker.time
+        try:
+            speaker.time = type("IdleClock", (), {"monotonic": staticmethod(lambda: original_speaker_time.monotonic() + 301.0)})()
+            if release() is not True:
+                raise RuntimeError("Kokoro session did not release after the patched idle boundary")
+            reloaded_chunks, reloaded_engine = speaker.synthesize_audio(
+                "APEX frozen speech reload check.", tts_override="kokoro", voice_gender="female", cancellation_event=threading.Event()
+            )
+        finally:
+            speaker.time = original_speaker_time
+        if reloaded_engine != "kokoro" or not reloaded_chunks or reloaded_chunks[0].get("content_type") != "audio/wav":
+            raise RuntimeError("Kokoro did not reacquire cached assets and produce WAV after idle release")
+        idle_release_status = "passed"
+    elif os.environ.get("APEX_SMOKE_REQUIRE_IDLE_RELEASE") == "1":
+        raise RuntimeError("candidate frozen probe requires speaker.release_kokoro_if_idle")
+    close_kokoro = getattr(speaker, "close_kokoro", None)
+    if callable(close_kokoro) and not close_kokoro(timeout_seconds=30.0):
+        raise RuntimeError("Kokoro runtime did not close within its bounded drain")
+    return {"kokoro_assets": assets, "kokoro_engine": engine, "wav_bytes": len(audio), "idle_release_status": idle_release_status, "reload_succeeded": idle_release_status == "passed"}
 
 
 def _lifecycle() -> dict[str, object]:
