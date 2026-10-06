@@ -22,7 +22,6 @@ describe('agents helpers', () => {
 
   it('labels providers for display without changing their technical IDs', () => {
     expect(providerDisplayName('llama_cpp')).toBe('llama.cpp')
-    expect(providerDisplayName('ollama')).toBe('Ollama')
     expect(providerDisplayName('gemini')).toBe('Google')
     expect(providerDisplayName('openrouter')).toBe('OpenRouter')
   })

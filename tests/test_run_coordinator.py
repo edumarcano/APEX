@@ -480,7 +480,7 @@ class RunCoordinatorTests(unittest.TestCase):
             user_message_id=uuid4(),
             agent_message_id=uuid4(),
             prompt="Hello",
-            model_id="qwen3:1.7b",
+            model_id="gemma-4-E2B-Q4_K_M.gguf",
             context_window=16384,
         )
         metadata = _resolved_turn_metadata(local_payload)
@@ -490,7 +490,7 @@ class RunCoordinatorTests(unittest.TestCase):
             user_message_id=uuid4(),
             agent_message_id=uuid4(),
             prompt="Hello",
-            model_id="qwen3:1.7b",
+            model_id="gemma-4-E2B-Q4_K_M.gguf",
         )
         metadata_default = _resolved_turn_metadata(default_local)
         self.assertIsInstance(metadata_default["effective_context_window"], int)
@@ -540,7 +540,7 @@ class RunCoordinatorTests(unittest.TestCase):
             agent_message_id=uuid4(),
             prompt="Hello",
             agent="apex",
-            model_id="qwen3:1.7b",
+            model_id="gemma-4-E2B-Q4_K_M.gguf",
             context_window=16384,
         )
 
@@ -592,7 +592,7 @@ class RunCoordinatorTests(unittest.TestCase):
             )
             payload = ConversationTurnRequest(
                 user_message_id=uuid4(), agent_message_id=uuid4(), prompt="Hello",
-                agent="apex", model_id="qwen3:1.7b",
+                agent="apex", model_id="gemma-4-E2B-Q4_K_M.gguf",
             )
             record, future = _submit_run(conversation.id, payload)
             self.assertIsNotNone(future)
@@ -698,7 +698,7 @@ class RunCoordinatorTests(unittest.TestCase):
                 {
                     "ask_apex": {
                         "enabled": True,
-                        "selected_model": "qwen3:1.7b",
+                        "selected_model": "gemma-4-E2B-Q4_K_M.gguf",
                         "sandbox_mode": False,
                         "local": {
                             "context_window": 16384,
@@ -790,13 +790,13 @@ class RunCoordinatorTests(unittest.TestCase):
             future.result(timeout=2)
 
         execution_payload = captured["payload"]
-        self.assertEqual(execution_payload.model_id, "qwen3:1.7b")
+        self.assertEqual(execution_payload.model_id, "gemma-4-E2B-Q4_K_M.gguf")
         self.assertEqual(execution_payload.context_window, 16384)
         self.assertEqual(execution_payload.local_reasoning_mode, "none")
         self.assertEqual(execution_payload.history_partition, "production")
         self.assertEqual(captured["execution_partition"], "production")
         self.assertEqual(captured["provenance"]["partition"], "production")
-        self.assertEqual(record.requested_model, "qwen3:1.7b")
+        self.assertEqual(record.requested_model, "gemma-4-E2B-Q4_K_M.gguf")
 
         detail = self.conversations.detail(conversation.id, "production")
         agent_message = next(
@@ -805,7 +805,7 @@ class RunCoordinatorTests(unittest.TestCase):
             if message.id == payload.agent_message_id
         )
         self.assertEqual(agent_message.request_metadata["partition"], "production")
-        self.assertEqual(agent_message.request_metadata["resolved_model"], "qwen3:1.7b")
+        self.assertEqual(agent_message.request_metadata["resolved_model"], "gemma-4-E2B-Q4_K_M.gguf")
         self.assertEqual(
             [
                 row[4]

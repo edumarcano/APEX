@@ -110,7 +110,7 @@ You can propose a finding as personal context, but it enters trusted retrieval o
 
 APEX stores conversations, briefings and their evidence, prepared briefing audio, personal context, reports, and action history in local SQLite storage. Settings are local too. Personal-context retrieval is disabled by default for both cloud and local models.
 
-Enabled connectors contact their services, and cloud model requests send the prompt, history, evidence, and tool results allowed for that operation. Selecting a local model keeps inference on the configured Ollama or llama.cpp endpoint. Speech has its own boundary: Google Cloud TTS receives spoken text, while pyttsx3 and Kokoro run locally. Review [Privacy and Data Boundaries](docs/privacy.md) before enabling personal connectors, cloud processing, or context export.
+Enabled connectors contact their services, and cloud model requests send the prompt, history, evidence, and tool results allowed for that operation. Selecting a local model keeps inference on the configured llama.cpp endpoint. Speech has its own boundary: Google Cloud TTS receives spoken text, while pyttsx3 and Kokoro run locally. Review [Privacy and Data Boundaries](docs/privacy.md) before enabling personal connectors, cloud processing, or context export.
 
 The launcher serves the interface at `127.0.0.1:5500` and the API at `127.0.0.1:8000`. The API has no authentication and is intended for local use; CORS is not an access-control boundary. The launcher limits the environment variables passed to the frontend server and browser processes.
 
@@ -143,7 +143,7 @@ flowchart LR
     B --> M["Daily · Catch Up · Deep profiles"]
 ```
 
-The backend uses Python 3.14, FastAPI, and Pydantic. The frontend uses React 19, TypeScript 6, Vite 8, and Tailwind CSS 4. Cloud model support includes OpenAI, OpenRouter, and Google; local inference uses Ollama or llama.cpp. See [Configuration](docs/configuration.md) for supported models and optional dependencies, and [Architecture](docs/architecture.md) for runtime ownership and failure behavior.
+The backend uses Python 3.14, FastAPI, and Pydantic. The frontend uses React 19, TypeScript 6, Vite 8, and Tailwind CSS 4. Cloud model support includes Google and OpenRouter; local inference uses llama.cpp. See [Configuration](docs/configuration.md) for supported models and optional dependencies, and [Architecture](docs/architecture.md) for runtime ownership and failure behavior.
 
 ## Documentation
 

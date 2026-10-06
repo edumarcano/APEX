@@ -73,7 +73,7 @@ describe('resolveActiveBriefingActivity', () => {
     const activeSummary = {
       id: 'active-session',
       profile_id: 'daily',
-      model_id: 'qwen3:1.7b',
+      model_id: 'gemma-4-E2B-Q4_K_M.gguf',
       conversation_id: 'active-conversation',
       run_id: 'active-run',
       run_status: 'running',
@@ -89,9 +89,9 @@ describe('resolveActiveBriefingActivity', () => {
       selectedSessionId: 'older-session',
       selectedSession: selectedOlderSession,
       modelCatalog: [{
-        model_id: 'qwen3:1.7b',
-        display_name: 'Qwen 3 1.7B',
-        provider: 'ollama',
+        model_id: 'gemma-4-E2B-Q4_K_M.gguf',
+        display_name: 'Gemma 4 E2B',
+        provider: 'llama_cpp',
         runtime: 'local',
         stability: 'stable',
         hosted_capabilities: [],
@@ -102,8 +102,8 @@ describe('resolveActiveBriefingActivity', () => {
       session: activeSummary,
       isRunning: true,
       isLocalModelRunning: true,
-      modelId: 'qwen3:1.7b',
-      displayName: 'Qwen 3 1.7B',
+      modelId: 'gemma-4-E2B-Q4_K_M.gguf',
+      displayName: 'Gemma 4 E2B',
     })
   })
 

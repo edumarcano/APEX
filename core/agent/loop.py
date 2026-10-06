@@ -26,7 +26,6 @@ from core.agent.providers.contract import (
     resolve_inference_provider,
 )
 from core.agent.providers.gemini_models import GeminiModelProfile
-from core.agent.providers.ollama_models import OllamaModelProfile
 from core.agent.local_runtime.contract import LocalModelProfile
 from core.agent.types import (
     AgentMessage,
@@ -45,7 +44,7 @@ from core.agent.types import (
 import core.agent.tools as _native_agent_tools  # noqa: F401
 from core.tracing import trace_provider_turn, trace_tool_execution
 
-ProviderModelProfile = GeminiModelProfile | OllamaModelProfile | ProviderProfile
+ProviderModelProfile = GeminiModelProfile | ProviderProfile
 P = TypeVar("P", bound=ProviderModelProfile, contravariant=True)
 
 ToolsDispatcher = Callable[[str, dict[str, Any]], Any]

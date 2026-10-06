@@ -52,15 +52,7 @@ class HostedToolRate:
 # Standard paid rates, reconciled against provider documentation on 2026-08-02.
 _MODEL_RATES: dict[str, ModelTokenRates] = {
     "gemini-3.7-flash": ModelTokenRates(0.75, 3.75, 0.075),
-    "gpt-5.6-luna": ModelTokenRates(
-        0.20,
-        1.20,
-        0.02,
-        long_context_threshold_tokens=272_000,
-        long_context_input_per_million=0.40,
-        long_context_output_per_million=1.80,
-        long_context_cached_input_per_million=0.04,
-    ),
+    "openai/gpt-6-luna": ModelTokenRates(0.10, 0.50, 0.01),
     "z-ai/glm-5.3-flash": ModelTokenRates(0.15, 0.50, 0.03),
 }
 

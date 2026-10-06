@@ -11,7 +11,6 @@ from core.agent.model_catalog import (
     visible_local_models,
 )
 from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
-from core.agent.providers.ollama_models import OLLAMA_RUNTIME_CONFIGS
 from core.briefings.models import (
     BUILTIN_BRIEFING_PROFILES,
     BriefingGenerationConfiguration,
@@ -25,7 +24,6 @@ from core.config import (
     CORTEX_RUNS_MAX_RETRIES,
     CORTEX_RUNS_MAX_TOOL_CALLS,
     DEMO_MODE,
-    is_dev_mode,
 )
 from core.settings import get_settings_store
 
@@ -62,12 +60,11 @@ def resolve_briefing_configuration(
             execution_kind="demo",
         )
 
-    dev_mode = is_dev_mode()
     visible_profiles = {
         profile.model_id: profile
         for profile in (
-            *visible_cloud_models(dev_mode=dev_mode),
-            *visible_local_models(dev_mode=dev_mode),
+            *visible_cloud_models(),
+            *visible_local_models(),
         )
     }
     profile = visible_profiles.get(request.model_id)
@@ -151,25 +148,6 @@ def resolve_briefing_configuration(
                     and local_settings.reasoning_mode in supported_modes
                     else runtime.default_reasoning_mode
                 )
-        elif profile.provider == "ollama":
-            runtime = OLLAMA_RUNTIME_CONFIGS.get(profile.model_id)
-            if runtime is None:
-                raise BriefingModelConfigurationError(
-                    "The selected Ollama model has no runtime configuration."
-                )
-            if request.context_window is not None and request.context_window != runtime.context_window:
-                raise BriefingModelConfigurationError(
-                    "The selected Ollama model uses a fixed context window."
-                )
-            context_window = runtime.context_window
-            if local_reasoning_mode is None:
-                local_settings = settings.ask_apex.local
-                local_reasoning_mode = (
-                    local_settings.reasoning_mode
-                    if local_settings.last_model == profile.model_id
-                    and local_settings.reasoning_mode in supported_modes
-                    else runtime.default_reasoning_mode
-                )
         else:
             raise BriefingModelConfigurationError(
                 "The selected local model has no supported runtime."
@@ -212,10 +190,9 @@ def resolve_briefing_configuration(
 
 def get_visible_model_profile(model_id: str) -> ModelProfile:
     """Resolve a model only when it belongs to the visible shared catalog."""
-    dev_mode = is_dev_mode()
     for profile in (
-        *visible_cloud_models(dev_mode=dev_mode),
-        *visible_local_models(dev_mode=dev_mode),
+        *visible_cloud_models(),
+        *visible_local_models(),
     ):
         if profile.model_id == model_id:
             return profile

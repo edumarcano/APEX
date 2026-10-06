@@ -135,7 +135,6 @@ def normalize_layer(
                 "cortex_runs",
                 "cortex_conversations",
                 "gemini",
-                "ollama",
                 "llama_cpp",
             ):
                 _LOGGER.warning(
@@ -834,7 +833,7 @@ def _normalize_agent_settings(
     if isinstance(cloud_raw, dict):
         raw_model = cloud_raw.get("last_model")
         if isinstance(raw_model, str):
-            cloud["last_model"] = reconcile_cloud_model(raw_model.strip(), dev_mode=is_dev_mode())
+            cloud["last_model"] = reconcile_cloud_model(raw_model.strip())
         raw_effort = cloud_raw.get("effort")
         if isinstance(raw_effort, str):
             effort = reconcile_model_reasoning(cloud.get("last_model", DEFAULT_APEX_MODEL), raw_effort)
@@ -854,7 +853,7 @@ def _normalize_agent_settings(
     if isinstance(local_raw, dict):
         raw_model = local_raw.get("last_model")
         if isinstance(raw_model, str):
-            local["last_model"] = reconcile_local_model(raw_model.strip(), dev_mode=is_dev_mode())
+            local["last_model"] = reconcile_local_model(raw_model.strip())
         model = local.get("last_model", DEFAULT_LOCAL_MODEL)
         window = local_raw.get("context_window")
         profile = get_model_profile(model)

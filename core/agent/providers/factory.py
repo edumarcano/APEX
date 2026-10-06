@@ -14,18 +14,10 @@ def create_provider(profile: Any, api_key: str | None = None) -> Any:
         from core.agent.providers.gemini import GeminiProvider
 
         return GeminiProvider(api_key=api_key or "")
-    if provider == "openai":
-        from core.agent.providers.openai_provider import OpenAIProvider
-
-        return OpenAIProvider(api_key=api_key or "")
     if provider == "openrouter":
         from core.agent.providers.openrouter import OpenRouterProvider
 
         return OpenRouterProvider(api_key=api_key or "")
-    if provider == "ollama":
-        from core.agent.providers.ollama import OllamaProvider
-
-        return OllamaProvider()
     if provider == "llama_cpp":
         from core.agent.providers.llama_cpp import LlamaCppProvider
 

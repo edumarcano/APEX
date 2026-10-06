@@ -73,8 +73,6 @@ from core.agent.providers.llama_cpp_models import (
     LLAMA_CPP_RUNTIME_CONFIGS,
     build_llama_cpp_profile,
 )
-from core.agent.providers.ollama import OllamaProvider
-from core.agent.providers.ollama_models import OLLAMA_RUNTIME_CONFIGS
 from core.agent.tool_schemas import (
     descriptor_to_openai_schema,
     estimate_json_tokens,
@@ -218,7 +216,6 @@ def _provider_process_memory(
     if provider is None:
         return None, None
     fragments = {
-        "ollama": ("ollama",),
         "llama_cpp": ("llama",),
     }.get(provider)
     if fragments is None:
@@ -487,15 +484,7 @@ def _context_values(
             return (context,)
         return (runtime.default_context_window,)
 
-    runtime = OLLAMA_RUNTIME_CONFIGS[model_id]
-    if all_contexts:
-        return (runtime.context_window,)
-    if context is not None and context != runtime.context_window:
-        raise ValueError(
-            f"Ollama model {model_id!r} only supports context "
-            f"{runtime.context_window}."
-        )
-    return (runtime.context_window,)
+    raise ValueError(f"Unsupported provider {model_profile.provider!r} for model {model_id!r}.")
 
 
 def _normalize_reasoning_modes(reasoning_modes: Sequence[str] | None) -> tuple[str, ...]:
@@ -816,8 +805,6 @@ class FixtureDispatcher:
 
 
 def _provider_for_profile(profile: LocalModelProfile) -> Any:
-    if profile.provider == "ollama":
-        return OllamaProvider()
     if profile.provider == "llama_cpp":
         return LlamaCppProvider()
     raise ValueError(f"Unsupported local benchmark provider: {profile.provider!r}")

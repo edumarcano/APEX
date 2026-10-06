@@ -12,11 +12,8 @@ from core.agent.providers.contract import ProviderStreamEvent
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.gemini_models import GeminiModelProfile
 from core.agent.providers.openrouter import OpenRouterModelProfile, OpenRouterProvider
-from core.agent.providers.openai_provider import OpenAIProvider
-from tests.support.provider_fixtures import OPENAI_INTERNAL_PROFILES, response_event_stream
 from core.agent.providers.llama_cpp import LlamaCppProvider
 from core.agent.providers.llama_cpp_models import build_llama_cpp_profile
-from core.agent.providers.ollama import OllamaProvider
 from core.agent.providers.retries import call_with_bounded_retries
 from core.agent.types import AgentMessage
 from core.api.cortex import _profile_to_catalog_entry
@@ -324,30 +321,9 @@ class Branch3StreamingTests(unittest.TestCase):
 
     def test_catalog_capabilities_are_provider_truthful(self):
         self.assertEqual(_profile_to_catalog_entry(ALL_MODEL_PROFILES["gemini-3.7-flash"]).streaming, "native")
-        self.assertEqual(_profile_to_catalog_entry(ALL_MODEL_PROFILES["qwen3:1.7b"]).streaming, "completed_turn")
+        self.assertEqual(_profile_to_catalog_entry(ALL_MODEL_PROFILES["openai/gpt-6-luna"]).streaming, "native")
         self.assertEqual(_profile_to_catalog_entry(ALL_MODEL_PROFILES["z-ai/glm-5.3-flash"]).structured_output, "unavailable")
-
-    @patch("core.agent.providers.responses_api.OpenAI")
-    def test_openai_responses_stream_preserves_final_output_metadata(self, client_cls):
-        stream = _Stream([
-            {"type": "response.output_text.delta", "delta": "hel"},
-            {"type": "response.output_text.delta", "delta": "lo"},
-            {"type": "response.output_item.added", "output_index": 0, "item": {"type": "function_call", "call_id": "c", "name": "weather"}},
-            {"type": "response.function_call_arguments.delta", "output_index": 0, "delta": "{\"city\":\"NYC\"}"},
-            {"type": "response.completed", "response": {"model": "served", "usage": {"input_tokens": 2, "output_tokens": 3, "total_tokens": 5}, "output": [{"type": "mcp_call", "name": "weather", "status": "completed"}]}},
-        ])
-        client = Mock()
-        client.responses.create.return_value = stream
-        client_cls.return_value = client
-        events: list[ProviderStreamEvent] = []
-        result = OpenAIProvider("key").generate_turn([AgentMessage(role="user", content="x")], [], OPENAI_INTERNAL_PROFILES["openai_default"], stream_observer=events.append)
-        self.assertEqual(result.message.content, "hello")
-        self.assertEqual(result.resolved_model, "served")
-        self.assertEqual(result.usage.total_tokens, 5)
-        self.assertTrue(result.provider_tool_events)
-        self.assertTrue(stream.closed)
-        self.assertIn("reset", [event.kind for event in events])
-        self.assertNotIn("NYC", repr(events))
+        self.assertEqual(_profile_to_catalog_entry(ALL_MODEL_PROFILES["gemma-4-E2B-Q4_K_M.gguf"]).streaming, "native")
 
     @patch("core.agent.providers.llama_cpp.register_local_activity", return_value=None)
     @patch("core.agent.providers.llama_cpp.get_http_session")
@@ -400,28 +376,6 @@ class Branch3StreamingTests(unittest.TestCase):
         self.assertEqual(len(client.chat.completions.create.call_args_list), 2)
         for call in client.chat.completions.create.call_args_list:
             self.assertTrue(call.kwargs["extra_body"]["provider"]["zdr"])
-
-    def test_native_schema_is_only_applied_to_tool_free_turns(self):
-        from core.agent.providers.responses_api import ResponsesApiProvider
-        provider = ResponsesApiProvider.__new__(ResponsesApiProvider)
-        provider.provider_kind = "openai"
-        provider.client = Mock()
-        provider.client.responses.create.return_value = _Stream(response_event_stream(
-            text="{}", model="m",
-            output=[{"type": "message", "content": [{"type": "output_text", "text": "{}"}]}],
-        ))
-        result = provider.generate_turn([AgentMessage(role="user", content="x")], [], OPENAI_INTERNAL_PROFILES["openai_default"], output_schema={"type": "object"})
-        request = provider.client.responses.create.call_args.kwargs
-        self.assertEqual(request["text"]["format"]["type"], "json_schema")
-        self.assertTrue(result.output_schema_applied)
-
-    @patch("core.agent.providers.ollama.register_local_activity", return_value=None)
-    @patch("core.agent.providers.ollama._post_chat")
-    def test_ollama_completed_turn_observer_has_one_safe_sequence(self, post_chat, _activity):
-        post_chat.return_value = {"model": "qwen", "message": {"role": "assistant", "content": "done"}, "done": True}
-        events: list[ProviderStreamEvent] = []
-        OllamaProvider().generate_turn([AgentMessage(role="user", content="x")], [], build_local_profile(model="qwen3:1.7b"), stream_observer=events.append)
-        self.assertEqual([event.kind for event in events], ["text", "completed"])
 
     def test_runtime_measurements_are_strict_and_persisted(self):
         from core.agent.providers.contract import ProviderRuntimeMeasurements, ProviderTurnResult

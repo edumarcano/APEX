@@ -52,7 +52,6 @@ from core.agent.model_catalog import (
     visible_local_models,
 )
 from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
-from core.agent.providers.ollama_models import OLLAMA_RUNTIME_CONFIGS
 from core.agent.loop import is_local_profile
 from core.agent.providers.cloud_verification import (
     cloud_status,
@@ -114,7 +113,6 @@ _TELEMETRY_CONTEXT_MAX_CHARS = 2000
 _PROFILE_STATUS_REASONS: dict[AgentAvailabilityStatus, str] = {
     "busy": _BUSY_REASON,
     "disabled": "Local inference is disabled in system settings",
-    "ollama_unreachable": "Ollama daemon is unreachable",
     "provider_unreachable": "Local runtime provider is unreachable",
     "model_not_installed": "Model is not installed or configured locally",
     "insufficient_ram": "Current memory pressure exceeds threshold",
@@ -123,9 +121,7 @@ _PROFILE_STATUS_REASONS: dict[AgentAvailabilityStatus, str] = {
 
 _PROVIDER_DISPLAY_NAMES: dict[str, str] = {
     "gemini": "Google",
-    "ollama": "Ollama",
     "llama_cpp": "llama.cpp",
-    "openai": "OpenAI",
     "openrouter": "OpenRouter",
 }
 
@@ -152,21 +148,14 @@ def _model_pricing_metadata(profile: ModelProfile) -> AgentPricingMetadata:
 
 def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
     capability_defaults: dict[str, dict[str, object]] = {
-        "openai": {"streaming": "native", "structured_output": "native", "usage_reporting": "reported", "measurements": ["total_duration_ms", "ttft_ms"]},
         "openrouter": {"streaming": "native", "structured_output": "unavailable", "usage_reporting": "reported", "measurements": ["total_duration_ms", "ttft_ms"]},
         "gemini": {"streaming": "native", "structured_output": "native", "usage_reporting": "reported", "measurements": ["total_duration_ms", "ttft_ms"]},
         "llama_cpp": {"streaming": "native", "structured_output": "native", "usage_reporting": "reported", "measurements": ["prompt_eval_duration_ms", "eval_duration_ms", "prompt_eval_count", "eval_count", "tokens_per_second", "total_duration_ms"]},
-        "ollama": {"streaming": "completed_turn", "structured_output": "unavailable", "usage_reporting": "reported", "measurements": ["total_duration_ms"]},
     }
     capability = capability_defaults[profile.provider]
     llama_runtime = (
         LLAMA_CPP_RUNTIME_CONFIGS.get(profile.model_id)
         if profile.provider == "llama_cpp"
-        else None
-    )
-    ollama_runtime = (
-        OLLAMA_RUNTIME_CONFIGS.get(profile.model_id)
-        if profile.provider == "ollama"
         else None
     )
     reasoning_modes_tuple = (
@@ -185,7 +174,7 @@ def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
         else (
             llama_runtime.maximum_context_window
             if llama_runtime
-            else (ollama_runtime.context_window if ollama_runtime else None)
+            else None
         )
     )
     reasoning_modes = list(reasoning_modes_tuple) if reasoning_modes_tuple else None
@@ -206,7 +195,6 @@ def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
         runtime=profile.runtime,
         stability=profile.stability,
         hosted_capabilities=sorted(profile.hosted_capabilities),
-        dev_only=profile.dev_only,
         credentials_configured=model_has_credentials(profile),
         pricing=_model_pricing_metadata(profile),
         reasoning_options=reasoning_options,
@@ -248,8 +236,6 @@ def _local_provider_label(provider: str) -> str:
     """Return a short display label for local-runtime error messages."""
     if provider == "llama_cpp":
         return "llama.cpp"
-    if provider == "ollama":
-        return "Ollama"
     return "local runtime"
 
 
@@ -292,16 +278,12 @@ def _resolve_local_agent_status(
 ) -> tuple[AgentAvailabilityStatus, str | None]:
     """Evaluate a local model configuration using cached snapshot signals."""
     if not backend_enabled:
-        if profile.provider == "llama_cpp":
-            return (
-                "disabled",
-                "llama.cpp local inference is disabled in system settings",
-            )
-        return "disabled", "Ollama local inference is disabled in system settings"
+        return (
+            "disabled",
+            "llama.cpp local inference is disabled in system settings",
+        )
 
     if not provider_reachable:
-        if profile.provider == "ollama":
-            return "ollama_unreachable", _PROFILE_STATUS_REASONS["ollama_unreachable"]
         return "provider_unreachable", (
             "llama.cpp router is unreachable at the configured loopback host"
         )
@@ -330,7 +312,6 @@ def _resolve_local_agent_status(
 
 def build_model_catalog() -> list[AgentModelCatalogEntry]:
     """Build the unified model catalog with model-specific availability state."""
-    dev_mode = is_dev_mode()
     vitals = get_system_vitals()
     loading_ref = get_loading_local_model()
     idle_remaining = get_idle_unload_remaining_seconds()
@@ -342,8 +323,8 @@ def build_model_catalog() -> list[AgentModelCatalogEntry]:
     entries: list[AgentModelCatalogEntry] = []
 
     for model_profile in (
-        *visible_cloud_models(dev_mode=dev_mode),
-        *visible_local_models(dev_mode=dev_mode),
+        *visible_cloud_models(),
+        *visible_local_models(),
     ):
         entry = _profile_to_catalog_entry(model_profile)
         if model_profile.runtime == "cloud":
@@ -435,7 +416,7 @@ def _matching_runtime_model_row(
 def _loaded_model_status(loaded_model: dict[str, Any]) -> LocalLoadedModelStatus:
     """Map a normalized runtime model row into the public API shape."""
     return LocalLoadedModelStatus(
-        provider=loaded_model.get("provider", "ollama"),
+        provider=loaded_model.get("provider", "llama_cpp"),
         name=loaded_model["name"],
         model=loaded_model["model"],
         state=loaded_model.get("state", "loaded"),
@@ -1021,11 +1002,6 @@ def _resolve_and_validate_model_profile(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Unknown model: {model_id!r}",
-            )
-        if model_profile.dev_only and not is_dev_mode():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Model {model_id!r} is only available in development mode.",
             )
     else:
         model_profile = resolve_selected_model_profile()

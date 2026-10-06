@@ -1,7 +1,6 @@
 import GeminiColor from '@lobehub/icons/es/Gemini/components/Color'
 import DeepSeekColor from '@lobehub/icons/es/DeepSeek/components/Color'
 import GemmaColor from '@lobehub/icons/es/Gemma/components/Color'
-import OllamaMono from '@lobehub/icons/es/Ollama/components/Mono'
 import OpenAIMono from '@lobehub/icons/es/OpenAI/components/Mono'
 import QwenColor from '@lobehub/icons/es/Qwen/components/Color'
 import ZAIMono from '@lobehub/icons/es/ZAI/components/Mono'
@@ -42,15 +41,15 @@ export function ModelMark({
     )
   }
 
-  // Z.ai / GLM family / OpenRouter default
+  // OpenAI / GPT family (checked before OpenRouter fallback)
   if (
-    normalizedModel.startsWith('z-ai') ||
-    normalizedModel.includes('glm') ||
-    normalizedProvider === 'openrouter'
+    normalizedModel.startsWith('gpt') ||
+    normalizedModel.startsWith('openai') ||
+    normalizedProvider === 'openai'
   ) {
     return (
       <span className={`inline-flex shrink-0 items-center justify-center text-zinc-100 ${className}`} aria-hidden>
-        <ZAIMono size={size} />
+        <OpenAIMono size={size} />
       </span>
     )
   }
@@ -64,19 +63,6 @@ export function ModelMark({
     )
   }
 
-  // OpenAI / GPT family
-  if (
-    normalizedModel.startsWith('gpt') ||
-    normalizedModel.startsWith('openai') ||
-    normalizedProvider === 'openai'
-  ) {
-    return (
-      <span className={`inline-flex shrink-0 items-center justify-center text-zinc-100 ${className}`} aria-hidden>
-        <OpenAIMono size={size} />
-      </span>
-    )
-  }
-
   // Qwen family
   if (normalizedModel.startsWith('qwen')) {
     return (
@@ -86,11 +72,15 @@ export function ModelMark({
     )
   }
 
-  // Ollama provider
-  if (normalizedProvider === 'ollama') {
+  // Z.ai / GLM family / OpenRouter default
+  if (
+    normalizedModel.startsWith('z-ai') ||
+    normalizedModel.includes('glm') ||
+    normalizedProvider === 'openrouter'
+  ) {
     return (
       <span className={`inline-flex shrink-0 items-center justify-center text-zinc-100 ${className}`} aria-hidden>
-        <OllamaMono size={size} />
+        <ZAIMono size={size} />
       </span>
     )
   }

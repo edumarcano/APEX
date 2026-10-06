@@ -1,4 +1,4 @@
-"""Provider runtime contract, pricing, retries, and Responses adapter coverage."""
+"""Provider runtime contract, pricing, retries, and adapter coverage."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from google.genai.errors import APIError
-from openai import APIStatusError
 
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.catalog import (
@@ -32,22 +31,13 @@ from core.agent.providers.contract import (
     resolve_inference_provider,
 )
 from core.agent.providers.gemini import GeminiProvider
-from core.agent.providers.ollama import OllamaProvider
-from core.agent.providers.openai_provider import OpenAIProvider
-from tests.support.provider_fixtures import OPENAI_INTERNAL_PROFILES, response_event_stream
-from core.agent.providers.responses_api import (
-    assert_no_forbidden_native_tools,
-    _messages_to_responses_input,
-    _parse_usage,
-)
 from core.agent.providers.retries import call_with_bounded_retries
-from core.agent.tool_schemas import descriptor_to_responses_tool
 from core.agent.types import AgentMessage, AgentQueryRequest, TokenUsage, ToolCall, ToolResult
 
 
 from core.agent.model_catalog import get_model_profile
 
-def _concrete_profile(model_id: str = "gpt-5.6-luna"):
+def _concrete_profile(model_id: str = "openai/gpt-6-luna"):
     model_profile = get_model_profile(model_id)
     assert model_profile is not None
     native = resolve_effort(model_profile, None)
@@ -68,71 +58,58 @@ class ProviderContractTests(unittest.TestCase):
             resolve_inference_provider(_concrete_profile("gemini-3.7-flash")), "gemini"
         )
         self.assertEqual(
-            resolve_inference_provider(_concrete_profile("gpt-5.6-luna")), "openai"
+            resolve_inference_provider(_concrete_profile("openai/gpt-6-luna")), "openrouter"
         )
         self.assertEqual(
-            resolve_inference_provider(_concrete_profile("qwen3:1.7b")), "ollama"
+            resolve_inference_provider(_concrete_profile("z-ai/glm-5.3-flash")), "openrouter"
         )
         self.assertEqual(
             resolve_inference_provider(_concrete_profile("gemma-4-E2B-Q4_K_M.gguf")), "llama_cpp"
         )
-        self.assertEqual(
-            resolve_inference_provider(OPENAI_INTERNAL_PROFILES["openai_default"]),
-            "openai",
-        )
 
     def test_local_profile_markers_and_runtime_ids(self) -> None:
-        local_model_ids = ("qwen3:1.7b", "gemma-4-E2B-Q4_K_M.gguf")
-        for model_id in local_model_ids:
-            with self.subTest(model=model_id):
-                profile = _concrete_profile(model_id)
-                self.assertIsInstance(profile, LocalModelProfile)
-                self.assertTrue(is_local_inference_provider(profile.provider))
-                self.assertTrue(profile.runtime_model_id)
-                self.assertTrue(profile.api_model)
+        profile = _concrete_profile("gemma-4-E2B-Q4_K_M.gguf")
+        self.assertIsInstance(profile, LocalModelProfile)
+        self.assertTrue(is_local_inference_provider(profile.provider))
+        self.assertTrue(profile.runtime_model_id)
+        self.assertTrue(profile.api_model)
 
-                if profile.provider != "llama_cpp":
-                    continue
+        self.assertIn(
+            profile.default_context_window,
+            profile.allowed_context_windows,
+        )
+        self.assertGreaterEqual(
+            profile.maximum_context_window,
+            max(profile.allowed_context_windows),
+        )
+        self.assertTrue(
+            set(profile.high_resource_context_options).issubset(
+                profile.allowed_context_windows
+            )
+        )
+        self.assertIn(profile.reasoning_mode, profile.supported_reasoning_modes)
+        for context_window in profile.allowed_context_windows:
+            selected = build_provider_profile(
+                native_effort=None,
+                local_context_window=context_window,
+                local_reasoning_mode=profile.reasoning_mode,
+                model_id=profile.api_model,
+            )
+            self.assertEqual(selected.context_window, context_window)
+            self.assertEqual(
+                selected.high_resource,
+                context_window in profile.high_resource_context_options,
+            )
 
-                self.assertIn(
-                    profile.default_context_window,
-                    profile.allowed_context_windows,
-                )
-                self.assertGreaterEqual(
-                    profile.maximum_context_window,
-                    max(profile.allowed_context_windows),
-                )
-                self.assertTrue(
-                    set(profile.high_resource_context_options).issubset(
-                        profile.allowed_context_windows
-                    )
-                )
-                self.assertIn(profile.reasoning_mode, profile.supported_reasoning_modes)
-                for context_window in profile.allowed_context_windows:
-                    selected = build_provider_profile(
-                        native_effort=None,
-                        local_context_window=context_window,
-                        local_reasoning_mode=profile.reasoning_mode,
-                        model_id=profile.api_model,
-                    )
-                    self.assertEqual(selected.context_window, context_window)
-                    self.assertEqual(
-                        selected.high_resource,
-                        context_window in profile.high_resource_context_options,
-                    )
-
-        self.assertTrue(is_local_inference_provider("ollama"))
         self.assertTrue(is_local_inference_provider("llama_cpp"))
-        self.assertFalse(is_local_inference_provider("openai"))
+        self.assertFalse(is_local_inference_provider("gemini"))
+        self.assertFalse(is_local_inference_provider("openrouter"))
+
     def test_local_model_refs_derive_from_concrete_profiles(self) -> None:
         from core.agent.catalog import local_model_refs_for_model
 
         for model_id in (
-            "qwen3:1.7b",
-            "qwen3:4b-instruct",
             "gemma-4-E2B-Q4_K_M.gguf",
-            "gemma-4-E4B-Q4_K_M.gguf",
-            "Qwen3.5-4B-Q4_K_M.gguf",
         ):
             profile = _concrete_profile(model_id)
             self.assertTrue(is_local_profile(profile))
@@ -146,7 +123,7 @@ class ProviderContractTests(unittest.TestCase):
         self.assertTrue(known)
         self.assertIsNone(
             model_id_for_local_model_ref(
-                LocalModelRef(provider="ollama", model="unknown-model")
+                LocalModelRef(provider="llama_cpp", model="unknown-model")
             )
         )
 
@@ -159,21 +136,19 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(focused.reasoning_mode, "focused")
 
     def test_focused_llama_profiles_reserve_completion_headroom(self) -> None:
-        for model_id in ("gemma-4-E2B-Q4_K_M.gguf", "gemma-4-E4B-Q4_K_M.gguf", "Qwen3.5-4B-Q4_K_M.gguf"):
-            with self.subTest(model=model_id):
-                profile = build_provider_profile(
-                    native_effort=None,
-                    local_reasoning_mode="focused",
-                    model_id=model_id,
-                )
-                self.assertEqual(
-                    (profile.tool_select_max_tokens, profile.final_answer_max_tokens),
-                    (1536, 1536),
-                )
+        profile = build_provider_profile(
+            native_effort=None,
+            local_reasoning_mode="focused",
+            model_id="gemma-4-E2B-Q4_K_M.gguf",
+        )
+        self.assertEqual(
+            (profile.tool_select_max_tokens, profile.final_answer_max_tokens),
+            (1536, 1536),
+        )
 
-    def test_agent_loop_follows_local_policy_for_non_ollama_local_profile(self) -> None:
+    def test_agent_loop_follows_local_policy_for_local_profile(self) -> None:
         class FakeLocalProfile:
-            provider = "ollama"
+            provider = "llama_cpp"
             runtime = "local"
             display_name = "Fake Local"
             agent_version = "1.0"
@@ -420,127 +395,6 @@ class ProviderContractTests(unittest.TestCase):
         self.assertEqual(trace["origin"], "provider")
         self.assertIsInstance(trace["duration_ms"], float)
 
-
-class OllamaContractTests(unittest.TestCase):
-    @staticmethod
-    def _descriptor() -> CapabilityDescriptor:
-        return CapabilityDescriptor(
-            name="get_weather_forecast",
-            title="Weather",
-            description="Forecast",
-            input_schema={"type": "object", "properties": {}},
-            origin="native",
-            risk="read",
-            expose_to_agent=True,
-            expose_to_mcp_server=False,
-            expose_to_client_display=True,
-        )
-
-    @patch("core.agent.providers.ollama.register_local_activity", return_value=None)
-    @patch("core.agent.providers.ollama._post_chat")
-    def test_usage_and_resolved_model_come_from_response_body(
-        self, mock_post: MagicMock, _activity: MagicMock
-    ) -> None:
-        mock_post.return_value = {
-            "model": "qwen3:1.7b-q4",
-            "message": {"role": "model", "content": "Local answer"},
-            "prompt_eval_count": 90,
-            "eval_count": 15,
-        }
-
-        profile = _concrete_profile("qwen3:1.7b")
-        result = OllamaProvider().generate_turn(
-            [AgentMessage(role="user", content="Hi")],
-            [],
-            profile,
-        )
-
-        self.assertEqual(result.message.content, "Local answer")
-        self.assertEqual(result.resolved_model, "qwen3:1.7b-q4")
-        assert result.usage is not None
-        self.assertEqual(result.usage.input_tokens, 90)
-        self.assertEqual(result.usage.output_tokens, 15)
-        self.assertEqual(result.usage.total_tokens, 105)
-        self.assertEqual(result.retry_count, 0)
-        self.assertIsNotNone(result.provider_ms)
-        self.assertEqual(
-            mock_post.call_args.args[0]["options"]["num_predict"],
-            profile.final_answer_max_tokens,
-        )
-
-    @patch("core.agent.providers.ollama.register_local_activity", return_value=None)
-    @patch("core.agent.providers.ollama._post_chat")
-    def test_explicit_output_limit_reaches_ollama_request(
-        self, mock_post: MagicMock, _activity: MagicMock
-    ) -> None:
-        mock_post.return_value = {
-            "message": {"role": "model", "content": "Bounded local answer"},
-        }
-
-        result = OllamaProvider().generate_turn(
-            [AgentMessage(role="user", content="Hi")],
-            [],
-            _concrete_profile("qwen3:1.7b"),
-            output_token_limit=19,
-        )
-
-        self.assertEqual(mock_post.call_args.args[0]["options"]["num_predict"], 19)
-        self.assertEqual(result.message.content, "Bounded local answer")
-
-    @patch("core.agent.providers.ollama.register_local_activity", return_value=None)
-    @patch("core.agent.providers.ollama._post_chat")
-    def test_resolved_model_falls_back_to_configured_tag(
-        self, mock_post: MagicMock, _activity: MagicMock
-    ) -> None:
-        mock_post.return_value = {
-            "message": {"role": "model", "content": "Local answer"},
-        }
-
-        result = OllamaProvider().generate_turn(
-            [AgentMessage(role="user", content="Hi")],
-            [],
-            _concrete_profile("qwen3:1.7b"),
-        )
-
-        self.assertEqual(result.resolved_model, _concrete_profile("qwen3:1.7b").api_model)
-        self.assertIsNone(result.usage)
-
-    @patch("core.agent.providers.ollama.register_local_activity", return_value=None)
-    @patch("core.agent.providers.ollama._post_chat")
-    def test_truncated_tool_turn_regenerates_and_sums_usage(
-        self, mock_post: MagicMock, _activity: MagicMock
-    ) -> None:
-        mock_post.side_effect = [
-            {
-                "model": "qwen3:1.7b",
-                "message": {"role": "model", "content": "truncated prose"},
-                "done_reason": "length",
-                "prompt_eval_count": 80,
-                "eval_count": 40,
-            },
-            {
-                "model": "qwen3:1.7b",
-                "message": {"role": "model", "content": "Final answer"},
-                "prompt_eval_count": 70,
-                "eval_count": 25,
-            },
-        ]
-
-        result = OllamaProvider().generate_turn(
-            [AgentMessage(role="user", content="Hi")],
-            [self._descriptor()],
-            _concrete_profile("qwen3:1.7b"),
-        )
-
-        self.assertEqual(mock_post.call_count, 2)
-        self.assertEqual(result.message.content, "Final answer")
-        self.assertEqual(result.retry_count, 1)
-        assert result.usage is not None
-        self.assertEqual(result.usage.input_tokens, 150)
-        self.assertEqual(result.usage.output_tokens, 65)
-        self.assertEqual(result.usage.total_tokens, 215)
-
-
 class PricingRegistryTests(unittest.TestCase):
     def test_paid_model_rates_match_the_active_paid_cloud_agents(self) -> None:
         from core.agent.model_catalog import CLOUD_MODEL_PROFILES
@@ -548,34 +402,26 @@ class PricingRegistryTests(unittest.TestCase):
         self.assertEqual(set(_MODEL_RATES), set(CLOUD_MODEL_PROFILES))
 
     def test_luna_uses_the_current_standard_rates(self) -> None:
-        standard = _MODEL_RATES["gpt-5.6-luna"]
-        self.assertEqual(standard.input_per_million, 0.20)
-        self.assertEqual(standard.output_per_million, 1.20)
-        self.assertEqual(standard.cached_input_per_million, 0.02)
-
-        glm = _MODEL_RATES["z-ai/glm-5.3-flash"]
-        self.assertEqual(glm.input_per_million, 0.15)
-        self.assertEqual(glm.output_per_million, 0.50)
-        self.assertEqual(glm.cached_input_per_million, 0.03)
+        standard = _MODEL_RATES["openai/gpt-6-luna"]
+        self.assertEqual(standard.input_per_million, 0.10)
+        self.assertEqual(standard.output_per_million, 0.50)
+        self.assertEqual(standard.cached_input_per_million, 0.01)
 
         standard_estimate = estimate_inference_cost(
-            model="gpt-5.6-luna",
+            model="openai/gpt-6-luna",
             usage=TokenUsage(input_tokens=1_000, output_tokens=1_000),
         )
-        self.assertAlmostEqual(standard_estimate.token_cost or 0.0, 0.0014, places=6)
+        self.assertAlmostEqual(standard_estimate.token_cost or 0.0, 0.0006, places=6)
 
         estimate = estimate_inference_cost(
-            model="gpt-5.6-luna",
+            model="openai/gpt-6-luna",
             usage=TokenUsage(
                 input_tokens=1_000_000,
                 cached_input_tokens=400_000,
                 output_tokens=1_000_000,
             ),
         )
-
-        # Above Luna's long-context threshold: 0.6M uncached at $0.40, 0.4M
-        # cached at $0.04, and 1M output at $1.80.
-        self.assertAlmostEqual(estimate.token_cost or 0.0, 2.056, places=4)
+        self.assertAlmostEqual(estimate.token_cost or 0.0, 0.564, places=4)
 
     def test_glm_flash_uses_the_current_standard_rates(self) -> None:
         rates = _MODEL_RATES["z-ai/glm-5.3-flash"]
@@ -619,17 +465,6 @@ class PricingRegistryTests(unittest.TestCase):
         self.assertEqual(estimate.completeness, "partial")
         self.assertEqual(estimate.pricing_version, PRICING_VERSION)
 
-    def test_local_ollama_models_are_zero_cost(self) -> None:
-        estimate = estimate_inference_cost(
-            model="qwen3:1.7b",
-            usage=TokenUsage(input_tokens=1000, output_tokens=200, total_tokens=1200),
-            provider="ollama",
-        )
-        self.assertEqual(estimate.token_cost, 0.0)
-        self.assertEqual(estimate.hosted_tool_cost, 0.0)
-        self.assertEqual(estimate.total_cost, 0.0)
-        self.assertEqual(estimate.completeness, "complete")
-
     def test_local_llama_cpp_models_are_zero_cost(self) -> None:
         estimate = estimate_inference_cost(
             model="gemma-4-E2B-Q4_K_M.gguf",
@@ -656,11 +491,26 @@ class PricingRegistryTests(unittest.TestCase):
         self.assertAlmostEqual(estimate.token_cost or 0.0, 7.98, places=4)
 
     def test_long_context_rates_apply_after_the_provider_threshold(self) -> None:
-        estimate = estimate_inference_cost(
-            model="gpt-5.6-luna",
-            usage=TokenUsage(input_tokens=272_001, output_tokens=1_000_000),
-        )
-        self.assertAlmostEqual(estimate.token_cost or 0.0, 1.9088004, places=6)
+        from core.agent.pricing import ModelTokenRates
+        with patch.dict(
+            _MODEL_RATES,
+            {
+                "test-long-context": ModelTokenRates(
+                    input_per_million=0.20,
+                    output_per_million=1.20,
+                    cached_input_per_million=0.02,
+                    long_context_threshold_tokens=272_000,
+                    long_context_input_per_million=0.40,
+                    long_context_output_per_million=1.80,
+                    long_context_cached_input_per_million=0.04,
+                )
+            },
+        ):
+            estimate = estimate_inference_cost(
+                model="test-long-context",
+                usage=TokenUsage(input_tokens=272_001, output_tokens=1_000_000),
+            )
+            self.assertAlmostEqual(estimate.token_cost or 0.0, 1.9088004, places=6)
 
     def test_unknown_cloud_model_reports_unavailable_instead_of_guessing(self) -> None:
         estimate = estimate_inference_cost(
@@ -781,204 +631,6 @@ class RetryHelperTests(unittest.TestCase):
         self.assertEqual(config.response_mime_type, "application/json")
         self.assertIsNone(config.response_schema)
         self.assertIsNone(config.response_json_schema)
-
-
-class ResponsesAdapterTests(unittest.TestCase):
-    def test_message_conversion_preserves_tool_loop_and_store_false_contract(
-        self,
-    ) -> None:
-        history = [
-            AgentMessage(role="user", content="Check weather"),
-            AgentMessage(
-                role="agent",
-                content=None,
-                tool_calls=[
-                    ToolCall(id="call_1", name="get_weather_forecast", arguments={"days": 1})
-                ],
-                provider_output_items=[
-                    {
-                        "type": "reasoning",
-                        "encrypted_content": "opaque",
-                    },
-                    {
-                        "type": "function_call",
-                        "call_id": "call_1",
-                        "name": "get_weather_forecast",
-                        "arguments": '{"days":1}',
-                    },
-                ],
-            ),
-            AgentMessage(
-                role="tool",
-                tool_results=[
-                    ToolResult(
-                        id="call_1",
-                        name="get_weather_forecast",
-                        output={"summary": "clear"},
-                    )
-                ],
-            ),
-        ]
-        items = _messages_to_responses_input(history)
-        self.assertEqual(items[0]["role"], "user")
-        self.assertEqual(items[1]["type"], "reasoning")
-        self.assertEqual(items[2]["type"], "function_call")
-        self.assertEqual(items[3]["type"], "function_call_output")
-        self.assertIn("untrusted_tool_output", items[3]["output"])
-
-    def test_usage_parser_separates_reasoning_from_visible_output(self) -> None:
-        usage = _parse_usage(
-            {
-                "input_tokens": 100,
-                "output_tokens": 40,
-                "total_tokens": 150,
-                "input_tokens_details": {"cached_tokens": 20},
-                "output_tokens_details": {"reasoning_tokens": 10},
-            }
-        )
-        assert usage is not None
-        self.assertEqual(usage.cached_input_tokens, 20)
-        self.assertEqual(usage.reasoning_tokens, 10)
-        # The Responses API nests reasoning inside output_tokens.
-        self.assertEqual(usage.output_tokens, 30)
-
-    def test_forbidden_native_web_search_tools_are_rejected(self) -> None:
-        with self.assertRaises(ValueError):
-            assert_no_forbidden_native_tools([{"type": "web_search"}])
-
-    def test_apex_function_tool_named_web_search_is_allowed(self) -> None:
-        assert_no_forbidden_native_tools([{"type": "function", "name": "web_search"}])
-
-    def test_descriptor_to_responses_tool_is_flat_function_schema(self) -> None:
-        tool = descriptor_to_responses_tool(
-            CapabilityDescriptor(
-                name="get_weather_forecast",
-                title="Weather",
-                description="Forecast",
-                input_schema={"type": "object", "properties": {}},
-                origin="native",
-                risk="read",
-                expose_to_agent=True,
-                expose_to_mcp_server=False,
-                expose_to_client_display=True,
-            )
-        )
-        self.assertEqual(tool["type"], "function")
-        self.assertEqual(tool["name"], "get_weather_forecast")
-        self.assertNotIn("function", tool)
-
-    @patch("core.agent.providers.responses_api.OpenAI")
-    def test_openai_provider_uses_store_false_and_no_web_search(
-        self, mock_openai_cls: MagicMock
-    ) -> None:
-        mock_client = MagicMock()
-        mock_openai_cls.return_value = mock_client
-        mock_client.responses.create.return_value = iter(response_event_stream(
-            text="Hello from OpenAI",
-            usage={"input_tokens": 12, "output_tokens": 4, "total_tokens": 16},
-            output=[{"type": "message", "content": [
-                {"type": "output_text", "text": "Hello from OpenAI"}
-            ]}],
-        ))
-
-        result = OpenAIProvider(api_key="test").generate_turn(
-            [AgentMessage(role="user", content="Hi")],
-            [],
-            OPENAI_INTERNAL_PROFILES["openai_default"],
-        )
-        kwargs = mock_client.responses.create.call_args.kwargs
-        self.assertFalse(kwargs["store"])
-        self.assertNotIn("previous_response_id", kwargs)
-        self.assertNotIn("tools", kwargs)
-        self.assertNotIn("max_output_tokens", kwargs)
-        self.assertEqual(kwargs["include"], ["reasoning.encrypted_content"])
-        self.assertEqual(result.message.content, "Hello from OpenAI")
-        self.assertEqual(result.resolved_model, "gpt-5.6-luna")
-
-    @patch("core.agent.providers.responses_api.OpenAI")
-    def test_explicit_output_limit_reaches_responses_api_request(
-        self, mock_openai_cls: MagicMock
-    ) -> None:
-        mock_client = MagicMock()
-        mock_openai_cls.return_value = mock_client
-        mock_client.responses.create.return_value = iter(response_event_stream(
-            text="Bounded answer",
-            output=[{"type": "message", "content": [
-                {"type": "output_text", "text": "Bounded answer"}
-            ]}],
-        ))
-
-        OpenAIProvider(api_key="test").generate_turn(
-            [AgentMessage(role="user", content="Hi")],
-            [],
-            OPENAI_INTERNAL_PROFILES["openai_default"],
-            output_token_limit=23,
-        )
-
-        request = mock_client.responses.create.call_args.kwargs
-        self.assertEqual(request["max_output_tokens"], 23)
-
-    @patch("core.agent.providers.responses_api.OpenAI")
-    def test_hosted_tool_events_carry_attributed_durations(
-        self, mock_openai_cls: MagicMock
-    ) -> None:
-        mock_client = MagicMock()
-        mock_openai_cls.return_value = mock_client
-        mock_client.responses.create.return_value = iter(response_event_stream(
-            text="Done",
-            output=[
-                {"type": "mcp_call", "name": "weather", "status": "completed"},
-                {"type": "message", "content": [
-                    {"type": "output_text", "text": "Done"}
-                ]},
-            ],
-        ))
-
-        result = OpenAIProvider(api_key="test").generate_turn(
-            [AgentMessage(role="user", content="Hi")],
-            [],
-            OPENAI_INTERNAL_PROFILES["openai_default"],
-        )
-        self.assertEqual(len(result.provider_tool_events), 1)
-        event = result.provider_tool_events[0]
-        self.assertEqual(event.name, "weather")
-        self.assertEqual(event.status, "ok")
-        self.assertIsNotNone(event.duration_ms)
-
-    @patch("core.agent.providers.responses_api.OpenAI")
-    def test_responses_api_logs_structured_warning_on_400_bad_request(
-        self, mock_openai_cls: MagicMock
-    ) -> None:
-        mock_client = MagicMock()
-        mock_openai_cls.return_value = mock_client
-        error_response = MagicMock()
-        error_response.status_code = 400
-        mock_client.responses.create.side_effect = APIStatusError(
-            message="Invalid parameter: 'include'",
-            response=error_response,
-            body={
-                "error": {
-                    "message": "Invalid parameter: 'include'",
-                    "param": "include",
-                    "code": "invalid_parameter",
-                }
-            },
-        )
-
-        with self.assertLogs("core.agent.providers.responses_api", level="WARNING") as log_cm:
-            with self.assertRaises(APIStatusError):
-                OpenAIProvider(api_key="test").generate_turn(
-                    [AgentMessage(role="user", content="Hi")],
-                    [],
-                    OPENAI_INTERNAL_PROFILES["openai_default"],
-                )
-
-        self.assertTrue(
-            any(
-                "openai Responses API 400 Bad Request for model gpt-5.6-luna" in log and "invalid_parameter" in log
-                for log in log_cm.output
-            )
-        )
 
 
 if __name__ == "__main__":

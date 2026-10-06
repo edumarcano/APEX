@@ -20,14 +20,8 @@ export function isAgentKey(value: unknown): value is AgentKey {
 }
 
 export function providerDisplayName(provider: string | null | undefined): string {
-  if (provider === 'ollama') {
-    return 'Ollama'
-  }
   if (provider === 'llama_cpp') {
     return 'llama.cpp'
-  }
-  if (provider === 'openai') {
-    return 'OpenAI'
   }
   if (provider === 'openrouter') {
     return 'OpenRouter'
@@ -48,8 +42,8 @@ export function formatAgentPricing(entry: ModelCatalogEntry | null | undefined):
   return `$${input_per_million.toFixed(2)}/M in · $${output_per_million.toFixed(2)}/M out`
 }
 
-export function runtimeDisplayName(runtime: LocalRuntime): string {
-  return runtime === 'ollama' ? 'Ollama' : 'llama.cpp'
+export function runtimeDisplayName(runtime?: LocalRuntime): string {
+  return runtime === 'llama_cpp' ? 'llama.cpp' : 'llama.cpp'
 }
 
 /** Compact label for known context-window sizes (e.g. 8192 → 8K, 1048576 → 1M). */

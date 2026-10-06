@@ -32,11 +32,6 @@ __all__ = [
     "CONFIG_PATH",
     "LOCAL_MAX_RECENT_CONVERSATION_MESSAGES",
     "MAX_RECENT_CONVERSATION_MESSAGES",
-    "OLLAMA_RESOURCE_GATES",
-    "OLLAMA_ENABLED",
-    "OLLAMA_HOST",
-    "OLLAMA_IDLE_UNLOAD_MINUTES",
-    "OLLAMA_MANUAL_UNLOAD_ENABLED",
     "LLAMA_CPP_ENABLED",
     "LLAMA_CPP_HOST",
     "LLAMA_CPP_IDLE_UNLOAD_MINUTES",
@@ -512,80 +507,6 @@ except Exception as exc:
     )
     CORTEX_CONVERSATIONS_ARCHIVED_RETENTION_DAYS = 30
 
-_DEFAULT_QWEN_17B_RAM: Final[float] = 88.0
-_DEFAULT_QWEN_17B_CPU: Final[float] = 95.0
-_DEFAULT_QWEN_4B_RAM: Final[float] = 78.0
-_DEFAULT_QWEN_4B_CPU: Final[float] = 90.0
-
-try:
-    _ollama_cfg = _CONFIG_DATA.get("ollama", {})
-    if not isinstance(_ollama_cfg, dict):
-        _LOGGER.warning('Config key "ollama" must be a JSON object; using defaults.')
-        _ollama_cfg = {}
-
-    OLLAMA_ENABLED: Final[bool] = _parse_config_bool(
-        _ollama_cfg.get("enabled"),
-        key="ollama.enabled",
-        default=True,
-    )
-    _configured_host = _ollama_cfg.get("host", "http://localhost:11434")
-    if isinstance(_configured_host, str) and _configured_host.strip():
-        OLLAMA_HOST: Final[str] = _configured_host.strip()
-    else:
-        if _configured_host is not None:
-            _LOGGER.warning(
-                'Config key "ollama.host" must be a non-empty string; using default.'
-            )
-        OLLAMA_HOST = "http://localhost:11434"
-
-    OLLAMA_IDLE_UNLOAD_MINUTES: Final[int] = _parse_config_int(
-        _ollama_cfg.get("idle_unload_timeout_minutes"),
-        key="ollama.idle_unload_timeout_minutes",
-        default=5,
-        min_value=1,
-        max_value=60,
-    )
-    OLLAMA_MANUAL_UNLOAD_ENABLED: Final[bool] = _parse_config_bool(
-        _ollama_cfg.get("manual_unload_enabled"),
-        key="ollama.manual_unload_enabled",
-        default=True,
-    )
-
-    _resource_gates = _ollama_cfg.get("resource_gates", {})
-    if not isinstance(_resource_gates, dict):
-        if _resource_gates is not None:
-            _LOGGER.warning(
-                'Config key "ollama.resource_gates" must be a JSON object; using defaults.'
-            )
-        _resource_gates = {}
-
-    _ollama_resource_limits: dict[str, tuple[float, float]] = {}
-    for model_id, default_ram, default_cpu in (
-        ("qwen3:1.7b", _DEFAULT_QWEN_17B_RAM, _DEFAULT_QWEN_17B_CPU),
-        ("qwen3:4b-instruct", _DEFAULT_QWEN_4B_RAM, _DEFAULT_QWEN_4B_CPU),
-    ):
-        gate = _resource_gates.get(model_id)
-        _ollama_resource_limits[model_id] = _parse_resource_gate(
-            gate,
-            profile=model_id,
-            default_ram=default_ram,
-            default_cpu=default_cpu,
-            gate_root="ollama",
-        )
-    OLLAMA_RESOURCE_GATES: Final[dict[str, tuple[float, float]]] = (
-        _ollama_resource_limits
-    )
-except Exception as exc:
-    _LOGGER.warning("Unable to parse ollama config: %s; using defaults.", exc)
-    OLLAMA_ENABLED = True
-    OLLAMA_HOST = "http://localhost:11434"
-    OLLAMA_IDLE_UNLOAD_MINUTES = 5
-    OLLAMA_MANUAL_UNLOAD_ENABLED = True
-    OLLAMA_RESOURCE_GATES = {
-        "qwen3:1.7b": (_DEFAULT_QWEN_17B_RAM, _DEFAULT_QWEN_17B_CPU),
-        "qwen3:4b-instruct": (_DEFAULT_QWEN_4B_RAM, _DEFAULT_QWEN_4B_CPU),
-    }
-
 _DEFAULT_LLAMA_CPP_RAM: Final[float] = 82.0
 _DEFAULT_LLAMA_CPP_CPU: Final[float] = 92.0
 
@@ -642,11 +563,7 @@ try:
         _llama_resource_gates = {}
 
     _llama_cpp_resource_limits: dict[str, tuple[float, float]] = {}
-    for model_id in (
-        "gemma-4-E2B-Q4_K_M.gguf",
-        "gemma-4-E4B-Q4_K_M.gguf",
-        "Qwen3.5-4B-Q4_K_M.gguf",
-    ):
+    for model_id in ("gemma-4-E2B-Q4_K_M.gguf",):
         gate = _llama_resource_gates.get(model_id)
         _llama_cpp_resource_limits[model_id] = _parse_resource_gate(
             gate,
@@ -667,9 +584,4 @@ except Exception as exc:
     LLAMA_CPP_REQUEST_TIMEOUT_SECONDS = 180
     LLAMA_CPP_RESOURCE_GATES = {
         "gemma-4-E2B-Q4_K_M.gguf": (_DEFAULT_LLAMA_CPP_RAM, _DEFAULT_LLAMA_CPP_CPU),
-        "gemma-4-E4B-Q4_K_M.gguf": (_DEFAULT_LLAMA_CPP_RAM, _DEFAULT_LLAMA_CPP_CPU),
-        "Qwen3.5-4B-Q4_K_M.gguf": (
-            _DEFAULT_LLAMA_CPP_RAM,
-            _DEFAULT_LLAMA_CPP_CPU,
-        ),
     }

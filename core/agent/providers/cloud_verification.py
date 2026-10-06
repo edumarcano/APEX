@@ -175,9 +175,6 @@ def _probe_model(provider: str, model: str, api_key: str) -> tuple[CloudStatus, 
     if provider == "gemini":
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}"
         headers = {"x-goog-api-key": api_key}
-    elif provider == "openai":
-        url = f"https://api.openai.com/v1/models/{model}"
-        headers = {"Authorization": f"Bearer {api_key}"}
     elif provider == "openrouter":
         return _probe_openrouter_zdr_model(model, api_key)
     else:

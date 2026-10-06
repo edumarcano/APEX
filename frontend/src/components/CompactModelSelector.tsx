@@ -73,7 +73,6 @@ function localAvailabilityLabel(model: ModelCatalogEntry | null, status: AgentAv
     provider_unreachable: 'Unreachable',
     provider_error: 'Provider error',
     disabled: 'Unavailable',
-    ollama_unreachable: 'Ollama offline',
     model_not_installed: 'Not installed',
     insufficient_ram: 'Low memory',
     cpu_overloaded: 'CPU busy',
@@ -429,7 +428,7 @@ export function CompactModelSelector({
                                 <StabilityBadge stability={entry.stability} />
                               </span>
                               <span className="mt-0.5 block truncate text-[10px] text-zinc-500">
-                                {runtimeName} · {entry.provider === 'ollama' ? '4K context' : '16K context'}
+                                {runtimeName} · 16K context
                               </span>
                               <span className="mt-1 block font-mono text-[9px] text-zinc-400">
                                 {modelCost(entry)}

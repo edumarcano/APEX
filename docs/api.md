@@ -175,7 +175,7 @@ Accepts a strict partial patch for the optional user designation, optional agent
 
 The store validates and transactionally replaces `config.local.json` before publishing the new snapshot. A permanent write failure returns `500` and leaves active settings unchanged. MCP changes reconcile only after persistence succeeds. llama.cpp managed-server transitions run after persistence; changes while a managed server is starting return `409`.
 
-`ask_apex.local.reasoning_mode` accepts `none` or `focused` for llama.cpp models and only `none` for Ollama models. `focused` is request-level and does not trigger a local model unload/reload; unsupported model/mode combinations return `422`.
+`ask_apex.local.reasoning_mode` accepts `none` or `focused` for llama.cpp models. `focused` is request-level and does not trigger a local model unload/reload; unsupported model/mode combinations return `422`.
 
 Environment modes, prompt text, credentials, MCP endpoints and commands, allowlists, and tool risks are not patchable. The optional `user_designation` and `agent_display_name` personalization fields persist to the gitignored local settings overlay. Machine-local llama.cpp `executable_path` and `preset_path` also persist only to `config.local.json`.
 
@@ -494,13 +494,11 @@ Assigns an existing built-in or custom profile as the default for one runtime (`
 
 ### GET `/api/v1/cortex/agent`
 
-Returns the single APEX Agent and its ordered model catalog. Its `canonical_name` is "APEX Agent", and `display_name` defaults to "Lynx" unless a custom `agent_display_name` is saved. Each entry supplies model/provider/runtime, stability, supported reasoning and local controls, grounded-tool state, pricing, and availability/lifecycle diagnostics. Provider capability fields describe `streaming` (`native` or `completed_turn`), `structured_output` (`native` or `unavailable`), `usage_reporting` (`reported`, `estimated`, or `unavailable`), and the allowlisted `supported_runtime_measurements`. Native streaming is available for OpenAI, OpenRouter, Gemini, and llama.cpp; Ollama remains a completed-turn development fallback. Structured output is enforced only on final tool-free turns by providers whose `structured_output` capability is `native`.
-
-Development-only models appear in the `model_catalog` list only when `DEV_MODE` is active. They are not separate APEX Agents.
+Returns the single APEX Agent and its ordered model catalog. Its `canonical_name` is "APEX Agent", and `display_name` defaults to "Lynx" unless a custom `agent_display_name` is saved. Each entry supplies model/provider/runtime, stability, supported reasoning and local controls, grounded-tool state, pricing, and availability/lifecycle diagnostics. Provider capability fields describe `streaming` (`native` or `completed_turn`), `structured_output` (`native` or `unavailable`), `usage_reporting` (`reported`, `estimated`, or `unavailable`), and the allowlisted `supported_runtime_measurements`. Native streaming is available for OpenRouter, Gemini, and llama.cpp. Structured output is enforced only on final tool-free turns by providers whose `structured_output` capability is `native`.
 
 Cloud status starts as `configured` when a credential exists; it does not imply a provider has been reached. Explicit checks and completed inferences can report `verified`; sanitized errors can report unauthorized access, unavailable models, rate limits, quota or billing blocks, unreachable providers, or provider errors. Local availability distinguishes an unreachable runtime, missing model, loading model, busy execution slot, and provider-reported residency. Local catalog entries publish model-specific context and reasoning values, options, and defaults.
 
-Registered cloud models include `z-ai/glm-5.3-flash` and `gemini-3.7-flash`; `gpt-5.6-luna` is development-only. Registered local models include `gemma-4-E2B-Q4_K_M.gguf` in normal operation; `gemma-4-E4B-Q4_K_M.gguf`, `Qwen3.5-4B-Q4_K_M.gguf`, and Ollama profiles are development-only.
+Registered cloud models include `z-ai/glm-5.3-flash`, `openai/gpt-6-luna`, and `gemini-3.7-flash`. The registered local model is `gemma-4-E2B-Q4_K_M.gguf`.
 
 ### POST `/api/v1/cortex/models/verify`
 
@@ -510,7 +508,7 @@ Runs one user-triggered, non-generative metadata check for a visible credential-
 { "model_id": "z-ai/glm-5.3-flash" }
 ```
 
-Google uses the Gemini API model metadata endpoint and OpenAI uses the OpenAI API. OpenRouter uses authenticated `GET /api/v1/endpoints/zdr` and verifies that the selected model has a ZDR route. The five-second probe sends no prompt, context, or provider tool call. Results are sanitized and cached; polling never triggers a probe.
+Google uses the Gemini API model metadata endpoint. OpenRouter uses authenticated `GET /api/v1/endpoints/zdr` and verifies that the selected model has a ZDR route. The five-second probe sends no prompt, context, or provider tool call. Results are sanitized and cached; polling never triggers a probe.
 
 - `400` / `422` — the model is local or has no supported verification path.
 - `403` — demo mode disallows provider contact.

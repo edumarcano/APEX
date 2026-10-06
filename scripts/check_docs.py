@@ -250,7 +250,7 @@ def check_agent_profiles(
 
     known_models = registered_model_ids()
     model_pattern = re.compile(
-        r"(?:gemini|gpt|grok)-\d+(?:\.\d+)*(?:-[a-z0-9-]+)?|"
+        r"(?:[a-z0-9-]+/)?(?:gemini|gpt|grok|glm)-\d+(?:\.\d+)*(?:-[a-z0-9-]+)?|"
         r"qwen\d+(?:\.\d+)?:[a-z0-9.-]+|"
         r"[a-z0-9][a-z0-9._-]*\.gguf",
         re.IGNORECASE,
