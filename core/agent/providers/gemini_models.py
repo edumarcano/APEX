@@ -11,9 +11,6 @@ class GeminiModelProfile(BaseModel):
 
     display_name: str = Field(description="Visual name surfaced in HUD UI components.")
     api_model: str = Field(description="Exact Gemini API model identifier string.")
-    stability: Literal["stable", "preview", "experimental"] = Field(
-        description="Release stage classification of the target model."
-    )
     thinking_level: GeminiThinkingLevel = Field(
         description=(
             "Gemini thinking effort for GenerateContentConfig.thinking_config, "

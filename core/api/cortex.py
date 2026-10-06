@@ -193,7 +193,6 @@ def _profile_to_catalog_entry(profile: ModelProfile) -> AgentModelCatalogEntry:
         display_name=profile.display_name,
         provider=profile.provider,
         runtime=profile.runtime,
-        stability=profile.stability,
         hosted_capabilities=sorted(profile.hosted_capabilities),
         credentials_configured=model_has_credentials(profile),
         pricing=_model_pricing_metadata(profile),
@@ -825,7 +824,6 @@ def _execute_agent_turn(
             requested_effort=payload.effort,
             resolved_effort=resolved_effort,
             runtime="local" if is_local_profile(profile) else "cloud",
-            model_stability=getattr(profile, "stability", None),
             hosted_tools=getattr(profile, "hosted_tools", None),
         )
         if context_bundle is not None:
@@ -861,7 +859,6 @@ def _execute_agent_turn(
                 requested_effort=payload.effort,
                 resolved_effort=resolved_effort,
                 runtime="local" if is_local_profile(profile) else "cloud",
-                model_stability=getattr(profile, "stability", None),
                 hosted_tools=getattr(profile, "hosted_tools", None),
             ),
             error=error_detail,
@@ -1207,7 +1204,6 @@ def query_agent(
                 requested_effort=payload.effort,
                 resolved_effort=resolved_effort,
                 runtime=model_profile.runtime,
-                model_stability=getattr(profile, "stability", None),
                 hosted_tools=getattr(profile, "hosted_tools", None),
             ),
             error=credential_missing_error(model_profile.model_id, model_profile),

@@ -34,7 +34,6 @@ import { cloudAvailabilityPresentation } from '../lib/cloudAvailability'
 import { useBrowserOnline } from '../hooks/useBrowserOnline'
 
 import { ModelMark } from './ModelMark'
-import { StabilityBadge } from './StabilityBadge'
 
 export interface CompactModelSelectorProps {
   selectedModelId: string
@@ -359,11 +358,8 @@ export function CompactModelSelector({
                               <ModelMark modelId={entry.model_id} provider={entry.provider} size={14} />
                             </span>
                             <span className="min-w-0 flex-1">
-                              <span className="flex items-center gap-1.5">
-                                <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">
-                                  {entry.display_name}
-                                </span>
-                                <StabilityBadge stability={entry.stability} />
+                              <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">
+                                {entry.display_name}
                               </span>
                               <span className="mt-0.5 block truncate text-[10px] text-zinc-500">
                                 {provider} · {isUnauthorized ? 'Missing API key' : reasoningLabel}
@@ -421,11 +417,8 @@ export function CompactModelSelector({
                               <ModelMark modelId={entry.model_id} provider={entry.provider} size={14} />
                             </span>
                             <span className="min-w-0 flex-1">
-                              <span className="flex items-center gap-1.5">
-                                <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">
-                                  {entry.display_name}
-                                </span>
-                                <StabilityBadge stability={entry.stability} />
+                              <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">
+                                {entry.display_name}
                               </span>
                               <span className="mt-0.5 block truncate text-[10px] text-zinc-500">
                                 {runtimeName} · 16K context

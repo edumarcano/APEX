@@ -15,7 +15,6 @@ import type { VoiceMode } from '../../types/settings'
 import type { CloudEffort, LocalReasoningMode, ModelCatalogEntry } from '../../types/telemetry'
 import { LocalModelControl } from '../LocalModelControl'
 import { ModelMark } from '../ModelMark'
-import { StabilityBadge } from '../StabilityBadge'
 import { BriefingCoverage } from './BriefingEvidence'
 
 function ttsEngineLabel(engine?: BriefingSpeechEngine): string {
@@ -505,7 +504,6 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
                       </span>
                       <span className="mt-1 block truncate font-mono text-[10px] text-zinc-400">{selectedModel ? formatAgentPricing(selectedModel) : props.demoModeActive ? 'Demo uses saved fixtures' : 'Select a model'}</span>
                     </span>
-                    {selectedModel ? <StabilityBadge stability={selectedModel.stability} /> : null}
                     <ChevronDown className={`size-4 shrink-0 text-zinc-400 transition-transform group-hover:text-[#7EB3FF] ${agentMenuOpen === 'model' ? 'rotate-180 text-[#7EB3FF]' : ''}`} aria-hidden />
                   </button>
                   <span className="my-2 w-px shrink-0 bg-white/10" aria-hidden />
@@ -552,10 +550,7 @@ export function BriefingProfilePanel(props: BriefingProfilePanelProps): ReactEle
                         <span className="flex min-w-0 items-start gap-1.5">
                           <ModelMark modelId={model.model_id} provider={model.provider} size={16} />
                           <span className="min-w-0 flex-1">
-                            <span className="flex flex-wrap items-center gap-1">
-                              <span className="font-orbitron text-[10px] font-semibold text-zinc-100">{model.display_name}</span>
-                              <StabilityBadge stability={model.stability} />
-                            </span>
+                            <span className="font-orbitron text-[10px] font-semibold text-zinc-100">{model.display_name}</span>
                             <span className="mt-0.5 block font-mono text-[9px] text-zinc-500">{provider}{available ? '' : ' · Unavailable'}</span>
                           </span>
                           {model.model_id === draft.modelId ? <Check className="size-3.5 shrink-0 text-[#39FF88]" aria-hidden /> : null}

@@ -6,14 +6,14 @@ import { useCortex } from './useCortex'
 const modelId = 'gemma-4-E2B-Q4_K_M.gguf'
 const catalogResponse = {
   key: 'apex', display_name: 'Lynx', canonical_name: 'APEX Agent', description: 'Native assistant.', selected_model: modelId,
-  model_catalog: [{ model_id: modelId, display_name: 'Gemma 4 E2B', provider: 'llama_cpp', runtime: 'local', stability: 'stable', hosted_capabilities: [], status: 'available', active: false, loading: false }],
+  model_catalog: [{ model_id: modelId, display_name: 'Gemma 4 E2B', provider: 'llama_cpp', runtime: 'local', hosted_capabilities: [], status: 'available', active: false, loading: false }],
 }
 
 const cloudSelectedWithResidentLocal = {
   ...catalogResponse,
   selected_model: 'z-ai/glm-5.3-flash',
   model_catalog: [
-    { model_id: 'z-ai/glm-5.3-flash', display_name: 'GLM 5.3 Flash', provider: 'openrouter', runtime: 'cloud', stability: 'stable', hosted_capabilities: [], status: 'available', active: false, loading: false },
+    { model_id: 'z-ai/glm-5.3-flash', display_name: 'GLM 5.3 Flash', provider: 'openrouter', runtime: 'cloud', hosted_capabilities: [], status: 'available', active: false, loading: false },
     { ...catalogResponse.model_catalog[0], active: true, loaded_model: { provider: 'llama_cpp', name: modelId, model: modelId, state: 'loaded', context_window: 16384 }, idle_unload_remaining_seconds: 240 },
   ],
 }

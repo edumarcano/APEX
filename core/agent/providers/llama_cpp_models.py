@@ -112,9 +112,6 @@ class LlamaCppModelProfile(BaseModel):
     api_model: str = Field(
         description="Configured GGUF model identity shown in Agent metadata."
     )
-    stability: Literal["stable", "preview", "experimental"] = Field(
-        description="Release stage classification of the target model."
-    )
     default_temperature: float = Field(
         description="Lower temperature values minimize tool-calling hallucinations.",
     )
@@ -281,7 +278,6 @@ def build_llama_cpp_profile(
     *,
     display_name: str,
     api_model: str,
-    stability: Literal["stable", "preview", "experimental"],
     max_tool_turns: int,
     max_tool_calls: int,
     system_instruction: str,
@@ -301,7 +297,6 @@ def build_llama_cpp_profile(
     return LlamaCppModelProfile(
         display_name=display_name,
         api_model=api_model,
-        stability=stability,
         default_temperature=runtime.default_temperature,
         max_tool_turns=max_tool_turns,
         max_tool_calls=max_tool_calls,

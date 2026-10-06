@@ -105,7 +105,6 @@ describe('CortexActivity', () => {
         display_name: 'Gemma 4',
         provider: 'llama_cpp',
         runtime: 'local',
-        stability: 'stable',
         hosted_capabilities: [],
         status: 'available',
         active: true,

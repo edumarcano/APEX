@@ -675,9 +675,6 @@ class AgentModelCatalogEntry(BaseModel):
     runtime: Literal["cloud", "local"] = Field(
         description="Whether this model runs in the cloud or locally.",
     )
-    stability: Literal["stable", "preview", "experimental"] = Field(
-        description="Release stage classification for this model.",
-    )
     hosted_capabilities: list[Literal["google_search", "google_maps"]] = (
         Field(
             default_factory=list,

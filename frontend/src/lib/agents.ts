@@ -1,6 +1,5 @@
 import type {
   AgentKey,
-  AgentStability,
   CloudEffort,
   HostedTool,
   LocalReasoningMode,
@@ -125,16 +124,6 @@ export function usesSandboxHistory(
   sandboxMode: boolean,
 ): boolean {
   return devModeActive && sandboxMode
-}
-
-export function stabilityLabel(stability: AgentStability | null | undefined): string | null {
-  if (!stability || stability === 'stable') {
-    return null
-  }
-  if (stability === 'preview') {
-    return 'Preview'
-  }
-  return 'Experimental'
 }
 
 const REASONING_RANK: readonly CloudEffort[] = [

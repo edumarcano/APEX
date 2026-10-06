@@ -18,7 +18,6 @@ import { cloudAvailabilityPresentation } from '../lib/cloudAvailability'
 import { useBrowserOnline } from '../hooks/useBrowserOnline'
 
 import { ModelMark } from './ModelMark'
-import { StabilityBadge } from './StabilityBadge'
 
 interface ModelSelectorProps {
   selectedModelId: string
@@ -193,7 +192,6 @@ export function ModelSelector({
                 <span className="truncate font-orbitron text-xs font-semibold text-white">
                   {selectedModel?.display_name ?? selectedModelId}
                 </span>
-                {selectedModel ? <StabilityBadge stability={selectedModel.stability} /> : null}
               </div>
               <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] text-zinc-400">
                 <span>{providerLabel}</span>
@@ -314,7 +312,6 @@ export function ModelSelector({
                         <span className="font-orbitron text-xs font-semibold text-white">
                           {model.display_name}
                         </span>
-                        <StabilityBadge stability={model.stability} />
                       </div>
                       <p className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] text-zinc-400">
                         <span>{provLabel}</span>

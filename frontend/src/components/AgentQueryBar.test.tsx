@@ -190,7 +190,6 @@ describe('AgentQueryBar unified tool selection', () => {
         display_name: 'GPT-6 Luna',
         provider: 'openrouter',
         runtime: 'cloud',
-        stability: 'stable',
         reasoning_options: ['none', 'medium'],
         default_reasoning: 'medium',
         hosted_capabilities: [],

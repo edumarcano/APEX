@@ -185,7 +185,6 @@ export type AgentAvailabilityStatus =
   | 'insufficient_ram'
   | 'cpu_overloaded'
 
-export type AgentStability = 'stable' | 'preview' | 'experimental'
 export type AgentStatusSource = 'configuration' | 'verification' | 'request' | 'runtime'
 
 export interface AgentPricingMetadata {
@@ -206,7 +205,6 @@ export interface ModelCatalogEntry {
   display_name: string
   provider: CloudProvider | LocalRuntime
   runtime: AgentRuntime
-  stability: AgentStability
   hosted_capabilities: HostedTool[]
   pricing?: AgentPricingMetadata
   reasoning_options?: CloudEffort[] | null

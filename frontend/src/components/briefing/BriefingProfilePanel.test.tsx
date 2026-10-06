@@ -14,9 +14,9 @@ const profiles: BriefingProfileSummary[] = [
 ]
 
 const catalog: ModelCatalogEntry[] = [
-  { model_id: 'cloud-a', display_name: 'Cloud A', provider: 'openrouter', runtime: 'cloud', stability: 'preview', reasoning_options: ['low', 'high'], default_reasoning: 'high', hosted_capabilities: [], status: 'available', pricing: { currency: 'USD', pricing_version: 'test', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 1.2, cached_input_per_million: null, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null } },
-  { model_id: 'cloud-b', display_name: 'Cloud B', provider: 'openrouter', runtime: 'cloud', stability: 'experimental', reasoning_options: ['none', 'low'], default_reasoning: 'low', hosted_capabilities: [], status: 'verified', pricing: { currency: 'USD', pricing_version: 'test', billing_basis: 'standard', input_per_million: 0.75, output_per_million: 3.75, cached_input_per_million: null, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null } },
-  { model_id: 'local-a', display_name: 'Local A', provider: 'llama_cpp', runtime: 'local', stability: 'stable', reasoning_modes: ['none', 'focused'], default_reasoning_mode: 'none', context_options: [16384, 32768], hosted_capabilities: [], status: 'available' },
+  { model_id: 'cloud-a', display_name: 'Cloud A', provider: 'openrouter', runtime: 'cloud', reasoning_options: ['low', 'high'], default_reasoning: 'high', hosted_capabilities: [], status: 'available', pricing: { currency: 'USD', pricing_version: 'test', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 1.2, cached_input_per_million: null, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null } },
+  { model_id: 'cloud-b', display_name: 'Cloud B', provider: 'openrouter', runtime: 'cloud', reasoning_options: ['none', 'low'], default_reasoning: 'low', hosted_capabilities: [], status: 'verified', pricing: { currency: 'USD', pricing_version: 'test', billing_basis: 'standard', input_per_million: 0.75, output_per_million: 3.75, cached_input_per_million: null, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null } },
+  { model_id: 'local-a', display_name: 'Local A', provider: 'llama_cpp', runtime: 'local', reasoning_modes: ['none', 'focused'], default_reasoning_mode: 'none', context_options: [16384, 32768], hosted_capabilities: [], status: 'available' },
 ]
 
 function localModel(overrides: Partial<ModelCatalogEntry> = {}): ModelCatalogEntry {
@@ -25,7 +25,6 @@ function localModel(overrides: Partial<ModelCatalogEntry> = {}): ModelCatalogEnt
     display_name: 'Local A',
     provider: 'llama_cpp',
     runtime: 'local',
-    stability: 'stable',
     reasoning_modes: ['none', 'focused'],
     hosted_capabilities: [],
     status: 'available',
@@ -145,13 +144,12 @@ describe('BriefingProfilePanel', () => {
     const agentTrigger = within(dialog).getByRole('button', { name: /Cloud A/ })
     expect(agentTrigger).toHaveTextContent('OpenRouter')
     expect(agentTrigger).toHaveTextContent('$0.20/M in · $1.20/M out')
-    expect(agentTrigger).toHaveTextContent('Preview')
     expect(within(dialog).getByRole('button', { name: /^Select effort/ })).toHaveTextContent('High')
     await user.click(agentTrigger)
     const modelChoices = within(dialog).getByRole('group', { name: 'Lynx model choices' })
     const cloudModels = within(modelChoices).getByRole('group', { name: 'Cloud models' })
-    expect(within(cloudModels).getByRole('button', { name: /Cloud A/ })).toHaveTextContent('Preview')
-    expect(within(cloudModels).getByRole('button', { name: /Cloud B/ })).toHaveTextContent('Experimental')
+    expect(within(cloudModels).getByRole('button', { name: /Cloud A/ })).toBeInTheDocument()
+    expect(within(cloudModels).getByRole('button', { name: /Cloud B/ })).toBeInTheDocument()
     expect(within(modelChoices).getByRole('group', { name: 'Local models' })).toBeInTheDocument()
     const effortTrigger = within(dialog).getByRole('button', { name: /^Select effort/ })
     expect(effortTrigger).toHaveTextContent(/Effort.*High/)
@@ -207,7 +205,7 @@ describe('BriefingProfilePanel', () => {
     await user.click(agentTrigger)
     const modelChoices = screen.getByRole('group', { name: 'Lynx model choices' })
     await user.click(within(modelChoices).getByRole('button', { name: /Cloud B/ }))
-    expect(agentTrigger).toHaveTextContent('Experimental')
+    expect(agentTrigger).toHaveTextContent('Cloud B')
     const effortTrigger = screen.getByRole('button', { name: /^Select effort/ })
     expect(effortTrigger).toHaveTextContent('Choose effort')
     await user.click(effortTrigger)
