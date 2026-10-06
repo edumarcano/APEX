@@ -13,11 +13,9 @@ from core.agent.types import (
     TokenUsage,
 )
 
-InferenceProvider = Literal[
-    "gemini", "ollama", "llama_cpp", "openai", "openrouter"
-]
-LocalInferenceProvider = Literal["ollama", "llama_cpp"]
-LOCAL_INFERENCE_PROVIDERS: frozenset[str] = frozenset({"ollama", "llama_cpp"})
+InferenceProvider = Literal["gemini", "llama_cpp", "openrouter"]
+LocalInferenceProvider = Literal["llama_cpp"]
+LOCAL_INFERENCE_PROVIDERS: frozenset[str] = frozenset({"llama_cpp"})
 ToolTraceOrigin = Literal["apex", "provider"]
 
 
@@ -181,19 +179,15 @@ def merge_token_usage(
 def resolve_inference_provider(profile: object) -> InferenceProvider:
     """Map a concrete profile instance to its inference provider kind."""
     provider_attr = getattr(profile, "provider", None)
-    if provider_attr in {"gemini", "ollama", "llama_cpp", "openai", "openrouter"}:
+    if provider_attr in {"gemini", "llama_cpp", "openrouter"}:
         return provider_attr  # type: ignore[return-value]
 
     module = type(profile).__module__
     name = type(profile).__name__
     if "llama_cpp" in module or name.startswith("LlamaCpp"):
         return "llama_cpp"
-    if "ollama" in module or name.startswith("Ollama"):
-        return "ollama"
     if "gemini" in module or name.startswith("Gemini"):
         return "gemini"
     if "openrouter" in module or name.startswith("OpenRouter"):
         return "openrouter"
-    if "openai" in module or name.startswith("OpenAI"):
-        return "openai"
     raise TypeError(f"Unsupported provider profile type: {type(profile)!r}")

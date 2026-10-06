@@ -186,9 +186,9 @@ describe('AgentQueryBar unified tool selection', () => {
   it('renders the model selector right before the send button when model catalog is provided', () => {
     const modelCatalog: ModelCatalogEntry[] = [
       {
-        model_id: 'gpt-5.6-luna',
-        display_name: 'GPT-5.6 Luna',
-        provider: 'openai',
+        model_id: 'openai/gpt-6-luna',
+        display_name: 'GPT-6 Luna',
+        provider: 'openrouter',
         runtime: 'cloud',
         stability: 'stable',
         reasoning_options: ['none', 'medium'],
@@ -197,13 +197,13 @@ describe('AgentQueryBar unified tool selection', () => {
       },
     ]
     renderBar(vi.fn(), {
-      selectedModelId: 'gpt-5.6-luna',
+      selectedModelId: 'openai/gpt-6-luna',
       onModelChange: vi.fn(),
       modelCatalog,
     })
 
     const input = screen.getByLabelText('Agent query')
-    const modelTrigger = screen.getByRole('button', { name: /model: gpt-5\.6 luna/i })
+    const modelTrigger = screen.getByRole('button', { name: /model: gpt-6 luna/i })
     const sendButton = screen.getByRole('button', { name: 'Send query' })
 
     expect(modelTrigger).toBeInTheDocument()

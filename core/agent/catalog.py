@@ -23,12 +23,6 @@ from core.agent.providers.llama_cpp_models import (
     llama_cpp_runtime_config,
     model_id_for_llama_cpp_alias,
 )
-from core.agent.providers.ollama_models import (
-    OLLAMA_HIGH_RESOURCE_MODELS,
-    OLLAMA_RUNTIME_CONFIGS,
-    OllamaModelProfile,
-)
-from core.agent.providers.responses_api import ResponsesModelProfile
 from core.agent.providers.openrouter import OpenRouterModelProfile
 from core.agent.tool_policies import hosted_tools_for_model
 from core.agent.types import LocalReasoningMode
@@ -45,18 +39,14 @@ NativeEffort: TypeAlias = Literal["none", "minimal", "low", "medium", "high", "x
 VALID_AGENT_KEYS: frozenset[str] = frozenset({"apex"})
 
 _PROVIDER_DISPLAY_NAMES: dict[InferenceProvider, str] = {
-    "gemini": "Google",
-    "ollama": "Ollama",
+    "gemini": "Google AI Studio",
     "llama_cpp": "llama.cpp",
-    "openai": "OpenAI",
     "openrouter": "OpenRouter",
 }
 
 ProviderModelProfile = (
     GeminiModelProfile
-    | OllamaModelProfile
     | LlamaCppModelProfile
-    | ResponsesModelProfile
     | OpenRouterModelProfile
 )
 
@@ -243,32 +233,6 @@ def build_provider_profile(
                 google_maps_enabled=google_maps_enabled,
             ),
         )
-    if model_profile.provider == "ollama":
-        runtime = OLLAMA_RUNTIME_CONFIGS[model_profile.model_id]
-        resolved_reasoning_mode = _resolve_local_reasoning_mode(
-            model_profile.model_id, local_reasoning_mode
-        )
-        return OllamaModelProfile(
-            display_name=resolved_display_name,
-            api_model=model_profile.model_id,
-            stability=model_profile.stability,
-            default_temperature=runtime.default_temperature,
-            max_tool_turns=model_profile.max_tool_turns,
-            max_tool_calls=model_profile.max_tool_calls,
-            context_window=runtime.context_window,
-            tool_select_max_tokens=runtime.tool_select_max_tokens,
-            final_answer_max_tokens=runtime.final_answer_max_tokens,
-            num_thread=runtime.num_thread,
-            generation_timeout=runtime.generation_timeout,
-            think=runtime.think,
-            supported_reasoning_modes=runtime.supported_reasoning_modes,
-            default_reasoning_mode=runtime.default_reasoning_mode,
-            reasoning_mode=resolved_reasoning_mode,
-            ram_limit=runtime.ram_limit,
-            cpu_limit=runtime.cpu_limit,
-            high_resource=model_profile.model_id in OLLAMA_HIGH_RESOURCE_MODELS,
-            system_instruction=system_instruction,
-        )
     if model_profile.provider == "llama_cpp":
         resolved_reasoning_mode = _resolve_local_reasoning_mode(
             model_profile.model_id, local_reasoning_mode
@@ -298,30 +262,7 @@ def build_provider_profile(
             system_instruction=system_instruction,
             reasoning_effort=effective_effort,
         )
-    effective_effort = (
-        native_effort
-        if native_effort is not None
-        else (
-            model_profile.default_reasoning
-            if model_profile.reasoning_options
-            else None
-        )
-    )
-    return ResponsesModelProfile(
-        provider=model_profile.provider,  # type: ignore[arg-type]
-        display_name=resolved_display_name,
-        api_model=model_profile.model_id,
-        max_tool_turns=model_profile.max_tool_turns,
-        max_tool_calls=model_profile.max_tool_calls,
-        system_instruction=system_instruction,
-        reasoning_effort=effective_effort,
-        hosted_tools=hosted_tools_for_model(
-            model_profile,
-            google_search_enabled=google_search_enabled,
-            google_maps_enabled=google_maps_enabled,
-        ),
-        supports_encrypted_reasoning=model_profile.supports_encrypted_reasoning,
-    )
+    raise ValueError(f"Unsupported provider: {model_profile.provider!r}")
 
 
 def build_agent_used_metadata(
@@ -371,14 +312,9 @@ def local_context_window_for_model(model_id: str) -> int | None:
 
 def local_reasoning_modes_for_model(model_id: str) -> tuple[LocalReasoningMode, ...]:
     profile = get_model_profile(model_id)
-    if profile is None:
+    if profile is None or profile.provider != "llama_cpp":
         return ()
-    if profile.provider == "llama_cpp":
-        runtime = LLAMA_CPP_RUNTIME_CONFIGS.get(model_id)
-    elif profile.provider == "ollama":
-        runtime = OLLAMA_RUNTIME_CONFIGS.get(model_id)
-    else:
-        return ()
+    runtime = LLAMA_CPP_RUNTIME_CONFIGS.get(model_id)
     if runtime is None:
         return ()
     return runtime.supported_reasoning_modes
@@ -438,18 +374,14 @@ def local_model_ref_for_model(
 
 def local_model_refs_for_model(model_id: str) -> frozenset[LocalModelRef]:
     profile = get_model_profile(model_id)
-    if profile is None or profile.runtime != "local":
+    if profile is None or profile.runtime != "local" or profile.provider != "llama_cpp":
         return frozenset()
-    if profile.provider == "llama_cpp":
-        runtime = LLAMA_CPP_RUNTIME_CONFIGS.get(model_id)
-        if runtime is None:
-            return frozenset()
-        aliases = set(runtime.runtime_model_ids.values())
-        return frozenset(
-            LocalModelRef(provider="llama_cpp", model=alias) for alias in aliases
-        )
+    runtime = LLAMA_CPP_RUNTIME_CONFIGS.get(model_id)
+    if runtime is None:
+        return frozenset()
+    aliases = set(runtime.runtime_model_ids.values())
     return frozenset(
-        {LocalModelRef(provider=profile.provider, model=model_id)}  # type: ignore[arg-type]
+        LocalModelRef(provider="llama_cpp", model=alias) for alias in aliases
     )
 
 

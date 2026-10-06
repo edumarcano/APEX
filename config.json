@@ -64,16 +64,6 @@
   "cortex_conversations": {
     "archived_retention_days": 30
   },
-  "ollama": {
-    "enabled": true,
-    "host": "http://localhost:11434",
-    "idle_unload_timeout_minutes": 5,
-    "manual_unload_enabled": true,
-    "resource_gates": {
-      "qwen3:1.7b": { "ram_limit": 88.0, "cpu_limit": 95.0 },
-      "qwen3:4b-instruct": { "ram_limit": 78.0, "cpu_limit": 90.0 }
-    }
-  },
   "llama_cpp": {
     "enabled": false,
     "managed": false,
@@ -87,14 +77,6 @@
       "gemma-4-E2B-Q4_K_M.gguf": {
         "ram_limit": 88.0,
         "cpu_limit": 95.0
-      },
-      "gemma-4-E4B-Q4_K_M.gguf": {
-        "ram_limit": 80.0,
-        "cpu_limit": 90.0
-      },
-      "Qwen3.5-4B-Q4_K_M.gguf": {
-        "ram_limit": 82.0,
-        "cpu_limit": 92.0
       }
     }
   },

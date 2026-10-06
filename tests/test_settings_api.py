@@ -89,7 +89,7 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(payload["settings"]["voice"]["mode"], "automatic")
         self.assertTrue(payload["settings"]["modules"]["f1"])
         ask_apex = payload["settings"]["ask_apex"]
-        self.assertEqual(ask_apex["selected_model"], "gpt-5.6-luna")
+        self.assertEqual(ask_apex["selected_model"], "z-ai/glm-5.3-flash")
         self.assertEqual(
             ask_apex["cloud"]["last_model"],
             "z-ai/glm-5.3-flash",
@@ -466,8 +466,8 @@ class SettingsApiTests(unittest.TestCase):
                 {
                     "ask_apex": {
                         "enabled": False,
-                        "selected_model": "qwen3:1.7b",
-                        "local": {"last_model": "qwen3:1.7b"},
+                        "selected_model": "gemma-4-E2B-Q4_K_M.gguf",
+                        "local": {"last_model": "gemma-4-E2B-Q4_K_M.gguf"},
                     }
                 }
             )
@@ -479,7 +479,7 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(payload["cortex_initial_selection"]["agent"], "apex")
         self.assertEqual(payload["cortex_initial_selection"]["display_name"], "Lynx")
         self.assertEqual(payload["cortex_initial_selection"]["canonical_name"], "APEX Agent")
-        self.assertEqual(payload["cortex_initial_selection"]["model_id"], "qwen3:1.7b")
+        self.assertEqual(payload["cortex_initial_selection"]["model_id"], "gemma-4-E2B-Q4_K_M.gguf")
         self.assertEqual(payload["cortex_initial_selection"]["runtime"], "local")
         self.assertFalse(payload["ask_apex_enabled"])
         self.assertIn("max_recent_conversation_messages", payload)
@@ -493,21 +493,20 @@ class SettingsApiTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 422)
 
-    def test_unavailable_dev_model_remains_a_valid_selected_model(self) -> None:
-        with mock.patch("core.settings.normalize.is_dev_mode", return_value=True):
-            response = self.client.patch(
-                "/api/v1/settings",
-                json={
-                    "ask_apex": {
-                        "selected_model": "qwen3:1.7b",
-                        "local": {"last_model": "qwen3:1.7b"},
-                    }
-                },
-            )
+    def test_local_model_remains_a_valid_selected_model(self) -> None:
+        response = self.client.patch(
+            "/api/v1/settings",
+            json={
+                "ask_apex": {
+                    "selected_model": "gemma-4-E2B-Q4_K_M.gguf",
+                    "local": {"last_model": "gemma-4-E2B-Q4_K_M.gguf"},
+                }
+            },
+        )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.json()["settings"]["ask_apex"]["selected_model"],
-            "qwen3:1.7b",
+            "gemma-4-E2B-Q4_K_M.gguf",
         )
         with mock.patch("core.agent.catalog.is_dev_mode", return_value=False):
             config_payload = self.client.get("/api/v1/config").json()

@@ -14,8 +14,8 @@ from core.config import (
 )
 
 ModelStability = Literal["stable", "preview", "experimental"]
-CloudProvider = Literal["openai", "openrouter", "gemini"]
-LocalRuntime = Literal["ollama", "llama_cpp"]
+CloudProvider = Literal["gemini", "openrouter"]
+LocalRuntime = Literal["llama_cpp"]
 HostedTool = Literal["google_search", "google_maps"]
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +34,6 @@ class ModelProfile:
     hosted_capabilities: frozenset[HostedTool]
     reasoning_options: tuple[str, ...] = ()
     default_reasoning: str | None = None
-    dev_only: bool = False
     maximum_context_window: int | None = None
 
 # Cloud models available to APEX Agent.
@@ -54,20 +53,20 @@ CLOUD_MODEL_PROFILES: dict[str, ModelProfile] = {
         hosted_capabilities=frozenset(),
         maximum_context_window=1_048_576,
     ),
-    "gpt-5.6-luna": ModelProfile(
-        model_id="gpt-5.6-luna",
-        display_name="GPT-5.6 Luna",
-        provider="openai",
+    "openai/gpt-6-luna": ModelProfile(
+        model_id="openai/gpt-6-luna",
+        display_name="GPT-6 Luna",
+        provider="openrouter",
         runtime="cloud",
         stability="stable",
-        credential_env="OPENAI_API_KEY",
+        credential_env="OPENROUTER_API_KEY",
         max_tool_turns=min(6, CORTEX_RUNS_MAX_MODEL_TURNS),
         max_tool_calls=min(10, CORTEX_RUNS_MAX_TOOL_CALLS),
-        reasoning_options=("none", "minimal", "low", "medium", "high", "xhigh"),
+        reasoning_options=("none", "low", "medium", "high", "xhigh", "max"),
         default_reasoning="medium",
-        supports_encrypted_reasoning=True,
+        supports_encrypted_reasoning=False,
         hosted_capabilities=frozenset(),
-        dev_only=True,
+        maximum_context_window=1_048_576,
     ),
     "gemini-3.7-flash": ModelProfile(
         model_id="gemini-3.7-flash",
@@ -100,60 +99,6 @@ LOCAL_MODEL_PROFILES: dict[str, ModelProfile] = {
         supports_encrypted_reasoning=False,
         hosted_capabilities=frozenset(),
     ),
-    "gemma-4-E4B-Q4_K_M.gguf": ModelProfile(
-        model_id="gemma-4-E4B-Q4_K_M.gguf",
-        display_name="Gemma 4 E4B",
-        provider="llama_cpp",
-        runtime="local",
-        stability="experimental",
-        credential_env=None,
-        max_tool_turns=min(4, CORTEX_RUNS_MAX_MODEL_TURNS),
-        max_tool_calls=min(4, CORTEX_RUNS_MAX_TOOL_CALLS),
-        supports_encrypted_reasoning=False,
-        hosted_capabilities=frozenset(),
-        dev_only=True,
-    ),
-    "qwen3:1.7b": ModelProfile(
-        model_id="qwen3:1.7b",
-        display_name="Qwen3 1.7B",
-        provider="ollama",
-        runtime="local",
-        stability="stable",
-        credential_env=None,
-        max_tool_turns=min(2, CORTEX_RUNS_MAX_MODEL_TURNS),
-        max_tool_calls=min(3, CORTEX_RUNS_MAX_TOOL_CALLS),
-        supports_encrypted_reasoning=False,
-        hosted_capabilities=frozenset(),
-        dev_only=True,
-        maximum_context_window=4096,
-    ),
-    "qwen3:4b-instruct": ModelProfile(
-        model_id="qwen3:4b-instruct",
-        display_name="Qwen3 4B Instruct",
-        provider="ollama",
-        runtime="local",
-        stability="stable",
-        credential_env=None,
-        max_tool_turns=min(4, CORTEX_RUNS_MAX_MODEL_TURNS),
-        max_tool_calls=min(4, CORTEX_RUNS_MAX_TOOL_CALLS),
-        supports_encrypted_reasoning=False,
-        hosted_capabilities=frozenset(),
-        dev_only=True,
-        maximum_context_window=4096,
-    ),
-    "Qwen3.5-4B-Q4_K_M.gguf": ModelProfile(
-        model_id="Qwen3.5-4B-Q4_K_M.gguf",
-        display_name="Qwen3.5 4B",
-        provider="llama_cpp",
-        runtime="local",
-        stability="experimental",
-        credential_env=None,
-        max_tool_turns=min(4, CORTEX_RUNS_MAX_MODEL_TURNS),
-        max_tool_calls=min(4, CORTEX_RUNS_MAX_TOOL_CALLS),
-        supports_encrypted_reasoning=False,
-        hosted_capabilities=frozenset(),
-        dev_only=True,
-    ),
 }
 
 ALL_MODEL_PROFILES: dict[str, ModelProfile] = {
@@ -172,20 +117,12 @@ def get_model_profile(model_id: str) -> ModelProfile | None:
     return ALL_MODEL_PROFILES.get(model_id)
 
 
-def visible_cloud_models(*, dev_mode: bool = False) -> tuple[ModelProfile, ...]:
-    return tuple(
-        profile
-        for profile in CLOUD_MODEL_PROFILES.values()
-        if not profile.dev_only or dev_mode
-    )
+def visible_cloud_models() -> tuple[ModelProfile, ...]:
+    return tuple(CLOUD_MODEL_PROFILES.values())
 
 
-def visible_local_models(*, dev_mode: bool = False) -> tuple[ModelProfile, ...]:
-    return tuple(
-        profile
-        for profile in LOCAL_MODEL_PROFILES.values()
-        if not profile.dev_only or dev_mode
-    )
+def visible_local_models() -> tuple[ModelProfile, ...]:
+    return tuple(LOCAL_MODEL_PROFILES.values())
 
 
 def model_has_credentials(profile: ModelProfile) -> bool:
@@ -201,34 +138,18 @@ def model_display_label(model_id: str) -> str:
     return profile.display_name if profile is not None else model_id
 
 
-def reconcile_cloud_model(
-    model: str,
-    *,
-    dev_mode: bool = False,
-) -> str:
+def reconcile_cloud_model(model: str) -> str:
     """Return a supported cloud model, falling back to the default cloud model."""
     profile = get_model_profile(model)
-    if (
-        profile is not None
-        and profile.runtime == "cloud"
-        and (not profile.dev_only or dev_mode)
-    ):
+    if profile is not None and profile.runtime == "cloud":
         return model
     return DEFAULT_CLOUD_MODEL
 
 
-def reconcile_local_model(
-    model: str,
-    *,
-    dev_mode: bool = False,
-) -> str:
+def reconcile_local_model(model: str) -> str:
     """Return a supported local model, falling back to the default local model."""
     profile = get_model_profile(model)
-    if (
-        profile is not None
-        and profile.runtime == "local"
-        and (not profile.dev_only or dev_mode)
-    ):
+    if profile is not None and profile.runtime == "local":
         return model
     return DEFAULT_LOCAL_MODEL
 

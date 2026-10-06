@@ -253,7 +253,7 @@ class LiveRunStreamTests(unittest.TestCase):
         response = run_agent_loop(
             AgentQueryRequest(prompt="Test", agent="apex"),
             Provider(),
-            build_local_profile(model="qwen3:1.7b"),
+            build_local_profile(),
             selected_tools=[],
             stream_observer=provider_events.append,
             activity_observer=lambda event_type, payload: activity.append((event_type, payload)),
@@ -288,7 +288,7 @@ class LiveRunStreamTests(unittest.TestCase):
         response = run_agent_loop(
             AgentQueryRequest(prompt="Test", agent="apex"),
             Provider(),
-            build_local_profile(model="qwen3:1.7b"),
+            build_local_profile(),
             selected_tools=[],
             activity_observer=lambda event_type, payload: activity.append((event_type, payload)),
         )
@@ -352,7 +352,7 @@ class LiveRunStreamTests(unittest.TestCase):
         response = run_agent_loop(
             AgentQueryRequest(prompt="Check status", agent="apex"),
             provider,
-            build_local_profile(model="qwen3:1.7b"),
+            build_local_profile(),
             tools_dispatcher=lambda _name, _arguments: "ready",
             selected_tools=[descriptor],
         )
@@ -394,7 +394,7 @@ class LiveRunStreamTests(unittest.TestCase):
         response = run_agent_loop(
             AgentQueryRequest(prompt="Test", agent="apex"),
             Provider(),
-            build_local_profile(model="qwen3:1.7b"),
+            build_local_profile(),
             selected_tools=[],
             activity_observer=lambda event_type, payload: activity.append((event_type, payload)),
         )

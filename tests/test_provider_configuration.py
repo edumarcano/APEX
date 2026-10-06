@@ -1,4 +1,4 @@
-"""Unit tests verifying Gemini provider temperature omission and Ollama temperature retention."""
+"""Unit tests verifying Gemini provider configuration and loop caps."""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ from core.agent.capabilities import CapabilityDescriptor
 from core.agent.loop import run_agent_loop
 from core.agent.model_catalog import get_model_profile
 from core.agent.providers.gemini import GeminiProvider
-from core.agent.providers.ollama import OllamaProvider
 from core.agent.providers.contract import ProviderTurnResult
 from core.agent.types import AgentMessage, AgentQueryRequest, ToolCall
 from core.config import CORTEX_RUNS_MAX_TOOL_CALLS, CORTEX_RUNS_MAX_MODEL_TURNS
+
 
 def _concrete_profile(model_id: str):
     model_profile = get_model_profile(model_id)
@@ -28,7 +28,7 @@ def _concrete_profile(model_id: str):
 class GeminiProviderTemperatureTests(unittest.TestCase):
     def test_cloud_agents_apply_quota_aware_loop_caps(self) -> None:
         for model_id in (
-            "gpt-5.6-luna",
+            "openai/gpt-6-luna",
             "gemini-3.7-flash",
             "z-ai/glm-5.3-flash",
         ):
@@ -42,11 +42,7 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
 
     def test_local_models_respect_loop_caps_and_leave_a_final_answer_turn(self) -> None:
         local_model_ids = (
-            "qwen3:1.7b",
-            "qwen3:4b-instruct",
             "gemma-4-E2B-Q4_K_M.gguf",
-            "gemma-4-E4B-Q4_K_M.gguf",
-            "Qwen3.5-4B-Q4_K_M.gguf",
         )
         for model_id in local_model_ids:
             with self.subTest(model=model_id):
@@ -60,7 +56,7 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
         profile = build_provider_profile(
             native_effort=None,
             local_reasoning_mode="none",
-            model_id="qwen3:1.7b",
+            model_id="gemma-4-E2B-Q4_K_M.gguf",
         ).model_copy(update={"max_tool_turns": 2, "max_tool_calls": 1})
         descriptor = CapabilityDescriptor(
             name="get_weather_forecast",
@@ -151,31 +147,6 @@ class GeminiProviderTemperatureTests(unittest.TestCase):
         config = kwargs["config"]
         self.assertFalse(hasattr(config, "temperature") and config.temperature is not None)
         self.assertEqual(kwargs["model"], "gemini-3.7-flash")
-
-    @patch("core.agent.providers.ollama.get_http_session")
-    def test_ollama_provider_retains_temperature(
-        self, mock_get_session: MagicMock
-    ) -> None:
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "message": {"role": "assistant", "content": "Done."},
-            "done": True,
-        }
-        mock_session = MagicMock()
-        mock_session.post.return_value = mock_response
-        mock_get_session.return_value = mock_session
-
-        provider = OllamaProvider()
-        profile = _concrete_profile("qwen3:1.7b")
-        provider.generate_turn(
-            [AgentMessage(role="user", content="Hello")],
-            [],
-            profile,
-        )
-
-        payload = mock_session.post.call_args.kwargs["json"]
-        self.assertIn("temperature", payload["options"])
 
 
 if __name__ == "__main__":

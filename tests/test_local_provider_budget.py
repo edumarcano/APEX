@@ -10,10 +10,6 @@ from core.agent.providers.llama_cpp import (
     _budget_payload as llama_cpp_budget_payload,
     _estimate_payload_tokens as llama_cpp_estimate_payload_tokens,
 )
-from core.agent.providers.ollama import (
-    _budget_payload as ollama_budget_payload,
-    _estimate_payload_tokens as ollama_estimate_payload_tokens,
-)
 from core.agent.types import AgentMessage
 from core.agent.tool_schemas import estimate_json_tokens
 
@@ -32,31 +28,6 @@ def _history_with_large_prior_interactions() -> list[AgentMessage]:
 
 
 class LocalProviderBudgetTests(unittest.TestCase):
-    def test_ollama_trims_complete_history_and_applies_allowance_and_margin(self) -> None:
-        profile = build_local_profile(model="qwen3:4b-instruct")
-        payload, estimated, dropped = ollama_budget_payload(
-            _history_with_large_prior_interactions(),
-            [],
-            profile,
-            profile.system_instruction,
-            num_predict=profile.final_answer_max_tokens,
-        )
-
-        self.assertGreater(dropped, 0)
-        self.assertLessEqual(
-            estimated,
-            profile.context_window - profile.final_answer_max_tokens - 512,
-        )
-        self.assertEqual(
-            estimated,
-            estimate_json_tokens(payload, bytes_per_token=3) + 128,
-        )
-        self.assertEqual(payload["options"]["num_ctx"], profile.context_window)
-        self.assertEqual(
-            payload["options"]["num_predict"],
-            profile.final_answer_max_tokens,
-        )
-
     def test_llama_cpp_trims_complete_history_and_applies_allowance_and_margin(
         self,
     ) -> None:
@@ -81,9 +52,6 @@ class LocalProviderBudgetTests(unittest.TestCase):
         self.assertEqual(payload["max_tokens"], profile.final_answer_max_tokens)
 
     def test_current_interaction_is_rejected_after_history_is_exhausted(self) -> None:
-        ollama_profile = build_local_profile(model="qwen3:4b-instruct").model_copy(
-            update={"context_window": 2048, "final_answer_max_tokens": 128}
-        )
         llama_profile = build_local_profile().model_copy(
             update={"context_window": 4096, "final_answer_max_tokens": 128}
         )
@@ -95,14 +63,6 @@ class LocalProviderBudgetTests(unittest.TestCase):
         ]
 
         with self.assertRaisesRegex(RuntimeError, "Local prompt budget exceeded"):
-            ollama_budget_payload(
-                current,
-                [],
-                ollama_profile,
-                ollama_profile.system_instruction,
-                num_predict=ollama_profile.final_answer_max_tokens,
-            )
-        with self.assertRaisesRegex(RuntimeError, "Local prompt budget exceeded"):
             llama_cpp_budget_payload(
                 current,
                 [],
@@ -112,7 +72,7 @@ class LocalProviderBudgetTests(unittest.TestCase):
             )
 
     def test_provider_overflow_error_is_actionable(self) -> None:
-        profile = build_local_profile(model="qwen3:4b-instruct")
+        profile = build_local_profile()
         answer, detail = build_agent_failure_details(
             profile,
             RuntimeError(
@@ -126,18 +86,6 @@ class LocalProviderBudgetTests(unittest.TestCase):
         self.assertIn("provider-authoritative history trimming", detail)
 
     def test_provider_estimates_include_the_same_template_allowance(self) -> None:
-        profile = build_local_profile(model="qwen3:4b-instruct")
-        payload, estimated, _dropped = ollama_budget_payload(
-            [AgentMessage(role="user", content="Current question")],
-            [],
-            profile,
-            profile.system_instruction,
-            num_predict=profile.final_answer_max_tokens,
-        )
-        self.assertEqual(
-            estimated,
-            ollama_estimate_payload_tokens(payload),
-        )
         llama_profile = build_local_profile()
         llama_payload, llama_estimated, _llama_dropped = llama_cpp_budget_payload(
             [AgentMessage(role="user", content="Current question")],

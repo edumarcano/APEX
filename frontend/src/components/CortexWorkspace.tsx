@@ -398,7 +398,7 @@ function LocalModelLifecycle({ model, busy, actionPending, onLoad, onUnload }: {
     if (disabled) return
     setError(null)
     const successful = canUnload ? await onUnload() : await onLoad()
-    if (!successful) setError(`${canUnload ? 'Unload' : 'Load'} failed. Check Ollama status and try again.`)
+    if (!successful) setError(`${canUnload ? 'Unload' : 'Load'} failed. Check local runtime status and try again.`)
   }
   if (lifecycleState === 'Loaded') {
     return <section className="space-y-2" aria-label="Local model lifecycle">

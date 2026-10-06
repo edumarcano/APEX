@@ -239,7 +239,6 @@ class BriefingSessionApiTests(unittest.TestCase):
 
         with (
             patch("core.briefings.runtime.DEMO_MODE", False),
-            patch("core.briefings.runtime.is_dev_mode", return_value=False),
             patch("core.briefings.runtime.visible_cloud_models", return_value=[profile]),
             patch("core.briefings.runtime.visible_local_models", return_value=[]),
             patch("core.briefings.runtime.model_has_credentials", return_value=True),

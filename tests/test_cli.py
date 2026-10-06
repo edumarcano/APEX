@@ -99,7 +99,7 @@ class CliTests(unittest.TestCase):
                             "runtime": "cloud",
                             "agent": "apex",
                             "display_name": "Nova",
-                            "model_id": "gpt-5.6-luna",
+                            "model_id": "openai/gpt-6-luna",
                             "effort": "low",
                         },
                     },

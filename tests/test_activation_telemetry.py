@@ -616,9 +616,9 @@ class TelemetryApiTests(unittest.TestCase):
         backend.enabled = True
         local_snapshot = {
             "reachable": True,
-            "installed_models": ["qwen3:1.7b"],
+            "installed_models": ["gemma-4-e2b-16k"],
             "loaded_models": [
-                {"name": "qwen3:1.7b", "model": "qwen3:1.7b", "state": "loaded"}
+                {"name": "gemma-4-e2b-16k", "model": "gemma-4-e2b-16k", "state": "loaded"}
             ],
         }
         with mock.patch(
@@ -638,7 +638,7 @@ class TelemetryApiTests(unittest.TestCase):
                 "/api/v1/preflight",
                 json={
                     "operation": "generate_briefing_session",
-                    "model_id": "qwen3:1.7b",
+                    "model_id": "gemma-4-E2B-Q4_K_M.gguf",
                     "involves_cloud": False,
                 },
             )
@@ -658,14 +658,14 @@ class TelemetryApiTests(unittest.TestCase):
             "core.telemetry.preflight.config.DEMO_MODE", False
         ), mock.patch.dict(
             "os.environ",
-            {"OPENAI_API_KEY": "", "OPENROUTER_API_KEY": ""},
+            {"OPENROUTER_API_KEY": "", "GEMINI_API_KEY": ""},
             clear=False,
         ):
             response = self.client.post(
                 "/api/v1/preflight",
                 json={
                     "operation": "generate_briefing_session",
-                    "model_id": "gpt-5.6-luna",
+                    "model_id": "openai/gpt-6-luna",
                     "involves_cloud": True,
                 },
             )
@@ -769,14 +769,14 @@ class TelemetryApiTests(unittest.TestCase):
 
     def test_preflight_loaded_local_model_skips_cold_load_checks(self) -> None:
         local_snapshot = {
-            "provider": "ollama",
+            "provider": "llama_cpp",
             "reachable": True,
-            "installed_models": ["qwen3:1.7b"],
+            "installed_models": ["gemma-4-e2b-16k"],
             "loaded_models": [
                 {
-                    "provider": "ollama",
-                    "name": "qwen3:1.7b",
-                    "model": "qwen3:1.7b",
+                    "provider": "llama_cpp",
+                    "name": "gemma-4-e2b-16k",
+                    "model": "gemma-4-e2b-16k",
                     "state": "loaded",
                     "size_bytes": None,
                     "size_vram_bytes": None,
@@ -805,7 +805,7 @@ class TelemetryApiTests(unittest.TestCase):
         ):
             response = self.client.post(
                 "/api/v1/preflight",
-                json={"operation": "cortex_query", "model_id": "qwen3:1.7b"},
+                json={"operation": "cortex_query", "model_id": "gemma-4-E2B-Q4_K_M.gguf"},
             )
 
         payload = response.json()
@@ -868,7 +868,7 @@ class TelemetryApiTests(unittest.TestCase):
 
     def test_preflight_hard_blocker_not_overridable(self) -> None:
         def _getenv(key: str, default: object = None) -> object:
-            if key == "OPENAI_API_KEY":
+            if key in {"OPENAI_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY"}:
                 return None
             import os
 

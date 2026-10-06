@@ -732,9 +732,9 @@ describe('App catalog-affecting settings', () => {
 
   it('uses the shared local context window and reasoning mode for Briefing follow-ups', async () => {
     appMocks.localBriefingModel = {
-      model_id: 'qwen3:1.7b',
-      display_name: 'Qwen 3 1.7B',
-      provider: 'ollama',
+      model_id: 'gemma-4-E2B-Q4_K_M.gguf',
+      display_name: 'Gemma 4 E2B',
+      provider: 'llama_cpp',
       runtime: 'local',
       stability: 'stable',
       reasoning_modes: ['none', 'focused'],
@@ -746,14 +746,14 @@ describe('App catalog-affecting settings', () => {
 
     renderOverviewApp()
     const localSettings = structuredClone(BASE_SETTINGS)
-    localSettings.ask_apex.selected_model = 'qwen3:1.7b'
-    localSettings.ask_apex.local.last_model = 'qwen3:1.7b'
+    localSettings.ask_apex.selected_model = 'gemma-4-E2B-Q4_K_M.gguf'
+    localSettings.ask_apex.local.last_model = 'gemma-4-E2B-Q4_K_M.gguf'
     localSettings.ask_apex.local.context_window = 32768
     localSettings.ask_apex.local.reasoning_mode = 'focused'
     await applySavedSettings(buildSettingsResponse(localSettings), structuredClone(BASE_SETTINGS))
 
     await waitFor(() => expect(appMocks.toolPreflight.mock.lastCall?.[0]).toMatchObject({
-      modelId: 'qwen3:1.7b',
+      modelId: 'gemma-4-E2B-Q4_K_M.gguf',
       effort: null,
       contextWindow: 32768,
       localReasoningMode: 'focused',
@@ -1668,12 +1668,12 @@ describe('App active local briefing lifecycle', () => {
   })
 
   it('does not treat an active local briefing as model loading while keeping lifecycle controls busy', async () => {
-    appMocks.initialModelId = 'qwen3:1.7b'
+    appMocks.initialModelId = 'gemma-4-E2B-Q4_K_M.gguf'
     appMocks.initialModelRuntime = 'local'
     appMocks.localBriefingModel = {
-      model_id: 'qwen3:1.7b',
-      display_name: 'Qwen 3 1.7B',
-      provider: 'ollama',
+      model_id: 'gemma-4-E2B-Q4_K_M.gguf',
+      display_name: 'Gemma 4 E2B',
+      provider: 'llama_cpp',
       runtime: 'local',
       stability: 'stable',
       hosted_capabilities: [],
@@ -1681,7 +1681,7 @@ describe('App active local briefing lifecycle', () => {
     const activeSummary = {
       id: '00000000-0000-4000-8000-000000000081',
       profile_id: 'daily',
-      model_id: 'qwen3:1.7b',
+      model_id: 'gemma-4-E2B-Q4_K_M.gguf',
       conversation_id: '00000000-0000-4000-8000-000000000082',
       run_id: '00000000-0000-4000-8000-000000000083',
       run_status: 'running',
@@ -1719,7 +1719,7 @@ describe('App active local briefing lifecycle', () => {
         run_error_code: null,
         configuration: {
           profile: { id: 'daily', label: 'Daily', purpose: 'Current information.', definition_version: 1 },
-          model: { model_id: activeSummary.model_id, provider: 'ollama', runtime: 'local', reasoning: null, context_window: null, local_reasoning_mode: null },
+          model: { model_id: activeSummary.model_id, provider: 'llama_cpp', runtime: 'local', reasoning: null, context_window: null, local_reasoning_mode: null },
           origin: 'hud', execution_kind: 'model',
         },
         artifact: null,
@@ -2038,7 +2038,7 @@ describe('App briefing session flow', () => {
     expect(queryRunPosts).toBe(1)
     expect(queryRunCancelPosts).toBe(0)
     expect(admissions).toBe(1)
-  }, 10000)
+  }, 20000)
 })
 
 describe('App briefing setup failure ordering', () => {

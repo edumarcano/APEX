@@ -192,8 +192,6 @@ class LlamaCppProviderTests(unittest.TestCase):
 
         model_ids = (
             "gemma-4-E2B-Q4_K_M.gguf",
-            "gemma-4-E4B-Q4_K_M.gguf",
-            "Qwen3.5-4B-Q4_K_M.gguf",
         )
         for model_id in model_ids:
             for reasoning_mode, enabled in (("none", False), ("focused", True)):
