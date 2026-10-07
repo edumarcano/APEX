@@ -260,7 +260,7 @@ async function main() {
   process.stdout.write(`Desktop shell assembled at ${path.relative(repoRoot, assembled)}\n`)
 
   if (packageInstaller) {
-    const finalSourceCommit = await verifyPackageSourceIdentity(repoRoot, bundle)
+    const finalSourceCommit = await verifyPackageSourceIdentity(repoRoot, stagedBundle)
     if (finalSourceCommit !== packageSourceCommit) throw new Error('Desktop source commit changed during NSIS packaging.')
     const nsisDirectory = path.join(targetRoot, 'bundle', 'nsis')
     const installers = (await readdir(nsisDirectory, { withFileTypes: true }))
