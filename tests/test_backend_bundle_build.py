@@ -8,6 +8,7 @@ import sys
 import tempfile
 import tomllib
 import unittest
+from unittest import mock
 
 from scripts import build_backend_bundle as builder
 
@@ -195,6 +196,103 @@ class BackendBundleBuildTests(unittest.TestCase):
 
         self.assertIn("added files (12): changed/00.bin, changed/01.bin, ... (+10)", summary)
         self.assertNotIn("changed/02.bin", summary)
+
+    def test_reproducibility_helper_accepts_exit_one_and_projects_safe_schema(self) -> None:
+        report = {
+            "schema_version": 1,
+            "equal": False,
+            "summary": {"sha256": ["a" * 64, "b" * 64], "size_bytes": [10, 11]},
+            "pe": {
+                "changed_fields": ["TimeDateStamp"],
+                "section_count": [3, 3],
+                "changed_section_count": 1,
+                "changed_sections": [".rsrc"],
+            },
+            "carchive": {
+                "order_equal": True,
+                "entry_count": [2, 2],
+                "only_left_count": 0,
+                "only_right_count": 0,
+                "changed_payload_count": 0,
+                "changed_entry_metadata_count": 0,
+                "changed_script_count": 1,
+                "serialization_only_script_count": 0,
+                "only_left": [],
+                "only_right": [],
+                "changed_payloads": [],
+                "changed_entry_metadata": [],
+                "changed_scripts": ["apex_entry"],
+                "changed_script_code_fields": ["co_consts"],
+                "pyz": [],
+                "base_library_zip": None,
+            },
+        }
+        completed = mock.Mock(returncode=1, stdout=json.dumps(report), stderr="private diagnostic path")
+
+        with mock.patch.object(builder.subprocess, "run", return_value=completed) as run:
+            result = builder._executable_reproducibility_diagnostics(
+                Path("isolated-python.exe"), Path("first.exe"), Path("second.exe")
+            )
+
+        self.assertIsNotNone(result)
+        self.assertIn('"equal":false', result)
+        self.assertIn('"changed_fields":["TimeDateStamp"]', result)
+        self.assertIn('"changed_sections":[".rsrc"]', result)
+        self.assertIn('"changed_script_code_fields":["co_consts"]', result)
+        self.assertNotIn("private diagnostic path", result)
+        self.assertEqual(run.call_args.args[0][0], "isolated-python.exe")
+
+        report["carchive"]["changed_scripts"] = ["C:/Users/runner/private.py"]
+        completed.stdout = json.dumps(report)
+        with mock.patch.object(builder.subprocess, "run", return_value=completed):
+            unsafe_result = builder._executable_reproducibility_diagnostics(
+                Path("isolated-python.exe"), Path("first.exe"), Path("second.exe")
+            )
+        self.assertIsNone(unsafe_result)
+
+    def test_forensic_helper_failure_does_not_hide_reproducibility_failure(self) -> None:
+        first = {
+            "build_id": "build-id",
+            "files": [{"path": "apex-backend.exe", "sha256": "a", "size": 1}],
+            "schema_version": 1,
+        }
+        second = {
+            "build_id": "build-id",
+            "files": [{"path": "apex-backend.exe", "sha256": "b", "size": 1}],
+            "schema_version": 1,
+        }
+        timeout = subprocess.TimeoutExpired("forensic-helper", 180)
+
+        with mock.patch.object(builder.subprocess, "run", side_effect=timeout):
+            with self.assertRaises(builder.BundleBuildError) as raised:
+                builder._raise_reproducibility_mismatch(
+                    first, second, Path("isolated-python.exe"), Path("first.exe"), Path("second.exe")
+                )
+
+        self.assertIn("Controlled PyInstaller builds produced different file hashes", str(raised.exception))
+        self.assertIn("changed files (1): apex-backend.exe", str(raised.exception))
+        self.assertIn("executable diagnostics unavailable", str(raised.exception))
+
+    def test_forensic_helper_rejects_unapproved_or_malformed_report_fields(self) -> None:
+        invalid_results = (
+            mock.Mock(returncode=2, stdout=json.dumps({"schema_version": 1, "error": "FileNotFoundError"}), stderr=""),
+            mock.Mock(
+                returncode=1,
+                stdout=json.dumps({
+                    "schema_version": 1,
+                    "equal": False,
+                    "local_path": "C:/Users/runner/private.exe",
+                }),
+                stderr="",
+            ),
+        )
+        for completed in invalid_results:
+            with mock.patch.object(builder.subprocess, "run", return_value=completed):
+                result = builder._executable_reproducibility_diagnostics(
+                    Path("isolated-python.exe"), Path("first.exe"), Path("second.exe")
+                )
+
+            self.assertIsNone(result)
 
     def test_backend_and_cli_entrypoints_expose_the_existing_commands(self) -> None:
         backend = subprocess.run(
