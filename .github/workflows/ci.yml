@@ -160,6 +160,7 @@ jobs:
           --probe build/backend-bundle/smoke-probe/apex-bundle-probe.exe
           --fastembed-cache "$env:RUNNER_TEMP\apex-distribution-smoke-assets\fastembed_cache"
           --kokoro-assets "$env:RUNNER_TEMP\apex-distribution-smoke-assets\kokoro"
+          --inference-timeout 600
           --strict --require-idle-release
           --report "$env:RUNNER_TEMP\backend-bundle-smoke-report.json"
 
