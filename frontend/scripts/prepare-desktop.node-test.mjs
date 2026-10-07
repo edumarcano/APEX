@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { assembleDesktopOutput } from './build-desktop.mjs'
+import { assembleDesktopOutput, exportInstallerOutput } from './build-desktop.mjs'
 import { stageBundle, verifyBundle } from './prepare-desktop.mjs'
 
 async function fixture(t) {
@@ -57,6 +57,12 @@ test('rejects a build-info identifier that differs from the manifest', async (t)
   entry.sha256 = createHash('sha256').update(bytes).digest('hex')
   await writeFile(manifestPath, JSON.stringify(manifest))
   await assert.rejects(verifyBundle(source), /identifiers differ/)
+})
+
+test('rejects a staged backend built for a different application version', async (t) => {
+  const source = await fixture(t)
+
+  await assert.rejects(verifyBundle(source, { expectedVersion: '2.2.0' }), /does not match desktop version 2.2.0/)
 })
 
 test('preserves the previous staged bundle when a replacement source is corrupt', async (t) => {
@@ -139,6 +145,55 @@ test('assembles the executable beside the complete staged bundle', async (t) => 
   assert.equal(await verifyBundle(path.join(output, 'backend-bundle')), 'test-build')
 })
 
+test('exports only the current installer and records source and bundle identity', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'apex-installer-export-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const source = path.join(root, 'APEX_2.0.0_x64-setup.exe')
+  const replacement = path.join(root, 'APEX_2.1.0_x64-setup.exe')
+  await writeFile(source, 'old installer')
+  await writeFile(replacement, 'current installer')
+
+  await exportInstallerOutput({ repositoryRoot: root, sourceInstaller: source, version: '2.0.0', sourceCommit: 'old-commit', backendBuildId: 'old-build' })
+  const current = await exportInstallerOutput({ repositoryRoot: root, sourceInstaller: replacement, version: '2.1.0', sourceCommit: 'current-commit', backendBuildId: 'current-build' })
+  const output = path.dirname(current)
+  const files = await readdir(output)
+  const receipt = JSON.parse(await readFile(path.join(output, 'distribution-manifest.json'), 'utf8'))
+
+  assert.equal(path.basename(current), path.basename(replacement))
+  assert.deepEqual(files.sort(), ['APEX_2.1.0_x64-setup.exe', 'APEX_2.1.0_x64-setup.exe.sha256', 'distribution-manifest.json'])
+  assert.equal(receipt.version, '2.1.0')
+  assert.equal(receipt.source_commit, 'current-commit')
+  assert.equal(receipt.backend_build_id, 'current-build')
+  assert.equal(receipt.installer_sha256, createHash('sha256').update('current installer').digest('hex'))
+})
+
+test('refuses installer export through a junction before writing outside the build directory', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'apex-installer-junction-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const buildRoot = path.join(root, 'build', 'desktop-shell')
+  const external = path.join(root, 'external')
+  await mkdir(buildRoot, { recursive: true })
+  await mkdir(external)
+  await writeFile(path.join(external, 'keep.txt'), 'preserve')
+  const target = path.join(buildRoot, 'installers')
+  try {
+    await symlink(external, target, process.platform === 'win32' ? 'junction' : 'dir')
+  } catch (error) {
+    if (process.platform === 'win32' && ['EPERM', 'EACCES', 'UNKNOWN'].includes(error.code)) {
+      t.skip('The host does not permit creating a test junction.')
+      return
+    }
+    throw error
+  }
+  const source = path.join(root, 'APEX_2.1.0_x64-setup.exe')
+  await writeFile(source, 'installer')
+
+  await assert.rejects(exportInstallerOutput({ repositoryRoot: root, sourceInstaller: source, version: '2.1.0', sourceCommit: 'commit', backendBuildId: 'build' }), /outside build\/desktop-shell\/installers/)
+  assert.equal(await readFile(path.join(external, 'keep.txt'), 'utf8'), 'preserve')
+  assert.equal((await readdir(external)).includes('APEX_2.1.0_x64-setup.exe'), false)
+  assert.equal((await lstat(target)).isSymbolicLink(), true)
+})
+
 test('refuses an output directory outside the repository before deleting it', async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'apex-output-guard-'))
   t.after(() => rm(root, { recursive: true, force: true }))
@@ -188,7 +243,7 @@ async function fixtureAt(t, root) {
     'apex.exe': Buffer.from('cli'),
     LICENSE: Buffer.from('license'),
     'THIRD_PARTY_NOTICES.md': Buffer.from('notices'),
-    '_internal/build-info.json': Buffer.from(JSON.stringify({ build_id: 'test-build' })),
+    '_internal/build-info.json': Buffer.from(JSON.stringify({ app_version: '2.1.0', build_id: 'test-build' })),
     '_internal/licenses/example.txt': Buffer.from('internal license'),
     'licenses/source-material/example.txt': Buffer.from('source'),
   }

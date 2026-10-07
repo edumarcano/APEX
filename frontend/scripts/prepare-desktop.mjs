@@ -65,7 +65,7 @@ function isCanonicalBundlePath(value) {
     path.posix.normalize(value) === value && !path.posix.isAbsolute(value)
 }
 
-export async function verifyBundle(root) {
+export async function verifyBundle(root, { expectedVersion } = {}) {
   const rootInfo = await lstat(root).catch(() => null)
   if (!rootInfo?.isDirectory() || rootInfo.isSymbolicLink()) fail('root must be a real directory.')
 
@@ -111,6 +111,9 @@ export async function verifyBundle(root) {
     fail('build identity is missing or invalid.')
   }
   if (buildInfo.build_id !== manifest.build_id) fail('manifest and build-info identifiers differ.')
+  if (expectedVersion && buildInfo.app_version !== expectedVersion) {
+    fail(`application version ${buildInfo.app_version ?? 'is missing'} does not match desktop version ${expectedVersion}.`)
+  }
 
   const requiredFiles = ['apex-backend.exe', 'apex.exe', 'LICENSE', 'THIRD_PARTY_NOTICES.md', '_internal/build-info.json']
   if (requiredFiles.some((file) => !expected.has(file)) || ![...expected].some((file) => file.startsWith('licenses/'))) {
