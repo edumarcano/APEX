@@ -122,7 +122,7 @@ jobs:
       - name: Install uv and Python
         uses: astral-sh/setup-uv@v6
         with:
-          uv-version: "0.12.3"
+          version: "0.12.3"
           python-version: "3.14.7"
           enable-cache: true
 
