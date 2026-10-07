@@ -13,6 +13,22 @@ from scripts import provision_distribution_smoke_assets as assets
 from scripts import smoke_distribution as distribution
 
 
+def _create_test_junction(link: Path, target: Path, workdir: Path) -> None:
+    creator = workdir / "create-test-junction.ps1"
+    creator.write_text(
+        "param([Parameter(Mandatory=$true)][string]$Link, [Parameter(Mandatory=$true)][string]$Target)\n"
+        "New-Item -ItemType Junction -Path $Link -Target $Target -ErrorAction Stop | Out-Null\n",
+        encoding="utf-8-sig",
+    )
+    result = distribution._run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-File", str(creator), str(link), str(target)],
+        cwd=workdir,
+        timeout=20,
+    )
+    if result.returncode != 0 or not os.path.isjunction(link):
+        raise AssertionError("Windows test junction could not be created")
+
+
 class DistributionSmokeGuardTests(unittest.TestCase):
     def test_refuses_operator_account_even_when_profile_marker_exists(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -49,6 +65,65 @@ class DistributionSmokeGuardTests(unittest.TestCase):
                 distribution, "_run", return_value=completed,
             ):
                 distribution._guard_disposable_profile(local)
+
+    @unittest.skipUnless(os.name == "nt", "directory junction containment is a Windows path check")
+    def test_guard_accepts_directory_junction_resolving_inside_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            user = root / "DisposableUser"
+            actual_local = user / "AppData" / "Local"
+            actual_local.mkdir(parents=True)
+            alias_local = root / "LocalAlias"
+            _create_test_junction(alias_local, actual_local, root)
+            (actual_local / distribution.PROFILE_MARKER).write_text(
+                "APEX-DISTRIBUTION-SMOKE:fixture-identifier:S-1-5-21-2", encoding="utf-8"
+            )
+            profile_info = json.dumps({"SID": "S-1-5-21-2", "LocalPath": str(user), "Special": False})
+            completed = type("Result", (), {"returncode": 0, "stdout": profile_info})()
+            try:
+                with patch.dict(os.environ, {
+                    "LOCALAPPDATA": str(alias_local),
+                    "USERPROFILE": str(user),
+                    "APEX_DISTRIBUTION_SMOKE_PROFILE": "1",
+                    "APEX_DISTRIBUTION_SMOKE_OPERATOR_SID": "S-1-5-21-1",
+                }), patch.object(distribution, "_current_sid", return_value="S-1-5-21-2"), patch.object(
+                    distribution, "_run", return_value=completed,
+                ) as run:
+                    distribution._guard_disposable_profile(alias_local)
+                self.assertEqual(run.call_args.kwargs["cwd"], user.resolve())
+            finally:
+                # Remove the reparse point itself; never recurse through it.
+                os.rmdir(alias_local)
+
+    @unittest.skipUnless(os.name == "nt", "directory junction containment is a Windows path check")
+    def test_guard_rejects_directory_junction_resolving_outside_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            user = root / "DisposableUser"
+            outside = root / "OutsideProfile"
+            (user / "AppData").mkdir(parents=True)
+            outside.mkdir()
+            alias_local = user / "AppData" / "Local"
+            _create_test_junction(alias_local, outside, root)
+            (outside / distribution.PROFILE_MARKER).write_text(
+                "APEX-DISTRIBUTION-SMOKE:fixture-identifier:S-1-5-21-2", encoding="utf-8"
+            )
+            completed = type("Result", (), {"returncode": 0, "stdout": ""})()
+            try:
+                with patch.dict(os.environ, {
+                    "LOCALAPPDATA": str(alias_local),
+                    "USERPROFILE": str(user),
+                    "APEX_DISTRIBUTION_SMOKE_PROFILE": "1",
+                    "APEX_DISTRIBUTION_SMOKE_OPERATOR_SID": "S-1-5-21-1",
+                }), patch.object(distribution, "_current_sid", return_value="S-1-5-21-2"), patch.object(
+                    distribution, "_run", return_value=completed,
+                ) as run:
+                    with self.assertRaisesRegex(distribution.DistributionError, "outside the current Windows user profile"):
+                        distribution._guard_disposable_profile(alias_local)
+                    run.assert_not_called()
+            finally:
+                # Remove the reparse point itself; never recurse through it.
+                os.rmdir(alias_local)
 
     def test_owned_process_inventory_requires_creation_time_match(self) -> None:
         root = Path("C:/Users/test/AppData/Local/Programs/APEX")

@@ -106,6 +106,10 @@ def _profile_root() -> Path:
 
 
 def _guard_disposable_profile(profile: Path) -> None:
+    # Canonicalize both sides before enforcing containment. Windows CI may
+    # expose temp directories through junction aliases, so a raw profile path
+    # can appear outside USERPROFILE even when both resolve inside it.
+    profile = profile.resolve()
     if os.environ.get("APEX_DISTRIBUTION_SMOKE_PROFILE") != "1":
         raise DistributionError(
             "refusing installer execution without APEX_DISTRIBUTION_SMOKE_PROFILE=1 in a disposable Windows account"
