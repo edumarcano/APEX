@@ -356,6 +356,31 @@ def _has_embedded_manifest(executable: Path) -> bool:
         kernel32.FreeLibrary(ctypes.c_void_p(handle))
 
 
+def _shortcut_app_id(shortcut: Path, *, cwd: Path) -> str:
+    # A PowerShell single-quoted literal is safe when embedded in this trusted
+    # script after doubling every quote from the path. This avoids relying on
+    # `-Command` positional argument binding, which does not bind trailing
+    # tokens to `$args` as callers often expect.
+    literal_path = str(shortcut.resolve()).replace("'", "''")
+    script = (
+        f"$shortcutPath = '{literal_path}'; "
+        "$shell=New-Object -ComObject Shell.Application; "
+        "$item=$shell.Namespace([System.IO.Path]::GetDirectoryName($shortcutPath))."
+        "ParseName([System.IO.Path]::GetFileName($shortcutPath)); "
+        "if($null -eq $item){throw 'Shortcut metadata item unavailable'}; "
+        "$id=$item.ExtendedProperty('System.AppUserModel.ID'); "
+        "if($null -ne $id){[Console]::Write([string]$id)}"
+    )
+    result = _run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+        cwd=cwd,
+        timeout=20,
+    )
+    if result.returncode != 0:
+        raise DistributionError("could not read the Start Menu shortcut AppUserModelID property")
+    return result.stdout.strip()
+
+
 def _validate_registration(
     profile: Path, install: Path, expected_version: str, *, expected_startup: bool = False,
 ) -> None:
@@ -382,14 +407,8 @@ def _validate_registration(
         raise DistributionError("APEX Start Menu shortcut is missing")
     # The NSIS shortcut is expected to carry the same AppUserModelID used by
     # the executable manifest so Windows groups installed notifications.
-    script = (
-        "$s=(New-Object -ComObject WScript.Shell).CreateShortcut($args[0]); "
-        "$sh=New-Object -ComObject Shell.Application; "
-        "$item=$sh.Namespace((Split-Path $args[0])).ParseName((Split-Path $args[0] -Leaf)); "
-        "$id=$item.ExtendedProperty('System.AppUserModel.ID'); if($id){$id}"
-    )
-    shortcut_id = _run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script, str(links[0])], cwd=profile, timeout=20)
-    if shortcut_id.returncode != 0 or APP_ID not in shortcut_id.stdout:
+    shortcut_id = _shortcut_app_id(links[0], cwd=profile)
+    if shortcut_id != APP_ID:
         raise DistributionError("Start Menu shortcut does not expose the expected APEX AppUserModelID")
     # LoadLibraryEx/FindResource avoids depending on SDK tools on clean hosts.
     if not _has_embedded_manifest(install / "apex-desktop.exe"):

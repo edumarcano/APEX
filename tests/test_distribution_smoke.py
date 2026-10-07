@@ -128,6 +128,33 @@ class DistributionSmokeGuardTests(unittest.TestCase):
             with self.assertRaisesRegex(distribution.DistributionError, "fixture commit"):
                 distribution._validate_previous_build({**fixture, "fixture_commit": "b" * 40}, build_info, "2.0.0")
 
+    @unittest.skipUnless(os.name == "nt", "shortcut AppUserModelID is a Windows Shell property")
+    def test_shortcut_property_reader_handles_apostrophe_and_spaces_without_launching(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            shortcut_dir = root / "O'Brien and spaces"
+            shortcut_dir.mkdir()
+            shortcut = shortcut_dir / "APEX fixture.lnk"
+            creator = root / "create-shortcut.ps1"
+            creator.write_text(
+                "param([Parameter(Mandatory=$true)][string]$ShortcutPath)\n"
+                "$shell = New-Object -ComObject WScript.Shell\n"
+                "$link = $shell.CreateShortcut($ShortcutPath)\n"
+                "$link.TargetPath = Join-Path $env:WINDIR 'System32\\notepad.exe'\n"
+                "$link.Save()\n",
+                encoding="utf-8-sig",
+            )
+            created = distribution._run(
+                ["powershell.exe", "-NoProfile", "-NonInteractive", "-File", str(creator), str(shortcut)],
+                cwd=root,
+                timeout=20,
+            )
+            self.assertEqual(created.returncode, 0, created.stdout)
+            self.assertTrue(shortcut.is_file())
+            # The fixture intentionally has no AUMID; success proves the
+            # production helper safely opened the shortcut and read property.
+            self.assertEqual(distribution._shortcut_app_id(shortcut, cwd=root), "")
+
     def test_runtime_identity_uses_production_data_root_fingerprint_contract(self) -> None:
         data = Path("C:/Users/test/AppData/Local/APEX")
         build = {"build_id": "build-identifier"}
