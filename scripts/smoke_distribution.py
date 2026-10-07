@@ -754,7 +754,9 @@ def _remove_run_value_if_matches(expected: str) -> None:
         raise DistributionError("Windows startup state mutation is unavailable")
     path = r"Software\Microsoft\Windows\CurrentVersion\Run"
     try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_SET_VALUE) as key:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_QUERY_VALUE | winreg.KEY_SET_VALUE,
+        ) as key:
             current, _kind = winreg.QueryValueEx(key, APP_NAME)
             if current != expected:
                 raise DistributionError("startup ownership fixture changed unexpectedly")
@@ -770,7 +772,9 @@ def _remove_approval_if_matches(expected: bytes) -> None:
         raise DistributionError("Windows startup state mutation is unavailable")
     path = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
     try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_SET_VALUE) as key:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_QUERY_VALUE | winreg.KEY_SET_VALUE,
+        ) as key:
             current, kind = winreg.QueryValueEx(key, APP_NAME)
             if kind != winreg.REG_BINARY or bytes(current) != expected:
                 raise DistributionError("startup approval changed outside the owned fixture")

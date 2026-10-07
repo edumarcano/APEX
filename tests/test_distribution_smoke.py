@@ -80,11 +80,15 @@ class DistributionSmokeGuardTests(unittest.TestCase):
 
         class Registry:
             HKEY_CURRENT_USER = object()
-            KEY_SET_VALUE = 1
+            KEY_QUERY_VALUE = 1
+            KEY_SET_VALUE = 2
+            REG_BINARY = 3
             values = {distribution.APP_NAME: ('"C:\\Windows\\System32\\notepad.exe" --foreign', 1)}
+            open_accesses: list[int] = []
 
             @classmethod
-            def OpenKey(cls, *_args: object) -> Key:
+            def OpenKey(cls, _root: object, _path: str, _reserved: int = 0, access: int = 0) -> Key:
+                cls.open_accesses.append(access)
                 return Key()
 
             @classmethod
@@ -101,7 +105,10 @@ class DistributionSmokeGuardTests(unittest.TestCase):
                 distribution._remove_run_value_if_matches('"C:\\Users\\test\\APEX.exe" --autostart')
             self.assertEqual(Registry.values[distribution.APP_NAME][0], foreign)
             distribution._remove_run_value_if_matches(foreign)
+            Registry.values[distribution.APP_NAME] = (bytes([2]) + bytes(11), Registry.REG_BINARY)
+            distribution._remove_approval_if_matches(bytes([2]) + bytes(11))
         self.assertNotIn(distribution.APP_NAME, Registry.values)
+        self.assertEqual(Registry.open_accesses, [3, 3, 3])
 
     @unittest.skipUnless(os.name == "nt", "the current-account SID is a Windows API check")
     def test_current_sid_comes_from_windows_identity(self) -> None:
