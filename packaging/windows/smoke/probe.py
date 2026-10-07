@@ -158,8 +158,8 @@ def _semantic_assets() -> dict[str, object]:
     elif os.environ.get("APEX_SMOKE_REQUIRE_IDLE_RELEASE") == "1":
         raise RuntimeError("candidate frozen probe requires RetrievalService.release_if_idle")
     close = getattr(service, "close", None)
-    if callable(close):
-        close(timeout_seconds=30.0)
+    if callable(close) and close(timeout_seconds=30.0) is not True:
+        raise RuntimeError("semantic retrieval runtime did not close within its bounded drain")
     return {
         "initial_retrieval_mode": initial_mode,
         "retrieval_mode": "semantic",

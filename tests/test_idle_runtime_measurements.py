@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import unittest
 
 from scripts.idle_runtime_measurements import OwnedProcessSampler, ProcessRoot
+from scripts.smoke_desktop_shell import _trace_summary
 
 
 class _FakeProcess:
@@ -147,6 +148,32 @@ class OwnedProcessSamplerTests(unittest.TestCase):
         self.assertEqual(measurement["sample_count"], 3)
         self.assertEqual([sample["elapsed_seconds"] for sample in measurement["samples"]], [0.0, 1.0, 2.0])
         self.assertEqual(len(measurement["samples"][1]["process_cpu_deltas"]), 2)
+
+
+class IdleSmokeDiagnosticTests(unittest.TestCase):
+    def test_tool_failure_reports_only_safe_error_category(self) -> None:
+        message = {
+            "response_metadata": {
+                "tool_trace": [{"name": "search_apex_docs", "status": "error"}],
+                "tool_outputs": [{
+                    "name": "search_apex_docs",
+                    "status": "error",
+                    "output": {
+                        "error": "private diagnostic detail",
+                        "error_category": "invalid-input",
+                    },
+                }],
+            },
+        }
+
+        summary = _trace_summary(message)
+
+        self.assertEqual(summary, [{
+            "name": "search_apex_docs",
+            "status": "error",
+            "error_category": "invalid-input",
+        }])
+        self.assertNotIn("private diagnostic detail", str(summary))
 
 
 if __name__ == "__main__":

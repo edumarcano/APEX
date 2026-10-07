@@ -1062,7 +1062,6 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--probe", type=Path, help="Separate build-only frozen probe executable.")
     parser.add_argument("--report", type=Path, help="Optional JSON report output file.")
     parser.add_argument("--strict", action="store_true", help="Require real optional model assets and every branch-3 bundle check to pass.")
-    parser.add_argument("--require-idle-release", action="store_true", help="Require the real FastEmbed and Kokoro release/reload probes to pass; omit for informational baseline runs.")
     parser.add_argument("--require-idle-release", action="store_true", help="Fail unless real FastEmbed and Kokoro sessions release after five idle minutes and reacquire from cached assets.")
     parser.add_argument("--fastembed-cache", type=Path, help="Test-only external FastEmbed model cache.")
     parser.add_argument("--kokoro-assets", type=Path, help="Test-only directory containing Kokoro ONNX and voice files.")

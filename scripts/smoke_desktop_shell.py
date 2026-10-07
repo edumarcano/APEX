@@ -671,6 +671,18 @@ def _conversation_agent_result(conversation_id: str, agent_message_id: str) -> d
 def _trace_summary(message: dict[str, object] | None) -> list[dict[str, str]]:
     metadata = message.get("response_metadata") if isinstance(message, dict) else None
     trace = metadata.get("tool_trace") if isinstance(metadata, dict) else None
+    outputs = metadata.get("tool_outputs") if isinstance(metadata, dict) else None
+    categories: dict[str, str] = {}
+    if isinstance(outputs, list):
+        for item in outputs:
+            if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+                continue
+            output = item.get("output")
+            category = output.get("error_category") if isinstance(output, dict) else None
+            if isinstance(category, str):
+                # Capability categories are public, bounded diagnostics. Never
+                # copy the user-facing error message or tool output into reports.
+                categories[item["name"]] = category[:80]
     result: list[dict[str, str]] = []
     if isinstance(trace, list):
         for item in trace:
@@ -678,7 +690,13 @@ def _trace_summary(message: dict[str, object] | None) -> list[dict[str, str]]:
                 continue
             name, status = item.get("name"), item.get("status")
             if isinstance(name, str) and isinstance(status, str):
-                result.append({"name": name[:80], "status": status[:40]})
+                summary = {"name": name[:80], "status": status[:40]}
+                duration = item.get("duration_ms")
+                if isinstance(duration, (int, float)):
+                    summary["duration_ms"] = str(round(float(duration), 2))
+                if status == "error" and name in categories:
+                    summary["error_category"] = categories[name]
+                result.append(summary)
     return result
 
 
@@ -733,6 +751,49 @@ def _exercise_semantic_retrieval(fixture: LlamaCppStreamFixture) -> dict[str, ob
     retrieval_error = retrieval_status.get("error_category")
     message_status = message.get("status") if isinstance(message, dict) else None
     successful_tool = any(item["name"] == "search_apex_docs" and item["status"] == "ok" for item in trace)
+    initial_trace = trace
+    initial_tool_error_category = next(
+        (item.get("error_category") for item in trace if item.get("name") == "search_apex_docs" and item.get("status") == "error"),
+        None,
+    )
+    retry_trace: list[dict[str, str]] = []
+    retry_terminal: dict[str, object] = {}
+    retry_error_category: str | None = None
+    if (
+        caught is None
+        and not successful_tool
+        and initial_tool_error_category == "timeout"
+        and mode == "semantic"
+        and retrieval_state == "ready"
+        and isinstance(conversation_id, str)
+    ):
+        # A timed-out synchronous capability can continue in its worker thread.
+        # The next real search waits on the retrieval service's sync lock and
+        # verifies that the corpus backfill eventually completes.
+        try:
+            fixture.search_tool_requests.add(fixture.request_count)
+            retry_run = _start_cortex_run(
+                conversation_id,
+                "Use search_apex_docs to locate the local-first workspace guidance and summarize it.",
+            )
+            retry_terminal = _wait_cortex_run(str(retry_run["id"]), 180.0)
+            retry_message = _conversation_agent_result(conversation_id, str(retry_run.get("agent_message_id", "")))
+            retry_trace = _trace_summary(retry_message)
+            status_value = _http_json("/api/v1/cortex/retrieval/status", timeout=10.0)
+            retrieval_status = status_value if isinstance(status_value, dict) else {}
+            mode = retrieval_status.get("mode")
+            retrieval_state = retrieval_status.get("state")
+            retrieval_error = retrieval_status.get("error_category")
+            completion_event = retry_terminal.get("status") == "completed" and _run_completion_replayed(str(retry_run["id"]))
+            successful_tool = any(item["name"] == "search_apex_docs" and item["status"] == "ok" for item in retry_trace)
+            if successful_tool:
+                run = retry_run
+                terminal = retry_terminal
+                message = retry_message
+                trace = retry_trace
+                message_status = message.get("status") if isinstance(message, dict) else None
+        except Exception as exc:
+            retry_error_category = type(exc).__name__
     evidence = terminal.get("evidence")
     persisted = evidence.get("answer_persisted") if isinstance(evidence, dict) else None
     terminal_error = terminal.get("error")
@@ -744,6 +805,11 @@ def _exercise_semantic_retrieval(fixture: LlamaCppStreamFixture) -> dict[str, ob
         "message_status": message_status,
         "error_category": error_category,
         "tool_trace": trace,
+        "initial_tool_trace": initial_trace,
+        "initial_tool_error_category": initial_tool_error_category,
+        "retry_tool_trace": retry_trace,
+        "retry_error_category": retry_error_category,
+        "retry_run_status": retry_terminal.get("status"),
         "retrieval_mode": mode,
         "retrieval_state": retrieval_state,
         "retrieval_error_category": retrieval_error,
@@ -761,7 +827,14 @@ def _exercise_semantic_retrieval(fixture: LlamaCppStreamFixture) -> dict[str, ob
         and completion_event
     ):
         raise IdleDemandFailure("semantic_retrieval_demand_failed", diagnostics)
-    return {"conversation_id": conversation_id, "run_id": str(run["id"]), "tool_called": True, "retrieval_mode": mode}
+    return {
+        "conversation_id": conversation_id,
+        "run_id": str(run["id"]),
+        "tool_called": True,
+        "retrieval_mode": mode,
+        "initial_tool_error_category": initial_tool_error_category,
+        "retried_tool": bool(retry_trace),
+    }
 
 
 def _exercise_kokoro_synthesis() -> dict[str, object]:
@@ -838,6 +911,8 @@ def _run_idle_workload_scenario(
         "status": "passed",
         "retrieval_mode": first_semantic["retrieval_mode"],
         "speech_engine": first_speech["engine"],
+        "initial_tool_error_category": first_semantic.get("initial_tool_error_category"),
+        "retried_tool_after_initial_timeout": first_semantic.get("retried_tool", False),
     })
 
     _measure_idle_phase(report, sampler, "visible_idle_after_inference", visible_idle_seconds)
@@ -2212,6 +2287,7 @@ def _run_smoke(
     fixture: LlamaCppStreamFixture | None = None
     driver_log_paths: list[tuple[str, Path]] = []
     held_api_port: socket.socket | None = None
+    stream_backend_handle: int | None = None
     root: Path | None = None
     with tempfile.TemporaryDirectory(
         prefix="apex-desktop-smoke-", delete=False
@@ -2457,6 +2533,16 @@ def _run_smoke(
                 raise SmokeFailure("fixture-session Fresh Start was unavailable")
             profile_root = Path(stream_env["APEX_DATA_DIR"])
             runtime = _runtime_identity(profile_root, min(60.0, timeout))
+            stream_backend_handle, backend_image = _process_image_path(int(runtime["pid"]))
+            if backend_image.resolve() != _expected_backend_image(application):
+                _close_handle(stream_backend_handle)
+                stream_backend_handle = None
+                raise SmokeFailure("fixture runtime PID is not the bundled backend executable")
+            confirmed_runtime = _runtime_identity(profile_root, 5.0)
+            if confirmed_runtime.get("pid") != runtime.get("pid") or confirmed_runtime.get("instance_id") != runtime.get("instance_id"):
+                _close_handle(stream_backend_handle)
+                stream_backend_handle = None
+                raise SmokeFailure("fixture runtime identity changed while opening its exact child process handle")
             report.add("fixture_backend_identity", "passed", "second managed launch used its isolated profile and local provider fixture")
             if measure_idle:
                 report.measurement_metadata["application_build"] = {
@@ -2865,25 +2951,26 @@ def _run_smoke(
                     driver_process.kill()
                     driver_process.wait(timeout=5)
             if not any(check.name == "owned_backend_cleanup" for check in report.checks):
-                try:
-                    remaining = _runtime_identity(profile_root, 3.0)
-                except SmokeFailure:
-                    report.add("owned_backend_cleanup", "unverified", "smoke exited before the exact managed child handle and API port release could be proved")
+                if stream_backend_handle is None:
+                    report.add("owned_backend_cleanup", "unverified", "smoke ended before the exact managed child handle and API port release could be proved")
                 else:
                     try:
-                        _terminate_verified_backend(
-                            int(remaining["pid"]),
-                            application,
-                            profile_root,
-                            remaining["instance_id"],
-                        )
+                        if not _wait_process_handle(stream_backend_handle, 0):
+                            # This handle was opened while the profile identity
+                            # and executable image were verified. Windows keeps
+                            # it bound to that process even if the PID is reused.
+                            _terminate_process_handle(stream_backend_handle, "identity-matched fixture backend child")
+                        if not _wait_process_handle(stream_backend_handle, 10.0):
+                            raise SmokeFailure("verified fixture backend child did not exit after bounded cleanup")
+                        if not _wait_port_free(10.0):
+                            raise SmokeFailure("verified fixture backend exited but 127.0.0.1:8000 remained occupied")
                     except (SmokeFailure, OSError, ValueError) as exc:
-                        report.add("owned_backend_cleanup", "failed", f"could not stop only the identity-matched child: {exc}")
+                        report.add("owned_backend_cleanup", "failed", f"exact managed child cleanup could not be verified: {exc}")
                     else:
-                        if _wait_port_free(10.0):
-                            report.add("owned_backend_cleanup", "passed", "exception cleanup terminated the verified child and fixed API port is free")
-                        else:
-                            report.add("owned_backend_cleanup", "failed", "verified child exited but 127.0.0.1:8000 remained occupied")
+                        report.add("owned_backend_cleanup", "passed", "exact managed child handle signaled exit and 127.0.0.1:8000 was free")
+            if stream_backend_handle is not None:
+                _close_handle(stream_backend_handle)
+                stream_backend_handle = None
 
     if root is not None and root.exists():
         cleanup_errors = _cleanup_temp_root(root)
