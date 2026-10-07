@@ -137,6 +137,16 @@ npm run dev
 
 Vite serves on its development port and calls the FastAPI process at `127.0.0.1:8000`.
 
+## Windows desktop installation
+
+The per-user Windows installer places the shell and its bundled backend under `%LOCALAPPDATA%\Programs\APEX`. APEX keeps its mutable profile separately under `%LOCALAPPDATA%\APEX`; uninstalling the application does not remove that profile. See [Configuration](configuration.md#where-settings-live) for the data directory and [Privacy](privacy.md#retention-and-deletion) for deletion boundaries.
+
+The installer uses the WebView2 download bootstrapper. If the WebView2 Runtime is already installed, setup can use it directly; if it is missing, setup needs network access to download it. The installed app does not require Python, Node.js, Rust, or developer tools.
+
+Before upgrading, quit APEX from the tray and stop any separately started APEX backend or CLI process that is using the installed program files. If setup detects a running installed process, it asks you to quit it and retry; it does not force-terminate it.
+
+For the installer build, packaging command, artifact location, and validation steps, see [Windows backend bundle](backend-bundle.md#desktop-build-installer-and-validation).
+
 ## First run in the Windows desktop app
 
 The desktop app asks whether to start fresh or copy an existing APEX data folder before opening the interface. Choose **Import** to preview a stopped source checkout or another supported data folder, review the managed files, and copy them into the desktop profile. If the source process used `APEX_DATA_DIR`, choose that actual data folder directly; the desktop app does not search a source `.env` to discover it. Import does not merge profiles and leaves the source unchanged. Close APEX in the source folder before importing so its SQLite database is not changing during the copy.

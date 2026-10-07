@@ -76,9 +76,9 @@ The bundle contains the backend runtime, standalone CLI, default configuration, 
 
 The manifest records the source commit, reproducibility seed, staged notices, and final output files. Rebuild from the same commit and `SOURCE_DATE_EPOCH` to compare output manifests and verify reproducibility.
 
-## Desktop build handoff
+## Desktop build, installer, and validation
 
-Build the backend bundle before starting the Vite build. The desktop preparation step stages the complete repository-level `dist/backend-bundle` tree at `frontend/src-tauri/resources/backend-bundle`; Vite clears the repository-level `dist` directory, so prepare must finish first. The native assembly step later copies that staged tree beside `APEX.exe` in `build/desktop-shell/APEX/backend-bundle`. Preserve the executable, its adjacent `_internal` directory, configuration and demo resources, and license notices together. Do not stage only the executable.
+Build the backend bundle before starting the Vite build. The desktop preparation step stages the complete repository-level `dist/backend-bundle` tree at `frontend/src-tauri/resources/backend-bundle`; Vite clears the repository-level `dist` directory, so preparation must finish first. The folder assembly step copies that staged tree beside the portable `APEX.exe` in `build/desktop-shell/APEX/backend-bundle`. The installer instead installs the Tauri executable as `apex-desktop.exe` beside `backend-bundle/apex-backend.exe`. Keep the full bundle, including `_internal`, configuration, demo resources, and license notices, intact in both outputs.
 
 From the repository root, prepare the locked backend bundle, then run the desktop commands from `frontend`:
 
@@ -88,24 +88,66 @@ uv run --locked --all-extras --python 3.14.7 python scripts/build_backend_bundle
 Push-Location frontend
 npm run desktop:prepare
 npm run desktop:build
+npm run desktop:package
 Pop-Location
 ```
 
-For repeat desktop builds after Vite clears repository-level `dist`, `desktop:prepare` reuses and validates the complete staged bundle by default. If you pass `--bundle` explicitly, the value must be an absolute path.
+`desktop:build` assembles the portable folder at `build/desktop-shell/APEX/`; it does not create an installer. `desktop:package` uses the pinned Rust `1.99.0` toolchain and the locked npm, Cargo, and Python dependencies to create the x64 MSVC NSIS per-user installer. It invokes the Tauri build for `x86_64-pc-windows-msvc` with the `nsis` bundle and Cargo `--locked`. It keeps the same assembled folder and writes the installer and `distribution-manifest.json` receipt under `build/desktop-shell/installers/`. Rust outputs stay under the target-specific `frontend/src-tauri/target/x86_64-pc-windows-msvc/` directory.
 
-The assembled native executable is `build/desktop-shell/APEX/APEX.exe`. The sibling `backend-bundle` directory is part of its runtime and must remain intact. The shell stores mutable operator state in its selected data directory, outside these installed resources.
-
-Run the real WebView2 gate with a `tauri-driver` installation and the Microsoft Edge WebDriver binary matching the host WebView2/Edge version. The smoke launches the supplied executable, guards the fixed API port, sets a disposable data profile and `DEMO_MODE`, and writes a JSON report under the local build directory:
+For repeat desktop builds after Vite clears repository-level `dist`, `desktop:prepare` reuses and validates the complete staged bundle by default. If you pass `--bundle` explicitly, use the same absolute path with preparation and either build command:
 
 ```powershell
-uv run --locked --all-extras --python 3.14.7 python scripts/smoke_desktop_shell.py `
-  --application build/desktop-shell/APEX/APEX.exe `
-  --driver C:\tools\tauri-driver.exe `
-  --native-driver C:\tools\msedgedriver.exe `
-  --report build/desktop-shell/smoke-report.json
+npm run desktop:prepare -- --bundle "C:\path\to\backend-bundle"
+npm run desktop:build -- --bundle "C:\path\to\backend-bundle"
+npm run desktop:package -- --bundle "C:\path\to\backend-bundle"
 ```
 
-The smoke exercises native startup conflict and retry, the four workspaces, a demo Briefing, and Cortex through a disposable loopback llama.cpp-compatible streaming fixture. It waits for the first provider delta before clicking the real WebView Stop control, then checks persisted cancellation and run events. It also checks managed-child crash recovery, close-to-tray with backend and CLI access preserved, single-instance activation, tray Show and Quit, and exact owned-process cleanup. Tray checks must use actual Windows tray interaction; calling a frontend command does not count as exercising the tray. The installed-app notification and startup-registration gate is separate because Windows toast activation requires the installed package identity and Start Menu shortcut. Run that gate against an installed build and inspect actual OS notification delivery and startup registration; a successful notification API return alone does not prove that Windows displayed a toast. An essential case reported as `unverified` makes the command exit nonzero; review the JSON report with the build and do not treat an unverified case as a pass.
+### Distribution smoke checks
+
+The distribution smoke installs current and synthetic previous-version installers in a guarded disposable Windows account, then checks upgrade, uninstall, reinstall, the frozen probe, and data preservation. Its previous installer contains the actual `2.0.0` application payload with the current NSIS wiring; it is a test fixture, not a released APEX installer. The probe is validation-only and must not be copied into the production bundle.
+
+Use the asset provisioner to verify any external FastEmbed and Kokoro test assets before running the distribution smoke. It writes `apex-distribution-smoke-assets.json`, `fastembed_cache/`, and `kokoro/` into the destination you choose; keep these model files outside the repository and installer:
+
+```powershell
+uv run --locked --all-extras --python 3.14.7 python scripts/provision_distribution_smoke_assets.py `
+  --destination C:\apex-distribution-test-assets
+```
+
+Use the locations from that manifest for `--fastembed-cache` and `--kokoro-assets`. From the repository root, run CI-mode installer and headless checks with the generated installer, previous-version fixture, and frozen probe:
+
+```powershell
+uv run --locked --all-extras --python 3.14.7 python scripts/smoke_distribution.py `
+  --installer "C:\path\to\build\desktop-shell\installers\generated-installer.exe" `
+  --previous-installer "C:\path\to\synthetic-2.0.0-test-installer.exe" `
+  --previous-version 2.0.0 `
+  --probe build\backend-bundle\smoke-probe\apex-bundle-probe.exe `
+  --fastembed-cache "C:\apex-distribution-test-assets\fastembed_cache" `
+  --kokoro-assets "C:\apex-distribution-test-assets\kokoro" `
+  --mode ci `
+  --expected-version 2.1.0 `
+  --report build\desktop-shell\distribution-ci-report.json
+```
+
+The smoke script refuses to run installers in the operator's Windows account. Run it under a dedicated ordinary Windows user. Set `APEX_DISTRIBUTION_SMOKE_PROFILE=1`, set `APEX_DISTRIBUTION_SMOKE_OPERATOR_SID` to the real operator account SID, and create `%LOCALAPPDATA%\.apex-distribution-smoke-profile` with `APEX-DISTRIBUTION-SMOKE:<unique-id>:<disposable-account-SID>`. The harness checks the marker against the current account and Windows profile registration before it launches an installer. CI mode cannot verify the visible WebView2 shell, tray, startup, notification delivery, or foreground location permission; it reports those checks as `unverified`.
+
+Run interactive mode on a Windows VM with a visible desktop, `tauri-driver`, and the matching Microsoft Edge WebDriver installed. Use the same installer, previous-version fixture, and test assets, and provide the driver paths:
+
+```powershell
+uv run --locked --all-extras --python 3.14.7 python scripts/smoke_distribution.py `
+  --installer "C:\path\to\build\desktop-shell\installers\generated-installer.exe" `
+  --previous-installer "C:\path\to\synthetic-2.0.0-test-installer.exe" `
+  --previous-version 2.0.0 `
+  --probe build\backend-bundle\smoke-probe\apex-bundle-probe.exe `
+  --fastembed-cache "C:\apex-distribution-test-assets\fastembed_cache" `
+  --kokoro-assets "C:\apex-distribution-test-assets\kokoro" `
+  --mode interactive `
+  --expected-version 2.1.0 `
+  --driver C:\tools\tauri-driver.exe `
+  --native-driver C:\tools\msedgedriver.exe `
+  --report build\desktop-shell\distribution-interactive-report.json
+```
+
+This exercises the installed WebView, tray, notifications, startup, and foreground location flow through the operating system. A clean-machine WebView2 bootstrap check requires a VM where the runtime is absent and network access is available. A build or CI-mode report is not evidence that this interactive gate passed.
 
 ## Troubleshooting
 

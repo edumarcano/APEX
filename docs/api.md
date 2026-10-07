@@ -137,6 +137,8 @@ Optional external services are deliberately excluded.
 
 Returns the backend's application/version/build identity, per-process instance UUID and PID, `hosting_mode` (`standalone` or `managed`), managed parent `launch_id` or `null`, opaque `data_root_fingerprint`, and `shutdown_timeout_seconds`. It returns `503` until application lifecycle identity is established. It includes no data-directory path, credentials, or configuration contents.
 
+`app_version` comes from the installed Python distribution metadata. It identifies the runtime build; it does not describe SQLite schema compatibility or change the route contract.
+
 A managed parent compares this identity with its child's private `ready` event, launch UUID, and process handle before admitting the interface. A successful health probe alone does not establish that the listener is the process it launched. Runtime identity is public status, not a shutdown capability; lifecycle control uses private process pipes. See [Backend hosting](architecture.md#backend-hosting).
 
 ### GET `/api/v1/device-context`
