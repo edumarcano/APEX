@@ -153,6 +153,22 @@ jobs:
       - name: Provision external distribution smoke assets
         run: uv run --locked --all-extras --python 3.14.7 python scripts/provision_distribution_smoke_assets.py --destination "$env:RUNNER_TEMP\apex-distribution-smoke-assets"
 
+      - name: Report Windows audio service preconditions
+        shell: pwsh
+        run: |
+          foreach ($serviceName in @("Audiosrv", "AudioEndpointBuilder")) {
+            try {
+              $service = Get-CimInstance -ClassName Win32_Service -Filter "Name='$serviceName'" -ErrorAction Stop
+              if ($null -eq $service -or [string]::IsNullOrWhiteSpace($service.State) -or [string]::IsNullOrWhiteSpace($service.StartMode)) {
+                Write-Host "APEX_AUDIO_SERVICE name=$serviceName unavailable"
+              } else {
+                Write-Host "APEX_AUDIO_SERVICE name=$serviceName status=$($service.State) start_type=$($service.StartMode)"
+              }
+            } catch {
+              Write-Host "APEX_AUDIO_SERVICE name=$serviceName unavailable"
+            }
+          }
+
       - name: Run strict frozen backend smoke
         run: >-
           uv run --locked --all-extras --python 3.14.7 python scripts/smoke_backend_bundle.py
