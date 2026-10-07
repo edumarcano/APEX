@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -143,6 +145,79 @@ class BackendBundleBuildTests(unittest.TestCase):
         self.assertEqual(first["extras"], ["tracing", "tts-google", "tts-kokoro"])
         project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
         self.assertEqual(first["app_version"], project["version"])
+
+    @unittest.skipUnless(sys.platform == "win32", "comtypes package generation is Windows-specific")
+    def test_comtypes_preflight_materializes_package_in_fresh_isolated_environment(self) -> None:
+        package_spec = importlib.util.find_spec("comtypes")
+        if package_spec is None or package_spec.origin is None:
+            self.skipTest("comtypes is not installed in this test environment")
+
+        with tempfile.TemporaryDirectory(dir=self.temp_root) as temporary:
+            root = Path(temporary)
+            environment = root / "fresh-env"
+            created = subprocess.run(
+                [sys.executable, "-m", "venv", "--without-pip", str(environment)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
+            self.assertEqual(created.returncode, 0, created.stderr)
+            target_package = environment / "Lib" / "site-packages" / "comtypes"
+            shutil.copytree(
+                Path(package_spec.origin).parent,
+                target_package,
+                ignore=shutil.ignore_patterns("gen", "__pycache__"),
+            )
+            generated_package = target_package / "gen"
+            self.assertFalse(generated_package.exists())
+
+            with mock.patch.dict(os.environ, {"PYTHONOPTIMIZE": "1"}):
+                builder._prepare_comtypes_analysis_state(environment / "Scripts" / "python.exe")
+
+            self.assertTrue((generated_package / "__init__.py").is_file())
+
+    @unittest.skipUnless(sys.platform == "win32", "comtypes package generation is Windows-specific")
+    def test_comtypes_preflight_rejects_redirected_gen_initializer_before_import(self) -> None:
+        package_spec = importlib.util.find_spec("comtypes")
+        if package_spec is None or package_spec.origin is None:
+            self.skipTest("comtypes is not installed in this test environment")
+
+        with tempfile.TemporaryDirectory(dir=self.temp_root) as temporary:
+            root = Path(temporary)
+            environment = root / "fresh-env"
+            created = subprocess.run(
+                [sys.executable, "-m", "venv", "--without-pip", str(environment)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
+            self.assertEqual(created.returncode, 0, created.stderr)
+            target_package = environment / "Lib" / "site-packages" / "comtypes"
+            shutil.copytree(
+                Path(package_spec.origin).parent,
+                target_package,
+                ignore=shutil.ignore_patterns("gen", "__pycache__"),
+            )
+            generated_package = target_package / "gen"
+            generated_package.mkdir()
+            marker = root / "redirected-import-ran"
+            external_initializer = root / "outside-init.py"
+            external_initializer.write_text(
+                f"from pathlib import Path; Path({str(marker)!r}).touch()\n",
+                encoding="utf-8",
+            )
+            try:
+                (generated_package / "__init__.py").symlink_to(external_initializer)
+            except OSError as error:
+                self.skipTest(f"file symlinks are unavailable: {type(error).__name__}")
+
+            with mock.patch.dict(os.environ, {"PYTHONOPTIMIZE": "1"}):
+                with self.assertRaises(builder.BundleBuildError):
+                    builder._prepare_comtypes_analysis_state(environment / "Scripts" / "python.exe")
+
+            self.assertFalse(marker.exists())
 
     def test_manifest_hashes_sorted_files_and_omits_itself(self) -> None:
         with tempfile.TemporaryDirectory(dir=self.temp_root) as temporary:

@@ -284,7 +284,60 @@ def _prepare_environment(toolchain: dict[str, Any]) -> Path:
         or runtime.get("bits") != 64
     ):
         raise BundleBuildError("The locked build environment is not Python 3.14.7 AMD64.")
+    _prepare_comtypes_analysis_state(python)
     return python
+
+
+def _prepare_comtypes_analysis_state(python: Path) -> None:
+    """Materialize comtypes' generated namespace package before PyInstaller scans it."""
+    code = (
+        "from pathlib import Path; import importlib.util, os, sys; "
+        "prefix=Path(sys.prefix).resolve(); spec=importlib.util.find_spec('comtypes'); "
+        "assert spec is not None and spec.origin is not None; "
+        "package=Path(spec.origin).parent; package_resolved=package.resolve(); "
+        "expected=package/'gen'; expected_resolved=expected.resolve(); "
+        "assert package_resolved.is_relative_to(prefix); "
+        "assert expected_resolved == package_resolved/'gen'; "
+        "assert not expected.is_symlink() and not expected.is_junction(); "
+        "assert not expected.exists() or (expected.is_dir() and os.access(expected_resolved, os.W_OK)); "
+        "initializer=expected/'__init__.py'; "
+        "assert not initializer.is_symlink(); "
+        "assert not initializer.exists() or initializer.resolve() == expected_resolved/'__init__.py'; "
+        "assert os.access(package_resolved, os.W_OK); "
+        "import comtypes, comtypes.client; "
+        "assert Path(comtypes.__file__).resolve().parent == package_resolved; "
+        "gen_dir=Path(comtypes.client.gen_dir); actual=Path(comtypes.gen.__file__); "
+        "assert gen_dir == expected; "
+        "assert gen_dir.resolve() == expected_resolved; "
+        "assert expected_resolved.is_relative_to(package_resolved); "
+        "assert not initializer.is_symlink(); "
+        "assert actual.resolve() == expected_resolved/'__init__.py'; "
+        "assert initializer.is_file(); "
+        "print('APEX_COMTYPES_ANALYSIS_READY_V1')"
+    )
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    env.pop("PYTHONHOME", None)
+    env["PYTHONNOUSERSITE"] = "1"
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    try:
+        result = subprocess.run(
+            [str(python), "-I", "-B", "-c", code],
+            cwd=ROOT,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise BundleBuildError(
+            "Could not prepare the locked comtypes package for deterministic analysis."
+        ) from None
+    if result.returncode != 0 or result.stdout.strip() != "APEX_COMTYPES_ANALYSIS_READY_V1":
+        raise BundleBuildError(
+            "Could not prepare the locked comtypes package for deterministic analysis."
+        )
 
 
 def _stage_notices(environment_root: Path, python: Path) -> list[dict[str, str]]:
