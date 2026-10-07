@@ -200,7 +200,6 @@ def run_demo_agent_query(
             requested_effort=payload.effort,
             resolved_effort=resolved_effort,
             runtime=model_profile.runtime,
-            model_stability=getattr(agent, "stability", None),
             hosted_tools=getattr(agent, "hosted_tools", None),
         ),
         tool_trace=selected_response["tool_trace"],

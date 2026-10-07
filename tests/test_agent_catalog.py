@@ -51,31 +51,27 @@ class ApexAgentCatalogTests(unittest.TestCase):
         )
 
     @staticmethod
-    def _model(model_id: str, runtime: str, *, dev_only: bool = False) -> ModelProfile:
-        provider = "openai" if runtime == "cloud" else "ollama"
+    def _model(model_id: str, runtime: str) -> ModelProfile:
+        provider = "openrouter" if runtime == "cloud" else "llama_cpp"
         return ModelProfile(
             model_id=model_id,
             display_name=model_id,
             provider=provider,
             runtime=runtime,
-            stability="stable",
             credential_env=None,
             max_tool_turns=2,
             max_tool_calls=2,
             supports_encrypted_reasoning=False,
             hosted_capabilities=frozenset(),
-            dev_only=dev_only,
         )
 
-    def test_visible_catalogs_preserve_runtime_order_and_hide_dev_only_profiles(self) -> None:
+    def test_visible_catalogs_preserve_runtime_order(self) -> None:
         cloud = {
             "cloud-first": self._model("cloud-first", "cloud"),
-            "cloud-dev": self._model("cloud-dev", "cloud", dev_only=True),
             "cloud-last": self._model("cloud-last", "cloud"),
         }
         local = {
             "local-first": self._model("local-first", "local"),
-            "local-dev": self._model("local-dev", "local", dev_only=True),
             "local-last": self._model("local-last", "local"),
         }
         with mock.patch.dict(model_catalog.CLOUD_MODEL_PROFILES, cloud, clear=True), mock.patch.dict(
@@ -90,30 +86,9 @@ class ApexAgentCatalogTests(unittest.TestCase):
                 ["local-first", "local-last"],
             )
 
-    def test_dev_mode_includes_dev_only_profiles_in_catalog_order(self) -> None:
-        cloud = {
-            "cloud-first": self._model("cloud-first", "cloud"),
-            "cloud-dev": self._model("cloud-dev", "cloud", dev_only=True),
-        }
-        local = {
-            "local-first": self._model("local-first", "local"),
-            "local-dev": self._model("local-dev", "local", dev_only=True),
-        }
-        with mock.patch.dict(model_catalog.CLOUD_MODEL_PROFILES, cloud, clear=True), mock.patch.dict(
-            model_catalog.LOCAL_MODEL_PROFILES, local, clear=True
-        ):
-            self.assertEqual(
-                [profile.model_id for profile in visible_cloud_models(dev_mode=True)],
-                ["cloud-first", "cloud-dev"],
-            )
-            self.assertEqual(
-                [profile.model_id for profile in visible_local_models(dev_mode=True)],
-                ["local-first", "local-dev"],
-            )
-
     def test_cloud_profiles_keep_provider_specific_credentials(self) -> None:
         expected = {
-            "gpt-5.6-luna": "OPENAI_API_KEY",
+            "openai/gpt-6-luna": "OPENROUTER_API_KEY",
             "z-ai/glm-5.3-flash": "OPENROUTER_API_KEY",
             "gemini-3.7-flash": "GEMINI_API_KEY",
         }
@@ -122,6 +97,20 @@ class ApexAgentCatalogTests(unittest.TestCase):
             expected,
         )
 
+    def test_gpt_6_luna_profile_attributes(self) -> None:
+        profile = get_model_profile("openai/gpt-6-luna")
+        self.assertIsNotNone(profile)
+        assert profile is not None
+        self.assertEqual(profile.display_name, "GPT-6 Luna")
+        self.assertEqual(profile.provider, "openrouter")
+        self.assertEqual(profile.runtime, "cloud")
+        self.assertEqual(profile.credential_env, "OPENROUTER_API_KEY")
+        self.assertEqual(profile.reasoning_options, ("none", "low", "medium", "high", "xhigh", "max"))
+        self.assertEqual(profile.default_reasoning, "medium")
+        self.assertFalse(profile.supports_encrypted_reasoning)
+        self.assertEqual(profile.hosted_capabilities, frozenset())
+        self.assertEqual(profile.maximum_context_window, 1_048_576)
+
     def test_glm_5_3_flash_profile_attributes(self) -> None:
         profile = get_model_profile("z-ai/glm-5.3-flash")
         self.assertIsNotNone(profile)
@@ -129,7 +118,6 @@ class ApexAgentCatalogTests(unittest.TestCase):
         self.assertEqual(profile.display_name, "GLM 5.3 Flash")
         self.assertEqual(profile.provider, "openrouter")
         self.assertEqual(profile.runtime, "cloud")
-        self.assertEqual(profile.stability, "stable")
         self.assertEqual(profile.credential_env, "OPENROUTER_API_KEY")
         self.assertEqual(profile.reasoning_options, ("low", "high", "max"))
         self.assertEqual(profile.default_reasoning, "low")
@@ -172,3 +160,10 @@ class ApexAgentCatalogTests(unittest.TestCase):
         self.assertEqual(resolve_agent_display_name(""), "Lynx")
         self.assertEqual(resolve_agent_display_name("   "), "Lynx")
         self.assertEqual(resolve_agent_display_name("Nova"), "Nova")
+
+    def test_provider_display_names_mapping(self) -> None:
+        from core.agent.catalog import _PROVIDER_DISPLAY_NAMES
+
+        self.assertEqual(_PROVIDER_DISPLAY_NAMES["gemini"], "Google AI Studio")
+        self.assertEqual(_PROVIDER_DISPLAY_NAMES["openrouter"], "OpenRouter")
+        self.assertEqual(_PROVIDER_DISPLAY_NAMES["llama_cpp"], "llama.cpp")

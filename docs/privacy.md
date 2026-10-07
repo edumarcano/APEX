@@ -27,7 +27,7 @@ Raw coordinates travel over private process pipes and are sent to Open-Meteo as 
 
 ## Models and connected services
 
-A cloud model request can include your message, selected conversation history, tool definitions, and the evidence allowed for that request. Local models receive those inputs at the configured Ollama or llama.cpp endpoint. Choosing a local model does not make connected services local: a connector or MCP tool can still contact its external service.
+A cloud model request can include your message, selected conversation history, tool definitions, and the evidence allowed for that request. Local models receive those inputs at the configured llama.cpp endpoint. Choosing a local model does not make connected services local: a connector or MCP tool can still contact its external service.
 
 Provider-hosted grounding is separate from APEX tool calls. It is available only when the cloud model supports it and its Runtime Settings switch is enabled. Search or map grounding can send information from the request to the provider's hosted service.
 

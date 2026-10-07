@@ -39,19 +39,19 @@ class CloudModelVerificationTests(unittest.TestCase):
             mock.patch("core.agent.providers.cloud_verification.os.getenv", return_value="secret"),
             mock.patch("core.agent.providers.cloud_verification._probe_model", return_value=("verified", None)) as probe,
         ):
-            result = verify_cloud_model("gpt-5.6-luna")
+            result = verify_cloud_model("openai/gpt-6-luna")
 
         self.assertEqual(result.status, "verified")
-        self.assertEqual(cloud_status("gpt-5.6-luna").status, "verified")
-        probe.assert_called_once_with("openai", "gpt-5.6-luna", "secret")
+        self.assertEqual(cloud_status("openai/gpt-6-luna").status, "verified")
+        probe.assert_called_once_with("openrouter", "openai/gpt-6-luna", "secret")
 
     def test_explicit_verification_forces_a_fresh_probe(self) -> None:
         with (
             mock.patch("core.agent.providers.cloud_verification.os.getenv", return_value="secret"),
             mock.patch("core.agent.providers.cloud_verification._probe_model", return_value=("verified", None)) as probe,
         ):
-            verify_cloud_model("gpt-5.6-luna")
-            verify_cloud_model("gpt-5.6-luna")
+            verify_cloud_model("openai/gpt-6-luna")
+            verify_cloud_model("openai/gpt-6-luna")
 
         self.assertEqual(probe.call_count, 2)
 
@@ -63,11 +63,11 @@ class CloudModelVerificationTests(unittest.TestCase):
                 return_value=("verified", None),
             ) as probe,
         ):
-            result = verify_cloud_model("gpt-5.6-luna")
+            result = verify_cloud_model("openai/gpt-6-luna")
 
         self.assertEqual(result.status, "verified")
-        probe.assert_called_once_with("openai", "gpt-5.6-luna", "secret")
-        self.assertEqual(cloud_status("gpt-5.6-luna").status, "verified")
+        probe.assert_called_once_with("openrouter", "openai/gpt-6-luna", "secret")
+        self.assertEqual(cloud_status("openai/gpt-6-luna").status, "verified")
 
     def test_concurrent_verification_is_rejected(self) -> None:
         probe_started = Event()
@@ -83,11 +83,11 @@ class CloudModelVerificationTests(unittest.TestCase):
             mock.patch("core.agent.providers.cloud_verification.os.getenv", return_value="secret"),
             mock.patch("core.agent.providers.cloud_verification._probe_model", side_effect=slow_probe),
         ):
-            worker = Thread(target=lambda: first_result.append(verify_cloud_model("gpt-5.6-luna")))
+            worker = Thread(target=lambda: first_result.append(verify_cloud_model("openai/gpt-6-luna")))
             worker.start()
             self.assertTrue(probe_started.wait(timeout=1))
             with self.assertRaises(RuntimeError):
-                verify_cloud_model("gpt-5.6-luna")
+                verify_cloud_model("openai/gpt-6-luna")
             release_probe.set()
             worker.join(timeout=1)
 
@@ -99,12 +99,12 @@ class CloudModelVerificationTests(unittest.TestCase):
         with mock.patch("core.agent.providers.cloud_verification.requests.get", return_value=response) as get:
             from core.agent.providers.cloud_verification import _probe_model
 
-            status, reason = _probe_model("openai", "gpt-5.6-luna", "secret")
+            status, reason = _probe_model("gemini", "gemini-3.7-flash", "secret")
 
         self.assertEqual((status, reason), ("verified", None))
         get.assert_called_once_with(
-            "https://api.openai.com/v1/models/gpt-5.6-luna",
-            headers={"Authorization": "Bearer secret"},
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash",
+            headers={"x-goog-api-key": "secret"},
             timeout=5,
         )
 
@@ -171,14 +171,14 @@ class CloudModelVerificationTests(unittest.TestCase):
     def test_metadata_probe_does_not_clear_recent_account_failure(self) -> None:
         record_cloud_request_failure(
             _ProviderError(429, "insufficient_quota"),
-            provider="openai",
-            model="gpt-5.6-luna",
+            provider="openrouter",
+            model="openai/gpt-6-luna",
         )
         with (
             mock.patch("core.agent.providers.cloud_verification.os.getenv", return_value="secret"),
             mock.patch("core.agent.providers.cloud_verification._probe_model", return_value=("verified", None)),
         ):
-            result = verify_cloud_model("gpt-5.6-luna")
+            result = verify_cloud_model("openai/gpt-6-luna")
 
         self.assertEqual(result.status, "quota_exhausted")
         self.assertEqual(result.source, "request")
@@ -191,14 +191,13 @@ class CloudModelVerificationTests(unittest.TestCase):
         self.assertEqual(classify_provider_failure(_ProviderError(404))[0], "model_unavailable")
         self.assertEqual(classify_provider_failure(_ProviderError(500))[0], "provider_unreachable")
 
-        openai_profile = get_model_profile("gpt-5.6-luna")
         record_cloud_request_failure(
             _ProviderError(429, "insufficient_quota"),
-            provider="openai",
-            model="gpt-5.6-luna",
+            provider="openrouter",
+            model="openai/gpt-6-luna",
         )
         self.assertEqual(
-            cloud_status("gpt-5.6-luna").reason,
+            cloud_status("openai/gpt-6-luna").reason,
             "Provider reported exhausted quota or credits.",
         )
 
@@ -207,7 +206,7 @@ class CloudModelVerificationTests(unittest.TestCase):
             "core.api.cortex.verify_cloud_model"
         ) as verify:
             with self.assertRaises(HTTPException) as demo_error:
-                verify_cloud_model_endpoint("gpt-5.6-luna")
+                verify_cloud_model_endpoint("openai/gpt-6-luna")
         self.assertEqual(demo_error.exception.status_code, 403)
         verify.assert_not_called()
 
@@ -224,7 +223,7 @@ class CloudModelVerificationTests(unittest.TestCase):
     def test_verification_requires_configured_credentials(self) -> None:
         with mock.patch("core.agent.providers.cloud_verification.os.getenv", return_value=None):
             with self.assertRaises(ValueError):
-                verify_cloud_model("gpt-5.6-luna")
+                verify_cloud_model("openai/gpt-6-luna")
 
     def test_verification_cache_is_scoped_to_provider_and_model(self) -> None:
         with (
@@ -234,28 +233,32 @@ class CloudModelVerificationTests(unittest.TestCase):
                 return_value=("verified", None),
             ),
         ):
-            verify_cloud_model("gpt-5.6-luna")
-            self.assertEqual(cloud_status("gpt-5.6-luna").status, "verified")
+            verify_cloud_model("openai/gpt-6-luna")
+            self.assertEqual(cloud_status("openai/gpt-6-luna").status, "verified")
             self.assertEqual(cloud_status("gemini-3.7-flash").status, "configured")
 
     def test_request_cache_records_the_route_that_actually_ran(self) -> None:
         from core.agent.providers.cloud_verification import record_cloud_request_success
 
         record_cloud_request_success(
-            provider="openai",
-            model="gpt-5.6-luna",
+            provider="openrouter",
+            model="openai/gpt-6-luna",
         )
-        self.assertEqual(cloud_status("gpt-5.6-luna").status, "verified")
+        self.assertEqual(cloud_status("openai/gpt-6-luna").status, "verified")
         self.assertEqual(cloud_status("gemini-3.7-flash").status, "configured")
 
     def test_endpoint_returns_sanitized_result(self) -> None:
         result = mock.Mock(status="verified", reason=None)
-        result.checked_at = cloud_status("gpt-5.6-luna").checked_at
+        result.checked_at = cloud_status("openai/gpt-6-luna").checked_at
         with (
             mock.patch("core.api.cortex.DEMO_MODE", False),
             mock.patch("core.api.cortex.model_has_credentials", return_value=True),
             mock.patch("core.api.cortex.verify_cloud_model", return_value=result),
         ):
-            response = verify_cloud_model_endpoint("gpt-5.6-luna")
+            response = verify_cloud_model_endpoint("openai/gpt-6-luna")
         self.assertEqual(response.status, "verified")
         self.assertIsNone(response.reason)
+
+
+if __name__ == "__main__":
+    unittest.main()

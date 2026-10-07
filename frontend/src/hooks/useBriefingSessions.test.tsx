@@ -159,7 +159,7 @@ describe('useBriefingSessions', () => {
       run_error_code: 'provider_error',
       configuration: {
         profile: { id: 'catch_up', label: 'Catch Up', purpose: 'Changes since the last briefing.', definition_version: 2 },
-        model: { model_id: 'openai/o4-mini', provider: 'openai', runtime: 'cloud', reasoning: 'high', context_window: null, local_reasoning_mode: null },
+        model: { model_id: 'openai/o4-mini', provider: 'openrouter', runtime: 'cloud', reasoning: 'high', context_window: null, local_reasoning_mode: null },
         origin: 'cli',
         execution_kind: 'model',
       },

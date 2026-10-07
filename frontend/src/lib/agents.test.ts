@@ -22,8 +22,7 @@ describe('agents helpers', () => {
 
   it('labels providers for display without changing their technical IDs', () => {
     expect(providerDisplayName('llama_cpp')).toBe('llama.cpp')
-    expect(providerDisplayName('ollama')).toBe('Ollama')
-    expect(providerDisplayName('gemini')).toBe('Google')
+    expect(providerDisplayName('gemini')).toBe('Google AI Studio')
     expect(providerDisplayName('openrouter')).toBe('OpenRouter')
   })
 
@@ -75,7 +74,6 @@ describe('agents helpers', () => {
       display_name: 'GLM 5.3 Flash',
       provider: 'openrouter',
       runtime: 'cloud',
-      stability: 'stable',
       reasoning_options: ['none', 'low', 'high', 'max'],
       default_reasoning: 'high',
       hosted_capabilities: [],
@@ -94,7 +92,6 @@ describe('agents helpers', () => {
       display_name: 'Gemma 4 E2B',
       provider: 'llama_cpp',
       runtime: 'local',
-      stability: 'stable',
       reasoning_options: null,
       default_reasoning: null,
       maximum_context_window: 131072,

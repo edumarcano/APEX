@@ -6,9 +6,9 @@ import type { ModelCatalogEntry } from '../types/telemetry'
 import { CompactModelSelector } from './CompactModelSelector'
 
 const catalog: ModelCatalogEntry[] = [
-  { model_id: 'z-ai/glm-5.3-flash', display_name: 'GLM 5.3 Flash', provider: 'openrouter', runtime: 'cloud', stability: 'stable', reasoning_options: ['none', 'low', 'high', 'max'], default_reasoning: 'high', pricing: { currency: 'USD', pricing_version: 'test', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 0.4, cached_input_per_million: null, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null }, hosted_capabilities: [], status: 'configured' },
-  { model_id: 'gpt-5.6-luna', display_name: 'GPT-5.6 Luna', provider: 'openai', runtime: 'cloud', stability: 'preview', reasoning_options: ['none', 'low', 'high'], default_reasoning: 'low', hosted_capabilities: [], status: 'verified' },
-  { model_id: 'gemma-4-E2B-Q4_K_M.gguf', display_name: 'Gemma 4 E2B', provider: 'llama_cpp', runtime: 'local', stability: 'experimental', reasoning_options: null, default_reasoning: null, maximum_context_window: 131072, hosted_capabilities: [], status: 'available' },
+  { model_id: 'z-ai/glm-5.3-flash', display_name: 'GLM 5.3 Flash', provider: 'openrouter', runtime: 'cloud', reasoning_options: ['none', 'low', 'high', 'max'], default_reasoning: 'high', pricing: { currency: 'USD', pricing_version: 'test', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 0.4, cached_input_per_million: null, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null }, hosted_capabilities: [], status: 'configured' },
+  { model_id: 'openai/gpt-6-luna', display_name: 'GPT-6 Luna', provider: 'openrouter', runtime: 'cloud', reasoning_options: ['none', 'low', 'high'], default_reasoning: 'low', hosted_capabilities: [], status: 'verified' },
+  { model_id: 'gemma-4-E2B-Q4_K_M.gguf', display_name: 'Gemma 4 E2B', provider: 'llama_cpp', runtime: 'local', reasoning_options: null, default_reasoning: null, maximum_context_window: 131072, hosted_capabilities: [], status: 'available' },
 ]
 
 describe('CompactModelSelector', () => {
@@ -18,7 +18,7 @@ describe('CompactModelSelector', () => {
     await user.click(screen.getByRole('button', { name: /model: glm 5\.3 flash/i }))
     const listbox = screen.getByRole('listbox', { name: /select model/i })
     expect(within(listbox).getByText('GLM 5.3 Flash')).toBeInTheDocument()
-    expect(within(listbox).getByText(/OpenRouter · Reasoning configurable/i)).toBeInTheDocument()
+    expect(within(listbox).getAllByText(/OpenRouter · Reasoning configurable/i)[0]).toBeInTheDocument()
   })
 
   it('groups selectable models by cloud and local runtime', async () => {
@@ -41,7 +41,7 @@ describe('CompactModelSelector', () => {
       { ...catalog[2], status: 'available' },
     ]
     render(<CompactModelSelector selectedModelId={catalog[1].model_id} onModelChange={vi.fn()} catalog={availabilityCatalog} />)
-    await user.click(screen.getByRole('button', { name: /model: gpt-5\.6 luna/i }))
+    await user.click(screen.getByRole('button', { name: /model: gpt-6 luna/i }))
     const popover = screen.getByRole('listbox', { name: /select model/i })
     expect(within(popover).getByRole('option', { name: /glm 5\.3 flash/i })).toBeDisabled()
     expect(within(popover).getByText(/OpenRouter · Missing API key/i)).toBeInTheDocument()
@@ -59,8 +59,8 @@ describe('CompactModelSelector', () => {
     fireEvent.offline(window)
     expect(screen.getByRole('img', { name: 'Availability: Browser offline' })).toHaveClass('hud-led--error')
 
-    await user.click(screen.getByRole('button', { name: /model: gpt-5\.6 luna/i }))
-    expect(screen.getByRole('option', { name: /gpt-5\.6 luna/i })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: /model: gpt-6 luna/i }))
+    expect(screen.getByRole('option', { name: /gpt-6 luna/i })).toBeEnabled()
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
     fireEvent.online(window)
   })
@@ -75,20 +75,18 @@ describe('CompactModelSelector', () => {
   })
 
   it('uses the local runtime failure as the accessible availability label', () => {
-    const unavailableLocal = [{ ...catalog[2], status: 'ollama_unreachable' as const, active: false, loading: false }]
+    const unavailableLocal = [{ ...catalog[2], status: 'provider_unreachable' as const, active: false, loading: false }]
     render(<CompactModelSelector selectedModelId={catalog[2].model_id} onModelChange={vi.fn()} catalog={unavailableLocal} />)
 
-    expect(screen.getByRole('img', { name: 'Availability: Ollama offline' })).toHaveClass('hud-led--error')
-    expect(screen.getByRole('button', { name: /availability ollama offline/i })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Availability: Unreachable' })).toHaveClass('hud-led--error')
+    expect(screen.getByRole('button', { name: /availability unreachable/i })).toBeInTheDocument()
   })
 
   it('describes local providers with their model-specific context behavior', async () => {
     const user = userEvent.setup()
-    const localCatalog: ModelCatalogEntry[] = [{ model_id: 'qwen3:1.7b', display_name: 'Qwen 3 1.7B', provider: 'ollama', runtime: 'local', stability: 'stable', hosted_capabilities: [], status: 'available' }, ...catalog]
-    render(<CompactModelSelector selectedModelId="qwen3:1.7b" onModelChange={vi.fn()} catalog={localCatalog} />)
-    await user.click(screen.getByRole('button', { name: /model: qwen 3 1\.7b/i }))
+    render(<CompactModelSelector selectedModelId="gemma-4-E2B-Q4_K_M.gguf" onModelChange={vi.fn()} catalog={catalog} />)
+    await user.click(screen.getByRole('button', { name: /model: gemma 4 e2b/i }))
     const popover = screen.getByRole('listbox', { name: /select model/i })
-    expect(within(popover).getByText(/Ollama · 4K context/i)).toBeInTheDocument()
     expect(within(popover).getByText(/llama\.cpp · 16K context/i)).toBeInTheDocument()
   })
 

@@ -74,7 +74,7 @@ The current decisions are grouped by concern. Each states the choice, its motiva
 
 ### Share local inference admission and model lifecycle
 
-**Decision.** Briefings, Agent turns, and speech adaptation share local model loading, switching, execution admission, and idle unloading across Ollama and llama.cpp. APEX coordinates one resident model among its known models and rejects competing local execution rather than adding a hidden queue.
+**Decision.** Briefings, Agent turns, and speech adaptation share local model loading, switching, execution admission, and idle unloading for llama.cpp. APEX coordinates one resident model among its known models and rejects competing local execution rather than adding a hidden queue.
 
 **Why.** These workloads use the same CPU and memory. One coordinator makes contention visible and prevents separate APEX managers from loading competing models. Cold-load resource checks protect the host; a verified resident model does not need another loading gate.
 

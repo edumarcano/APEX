@@ -92,7 +92,7 @@ class BriefingModelResolutionTests(unittest.TestCase):
         hidden = BriefingGenerationRequest(
             idempotency_key=uuid4(),
             profile_id="daily",
-            model_id="gpt-5.6-luna",
+            model_id="retired-model",
         )
         for request in (unknown, hidden):
             with self.subTest(model=request.model_id), self.assertRaises(

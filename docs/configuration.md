@@ -21,7 +21,7 @@ Fresh Start records that the selected desktop profile is ready without importing
 
 The preview identifies managed files and labels references that stay external or are reused, without showing credential contents or machine-specific paths. External Context vault, report-folder, model executable, and preset paths stay at their configured destinations. Microsoft To Do's encrypted token cache is reused through the current same-user Windows storage. Relative credential references are resolved against the selected source when possible; review any reported reference that needs correction.
 
-Configuration layers apply in this order: resource `config.json`, data `config.json` when it is a different file, then data `config.local.json`. Later values override earlier values recursively. Missing optional files are skipped; unreadable or malformed optional files are ignored with a warning. Runtime Settings validates its editable values and writes only to `config.local.json`; an invalid local editable layer is discarded in favor of lower layers. File-only settings such as run limits and Ollama configuration remain read from the JSON layers.
+Configuration layers apply in this order: resource `config.json`, data `config.json` when it is a different file, then data `config.local.json`. Later values override earlier values recursively. Missing optional files are skipped; unreadable or malformed optional files are ignored with a warning. Runtime Settings validates its editable values and writes only to `config.local.json`; an invalid local editable layer is discarded in favor of lower layers. File-only settings such as run limits remain read from the JSON layers.
 
 APEX loads only the selected data directory's `.env`. Existing process environment values take precedence, including during variable interpolation. `PYTHON_DOTENV_DISABLED` disables `.env` loading. Restart after editing configuration files or `.env` directly.
 
@@ -100,19 +100,11 @@ The default model is OpenRouter GLM 5.3 Flash with Low reasoning. Configure the 
 | Provider | Environment variable |
 |---|---|
 | OpenRouter | `OPENROUTER_API_KEY` |
-| OpenAI | `OPENAI_API_KEY` |
-| Google Gemini | `GEMINI_API_KEY` |
+| Google AI Studio | `GEMINI_API_KEY` |
 
-Local models use Ollama or llama.cpp. Cortex reports availability for each model. APEX does not install these runtimes or download model weights.
+Local models use llama.cpp. Cortex reports availability for each model. APEX does not install these runtimes or download model weights.
 
-Ollama model options are available only in `DEV_MODE`. Install and start Ollama, then pull the tags you want to use:
-
-```powershell
-ollama pull qwen3:1.7b
-ollama pull qwen3:4b-instruct
-```
-
-Ollama host, idle-unload, and resource-gate settings live under `ollama` in `config.json`. For llama.cpp, see [External and managed router modes](#external-and-managed-router-modes).
+For llama.cpp, see [External and managed router modes](#external-and-managed-router-modes).
 
 Only one local generation may run at a time. APEX checks runtime reachability, installed models, resource gates, and residency before a cold load. The provider-neutral unload control releases the current local model.
 

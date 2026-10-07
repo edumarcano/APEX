@@ -112,9 +112,6 @@ class LlamaCppModelProfile(BaseModel):
     api_model: str = Field(
         description="Configured GGUF model identity shown in Agent metadata."
     )
-    stability: Literal["stable", "preview", "experimental"] = Field(
-        description="Release stage classification of the target model."
-    )
     default_temperature: float = Field(
         description="Lower temperature values minimize tool-calling hallucinations.",
     )
@@ -281,7 +278,6 @@ def build_llama_cpp_profile(
     *,
     display_name: str,
     api_model: str,
-    stability: Literal["stable", "preview", "experimental"],
     max_tool_turns: int,
     max_tool_calls: int,
     system_instruction: str,
@@ -301,7 +297,6 @@ def build_llama_cpp_profile(
     return LlamaCppModelProfile(
         display_name=display_name,
         api_model=api_model,
-        stability=stability,
         default_temperature=runtime.default_temperature,
         max_tool_turns=max_tool_turns,
         max_tool_calls=max_tool_calls,
@@ -368,23 +363,6 @@ def _gemma_e2b_aliases() -> dict[int, str]:
     }
 
 
-def _gemma_e4b_aliases() -> dict[int, str]:
-    return {
-        4096: "gemma-4-e4b-4k",
-        16384: "gemma-4-e4b-16k",
-        32768: "gemma-4-e4b-32k",
-        65536: "gemma-4-e4b-64k",
-    }
-
-
-def _qwen35_aliases() -> dict[int, str]:
-    return {
-        4096: "qwen3.5-4b-4k",
-        16384: "qwen3.5-4b-16k",
-        32768: "qwen3.5-4b-32k",
-    }
-
-
 LLAMA_CPP_RUNTIME_CONFIGS: dict[str, LlamaCppRuntimeConfig] = {
     "gemma-4-E2B-Q4_K_M.gguf": _runtime_config(
         allowed_context_windows=(4096, 16384, 32768, 131072),
@@ -394,32 +372,6 @@ LLAMA_CPP_RUNTIME_CONFIGS: dict[str, LlamaCppRuntimeConfig] = {
         maximum_context_window=131072,
         runtime_model_ids=_gemma_e2b_aliases(),
         resource_limits=_resource_limits("gemma-4-E2B-Q4_K_M.gguf"),
-        tool_select_max_tokens=256,
-        final_answer_max_tokens=768,
-        focused_tool_select_max_tokens=1536,
-        focused_final_answer_max_tokens=1536,
-    ),
-    "gemma-4-E4B-Q4_K_M.gguf": _runtime_config(
-        allowed_context_windows=(4096, 16384, 32768, 65536),
-        high_resource_context_options=(65536,),
-        supported_reasoning_modes=("none", "focused"),
-        default_context_window=16384,
-        maximum_context_window=131072,
-        runtime_model_ids=_gemma_e4b_aliases(),
-        resource_limits=_resource_limits("gemma-4-E4B-Q4_K_M.gguf"),
-        tool_select_max_tokens=256,
-        final_answer_max_tokens=768,
-        focused_tool_select_max_tokens=1536,
-        focused_final_answer_max_tokens=1536,
-    ),
-    "Qwen3.5-4B-Q4_K_M.gguf": _runtime_config(
-        allowed_context_windows=(4096, 16384, 32768),
-        high_resource_context_options=(),
-        supported_reasoning_modes=("none", "focused"),
-        default_context_window=16384,
-        maximum_context_window=262144,
-        runtime_model_ids=_qwen35_aliases(),
-        resource_limits=_resource_limits("Qwen3.5-4B-Q4_K_M.gguf"),
         tool_select_max_tokens=256,
         final_answer_max_tokens=768,
         focused_tool_select_max_tokens=1536,

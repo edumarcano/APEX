@@ -135,8 +135,6 @@ def _resolved_turn_metadata(payload: ConversationTurnRequest) -> dict[str, objec
     profile = get_model_profile(model_id)
     if profile is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown model: {model_id!r}")
-    if profile.dev_only and not is_dev_mode():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Model {model_id!r} is only available in development mode.")
     if profile.runtime == "cloud":
         return {
             "resolved_model": profile.model_id,

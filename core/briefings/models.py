@@ -142,7 +142,7 @@ class BriefingModelConfiguration(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     model_id: str
-    provider: Literal["gemini", "ollama", "llama_cpp", "openai", "openrouter", "demo"]
+    provider: Literal["gemini", "llama_cpp", "openrouter", "demo"]
     runtime: Literal["cloud", "local", "demo"]
     reasoning: str | None = None
     context_window: int | None = Field(default=None, ge=1)

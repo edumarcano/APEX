@@ -36,6 +36,9 @@ class DeviceContextServiceTests(unittest.TestCase):
         self.now = 1_800_000_000.0
         self.monotonic = 100.0
         self.requests: list[tuple[dict[str, object], str]] = []
+        env_patch = mock.patch.dict(os.environ, {"TARGET_LOCATION": ""}, clear=False)
+        env_patch.start()
+        self.addCleanup(env_patch.stop)
         self.service = self._service()
         set_device_context_service(self.service)
         self.addCleanup(set_device_context_service, None)

@@ -18,7 +18,6 @@ from core.agent.providers.contract import ProviderTurnResult
 from core.agent.tool_catalog import build_tool_catalog
 from tests.support.agent_fixtures import cloud_settings
 from core.agent.tool_schemas import (
-    _COMPACT_BRAVE_SEARCH_SCHEMA,
     project_descriptor_for_model,
 )
 from core.agent.tool_profiles import resolve_profile_names
@@ -372,14 +371,6 @@ class UnifiedToolSelectionTests(unittest.TestCase):
             {"mcp-disabled", "mcp-disconnected"},
         )
 
-    def test_local_projection_is_shared_by_selection_and_model_schema(self) -> None:
-        descriptor = _brave_descriptor()
-        projected = project_descriptor_for_model("qwen3:1.7b", descriptor)
-        self.assertEqual(projected.input_schema, _COMPACT_BRAVE_SEARCH_SCHEMA)
-        self.assertIn("Read-only", projected.description)
-        self.assertIn("without asking for confirmation", projected.description)
-        self.assertIn("remote_option", descriptor.input_schema["properties"])
-
     def test_local_read_tools_get_standard_no_confirmation_guidance(self) -> None:
         descriptor = CapabilityDescriptor(
             name="get_upcoming_calendar_events",
@@ -401,31 +392,13 @@ class UnifiedToolSelectionTests(unittest.TestCase):
         cloud_projection = project_descriptor_for_model("z-ai/glm-5.3-flash", descriptor)
         self.assertEqual(cloud_projection.description, descriptor.description)
 
-    def test_brave_projection_is_compact_for_ollama_models_only(self) -> None:
-        descriptor = _brave_descriptor()
-
-        projected = project_descriptor_for_model("qwen3:1.7b", descriptor)
-        self.assertEqual(projected.input_schema, _COMPACT_BRAVE_SEARCH_SCHEMA)
-        self.assertIn("Read-only", projected.description)
-        self.assertIn("Search the public web", projected.description)
-
-        llama_projection = project_descriptor_for_model("gemma-4-E2B-Q4_K_M.gguf", descriptor)
-        self.assertEqual(llama_projection.input_schema, descriptor.input_schema)
-        self.assertIn("Read-only", llama_projection.description)
-        self.assertIn("Search the full public web.", llama_projection.description)
-
-        cloud = project_descriptor_for_model("z-ai/glm-5.3-flash", descriptor)
-        self.assertEqual(cloud.input_schema, descriptor.input_schema)
-        self.assertEqual(cloud.description, descriptor.description)
-        self.assertNotIn("Read-only", cloud.description)
-
     def test_loop_receives_same_selected_tools_for_local_runtime(self) -> None:
         provider = _AnswerProvider()
         with patch(
             "core.agent.tool_catalog._native_availability",
             return_value=(True, None),
         ):
-            selection = resolve_selected_tools("apex", ["get_weather_forecast"], model_id="qwen3:1.7b")
+            selection = resolve_selected_tools("apex", ["get_weather_forecast"], model_id="gemma-4-E2B-Q4_K_M.gguf")
             response = run_agent_loop(
                 AgentQueryRequest(
                     prompt="Forecast",
@@ -433,7 +406,7 @@ class UnifiedToolSelectionTests(unittest.TestCase):
                     selected_tool_names=["get_weather_forecast"],
                 ),
                 provider,
-                build_provider_profile(native_effort=None, model_id="qwen3:1.7b"),
+                build_provider_profile(native_effort=None, model_id="gemma-4-E2B-Q4_K_M.gguf"),
                 selected_tools=list(selection.descriptors),
                 tool_selection=selection.diagnostics,
             )

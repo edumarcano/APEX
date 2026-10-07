@@ -18,7 +18,7 @@ GEMMA_E4B_ALIAS = "gemma-4-e4b-16k"
 
 def cloud_settings(
     *,
-    model: str = "gpt-5.6-luna",
+    model: str = "openai/gpt-6-luna",
     effort: str = "medium",
     google_search: bool = True,
     google_maps: bool = True,
@@ -70,7 +70,7 @@ def build_local_profile(
 
 def build_cloud_profile(
     *,
-    model: str = "gpt-5.6-luna",
+    model: str = "openai/gpt-6-luna",
     effort: str | None = "medium",
 ):
     profile = get_model_profile(model)

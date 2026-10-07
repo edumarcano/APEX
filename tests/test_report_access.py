@@ -188,14 +188,14 @@ class ReportReadAccessTests(unittest.TestCase):
             query_agent(
                 AgentQueryRequest(
                     prompt="hello",
-                    model_id="gpt-5.6-luna",
+                    model_id="openai/gpt-6-luna",
                     history_partition="sandbox",
                 )
             )
 
         conversation.partition.assert_called_once_with()
         make_context.assert_called_once_with(
-            model_id="gpt-5.6-luna", partition="production"
+            model_id="openai/gpt-6-luna", partition="production"
         )
 
     def test_query_without_conversation_service_keeps_existing_execution_path(self) -> None:
@@ -222,12 +222,12 @@ class ReportReadAccessTests(unittest.TestCase):
                 failures=[], descriptors=[], diagnostics=ToolSelectionDiagnostics()
             )
             response = query_agent(
-                AgentQueryRequest(prompt="hello", model_id="gpt-5.6-luna")
+                AgentQueryRequest(prompt="hello", model_id="openai/gpt-6-luna")
             )
 
         self.assertTrue(response.answer)
         make_context.assert_called_once_with(
-            model_id="gpt-5.6-luna", partition="unavailable"
+            model_id="openai/gpt-6-luna", partition="unavailable"
         )
 
 

@@ -146,7 +146,7 @@ describe('BriefingView', () => {
         integrated: true,
         selectedModelId: 'provider/model-a',
         onModelChange: vi.fn(),
-        modelCatalog: [{ model_id: 'provider/model-a', display_name: 'Model A', provider: 'openrouter', runtime: 'cloud', stability: 'stable', reasoning_options: ['low', 'medium', 'high'], default_reasoning: 'medium', hosted_capabilities: [] }],
+        modelCatalog: [{ model_id: 'provider/model-a', display_name: 'Model A', provider: 'openrouter', runtime: 'cloud', reasoning_options: ['low', 'medium', 'high'], default_reasoning: 'medium', hosted_capabilities: [] }],
         cloudEffort: 'medium',
         onEffortChange: vi.fn(),
         tools: {

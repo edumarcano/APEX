@@ -26,8 +26,8 @@ from core.agent.providers.llama_cpp_models import LLAMA_CPP_RUNTIME_CONFIGS
 from core.agent.types import LocalReasoningMode
 
 AgentKey = Literal["apex"]
-CloudProvider = Literal["openai", "openrouter", "gemini"]
-LocalRuntime = Literal["ollama", "llama_cpp"]
+CloudProvider = Literal["gemini", "openrouter"]
+LocalRuntime = Literal["llama_cpp"]
 AgentRuntime = Literal["cloud", "local"]
 CloudEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
 VoiceEngine = Literal["google", "pyttsx3", "kokoro"]
@@ -35,8 +35,8 @@ VoiceGender = Literal["male", "female"]
 VoiceMode = Literal["off", "manual", "automatic"]
 
 VALID_AGENT_KEYS: frozenset[str] = frozenset({"apex"})
-VALID_CLOUD_PROVIDERS: frozenset[str] = frozenset({"openai", "openrouter", "gemini"})
-VALID_LOCAL_RUNTIMES: frozenset[str] = frozenset({"ollama", "llama_cpp"})
+VALID_CLOUD_PROVIDERS: frozenset[str] = frozenset({"openrouter", "gemini"})
+VALID_LOCAL_RUNTIMES: frozenset[str] = frozenset({"llama_cpp"})
 VALID_LOCAL_REASONING_MODES: frozenset[str] = frozenset({"none", "focused"})
 VALID_CLOUD_EFFORTS: frozenset[str] = frozenset(
     {"none", "minimal", "low", "medium", "high", "xhigh", "max"}

@@ -34,7 +34,6 @@ import { cloudAvailabilityPresentation } from '../lib/cloudAvailability'
 import { useBrowserOnline } from '../hooks/useBrowserOnline'
 
 import { ModelMark } from './ModelMark'
-import { StabilityBadge } from './StabilityBadge'
 
 export interface CompactModelSelectorProps {
   selectedModelId: string
@@ -73,7 +72,6 @@ function localAvailabilityLabel(model: ModelCatalogEntry | null, status: AgentAv
     provider_unreachable: 'Unreachable',
     provider_error: 'Provider error',
     disabled: 'Unavailable',
-    ollama_unreachable: 'Ollama offline',
     model_not_installed: 'Not installed',
     insufficient_ram: 'Low memory',
     cpu_overloaded: 'CPU busy',
@@ -360,11 +358,8 @@ export function CompactModelSelector({
                               <ModelMark modelId={entry.model_id} provider={entry.provider} size={14} />
                             </span>
                             <span className="min-w-0 flex-1">
-                              <span className="flex items-center gap-1.5">
-                                <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">
-                                  {entry.display_name}
-                                </span>
-                                <StabilityBadge stability={entry.stability} />
+                              <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">
+                                {entry.display_name}
                               </span>
                               <span className="mt-0.5 block truncate text-[10px] text-zinc-500">
                                 {provider} · {isUnauthorized ? 'Missing API key' : reasoningLabel}
@@ -422,14 +417,11 @@ export function CompactModelSelector({
                               <ModelMark modelId={entry.model_id} provider={entry.provider} size={14} />
                             </span>
                             <span className="min-w-0 flex-1">
-                              <span className="flex items-center gap-1.5">
-                                <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">
-                                  {entry.display_name}
-                                </span>
-                                <StabilityBadge stability={entry.stability} />
+                              <span className="block truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-100">
+                                {entry.display_name}
                               </span>
                               <span className="mt-0.5 block truncate text-[10px] text-zinc-500">
-                                {runtimeName} · {entry.provider === 'ollama' ? '4K context' : '16K context'}
+                                {runtimeName} · 16K context
                               </span>
                               <span className="mt-1 block font-mono text-[9px] text-zinc-400">
                                 {modelCost(entry)}

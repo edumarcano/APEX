@@ -68,8 +68,8 @@ export type CloudEffort =
   | 'high'
   | 'xhigh'
   | 'max'
-export type CloudProvider = 'openai' | 'openrouter' | 'gemini'
-export type LocalRuntime = 'ollama' | 'llama_cpp'
+export type CloudProvider = 'openrouter' | 'gemini'
+export type LocalRuntime = 'llama_cpp'
 export type HostedTool = 'google_search' | 'google_maps'
 
 export type AgentKey = 'apex'
@@ -181,12 +181,10 @@ export type AgentAvailabilityStatus =
   | 'provider_error'
   | 'unknown'
   | 'disabled'
-  | 'ollama_unreachable'
   | 'model_not_installed'
   | 'insufficient_ram'
   | 'cpu_overloaded'
 
-export type AgentStability = 'stable' | 'preview' | 'experimental'
 export type AgentStatusSource = 'configuration' | 'verification' | 'request' | 'runtime'
 
 export interface AgentPricingMetadata {
@@ -207,7 +205,6 @@ export interface ModelCatalogEntry {
   display_name: string
   provider: CloudProvider | LocalRuntime
   runtime: AgentRuntime
-  stability: AgentStability
   hosted_capabilities: HostedTool[]
   pricing?: AgentPricingMetadata
   reasoning_options?: CloudEffort[] | null
@@ -219,7 +216,6 @@ export interface ModelCatalogEntry {
   reasoning_modes?: LocalReasoningMode[] | null
   default_reasoning_mode?: LocalReasoningMode | null
   supports_encrypted_reasoning?: boolean
-  dev_only?: boolean
   credentials_configured?: boolean
   status?: AgentAvailabilityStatus
   status_source?: AgentStatusSource
@@ -232,7 +228,7 @@ export interface ModelCatalogEntry {
 }
 
 export interface LocalLoadedModelStatus {
-  provider: 'ollama' | 'llama_cpp'
+  provider: 'llama_cpp'
   name: string
   model: string
   state: 'unloaded' | 'loading' | 'loaded' | 'sleeping' | 'failed' | 'unknown'

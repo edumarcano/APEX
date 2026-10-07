@@ -150,7 +150,7 @@ def _evaluate_local_model_blockers(
     backend = get_local_runtime_backend(agent.provider)
 
     if not backend.enabled:
-        provider_label = "llama.cpp" if agent.provider == "llama_cpp" else "Ollama"
+        provider_label = "llama.cpp"
         blockers.append(
             _blocker(
                 "model_unreachable",
@@ -216,12 +216,12 @@ def _cloud_credential_blockers(
             )
         ]
 
-    if os.getenv("OPENAI_API_KEY"):
+    if os.getenv("OPENROUTER_API_KEY") or os.getenv("GEMINI_API_KEY"):
         return []
     return [
         _blocker(
             "missing_credentials",
-            "OpenAI API key is not configured for this cloud operation.",
+            "Cloud API key is not configured for this cloud operation.",
         )
     ]
 

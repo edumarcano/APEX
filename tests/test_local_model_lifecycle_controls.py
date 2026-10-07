@@ -30,15 +30,15 @@ def _local_settings_mock(*, context_window: int = 16384) -> mock.Mock:
     settings.ask_apex.local.context_window = context_window
     settings.ask_apex.cloud.hosted_tools.google_search = True
     settings.ask_apex.cloud.hosted_tools.google_maps = True
-    settings.ask_apex.cloud.last_model = "gpt-5.6-luna"
+    settings.ask_apex.cloud.last_model = "openai/gpt-6-luna"
     settings.user_designation = ""
     settings.agent_display_name = ""
     return settings
 
 
-def _ollama_snapshot(*installed: str) -> dict:
+def _llama_snapshot(*installed: str) -> dict:
     return {
-        "provider": "ollama",
+        "provider": "llama_cpp",
         "reachable": True,
         "installed_models": list(installed),
         "loaded_models": [],
@@ -52,8 +52,6 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         backend.enabled = True
         backend.is_model_resident.side_effect = [False, True]
         settings = _local_settings_mock()
-        settings.ask_apex.selected_model = "qwen3:4b-instruct"
-        settings.ask_apex.local.last_model = "qwen3:4b-instruct"
         with (
             mock.patch("core.api.cortex.DEMO_MODE", False),
             mock.patch("core.api.cortex.get_local_runtime_backend", return_value=backend),
@@ -63,23 +61,23 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             mock.patch("core.api.cortex.switch_local_model", return_value=True) as switch,
             mock.patch(
                 "core.api.cortex.get_provider_snapshot",
-                return_value=_ollama_snapshot("qwen3:4b-instruct"),
+                return_value=_llama_snapshot("gemma-4-e2b-16k"),
             ) as snapshot,
             mock.patch(
                 "core.settings.get_settings_store",
                 return_value=mock.Mock(get_snapshot=mock.Mock(return_value=settings)),
             ),
         ):
-            response = load_local_model_endpoint("qwen3:4b-instruct")
+            response = load_local_model_endpoint("gemma-4-E2B-Q4_K_M.gguf")
 
-        self.assertEqual(response.model_id, "qwen3:4b-instruct")
+        self.assertEqual(response.model_id, "gemma-4-E2B-Q4_K_M.gguf")
         gate.assert_called_once()
         switch.assert_called_once()
         self.assertGreaterEqual(snapshot.call_count, 2)
-        snapshot.assert_any_call("ollama", force_refresh=True)
+        snapshot.assert_any_call("llama_cpp", force_refresh=True)
         end_execution.assert_called_once()
 
-    def test_load_rejects_demo_mode_without_touching_ollama(self) -> None:
+    def test_load_rejects_demo_mode_without_touching_runtime(self) -> None:
         with mock.patch("core.api.cortex.DEMO_MODE", True), mock.patch(
             "core.api.cortex.try_begin_local_execution"
         ) as begin:
@@ -117,7 +115,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             ),
             mock.patch(
                 "core.api.cortex.get_provider_snapshot",
-                return_value=_ollama_snapshot("qwen3:1.7b"),
+                return_value=_llama_snapshot("unknown-alias"),
             ),
             mock.patch("core.api.cortex.switch_local_model") as switch,
         ):
@@ -133,7 +131,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         backend = mock.Mock()
         backend.enabled = True
         unreachable = {
-            "provider": "ollama",
+            "provider": "llama_cpp",
             "reachable": False,
             "installed_models": [],
             "loaded_models": [],
@@ -167,7 +165,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             mock.patch("core.api.cortex.switch_local_model", return_value=True),
             mock.patch(
                 "core.api.cortex.get_provider_snapshot",
-                return_value=_ollama_snapshot("qwen3:1.7b"),
+                return_value=_llama_snapshot("gemma-4-e2b-16k"),
             ),
         ):
             with self.assertRaises(HTTPException) as raised:
@@ -181,7 +179,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         with (
             mock.patch(
                 "core.api.cortex.get_active_local_model",
-                return_value=LocalModelRef(provider="ollama", model="qwen3:4b-instruct"),
+                return_value=LocalModelRef(provider="llama_cpp", model="gemma-4-e2b-16k"),
             ),
             mock.patch("core.api.cortex.get_local_runtime_backend", return_value=backend),
             mock.patch("core.api.cortex.try_begin_local_execution", return_value=True),
@@ -245,7 +243,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             mock.patch("core.api.cortex.get_active_local_model", return_value=None),
             mock.patch(
                 "core.api.cortex.get_loading_local_model",
-                return_value=LocalModelRef(provider="ollama", model="qwen3:4b-instruct"),
+                return_value=LocalModelRef(provider="llama_cpp", model="gemma-4-e2b-16k"),
             ),
             mock.patch(
                 "core.api.cortex.iter_local_runtime_backends",
@@ -270,7 +268,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         with (
             mock.patch(
                 "core.api.cortex.get_active_local_model",
-                return_value=LocalModelRef(provider="ollama", model="qwen3:4b-instruct"),
+                return_value=LocalModelRef(provider="llama_cpp", model="gemma-4-e2b-16k"),
             ),
             mock.patch("core.api.cortex.get_local_runtime_backend", return_value=backend),
             mock.patch("core.api.cortex.try_begin_local_execution", return_value=True),
@@ -295,9 +293,6 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             "loaded_models": [],
             "sampled_at": 0.0,
         }
-        ollama_backend = mock.Mock()
-        ollama_backend.provider = "ollama"
-        ollama_backend.enabled = False
         llama_backend = mock.Mock()
         llama_backend.provider = "llama_cpp"
         llama_backend.enabled = True
@@ -312,9 +307,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             ),
             mock.patch(
                 "core.api.cortex.get_local_runtime_backend",
-                side_effect=lambda provider: (
-                    llama_backend if provider == "llama_cpp" else ollama_backend
-                ),
+                return_value=llama_backend,
             ),
             mock.patch(
                 "core.api.cortex.get_system_vitals",
@@ -332,7 +325,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             ),
             mock.patch.dict(
                 "os.environ",
-                {"OPENAI_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"},
+                {"OPENROUTER_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"},
             ),
         ):
             selected = _selected_model_entry()
@@ -361,9 +354,6 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             ],
             "sampled_at": 0.0,
         }
-        ollama_backend = mock.Mock()
-        ollama_backend.provider = "ollama"
-        ollama_backend.enabled = False
         llama_backend = mock.Mock()
         llama_backend.provider = "llama_cpp"
         llama_backend.enabled = True
@@ -378,9 +368,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             ),
             mock.patch(
                 "core.api.cortex.get_local_runtime_backend",
-                side_effect=lambda provider: (
-                    llama_backend if provider == "llama_cpp" else ollama_backend
-                ),
+                return_value=llama_backend,
             ),
             mock.patch(
                 "core.api.cortex.get_system_vitals",
@@ -398,7 +386,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             ),
             mock.patch.dict(
                 "os.environ",
-                {"OPENAI_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"},
+                {"OPENROUTER_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"},
             ),
         ):
             selected = _selected_model_entry()
@@ -421,7 +409,6 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
 
         backend = mock.Mock()
         backend.enabled = True
-        settings = mock.Mock()
         settings = _local_settings_mock()
         settings.ask_apex.enabled = True
         missing = {
@@ -457,69 +444,19 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
         switch.assert_not_called()
         end_execution.assert_called_once()
 
-    def test_profile_status_uses_ollama_residency_not_only_the_tracker(self) -> None:
+    def test_profile_status_uses_llama_cpp_residency_not_only_the_tracker(self) -> None:
         snapshot = {
-            "provider": "ollama",
+            "provider": "llama_cpp",
             "reachable": True,
-            "installed_models": ["qwen3:1.7b", "qwen3:4b-instruct"],
+            "installed_models": ["gemma-4-e2b-16k"],
             "loaded_models": [],
             "sampled_at": 0.0,
         }
         backend = mock.Mock()
-        backend.provider = "ollama"
-        backend.enabled = True
-        backend.get_status_snapshot.return_value = snapshot
-        with (
-            mock.patch(
-                "core.api.cortex.iter_local_runtime_backends",
-                return_value=(backend,),
-            ),
-            mock.patch("core.api.cortex.get_local_runtime_backend", return_value=backend),
-            mock.patch("core.api.cortex.get_system_vitals", return_value={"cpu": 10.0, "ram": 10.0}),
-            mock.patch(
-                "core.api.cortex.get_active_local_model",
-                return_value=LocalModelRef(provider="ollama", model="qwen3:4b-instruct"),
-            ),
-            mock.patch("core.api.cortex.get_loading_local_model", return_value=None),
-            mock.patch("core.api.cortex.get_idle_unload_remaining_seconds", return_value=60),
-            mock.patch("core.api.cortex.is_local_execution_active", return_value=False),
-            mock.patch("core.api.cortex.is_dev_mode", return_value=True),
-            mock.patch("core.agent.catalog.is_dev_mode", return_value=True),
-            mock.patch.dict("os.environ", {"OPENAI_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"}),
-        ):
-            selected = _selected_model_entry()
-
-        self.assertFalse(selected.active)
-        self.assertIsNone(selected.idle_unload_remaining_seconds)
-
-    def test_selected_model_status_does_not_adopt_another_models_residency(self) -> None:
-        snapshot = {
-            "provider": "ollama",
-            "reachable": True,
-            "installed_models": ["qwen3:1.7b", "qwen3:4b-instruct"],
-            "loaded_models": [
-                {
-                    "provider": "ollama",
-                    "name": "qwen3:1.7b",
-                    "model": "qwen3:1.7b",
-                    "state": "loaded",
-                    "context_window": 16384,
-                    "size_bytes": 2000000000,
-                    "size_vram_bytes": 2000000000,
-                    "processor": "gpu",
-                    "context": None,
-                    "expires_at": None,
-                }
-            ],
-            "sampled_at": 0.0,
-        }
-        backend = mock.Mock()
-        backend.provider = "ollama"
+        backend.provider = "llama_cpp"
         backend.enabled = True
         backend.get_status_snapshot.return_value = snapshot
         settings = _local_settings_mock()
-        settings.ask_apex.selected_model = "qwen3:4b-instruct"
-        settings.ask_apex.local.last_model = "qwen3:4b-instruct"
         with (
             mock.patch(
                 "core.api.cortex.iter_local_runtime_backends",
@@ -529,7 +466,7 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
             mock.patch("core.api.cortex.get_system_vitals", return_value={"cpu": 10.0, "ram": 10.0}),
             mock.patch(
                 "core.api.cortex.get_active_local_model",
-                return_value=LocalModelRef(provider="ollama", model="qwen3:1.7b"),
+                return_value=LocalModelRef(provider="llama_cpp", model="gemma-4-e2b-16k"),
             ),
             mock.patch("core.api.cortex.get_loading_local_model", return_value=None),
             mock.patch("core.api.cortex.get_idle_unload_remaining_seconds", return_value=60),
@@ -540,13 +477,66 @@ class LocalModelLifecycleControlTests(unittest.TestCase):
                 "core.settings.get_settings_store",
                 return_value=mock.Mock(get_snapshot=mock.Mock(return_value=settings)),
             ),
-            mock.patch.dict("os.environ", {"OPENAI_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"}),
+            mock.patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"}),
+        ):
+            selected = _selected_model_entry()
+
+        self.assertFalse(selected.active)
+        self.assertIsNone(selected.idle_unload_remaining_seconds)
+
+    def test_selected_model_status_does_not_adopt_another_models_residency(self) -> None:
+        snapshot = {
+            "provider": "llama_cpp",
+            "reachable": True,
+            "installed_models": ["gemma-4-e2b-4k", "gemma-4-e2b-16k"],
+            "loaded_models": [
+                {
+                    "provider": "llama_cpp",
+                    "name": "gemma-4-e2b-4k",
+                    "model": "gemma-4-e2b-4k",
+                    "state": "loaded",
+                    "context_window": 4096,
+                    "size_bytes": 2000000000,
+                    "size_vram_bytes": 2000000000,
+                    "processor": "gpu",
+                    "context": None,
+                    "expires_at": None,
+                }
+            ],
+            "sampled_at": 0.0,
+        }
+        backend = mock.Mock()
+        backend.provider = "llama_cpp"
+        backend.enabled = True
+        backend.get_status_snapshot.return_value = snapshot
+        settings = _local_settings_mock(context_window=16384)
+        with (
+            mock.patch(
+                "core.api.cortex.iter_local_runtime_backends",
+                return_value=(backend,),
+            ),
+            mock.patch("core.api.cortex.get_local_runtime_backend", return_value=backend),
+            mock.patch("core.api.cortex.get_system_vitals", return_value={"cpu": 10.0, "ram": 10.0}),
+            mock.patch(
+                "core.api.cortex.get_active_local_model",
+                return_value=LocalModelRef(provider="llama_cpp", model="gemma-4-e2b-4k"),
+            ),
+            mock.patch("core.api.cortex.get_loading_local_model", return_value=None),
+            mock.patch("core.api.cortex.get_idle_unload_remaining_seconds", return_value=60),
+            mock.patch("core.api.cortex.is_local_execution_active", return_value=False),
+            mock.patch("core.api.cortex.is_dev_mode", return_value=True),
+            mock.patch("core.agent.catalog.is_dev_mode", return_value=True),
+            mock.patch(
+                "core.settings.get_settings_store",
+                return_value=mock.Mock(get_snapshot=mock.Mock(return_value=settings)),
+            ),
+            mock.patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key", "GEMINI_API_KEY": "test-key"}),
         ):
             selected = _selected_model_entry()
 
         local_status = selected
         self.assertFalse(local_status.active)
-        self.assertEqual(local_status.model_id, "qwen3:4b-instruct")
+        self.assertEqual(local_status.model_id, "gemma-4-E2B-Q4_K_M.gguf")
         self.assertIsNone(local_status.loaded_model)
         self.assertIsNone(local_status.idle_unload_remaining_seconds)
 

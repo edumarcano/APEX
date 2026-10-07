@@ -255,7 +255,6 @@ export default function SettingsPanel({
           : {
               value: local.some(
                 (model) =>
-                  model.status === 'ollama_unreachable' ||
                   model.status === 'provider_unreachable',
               )
                 ? 'Unreachable'

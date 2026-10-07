@@ -40,7 +40,7 @@ class LocalEffortRejectionTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
 
     def test_demo_metadata_uses_explicit_local_model_not_saved_cloud_model(self) -> None:
-        saved_cloud_model = get_model_profile("gpt-5.6-luna")
+        saved_cloud_model = get_model_profile("openai/gpt-6-luna")
         assert saved_cloud_model is not None
         settings = mock.Mock()
         settings.ask_apex.enabled = True
@@ -92,7 +92,7 @@ class SandboxPolicyTests(unittest.TestCase):
 
     def test_sandbox_cloud_model_rejects_production_history_and_uses_safe_tools(self) -> None:
         captured: dict[str, object] = {}
-        selected_model = get_model_profile("gpt-5.6-luna")
+        selected_model = get_model_profile("openai/gpt-6-luna")
         assert selected_model is not None
 
         def capture_execution(payload, *_args, **kwargs):
@@ -139,7 +139,7 @@ class SandboxPolicyTests(unittest.TestCase):
                 AgentQueryRequest(
                     prompt="hello",
                     agent="apex",
-                    model_id="gpt-5.6-luna",
+                    model_id="openai/gpt-6-luna",
                     snapshot_id="snap-1",
                     history=[
                         AgentMessage(role="user", content="prior production turn")

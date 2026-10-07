@@ -78,19 +78,19 @@ class DocumentationCheckerTests(unittest.TestCase):
         issues = check_agent_profiles(
             [source],
             {
-                "catalog-one": "gpt-5.6-luna",
+                "catalog-one": "openai/gpt-6-luna",
                 "catalog-two": "gemini-3.7-flash",
             },
             {
                 source: (
                     "| `catalog-one` | Gemini `gemini-3.7-flash` |\n"
-                    "| `catalog-two` | OpenAI `gpt-5.6-luna` |\n"
+                    "| `catalog-two` | OpenRouter `openai/gpt-6-luna` |\n"
                 )
             },
         )
 
         self.assertEqual({issue.target for issue in issues}, {
-            "catalog-one -> gpt-5.6-luna",
+            "catalog-one -> openai/gpt-6-luna",
             "catalog-two -> gemini-3.7-flash",
         })
 
@@ -98,8 +98,8 @@ class DocumentationCheckerTests(unittest.TestCase):
         source = Path("virtual-readme.md")
         issues = check_agent_profiles(
             [source],
-            {"catalog-one": "gpt-5.6-luna"},
-            {source: "catalog-one -> gpt-5.6-luna; retired model grok-4.2\n"},
+            {"catalog-one": "openai/gpt-6-luna"},
+            {source: "catalog-one -> openai/gpt-6-luna; retired model grok-4.2\n"},
         )
 
         self.assertEqual(len(issues), 1)

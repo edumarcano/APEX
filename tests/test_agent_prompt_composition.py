@@ -15,7 +15,7 @@ from core.agent.catalog import (
 class ApexAgentPromptTests(unittest.TestCase):
     def test_cloud_and_local_models_share_the_apex_identity(self) -> None:
         identity = AGENT_SPECS["apex"].identity_instruction
-        for model_id in ("gpt-5.6-luna", "gemma-4-E2B-Q4_K_M.gguf"):
+        for model_id in ("openai/gpt-6-luna", "gemma-4-E2B-Q4_K_M.gguf"):
             with self.subTest(model_id=model_id):
                 profile = build_provider_profile(native_effort=None, model_id=model_id)
                 self.assertTrue(profile.system_instruction.startswith(identity))

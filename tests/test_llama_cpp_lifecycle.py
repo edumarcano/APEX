@@ -33,7 +33,6 @@ def _apex_local_profile(*, context_window: int = 16384):
         "gemma-4-E2B-Q4_K_M.gguf",
         display_name="Lynx",
         api_model="gemma-4-E2B-Q4_K_M.gguf",
-        stability="stable",
         max_tool_turns=3,
         max_tool_calls=4,
         system_instruction="test",

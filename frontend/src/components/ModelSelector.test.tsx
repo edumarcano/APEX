@@ -6,23 +6,23 @@ import type { ModelCatalogEntry } from '../types/telemetry'
 import { ModelSelector } from './ModelSelector'
 
 const catalog: ModelCatalogEntry[] = [
-  { model_id: 'gpt-5.6-luna', display_name: 'GPT-5.6 Luna', provider: 'openai', runtime: 'cloud', stability: 'stable', hosted_capabilities: [], status: 'verified', pricing: { currency: 'USD', pricing_version: 'test', billing_basis: 'standard', input_per_million: 0.2, output_per_million: 1.2, cached_input_per_million: null, long_context_threshold_tokens: 272000, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null }, reasoning_options: ['none', 'low'], default_reasoning: 'low' },
-  { model_id: 'gemini-3.7-flash', display_name: 'Gemini 3.7 Flash', provider: 'gemini', runtime: 'cloud', stability: 'stable', hosted_capabilities: ['google_search'], status: 'configured', pricing: { currency: 'USD', pricing_version: 'test', billing_basis: 'standard', input_per_million: 0.75, output_per_million: 3.75, cached_input_per_million: 0.075, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null } },
-  { model_id: 'gemma-4-E2B-Q4_K_M.gguf', display_name: 'Gemma 4 E2B', provider: 'llama_cpp', runtime: 'local', stability: 'stable', hosted_capabilities: [], status: 'available', active: true, context_options: [4096, 16384], default_context_window: 16384, reasoning_modes: ['none', 'focused'], default_reasoning_mode: 'none' },
+  { model_id: 'openai/gpt-6-luna', display_name: 'GPT-6 Luna', provider: 'openrouter', runtime: 'cloud', hosted_capabilities: [], status: 'verified', pricing: { currency: 'USD', pricing_version: 'test', billing_basis: 'standard', input_per_million: 0.1, output_per_million: 0.5, cached_input_per_million: 0.01, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null }, reasoning_options: ['none', 'low', 'medium', 'high', 'xhigh', 'max'], default_reasoning: 'medium' },
+  { model_id: 'gemini-3.7-flash', display_name: 'Gemini 3.7 Flash', provider: 'gemini', runtime: 'cloud', hosted_capabilities: ['google_search'], status: 'configured', pricing: { currency: 'USD', pricing_version: 'test', billing_basis: 'standard', input_per_million: 0.75, output_per_million: 3.75, cached_input_per_million: 0.075, long_context_threshold_tokens: null, long_context_input_per_million: null, long_context_output_per_million: null, long_context_cached_input_per_million: null } },
+  { model_id: 'gemma-4-E2B-Q4_K_M.gguf', display_name: 'Gemma 4 E2B', provider: 'llama_cpp', runtime: 'local', hosted_capabilities: [], status: 'available', active: true, context_options: [4096, 16384], default_context_window: 16384, reasoning_modes: ['none', 'focused'], default_reasoning_mode: 'none' },
 ]
 
 describe('ModelSelector', () => {
   it('shows selected model pricing, capabilities, and per-model status', () => {
-    render(<ModelSelector selectedModelId="gpt-5.6-luna" onModelChange={vi.fn()} catalog={catalog} />)
-    expect(screen.getByText('GPT-5.6 Luna')).toBeVisible()
-    expect(screen.getByText('$0.20/M in · $1.20/M out')).toBeVisible()
+    render(<ModelSelector selectedModelId="openai/gpt-6-luna" onModelChange={vi.fn()} catalog={catalog} />)
+    expect(screen.getByText('GPT-6 Luna')).toBeVisible()
+    expect(screen.getByText('$0.10/M in · $0.50/M out')).toBeVisible()
     expect(screen.getByText('Verified')).toBeVisible()
   })
 
   it('groups cloud and local models and selects by model id', async () => {
     const change = vi.fn()
     const user = userEvent.setup()
-    render(<ModelSelector selectedModelId="gpt-5.6-luna" onModelChange={change} catalog={catalog} />)
+    render(<ModelSelector selectedModelId="openai/gpt-6-luna" onModelChange={change} catalog={catalog} />)
     await user.click(screen.getByRole('button', { name: 'Model' }))
     const listbox = screen.getByRole('listbox', { name: 'Select Lynx model' })
     expect(within(listbox).getByRole('group', { name: 'Cloud models' })).toBeVisible()
@@ -42,17 +42,17 @@ describe('ModelSelector', () => {
   it('verifies the selected cloud model id', async () => {
     const verify = vi.fn().mockResolvedValue(true)
     const user = userEvent.setup()
-    render(<ModelSelector selectedModelId="gpt-5.6-luna" onModelChange={vi.fn()} catalog={catalog} onVerify={verify} />)
+    render(<ModelSelector selectedModelId="openai/gpt-6-luna" onModelChange={vi.fn()} catalog={catalog} onVerify={verify} />)
     await user.click(screen.getByRole('button', { name: 'Verify' }))
-    expect(verify).toHaveBeenCalledWith('gpt-5.6-luna')
+    expect(verify).toHaveBeenCalledWith('openai/gpt-6-luna')
   })
 
   it('shows configured credentials neutrally and cached cloud success as offline when needed', () => {
     const configuredCatalog = [{ ...catalog[0], credentials_configured: true, status: 'configured' as const }]
-    const { rerender } = render(<ModelSelector selectedModelId="gpt-5.6-luna" onModelChange={vi.fn()} catalog={configuredCatalog} />)
+    const { rerender } = render(<ModelSelector selectedModelId="openai/gpt-6-luna" onModelChange={vi.fn()} catalog={configuredCatalog} />)
     expect(screen.getByText('Configured')).toHaveClass('text-zinc-400')
 
-    rerender(<ModelSelector selectedModelId="gpt-5.6-luna" onModelChange={vi.fn()} catalog={catalog} />)
+    rerender(<ModelSelector selectedModelId="openai/gpt-6-luna" onModelChange={vi.fn()} catalog={catalog} />)
     expect(screen.getByText('Verified')).toHaveClass('text-emerald-300')
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
     fireEvent.offline(window)
@@ -63,7 +63,7 @@ describe('ModelSelector', () => {
 
   it('shows rate limiting as a red cloud blocker', () => {
     const limitedCatalog = [{ ...catalog[0], status: 'rate_limited' as const }]
-    render(<ModelSelector selectedModelId="gpt-5.6-luna" onModelChange={vi.fn()} catalog={limitedCatalog} />)
+    render(<ModelSelector selectedModelId="openai/gpt-6-luna" onModelChange={vi.fn()} catalog={limitedCatalog} />)
     expect(screen.getByText('Rate limited')).toHaveClass('text-[#DC2626]')
   })
 })

@@ -84,7 +84,7 @@ Conversation turn
 
 Conversation storage owns prompts and answers. Request metadata records the model, provider, runtime, controls, and accepted production or sandbox partition. Idempotent replay uses those choices as well as the Agent identity. Once an asynchronous run is accepted, later settings changes affect subsequent requests rather than changing that run's execution choices.
 
-Provider profiles, tool defaults, hosted capabilities, and schema projections follow the effective request model, including an explicit override. Gemini, OpenAI Responses, and llama.cpp consume native streams even without a live browser observer. Providers own stream cleanup and bounded retries. Gemini can recover an empty non-structured STOP result with one bounded unary call. OpenAI requests use `store=False` and send bounded APEX history instead of relying on provider-owned conversation state.
+Provider profiles, tool defaults, hosted capabilities, and schema projections follow the effective request model, including an explicit override. Google AI Studio (Gemini), OpenRouter, and llama.cpp consume native streams even without a live browser observer. Providers own stream cleanup and bounded retries. Google AI Studio can recover an empty non-structured STOP result with one bounded unary call.
 
 ### Tools and actions
 
@@ -94,7 +94,7 @@ Write-capable tools create action proposals for operator approval before executi
 
 ### Local inference
 
-One coordinator permits a single local inference execution across Ollama and llama.cpp. Before loading a model, it checks reachability, resident models, installed aliases, and resource gates. Context and reasoning changes apply to the next relevant request. Loading, switching, and unloading share the coordination boundary with inference.
+One coordinator permits a single local inference execution for llama.cpp. Before loading a model, it checks reachability, resident models, installed aliases, and resource gates. Context and reasoning changes apply to the next relevant request. Loading, switching, and unloading share the coordination boundary with inference.
 
 ### Runs and activity
 

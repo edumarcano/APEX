@@ -18,7 +18,6 @@ import { cloudAvailabilityPresentation } from '../lib/cloudAvailability'
 import { useBrowserOnline } from '../hooks/useBrowserOnline'
 
 import { ModelMark } from './ModelMark'
-import { StabilityBadge } from './StabilityBadge'
 
 interface ModelSelectorProps {
   selectedModelId: string
@@ -151,7 +150,7 @@ export function ModelSelector({
   const selectedCapabilities = selectedModel ? capabilityTags(selectedModel) : []
   const providerLabel = selectedModel
     ? selectedModel.runtime === 'local'
-      ? runtimeDisplayName(selectedModel.provider as 'ollama' | 'llama_cpp')
+      ? runtimeDisplayName(selectedModel.provider as 'llama_cpp')
       : providerDisplayName(selectedModel.provider)
     : ''
 
@@ -193,15 +192,9 @@ export function ModelSelector({
                 <span className="truncate font-orbitron text-xs font-semibold text-white">
                   {selectedModel?.display_name ?? selectedModelId}
                 </span>
-                {selectedModel ? <StabilityBadge stability={selectedModel.stability} /> : null}
               </div>
               <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] text-zinc-400">
                 <span>{providerLabel}</span>
-                {selectedModel?.dev_only ? (
-                  <span className="rounded border border-purple-400/30 bg-purple-500/10 px-1 py-0 font-mono text-[8px] uppercase tracking-wider text-purple-200">
-                    DEV
-                  </span>
-                ) : null}
               </div>
             </div>
 
@@ -287,7 +280,7 @@ export function ModelSelector({
               const unavailable = model.status === 'disabled' || model.credentials_configured === false
               const provLabel =
                 model.runtime === 'local'
-                  ? runtimeDisplayName(model.provider as 'ollama' | 'llama_cpp')
+                  ? runtimeDisplayName(model.provider as 'llama_cpp')
                   : providerDisplayName(model.provider)
               const caps = capabilityTags(model)
 
@@ -319,12 +312,6 @@ export function ModelSelector({
                         <span className="font-orbitron text-xs font-semibold text-white">
                           {model.display_name}
                         </span>
-                        <StabilityBadge stability={model.stability} />
-                        {model.dev_only ? (
-                          <span className="rounded border border-purple-400/30 bg-purple-500/10 px-1 py-0 font-mono text-[8px] uppercase tracking-wider text-purple-200">
-                            DEV
-                          </span>
-                        ) : null}
                       </div>
                       <p className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] text-zinc-400">
                         <span>{provLabel}</span>

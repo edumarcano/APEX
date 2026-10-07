@@ -599,7 +599,6 @@ AgentAvailabilityStatus = Literal[
     "provider_unreachable",
     "provider_error",
     "disabled",
-    "ollama_unreachable",
     "model_not_installed",
     "insufficient_ram",
     "cpu_overloaded",
@@ -622,8 +621,8 @@ class AgentPricingMetadata(BaseModel):
 
 
 class LocalLoadedModelStatus(BaseModel):
-    provider: Literal["ollama", "llama_cpp"] = Field(
-        default="ollama",
+    provider: Literal["llama_cpp"] = Field(
+        default="llama_cpp",
         description="Local inference provider that reported this loaded model.",
     )
     name: str = Field(description="Loaded model tag reported by the local runtime.")
@@ -670,24 +669,17 @@ class AgentModelCatalogEntry(BaseModel):
 
     model_id: str = Field(description="Stable model identifier from the registry.")
     display_name: str = Field(description="Human-readable model label for the HUD.")
-    provider: Literal["openai", "openrouter", "gemini", "ollama", "llama_cpp"] = Field(
+    provider: Literal["openrouter", "gemini", "llama_cpp"] = Field(
         description="Inference provider or local runtime for this model.",
     )
     runtime: Literal["cloud", "local"] = Field(
         description="Whether this model runs in the cloud or locally.",
-    )
-    stability: Literal["stable", "preview", "experimental"] = Field(
-        description="Release stage classification for this model.",
     )
     hosted_capabilities: list[Literal["google_search", "google_maps"]] = (
         Field(
             default_factory=list,
             description="Provider-hosted grounding capabilities supported by this model.",
         )
-    )
-    dev_only: bool = Field(
-        default=False,
-        description="Whether this model is visible only in DEV_MODE.",
     )
     credentials_configured: bool = Field(
         default=True,

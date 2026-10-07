@@ -184,7 +184,7 @@ Stop the existing APEX process or other service using the port. APEX intentional
 
 ### A local model is unavailable
 
-Confirm the selected backend is running. For Ollama, check the configured host and that the exact model tag is installed with `ollama list`. For llama.cpp, confirm the router lists the selected model-based runtime alias. Cold loads can also be blocked by the model's CPU or RAM gate.
+Confirm the llama.cpp backend is running and the router lists the selected model-based runtime alias. Cold loads can also be blocked by the model's CPU or RAM gate.
 
 ### Live connectors return no data
 

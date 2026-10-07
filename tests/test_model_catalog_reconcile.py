@@ -16,51 +16,50 @@ from core.agent.model_catalog import (
 class ModelCatalogReconcileTests(unittest.TestCase):
     def test_visible_cloud_model_remains_selected(self) -> None:
         self.assertEqual(
-            reconcile_cloud_model("gemini-3.7-flash", dev_mode=False),
+            reconcile_cloud_model("gemini-3.7-flash"),
             "gemini-3.7-flash",
+        )
+        self.assertEqual(
+            reconcile_cloud_model("openai/gpt-6-luna"),
+            "openai/gpt-6-luna",
         )
 
     def test_unknown_cloud_model_falls_back_to_default(self) -> None:
         self.assertEqual(
-            reconcile_cloud_model("nonexistent-cloud-model", dev_mode=False),
+            reconcile_cloud_model("nonexistent-cloud-model"),
             DEFAULT_CLOUD_MODEL,
         )
 
     def test_visible_local_model_remains_selected(self) -> None:
         self.assertEqual(
-            reconcile_local_model("gemma-4-E2B-Q4_K_M.gguf", dev_mode=False),
+            reconcile_local_model("gemma-4-E2B-Q4_K_M.gguf"),
             "gemma-4-E2B-Q4_K_M.gguf",
         )
 
-    def test_hidden_models_fall_back_to_their_runtime_defaults_outside_dev_mode(self) -> None:
-        hidden_models = (
+    def test_retired_models_fall_back_to_their_runtime_defaults(self) -> None:
+        retired_models = (
             ("cloud", "gpt-5.6-luna", DEFAULT_CLOUD_MODEL),
-            ("Ollama", "qwen3:1.7b", DEFAULT_LOCAL_MODEL),
-            ("llama.cpp", "gemma-4-E4B-Q4_K_M.gguf", DEFAULT_LOCAL_MODEL),
-            ("llama.cpp", "Qwen3.5-4B-Q4_K_M.gguf", DEFAULT_LOCAL_MODEL),
+            ("local", "qwen3:1.7b", DEFAULT_LOCAL_MODEL),
+            ("local", "gemma-4-E4B-Q4_K_M.gguf", DEFAULT_LOCAL_MODEL),
+            ("local", "Qwen3.5-4B-Q4_K_M.gguf", DEFAULT_LOCAL_MODEL),
         )
-        for runtime, model_id, expected in hidden_models:
+        for runtime, model_id, expected in retired_models:
             with self.subTest(runtime=runtime, model=model_id):
                 reconcile = reconcile_cloud_model if runtime == "cloud" else reconcile_local_model
-                self.assertEqual(reconcile(model_id, dev_mode=False), expected)
-
-    def test_dev_only_models_remain_when_development_mode_is_enabled(self) -> None:
-        self.assertEqual(reconcile_local_model("qwen3:1.7b", dev_mode=True), "qwen3:1.7b")
-        self.assertEqual(
-            reconcile_cloud_model("gpt-5.6-luna", dev_mode=True),
-            "gpt-5.6-luna",
-        )
-        self.assertEqual(
-            reconcile_local_model("Qwen3.5-4B-Q4_K_M.gguf", dev_mode=True),
-            "Qwen3.5-4B-Q4_K_M.gguf",
-        )
+                self.assertEqual(reconcile(model_id), expected)
 
     def test_local_context_window_reconciles_to_model_capabilities(self) -> None:
         self.assertEqual(
             reconcile_local_context_window(
-                "llama_cpp", "gemma-4-E4B-Q4_K_M.gguf", 65536
+                "llama_cpp", "gemma-4-E2B-Q4_K_M.gguf", 16384
             ),
-            65536,
+            16384,
+        )
+        self.assertEqual(
+            reconcile_local_context_window(
+                "llama_cpp", "gemma-4-E2B-Q4_K_M.gguf", 65536
+            ),
+            16384,
         )
 
 
