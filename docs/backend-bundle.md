@@ -68,7 +68,7 @@ build\backend-bundle\smoke-probe\apex-bundle-probe.exe --run-suite `
   --report build\backend-bundle\smoke-report.json
 ```
 
-The suite relocates the packaged programs under a Unicode path, runs them from an unrelated working directory, and sanitizes child `PATH` values. It checks the frozen bundle and separate probe; it does not establish VM or clean-install evidence.
+The suite relocates the packaged programs under a Unicode path, runs them from an unrelated working directory, and sanitizes child `PATH` values. It checks the frozen bundle and separate probe; it does not establish VM or clean-install evidence. The distribution lifecycle smoke passes `--inference-timeout 600` to its strict frozen backend suite, allowing bounded cold semantic inference in CI and installed test profiles. Direct `--run-suite` invocations keep the suite's configurable timeout.
 
 ## Included and excluded files
 

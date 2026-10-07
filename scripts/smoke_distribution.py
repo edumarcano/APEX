@@ -1322,7 +1322,8 @@ def _run_distribution(args: argparse.Namespace, report: Report) -> None:
         suite_args = [
             str(probe), "--run-suite", "--bundle", str(bundle), "--probe", str(probe),
             "--strict", "--require-idle-release", "--fastembed-cache", str(args.fastembed_cache.resolve()),
-            "--kokoro-assets", str(args.kokoro_assets.resolve()), "--report", str(backend_report),
+            "--kokoro-assets", str(args.kokoro_assets.resolve()), "--inference-timeout", "600",
+            "--report", str(backend_report),
         ]
         suite = _run(suite_args, cwd=cwd, timeout=1800)
         if suite.returncode != 0 or not backend_report.is_file():
