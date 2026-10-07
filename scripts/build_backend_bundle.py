@@ -6,7 +6,7 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import platform
 import shutil
 import subprocess
@@ -381,6 +381,67 @@ def write_manifest(
     return manifest
 
 
+def _manifest_difference_summary(
+    first: dict[str, Any],
+    second: dict[str, Any],
+    *,
+    sample_limit: int = 10,
+) -> str:
+    """Describe reproducibility mismatches using bounded bundle-relative paths only."""
+    if sample_limit < 0:
+        raise ValueError("sample_limit must be non-negative")
+
+    def files_by_path(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        entries: dict[str, dict[str, Any]] = {}
+        for item in manifest.get("files", []):
+            path = item.get("path")
+            if isinstance(path, str):
+                entries[path] = item
+        return entries
+
+    first_files = files_by_path(first)
+    second_files = files_by_path(second)
+    first_paths = set(first_files)
+    second_paths = set(second_files)
+    added = sorted(second_paths - first_paths)
+    removed = sorted(first_paths - second_paths)
+    changed = sorted(
+        path for path in first_paths & second_paths if first_files[path] != second_files[path]
+    )
+
+    def safe_path(path: str) -> str:
+        parsed = PurePosixPath(path)
+        if (
+            not path
+            or parsed.is_absolute()
+            or not parsed.parts
+            or "\\" in path
+            or ":" in parsed.parts[0]
+            or any(ord(char) < 32 or ord(char) == 127 for char in path)
+            or any(part in {"", ".", ".."} for part in parsed.parts)
+        ):
+            return "<invalid-relative-path>"
+        return path[:160]
+
+    details: list[str] = []
+    for label, paths in (("added", added), ("removed", removed), ("changed", changed)):
+        if not paths:
+            continue
+        samples = ", ".join(safe_path(path) for path in paths[:sample_limit])
+        omitted = len(paths) - min(len(paths), sample_limit)
+        if omitted:
+            samples = f"{samples}, ... (+{omitted})" if samples else f"... (+{omitted})"
+        details.append(f"{label} files ({len(paths)}): {samples or 'no paths shown'}")
+
+    metadata_keys = (set(first) | set(second)) - {"files"}
+    changed_metadata = sorted(
+        key for key in metadata_keys if first.get(key) != second.get(key)
+    )
+    if changed_metadata:
+        details.append(f"metadata fields differ: {', '.join(changed_metadata)}")
+    return "; ".join(details) or "manifest contents differ without a file-path delta"
+
+
 def build(*, with_smoke_probe: bool = False, reproducibility_check: bool = False) -> Path:
     toolchain = _load_toolchain()
     _assert_uv_version(toolchain)
@@ -440,7 +501,11 @@ def build(*, with_smoke_probe: bool = False, reproducibility_check: bool = False
         _copy_notices(NOTICE_STAGE, second)
         second_manifest = write_manifest(second, build_info["build_id"], notice_inventory)
         if first_manifest != second_manifest:
-            raise BundleBuildError("Controlled PyInstaller builds produced different file hashes.")
+            details = _manifest_difference_summary(first_manifest, second_manifest)
+            raise BundleBuildError(
+                "Controlled PyInstaller builds produced different file hashes: "
+                f"{details}."
+            )
     return production
 
 

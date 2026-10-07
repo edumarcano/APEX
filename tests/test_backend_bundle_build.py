@@ -155,6 +155,47 @@ class BackendBundleBuildTests(unittest.TestCase):
             self.assertEqual(len(manifest["files"]), 2)
             self.assertEqual(json.loads((root / "bundle-manifest.json").read_text())["build_id"], "build-id")
 
+    def test_reproducibility_mismatch_summary_reports_bounded_relative_file_deltas(self) -> None:
+        first = {
+            "build_id": "first-build-id",
+            "files": [
+                {"path": "changed.bin", "sha256": "a", "size": 1},
+                {"path": "removed.bin", "sha256": "b", "size": 1},
+            ],
+            "schema_version": 1,
+        }
+        second = {
+            "build_id": "second-build-id",
+            "files": [
+                {"path": "added.bin", "sha256": "c", "size": 1},
+                {"path": "changed.bin", "sha256": "d", "size": 2},
+            ],
+            "schema_version": 1,
+        }
+
+        summary = builder._manifest_difference_summary(first, second, sample_limit=1)
+
+        self.assertIn("added files (1): added.bin", summary)
+        self.assertIn("removed files (1): removed.bin", summary)
+        self.assertIn("changed files (1): changed.bin", summary)
+        self.assertIn("metadata fields differ: build_id", summary)
+        self.assertNotIn("first-build-id", summary)
+        self.assertNotIn("second-build-id", summary)
+
+    def test_reproducibility_mismatch_summary_caps_path_samples(self) -> None:
+        first = {"files": []}
+        second = {
+            "files": [
+                {"path": f"changed/{index:02d}.bin", "sha256": str(index), "size": index}
+                for index in range(12)
+            ]
+        }
+
+        summary = builder._manifest_difference_summary(first, second, sample_limit=2)
+
+        self.assertIn("added files (12): changed/00.bin, changed/01.bin, ... (+10)", summary)
+        self.assertNotIn("changed/02.bin", summary)
+
     def test_backend_and_cli_entrypoints_expose_the_existing_commands(self) -> None:
         backend = subprocess.run(
             [sys.executable, str(ROOT / "packaging" / "windows" / "backend_entry.py"), "--help"],
