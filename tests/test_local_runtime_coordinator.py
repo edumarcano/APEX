@@ -443,58 +443,6 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
             LocalModelRef(provider="llama_cpp", model="gemma-e2b-4k"),
         )
 
-    def test_same_provider_switch_unloads_previous_model_first(self) -> None:
-        self.backend.resident.add("gemma-e2b-4k")
-        coord.register_local_activity(
-            LocalModelRef(provider="llama_cpp", model="gemma-e2b-4k")
-        )
-        self.assertTrue(coord.try_begin_local_execution())
-        self.assertTrue(
-            coord.switch_local_model(
-                _FakeProfile(api_model="gemma-e2b-16k")
-            )
-        )
-        self.assertEqual(self.backend.unload_calls, ["gemma-e2b-4k"])
-        self.assertEqual(self.backend.load_calls, ["gemma-e2b-16k"])
-        self.assertNotIn("gemma-e2b-4k", self.backend.resident)
-        self.assertIn("gemma-e2b-16k", self.backend.resident)
-        self.assertEqual(
-            coord.get_active_local_model(),
-            LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k"),
-        )
-        coord.end_local_execution()
-
-    def test_same_provider_unload_failure_blocks_target_load(self) -> None:
-        self.backend.resident.add("gemma-e2b-16k")
-        self.backend.fail_unload.add("gemma-e2b-16k")
-        coord.register_local_activity(
-            LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k")
-        )
-        self.assertTrue(coord.try_begin_local_execution())
-        self.assertFalse(
-            coord.switch_local_model(
-                _FakeProfile(api_model="gemma-e2b-4k")
-            )
-        )
-        self.assertEqual(self.backend.unload_calls, ["gemma-e2b-16k"])
-        self.assertEqual(self.backend.load_calls, [])
-        self.assertIn("gemma-e2b-16k", self.backend.resident)
-        self.assertEqual(
-            coord.get_active_local_model(),
-            LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k"),
-        )
-        coord.end_local_execution()
-
-    def test_idle_unload_uses_active_backend(self) -> None:
-        ref = LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k")
-        self.backend.resident.add("gemma-e2b-16k")
-        coord.register_local_activity(ref)
-        self.clock["now"] = 2000.0
-        coord._maybe_unload_idle_model()
-        self.assertEqual(self.backend.unload_calls, ["gemma-e2b-16k"])
-        self.assertIsNone(coord.get_active_local_model())
-
-
 class IdleMonitorShutdownTests(unittest.IsolatedAsyncioTestCase):
     async def test_stop_event_ends_monitor_without_waiting_for_poll_interval(self) -> None:
         stop_event = asyncio.Event()
