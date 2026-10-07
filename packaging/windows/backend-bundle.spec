@@ -93,7 +93,13 @@ datas.extend(collect_data_files("language_tags"))
 datas.extend(copy_metadata("apex", recursive=True))
 datas.extend(copy_metadata("fastembed"))
 if probe_mode:
-    hiddenimports.extend(["scripts.smoke_backend_bundle", "core.host.profile_lock"])
+    hiddenimports.extend([
+        "scripts.smoke_backend_bundle",
+        "scripts.smoke_distribution",
+        "scripts.smoke_desktop_shell",
+        "scripts.smoke_device_location",
+        "core.host.profile_lock",
+    ])
 
 entry = (
     ROOT / "packaging" / "windows" / "smoke" / "probe.py"

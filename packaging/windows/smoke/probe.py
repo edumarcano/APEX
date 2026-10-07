@@ -480,6 +480,15 @@ def main(argv: list[str] | None = None) -> int:
         # Build-only fixture entry point used by the frozen smoke controller.
         # The production backend executable does not include this probe.
         return _data_import_rehearsal.main(values[1:])
+    if values and values[0] == "--distribution-suite":
+        from scripts.smoke_distribution import main as distribution_main
+        return distribution_main(values[1:])
+    if values and values[0] == "--desktop-smoke-suite":
+        from scripts.smoke_desktop_shell import main as desktop_main
+        return desktop_main(values[1:])
+    if values and values[0] == "--location-smoke-suite":
+        from scripts.smoke_device_location import main as location_main
+        return location_main(values[1:])
     if values and values[0] == "--run-suite":
         suite_args = values[1:]
         if "--probe" not in suite_args:
