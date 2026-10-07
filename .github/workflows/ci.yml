@@ -103,3 +103,126 @@ jobs:
       - name: Check frontend loading boundaries
         working-directory: frontend
         run: npm run check:loading
+
+  distribution:
+    name: Windows locked distribution validation
+    runs-on: windows-latest
+    needs: [backend, frontend]
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v6
+        with:
+          uv-version: "0.12.3"
+          python-version: "3.14.7"
+          enable-cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up locked Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.0"
+          target: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Sync locked Python dependencies
+        run: uv sync --locked --all-extras --python 3.14.7
+
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build reproducible backend bundle and frozen probe
+        run: uv run --locked --all-extras --python 3.14.7 python scripts/build_backend_bundle.py --with-smoke-probe --reproducibility-check
+
+      - name: Provision external distribution smoke assets
+        run: uv run --locked --all-extras --python 3.14.7 python scripts/provision_distribution_smoke_assets.py --destination "$env:RUNNER_TEMP\apex-distribution-smoke-assets"
+
+      - name: Run strict frozen backend smoke
+        run: >-
+          uv run --locked --all-extras --python 3.14.7 python scripts/smoke_backend_bundle.py
+          --bundle dist/backend-bundle
+          --probe build/backend-bundle/smoke-probe/apex-bundle-probe.exe
+          --fastembed-cache "$env:RUNNER_TEMP\apex-distribution-smoke-assets\fastembed_cache"
+          --kokoro-assets "$env:RUNNER_TEMP\apex-distribution-smoke-assets\kokoro"
+          --strict --require-idle-release
+          --report "$env:RUNNER_TEMP\backend-bundle-smoke-report.json"
+
+      - name: Prepare verified backend resources for Rust checks
+        working-directory: frontend
+        run: npm run desktop:prepare -- --bundle "${{ github.workspace }}\dist\backend-bundle"
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path frontend/src-tauri/Cargo.toml --check
+
+      - name: Run locked Rust tests
+        run: cargo test --manifest-path frontend/src-tauri/Cargo.toml --locked --target x86_64-pc-windows-msvc
+
+      - name: Run locked Rust lint
+        run: cargo clippy --manifest-path frontend/src-tauri/Cargo.toml --locked --target x86_64-pc-windows-msvc --all-targets -- -D warnings
+
+      - name: Build Windows desktop installer
+        working-directory: frontend
+        run: npm run desktop:package
+
+      - name: Verify expected installer outputs
+        run: |
+          $installerRoot = Join-Path $env:GITHUB_WORKSPACE "build\desktop-shell\installers"
+          $manifest = Join-Path $installerRoot "distribution-manifest.json"
+          if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { throw "Installer distribution manifest was not produced." }
+          $receipt = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+          if ($receipt.version -ne "2.1.0" -or $receipt.target -ne "x86_64-pc-windows-msvc") { throw "Installer manifest has unexpected version or target." }
+          $installerPath = Join-Path $installerRoot $receipt.installer
+          if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) { throw "Manifest installer was not produced." }
+          $records = Get-ChildItem -LiteralPath $installerRoot -Filter "*-setup.exe" -File
+          if ($records.Count -ne 1 -or $records[0].FullName -ne $installerPath) { throw "Expected exactly the one manifest-listed NSIS setup executable." }
+          $checksum = "$installerPath.sha256"
+          if (-not (Test-Path -LiteralPath $checksum -PathType Leaf)) { throw "Installer SHA-256 receipt was not produced." }
+
+      - name: Build synthetic 2.0.0 upgrade installer fixture
+        run: uv run --locked --all-extras --python 3.14.7 python scripts/build_distribution_fixture.py --base-ref 31fdd21757a1822ac0223956c20595ff5a13d307 --output "$env:RUNNER_TEMP\apex-previous-installer" --report "$env:RUNNER_TEMP\distribution-fixture-report.json"
+
+      - name: Run hosted-user installer upgrade smoke
+        env:
+          APEX_DISTRIBUTION_SMOKE_PROFILE: "1"
+          APEX_DISTRIBUTION_SMOKE_OPERATOR_SID: S-1-0-0
+        run: |
+          $installerRoot = Join-Path $env:GITHUB_WORKSPACE "build\desktop-shell\installers"
+          $currentManifest = Get-Content (Join-Path $installerRoot "distribution-manifest.json") -Raw | ConvertFrom-Json
+          $currentInstaller = Join-Path $installerRoot $currentManifest.installer
+          $previousInstaller = (Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TEMP "apex-previous-installer") -Filter "*-setup.exe" -File | Select-Object -Single).FullName
+          uv run --locked --all-extras --python 3.14.7 python scripts/smoke_distribution.py --installer "$currentInstaller" --previous-installer "$previousInstaller" --probe build/backend-bundle/smoke-probe/apex-bundle-probe.exe --fastembed-cache "$env:RUNNER_TEMP\apex-distribution-smoke-assets\fastembed_cache" --kokoro-assets "$env:RUNNER_TEMP\apex-distribution-smoke-assets\kokoro" --expected-version 2.1.0 --previous-version 2.0.0 --mode ci --report "$env:RUNNER_TEMP\distribution-installer-smoke-report.json"
+
+      - name: Upload distribution receipts and validation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apex-windows-distribution-validation
+          if-no-files-found: warn
+          path: |
+            build/desktop-shell/installers/*-setup.exe
+            build/desktop-shell/installers/*.sha256
+            build/desktop-shell/installers/distribution-manifest.json
+            dist/backend-bundle/LICENSE
+            dist/backend-bundle/THIRD_PARTY_NOTICES.md
+            dist/backend-bundle/licenses/**
+            dist/backend-bundle/bundle-manifest.json
+            dist/backend-bundle/_internal/build-info.json
+            ${{ runner.temp }}/backend-bundle-smoke-report.json
+            ${{ runner.temp }}/distribution-fixture-report.json
+            ${{ runner.temp }}/distribution-installer-smoke-report.json
