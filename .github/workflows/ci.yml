@@ -176,6 +176,32 @@ jobs:
       - name: Run locked Rust lint
         run: cargo clippy --manifest-path frontend/src-tauri/Cargo.toml --locked --target x86_64-pc-windows-msvc --all-targets -- -D warnings
 
+      - name: Preserve backend provenance fallback before packaging
+        if: always()
+        run: |
+          $source = Join-Path $env:GITHUB_WORKSPACE "dist\backend-bundle"
+          $fallback = Join-Path $env:RUNNER_TEMP "backend-bundle-provenance-fallback"
+          $required = @("bundle-manifest.json", "_internal\build-info.json")
+          $available = $true
+          foreach ($relativePath in $required) {
+            if (-not (Test-Path -LiteralPath (Join-Path $source $relativePath) -PathType Leaf)) { $available = $false }
+          }
+          if ($available) {
+            New-Item -ItemType Directory -Force -Path $fallback | Out-Null
+            foreach ($relativePath in @("LICENSE", "THIRD_PARTY_NOTICES.md", "bundle-manifest.json", "_internal\build-info.json")) {
+              $path = Join-Path $source $relativePath
+              if (Test-Path -LiteralPath $path -PathType Leaf) {
+                $destination = Join-Path $fallback $relativePath
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+                Copy-Item -LiteralPath $path -Destination $destination -Force
+              }
+            }
+            $licenses = Join-Path $source "licenses"
+            if (Test-Path -LiteralPath $licenses -PathType Container) { Copy-Item -LiteralPath $licenses -Destination $fallback -Recurse -Force }
+          } else {
+            Write-Host "Backend provenance fallback is unavailable because the verified bundle receipts are missing."
+          }
+
       - name: Build Windows desktop installer
         working-directory: frontend
         run: npm run desktop:package
@@ -206,6 +232,39 @@ jobs:
           $checksumText = Get-Content -LiteralPath $checksum -Raw
           $expectedChecksum = "$actualHash  $($records[0].Name)`n"
           if ($checksumText -cne $expectedChecksum) { throw "Installer SHA-256 receipt does not match its bytes and filename." }
+
+      - name: Select backend provenance for artifact upload
+        if: always()
+        run: |
+          $staged = Join-Path $env:GITHUB_WORKSPACE "frontend\src-tauri\resources\backend-bundle"
+          $fallback = Join-Path $env:RUNNER_TEMP "backend-bundle-provenance-fallback"
+          $dist = Join-Path $env:GITHUB_WORKSPACE "dist\backend-bundle"
+          $destination = Join-Path $env:RUNNER_TEMP "backend-bundle-provenance"
+          $required = @("bundle-manifest.json", "_internal\build-info.json")
+          $source = $null
+          foreach ($candidate in @($staged, $fallback, $dist)) {
+            $complete = $true
+            foreach ($relativePath in $required) {
+              if (-not (Test-Path -LiteralPath (Join-Path $candidate $relativePath) -PathType Leaf)) { $complete = $false }
+            }
+            if ($complete) { $source = $candidate; break }
+          }
+          if (-not $source) {
+            Write-Host "No complete backend provenance receipts are available for upload."
+          } else {
+            New-Item -ItemType Directory -Force -Path $destination | Out-Null
+            foreach ($relativePath in @("LICENSE", "THIRD_PARTY_NOTICES.md", "bundle-manifest.json", "_internal\build-info.json")) {
+              $path = Join-Path $source $relativePath
+              if (Test-Path -LiteralPath $path -PathType Leaf) {
+                $target = Join-Path $destination $relativePath
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+                Copy-Item -LiteralPath $path -Destination $target -Force
+              }
+            }
+            $licenses = Join-Path $source "licenses"
+            if (Test-Path -LiteralPath $licenses -PathType Container) { Copy-Item -LiteralPath $licenses -Destination $destination -Recurse -Force }
+            Write-Host "Selected backend provenance from $source."
+          }
 
       - name: Build synthetic 2.0.0 upgrade installer fixture
         run: uv run --locked --all-extras --python 3.14.7 python scripts/build_distribution_fixture.py --base-ref 31fdd21757a1822ac0223956c20595ff5a13d307 --output "$env:RUNNER_TEMP\apex-previous-installer" --report "$env:RUNNER_TEMP\distribution-fixture-report.json"
@@ -253,11 +312,7 @@ jobs:
             build/desktop-shell/installers/*-setup.exe
             build/desktop-shell/installers/*.sha256
             build/desktop-shell/installers/distribution-manifest.json
-            dist/backend-bundle/LICENSE
-            dist/backend-bundle/THIRD_PARTY_NOTICES.md
-            dist/backend-bundle/licenses/**
-            dist/backend-bundle/bundle-manifest.json
-            dist/backend-bundle/_internal/build-info.json
+            ${{ runner.temp }}/backend-bundle-provenance/**
             ${{ runner.temp }}/backend-bundle-smoke-report.json
             ${{ runner.temp }}/distribution-fixture-report.json
             ${{ runner.temp }}/distribution-installer-smoke-report.json
