@@ -12,7 +12,7 @@ from core.agent.local_runtime import execution as local_execution
 class LocalModelAdmissionTests(unittest.TestCase):
     def setUp(self) -> None:
         self.profile = SimpleNamespace(
-            provider="ollama",
+            provider="llama_cpp",
             runtime="local",
             api_model="alias-for-api",
             runtime_model_id="runtime-model:latest",

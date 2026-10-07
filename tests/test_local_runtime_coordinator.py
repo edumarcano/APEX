@@ -21,7 +21,7 @@ from core.agent.local_runtime.contract import (
 @dataclass
 class _FakeProfile:
     api_model: str
-    provider: Literal["ollama", "llama_cpp"] = "ollama"
+    provider: Literal["llama_cpp"] = "llama_cpp"
     runtime: Literal["local"] = "local"
     context_window: int = 4096
     generation_timeout: int = 30
@@ -38,7 +38,7 @@ class _FakeProfile:
 
 
 class _FakeBackend:
-    def __init__(self, provider: Literal["ollama", "llama_cpp"] = "ollama") -> None:
+    def __init__(self, provider: Literal["llama_cpp"] = "llama_cpp") -> None:
         self.provider = provider
         self.enabled = True
         self.idle_unload_seconds = 60
@@ -115,12 +115,9 @@ class _FakeBackend:
 
 class LocalRuntimeCoordinatorTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.backend = _FakeBackend("ollama")
-        self.llama_backend = _FakeBackend("llama_cpp")
-        self.backends = {
-            "ollama": self.backend,
-            "llama_cpp": self.llama_backend,
-        }
+        self.backend = _FakeBackend("llama_cpp")
+        self.backends = {"llama_cpp": self.backend}
+        self.supervisor = mock.Mock()
         self.clock = {"now": 1000.0}
         self._patches = [
             mock.patch.object(coord, "_active_local_model", None),
@@ -140,11 +137,13 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
                 side_effect=lambda enabled_only=False: tuple(self.backends.values()),
             ),
             mock.patch(
+                "core.agent.providers.llama_cpp_supervisor.get_llama_cpp_server_supervisor",
+                return_value=self.supervisor,
+            ),
+            mock.patch(
                 "core.agent.local_runtime.coordinator._known_local_model_refs",
                 return_value=frozenset(
                     {
-                        LocalModelRef(provider="ollama", model="qwen-17b-model"),
-                        LocalModelRef(provider="ollama", model="qwen-4b-model"),
                         LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k"),
                         LocalModelRef(provider="llama_cpp", model="gemma-e2b-4k"),
                     }
@@ -193,8 +192,8 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertEqual(reason, "cpu_overloaded")
 
     def test_same_target_already_active_is_noop(self) -> None:
-        profile = _FakeProfile(api_model="qwen-4b-model")
-        self.backend.resident.add("qwen-4b-model")
+        profile = _FakeProfile(api_model="gemma-e2b-4k")
+        self.backend.resident.add("gemma-e2b-4k")
         self.assertTrue(coord.try_begin_local_execution())
         self.assertTrue(coord.switch_local_model(profile))
         self.backend.load_calls.clear()
@@ -203,70 +202,70 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         coord.end_local_execution()
 
     def test_cold_target_load(self) -> None:
-        profile = _FakeProfile(api_model="qwen-4b-model")
+        profile = _FakeProfile(api_model="gemma-e2b-4k")
         self.assertTrue(coord.try_begin_local_execution())
         self.assertTrue(coord.switch_local_model(profile))
-        self.assertEqual(self.backend.load_calls, ["qwen-4b-model"])
+        self.assertEqual(self.backend.load_calls, ["gemma-e2b-4k"])
         self.assertEqual(
             coord.get_active_local_model(),
-            LocalModelRef(provider="ollama", model="qwen-4b-model"),
+            LocalModelRef(provider="llama_cpp", model="gemma-e2b-4k"),
         )
         coord.end_local_execution()
 
     def test_target_already_resident_bypasses_reload_path(self) -> None:
-        profile = _FakeProfile(api_model="qwen-17b-model")
-        self.backend.resident.add("qwen-17b-model")
+        profile = _FakeProfile(api_model="gemma-e2b-16k")
+        self.backend.resident.add("gemma-e2b-16k")
         self.assertTrue(coord.try_begin_local_execution())
         self.assertTrue(coord.switch_local_model(profile))
-        self.assertEqual(self.backend.load_calls, ["qwen-17b-model"])
+        self.assertEqual(self.backend.load_calls, ["gemma-e2b-16k"])
         coord.end_local_execution()
 
     def test_switch_unloads_competing_known_model(self) -> None:
-        self.backend.resident.add("qwen-17b-model")
+        self.backend.resident.add("gemma-e2b-16k")
         coord.register_local_activity(
-            LocalModelRef(provider="ollama", model="qwen-17b-model")
+            LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k")
         )
         self.assertTrue(coord.try_begin_local_execution())
-        self.assertTrue(coord.switch_local_model(_FakeProfile(api_model="qwen-4b-model")))
-        self.assertEqual(self.backend.unload_calls, ["qwen-17b-model"])
-        self.assertEqual(self.backend.load_calls, ["qwen-4b-model"])
-        self.assertNotIn("qwen-17b-model", self.backend.resident)
+        self.assertTrue(coord.switch_local_model(_FakeProfile(api_model="gemma-e2b-4k")))
+        self.assertEqual(self.backend.unload_calls, ["gemma-e2b-16k"])
+        self.assertEqual(self.backend.load_calls, ["gemma-e2b-4k"])
+        self.assertNotIn("gemma-e2b-16k", self.backend.resident)
         coord.end_local_execution()
 
     def test_unknown_external_model_is_not_auto_unloaded(self) -> None:
         self.backend.resident.add("external-model")
         self.assertTrue(coord.try_begin_local_execution())
-        self.assertTrue(coord.switch_local_model(_FakeProfile(api_model="qwen-4b-model")))
+        self.assertTrue(coord.switch_local_model(_FakeProfile(api_model="gemma-e2b-4k")))
         self.assertEqual(self.backend.unload_calls, [])
         self.assertIn("external-model", self.backend.resident)
         coord.end_local_execution()
 
     def test_failed_unload_aborts_switch(self) -> None:
-        self.backend.resident.add("qwen-17b-model")
-        self.backend.fail_unload.add("qwen-17b-model")
+        self.backend.resident.add("gemma-e2b-16k")
+        self.backend.fail_unload.add("gemma-e2b-16k")
         coord.register_local_activity(
-            LocalModelRef(provider="ollama", model="qwen-17b-model")
+            LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k")
         )
         self.assertTrue(coord.try_begin_local_execution())
-        self.assertFalse(coord.switch_local_model(_FakeProfile(api_model="qwen-4b-model")))
+        self.assertFalse(coord.switch_local_model(_FakeProfile(api_model="gemma-e2b-4k")))
         self.assertEqual(self.backend.load_calls, [])
         self.assertEqual(
             coord.get_active_local_model(),
-            LocalModelRef(provider="ollama", model="qwen-17b-model"),
+            LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k"),
         )
         coord.end_local_execution()
 
     def test_failed_load_leaves_no_false_active_state(self) -> None:
-        self.backend.fail_load.add("qwen-4b-model")
+        self.backend.fail_load.add("gemma-e2b-4k")
         self.assertTrue(coord.try_begin_local_execution())
-        self.assertFalse(coord.switch_local_model(_FakeProfile(api_model="qwen-4b-model")))
+        self.assertFalse(coord.switch_local_model(_FakeProfile(api_model="gemma-e2b-4k")))
         self.assertIsNone(coord.get_active_local_model())
         self.assertIsNone(coord.get_loading_local_model())
         coord.end_local_execution()
 
     def test_activity_resets_idle_countdown(self) -> None:
-        ref = LocalModelRef(provider="ollama", model="qwen-4b-model")
-        self.backend.resident.add("qwen-4b-model")
+        ref = LocalModelRef(provider="llama_cpp", model="gemma-e2b-4k")
+        self.backend.resident.add("gemma-e2b-4k")
         coord.register_local_activity(ref)
         self.clock["now"] = 1030.0
         self.assertEqual(coord.get_idle_unload_remaining_seconds(), 30)
@@ -274,8 +273,8 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertEqual(coord.get_idle_unload_remaining_seconds(), 60)
 
     def test_idle_worker_skips_active_execution(self) -> None:
-        ref = LocalModelRef(provider="ollama", model="qwen-4b-model")
-        self.backend.resident.add("qwen-4b-model")
+        ref = LocalModelRef(provider="llama_cpp", model="gemma-e2b-4k")
+        self.backend.resident.add("gemma-e2b-4k")
         coord.register_local_activity(ref)
         self.clock["now"] = 2000.0
         self.assertTrue(coord.try_begin_local_execution())
@@ -285,8 +284,8 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         coord.end_local_execution()
 
     def test_idle_unload_holds_execution_slot_through_unload(self) -> None:
-        ref = LocalModelRef(provider="ollama", model="qwen-4b-model")
-        self.backend.resident.add("qwen-4b-model")
+        ref = LocalModelRef(provider="llama_cpp", model="gemma-e2b-4k")
+        self.backend.resident.add("gemma-e2b-4k")
         coord.register_local_activity(ref)
         self.clock["now"] = 2000.0
         self.backend.unload_entered = threading.Event()
@@ -304,17 +303,17 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertIsNone(coord.get_active_local_model())
 
     def test_idle_unload_success(self) -> None:
-        ref = LocalModelRef(provider="ollama", model="qwen-4b-model")
-        self.backend.resident.add("qwen-4b-model")
+        ref = LocalModelRef(provider="llama_cpp", model="gemma-e2b-4k")
+        self.backend.resident.add("gemma-e2b-4k")
         coord.register_local_activity(ref)
         self.clock["now"] = 2000.0
         coord._maybe_unload_idle_model()
-        self.assertEqual(self.backend.unload_calls, ["qwen-4b-model"])
+        self.assertEqual(self.backend.unload_calls, ["gemma-e2b-4k"])
         self.assertIsNone(coord.get_active_local_model())
 
     def test_idle_llama_unload_stops_owned_router_under_execution_guard(self) -> None:
         ref = LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k")
-        self.llama_backend.resident.add(ref.model)
+        self.backend.resident.add(ref.model)
         coord.register_local_activity(ref)
         self.clock["now"] = 2000.0
         supervisor = mock.Mock()
@@ -329,22 +328,22 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         ):
             coord._maybe_unload_idle_model()
 
-        self.assertEqual(self.llama_backend.unload_calls, [ref.model])
+        self.assertEqual(self.backend.unload_calls, [ref.model])
         supervisor.stop_owned_after_verified_idle_unload.assert_called_once_with()
         self.assertIsNone(coord.get_active_local_model())
 
     def test_idle_unload_failed_verification_keeps_active(self) -> None:
-        ref = LocalModelRef(provider="ollama", model="qwen-4b-model")
-        self.backend.resident.add("qwen-4b-model")
-        self.backend.fail_unload.add("qwen-4b-model")
+        ref = LocalModelRef(provider="llama_cpp", model="gemma-e2b-4k")
+        self.backend.resident.add("gemma-e2b-4k")
+        self.backend.fail_unload.add("gemma-e2b-4k")
         coord.register_local_activity(ref)
         self.clock["now"] = 2000.0
         coord._maybe_unload_idle_model()
         self.assertEqual(coord.get_active_local_model(), ref)
 
     def test_provider_restart_clears_stale_ready_state(self) -> None:
-        ref = LocalModelRef(provider="ollama", model="qwen-4b-model")
-        self.backend.resident.add("qwen-4b-model")
+        ref = LocalModelRef(provider="llama_cpp", model="gemma-e2b-4k")
+        self.backend.resident.add("gemma-e2b-4k")
         coord.register_local_activity(ref)
         self.assertTrue(coord.is_local_model_ready(ref))
         self.backend.resident.clear()
@@ -352,30 +351,30 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertIsNone(coord.get_active_local_model())
 
     def test_external_unload_clears_stale_ready_state(self) -> None:
-        ref = LocalModelRef(provider="ollama", model="qwen-4b-model")
-        self.backend.resident.add("qwen-4b-model")
+        ref = LocalModelRef(provider="llama_cpp", model="gemma-e2b-4k")
+        self.backend.resident.add("gemma-e2b-4k")
         coord.register_local_activity(ref)
-        self.backend.resident.discard("qwen-4b-model")
+        self.backend.resident.discard("gemma-e2b-4k")
         self.assertFalse(coord.is_local_model_ready(ref))
         with coord._state_lock:
             self.assertIsNone(coord._active_local_model)
 
     def test_stale_tracked_target_forces_verified_reload(self) -> None:
-        profile = _FakeProfile(api_model="qwen-4b-model")
-        self.backend.resident.add("qwen-4b-model")
+        profile = _FakeProfile(api_model="gemma-e2b-4k")
+        self.backend.resident.add("gemma-e2b-4k")
         self.assertTrue(coord.try_begin_local_execution())
         self.assertTrue(coord.switch_local_model(profile))
         self.backend.load_calls.clear()
-        self.backend.resident.discard("qwen-4b-model")
+        self.backend.resident.discard("gemma-e2b-4k")
         self.assertTrue(coord.switch_local_model(profile))
-        self.assertEqual(self.backend.load_calls, ["qwen-4b-model"])
-        self.assertIn("qwen-4b-model", self.backend.resident)
+        self.assertEqual(self.backend.load_calls, ["gemma-e2b-4k"])
+        self.assertIn("gemma-e2b-4k", self.backend.resident)
         coord.end_local_execution()
 
     def test_stale_ready_miss_exposes_cold_load_gate(self) -> None:
-        ref = LocalModelRef(provider="ollama", model="qwen-4b-model")
-        profile = _FakeProfile(api_model="qwen-4b-model", ram_limit=40.0, cpu_limit=40.0)
-        self.backend.resident.add("qwen-4b-model")
+        ref = LocalModelRef(provider="llama_cpp", model="gemma-e2b-4k")
+        profile = _FakeProfile(api_model="gemma-e2b-4k", ram_limit=40.0, cpu_limit=40.0)
+        self.backend.resident.add("gemma-e2b-4k")
         coord.register_local_activity(ref)
         self.backend.resident.clear()
 
@@ -389,28 +388,28 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertEqual(reason, "insufficient_ram")
 
     def test_restart_reconciliation_adopts_single_resident(self) -> None:
-        self.backend.resident.add("qwen-4b-model")
+        self.backend.resident.add("gemma-e2b-4k")
         self.clock["now"] = 2000.0
         self.assertEqual(
             coord.get_active_local_model(),
-            LocalModelRef(provider="ollama", model="qwen-4b-model"),
+            LocalModelRef(provider="llama_cpp", model="gemma-e2b-4k"),
         )
         self.assertEqual(coord._last_activity_time, 2000.0)  # noqa: SLF001
         self.clock["now"] = 3000.0
         self.assertEqual(
             coord.get_active_local_model(),
-            LocalModelRef(provider="ollama", model="qwen-4b-model"),
+            LocalModelRef(provider="llama_cpp", model="gemma-e2b-4k"),
         )
         self.assertEqual(coord._last_activity_time, 2000.0)  # noqa: SLF001
 
     def test_restart_reconciliation_leaves_multiple_untracked(self) -> None:
-        self.backend.resident.update({"qwen-4b-model", "qwen-17b-model"})
+        self.backend.resident.update({"gemma-e2b-4k", "gemma-e2b-16k"})
         self.assertIsNone(coord.get_active_local_model())
 
     def test_restart_reconciliation_skips_during_switch(self) -> None:
-        self.backend.resident.add("qwen-17b-model")
+        self.backend.resident.add("gemma-e2b-16k")
         coord.register_local_activity(
-            LocalModelRef(provider="ollama", model="qwen-17b-model")
+            LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k")
         )
         self.backend.unload_entered = threading.Event()
         self.backend.unload_gate = threading.Event()
@@ -420,7 +419,7 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
             self.assertTrue(coord.try_begin_local_execution())
             try:
                 results.append(
-                    coord.switch_local_model(_FakeProfile(api_model="qwen-4b-model"))
+                    coord.switch_local_model(_FakeProfile(api_model="gemma-e2b-4k"))
                 )
             finally:
                 coord.end_local_execution()
@@ -433,7 +432,7 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertIsNone(coord.get_active_local_model())
         self.assertEqual(
             coord.get_loading_local_model(),
-            LocalModelRef(provider="ollama", model="qwen-4b-model"),
+            LocalModelRef(provider="llama_cpp", model="gemma-e2b-4k"),
         )
         self.backend.unload_gate.set()
         switcher.join(timeout=2.0)
@@ -441,77 +440,58 @@ class LocalRuntimeCoordinatorTests(unittest.TestCase):
         self.assertEqual(results, [True])
         self.assertEqual(
             coord.get_active_local_model(),
-            LocalModelRef(provider="ollama", model="qwen-4b-model"),
+            LocalModelRef(provider="llama_cpp", model="gemma-e2b-4k"),
         )
 
-    def test_ollama_to_llama_cpp_unloads_ollama_first(self) -> None:
-        self.backend.resident.add("qwen-4b-model")
+    def test_same_provider_switch_unloads_previous_model_first(self) -> None:
+        self.backend.resident.add("gemma-e2b-4k")
         coord.register_local_activity(
-            LocalModelRef(provider="ollama", model="qwen-4b-model")
+            LocalModelRef(provider="llama_cpp", model="gemma-e2b-4k")
         )
         self.assertTrue(coord.try_begin_local_execution())
         self.assertTrue(
             coord.switch_local_model(
-                _FakeProfile(api_model="gemma-e2b-16k", provider="llama_cpp")
+                _FakeProfile(api_model="gemma-e2b-16k")
             )
         )
-        self.assertEqual(self.backend.unload_calls, ["qwen-4b-model"])
-        self.assertEqual(self.llama_backend.load_calls, ["gemma-e2b-16k"])
-        self.assertNotIn("qwen-4b-model", self.backend.resident)
-        self.assertIn("gemma-e2b-16k", self.llama_backend.resident)
+        self.assertEqual(self.backend.unload_calls, ["gemma-e2b-4k"])
+        self.assertEqual(self.backend.load_calls, ["gemma-e2b-16k"])
+        self.assertNotIn("gemma-e2b-4k", self.backend.resident)
+        self.assertIn("gemma-e2b-16k", self.backend.resident)
         self.assertEqual(
             coord.get_active_local_model(),
             LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k"),
         )
         coord.end_local_execution()
 
-    def test_llama_cpp_to_ollama_unloads_llama_cpp_first(self) -> None:
-        self.llama_backend.resident.add("gemma-e2b-16k")
+    def test_same_provider_unload_failure_blocks_target_load(self) -> None:
+        self.backend.resident.add("gemma-e2b-16k")
+        self.backend.fail_unload.add("gemma-e2b-16k")
         coord.register_local_activity(
             LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k")
         )
         self.assertTrue(coord.try_begin_local_execution())
-        self.assertTrue(
-            coord.switch_local_model(
-                _FakeProfile(api_model="qwen-17b-model", provider="ollama")
-            )
-        )
-        self.assertEqual(self.llama_backend.unload_calls, ["gemma-e2b-16k"])
-        self.assertEqual(self.backend.load_calls, ["qwen-17b-model"])
-        self.assertNotIn("gemma-e2b-16k", self.llama_backend.resident)
-        self.assertEqual(
-            coord.get_active_local_model(),
-            LocalModelRef(provider="ollama", model="qwen-17b-model"),
-        )
-        coord.end_local_execution()
-
-    def test_failed_cross_provider_unload_blocks_target_load(self) -> None:
-        self.backend.resident.add("qwen-4b-model")
-        self.backend.fail_unload.add("qwen-4b-model")
-        coord.register_local_activity(
-            LocalModelRef(provider="ollama", model="qwen-4b-model")
-        )
-        self.assertTrue(coord.try_begin_local_execution())
         self.assertFalse(
             coord.switch_local_model(
-                _FakeProfile(api_model="gemma-e2b-16k", provider="llama_cpp")
+                _FakeProfile(api_model="gemma-e2b-4k")
             )
         )
-        self.assertEqual(self.llama_backend.load_calls, [])
+        self.assertEqual(self.backend.unload_calls, ["gemma-e2b-16k"])
+        self.assertEqual(self.backend.load_calls, [])
+        self.assertIn("gemma-e2b-16k", self.backend.resident)
         self.assertEqual(
             coord.get_active_local_model(),
-            LocalModelRef(provider="ollama", model="qwen-4b-model"),
+            LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k"),
         )
         coord.end_local_execution()
 
-    def test_idle_unload_targets_active_provider(self) -> None:
+    def test_idle_unload_uses_active_backend(self) -> None:
         ref = LocalModelRef(provider="llama_cpp", model="gemma-e2b-16k")
-        self.llama_backend.resident.add("gemma-e2b-16k")
+        self.backend.resident.add("gemma-e2b-16k")
         coord.register_local_activity(ref)
         self.clock["now"] = 2000.0
         coord._maybe_unload_idle_model()
-        self.assertEqual(self.llama_backend.unload_calls, ["gemma-e2b-16k"])
-        self.assertEqual(self.backend.unload_calls, [])
+        self.assertEqual(self.backend.unload_calls, ["gemma-e2b-16k"])
         self.assertIsNone(coord.get_active_local_model())
 
 
