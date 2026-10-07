@@ -459,12 +459,12 @@ Function .onInit
 
   ; Keep the program separate from APEX operator data under LOCALAPPDATA\APEX.
   StrCpy $0 "$LOCALAPPDATA\Programs\${PRODUCTNAME}"
-  StrCmp /I $INSTDIR $0 +2 0
+  StrCmp $INSTDIR $0 +2 0
     Abort "The APEX installation directory is fixed. Remove the /D option and try again."
   StrCpy $INSTDIR $0
   ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""
   ${If} $4 != ""
-    StrCmp /I $4 $INSTDIR +2 0
+    StrCmp $4 $INSTDIR +2 0
     Abort "The previous APEX installation path is not the supported per-user path. It was not changed."
   ${EndIf}
   Call CheckSafeInstallPath
@@ -858,9 +858,9 @@ Section Uninstall
     StrCpy $R1 "$\"$INSTDIR\${MAINBINARYNAME}.exe$\""
     StrLen $R2 $R1
     StrCpy $R3 $R0 $R2
-    StrCmp /I $R3 $R1 0 skip_owned_startup_cleanup
+    StrCmp $R3 $R1 0 skip_owned_startup_cleanup
     StrCpy $R3 $R0 "" $R2
-    StrCmp $R3 " --autostart" 0 skip_owned_startup_cleanup
+    StrCmpS $R3 " --autostart" 0 skip_owned_startup_cleanup
     DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}"
     skip_owned_startup_cleanup:
   ${EndIf}

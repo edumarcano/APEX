@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { lstat, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { assembleDesktopOutput, exportInstallerOutput } from './build-desktop.mjs'
+import { assembleDesktopOutput, exportInstallerOutput, verifyPackageSourceIdentity } from './build-desktop.mjs'
 import { stageBundle, verifyBundle } from './prepare-desktop.mjs'
 
 async function fixture(t) {
@@ -165,6 +166,36 @@ test('exports only the current installer and records source and bundle identity'
   assert.equal(receipt.source_commit, 'current-commit')
   assert.equal(receipt.backend_build_id, 'current-build')
   assert.equal(receipt.installer_sha256, createHash('sha256').update('current installer').digest('hex'))
+})
+
+test('NSIS packaging requires a clean source commit matching backend provenance', async (t) => {
+  const parent = await mkdtemp(path.join(os.tmpdir(), 'apex-package-source-'))
+  t.after(() => rm(parent, { recursive: true, force: true }))
+  const root = path.join(parent, 'repo')
+  await mkdir(root)
+  const bundle = path.join(parent, 'bundle')
+  await mkdir(path.join(bundle, '_internal'), { recursive: true })
+
+  const git = (args) => {
+    const result = spawnSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], shell: false, windowsHide: true })
+    assert.equal(result.status, 0, result.stderr)
+    return result.stdout.trim()
+  }
+  git(['init', '-q'])
+  git(['config', 'user.name', 'APEX test'])
+  git(['config', 'user.email', 'apex-test@example.invalid'])
+  await writeFile(path.join(root, 'source.txt'), 'committed source')
+  git(['add', 'source.txt'])
+  git(['commit', '-q', '-m', 'fixture'])
+  const commit = git(['rev-parse', 'HEAD'])
+  await writeFile(path.join(bundle, '_internal', 'build-info.json'), JSON.stringify({ commit }))
+
+  assert.equal(await verifyPackageSourceIdentity(root, bundle), commit)
+  await writeFile(path.join(bundle, '_internal', 'build-info.json'), JSON.stringify({ commit: 'different-commit' }))
+  await assert.rejects(verifyPackageSourceIdentity(root, bundle), /does not match current desktop source commit/)
+  await writeFile(path.join(bundle, '_internal', 'build-info.json'), JSON.stringify({ commit }))
+  await writeFile(path.join(root, 'source.txt'), 'uncommitted source')
+  await assert.rejects(verifyPackageSourceIdentity(root, bundle), /requires a clean committed worktree/)
 })
 
 test('refuses installer export through a junction before writing outside the build directory', async (t) => {

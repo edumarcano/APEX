@@ -47,6 +47,40 @@ function runNode(args, cwd, extraEnv = {}) {
   if (result.status !== 0) throw new Error(`${path.basename(args[0] ?? 'node')} exited with ${result.status ?? 'a signal'}.`)
 }
 
+function readGit(args, cwd) {
+  const result = spawnSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: false,
+    windowsHide: true,
+  })
+  if (result.error) throw result.error
+  if (result.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${result.stderr.trim()}`)
+  return result.stdout.trim()
+}
+
+export async function verifyPackageSourceIdentity(repositoryRoot, bundle) {
+  const commit = readGit(['rev-parse', 'HEAD'], repositoryRoot)
+  const status = readGit(['status', '--porcelain', '--untracked-files=all'], repositoryRoot)
+  if (status) throw new Error('NSIS packaging requires a clean committed worktree.')
+
+  let backendInfo
+  try {
+    backendInfo = JSON.parse(await readFile(path.join(bundle, '_internal', 'build-info.json'), 'utf8'))
+  } catch {
+    throw new Error('NSIS packaging requires valid backend build identity metadata.')
+  }
+  if (!backendInfo || typeof backendInfo !== 'object' || Array.isArray(backendInfo) ||
+    typeof backendInfo.commit !== 'string' || !backendInfo.commit) {
+    throw new Error('NSIS packaging requires a backend source commit.')
+  }
+  if (backendInfo.commit !== commit) {
+    throw new Error(`Backend bundle commit ${backendInfo.commit} does not match current desktop source commit ${commit}; rebuild the backend bundle.`)
+  }
+  return commit
+}
+
 export async function assembleDesktopOutput({
   repositoryRoot = repoRoot,
   outputDirectory = output,
@@ -208,6 +242,7 @@ async function main() {
   const bundle = path.resolve(bundleArgument ?? defaultBundle)
   const config = JSON.parse(await readFile(path.join(frontendRoot, 'src-tauri', 'tauri.conf.json'), 'utf8'))
   await verifyBundle(bundle, { expectedVersion: config.version })
+  const packageSourceCommit = packageInstaller ? await verifyPackageSourceIdentity(repoRoot, bundle) : undefined
 
   // Tauri runs beforeBuildCommand in this process environment. Keep that hook
   // on the same verified source, even if Vite removes dist during the build.
@@ -225,6 +260,8 @@ async function main() {
   process.stdout.write(`Desktop shell assembled at ${path.relative(repoRoot, assembled)}\n`)
 
   if (packageInstaller) {
+    const finalSourceCommit = await verifyPackageSourceIdentity(repoRoot, bundle)
+    if (finalSourceCommit !== packageSourceCommit) throw new Error('Desktop source commit changed during NSIS packaging.')
     const nsisDirectory = path.join(targetRoot, 'bundle', 'nsis')
     const installers = (await readdir(nsisDirectory, { withFileTypes: true }))
       .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('-setup.exe') && entry.name.includes(`_${config.version}_`))
@@ -234,7 +271,7 @@ async function main() {
     const installerPath = await exportInstallerOutput({
       sourceInstaller,
       version: config.version,
-      sourceCommit: backendInfo.commit,
+      sourceCommit: finalSourceCommit,
       backendBuildId: backendInfo.build_id,
     })
     process.stdout.write(`NSIS installer packaged at ${path.relative(repoRoot, installerPath)}\n`)
