@@ -199,9 +199,20 @@ class DistributionAssetManifestTests(unittest.TestCase):
             revision = "1" * 40
             snapshot = cache / "models--qdrant--bge-small-en-v1.5-onnx-q" / "snapshots" / revision
             snapshot.mkdir(parents=True)
+            (snapshot / "config.json").write_text("{}", encoding="utf-8")
             ref = assets._write_fastembed_default_ref(cache, "qdrant/bge-small-en-v1.5-onnx-q", revision)
             self.assertEqual(ref.relative_to(cache).as_posix(), "models--qdrant--bge-small-en-v1.5-onnx-q/refs/main")
-            self.assertEqual(ref.read_text(encoding="ascii").strip(), revision)
+            self.assertEqual(ref.read_bytes(), revision.encode("ascii"))
+            from huggingface_hub import snapshot_download
+
+            resolved = Path(snapshot_download(
+                repo_id="qdrant/bge-small-en-v1.5-onnx-q",
+                revision="main",
+                cache_dir=str(cache),
+                local_files_only=True,
+            ))
+            self.assertEqual(resolved.resolve(), snapshot.resolve())
+            self.assertEqual((resolved / "config.json").read_text(encoding="utf-8"), "{}")
             with self.assertRaises(assets.ProvisionError):
                 assets._write_fastembed_default_ref(cache, "qdrant/bge-small-en-v1.5-onnx-q", "2" * 40)
 

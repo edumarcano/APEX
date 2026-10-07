@@ -147,7 +147,7 @@ def _write_fastembed_default_ref(cache: Path, repository: str, revision: str) ->
     refs.mkdir(parents=True, exist_ok=True)
     target = refs / "main"
     temporary = refs / "main.apex-smoke-tmp"
-    temporary.write_text(revision + "\n", encoding="ascii")
+    temporary.write_bytes(revision.encode("ascii"))
     temporary.replace(target)
     return target
 
@@ -166,7 +166,7 @@ def _fastembed(cache: Path, source: dict[str, Any]) -> dict[str, Any]:
         _verify_asset(path, size, digest)
         records.append({"path": path.relative_to(cache).as_posix(), "bytes": size, "sha256": digest})
     main_ref = _write_fastembed_default_ref(cache, source["repository"], source["revision"])
-    if main_ref.read_text(encoding="ascii").strip() != source["revision"]:
+    if main_ref.read_bytes() != source["revision"].encode("ascii"):
         raise ProvisionError("FastEmbed offline default reference does not resolve to the pinned snapshot")
     return {
         **{key: value for key, value in source.items() if key != "files"},
