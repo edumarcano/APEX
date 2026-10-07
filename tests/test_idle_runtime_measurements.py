@@ -3,9 +3,15 @@ from __future__ import annotations
 from collections import deque
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from scripts.idle_runtime_measurements import OwnedProcessSampler, ProcessRoot
-from scripts.smoke_desktop_shell import _trace_summary
+from scripts.smoke_desktop_shell import (
+    IdleDemandFailure,
+    _exercise_semantic_retrieval,
+    _trace_summary,
+    _wait_for_semantic_retrieval_ready,
+)
 
 
 class _FakeProcess:
@@ -174,6 +180,130 @@ class IdleSmokeDiagnosticTests(unittest.TestCase):
             "error_category": "invalid-input",
         }])
         self.assertNotIn("private diagnostic detail", str(summary))
+
+    def test_preparation_wait_polls_until_semantic_retrieval_is_ready(self) -> None:
+        statuses = deque([
+            {"mode": "fts_only", "state": "preparing"},
+            {"mode": "fts_only", "state": "preparing"},
+            {"mode": "semantic", "state": "ready"},
+        ])
+        clock = _Clock()
+
+        result = _wait_for_semantic_retrieval_ready(
+            10.0,
+            read_status=lambda _timeout: statuses.popleft(),
+            monotonic=clock.monotonic,
+            sleep=clock.sleep,
+        )
+
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["poll_count"], 3)
+        self.assertEqual(result["elapsed_seconds"], 2.0)
+        self.assertEqual(result["final_status"], {
+            "mode": "semantic",
+            "state": "ready",
+            "error_category": None,
+        })
+
+    def test_preparation_wait_stops_on_terminal_failure_and_reports_exhaustion(self) -> None:
+        terminal_clock = _Clock()
+        terminal = _wait_for_semantic_retrieval_ready(
+            10.0,
+            read_status=lambda _timeout: {"mode": "fts_only", "state": "failed", "error_category": "index-failed"},
+            monotonic=terminal_clock.monotonic,
+            sleep=terminal_clock.sleep,
+        )
+        self.assertEqual(terminal["status"], "not_ready")
+        self.assertEqual(terminal["poll_count"], 1)
+        self.assertEqual(terminal["elapsed_seconds"], 0.0)
+
+        timeout_clock = _Clock()
+        exhausted = _wait_for_semantic_retrieval_ready(
+            2.0,
+            read_status=lambda _timeout: {"mode": "fts_only", "state": "preparing"},
+            monotonic=timeout_clock.monotonic,
+            sleep=timeout_clock.sleep,
+        )
+        self.assertEqual(exhausted["status"], "timeout")
+        self.assertEqual(exhausted["elapsed_seconds"], 2.0)
+        self.assertEqual(exhausted["final_status"]["state"], "preparing")
+
+    def test_non_timeout_tool_error_fails_without_waiting_or_retrying(self) -> None:
+        fixture = SimpleNamespace(request_count=0, search_tool_requests=set())
+        message = {
+            "status": "completed",
+            "response_metadata": {
+                "tool_trace": [{"name": "search_apex_docs", "status": "error"}],
+                "tool_outputs": [{
+                    "name": "search_apex_docs",
+                    "output": {"error_category": "invalid-input"},
+                }],
+            },
+        }
+        with (
+            patch("scripts.smoke_desktop_shell._http_post_json", return_value={"id": "conversation"}),
+            patch("scripts.smoke_desktop_shell._start_cortex_run", return_value={"id": "run-1", "agent_message_id": "agent-1"}) as start_run,
+            patch("scripts.smoke_desktop_shell._wait_cortex_run", return_value={
+                "status": "completed",
+                "evidence": {"answer_persisted": True},
+            }),
+            patch("scripts.smoke_desktop_shell._conversation_agent_result", return_value=message),
+            patch("scripts.smoke_desktop_shell._http_json", return_value={"mode": "semantic", "state": "ready"}),
+            patch("scripts.smoke_desktop_shell._run_completion_replayed", return_value=True),
+            patch("scripts.smoke_desktop_shell._wait_for_semantic_retrieval_ready") as wait_ready,
+        ):
+            with self.assertRaises(IdleDemandFailure) as raised:
+                _exercise_semantic_retrieval(fixture)
+
+        self.assertEqual(raised.exception.category, "semantic_retrieval_demand_failed")
+        self.assertEqual(start_run.call_count, 1)
+        wait_ready.assert_not_called()
+
+    def test_preparing_timeout_waits_then_retries_once_and_keeps_initial_trace(self) -> None:
+        fixture = SimpleNamespace(request_count=0, search_tool_requests=set())
+        initial_message = {
+            "status": "completed",
+            "response_metadata": {
+                "tool_trace": [{"name": "search_apex_docs", "status": "error"}],
+                "tool_outputs": [{
+                    "name": "search_apex_docs",
+                    "output": {"error_category": "timeout"},
+                }],
+            },
+        }
+        retry_message = {
+            "status": "completed",
+            "response_metadata": {
+                "tool_trace": [{"name": "search_apex_docs", "status": "ok"}],
+            },
+        }
+        statuses = [
+            {"mode": "fts_only", "state": "preparing"},
+            {"mode": "semantic", "state": "ready"},
+            {"mode": "semantic", "state": "ready"},
+        ]
+        with (
+            patch("scripts.smoke_desktop_shell._http_post_json", return_value={"id": "conversation"}),
+            patch("scripts.smoke_desktop_shell._start_cortex_run", side_effect=[
+                {"id": "run-1", "agent_message_id": "agent-1"},
+                {"id": "run-2", "agent_message_id": "agent-2"},
+            ]) as start_run,
+            patch("scripts.smoke_desktop_shell._wait_cortex_run", return_value={
+                "status": "completed",
+                "evidence": {"answer_persisted": True},
+            }),
+            patch("scripts.smoke_desktop_shell._conversation_agent_result", side_effect=[initial_message, retry_message]),
+            patch("scripts.smoke_desktop_shell._http_json", side_effect=lambda *args, **kwargs: statuses.pop(0)),
+            patch("scripts.smoke_desktop_shell._run_completion_replayed", return_value=True),
+        ):
+            result = _exercise_semantic_retrieval(fixture)
+
+        self.assertEqual(start_run.call_count, 2)
+        self.assertEqual(result["initial_tool_error_category"], "timeout")
+        self.assertEqual(result["initial_tool_trace"][0]["error_category"], "timeout")
+        self.assertEqual(result["final_tool_trace"][0]["status"], "ok")
+        self.assertTrue(result["retried_tool"])
+        self.assertEqual(result["preparation_wait"]["status"], "ready")
 
 
 if __name__ == "__main__":

@@ -792,6 +792,10 @@ embedding model. A semantic search may load a cached model on demand; the
 explicit Prepare action remains available for first-time setup and repair.
 Idle embedding sessions are released after five minutes without active work.
 
+On a cold profile, the first semantic search may backfill pending corpus items
+and take longer than the caller's existing tool deadline. Use Prepare to finish
+that work before a latency-sensitive search.
+
 `POST /api/v1/cortex/retrieval/prepare` is the only operation that may download
 the optional FastEmbed model into the ignored `weights/fastembed/` cache. It
 repairs missing indexed items and backfills embeddings. Preparation is

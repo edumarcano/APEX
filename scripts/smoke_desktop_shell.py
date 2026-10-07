@@ -700,6 +700,70 @@ def _trace_summary(message: dict[str, object] | None) -> list[dict[str, str]]:
     return result
 
 
+_RETRIEVAL_PREPARATION_WAIT_SECONDS = 120.0
+_RETRIEVAL_PREPARATION_POLL_SECONDS = 1.0
+
+
+def _wait_for_semantic_retrieval_ready(
+    timeout_seconds: float = _RETRIEVAL_PREPARATION_WAIT_SECONDS,
+    *,
+    read_status: Callable[[float], object] | None = None,
+    monotonic: Callable[[], float] | None = None,
+    sleep: Callable[[float], None] | None = None,
+) -> dict[str, object]:
+    """Wait for a progressing first-demand semantic backfill, without hiding failures."""
+    read_status = read_status or (
+        lambda timeout: _http_json("/api/v1/cortex/retrieval/status", timeout=timeout)
+    )
+    monotonic = monotonic or time.monotonic
+    sleep = sleep or time.sleep
+    started = monotonic()
+    deadline = started + timeout_seconds
+    polls = 0
+    final_status: dict[str, object] = {}
+    wait_status = "timeout"
+    error_category: str | None = None
+    while True:
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            break
+        try:
+            value = read_status(min(5.0, remaining))
+            polls += 1
+            final_status = value if isinstance(value, dict) else {}
+        except Exception as exc:
+            wait_status = "status_error"
+            error_category = type(exc).__name__
+            break
+
+        state = final_status.get("state")
+        mode = final_status.get("mode")
+        if state == "ready" and mode == "semantic":
+            wait_status = "ready"
+            break
+        if state != "preparing":
+            wait_status = "not_ready"
+            break
+
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            break
+        sleep(min(_RETRIEVAL_PREPARATION_POLL_SECONDS, remaining))
+
+    elapsed = max(0.0, monotonic() - started)
+    return {
+        "status": wait_status,
+        "elapsed_seconds": round(elapsed, 3),
+        "poll_count": polls,
+        "final_status": {
+            "mode": final_status.get("mode"),
+            "state": final_status.get("state"),
+            "error_category": final_status.get("error_category"),
+        },
+        "error_category": error_category,
+    }
+
+
 def _exercise_semantic_retrieval(fixture: LlamaCppStreamFixture) -> dict[str, object]:
     conversation_id: str | None = None
     run: dict[str, object] = {}
@@ -759,41 +823,42 @@ def _exercise_semantic_retrieval(fixture: LlamaCppStreamFixture) -> dict[str, ob
     retry_trace: list[dict[str, str]] = []
     retry_terminal: dict[str, object] = {}
     retry_error_category: str | None = None
+    preparation_wait: dict[str, object] | None = None
     if (
         caught is None
         and not successful_tool
         and initial_tool_error_category == "timeout"
-        and mode == "semantic"
-        and retrieval_state == "ready"
+        and retrieval_state in {"preparing", "ready"}
         and isinstance(conversation_id, str)
     ):
-        # A timed-out synchronous capability can continue in its worker thread.
-        # The next real search waits on the retrieval service's sync lock and
-        # verifies that the corpus backfill eventually completes.
-        try:
-            fixture.search_tool_requests.add(fixture.request_count)
-            retry_run = _start_cortex_run(
-                conversation_id,
-                "Use search_apex_docs to locate the local-first workspace guidance and summarize it.",
-            )
-            retry_terminal = _wait_cortex_run(str(retry_run["id"]), 180.0)
-            retry_message = _conversation_agent_result(conversation_id, str(retry_run.get("agent_message_id", "")))
-            retry_trace = _trace_summary(retry_message)
-            status_value = _http_json("/api/v1/cortex/retrieval/status", timeout=10.0)
-            retrieval_status = status_value if isinstance(status_value, dict) else {}
-            mode = retrieval_status.get("mode")
-            retrieval_state = retrieval_status.get("state")
-            retrieval_error = retrieval_status.get("error_category")
-            completion_event = retry_terminal.get("status") == "completed" and _run_completion_replayed(str(retry_run["id"]))
-            successful_tool = any(item["name"] == "search_apex_docs" and item["status"] == "ok" for item in retry_trace)
-            if successful_tool:
+        # The first actual search may time out while its worker continues a
+        # progressing corpus backfill. Wait on the existing status endpoint,
+        # preserve that first timeout, then issue one actual search retry.
+        preparation_wait = _wait_for_semantic_retrieval_ready()
+        if preparation_wait["status"] == "ready":
+            try:
+                fixture.search_tool_requests.add(fixture.request_count)
+                retry_run = _start_cortex_run(
+                    conversation_id,
+                    "Use search_apex_docs to locate the local-first workspace guidance and summarize it.",
+                )
+                retry_terminal = _wait_cortex_run(str(retry_run["id"]), 180.0)
+                retry_message = _conversation_agent_result(conversation_id, str(retry_run.get("agent_message_id", "")))
+                retry_trace = _trace_summary(retry_message)
+                status_value = _http_json("/api/v1/cortex/retrieval/status", timeout=10.0)
+                retrieval_status = status_value if isinstance(status_value, dict) else {}
+                mode = retrieval_status.get("mode")
+                retrieval_state = retrieval_status.get("state")
+                retrieval_error = retrieval_status.get("error_category")
+                completion_event = retry_terminal.get("status") == "completed" and _run_completion_replayed(str(retry_run["id"]))
+                successful_tool = any(item["name"] == "search_apex_docs" and item["status"] == "ok" for item in retry_trace)
                 run = retry_run
                 terminal = retry_terminal
                 message = retry_message
                 trace = retry_trace
                 message_status = message.get("status") if isinstance(message, dict) else None
-        except Exception as exc:
-            retry_error_category = type(exc).__name__
+            except Exception as exc:
+                retry_error_category = type(exc).__name__
     evidence = terminal.get("evidence")
     persisted = evidence.get("answer_persisted") if isinstance(evidence, dict) else None
     terminal_error = terminal.get("error")
@@ -810,6 +875,7 @@ def _exercise_semantic_retrieval(fixture: LlamaCppStreamFixture) -> dict[str, ob
         "retry_tool_trace": retry_trace,
         "retry_error_category": retry_error_category,
         "retry_run_status": retry_terminal.get("status"),
+        "preparation_wait": preparation_wait,
         "retrieval_mode": mode,
         "retrieval_state": retrieval_state,
         "retrieval_error_category": retrieval_error,
@@ -833,7 +899,10 @@ def _exercise_semantic_retrieval(fixture: LlamaCppStreamFixture) -> dict[str, ob
         "tool_called": True,
         "retrieval_mode": mode,
         "initial_tool_error_category": initial_tool_error_category,
+        "initial_tool_trace": initial_trace,
+        "final_tool_trace": trace,
         "retried_tool": bool(retry_trace),
+        "preparation_wait": preparation_wait,
     }
 
 
@@ -912,6 +981,9 @@ def _run_idle_workload_scenario(
         "retrieval_mode": first_semantic["retrieval_mode"],
         "speech_engine": first_speech["engine"],
         "initial_tool_error_category": first_semantic.get("initial_tool_error_category"),
+        "initial_tool_trace": first_semantic.get("initial_tool_trace", []),
+        "final_tool_trace": first_semantic.get("final_tool_trace", []),
+        "preparation_wait": first_semantic.get("preparation_wait"),
         "retried_tool_after_initial_timeout": first_semantic.get("retried_tool", False),
     })
 
@@ -934,6 +1006,11 @@ def _run_idle_workload_scenario(
         "status": "passed",
         "retrieval_mode": second_semantic["retrieval_mode"],
         "speech_engine": second_speech["engine"],
+        "initial_tool_error_category": second_semantic.get("initial_tool_error_category"),
+        "initial_tool_trace": second_semantic.get("initial_tool_trace", []),
+        "final_tool_trace": second_semantic.get("final_tool_trace", []),
+        "preparation_wait": second_semantic.get("preparation_wait"),
+        "retried_tool_after_initial_timeout": second_semantic.get("retried_tool", False),
     })
 
     fixture.active_request_number = fixture.request_count
