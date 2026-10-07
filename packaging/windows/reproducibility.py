@@ -9,6 +9,7 @@ import json
 import marshal
 import re
 import sys
+import struct
 import types
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,45 @@ _CODE_FIELDS = (
 @dataclass(frozen=True)
 class _NestedCodeMarker:
     ordinal_path: tuple[int, ...]
+
+
+def _constant_signature(value: Any, path: tuple[int, ...] = ()) -> Any:
+    """Build a type-aware, hashable internal representation of code constants."""
+    if isinstance(value, types.CodeType):
+        return _NestedCodeMarker(path)
+    if value is None:
+        return ("none",)
+    if value is Ellipsis:
+        return ("ellipsis",)
+    if isinstance(value, bool):
+        return ("bool", value)
+    if isinstance(value, int):
+        return ("int", value)
+    if isinstance(value, float):
+        return ("float64", struct.pack("!d", value))
+    if isinstance(value, complex):
+        return ("complex128", struct.pack("!dd", value.real, value.imag))
+    if isinstance(value, str):
+        return ("str", value)
+    if isinstance(value, bytes):
+        return ("bytes", value)
+    if isinstance(value, tuple):
+        return (
+            "tuple",
+            tuple(_constant_signature(item, path + (index,)) for index, item in enumerate(value)),
+        )
+    if isinstance(value, frozenset):
+        return ("frozenset", frozenset(_constant_signature(item, path) for item in value))
+    if isinstance(value, slice):
+        return (
+            "slice",
+            _constant_signature(value.start, path),
+            _constant_signature(value.stop, path),
+            _constant_signature(value.step, path),
+        )
+    # Python code constants are limited to the types above. Fail closed if a
+    # future interpreter introduces another marshal-supported constant type.
+    return ("unsupported", type(value).__module__, type(value).__qualname__, repr(value))
 
 
 def _digest(value: bytes) -> str:
@@ -75,19 +115,6 @@ def _code_field_values(root: types.CodeType) -> dict[str, Any]:
     """Collect structural fields, separating nested code from parent constants."""
     field_values: dict[str, Any] = {}
 
-    def replace_nested_code(value: Any, path: tuple[int, ...]) -> Any:
-        if isinstance(value, types.CodeType):
-            # Nested code objects are walked independently below.
-            return _NestedCodeMarker(path)
-        if isinstance(value, tuple):
-            return tuple(
-                replace_nested_code(item, path + (index,))
-                for index, item in enumerate(value)
-            )
-        if isinstance(value, frozenset):
-            return frozenset(replace_nested_code(item, path) for item in value)
-        return value
-
     def walk(code: types.CodeType, ordinal_path: tuple[int, ...]) -> None:
         prefix = ".".join(map(str, ordinal_path)) or "root"
         for field in _CODE_FIELDS:
@@ -95,7 +122,7 @@ def _code_field_values(root: types.CodeType) -> dict[str, Any]:
                 continue
             value = getattr(code, field)
             if field == "co_consts":
-                value = replace_nested_code(value, ordinal_path)
+                value = _constant_signature(value, ordinal_path)
             field_values[f"{prefix}:{field}"] = value
         children = [item for item in code.co_consts if isinstance(item, types.CodeType)]
         for index, child in enumerate(children):

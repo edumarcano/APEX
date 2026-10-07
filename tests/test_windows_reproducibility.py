@@ -59,6 +59,26 @@ class FrozenExecutableDiagnosticsTests(unittest.TestCase):
         self.assertEqual(report["changed_fields"], [])
         self.assertTrue(report["serialization_only"])
 
+    def test_int_to_bool_constant_is_a_structural_change(self) -> None:
+        template = compile("value = 0", "safe_module.py", "exec")
+        left_code = template.replace(co_consts=(1, None))
+        right_code = template.replace(co_consts=(True, None))
+
+        report = _analyze_code_pair(marshal.dumps(left_code), marshal.dumps(right_code), 10)
+
+        self.assertIn("co_consts", report["changed_fields"])
+        self.assertFalse(report["serialization_only"])
+
+    def test_signed_zero_float_is_a_structural_change(self) -> None:
+        template = compile("value = 0.0", "safe_module.py", "exec")
+        left_code = template.replace(co_consts=(0.0, None))
+        right_code = template.replace(co_consts=(-0.0, None))
+
+        report = _analyze_code_pair(marshal.dumps(left_code), marshal.dumps(right_code), 10)
+
+        self.assertIn("co_consts", report["changed_fields"])
+        self.assertFalse(report["serialization_only"])
+
     def test_names_are_capped_and_unsafe_paths_are_omitted(self) -> None:
         names = [f"safe_{index}" for index in range(12)] + ["../private", "C:/Users/example/private"]
 
