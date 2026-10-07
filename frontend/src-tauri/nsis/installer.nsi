@@ -30,6 +30,8 @@ ManifestDPIAwareness PerMonitorV2
 !include "StrFunc.nsh"
 ${StrCase}
 ${StrLoc}
+${UnStrCase}
+${UnStrLoc}
 
 {{#if installer_hooks}}
 !include "{{installer_hooks}}"
@@ -602,6 +604,9 @@ Section Install
     StrCpy $0 "$INSTDIR\\{{this}}"
     Call CheckNoReparsePoint
   {{/each}}
+  ; WriteUninstaller replaces this file, so validate it before the write as well.
+  StrCpy $0 "$INSTDIR\uninstall.exe"
+  Call CheckNoReparsePoint
   SetOutPath $INSTDIR
 
   !ifmacrodef NSIS_HOOK_PREINSTALL
@@ -1004,9 +1009,9 @@ Function un.DetectAPEXProcess
   ${If} $1 != 0
     Abort "Windows could not verify whether APEX is running. Close APEX and retry."
   ${EndIf}
-  ${StrCase} $4 $2 "L"
-  ${StrCase} $5 $0 "L"
-  ${StrLoc} $3 $4 '"$5"' ">"
+  ${UnStrCase} $4 $2 "L"
+  ${UnStrCase} $5 $0 "L"
+  ${UnStrLoc} $3 $4 '"$5"' ">"
   StrCpy $0 0
   ${If} $3 != ""
     StrCpy $0 1
