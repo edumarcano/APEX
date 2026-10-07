@@ -850,12 +850,19 @@ Section Uninstall
     DeleteRegKey HKCU "${UNINSTKEY}"
   !endif
 
-  ; Removes the Autostart entry for ${PRODUCTNAME} from the HKCU Run key if it exists.
-  ; This ensures the program does not launch automatically after uninstallation if it exists.
-  ; If it doesn't exist, it does nothing.
-  ; We do this when not updating (to preserve the registry value on updates)
+  ; Remove the startup value only when it still belongs to this installation.
+  ; Windows paths compare case-insensitively; the exact argument tail prevents
+  ; removing another command that happens to use this executable.
   ${If} $UpdateMode <> 1
+    ReadRegStr $R0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}"
+    StrCpy $R1 "$\"$INSTDIR\${MAINBINARYNAME}.exe$\""
+    StrLen $R2 $R1
+    StrCpy $R3 $R0 $R2
+    StrCmp /I $R3 $R1 0 skip_owned_startup_cleanup
+    StrCpy $R3 $R0 "" $R2
+    StrCmp $R3 " --autostart" 0 skip_owned_startup_cleanup
     DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}"
+    skip_owned_startup_cleanup:
   ${EndIf}
 
   ; Remove only this install's saved location and installer language. Preserve
