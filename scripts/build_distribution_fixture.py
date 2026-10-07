@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -24,6 +25,11 @@ INSTALLER_RELATIVE_PATHS = (
     "frontend/src-tauri/tauri.conf.json",
     "frontend/package.json",
     "rust-toolchain.toml",
+    ".gitattributes",
+)
+NSIS_ATTRIBUTE_RULES = (
+    "frontend/src-tauri/nsis/installer.nsi text eol=lf",
+    "frontend/src-tauri/nsis/installer.nsi.upstream text eol=lf",
 )
 REQUIRED_NSIS_FILES = {
     "frontend/src-tauri/nsis/installer.nsi",
@@ -71,6 +77,14 @@ def _run(
     except subprocess.TimeoutExpired as exc:
         raise FixtureBuildError(f"Command timed out: {Path(command[0]).name}.") from exc
     return (result.stdout or "").strip()
+
+
+def _npm_command(*arguments: str) -> list[str]:
+    executable_name = "npm.cmd" if os.name == "nt" else "npm"
+    executable = shutil.which(executable_name)
+    if not executable:
+        raise FixtureBuildError(f"Required build command is unavailable: {executable_name}")
+    return [executable, *arguments]
 
 
 def _tracked_overlay_files(source_root: Path) -> list[str]:
@@ -139,15 +153,42 @@ def _assert_baseline_versions(checkout: Path) -> None:
         )
 
 
+def _merge_nsis_line_endings(source_root: Path, checkout: Path) -> None:
+    source_lines = (source_root / ".gitattributes").read_text(encoding="utf-8").splitlines()
+    baseline_path = checkout / ".gitattributes"
+    baseline_lines = baseline_path.read_text(encoding="utf-8").splitlines()
+    for rule in NSIS_ATTRIBUTE_RULES:
+        pattern = rule.split(maxsplit=1)[0]
+        current = [
+            line.strip() for line in source_lines
+            if line.strip() and not line.lstrip().startswith("#")
+            and line.split(maxsplit=1)[0] == pattern
+        ]
+        if current != [rule]:
+            raise FixtureBuildError(f"Current .gitattributes is missing the approved NSIS rule: {pattern}")
+        existing = [
+            line.strip() for line in baseline_lines
+            if line.strip() and not line.lstrip().startswith("#")
+            and line.split(maxsplit=1)[0] == pattern
+        ]
+        if existing and existing != [rule]:
+            raise FixtureBuildError(f"Baseline .gitattributes conflicts with the approved NSIS rule: {pattern}")
+        if not existing:
+            baseline_lines.append(rule)
+    baseline_path.write_text("\n".join(baseline_lines) + "\n", encoding="utf-8")
+
+
 def _apply_overlay(source_root: Path, checkout: Path, tracked: list[str]) -> list[str]:
     """Copy only installer wiring and merge installer settings into baseline configs."""
     for relative in tracked:
-        if relative in {"frontend/src-tauri/tauri.conf.json", "frontend/package.json"}:
+        if relative in {"frontend/src-tauri/tauri.conf.json", "frontend/package.json", ".gitattributes"}:
             continue
         source = source_root / Path(relative)
         target = checkout / Path(relative)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
+
+    _merge_nsis_line_endings(source_root, checkout)
 
     baseline_tauri_path = checkout / "frontend/src-tauri/tauri.conf.json"
     installer_tauri = _read_json(source_root / "frontend/src-tauri/tauri.conf.json")
@@ -272,7 +313,7 @@ def build_fixture(*, base_ref: str, output: Path) -> dict[str, Any]:
                 [
                     "git", "-c", "user.name=APEX Distribution CI",
                     "-c", "user.email=apex-distribution-ci@localhost",
-                    "commit", "--message", "ci: prepare synthetic 2.0.0 installer fixture",
+                    "commit", "--message", "chore: prepare synthetic 2.0.0 installer fixture",
                 ],
                 cwd=worktree,
             )
@@ -296,8 +337,13 @@ def build_fixture(*, base_ref: str, output: Path) -> dict[str, Any]:
             if not isinstance(backend_build_id, str) or not backend_build_id:
                 raise FixtureBuildError("The baseline backend bundle has no build identifier.")
 
-            _run(["npm", "ci"], cwd=worktree / "frontend", timeout=1800, stream=True)
-            _run(["npm", "run", "desktop:package"], cwd=worktree / "frontend", timeout=3600, stream=True)
+            _run(_npm_command("ci"), cwd=worktree / "frontend", timeout=1800, stream=True)
+            _run(
+                _npm_command("run", "desktop:package"),
+                cwd=worktree / "frontend",
+                timeout=3600,
+                stream=True,
+            )
             installer_root = worktree / "build/desktop-shell/installers"
             installer, manifest = _validate_manifest(
                 installer_root / MANIFEST_NAME,

@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from scripts.build_distribution_fixture import (
     BASELINE_COMMIT,
     FixtureBuildError,
+    NSIS_ATTRIBUTE_RULES,
+    ROOT,
+    _npm_command,
+    _run,
     _apply_overlay,
     _fixture_sidecar,
     _overlay_digest,
@@ -18,6 +25,29 @@ from scripts.build_distribution_fixture import (
 
 
 class DistributionFixtureOverlayTests(unittest.TestCase):
+    def test_npm_invocation_resolves_platform_command_file(self) -> None:
+        with patch("scripts.build_distribution_fixture.os.name", "nt"), patch(
+            "scripts.build_distribution_fixture.shutil.which",
+            return_value=r"C:\Program Files\nodejs\npm.cmd",
+        ) as which:
+            self.assertEqual(
+                _npm_command("ci"),
+                [r"C:\Program Files\nodejs\npm.cmd", "ci"],
+            )
+            which.assert_called_once_with("npm.cmd")
+
+        with patch("scripts.build_distribution_fixture.os.name", "posix"), patch(
+            "scripts.build_distribution_fixture.shutil.which",
+            return_value="/usr/bin/npm",
+        ) as which:
+            self.assertEqual(_npm_command("ci"), ["/usr/bin/npm", "ci"])
+            which.assert_called_once_with("npm")
+
+    @unittest.skipUnless(os.name == "nt" and shutil.which("npm.cmd"), "requires Windows npm.cmd")
+    def test_resolved_windows_npm_command_runs(self) -> None:
+        version = _run(_npm_command("--version"), cwd=ROOT, timeout=30)
+        self.assertRegex(version, r"^\d+\.\d+\.\d+")
+
     def test_overlay_preserves_baseline_versions_and_unrelated_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -35,6 +65,12 @@ class DistributionFixtureOverlayTests(unittest.TestCase):
             ):
                 (source / relative).parent.mkdir(parents=True, exist_ok=True)
                 (source / relative).write_text(relative, encoding="utf-8")
+            (source / ".gitattributes").write_text(
+                "\n".join(NSIS_ATTRIBUTE_RULES) + "\n",
+                encoding="utf-8",
+            )
+            (checkout / ".gitattributes").parent.mkdir(parents=True, exist_ok=True)
+            (checkout / ".gitattributes").write_text("*.py text eol=lf\n", encoding="utf-8")
 
             checkout_tauri = checkout / "frontend/src-tauri/tauri.conf.json"
             checkout_package = checkout / "frontend/package.json"
@@ -75,6 +111,7 @@ class DistributionFixtureOverlayTests(unittest.TestCase):
                 "frontend/src-tauri/tauri.conf.json",
                 "frontend/package.json",
                 "rust-toolchain.toml",
+                ".gitattributes",
             ])
 
             result_tauri = json.loads(checkout_tauri.read_text(encoding="utf-8"))
@@ -86,6 +123,10 @@ class DistributionFixtureOverlayTests(unittest.TestCase):
             self.assertEqual(result_package["scripts"]["build"], "vite build")
             self.assertIn("desktop:package", result_package["scripts"])
             self.assertEqual(result_package["dependencies"], {"react": "locked-version"})
+            baseline_attributes = (checkout / ".gitattributes").read_text(encoding="utf-8")
+            self.assertIn("*.py text eol=lf", baseline_attributes)
+            for rule in NSIS_ATTRIBUTE_RULES:
+                self.assertIn(rule, baseline_attributes)
 
     def test_overlay_digest_uses_sorted_relative_paths_and_exact_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
