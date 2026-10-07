@@ -2959,7 +2959,15 @@ def _run_smoke(
                             # This handle was opened while the profile identity
                             # and executable image were verified. Windows keeps
                             # it bound to that process even if the PID is reused.
-                            _terminate_process_handle(stream_backend_handle, "identity-matched fixture backend child")
+                            try:
+                                _terminate_process_handle(stream_backend_handle, "identity-matched fixture backend child")
+                            except SmokeFailure:
+                                # The shell may have shut the backend down between
+                                # the zero-time wait and TerminateProcess. Treat
+                                # that race as clean only if this exact handle
+                                # subsequently signals exit within the same bound.
+                                if not _wait_process_handle(stream_backend_handle, 10.0):
+                                    raise
                         if not _wait_process_handle(stream_backend_handle, 10.0):
                             raise SmokeFailure("verified fixture backend child did not exit after bounded cleanup")
                         if not _wait_port_free(10.0):
