@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement, ReactNode, RefObject } from 'react'
+import { usePresentationVisibility } from '../hooks/usePresentationVisibility'
 import {
   Bell,
   CalendarDays,
@@ -277,6 +278,7 @@ export function SystemDiagnostics({
   workspaceNavigation,
   onReturnToLaunch,
 }: SystemDiagnosticsProps): ReactElement {
+  const presentationVisible = usePresentationVisibility()
   const [isBrowserOnline, setIsBrowserOnline] = useState(navigator.onLine)
   const [isConnectorInspectorOpen, setIsConnectorInspectorOpen] = useState(false)
   const [isConnectorInspectorPinned, setIsConnectorInspectorPinned] = useState(false)
@@ -308,6 +310,7 @@ export function SystemDiagnostics({
   const modeSubtitle = demoModeActive ? 'DEMO' : devModeActive ? 'DEVELOPER' : null
 
   useEffect(() => {
+    if (!presentationVisible) return undefined
     const updateClock = (): void => {
       setLiveTime(
         new Date().toLocaleTimeString('en-US', {
@@ -322,7 +325,7 @@ export function SystemDiagnostics({
     updateClock()
     const timerId = setInterval(updateClock, 1000)
     return () => clearInterval(timerId)
-  }, [])
+  }, [presentationVisible])
 
   useEffect(() => {
     const handleOnline = (): void => setIsBrowserOnline(true)

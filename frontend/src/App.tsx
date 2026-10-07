@@ -32,6 +32,7 @@ import type { HudTelemetryData } from './components/overview/HudTelemetry'
 import { useApexData } from './hooks/useApexData'
 import { useCortex } from './hooks/useCortex'
 import { useActions } from './hooks/useActions'
+import { usePresentationVisibility } from './hooks/usePresentationVisibility'
 import { useActivityReports } from './hooks/useActivityReports'
 import { useTelemetryCollectionState } from './hooks/useTelemetryCollectionState'
 import { useBriefingSpeech } from './hooks/useBriefingSpeech'
@@ -150,6 +151,7 @@ interface PersistAgentSettingsOptions {
 }
 
 export default function App(): ReactElement {
+  const presentationVisible = usePresentationVisibility()
   const [reminderPulseCount, setReminderPulseCount] = useState(0)
   const [activeAgent] = useState<AgentKey>('apex')
   const [cloudEffort, setCloudEffort] = useState<CloudEffort>('medium')
@@ -231,6 +233,10 @@ export default function App(): ReactElement {
   const [assistantResponseError, setAssistantResponseError] = useState<string | null>(null)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
   const activeAgentRef = useRef(activeAgent)
+  useEffect(() => {
+    document.documentElement.dataset.apexPresentation = presentationVisible ? 'visible' : 'dormant'
+    return () => { delete document.documentElement.dataset.apexPresentation }
+  }, [presentationVisible])
   useEffect(() => {
     activeAgentRef.current = activeAgent
   }, [activeAgent])

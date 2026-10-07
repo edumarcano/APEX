@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from core.agent.local_runtime import execution as local_execution
 
@@ -12,7 +12,7 @@ from core.agent.local_runtime import execution as local_execution
 class LocalModelAdmissionTests(unittest.TestCase):
     def setUp(self) -> None:
         self.profile = SimpleNamespace(
-            provider="ollama",
+            provider="llama_cpp",
             runtime="local",
             api_model="alias-for-api",
             runtime_model_id="runtime-model:latest",
@@ -108,6 +108,29 @@ class LocalModelAdmissionTests(unittest.TestCase):
             self.end.assert_not_called()
         self.assertTrue(entered)
         self.end.assert_called_once_with()
+
+    def test_llama_managed_start_precedes_status_and_residency_checks(self) -> None:
+        self.profile.provider = "llama_cpp"
+        order: list[str] = []
+        supervisor = Mock()
+        supervisor.ensure_ready.side_effect = lambda **_kwargs: order.append("start")
+        self.snapshot.side_effect = lambda *_args, **_kwargs: (
+            order.append("status")
+            or {"reachable": True, "installed_models": ["runtime-model:latest"]}
+        )
+
+        with patch(
+            "core.agent.providers.llama_cpp_runtime.get_llama_cpp_runtime_settings",
+            return_value=SimpleNamespace(enabled=True, managed=True),
+        ), patch(
+            "core.agent.providers.llama_cpp_supervisor.get_llama_cpp_server_supervisor",
+            return_value=supervisor,
+        ):
+            with local_execution.admit_local_model(self.profile):
+                pass
+
+        self.assertEqual(order, ["start", "status"])
+        supervisor.ensure_ready.assert_called_once_with(allow_restart=True)
 
 
 if __name__ == "__main__":

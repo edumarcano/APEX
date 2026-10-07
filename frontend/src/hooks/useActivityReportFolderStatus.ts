@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { API_ENDPOINTS } from '../lib/api'
+import { usePresentationVisibility } from './usePresentationVisibility'
 import type {
   ActivityReportFolderState,
   ActivityReportFolderStatusResponse,
@@ -29,6 +30,7 @@ function parseStatus(value: unknown): ActivityReportFolderStatusResponse | null 
 }
 
 export function useActivityReportFolderStatus(open: boolean) {
+  const presentationVisible = usePresentationVisibility()
   const [status, setStatus] = useState<ActivityReportFolderStatusResponse | null>(null)
   const [unavailable, setUnavailable] = useState(false)
 
@@ -47,14 +49,14 @@ export function useActivityReportFolderStatus(open: boolean) {
   }, [open])
 
   useEffect(() => {
-    if (!open) return undefined
+    if (!open || !presentationVisible) return undefined
     const initial = window.setTimeout(() => void refresh(), 0)
     const timer = window.setInterval(() => void refresh(), POLL_INTERVAL_MS)
     return () => {
       window.clearTimeout(initial)
       window.clearInterval(timer)
     }
-  }, [open, refresh])
+  }, [open, presentationVisible, refresh])
 
   return { status, unavailable, refresh }
 }

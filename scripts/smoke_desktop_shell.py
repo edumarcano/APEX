@@ -9,6 +9,7 @@ import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
+import platform
 from pathlib import Path
 import shutil
 import socket
@@ -21,6 +22,12 @@ import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable
+from uuid import uuid4
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+from scripts.idle_runtime_measurements import OwnedProcessSampler, ProcessRoot
 
 API_ORIGIN = "http://127.0.0.1:8000"
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
@@ -72,6 +79,8 @@ class Check:
 class Report:
     checks: list[Check] = field(default_factory=list)
     diagnostics: list[dict[str, str]] = field(default_factory=list)
+    idle_measurements: list[dict[str, object]] = field(default_factory=list)
+    measurement_metadata: dict[str, object] = field(default_factory=dict)
 
     def add(self, name: str, status: str, detail: str | None = None) -> None:
         self.checks.append(Check(name, status, detail))
@@ -88,16 +97,28 @@ class Report:
         return "passed"
 
     def as_dict(self) -> dict[str, object]:
-        return {
+        value = {
             "schema_version": 1,
             "result": self.result,
             "checks": [asdict(check) for check in self.checks],
             "diagnostics": self.diagnostics,
         }
+        if self.idle_measurements:
+            value["idle_measurements"] = self.idle_measurements
+        if self.measurement_metadata:
+            value["measurement_metadata"] = self.measurement_metadata
+        return value
 
 
 class SmokeFailure(RuntimeError):
     pass
+
+
+class IdleDemandFailure(SmokeFailure):
+    def __init__(self, category: str, diagnostics: dict[str, object]) -> None:
+        self.category = category
+        self.diagnostics = diagnostics
+        super().__init__(f"{category}: {json.dumps(diagnostics, ensure_ascii=True, separators=(',', ':'))}")
 
 
 class WebDriverCommandError(SmokeFailure):
@@ -127,6 +148,10 @@ class LlamaCppStreamFixture:
     def __init__(self, hold_timeout: float = 90.0) -> None:
         self.first_delta_sent = threading.Event()
         self.release_cancelled_stream = threading.Event()
+        self.search_tool_requests: set[int] = set()
+        self.active_request_number: int | None = None
+        self.active_request_started = threading.Event()
+        self.release_active_request = threading.Event()
         self.hold_timeout = hold_timeout
         self.request_count = 0
         self.request_metadata: list[dict[str, object]] = []
@@ -230,6 +255,32 @@ class LlamaCppStreamFixture:
                         self._write_chunk(b"data: [DONE]\n\n")
                         self.wfile.write(b"0\r\n\r\n")
                         self.wfile.flush()
+                    elif request_number == fixture.active_request_number:
+                        self._chunk("The hidden-window completion fixture started.")
+                        fixture.active_request_started.set()
+                        if not fixture.release_active_request.wait(timeout=fixture.hold_timeout):
+                            self.wfile.write(b"0\r\n\r\n")
+                            self.wfile.flush()
+                            return
+                        self._chunk(" The active fixture completed after the window was hidden.", finish="stop")
+                        self._write_chunk(b"data: [DONE]\n\n")
+                        self.wfile.write(b"0\r\n\r\n")
+                        self.wfile.flush()
+                    elif request_number in fixture.search_tool_requests:
+                        payload = {
+                            "model": "gemma-4-e2b-16k",
+                            "choices": [{"delta": {"tool_calls": [{
+                                "index": 0,
+                                "id": "apex-idle-search",
+                                "type": "function",
+                                "function": {"name": "search_apex_docs", "arguments": json.dumps({"query": "APEX local first workspace"}, separators=(",", ":"))},
+                            }]}, "finish_reason": None}],
+                        }
+                        self._write_chunk(("data: " + json.dumps(payload, separators=(",", ":")) + "\n\n").encode("utf-8"))
+                        self._chunk("", finish="tool_calls")
+                        self._write_chunk(b"data: [DONE]\n\n")
+                        self.wfile.write(b"0\r\n\r\n")
+                        self.wfile.flush()
                     else:
                         for text in (
                             "The native WebView received ",
@@ -264,6 +315,7 @@ class LlamaCppStreamFixture:
 
     def close(self) -> None:
         self.release_cancelled_stream.set()
+        self.release_active_request.set()
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=5)
@@ -529,6 +581,471 @@ def _http_json(path: str, timeout: float = 2.0) -> object:
     if len(body) > MAX_RESPONSE_BYTES:
         raise SmokeFailure(f"API response exceeded the size limit: {path}")
     return json.loads(body)
+
+
+def _http_post_json(path: str, payload: dict[str, object], timeout: float = 60.0) -> object:
+    request = urllib.request.Request(
+        API_ORIGIN + path,
+        data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
+        method="POST",
+    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(request, timeout=timeout) as response:
+            body = response.read(MAX_RESPONSE_BYTES + 1)
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise SmokeFailure(f"idle measurement API request failed: {type(exc).__name__}") from None
+    if len(body) > MAX_RESPONSE_BYTES:
+        raise SmokeFailure("idle measurement API response exceeded the response limit")
+    try:
+        return json.loads(body)
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise SmokeFailure(f"idle measurement API returned invalid JSON: {type(exc).__name__}") from None
+
+
+def _stage_idle_assets(profile: Path, fastembed_cache: Path | None, kokoro_assets: Path | None) -> bool:
+    if fastembed_cache is None or kokoro_assets is None:
+        return False
+    if not fastembed_cache.is_dir() or not kokoro_assets.is_dir():
+        raise SmokeFailure("idle measurement asset paths must point to existing directories")
+    if not any(path.is_file() for path in fastembed_cache.rglob("*")) or not any(path.is_file() for path in kokoro_assets.rglob("*")):
+        raise SmokeFailure("idle measurement requires non-empty cached FastEmbed and Kokoro assets")
+    shutil.copytree(fastembed_cache, profile / "weights" / "fastembed", dirs_exist_ok=True)
+    shutil.copytree(kokoro_assets, profile / "core" / "weights" / "kokoro", dirs_exist_ok=True)
+    config_path = profile / "config.local.json"
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        config = {}
+    if not isinstance(config, dict):
+        config = {}
+    tts = config.get("tts_settings")
+    if not isinstance(tts, dict):
+        tts = {}
+    tts["primary_tts"] = "kokoro"
+    tts["voice_mode"] = "automatic"
+    config["tts_settings"] = tts
+    config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    return True
+
+
+def _start_cortex_run(conversation_id: str, prompt: str) -> dict[str, object]:
+    result = _http_post_json(f"/api/v1/cortex/conversations/{conversation_id}/runs", {
+        "user_message_id": str(uuid4()),
+        "agent_message_id": str(uuid4()),
+        "prompt": prompt,
+        "selected_tool_names": ["search_apex_docs"],
+        "tool_profile_id": "research",
+    }, timeout=30.0)
+    run_id = result.get("id") if isinstance(result, dict) else None
+    if not isinstance(run_id, str):
+        raise SmokeFailure("asynchronous Cortex run creation returned no run identity")
+    return result
+
+
+def _wait_cortex_run(run_id: str, timeout: float) -> dict[str, object]:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        record = _http_json(f"/api/v1/cortex/runs/{run_id}", timeout=10.0)
+        if not isinstance(record, dict):
+            raise SmokeFailure("Cortex run status did not return an object")
+        if record.get("status") in {"completed", "failed", "cancelled", "interrupted"}:
+            return record
+        time.sleep(0.2)
+    raise SmokeFailure("Cortex run did not reach a persisted terminal state before the deadline")
+
+
+def _run_completion_replayed(run_id: str) -> bool:
+    return "run.completed" in _http_sse_event_types(run_id, timeout=15.0)
+
+
+def _conversation_agent_result(conversation_id: str, agent_message_id: str) -> dict[str, object] | None:
+    detail = _http_json(f"/api/v1/cortex/conversations/{conversation_id}", timeout=10.0)
+    messages = detail.get("messages") if isinstance(detail, dict) else None
+    if not isinstance(messages, list):
+        return None
+    return next((message for message in messages if isinstance(message, dict) and message.get("id") == agent_message_id), None)
+
+
+def _trace_summary(message: dict[str, object] | None) -> list[dict[str, str]]:
+    metadata = message.get("response_metadata") if isinstance(message, dict) else None
+    trace = metadata.get("tool_trace") if isinstance(metadata, dict) else None
+    outputs = metadata.get("tool_outputs") if isinstance(metadata, dict) else None
+    categories: dict[str, str] = {}
+    if isinstance(outputs, list):
+        for item in outputs:
+            if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+                continue
+            output = item.get("output")
+            category = output.get("error_category") if isinstance(output, dict) else None
+            if isinstance(category, str):
+                # Capability categories are public, bounded diagnostics. Never
+                # copy the user-facing error message or tool output into reports.
+                categories[item["name"]] = category[:80]
+    result: list[dict[str, str]] = []
+    if isinstance(trace, list):
+        for item in trace:
+            if not isinstance(item, dict):
+                continue
+            name, status = item.get("name"), item.get("status")
+            if isinstance(name, str) and isinstance(status, str):
+                summary = {"name": name[:80], "status": status[:40]}
+                duration = item.get("duration_ms")
+                if isinstance(duration, (int, float)):
+                    summary["duration_ms"] = str(round(float(duration), 2))
+                if status == "error" and name in categories:
+                    summary["error_category"] = categories[name]
+                result.append(summary)
+    return result
+
+
+_RETRIEVAL_PREPARATION_WAIT_SECONDS = 120.0
+_RETRIEVAL_PREPARATION_POLL_SECONDS = 1.0
+
+
+def _wait_for_semantic_retrieval_ready(
+    timeout_seconds: float = _RETRIEVAL_PREPARATION_WAIT_SECONDS,
+    *,
+    read_status: Callable[[float], object] | None = None,
+    monotonic: Callable[[], float] | None = None,
+    sleep: Callable[[float], None] | None = None,
+) -> dict[str, object]:
+    """Wait for a progressing first-demand semantic backfill, without hiding failures."""
+    read_status = read_status or (
+        lambda timeout: _http_json("/api/v1/cortex/retrieval/status", timeout=timeout)
+    )
+    monotonic = monotonic or time.monotonic
+    sleep = sleep or time.sleep
+    started = monotonic()
+    deadline = started + timeout_seconds
+    polls = 0
+    final_status: dict[str, object] = {}
+    wait_status = "timeout"
+    error_category: str | None = None
+    while True:
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            break
+        try:
+            value = read_status(min(5.0, remaining))
+            polls += 1
+            final_status = value if isinstance(value, dict) else {}
+        except Exception as exc:
+            wait_status = "status_error"
+            error_category = type(exc).__name__
+            break
+
+        state = final_status.get("state")
+        mode = final_status.get("mode")
+        if state == "ready" and mode == "semantic":
+            wait_status = "ready"
+            break
+        if state != "preparing":
+            wait_status = "not_ready"
+            break
+
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            break
+        sleep(min(_RETRIEVAL_PREPARATION_POLL_SECONDS, remaining))
+
+    elapsed = max(0.0, monotonic() - started)
+    return {
+        "status": wait_status,
+        "elapsed_seconds": round(elapsed, 3),
+        "poll_count": polls,
+        "final_status": {
+            "mode": final_status.get("mode"),
+            "state": final_status.get("state"),
+            "error_category": final_status.get("error_category"),
+        },
+        "error_category": error_category,
+    }
+
+
+def _exercise_semantic_retrieval(fixture: LlamaCppStreamFixture) -> dict[str, object]:
+    conversation_id: str | None = None
+    run: dict[str, object] = {}
+    terminal: dict[str, object] = {}
+    message: dict[str, object] | None = None
+    retrieval_status: dict[str, object] = {}
+    completion_event = False
+    stage = "conversation_create"
+    caught: Exception | None = None
+    try:
+        conversation = _http_post_json("/api/v1/cortex/conversations", {
+            "origin": "hud",
+            "agent": "apex",
+            "title": "Idle runtime validation",
+            "selected_tool_names": ["search_apex_docs"],
+            "tool_profile_id": "research",
+        })
+        conversation_id = conversation.get("id") if isinstance(conversation, dict) else None
+        if not isinstance(conversation_id, str):
+            raise SmokeFailure("conversation response omitted its identity")
+        stage = "run_submission"
+        fixture.search_tool_requests.add(fixture.request_count)
+        run = _start_cortex_run(
+            conversation_id,
+            "Use search_apex_docs to find the local-first workspace guidance and summarize it.",
+        )
+        run_id = str(run["id"])
+        stage = "run_completion"
+        terminal = _wait_cortex_run(run_id, 180.0)
+        stage = "conversation_persistence"
+        message = _conversation_agent_result(conversation_id, str(run.get("agent_message_id", "")))
+        stage = "retrieval_status"
+        status_value = _http_json("/api/v1/cortex/retrieval/status", timeout=10.0)
+        retrieval_status = status_value if isinstance(status_value, dict) else {}
+        stage = "run_completion_event"
+        completion_event = terminal.get("status") == "completed" and _run_completion_replayed(run_id)
+    except Exception as exc:
+        caught = exc
+        try:
+            if not retrieval_status:
+                status_value = _http_json("/api/v1/cortex/retrieval/status", timeout=5.0)
+                retrieval_status = status_value if isinstance(status_value, dict) else {}
+        except Exception:
+            pass
+
+    trace = _trace_summary(message)
+    mode = retrieval_status.get("mode")
+    retrieval_state = retrieval_status.get("state")
+    retrieval_error = retrieval_status.get("error_category")
+    message_status = message.get("status") if isinstance(message, dict) else None
+    successful_tool = any(item["name"] == "search_apex_docs" and item["status"] == "ok" for item in trace)
+    initial_trace = trace
+    initial_tool_error_category = next(
+        (item.get("error_category") for item in trace if item.get("name") == "search_apex_docs" and item.get("status") == "error"),
+        None,
+    )
+    retry_trace: list[dict[str, str]] = []
+    retry_terminal: dict[str, object] = {}
+    retry_error_category: str | None = None
+    preparation_wait: dict[str, object] | None = None
+    if (
+        caught is None
+        and not successful_tool
+        and initial_tool_error_category == "timeout"
+        and retrieval_state in {"preparing", "ready"}
+        and isinstance(conversation_id, str)
+    ):
+        # The first actual search may time out while its worker continues a
+        # progressing corpus backfill. Wait on the existing status endpoint,
+        # preserve that first timeout, then issue one actual search retry.
+        preparation_wait = _wait_for_semantic_retrieval_ready()
+        if preparation_wait["status"] == "ready":
+            try:
+                fixture.search_tool_requests.add(fixture.request_count)
+                retry_run = _start_cortex_run(
+                    conversation_id,
+                    "Use search_apex_docs to locate the local-first workspace guidance and summarize it.",
+                )
+                retry_terminal = _wait_cortex_run(str(retry_run["id"]), 180.0)
+                retry_message = _conversation_agent_result(conversation_id, str(retry_run.get("agent_message_id", "")))
+                retry_trace = _trace_summary(retry_message)
+                status_value = _http_json("/api/v1/cortex/retrieval/status", timeout=10.0)
+                retrieval_status = status_value if isinstance(status_value, dict) else {}
+                mode = retrieval_status.get("mode")
+                retrieval_state = retrieval_status.get("state")
+                retrieval_error = retrieval_status.get("error_category")
+                completion_event = retry_terminal.get("status") == "completed" and _run_completion_replayed(str(retry_run["id"]))
+                successful_tool = any(item["name"] == "search_apex_docs" and item["status"] == "ok" for item in retry_trace)
+                run = retry_run
+                terminal = retry_terminal
+                message = retry_message
+                trace = retry_trace
+                message_status = message.get("status") if isinstance(message, dict) else None
+            except Exception as exc:
+                retry_error_category = type(exc).__name__
+    evidence = terminal.get("evidence")
+    persisted = evidence.get("answer_persisted") if isinstance(evidence, dict) else None
+    terminal_error = terminal.get("error")
+    error_category = terminal_error.get("code") if isinstance(terminal_error, dict) else None
+    if caught is not None and error_category is None:
+        error_category = type(caught).__name__
+    diagnostics = {
+        "run_status": terminal.get("status"),
+        "message_status": message_status,
+        "error_category": error_category,
+        "tool_trace": trace,
+        "initial_tool_trace": initial_trace,
+        "initial_tool_error_category": initial_tool_error_category,
+        "retry_tool_trace": retry_trace,
+        "retry_error_category": retry_error_category,
+        "retry_run_status": retry_terminal.get("status"),
+        "preparation_wait": preparation_wait,
+        "retrieval_mode": mode,
+        "retrieval_state": retrieval_state,
+        "retrieval_error_category": retrieval_error,
+        "answer_persisted": persisted,
+        "completion_event_replayed": completion_event,
+    }
+    if caught is not None:
+        raise IdleDemandFailure(f"semantic_{stage}_failed", diagnostics) from None
+    if not (
+        terminal.get("status") == "completed"
+        and message_status == "completed"
+        and persisted is True
+        and successful_tool
+        and mode == "semantic"
+        and completion_event
+    ):
+        raise IdleDemandFailure("semantic_retrieval_demand_failed", diagnostics)
+    return {
+        "conversation_id": conversation_id,
+        "run_id": str(run["id"]),
+        "tool_called": True,
+        "retrieval_mode": mode,
+        "initial_tool_error_category": initial_tool_error_category,
+        "initial_tool_trace": initial_trace,
+        "final_tool_trace": trace,
+        "retried_tool": bool(retry_trace),
+        "preparation_wait": preparation_wait,
+    }
+
+
+def _exercise_kokoro_synthesis() -> dict[str, object]:
+    result = _http_post_json("/api/v1/voice/speak", {"text": "APEX idle runtime validation speech."}, timeout=180.0)
+    if not isinstance(result, dict) or result.get("resolved_engine") != "kokoro":
+        raise SmokeFailure("voice route did not synthesize through the configured Kokoro engine")
+    return {"engine": "kokoro", "status": result.get("status")}
+
+
+def _start_completed_fixture_run(conversation_id: str) -> tuple[threading.Thread, dict[str, object], threading.Event]:
+    outcome: dict[str, object] = {}
+    done = threading.Event()
+
+    def submit() -> None:
+        try:
+            outcome["result"] = _http_post_json(
+                f"/api/v1/cortex/conversations/{conversation_id}/runs",
+                {
+                    "user_message_id": str(uuid4()),
+                    "agent_message_id": str(uuid4()),
+                    "prompt": "Return a short response after the smoke controller releases the hidden-window fixture.",
+                    "selected_tool_names": [],
+                    "tool_profile_id": "no_tools",
+                },
+                timeout=30.0,
+            )
+        except Exception as exc:
+            outcome["error_type"] = type(exc).__name__
+        finally:
+            done.set()
+
+    worker = threading.Thread(target=submit, name="apex-idle-hidden-fixture", daemon=True)
+    worker.start()
+    return worker, outcome, done
+
+
+def _run_idle_workload_scenario(
+    report: Report,
+    *,
+    sampler: OwnedProcessSampler,
+    shell_pid: int,
+    shell_hwnd: int,
+    fixture: LlamaCppStreamFixture,
+    assets_ready: bool,
+    visible_idle_seconds: float,
+    tray_idle_seconds: float,
+    timeout: float,
+) -> None:
+    report.idle_measurements.append({
+        "name": "explicit_local_inference",
+        "status": "fixture",
+        "provider": "loopback_http_fixture",
+        "real_checkpoint": False,
+        "detail": "The desktop smoke exercised a deterministic local provider fixture; no checkpoint was configured.",
+    })
+    if not assets_ready:
+        report.idle_measurements.append({
+            "name": "semantic_retrieval_with_kokoro_synthesis",
+            "status": "unverified",
+            "reason": "real cached FastEmbed and Kokoro assets were not staged",
+        })
+        return
+
+    try:
+        first_semantic = _exercise_semantic_retrieval(fixture)
+        first_speech = _exercise_kokoro_synthesis()
+    except IdleDemandFailure as exc:
+        report.add("idle_semantic_and_kokoro_demand", "failed", exc.category)
+        report.idle_measurements.append({"name": "semantic_retrieval_with_kokoro_synthesis", "status": "failed", **exc.diagnostics})
+        raise
+    report.add("idle_semantic_and_kokoro_demand", "passed", "production Cortex retrieval and voice routes acquired real FastEmbed and Kokoro assets")
+    report.idle_measurements.append({
+        "name": "semantic_retrieval_with_kokoro_synthesis",
+        "status": "passed",
+        "retrieval_mode": first_semantic["retrieval_mode"],
+        "speech_engine": first_speech["engine"],
+        "initial_tool_error_category": first_semantic.get("initial_tool_error_category"),
+        "initial_tool_trace": first_semantic.get("initial_tool_trace", []),
+        "final_tool_trace": first_semantic.get("final_tool_trace", []),
+        "preparation_wait": first_semantic.get("preparation_wait"),
+        "retried_tool_after_initial_timeout": first_semantic.get("retried_tool", False),
+    })
+
+    _measure_idle_phase(report, sampler, "visible_idle_after_inference", visible_idle_seconds)
+    _hide_native_window(shell_hwnd, min(15.0, timeout))
+    _measure_idle_phase(report, sampler, "tray_idle_after_inference", tray_idle_seconds)
+    _show_native_window(shell_pid, shell_hwnd, min(10.0, timeout))
+    report.add("idle_tray_show_after_boundary", "passed", "actual tray Show restored the original native window after idle sampling")
+
+    try:
+        second_semantic = _exercise_semantic_retrieval(fixture)
+        second_speech = _exercise_kokoro_synthesis()
+    except IdleDemandFailure as exc:
+        report.add("idle_repeat_demand_after_tray", "failed", exc.category)
+        report.idle_measurements.append({"name": "tray_show_after_idle_and_repeat_demand", "status": "failed", **exc.diagnostics})
+        raise
+    report.add("idle_repeat_demand_after_tray", "passed", "semantic retrieval and Kokoro synthesis succeeded after the full tray idle interval")
+    report.idle_measurements.append({
+        "name": "tray_show_after_idle_and_repeat_demand",
+        "status": "passed",
+        "retrieval_mode": second_semantic["retrieval_mode"],
+        "speech_engine": second_speech["engine"],
+        "initial_tool_error_category": second_semantic.get("initial_tool_error_category"),
+        "initial_tool_trace": second_semantic.get("initial_tool_trace", []),
+        "final_tool_trace": second_semantic.get("final_tool_trace", []),
+        "preparation_wait": second_semantic.get("preparation_wait"),
+        "retried_tool_after_initial_timeout": second_semantic.get("retried_tool", False),
+    })
+
+    fixture.active_request_number = fixture.request_count
+    worker, outcome, done = _start_completed_fixture_run(str(first_semantic["conversation_id"]))
+    if not fixture.active_request_started.wait(timeout=min(45.0, timeout)):
+        fixture.release_active_request.set()
+        raise SmokeFailure("active fixture did not reach its hidden-window completion boundary")
+    try:
+        _hide_native_window(shell_hwnd, min(15.0, timeout))
+    finally:
+        fixture.release_active_request.set()
+    if not done.wait(timeout=min(120.0, timeout + 60.0)):
+        raise SmokeFailure("fixture run submission did not return after the window was hidden")
+    worker.join(timeout=1.0)
+    active_result = outcome.get("result")
+    if outcome.get("error_type") or not isinstance(active_result, dict) or not isinstance(active_result.get("id"), str):
+        raise SmokeFailure("hidden-window fixture run was not accepted by the managed backend")
+    active_run_id = str(active_result["id"])
+    active_terminal = _wait_cortex_run(active_run_id, min(120.0, timeout + 60.0))
+    active_message = _conversation_agent_result(str(first_semantic["conversation_id"]), str(active_result.get("agent_message_id", "")))
+    active_evidence = active_terminal.get("evidence") if isinstance(active_terminal.get("evidence"), dict) else {}
+    completion_event = active_terminal.get("status") == "completed" and _run_completion_replayed(active_run_id)
+    active_completed = (
+        active_terminal.get("status") == "completed"
+        and isinstance(active_message, dict)
+        and active_message.get("status") == "completed"
+        and active_evidence.get("answer_persisted") is True
+        and completion_event
+    )
+    if not active_completed:
+        raise SmokeFailure("hidden-window fixture run did not persist completion and replay its terminal completion event")
+    report.add("idle_hidden_active_completion", "passed", "a hidden-window managed run persisted its answer and terminal completion event")
+    report.idle_measurements.append({"name": "active_fixture_hidden_completion", "status": "passed", "completion_preserved": True, "run_status": active_terminal.get("status"), "answer_persisted": active_evidence.get("answer_persisted"), "completion_event_replayed": completion_event})
+    _show_native_window(shell_pid, shell_hwnd, min(10.0, timeout))
+    report.add("idle_tray_show_after_active_completion", "passed", "actual tray Show restored the completed session")
 
 
 def _http_sse_event_types(run_id: str, timeout: float = 15.0) -> list[str]:
@@ -1060,6 +1577,71 @@ def _runtime_identity(profile: Path, timeout: float) -> dict[str, Any]:
             last_error = exc
             time.sleep(POLL_INTERVAL_SECONDS)
     raise SmokeFailure(f"managed backend identity was not ready: {last_error or 'timeout'}")
+
+
+def _idle_sampler(shell_pid: int, backend_pid: int) -> OwnedProcessSampler:
+    """Sample only native-shell and runtime identities established by smoke checks."""
+    import psutil
+
+    roots: list[ProcessRoot] = []
+    for label, pid in (("shell", shell_pid), ("backend", backend_pid)):
+        try:
+            created = psutil.Process(pid).create_time()
+        except (psutil.Error, OSError) as exc:
+            raise SmokeFailure(f"could not verify the {label} process for idle measurement") from exc
+        roots.append(ProcessRoot(label, pid, float(created)))
+    return OwnedProcessSampler(roots)
+
+
+def _measure_idle_phase(report: Report, sampler: OwnedProcessSampler, name: str, duration: float) -> None:
+    report.idle_measurements.append(sampler.measure(name, duration))
+
+
+def _append_missing_idle_phases(report: Report, names: list[str]) -> None:
+    measured = {str(item.get("name")) for item in report.idle_measurements}
+    for name in names:
+        if name not in measured:
+            report.idle_measurements.append({"name": name, "status": "unverified", "reason": "phase did not run to completion"})
+
+
+def _controller_commit() -> str | None:
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=_PROJECT_ROOT,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+            text=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    value = completed.stdout.strip()
+    return value if completed.returncode == 0 and len(value) == 40 else None
+
+
+def _hide_native_window(hwnd: int, timeout: float) -> None:
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    user32.PostMessageW.restype = wintypes.BOOL
+    if not user32.PostMessageW(hwnd, WM_CLOSE, 0, 0):
+        raise SmokeFailure("could not hide the smoke-owned native window")
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline and _window_visible(hwnd):
+        time.sleep(POLL_INTERVAL_SECONDS)
+    if _window_visible(hwnd):
+        raise SmokeFailure("native window did not hide before the tray idle measurement")
+
+
+def _show_native_window(shell_pid: int, hwnd: int, timeout: float) -> None:
+    _invoke_tray_menu_item("Show", timeout, expected_pid=shell_pid)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline and not _window_visible(hwnd):
+        time.sleep(POLL_INTERVAL_SECONDS)
+    if not _window_visible(hwnd):
+        raise SmokeFailure("actual tray Show did not restore the measured native window")
 
 
 def _button_xpath(label: str) -> str:
@@ -1730,8 +2312,34 @@ def _run_smoke(
     tauri_driver: Path,
     native_driver: Path,
     timeout: float,
+    measure_idle: bool = False,
+    idle_cold_seconds: float = 60.0,
+    idle_boundary_seconds: float = 360.0,
+    fastembed_cache: Path | None = None,
+    kokoro_assets: Path | None = None,
 ) -> Report:
     report = Report()
+    if measure_idle:
+        try:
+            import psutil
+            logical_cpu_count = psutil.cpu_count(logical=True)
+        except Exception:
+            logical_cpu_count = None
+        report.measurement_metadata = {
+            "controller_commit": _controller_commit(),
+            "environment": {
+                "platform": platform.platform(),
+                "python_version": platform.python_version(),
+                "architecture": platform.machine(),
+                "logical_cpu_count": logical_cpu_count,
+            },
+            "model_resources": {
+                "provider": "loopback_http_fixture",
+                "real_checkpoint_configured": False,
+                "fastembed_assets_supplied": fastembed_cache is not None,
+                "kokoro_assets_supplied": kokoro_assets is not None,
+            },
+        }
     if os.name != "nt":
         report.add("windows_host", "failed", "the packaged desktop shell smoke requires Windows")
         return report
@@ -1747,11 +2355,16 @@ def _run_smoke(
     report.add("api_port_available", "passed", "127.0.0.1:8000 was free before application launch")
 
     profile_root: Path | None = None
+    idle_asset_stage: bool | None = None
+    idle_sampler: OwnedProcessSampler | None = None
+    idle_shell_pid: int | None = None
+    idle_shell_hwnd: int | None = None
     driver_process: subprocess.Popen[bytes] | None = None
     driver: WebDriver | None = None
     fixture: LlamaCppStreamFixture | None = None
     driver_log_paths: list[tuple[str, Path]] = []
     held_api_port: socket.socket | None = None
+    stream_backend_handle: int | None = None
     root: Path | None = None
     with tempfile.TemporaryDirectory(
         prefix="apex-desktop-smoke-", delete=False
@@ -1950,6 +2563,17 @@ def _run_smoke(
                 raise SmokeFailure("verified demo backend did not exit and release 127.0.0.1:8000")
             stream_root = root / "stream-session"
             stream_env = _sanitized_environment(stream_root, demo=False, local_model_host=fixture.url)
+            if measure_idle:
+                idle_profile = Path(stream_env["APEX_DATA_DIR"])
+                try:
+                    idle_asset_stage = _stage_idle_assets(idle_profile, fastembed_cache, kokoro_assets)
+                except SmokeFailure as exc:
+                    report.add("idle_real_asset_staging", "failed", str(exc))
+                    raise
+                if idle_asset_stage:
+                    report.add("idle_real_asset_staging", "passed", "cached FastEmbed and Kokoro assets were copied into the disposable profile")
+                else:
+                    report.add("idle_real_asset_staging", "unverified", "pass both --fastembed-cache and --kokoro-assets to exercise real optional assets")
             control_port = _available_port()
             native_port = _available_port()
             while native_port == control_port:
@@ -1986,7 +2610,42 @@ def _run_smoke(
                 raise SmokeFailure("fixture-session Fresh Start was unavailable")
             profile_root = Path(stream_env["APEX_DATA_DIR"])
             runtime = _runtime_identity(profile_root, min(60.0, timeout))
+            stream_backend_handle, backend_image = _process_image_path(int(runtime["pid"]))
+            if backend_image.resolve() != _expected_backend_image(application):
+                _close_handle(stream_backend_handle)
+                stream_backend_handle = None
+                raise SmokeFailure("fixture runtime PID is not the bundled backend executable")
+            confirmed_runtime = _runtime_identity(profile_root, 5.0)
+            if confirmed_runtime.get("pid") != runtime.get("pid") or confirmed_runtime.get("instance_id") != runtime.get("instance_id"):
+                _close_handle(stream_backend_handle)
+                stream_backend_handle = None
+                raise SmokeFailure("fixture runtime identity changed while opening its exact child process handle")
             report.add("fixture_backend_identity", "passed", "second managed launch used its isolated profile and local provider fixture")
+            if measure_idle:
+                report.measurement_metadata["application_build"] = {
+                    key: runtime.get(key)
+                    for key in ("app_id", "app_version", "build_id")
+                    if isinstance(runtime.get(key), (str, int, float, type(None)))
+                }
+                report.measurement_metadata["runtime_identity_verified"] = True
+                shell_handle, idle_shell_pid, idle_shell_hwnd = _native_window(driver_process.pid, application)
+                try:
+                    idle_sampler = _idle_sampler(idle_shell_pid, int(runtime["pid"]))
+                    try:
+                        cold_retrieval = _http_json("/api/v1/cortex/retrieval/status", timeout=10.0)
+                    except (SmokeFailure, OSError, ValueError) as exc:
+                        cold_retrieval = None
+                        report.idle_measurements.append({"name": "startup_retrieval_status", "status": "unverified", "reason": type(exc).__name__})
+                    else:
+                        mode = cold_retrieval.get("mode") if isinstance(cold_retrieval, dict) else None
+                        report.idle_measurements.append({"name": "startup_retrieval_status", "status": "observed", "mode": mode})
+                    _measure_idle_phase(report, idle_sampler, "cold_visible_idle", idle_cold_seconds)
+                    _hide_native_window(idle_shell_hwnd, min(15.0, timeout))
+                    _measure_idle_phase(report, idle_sampler, "cold_tray_idle", idle_cold_seconds)
+                    _show_native_window(idle_shell_pid, idle_shell_hwnd, min(10.0, timeout))
+                    report.add("idle_cold_tray_show", "passed", "actual tray Show restored the measured non-demo window")
+                finally:
+                    _close_handle(shell_handle)
             if not _click_button(driver, "Cortex", min(8.0, timeout)):
                 report.add("cortex_stream", "failed", "Cortex workspace was unavailable in the fixture session")
             else:
@@ -2103,6 +2762,21 @@ def _run_smoke(
                                             terminal_after_failed_cancel,
                                             min(30.0, timeout),
                                         )
+            if measure_idle:
+                if idle_sampler is None or idle_shell_pid is None or idle_shell_hwnd is None:
+                    report.idle_measurements.append({"name": "post_inference_idle_measurements", "status": "unverified", "reason": "verified process roots were not available"})
+                else:
+                    _run_idle_workload_scenario(
+                        report,
+                        sampler=idle_sampler,
+                        shell_pid=idle_shell_pid,
+                        shell_hwnd=idle_shell_hwnd,
+                        fixture=fixture,
+                        assets_ready=bool(idle_asset_stage),
+                        visible_idle_seconds=idle_cold_seconds,
+                        tray_idle_seconds=idle_boundary_seconds,
+                        timeout=timeout,
+                    )
             fixture.close()
             fixture = None
 
@@ -2354,25 +3028,34 @@ def _run_smoke(
                     driver_process.kill()
                     driver_process.wait(timeout=5)
             if not any(check.name == "owned_backend_cleanup" for check in report.checks):
-                try:
-                    remaining = _runtime_identity(profile_root, 3.0)
-                except SmokeFailure:
-                    report.add("owned_backend_cleanup", "unverified", "smoke exited before the exact managed child handle and API port release could be proved")
+                if stream_backend_handle is None:
+                    report.add("owned_backend_cleanup", "unverified", "smoke ended before the exact managed child handle and API port release could be proved")
                 else:
                     try:
-                        _terminate_verified_backend(
-                            int(remaining["pid"]),
-                            application,
-                            profile_root,
-                            remaining["instance_id"],
-                        )
+                        if not _wait_process_handle(stream_backend_handle, 0):
+                            # This handle was opened while the profile identity
+                            # and executable image were verified. Windows keeps
+                            # it bound to that process even if the PID is reused.
+                            try:
+                                _terminate_process_handle(stream_backend_handle, "identity-matched fixture backend child")
+                            except SmokeFailure:
+                                # The shell may have shut the backend down between
+                                # the zero-time wait and TerminateProcess. Treat
+                                # that race as clean only if this exact handle
+                                # subsequently signals exit within the same bound.
+                                if not _wait_process_handle(stream_backend_handle, 10.0):
+                                    raise
+                        if not _wait_process_handle(stream_backend_handle, 10.0):
+                            raise SmokeFailure("verified fixture backend child did not exit after bounded cleanup")
+                        if not _wait_port_free(10.0):
+                            raise SmokeFailure("verified fixture backend exited but 127.0.0.1:8000 remained occupied")
                     except (SmokeFailure, OSError, ValueError) as exc:
-                        report.add("owned_backend_cleanup", "failed", f"could not stop only the identity-matched child: {exc}")
+                        report.add("owned_backend_cleanup", "failed", f"exact managed child cleanup could not be verified: {exc}")
                     else:
-                        if _wait_port_free(10.0):
-                            report.add("owned_backend_cleanup", "passed", "exception cleanup terminated the verified child and fixed API port is free")
-                        else:
-                            report.add("owned_backend_cleanup", "failed", "verified child exited but 127.0.0.1:8000 remained occupied")
+                        report.add("owned_backend_cleanup", "passed", "exact managed child handle signaled exit and 127.0.0.1:8000 was free")
+            if stream_backend_handle is not None:
+                _close_handle(stream_backend_handle)
+                stream_backend_handle = None
 
     if root is not None and root.exists():
         cleanup_errors = _cleanup_temp_root(root)
@@ -2391,16 +3074,43 @@ def _run_smoke(
     else:
         report.add("disposable_profile_cleanup", "passed", "disposable smoke directory was removed")
 
-    _run_desktop_import_smoke(
-        application=application, tauri_driver=tauri_driver,
-        native_driver=native_driver, timeout=timeout, report=report,
+    cleanup_statuses = {
+        check.name: check.status
+        for check in report.checks
+        if check.name in {"native_shell_cleanup", "owned_backend_cleanup"}
+    }
+    exact_fixture_cleanup_verified = (
+        cleanup_statuses.get("native_shell_cleanup") == "passed"
+        and cleanup_statuses.get("owned_backend_cleanup") == "passed"
+        and _api_port_available()
     )
+    if measure_idle and not exact_fixture_cleanup_verified:
+        report.add(
+            "desktop_import_smoke",
+            "unverified",
+            "imported-profile launch skipped because exact fixture shell/backend cleanup or API-port release was not verified",
+        )
+    else:
+        _run_desktop_import_smoke(
+            application=application, tauri_driver=tauri_driver,
+            native_driver=native_driver, timeout=timeout, report=report,
+        )
 
     for name in ("close_to_tray", "single_instance_activation", "tray_show", "tray_quit"):
         if not any(check.name == name for check in report.checks):
             report.add(name, "unverified", "smoke ended before this desktop-service check could run")
 
     return report
+
+
+def _measurement_seconds(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("must be between 1 and 3600 seconds") from None
+    if not 1 <= parsed <= 3600:
+        raise argparse.ArgumentTypeError("must be between 1 and 3600 seconds")
+    return parsed
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -2410,6 +3120,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--native-driver", type=Path, required=True, help="matching msedgedriver.exe path")
     parser.add_argument("--report", type=Path, required=True, help="JSON smoke report output path")
     parser.add_argument("--timeout", type=float, default=120.0, help="overall per-stage bound in seconds")
+    parser.add_argument("--measure-idle", action="store_true", help="opt in to measured non-demo idle and demand phases")
+    parser.add_argument("--fastembed-cache", type=Path, help="cached real FastEmbed model copied into the disposable profile")
+    parser.add_argument("--kokoro-assets", type=Path, help="real Kokoro ONNX and voice asset directory copied into the disposable profile")
+    parser.add_argument("--idle-cold-seconds", type=_measurement_seconds, default=60.0, help="cold visible and tray idle duration (default: 60 seconds)")
+    parser.add_argument("--idle-boundary-seconds", type=_measurement_seconds, default=360.0, help="tray idle duration after real model demand; spans the five-minute release boundary (default: 360 seconds)")
     args = parser.parse_args(argv)
     if not 5.0 <= args.timeout <= 600.0:
         parser.error("--timeout must be between 5 and 600 seconds")
@@ -2419,7 +3134,26 @@ def main(argv: list[str] | None = None) -> int:
         tauri_driver=args.driver.expanduser().resolve(),
         native_driver=args.native_driver.expanduser().resolve(),
         timeout=args.timeout,
+        measure_idle=args.measure_idle,
+        idle_cold_seconds=args.idle_cold_seconds,
+        idle_boundary_seconds=args.idle_boundary_seconds,
+        fastembed_cache=args.fastembed_cache.expanduser().resolve() if args.fastembed_cache else None,
+        kokoro_assets=args.kokoro_assets.expanduser().resolve() if args.kokoro_assets else None,
     )
+    if args.measure_idle:
+        _append_missing_idle_phases(report, [
+            "explicit_local_inference",
+            "semantic_retrieval_with_kokoro_synthesis",
+            "cold_visible_idle",
+            "cold_tray_idle",
+            "visible_idle_after_inference",
+            "tray_idle_after_inference",
+            "tray_show_after_idle_and_repeat_demand",
+            "active_fixture_hidden_completion",
+        ])
+        quit_checks = {check.name: check.status for check in report.checks}
+        quit_status = "passed" if quit_checks.get("tray_quit") == "passed" and quit_checks.get("owned_backend_cleanup") == "passed" else "unverified"
+        report.idle_measurements.append({"name": "exact_owned_quit_cleanup", "status": quit_status})
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report.as_dict(), indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report.as_dict(), indent=2))
@@ -2427,7 +3161,8 @@ def main(argv: list[str] | None = None) -> int:
         check.status == "unverified" and check.name in ESSENTIAL_CHECKS
         for check in report.checks
     )
-    return 1 if report.result == "failed" or essential_unverified else 0
+    idle_unverified = args.measure_idle and any(item.get("status") == "unverified" for item in report.idle_measurements)
+    return 1 if report.result == "failed" or essential_unverified or idle_unverified else 0
 
 
 if __name__ == "__main__":

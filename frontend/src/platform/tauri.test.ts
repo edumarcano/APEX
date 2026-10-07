@@ -45,4 +45,29 @@ describe('Tauri setup platform contract', () => {
     unsubscribe()
     expect(unlisten).toHaveBeenCalledOnce()
   })
+
+  it('reads a revisioned native visibility snapshot and accepts only valid visibility events', async () => {
+    const visibility = { revision: 4, visible: true }
+    native.invoke.mockResolvedValue(visibility)
+    const unlisten = vi.fn()
+    let receive: ((event: { payload: unknown }) => void) | undefined
+    native.listen.mockImplementation(async (_event, callback) => {
+      receive = callback as (event: { payload: unknown }) => void
+      return unlisten
+    })
+    const platform = createTauriPlatform()
+    const onChange = vi.fn()
+
+    await expect(platform.getVisibilityState()).resolves.toEqual(visibility)
+    const unsubscribe = await platform.subscribeVisibilityState(onChange)
+    receive?.({ payload: { revision: 5, visible: false } })
+    receive?.({ payload: { revision: -1, visible: true } })
+    receive?.({ payload: { revision: 6, visible: 'hidden' } })
+
+    expect(native.invoke).toHaveBeenCalledExactlyOnceWith('desktop_visibility_state')
+    expect(native.listen).toHaveBeenCalledExactlyOnceWith('desktop-visibility-state', expect.any(Function))
+    expect(onChange).toHaveBeenCalledExactlyOnceWith({ revision: 5, visible: false })
+    unsubscribe()
+    expect(unlisten).toHaveBeenCalledOnce()
+  })
 })

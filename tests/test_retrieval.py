@@ -3,8 +3,11 @@ from __future__ import annotations
 import math
 import sqlite3
 import struct
+import sys
+import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 from uuid import uuid4
 
@@ -24,16 +27,28 @@ class FakeEmbeddingAdapter:
     version = "test"
     fingerprint = "fake:2:test"
 
-    def __init__(self, *, invalid: bool = False, numpy_values: bool = False) -> None:
+    def __init__(self, *, invalid: bool = False, numpy_values: bool = False, cached: bool = True) -> None:
         self.invalid = invalid
         self.numpy_values = numpy_values
+        self.cached = cached
         if invalid:
             self.fingerprint = "invalid:2:test"
         self.prepare_calls = 0
+        self.download_flags: list[bool] = []
+        self.release_calls = 0
+        self.loaded = False
 
     def prepare(self, *, allow_download: bool = True) -> str:
         self.prepare_calls += 1
+        self.download_flags.append(allow_download)
+        if not self.cached and not allow_download:
+            raise EmbeddingError("embedding_initialization_failed")
+        self.loaded = True
         return self.fingerprint
+
+    def release(self) -> None:
+        self.release_calls += 1
+        self.loaded = False
 
     def embed(self, texts, *, allow_download: bool = False):
         values = list(texts)
@@ -102,6 +117,7 @@ class RetrievalTests(unittest.TestCase):
         agent = self.conversations.finalize(conversation_id=conversation_id, agent_id=agent_id, answer="alpha answer", status="completed", response_metadata={})
         service = RetrievalService(self.store, self.conversations, adapter=FakeEmbeddingAdapter())
         service.initialize()
+        self.assertEqual(service.adapter.prepare_calls, 0)
         self.assertEqual(self.store.counts(), (2, 0))
         self.assertEqual(self.store.search_fts("alpha", namespace="conversation", source_type="message", partition="sandbox", limit=10), [])
         self.conversations.patch(conversation_id, "production", {"archived": True})
@@ -132,6 +148,321 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(degraded.mode, "fts_only")
         self.assertEqual(degraded.error_category, "invalid_vector")
         self.assertTrue(math.isfinite(hits[0].score))
+
+    def test_first_search_prepares_cached_model_without_download(self) -> None:
+        self.store.upsert_item(self._item("m1", "alpha text"))
+        adapter = FakeEmbeddingAdapter()
+        service = RetrievalService(self.store, adapter=adapter)
+        service.initialize()
+
+        hits = service.search("alpha", namespace="conversation", partition="production")
+
+        self.assertEqual([hit.source_id for hit in hits], ["m1"])
+        self.assertEqual(adapter.download_flags, [False])
+        self.assertEqual(self.store.counts(), (1, 1))
+        self.assertEqual(service.status().state, "ready")
+
+    def test_first_search_without_cached_model_keeps_lexical_results(self) -> None:
+        self.store.upsert_item(self._item("m1", "alpha text"))
+        adapter = FakeEmbeddingAdapter(cached=False)
+        service = RetrievalService(self.store, adapter=adapter)
+        service.initialize()
+
+        hits = service.search("alpha", namespace="conversation", partition="production")
+
+        self.assertEqual([hit.source_id for hit in hits], ["m1"])
+        self.assertEqual(adapter.download_flags, [False])
+        self.assertEqual(service.status().mode, "fts_only")
+        self.assertEqual(service.status().error_category, "embedding_initialization_failed")
+
+        repeated = service.search("alpha", namespace="conversation", partition="production")
+        self.assertEqual([hit.source_id for hit in repeated], ["m1"])
+        self.assertEqual(adapter.download_flags, [False])
+
+        service.prepare(allow_download=True)
+        self.assertEqual(adapter.download_flags, [False, True])
+
+    def test_first_cached_search_backfills_new_items_without_rewriting_ready_metadata(self) -> None:
+        adapter = FakeEmbeddingAdapter()
+        item = self._item("m1", "alpha text")
+        self.store.upsert_item(item)
+        prepared_at = "2026-10-01T00:00:00+00:00"
+        self.store.set_model_state(
+            state="ready", fingerprint=adapter.fingerprint, prepared_at=prepared_at
+        )
+        service = RetrievalService(self.store, adapter=adapter)
+        service.initialize()
+        self.assertEqual(service.status().pending_items, 1)
+
+        hits = service.search("alpha", namespace="conversation", partition="production")
+
+        self.assertEqual([hit.source_id for hit in hits], ["m1"])
+        self.assertEqual(service.status().state, "ready")
+        self.assertEqual(service.status().pending_items, 0)
+        self.assertEqual(adapter.download_flags, [False])
+        self.assertEqual(
+            self.store.model_state(),
+            ("ready", adapter.fingerprint, prepared_at, None),
+        )
+
+    def test_explicit_prepare_retains_download_permission(self) -> None:
+        adapter = FakeEmbeddingAdapter(cached=False)
+        service = RetrievalService(self.store, adapter=adapter)
+
+        self.assertEqual(service.prepare(allow_download=True).state, "ready")
+        self.assertEqual(adapter.download_flags, [True])
+
+    def test_idle_release_preserves_persisted_state_and_reloads_on_demand(self) -> None:
+        self.store.upsert_item(self._item("m1", "alpha text"))
+        adapter = FakeEmbeddingAdapter()
+        service = RetrievalService(self.store, adapter=adapter)
+        now = [100.0]
+        with mock.patch("core.retrieval.service._monotonic", side_effect=lambda: now[0]):
+            now[0] += 301.0
+            self.assertFalse(service.release_if_idle())
+            self.assertEqual(adapter.release_calls, 0)
+            service.search("alpha", namespace="conversation", partition="production")
+            conn = sqlite3.connect(self.path)
+            try:
+                before = conn.execute(
+                    "SELECT state, model_fingerprint, last_prepared_at FROM retrieval_model_state WHERE id=1"
+                ).fetchone()
+            finally:
+                conn.close()
+
+            self.assertFalse(service.release_if_idle())
+            now[0] += 300.0
+            self.assertTrue(service.release_if_idle())
+            self.assertFalse(adapter.loaded)
+            self.assertFalse(service.release_if_idle())
+            conn = sqlite3.connect(self.path)
+            try:
+                after = conn.execute(
+                    "SELECT state, model_fingerprint, last_prepared_at FROM retrieval_model_state WHERE id=1"
+                ).fetchone()
+            finally:
+                conn.close()
+            self.assertEqual(after, before)
+
+            service.search("alpha", namespace="conversation", partition="production")
+            self.assertTrue(adapter.loaded)
+            self.assertEqual(adapter.download_flags, [False, False])
+
+    def test_degraded_lexical_search_does_not_refresh_loaded_adapter_idle_time(self) -> None:
+        self.store.upsert_item(self._item("m1", "alpha text"))
+        adapter = FakeEmbeddingAdapter(invalid=True)
+        service = RetrievalService(self.store, adapter=adapter)
+        now = [1_000.0]
+
+        with mock.patch("core.retrieval.service._monotonic", side_effect=lambda: now[0]):
+            self.assertEqual(service.prepare().error_category, "invalid_vector")
+            native_completed_at = service._last_embedding_use_completed
+            self.assertEqual(native_completed_at, now[0])
+            self.assertTrue(adapter.loaded)
+
+            now[0] += 301.0
+            first = service.search("alpha", namespace="conversation", partition="production")
+            second = service.search("alpha", namespace="conversation", partition="production")
+
+            self.assertEqual([hit.source_id for hit in first], ["m1"])
+            self.assertEqual([hit.source_id for hit in second], ["m1"])
+            self.assertEqual(service._last_embedding_use_completed, native_completed_at)
+            self.assertTrue(service.release_if_idle())
+            self.assertFalse(adapter.loaded)
+
+    def test_sync_without_missing_vectors_does_not_refresh_adapter_idle_time(self) -> None:
+        adapter = FakeEmbeddingAdapter()
+        item = self._item("m1", "alpha text")
+        item_id = self.store.upsert_item(item)
+        self.store.upsert_embedding(item_id, adapter.fingerprint, [1.0, 0.0])
+        self.store.set_model_state(state="ready", fingerprint=adapter.fingerprint)
+        adapter.loaded = True
+        now = [1_000.0]
+
+        with mock.patch("core.retrieval.service._monotonic", side_effect=lambda: now[0]):
+            service = RetrievalService(self.store, adapter=adapter)
+            service._adapter_resident = True
+            native_completed_at = service._last_embedding_use_completed
+            now[0] += 301.0
+
+            self.assertEqual(service.sync_namespace("conversation", [item]), 0)
+            self.assertEqual(service._last_embedding_use_completed, native_completed_at)
+            self.assertEqual(adapter.prepare_calls, 0)
+            self.assertTrue(service.release_if_idle())
+            self.assertFalse(adapter.loaded)
+
+    def test_prepare_of_resident_model_without_pending_vectors_does_not_refresh_idle_time(self) -> None:
+        adapter = FakeEmbeddingAdapter()
+        item = self._item("m1", "alpha text")
+        item_id = self.store.upsert_item(item)
+        self.store.upsert_embedding(item_id, adapter.fingerprint, [1.0, 0.0])
+        self.store.set_model_state(state="ready", fingerprint=adapter.fingerprint)
+        adapter.loaded = True
+        now = [1_000.0]
+
+        with mock.patch("core.retrieval.service._monotonic", side_effect=lambda: now[0]):
+            service = RetrievalService(self.store, adapter=adapter)
+            service._adapter_resident = True
+            native_completed_at = service._last_embedding_use_completed
+            now[0] += 301.0
+
+            self.assertEqual(service.prepare().state, "ready")
+            self.assertEqual(adapter.prepare_calls, 1)
+            self.assertEqual(service._last_embedding_use_completed, native_completed_at)
+            self.assertTrue(service.release_if_idle())
+            self.assertFalse(adapter.loaded)
+
+    def test_concurrent_first_search_pins_real_fastembed_generator_during_close(self) -> None:
+        query_started = threading.Event()
+        two_queries_started = threading.Event()
+        resume_queries = threading.Event()
+        close_waiting = threading.Event()
+        finish_close = threading.Event()
+        constructors = []
+        query_calls = [0]
+        query_lock = threading.Lock()
+        normalized: list[list[list[float]]] = []
+        exhausted_batches: list[tuple[str, ...]] = []
+        close_clock_calls = [0]
+        now = [1_000.0]
+
+        class FakeModel:
+            def __init__(self, **_kwargs) -> None:
+                constructors.append(self)
+
+            @staticmethod
+            def embed(texts):
+                values = list(texts)
+
+                def vectors():
+                    try:
+                        if values == ["alpha"]:
+                            with query_lock:
+                                query_calls[0] += 1
+                                if query_calls[0] == 2:
+                                    two_queries_started.set()
+                            query_started.set()
+                            if not resume_queries.wait(timeout=5):
+                                raise AssertionError("test did not resume query generators")
+                        for _text in values:
+                            yield np.asarray([1.0, 0.0], dtype=np.float32)
+                    finally:
+                        exhausted_batches.append(tuple(values))
+
+                return vectors()
+
+        class ObservedFastEmbedAdapter(FastEmbedAdapter):
+            dimension = 2
+
+            def embed(self, texts, *, allow_download: bool = False):
+                vectors = super().embed(texts, allow_download=allow_download)
+                normalized.append(vectors)
+                return vectors
+
+        def monotonic() -> float:
+            if threading.current_thread().name == "bounded-close":
+                close_clock_calls[0] += 1
+                if close_clock_calls[0] == 1:
+                    return 1_000.0
+                close_waiting.set()
+                if not finish_close.wait(timeout=5):
+                    raise AssertionError("test did not finish bounded close")
+                return 1_001.0
+            return now[0]
+
+        self.store.upsert_item(self._item("m1", "alpha text"))
+        adapter = ObservedFastEmbedAdapter(self.path.parent / "fastembed-test-cache")
+        service = RetrievalService(self.store, adapter=adapter)
+        results: list[list] = [[], []]
+        errors: list[BaseException] = []
+
+        with mock.patch.dict(sys.modules, {"fastembed": SimpleNamespace(TextEmbedding=FakeModel)}):
+            with mock.patch("core.retrieval.service._monotonic", side_effect=monotonic):
+                def search_into(index: int) -> None:
+                    try:
+                        results[index].extend(
+                            service.search("alpha", namespace="conversation", partition="production")
+                        )
+                    except BaseException as exc:
+                        errors.append(exc)
+
+                workers = [
+                    threading.Thread(target=search_into, args=(index,))
+                    for index in range(2)
+                ]
+                for worker in workers:
+                    worker.start()
+                self.assertTrue(query_started.wait(timeout=5), repr(errors))
+                self.assertTrue(two_queries_started.wait(timeout=5))
+                self.assertEqual(len(constructors), 1)
+                self.assertEqual(query_calls[0], 2)
+                now[0] += 301.0
+                self.assertEqual(service._active_embedding_uses, 2)
+                self.assertFalse(service.release_if_idle())
+
+                close_result = []
+                closer = threading.Thread(
+                    target=lambda: close_result.append(service.close(timeout_seconds=1.0)),
+                    name="bounded-close",
+                )
+                closer.start()
+                self.assertTrue(close_waiting.wait(timeout=5))
+
+                # Closing rejects new model admissions while existing queries remain pinned.
+                with self.assertRaises(RuntimeError):
+                    with service._embedding_use():
+                        self.fail("closing service admitted new embedding work")
+                self.assertEqual(service._active_embedding_uses, 2)
+                self.assertEqual(query_calls[0], 2)
+                now_before = service._last_embedding_use_completed
+                self.assertFalse(service.release_if_idle())
+                self.assertEqual(service._last_embedding_use_completed, now_before)
+
+                finish_close.set()
+                closer.join(timeout=5)
+                self.assertFalse(closer.is_alive())
+                self.assertEqual(close_result, [False])
+                self.assertTrue(adapter.is_loaded)
+
+                resume_queries.set()
+                for worker in workers:
+                    worker.join(timeout=5)
+                    self.assertFalse(worker.is_alive())
+
+        self.assertEqual(errors, [])
+        self.assertTrue(all(results))
+        self.assertEqual(query_calls[0], 2)
+        self.assertEqual(exhausted_batches.count(("alpha",)), 2)
+        self.assertTrue(any(vectors == [[1.0, 0.0]] for vectors in normalized))
+
+    def test_fastembed_model_construction_is_singleton_under_concurrency(self) -> None:
+        entered = threading.Event()
+        proceed = threading.Event()
+        constructions = []
+
+        class FakeModel:
+            def __init__(self, **_kwargs) -> None:
+                constructions.append(self)
+                entered.set()
+                if not proceed.wait(timeout=5):
+                    raise AssertionError("test did not release model construction")
+
+        adapter = FastEmbedAdapter(self.path.parent / "fastembed-cache")
+        with mock.patch.dict(sys.modules, {"fastembed": SimpleNamespace(TextEmbedding=FakeModel)}):
+            workers = [
+                threading.Thread(target=lambda: adapter.prepare(allow_download=False))
+                for _ in range(4)
+            ]
+            for worker in workers:
+                worker.start()
+            self.assertTrue(entered.wait(timeout=5))
+            proceed.set()
+            for worker in workers:
+                worker.join(timeout=5)
+                self.assertFalse(worker.is_alive())
+
+        self.assertEqual(len(constructions), 1)
+        adapter.release()
 
     def test_numpy_vectors_are_accepted(self) -> None:
         self.store.upsert_item(self._item("m1", "alpha text"))
@@ -164,6 +495,21 @@ class RetrievalTests(unittest.TestCase):
 
         self.assertEqual(service.adapter.cache_dir, cache_dir)
         self.assertFalse(cache_dir.exists())
+
+    def test_initialize_and_status_do_not_construct_fastembed_model(self) -> None:
+        constructions = []
+
+        class FakeModel:
+            def __init__(self, **_kwargs) -> None:
+                constructions.append(self)
+
+        with mock.patch.dict(sys.modules, {"fastembed": SimpleNamespace(TextEmbedding=FakeModel)}):
+            service = RetrievalService(self.store, self.conversations)
+            service.initialize()
+            status = service.status()
+
+        self.assertEqual(status.state, "unprepared")
+        self.assertEqual(constructions, [])
 
     def test_corrupt_persisted_vector_degrades_to_fts(self) -> None:
         item_id = self.store.upsert_item(self._item("m1", "alpha text"))

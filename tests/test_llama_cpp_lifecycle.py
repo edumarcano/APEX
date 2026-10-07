@@ -65,13 +65,6 @@ class LlamaCppLifecycleTests(unittest.TestCase):
         )
         self._enabled_patch.start()
         self.addCleanup(self._enabled_patch.stop)
-        self._runtime_settings_patch = mock.patch.object(
-            lifecycle,
-            "get_llama_cpp_runtime_settings",
-            return_value=mock.Mock(managed=False),
-        )
-        self._runtime_settings_patch.start()
-        self.addCleanup(self._runtime_settings_patch.stop)
         self._poll_patch = mock.patch.object(
             lifecycle, "_POLL_INTERVAL_SECONDS", 0.01
         )
@@ -95,6 +88,21 @@ class LlamaCppLifecycleTests(unittest.TestCase):
         )
         session.get.return_value = response
         return session
+
+    def test_status_poll_never_starts_or_stops_managed_router(self) -> None:
+        session = self._session_get_models()
+        supervisor = MagicMock()
+        with mock.patch.object(lifecycle, "_SESSION", session), mock.patch.object(
+            lifecycle, "is_llama_cpp_enabled", return_value=True
+        ), mock.patch(
+            "core.agent.providers.llama_cpp_supervisor.get_llama_cpp_server_supervisor",
+            return_value=supervisor,
+        ):
+            snapshot = self.backend.get_status_snapshot(force_refresh=True)
+
+        self.assertTrue(snapshot["reachable"])
+        supervisor.ensure_ready.assert_not_called()
+        supervisor.maybe_stop_after_idle.assert_not_called()
 
     def test_models_list_parses_object_status_and_context_args(self) -> None:
         session = self._session_get_models()
@@ -161,6 +169,22 @@ class LlamaCppLifecycleTests(unittest.TestCase):
             snapshot = self.backend.get_status_snapshot(force_refresh=True)
             self.assertEqual(snapshot["loaded_models"][0]["state"], "failed")
             self.assertFalse(self.backend.is_model_resident("gemma-4-e2b-132k"))
+
+    def test_unknown_router_state_is_preserved_for_safe_lifecycle_decisions(self) -> None:
+        session = self._session_get_models(
+            {
+                "data": [
+                    {
+                        "id": "gemma-4-e2b-132k",
+                        "status": {"value": "warming_up"},
+                    }
+                ]
+            }
+        )
+        with mock.patch.object(lifecycle, "_SESSION", session):
+            snapshot = self.backend.get_status_snapshot(force_refresh=True)
+
+        self.assertEqual(snapshot["loaded_models"][0]["state"], "unknown")
 
     def test_missing_alias_is_not_fabricated_as_installed(self) -> None:
         payload = {

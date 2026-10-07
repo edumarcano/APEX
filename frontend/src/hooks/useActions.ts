@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { API_ENDPOINTS } from '../lib/api'
+import { usePresentationVisibility } from './usePresentationVisibility'
 import type {
   ActionDetail,
   ActionEvent,
@@ -136,6 +137,7 @@ export interface UseActionsResult {
 }
 
 export function useActions(enabled: boolean): UseActionsResult {
+  const presentationVisible = usePresentationVisibility()
   const [actions, setActions] = useState<ActionRecord[]>([])
   const [pendingCount, setPendingCount] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
@@ -238,14 +240,14 @@ export function useActions(enabled: boolean): UseActionsResult {
   }, [enabled, selectedActionId, loadDetail, detailReloadToken])
 
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || !presentationVisible) {
       listControllerRef.current?.abort()
       detailControllerRef.current?.abort()
       return
     }
     let intervalId: number | null = null
     const startPolling = (): void => {
-      if (document.hidden || intervalId !== null) return
+      if (intervalId !== null) return
       void refresh()
       intervalId = window.setInterval(() => void refresh(), POLL_INTERVAL_MS)
     }
@@ -255,19 +257,13 @@ export function useActions(enabled: boolean): UseActionsResult {
         intervalId = null
       }
     }
-    const onVisibilityChange = (): void => {
-      if (document.hidden) stopPolling()
-      else startPolling()
-    }
     startPolling()
-    document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
       stopPolling()
-      document.removeEventListener('visibilitychange', onVisibilityChange)
       listControllerRef.current?.abort()
       detailControllerRef.current?.abort()
     }
-  }, [enabled, refresh])
+  }, [enabled, presentationVisible, refresh])
 
   const resolve = useCallback(async (requested: ActionMutation): Promise<void> => {
     if (!enabled || mutation || !detail) return

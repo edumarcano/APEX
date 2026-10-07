@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { API_ENDPOINTS } from '../lib/api'
+import { usePresentationVisibility } from './usePresentationVisibility'
 import type { CortexAgent, ModelCatalogEntry } from '../types/telemetry'
 
 export type { AgentKey, CortexAgent, ToolOutputItem } from '../types/telemetry'
@@ -44,6 +45,7 @@ export function useCortex(agentsPollingEnabled = false): UseCortexResult {
   const [isLocalModelActionPending, setIsLocalModelActionPending] = useState(false)
   const [verifyingCloudModel, setVerifyingCloudModel] = useState<string | null>(null)
   const fetchGenerationRef = useRef(0)
+  const presentationVisible = usePresentationVisibility()
 
   const refreshAgentsStatus = useCallback(async (): Promise<void> => {
     const generation = ++fetchGenerationRef.current
@@ -60,17 +62,17 @@ export function useCortex(agentsPollingEnabled = false): UseCortexResult {
   }, [])
 
   useEffect(() => {
-    if (!agentsPollingEnabled) return
+    if (!agentsPollingEnabled || !presentationVisible) return
     let cancelled = false
     let timeout: number | undefined
     const poll = async (): Promise<void> => {
       if (cancelled) return
-      if (!document.hidden) await refreshAgentsStatus()
+      await refreshAgentsStatus()
       if (!cancelled) timeout = window.setTimeout(() => { void poll() }, AGENT_POLL_INTERVAL_MS)
     }
     void poll()
     return () => { cancelled = true; if (timeout !== undefined) window.clearTimeout(timeout) }
-  }, [agentsPollingEnabled, refreshAgentsStatus])
+  }, [agentsPollingEnabled, presentationVisible, refreshAgentsStatus])
 
   const unloadLocalModel = useCallback(async (): Promise<boolean> => {
     if (isLocalModelActionPending) return false

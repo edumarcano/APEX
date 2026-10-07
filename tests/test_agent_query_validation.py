@@ -176,6 +176,9 @@ class SandboxPolicyTests(unittest.TestCase):
             mock.patch("core.api.cortex.get_settings_store") as store_mock,
             mock.patch("core.api.cortex.get_local_runtime_backend", return_value=backend),
             mock.patch("core.api.cortex._ensure_local_alias_configured"),
+            mock.patch(
+                "core.api.cortex.ensure_local_runtime_ready_for_demand"
+            ) as ensure_runtime,
             mock.patch("core.api.cortex.switch_local_model", return_value=True),
             mock.patch("core.api.cortex.is_local_model_ready", return_value=True),
             mock.patch(
@@ -205,6 +208,7 @@ class SandboxPolicyTests(unittest.TestCase):
 
         self.assertEqual(captured.get("history"), [])
         self.assertFalse(captured["disable_telemetry_context"])
+        ensure_runtime.assert_called_once_with("llama_cpp")
 
     def test_sandbox_capability_policy_is_an_explicit_allowlist(self) -> None:
         def descriptor(name: str) -> CapabilityDescriptor:

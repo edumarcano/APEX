@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -24,7 +24,7 @@ function renderWorkspace(overrides: Partial<ComponentProps<typeof CortexWorkspac
 
 describe('CortexWorkspace', () => {
   beforeEach(() => vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify([]), { status: 200 })))
-  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
   it('keeps the legacy tool trace for older answers and avoids duplicating a new activity history', () => {
     const metadata = { tool_trace: [{ name: 'get_active_reminders', status: 'ok', duration_ms: 12 }] }
@@ -64,6 +64,44 @@ describe('CortexWorkspace', () => {
     expect(screen.getByRole('region', { name: 'Lynx context window' })).toBeVisible()
     expect(screen.getByLabelText('Reasoning')).toHaveValue('focused')
     expect(screen.getByLabelText('Context window')).toHaveValue('4096')
+  })
+
+  it('pauses the idle-unload countdown while hidden and resynchronizes from the latest status on show', async () => {
+    vi.useFakeTimers()
+    let hidden = false
+    vi.spyOn(document, 'hidden', 'get').mockImplementation(() => hidden)
+    const residentModel: ModelCatalogEntry = {
+      ...localModel,
+      active: true,
+      idle_unload_remaining_seconds: 90,
+      loaded_model: { provider: 'llama_cpp', name: localModel.model_id, model: localModel.model_id, state: 'loaded', context_window: 16384, size_bytes: null, size_vram_bytes: null, processor: null, context: null, expires_at: null },
+    }
+    const initialProps = props({
+      selectedModel: localModel.model_id,
+      cortexAgent: { ...apex, model_catalog: [cloudModel, residentModel] },
+    })
+    const { rerender } = render(<ApexAssistantRuntime config={initialProps.assistantRunConfig}><CortexWorkspace {...initialProps} /></ApexAssistantRuntime>)
+
+    expect(screen.getByText('Auto-unload in 01:30')).toBeInTheDocument()
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
+    expect(screen.getByText('Auto-unload in 01:28')).toBeInTheDocument()
+
+    hidden = true
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(screen.getByText('Auto-unload in 01:28')).toBeInTheDocument()
+
+    const refreshedModel = { ...residentModel, idle_unload_remaining_seconds: 76 }
+    const refreshedProps = props({
+      selectedModel: localModel.model_id,
+      cortexAgent: { ...apex, model_catalog: [cloudModel, refreshedModel] },
+    })
+    rerender(<ApexAssistantRuntime config={refreshedProps.assistantRunConfig}><CortexWorkspace {...refreshedProps} /></ApexAssistantRuntime>)
+    hidden = false
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    expect(screen.getByText('Auto-unload in 01:16')).toBeInTheDocument()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+    expect(screen.getByText('Auto-unload in 01:15')).toBeInTheDocument()
   })
 
   it('renders a custom agent display name in the header, inspector, and model selector', async () => {

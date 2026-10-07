@@ -329,6 +329,88 @@ class LlamaCppSupervisorBehaviorTests(unittest.TestCase):
         popen.assert_not_called()
         self.assertEqual(status.ownership, "external")
 
+    def test_status_snapshot_does_not_run_deferred_shutdown(self) -> None:
+        self._enable(managed=True)
+        process = _fake_process(20)
+        self.supervisor._process = process  # noqa: SLF001
+        self.supervisor._owned = True  # noqa: SLF001
+        self.supervisor._stop_after_idle = True  # noqa: SLF001
+        with mock.patch.object(
+            supervisor_mod, "probe_router_reachable", return_value=True
+        ):
+            snapshot = self.supervisor.status_snapshot()
+        process.terminate.assert_not_called()
+        self.assertEqual(snapshot.ownership, "apex")
+
+    def test_failed_demand_router_stops_after_idle_threshold(self) -> None:
+        self._enable(managed=True)
+        process = _fake_process(22)
+        self.supervisor._process = process  # noqa: SLF001
+        self.supervisor._owned = True  # noqa: SLF001
+        self.supervisor._last_demand_at = 100.0  # noqa: SLF001
+
+        empty = {
+            "reachable": True,
+            "loaded_models": [],
+        }
+        with mock.patch.object(
+            supervisor_mod.time, "monotonic", return_value=160.0
+        ), mock.patch(
+            "core.agent.providers.llama_cpp_lifecycle.get_llama_cpp_runtime_backend"
+        ) as backend_factory:
+            backend_factory.return_value.get_status_snapshot.return_value = empty
+            self.supervisor.stop_owned_if_idle_without_resident_model(60)
+
+        process.terminate.assert_called_once_with()
+
+    def test_failed_demand_idle_stop_preserves_resident_model(self) -> None:
+        self._enable(managed=True)
+        process = _fake_process(23)
+        self.supervisor._process = process  # noqa: SLF001
+        self.supervisor._owned = True  # noqa: SLF001
+        self.supervisor._last_demand_at = 100.0  # noqa: SLF001
+
+        resident = {
+            "reachable": True,
+            "loaded_models": [{"state": "loaded"}],
+        }
+        with mock.patch.object(
+            supervisor_mod.time, "monotonic", return_value=160.0
+        ), mock.patch(
+            "core.agent.providers.llama_cpp_lifecycle.get_llama_cpp_runtime_backend"
+        ) as backend_factory:
+            backend_factory.return_value.get_status_snapshot.return_value = resident
+            self.supervisor.stop_owned_if_idle_without_resident_model(60)
+
+        process.terminate.assert_not_called()
+
+    def test_verified_idle_unload_stops_owned_router_only_when_empty(self) -> None:
+        self._enable(managed=True)
+        process = _fake_process(24)
+        self.supervisor._process = process  # noqa: SLF001
+        self.supervisor._owned = True  # noqa: SLF001
+
+        for state in ("loaded", "loading", "unknown"):
+            with self.subTest(state=state), mock.patch(
+                "core.agent.providers.llama_cpp_lifecycle.get_llama_cpp_runtime_backend"
+            ) as backend_factory:
+                backend_factory.return_value.get_status_snapshot.return_value = {
+                    "reachable": True,
+                    "loaded_models": [{"state": state}],
+                }
+                self.supervisor.stop_owned_after_verified_idle_unload()
+            process.terminate.assert_not_called()
+
+        with mock.patch(
+            "core.agent.providers.llama_cpp_lifecycle.get_llama_cpp_runtime_backend"
+        ) as backend_factory:
+            backend_factory.return_value.get_status_snapshot.return_value = {
+                "reachable": True,
+                "loaded_models": [],
+            }
+            self.supervisor.stop_owned_after_verified_idle_unload()
+        process.terminate.assert_called_once_with()
+
     def test_managed_process_exit_reflected_in_status(self) -> None:
         self._enable(managed=True)
         fake_proc = mock.Mock()

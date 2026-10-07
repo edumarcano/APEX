@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { API_ENDPOINTS } from '../lib/api'
 import type { RunRecord, RunStatus } from '../types/runs'
+import { usePresentationVisibility } from './usePresentationVisibility'
 
 const ACTIVE_POLL_INTERVAL_MS = 1_500
 const IDLE_POLL_INTERVAL_MS = 10_000
@@ -40,9 +41,11 @@ export function useCortexRuns({
   const [selectedRunIdState, setSelectedRunIdState] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const presentationVisible = usePresentationVisibility()
 
   const fetchGenerationRef = useRef(0)
   const activeRunsCountRef = useRef(0)
+  const wasPresentationVisibleRef = useRef(presentationVisible)
 
   const refreshRuns = useCallback(async (): Promise<void> => {
     const generation = ++fetchGenerationRef.current
@@ -82,9 +85,12 @@ export function useCortexRuns({
     activeRunsCountRef.current = activeRuns.length
   }, [activeRuns.length])
 
-  // Dynamic polling & focus listener
+  // Keep active-run polling alive in the tray, and pause the idle list poll.
   useEffect(() => {
     if (!pollingEnabled) return
+    const resumed = presentationVisible && !wasPresentationVisibleRef.current
+    wasPresentationVisibleRef.current = presentationVisible
+    if (!presentationVisible && activeRunsCountRef.current === 0) return
 
     let cancelled = false
     let timer: number | undefined
@@ -94,28 +100,20 @@ export function useCortexRuns({
       const interval = activeRunsCountRef.current > 0 ? ACTIVE_POLL_INTERVAL_MS : IDLE_POLL_INTERVAL_MS
       timer = window.setTimeout(async () => {
         if (cancelled) return
-        if (!document.hidden) {
+        if (presentationVisible || activeRunsCountRef.current > 0) {
           await refreshRuns()
         }
         scheduleNext()
       }, interval)
     }
-
-    const onFocus = () => {
-      if (!cancelled) {
-        void refreshRuns()
-      }
-    }
-
-    window.addEventListener('focus', onFocus)
+    if (resumed) void refreshRuns()
     scheduleNext()
 
     return () => {
       cancelled = true
       if (timer !== undefined) window.clearTimeout(timer)
-      window.removeEventListener('focus', onFocus)
     }
-  }, [pollingEnabled, refreshRuns])
+  }, [activeRuns.length, pollingEnabled, presentationVisible, refreshRuns])
 
   const activeConversationRun = useCallback(
     (targetConversationId?: string | null): RunRecord | null => {

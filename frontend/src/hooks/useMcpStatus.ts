@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { API_ENDPOINTS } from '../lib/api'
 import { parseMcpStatusResponse } from '../lib/settings'
 import type { McpStatusResponse } from '../types/settings'
+import { usePresentationVisibility } from './usePresentationVisibility'
 
 const POLL_INTERVAL_MS = 3000
 
@@ -14,6 +15,7 @@ export interface McpStatusState {
 }
 
 export function useMcpStatus(open: boolean): McpStatusState {
+  const presentationVisible = usePresentationVisibility()
   const [status, setStatus] = useState<McpStatusResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [unavailable, setUnavailable] = useState(false)
@@ -36,7 +38,7 @@ export function useMcpStatus(open: boolean): McpStatusState {
   }, [open])
 
   useEffect(() => {
-    if (!open) {
+    if (!open || !presentationVisible) {
       return undefined
     }
     const initial = window.setTimeout(() => void refresh(), 0)
@@ -45,7 +47,7 @@ export function useMcpStatus(open: boolean): McpStatusState {
       window.clearTimeout(initial)
       window.clearInterval(timer)
     }
-  }, [open, refresh])
+  }, [open, presentationVisible, refresh])
 
   return { status, loading, unavailable, refresh }
 }

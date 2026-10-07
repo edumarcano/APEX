@@ -1,6 +1,10 @@
 @import 'tailwindcss';
 @config '../tailwind.config.js';
 
+html[data-apex-presentation='dormant'] * {
+  animation-play-state: paused !important;
+}
+
 .briefing-composer-container {
   container-type: inline-size;
   min-width: 0;

@@ -753,7 +753,7 @@ def _check_install_contained_data_root(bundle: Path, scratch: Path, report: Repo
                 stream.close()
 
 
-def _run_once(bundle: Path, report: Report, *, dev: bool = False, demo: bool = False, probe: Path | None = None, fastembed_cache: Path | None = None, kokoro_assets: Path | None = None, run_probe: bool = True, inference_timeout: int = 120) -> None:
+def _run_once(bundle: Path, report: Report, *, dev: bool = False, demo: bool = False, probe: Path | None = None, fastembed_cache: Path | None = None, kokoro_assets: Path | None = None, run_probe: bool = True, inference_timeout: int = 120, require_idle_release: bool = False) -> None:
     if not _port_available():
         report.add("api_port_available", "failed", "127.0.0.1:8000 is occupied; stop the owner or run the smoke gate on a clear host. The existing process was left untouched.")
         return
@@ -816,7 +816,7 @@ def _run_once(bundle: Path, report: Report, *, dev: bool = False, demo: bool = F
         if run_probe and probe is not None and probe.is_file():
             probe_root = root / "frozen-probe-profile"
             probe_env = _sanitized_environment(root, probe_root, dev=dev, demo=demo)
-            for scenario in ("imports", "retrieval", "audio-worker", "no-model-assets"):
+            for scenario in ("imports", "retrieval", "audio-worker", "no-model-assets", "startup-no-optional-models"):
                 output = _cli(probe, [scenario], cwd, probe_env)
                 result = json.loads(output)
                 if result.get("status") != "passed" or result.get("scenario") != scenario:
@@ -834,7 +834,38 @@ def _run_once(bundle: Path, report: Report, *, dev: bool = False, demo: bool = F
                 kokoro_target = probe_root / "core" / "weights" / "kokoro"
                 shutil.copytree(fastembed_cache, fastembed_target, dirs_exist_ok=True)
                 shutil.copytree(kokoro_assets, kokoro_target, dirs_exist_ok=True)
-                semantic_output = _cli(probe, ["semantic-assets"], cwd, probe_env, timeout_seconds=inference_timeout)
+                config_path = probe_root / "config.local.json"
+                try:
+                    local_config = json.loads(config_path.read_text(encoding="utf-8"))
+                except (OSError, UnicodeError, json.JSONDecodeError):
+                    local_config = {}
+                if not isinstance(local_config, dict):
+                    local_config = {}
+                tts_settings = local_config.get("tts_settings")
+                if not isinstance(tts_settings, dict):
+                    tts_settings = {}
+                tts_settings.update({"primary_tts": "kokoro", "voice_mode": "automatic"})
+                local_config["tts_settings"] = tts_settings
+                config_path.write_text(json.dumps(local_config, indent=2) + "\n", encoding="utf-8")
+                asset_probe_env = dict(probe_env)
+                if require_idle_release:
+                    asset_probe_env["APEX_SMOKE_REQUIRE_IDLE_RELEASE"] = "1"
+
+                startup_output = _cli(probe, ["startup-no-optional-models"], cwd, asset_probe_env)
+                startup_result = json.loads(startup_output)
+                startup_evidence = startup_result.get("evidence", {})
+                if (
+                    startup_result.get("status") != "passed"
+                    or startup_evidence.get("fastembed_assets_present") is not True
+                    or startup_evidence.get("kokoro_assets_present") is not True
+                    or startup_evidence.get("configured_voice_engine") != "kokoro"
+                    or startup_evidence.get("fastembed_constructor_calls") != 0
+                    or startup_evidence.get("kokoro_constructor_calls") != 0
+                ):
+                    raise RuntimeError(f"cached-model startup constructed an optional model or did not select real Kokoro assets: {startup_result}")
+                report.add("cached_asset_startup_constructs_no_models", "passed", "FastEmbed cache and selected Kokoro engine remained unloaded through startup and runtime status")
+
+                semantic_output = _cli(probe, ["semantic-assets"], cwd, asset_probe_env, timeout_seconds=inference_timeout)
                 semantic_result = json.loads(semantic_output)
                 semantic_evidence = semantic_result.get("evidence", {})
                 if (
@@ -844,9 +875,12 @@ def _run_once(bundle: Path, report: Report, *, dev: bool = False, demo: bool = F
                     or not semantic_evidence.get("semantic_results")
                 ):
                     raise RuntimeError(f"real FastEmbed semantic probe failed: {semantic_result}")
-                report.add("fastembed_real_semantic_search", "passed", f"{semantic_evidence['semantic_results']} results")
+                if require_idle_release and semantic_evidence.get("idle_release_status") != "passed":
+                    raise RuntimeError(f"candidate retrieval release/reload assertion did not pass: {semantic_result}")
+                semantic_release_status = semantic_evidence.get("idle_release_status", "unknown")
+                report.add("fastembed_real_semantic_search", "passed", f"{semantic_evidence['semantic_results']} results; idle release: {semantic_release_status}")
 
-                kokoro_output = _cli(probe, ["kokoro-assets"], cwd, probe_env, timeout_seconds=inference_timeout)
+                kokoro_output = _cli(probe, ["kokoro-assets"], cwd, asset_probe_env, timeout_seconds=inference_timeout)
                 kokoro_result = json.loads(kokoro_output)
                 kokoro_evidence = kokoro_result.get("evidence", {})
                 if (
@@ -856,7 +890,10 @@ def _run_once(bundle: Path, report: Report, *, dev: bool = False, demo: bool = F
                     or not kokoro_evidence.get("wav_bytes")
                 ):
                     raise RuntimeError(f"real Kokoro synthesis probe failed: {kokoro_result}")
-                report.add("kokoro_real_wav_synthesis", "passed", f"{kokoro_evidence['wav_bytes']} bytes")
+                if require_idle_release and kokoro_evidence.get("idle_release_status") != "passed":
+                    raise RuntimeError(f"candidate Kokoro release/reload assertion did not pass: {kokoro_result}")
+                kokoro_release_status = kokoro_evidence.get("idle_release_status", "unknown")
+                report.add("kokoro_real_wav_synthesis", "passed", f"{kokoro_evidence['wav_bytes']} bytes; idle release: {kokoro_release_status}")
                 report.add("fastembed_and_kokoro_real_assets", "passed")
             else:
                 report.add("fastembed_real_semantic_search", "unverified", "supply --fastembed-cache to execute real semantic inference")
@@ -1025,6 +1062,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--probe", type=Path, help="Separate build-only frozen probe executable.")
     parser.add_argument("--report", type=Path, help="Optional JSON report output file.")
     parser.add_argument("--strict", action="store_true", help="Require real optional model assets and every branch-3 bundle check to pass.")
+    parser.add_argument("--require-idle-release", action="store_true", help="Fail unless real FastEmbed and Kokoro sessions release after five idle minutes and reacquire from cached assets.")
     parser.add_argument("--fastembed-cache", type=Path, help="Test-only external FastEmbed model cache.")
     parser.add_argument("--kokoro-assets", type=Path, help="Test-only directory containing Kokoro ONNX and voice files.")
     parser.add_argument(
@@ -1040,6 +1078,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     report = Report()
+    if args.require_idle_release and (
+        args.fastembed_cache is None or not args.fastembed_cache.is_dir()
+        or args.kokoro_assets is None or not args.kokoro_assets.is_dir()
+    ):
+        report.add("idle_release_assets_required", "failed", "--require-idle-release requires both real cached asset directories")
+        _emit_report(report.as_dict(), args.report)
+        return 1
     bundle = args.bundle.resolve()
     required = [bundle / "apex-backend.exe", bundle / "apex.exe", bundle / "_internal", bundle / "bundle-manifest.json"]
     missing = [str(path) for path in required if not path.exists()]
@@ -1070,6 +1115,7 @@ def main(argv: list[str] | None = None) -> int:
                     fastembed_cache=args.fastembed_cache,
                     kokoro_assets=args.kokoro_assets,
                     inference_timeout=args.inference_timeout,
+                    require_idle_release=args.require_idle_release,
                 )
                 for mode, kwargs in (("dev_mode_safe_start", {"dev": True}), ("demo_mode_safe_start", {"demo": True})):
                     if not report.failed:

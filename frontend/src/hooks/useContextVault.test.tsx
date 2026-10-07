@@ -50,8 +50,16 @@ function settingsWith(scopes: ContextVaultScopeSettings[] = [], enabled = false)
 }
 
 describe('useContextVault', () => {
-  beforeEach(() => vi.stubGlobal('fetch', vi.fn()))
-  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
+  beforeEach(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false })
+    vi.stubGlobal('fetch', vi.fn())
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false })
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
 
   it('previews a candidate scope through the server without saving it', async () => {
     vi.mocked(fetch)
@@ -172,6 +180,34 @@ describe('useContextVault', () => {
     await act(async () => { resolvePoll?.(response(staleStatus)); await Promise.resolve() })
     expect(result.current.status).toEqual(freshStatus)
     unmount()
+  })
+
+  it('pauses status polling while hidden and refreshes once on resume', async () => {
+    vi.useFakeTimers()
+    let statusReads = 0
+    vi.mocked(fetch).mockImplementation((input) => {
+      const url = String(input)
+      if (url === API_ENDPOINTS.settings) return Promise.resolve(response(settingsWith()))
+      if (url === API_ENDPOINTS.cortexVault) {
+        statusReads += 1
+        return Promise.resolve(response(STATUS))
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    renderHook(() => useContextVault())
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+    expect(statusReads).toBe(1)
+
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true })
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000) })
+    expect(statusReads).toBe(1)
+
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false })
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+    expect(statusReads).toBe(2)
   })
 
   it('reports incomplete copy removal when HTTP 200 still lists owned files', async () => {

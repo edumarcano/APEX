@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { API_ENDPOINTS } from '../lib/api'
 import { parseLlamaCppServerStatusResponse } from '../lib/settings'
 import type { LlamaCppServerStatusResponse } from '../types/settings'
+import { usePresentationVisibility } from './usePresentationVisibility'
 
 const POLL_INTERVAL_MS = 2000
 
@@ -14,6 +15,7 @@ export interface LlamaCppStatusState {
 }
 
 export function useLlamaCppStatus(open: boolean): LlamaCppStatusState {
+  const presentationVisible = usePresentationVisibility()
   const [status, setStatus] = useState<LlamaCppServerStatusResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [unavailable, setUnavailable] = useState(false)
@@ -36,7 +38,7 @@ export function useLlamaCppStatus(open: boolean): LlamaCppStatusState {
   }, [open])
 
   useEffect(() => {
-    if (!open) {
+    if (!open || !presentationVisible) {
       return undefined
     }
     const initial = window.setTimeout(() => void refresh(), 0)
@@ -45,7 +47,7 @@ export function useLlamaCppStatus(open: boolean): LlamaCppStatusState {
       window.clearTimeout(initial)
       window.clearInterval(timer)
     }
-  }, [open, refresh])
+  }, [open, presentationVisible, refresh])
 
   return { status, loading, unavailable, refresh }
 }

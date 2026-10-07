@@ -120,7 +120,7 @@ In **external mode**, start the router yourself. For example, from PowerShell, w
 
 Enable llama.cpp in Runtime Settings and set its host to `http://127.0.0.1:8080`, or the loopback address and port you chose. Leave **Manage server automatically** off.
 
-In **managed mode**, enable llama.cpp and **Manage server automatically**, then set absolute executable and preset paths in Runtime Settings. APEX starts the router when the configured loopback URL is unreachable. These machine-local values are saved under `llama_cpp` in `config.local.json`:
+In **managed mode**, enable llama.cpp and **Manage server automatically**, then set absolute executable and preset paths in Runtime Settings. APEX starts its router on demand when a selected llama.cpp request needs it and the configured loopback URL is unreachable. Merely opening APEX does not start the router. These machine-local values are saved under `llama_cpp` in `config.local.json`:
 
 ```json
 {

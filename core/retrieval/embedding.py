@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.metadata
 import logging
 from pathlib import Path
+import threading
 from typing import Iterable, Protocol
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,29 +38,41 @@ class FastEmbedAdapter:
         except importlib.metadata.PackageNotFoundError:
             self.version = "unavailable"
         self._model = None
+        self._model_lock = threading.Lock()
 
     @property
     def fingerprint(self) -> str:
         return f"{self.model_id}:{self.dimension}:{self.version}"
 
+    @property
+    def is_loaded(self) -> bool:
+        with self._model_lock:
+            return self._model is not None
+
     def _load(self, *, allow_download: bool) -> object:
-        if self._model is not None:
+        with self._model_lock:
+            if self._model is not None:
+                return self._model
+            try:
+                from fastembed import TextEmbedding
+            except Exception as exc:  # pragma: no cover - dependency is optional in unit tests
+                raise EmbeddingError("embedding_initialization_failed") from exc
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                self._model = TextEmbedding(
+                    model_name=self.model_id,
+                    cache_dir=str(self.cache_dir),
+                    local_files_only=not allow_download,
+                )
+            except Exception as exc:
+                category = "model_download_failed" if allow_download else "embedding_initialization_failed"
+                raise EmbeddingError(category) from exc
             return self._model
-        try:
-            from fastembed import TextEmbedding
-        except Exception as exc:  # pragma: no cover - dependency is optional in unit tests
-            raise EmbeddingError("embedding_initialization_failed") from exc
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        try:
-            self._model = TextEmbedding(
-                model_name=self.model_id,
-                cache_dir=str(self.cache_dir),
-                local_files_only=not allow_download,
-            )
-        except Exception as exc:
-            category = "model_download_failed" if allow_download else "embedding_initialization_failed"
-            raise EmbeddingError(category) from exc
-        return self._model
+
+    def release(self) -> None:
+        """Drop only the in-memory model session; cached weights remain on disk."""
+        with self._model_lock:
+            self._model = None
 
     def prepare(self, *, allow_download: bool = True) -> str:
         self._load(allow_download=allow_download)

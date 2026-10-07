@@ -79,6 +79,7 @@ from core.agent.local_runtime.registry import (
     get_local_runtime_backend,
     iter_local_runtime_backends,
 )
+from core.agent.local_runtime.execution import ensure_local_runtime_ready_for_demand
 from core.agent.pricing import PRICING_VERSION, agent_pricing
 from core.agent.types import (
     AgentMessage,
@@ -582,6 +583,7 @@ def load_local_model_endpoint(model_id: str) -> LocalLoadResponse:
 
     try:
         _ensure_local_alias_configured(profile)
+        ensure_local_runtime_ready_for_demand(profile.provider)
         already_resident = backend.is_model_resident(profile.runtime_model_id)
         if not already_resident:
             gate_open, gate_reason = check_resource_gate(
@@ -1239,6 +1241,7 @@ def query_agent(
 
         try:
             _ensure_local_alias_configured(profile)
+            ensure_local_runtime_ready_for_demand(profile.provider)
             model_ref = LocalModelRef(
                 provider=profile.provider, model=profile.runtime_model_id
             )

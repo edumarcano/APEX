@@ -80,6 +80,7 @@ from core.settings.store import get_settings_store
 from core.tracing import get_tracing_service
 
 _LOGGER = logging.getLogger(__name__)
+OPTIONAL_RESOURCE_IDLE_SWEEP_SECONDS = 30.0
 
 
 class _HttpRequestTracker:
@@ -182,6 +183,30 @@ async def _drain_application_tasks(
     return True
 
 
+async def _run_optional_resource_idle_maintenance(
+    retrieval_service: RetrievalService, stop_event: asyncio.Event
+) -> None:
+    """Release idle optional native sessions without loading them at startup."""
+    while True:
+        try:
+            await asyncio.wait_for(
+                stop_event.wait(), timeout=OPTIONAL_RESOURCE_IDLE_SWEEP_SECONDS
+            )
+        except asyncio.TimeoutError:
+            pass
+        if stop_event.is_set():
+            return
+
+        for label, release in (
+            ("embedding", retrieval_service.release_if_idle),
+            ("Kokoro", speaker.release_kokoro_if_idle),
+        ):
+            try:
+                await asyncio.to_thread(release)
+            except Exception:
+                _LOGGER.exception("%s idle resource release failed", label)
+
+
 def _ensure_host_context(_app: FastAPI):
     """Acquire or validate the exclusive profile lease before startup work."""
     from core.host.identity import create_host_context
@@ -216,6 +241,8 @@ async def _app_lifespan(_app: FastAPI):
     host_context, owns_host_context = _ensure_host_context(_app)
     idle_model_task: asyncio.Task[None] | None = None
     idle_model_stop: asyncio.Event | None = None
+    idle_resource_task: asyncio.Task[None] | None = None
+    idle_resource_stop: asyncio.Event | None = None
     startup_tasks: list[asyncio.Task[None]] = []
     mcp_manager: MCPClientManager | None = None
     microsoft_auth: MicrosoftTodoAuthenticationService | None = None
@@ -229,6 +256,7 @@ async def _app_lifespan(_app: FastAPI):
     briefing_speech_service: BriefingSpeechService | None = None
     run_coordinator: CortexRunCoordinator | None = None
     retrieval_store: RetrievalStore | None = None
+    retrieval_service: RetrievalService | None = None
     knowledge_store: KnowledgeStore | None = None
     activity_store: ActivityStore | None = None
     activity_report_folder: ActivityReportFolder | None = None
@@ -334,16 +362,6 @@ async def _app_lifespan(_app: FastAPI):
             # Retrieval is optional and repairable; it must never block Cortex readiness.
             pass
         set_retrieval_service(retrieval_service)
-        if not DEMO_MODE and retrieval_service.enabled:
-            async def _warm_retrieval() -> None:
-                try:
-                    await asyncio.to_thread(
-                        lambda: retrieval_service.prepare(allow_download=False)
-                    )
-                except Exception:
-                    _LOGGER.exception("Retrieval warmup failed; continuing with lexical search")
-
-            startup_tasks.append(asyncio.create_task(_warm_retrieval()))
         knowledge_store = KnowledgeStore(
             None if DEMO_MODE else database.DB_NAME,
             connection=demo_db,
@@ -483,18 +501,11 @@ async def _app_lifespan(_app: FastAPI):
             startup_tasks.append(context_vault_runtime.start())
         speaker.initialize()
 
-        async def _managed_llama_startup() -> None:
-            try:
-                await asyncio.to_thread(
-                    lambda: llama_supervisor.ensure_ready(allow_restart=False)
-                )
-            except Exception:
-                _LOGGER.exception(
-                    "Managed llama.cpp startup failed; continuing APEX boot without local "
-                    "llama.cpp Agents"
-                )
-
-        startup_tasks.append(asyncio.create_task(_managed_llama_startup()))
+        idle_resource_stop = asyncio.Event()
+        idle_resource_task = asyncio.create_task(
+            _run_optional_resource_idle_maintenance(retrieval_service, idle_resource_stop),
+            name="optional-resource-idle-maintenance",
+        )
         if any_local_runtime_enabled():
             idle_model_stop = asyncio.Event()
             idle_model_task = asyncio.create_task(
@@ -563,6 +574,8 @@ async def _app_lifespan(_app: FastAPI):
                 )
         if idle_model_stop is not None:
             idle_model_stop.set()
+        if idle_resource_stop is not None:
+            idle_resource_stop.set()
         if activity_report_folder_stop is not None:
             activity_report_folder_stop.set()
         if conversation_retention_stop is not None:
@@ -572,6 +585,8 @@ async def _app_lifespan(_app: FastAPI):
         application_tasks = startup_tasks + (
             [idle_model_task] if idle_model_task is not None else []
         )
+        if idle_resource_task is not None:
+            application_tasks.append(idle_resource_task)
         if activity_report_folder_task is not None:
             application_tasks.append(activity_report_folder_task)
         if not await _drain_application_tasks(
@@ -601,6 +616,23 @@ async def _app_lifespan(_app: FastAPI):
         ):
             raise RuntimeError(
                 "HTTP request shutdown drain timed out; application dependencies remain open."
+            )
+        if retrieval_service is not None:
+            retrieval_closed = await asyncio.to_thread(
+                retrieval_service.close,
+                timeout_seconds=_remaining_shutdown_seconds(),
+            )
+            if retrieval_closed is not True:
+                raise RuntimeError(
+                    "Retrieval shutdown timed out; application dependencies remain open."
+                )
+        kokoro_closed = await asyncio.to_thread(
+            speaker.close_kokoro,
+            _remaining_shutdown_seconds(),
+        )
+        if kokoro_closed is not True:
+            raise RuntimeError(
+                "Kokoro shutdown timed out; application dependencies remain open."
             )
         await _cleanup("stopping speech runtime", speaker.shutdown)
         if mcp_manager is not None:

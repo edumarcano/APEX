@@ -34,6 +34,7 @@ _SPEAK_LOCK = threading.Lock()
 _LIFECYCLE_LOCK = threading.Lock()
 _KOKORO_LOCK = threading.Lock()
 _KOKORO_SYNTH_LOCK = threading.Lock()
+_KOKORO_STATE = threading.Condition(threading.RLock())
 _ACTIVE_ENGINE_LOCK = threading.Lock()
 _CANCEL_EVENT = threading.Event()
 _CACHED_PLAYBACK_LOCK = threading.Lock()
@@ -42,6 +43,9 @@ _CACHED_PLAYBACK_EVENT: threading.Event | None = None
 
 _GOOGLE_TTS_CLIENT: Any | None = None
 _KOKORO_CLIENT: Any | None = None
+_KOKORO_ACTIVE_WORKERS = 0
+_KOKORO_LAST_COMPLETED_AT: float | None = None
+_KOKORO_CLOSING = False
 _ACTIVE_PYTTSX3_ENGINE: Any | None = None
 _INITIALIZED = False
 _READINESS: dict[str, dict[str, Any]] = {
@@ -58,6 +62,7 @@ KOKORO_CPU_LIMIT = 80.0
 KOKORO_CPU_RECOVERY_SECONDS = 3.0
 KOKORO_CPU_SAMPLE_SECONDS = 0.1
 KOKORO_CPU_STABLE_SAMPLES = 2
+KOKORO_IDLE_SECONDS = 300.0
 TTS_CHUNK_MAX_CHARS = 320
 TTS_SYNTHESIS_TIMEOUT_SECONDS = 20.0
 MAX_CACHED_AUDIO_CHUNKS = 16
@@ -204,7 +209,12 @@ def _kokoro_paths() -> tuple[Path, Path]:
     )
 
 
-def _run_with_timeout(function: Any, timeout: float) -> Any:
+def _run_with_timeout(
+    function: Any,
+    timeout: float,
+    *,
+    on_start_failure: Any | None = None,
+) -> Any:
     result_queue: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
 
     def _runner() -> None:
@@ -213,7 +223,13 @@ def _run_with_timeout(function: Any, timeout: float) -> Any:
         except Exception as exc:  # noqa: BLE001
             result_queue.put((False, exc))
 
-    threading.Thread(target=_runner, daemon=True).start()
+    worker = threading.Thread(target=_runner, daemon=True)
+    try:
+        worker.start()
+    except RuntimeError:
+        if on_start_failure is not None:
+            on_start_failure()
+        raise
     try:
         ok, result = result_queue.get(timeout=timeout)
     except queue.Empty as exc:
@@ -243,28 +259,48 @@ def _get_kokoro_client() -> Any:
         return _KOKORO_CLIENT
 
 
-def _ensure_kokoro_ready(*, probe: bool) -> bool:
-    try:
-        client = _get_kokoro_client()
-        if probe:
-            def _probe() -> Any:
-                with _KOKORO_SYNTH_LOCK:
-                    return client.create(
-                        "ready",
-                        voice=_get_active_kokoro_voice("female"),
+def _finish_kokoro_use(*, native_finished: bool) -> None:
+    global _KOKORO_ACTIVE_WORKERS, _KOKORO_LAST_COMPLETED_AT
+    with _KOKORO_STATE:
+        _KOKORO_ACTIVE_WORKERS = max(0, _KOKORO_ACTIVE_WORKERS - 1)
+        if native_finished:
+            _KOKORO_LAST_COMPLETED_AT = time.monotonic()
+        _KOKORO_STATE.notify_all()
+
+
+def _run_kokoro_create(text: str, *, gender: str) -> tuple[Any, int]:
+    """Run a Kokoro request while retaining its session for the full native call."""
+    global _KOKORO_ACTIVE_WORKERS
+    with _KOKORO_STATE:
+        if _KOKORO_CLOSING:
+            raise RuntimeError("kokoro_closing")
+        _KOKORO_ACTIVE_WORKERS += 1
+
+    native_finished = False
+
+    def _create() -> tuple[Any, int]:
+        nonlocal native_finished
+        try:
+            client = _get_kokoro_client()
+            with _KOKORO_SYNTH_LOCK:
+                try:
+                    result = client.create(
+                        text,
+                        voice=_get_active_kokoro_voice(gender),
                         speed=1.0,
                         lang="en-us",
                     )
-            samples, sample_rate = _run_with_timeout(_probe, TTS_SYNTHESIS_TIMEOUT_SECONDS)
-            if samples is None or len(samples) == 0 or int(sample_rate) <= 0:
-                raise ValueError("kokoro_readiness_invalid_audio")
-        _set_readiness("kokoro", ready=True, reason=None)
-        return True
-    except Exception as exc:  # noqa: BLE001
-        reason = type(exc).__name__
-        _set_readiness("kokoro", ready=False, reason=reason)
-        _LOGGER.warning("Kokoro readiness check failed (%s).", reason)
-        return False
+                finally:
+                    native_finished = True
+            return result
+        finally:
+            _finish_kokoro_use(native_finished=native_finished)
+
+    return _run_with_timeout(
+        _create,
+        TTS_SYNTHESIS_TIMEOUT_SECONDS,
+        on_start_failure=lambda: _finish_kokoro_use(native_finished=False),
+    )
 
 
 def _ensure_google_ready() -> bool:
@@ -314,9 +350,6 @@ def initialize() -> dict[str, dict[str, Any]]:
 
         if "google" in selected:
             _ensure_google_ready()
-        if "kokoro" in selected:
-            _ensure_kokoro_ready(probe=True)
-
         _INITIALIZED = True
         _LOGGER.info("Speech subsystem initialized: %s", readiness_snapshot())
         return readiness_snapshot()
@@ -345,13 +378,13 @@ def cancel() -> None:
 
 def shutdown() -> None:
     """Stop playback and release speech runtime resources."""
-    global _INITIALIZED, _GOOGLE_TTS_CLIENT, _KOKORO_CLIENT, _ACTIVE_PYTTSX3_ENGINE
+    global _INITIALIZED, _GOOGLE_TTS_CLIENT, _ACTIVE_PYTTSX3_ENGINE
     with _LIFECYCLE_LOCK:
         cancel()
         with _ACTIVE_ENGINE_LOCK:
             _ACTIVE_PYTTSX3_ENGINE = None
         _GOOGLE_TTS_CLIENT = None
-        _KOKORO_CLIENT = None
+        close_kokoro(0.0)
         try:
             if pygame.mixer.get_init() is not None:
                 pygame.mixer.quit()
@@ -360,7 +393,47 @@ def shutdown() -> None:
         _INITIALIZED = False
         _set_readiness("audio", ready=False, reason="shutdown")
         _set_readiness("google", ready=False, reason="shutdown")
+        if _KOKORO_CLIENT is None:
+            _set_readiness("kokoro", ready=False, reason="shutdown")
+
+
+def release_kokoro_if_idle() -> bool:
+    """Unload Kokoro only after five minutes without use and with no live worker."""
+    global _KOKORO_CLIENT
+    with _KOKORO_STATE:
+        if (
+            _KOKORO_CLIENT is None
+            or _KOKORO_CLOSING
+            or _KOKORO_ACTIVE_WORKERS
+            or _KOKORO_LAST_COMPLETED_AT is None
+            or time.monotonic() - _KOKORO_LAST_COMPLETED_AT < KOKORO_IDLE_SECONDS
+        ):
+            return False
+        with _KOKORO_LOCK:
+            if _KOKORO_ACTIVE_WORKERS or _KOKORO_CLOSING:
+                return False
+            _KOKORO_CLIENT = None
+            _set_readiness("kokoro", ready=False, reason="idle_timeout")
+            return True
+
+
+def close_kokoro(timeout_seconds: float) -> bool:
+    """Close Kokoro after active native calls finish within the supplied budget."""
+    global _KOKORO_CLIENT, _KOKORO_CLOSING
+    deadline = time.monotonic() + max(0.0, float(timeout_seconds))
+    with _KOKORO_STATE:
+        _KOKORO_CLOSING = True
+        while _KOKORO_ACTIVE_WORKERS:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                _KOKORO_CLOSING = False
+                return False
+            _KOKORO_STATE.wait(remaining)
+        with _KOKORO_LOCK:
+            _KOKORO_CLIENT = None
+        _KOKORO_CLOSING = False
         _set_readiness("kokoro", ready=False, reason="shutdown")
+        return True
 
 
 def _kokoro_pressure_snapshot() -> tuple[float, float]:
@@ -452,28 +525,24 @@ def fetch_google_audio(text: str, voice_id: str) -> bytes:
 
 
 def _synthesize_kokoro_chunk(text: str, *, gender: str) -> bytes:
-    if not _ensure_kokoro_ready(probe=False):
-        raise RuntimeError("kokoro_not_ready")
-    client = _get_kokoro_client()
-
-    def _create() -> Any:
-        with _KOKORO_SYNTH_LOCK:
-            return client.create(
-                text,
-                voice=_get_active_kokoro_voice(gender),
-                speed=1.0,
-                lang="en-us",
-            )
-
-    samples, sample_rate = _run_with_timeout(_create, TTS_SYNTHESIS_TIMEOUT_SECONDS)
+    try:
+        samples, sample_rate = _run_kokoro_create(text, gender=gender)
+    except Exception as exc:  # noqa: BLE001
+        reason = type(exc).__name__
+        _set_readiness("kokoro", ready=False, reason=reason)
+        _LOGGER.warning("Kokoro synthesis failed (%s).", reason)
+        raise
     if samples is None or len(samples) == 0 or int(sample_rate) <= 0:
+        _set_readiness("kokoro", ready=False, reason="ValueError")
         raise ValueError("invalid_kokoro_audio")
     try:
         import numpy as np
     except ImportError as exc:
         raise ImportError("numpy is not installed; install the tts-kokoro extra.") from exc
     pcm_data = (np.clip(samples, -1.0, 1.0) * 32767.0).astype(np.int16).tobytes()
-    return _pack_pcm_to_wav_bytes(pcm_data, int(sample_rate))
+    result = _pack_pcm_to_wav_bytes(pcm_data, int(sample_rate))
+    _set_readiness("kokoro", ready=True, reason=None)
+    return result
 
 
 def _mp3_duration_seconds(data: bytes) -> float:

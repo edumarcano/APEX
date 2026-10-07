@@ -17,6 +17,8 @@ from fastapi.testclient import TestClient
 from core.conversations.store import ConversationStore
 from core.conversations.retention import purge_expired_archived_conversations
 from core.knowledge import get_knowledge_service
+from core.retrieval.embedding import FastEmbedAdapter
+from core.retrieval.models import RetrievalItem
 from core.retrieval import get_retrieval_service
 from core.retrieval.service import RetrievalService
 from core.retrieval.store import RetrievalStore
@@ -241,6 +243,226 @@ class PersistenceLifecycleTests(unittest.TestCase):
                             "SELECT 1 FROM conversations WHERE id = ?", (str(conversation_id),)
                         ).fetchone()
                     )
+
+    def test_cold_start_and_ready_status_do_not_load_cached_embedding_or_managed_llama(self) -> None:
+        from core import database
+        from core.api.app import app
+        from core.mcp.models import McpRuntimeConfig
+
+        fingerprint = "cached-model:384:test"
+        seed_store = RetrievalStore(self.path)
+        seed_store.initialize()
+        item = RetrievalItem(
+            namespace="shared",
+            source_type="test",
+            source_id="cached-ready-entry",
+            partition="shared",
+            conversation_id=None,
+            message_id=None,
+            role=None,
+            timestamp="2026-10-01T00:00:00+00:00",
+            locator="shared/cached-ready-entry",
+            content_hash="cached-ready-entry",
+            text="Persisted semantic retrieval is ready.",
+        )
+        item_id = seed_store.upsert_item(item)
+        seed_store.upsert_embedding(item_id, fingerprint, [1.0] + [0.0] * 383)
+        seed_store.set_model_state(
+            state="ready", fingerprint=fingerprint, prepared_at="2026-10-01T00:00:00+00:00"
+        )
+        seed_store.close()
+
+        auth = mock.Mock()
+        auth.initialize = mock.AsyncMock()
+        auth.shutdown = mock.AsyncMock()
+        manager = mock.Mock()
+        manager.start = mock.AsyncMock()
+        manager.shutdown = mock.AsyncMock()
+        supervisor = mock.Mock()
+        supervisor.ensure_ready.side_effect = AssertionError(
+            "managed llama.cpp must not start during application startup"
+        )
+        settings = mock.Mock()
+        snapshot = mock.Mock()
+        snapshot.device_context.location_enabled = False
+        snapshot.llama_cpp.enabled = True
+        snapshot.llama_cpp.managed = True
+        settings.get_snapshot.return_value = snapshot
+        vault_stop = asyncio.Event()
+        context_vault = mock.Mock()
+        context_vault.start.side_effect = lambda: asyncio.create_task(vault_stop.wait())
+        context_vault.request_stop.side_effect = vault_stop.set
+        registry = mock.Mock()
+
+        async def wait_for_report_shutdown(_folder, stop_event):
+            await stop_event.wait()
+
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch("core.api.app.database.DB_NAME", str(self.path)))
+            # Establish the real supported core schemas before the profile begins its read-only checks.
+            database.initialize_db()
+            stack.enter_context(mock.patch("core.api.app.DEMO_MODE", False))
+            stack.enter_context(mock.patch("core.api.app.configure_logging"))
+            stack.enter_context(mock.patch("core.api.app.get_tracing_service", return_value=mock.Mock()))
+            stack.enter_context(
+                mock.patch("core.api.app.MicrosoftTodoAuthenticationService", return_value=auth)
+            )
+            stack.enter_context(mock.patch("core.api.app.MicrosoftTodoClient", return_value=mock.Mock()))
+            stack.enter_context(
+                mock.patch("core.api.app.get_llama_cpp_server_supervisor", return_value=supervisor)
+            )
+            stack.enter_context(mock.patch("core.api.app.any_local_runtime_enabled", return_value=False))
+            stack.enter_context(
+                mock.patch("core.api.app.load_mcp_config", return_value=McpRuntimeConfig(enabled=False, servers={}))
+            )
+            stack.enter_context(mock.patch("core.api.app.MCPClientManager", return_value=manager))
+            stack.enter_context(mock.patch("core.api.app.ReminderService"))
+            stack.enter_context(mock.patch("core.api.app.get_settings_store", return_value=settings))
+            stack.enter_context(mock.patch("core.api.app.ContextVaultRuntime", return_value=context_vault))
+            stack.enter_context(
+                mock.patch("core.api.app.run_activity_report_folder_poller", new=wait_for_report_shutdown)
+            )
+            stack.enter_context(mock.patch("core.api.app.speaker.initialize"))
+            stack.enter_context(mock.patch("core.api.app.speaker.shutdown"))
+            stack.enter_context(mock.patch("core.api.app.speaker.close_kokoro", return_value=True))
+            stack.enter_context(mock.patch("core.api.app.ConnectorHttpSessions", return_value=registry))
+            stack.enter_context(
+                mock.patch.object(
+                    FastEmbedAdapter,
+                    "_load",
+                    side_effect=AssertionError("cached embedding model loaded during cold startup/status"),
+                )
+            )
+
+            with TestClient(app) as client:
+                response = client.get("/api/v1/cortex/retrieval/status")
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["state"], "ready")
+                self.assertEqual(response.json()["mode"], "semantic")
+                self.assertEqual(response.json()["model_fingerprint"], fingerprint)
+
+        supervisor.ensure_ready.assert_not_called()
+
+    def test_failed_native_close_preserves_persistence_dependencies(self) -> None:
+        from core import database
+        from core.api.app import app
+        from core.mcp.models import McpRuntimeConfig
+
+        for failed_resource in ("retrieval", "kokoro"):
+            with self.subTest(failed_resource=failed_resource):
+                self.path = Path(self.temp_dir.name) / f"{failed_resource}-close.db"
+                auth = mock.Mock()
+                auth.initialize = mock.AsyncMock()
+                auth.shutdown = mock.AsyncMock()
+                manager = mock.Mock()
+                manager.start = mock.AsyncMock()
+                manager.shutdown = mock.AsyncMock()
+                supervisor = mock.Mock()
+                settings = mock.Mock()
+                settings.get_snapshot.return_value.device_context.location_enabled = False
+                vault_stop = asyncio.Event()
+                context_vault = mock.Mock()
+                context_vault.start.side_effect = lambda: asyncio.create_task(vault_stop.wait())
+                context_vault.request_stop.side_effect = vault_stop.set
+
+                async def wait_for_report_shutdown(_folder, stop_event):
+                    await stop_event.wait()
+
+                with ExitStack() as stack:
+                    stack.enter_context(mock.patch("core.api.app.database.DB_NAME", str(self.path)))
+                    database.initialize_db()
+                    stack.enter_context(mock.patch("core.api.app.DEMO_MODE", False))
+                    stack.enter_context(mock.patch("core.api.app.configure_logging"))
+                    tracing = mock.Mock()
+                    stack.enter_context(mock.patch("core.api.app.get_tracing_service", return_value=tracing))
+                    stack.enter_context(
+                        mock.patch("core.api.app.MicrosoftTodoAuthenticationService", return_value=auth)
+                    )
+                    stack.enter_context(mock.patch("core.api.app.MicrosoftTodoClient", return_value=mock.Mock()))
+                    stack.enter_context(
+                        mock.patch("core.api.app.get_llama_cpp_server_supervisor", return_value=supervisor)
+                    )
+                    stack.enter_context(mock.patch("core.api.app.any_local_runtime_enabled", return_value=False))
+                    stack.enter_context(
+                        mock.patch("core.api.app.load_mcp_config", return_value=McpRuntimeConfig(enabled=False, servers={}))
+                    )
+                    stack.enter_context(mock.patch("core.api.app.MCPClientManager", return_value=manager))
+                    stack.enter_context(mock.patch("core.api.app.ReminderService"))
+                    stack.enter_context(mock.patch("core.api.app.get_settings_store", return_value=settings))
+                    stack.enter_context(mock.patch("core.api.app.ContextVaultRuntime", return_value=context_vault))
+                    stack.enter_context(
+                        mock.patch("core.api.app.run_activity_report_folder_poller", new=wait_for_report_shutdown)
+                    )
+                    stack.enter_context(mock.patch("core.api.app.speaker.initialize"))
+                    speaker_shutdown = stack.enter_context(mock.patch("core.api.app.speaker.shutdown"))
+                    kokoro_close = stack.enter_context(
+                        mock.patch(
+                            "core.api.app.speaker.close_kokoro",
+                            return_value=failed_resource != "kokoro",
+                        )
+                    )
+                    stack.enter_context(mock.patch("core.api.app.ConnectorHttpSessions", return_value=mock.Mock()))
+                    retrieval_close = stack.enter_context(
+                        mock.patch.object(
+                            RetrievalService, "close", return_value=failed_resource != "retrieval"
+                        )
+                    )
+                    conversation_close = stack.enter_context(mock.patch.object(ConversationStore, "close"))
+
+                    expected_error = (
+                        "Retrieval shutdown timed out"
+                        if failed_resource == "retrieval"
+                        else "Kokoro shutdown timed out"
+                    )
+                    with self.assertRaisesRegex(RuntimeError, expected_error):
+                        with TestClient(app):
+                            pass
+
+                retrieval_close.assert_called_once_with(timeout_seconds=mock.ANY)
+                if failed_resource == "retrieval":
+                    kokoro_close.assert_not_called()
+                else:
+                    kokoro_close.assert_called_once_with(mock.ANY)
+                conversation_close.assert_not_called()
+                speaker_shutdown.assert_not_called()
+                tracing.shutdown.assert_not_called()
+                self.assertFalse(app.state.lifecycle_cleanup_complete)
+                with closing(sqlite3.connect(self.path)) as conn:
+                    self.assertIsNotNone(
+                        conn.execute(
+                            "SELECT name FROM sqlite_master WHERE type='table' AND name='conversations'"
+                        ).fetchone()
+                    )
+
+                # The runtime deliberately retained its lease and stores on failure;
+                # release test-owned references after proving that behavior.
+                context = app.state.host_context
+                if context is not None and context.profile_lock.acquired:
+                    context.release()
+                app.state.host_context = None
+                app.state.lifecycle_entered = False
+                app.state.lifecycle_established = False
+                app.state.lifecycle_cleanup_complete = False
+                for setter in (
+                    "set_action_service",
+                    "set_connector_http_sessions",
+                    "set_microsoft_auth_service",
+                    "set_microsoft_todo_client",
+                    "set_mcp_manager",
+                    "set_conversation_service",
+                    "set_run_service",
+                    "set_run_coordinator",
+                    "set_briefing_service",
+                    "set_briefing_speech_service",
+                    "set_briefing_session_queries",
+                    "set_retrieval_service",
+                    "set_knowledge_service",
+                    "set_reminder_service",
+                    "set_context_vault_runtime",
+                    "set_activity_service",
+                    "set_activity_report_folder",
+                ):
+                    getattr(__import__("core.api.app", fromlist=[setter]), setter)(None)
 
 
 if __name__ == "__main__":

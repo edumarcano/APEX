@@ -355,6 +355,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         drained_tasks = task_drain.await_args.args[0]
         self.assertEqual(len(drained_tasks), 2)
         self.assertIn("activity-report-folder-poller", {task.get_name() for task in drained_tasks})
+        self.assertIn("optional-resource-idle-maintenance", {task.get_name() for task in drained_tasks})
 
     def test_http_grace_timeout_preserves_dependencies_after_request_task_cancellation(self) -> None:
         call_order: list[str] = []
@@ -594,6 +595,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             set_sessions.call_args_list,
             [mock.call(registry), mock.call(None)],
         )
+        supervisor.ensure_ready.assert_not_called()
 
     def test_lifespan_closes_sessions_when_mcp_shutdown_fails(self) -> None:
         from core.api.app import app
@@ -651,6 +653,12 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         conversation_store = mock.Mock()
         run_store = mock.Mock()
         retrieval_store = mock.Mock()
+        retrieval_service = mock.Mock()
+        call_order: list[str] = []
+        retrieval_service.close.side_effect = lambda **_kwargs: (
+            call_order.append("retrieval_close") or True
+        )
+        conversation_store.close.side_effect = lambda: call_order.append("conversation_store_close")
         knowledge_store = mock.Mock()
         activity_store = mock.Mock()
         tracing = mock.Mock()
@@ -678,7 +686,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
                 mock.patch("core.api.app.RetrievalStore", return_value=retrieval_store)
             )
             stack.enter_context(
-                mock.patch("core.api.app.RetrievalService", return_value=mock.Mock())
+                mock.patch("core.api.app.RetrievalService", return_value=retrieval_service)
             )
             stack.enter_context(
                 mock.patch("core.api.app.KnowledgeStore", return_value=knowledge_store)
@@ -691,7 +699,18 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             stack.enter_context(mock.patch("core.api.app.set_activity_service"))
             stack.enter_context(mock.patch("core.api.app.get_settings_store"))
             stack.enter_context(mock.patch("core.api.app.speaker.initialize"))
-            stack.enter_context(mock.patch("core.api.app.speaker.shutdown"))
+            stack.enter_context(
+                mock.patch(
+                    "core.api.app.speaker.shutdown",
+                    side_effect=lambda: call_order.append("speaker_shutdown"),
+                )
+            )
+            stack.enter_context(
+                mock.patch(
+                    "core.api.app.speaker.close_kokoro",
+                    side_effect=lambda _timeout: call_order.append("kokoro_close") or True,
+                )
+            )
             stack.enter_context(
                 mock.patch("core.api.app.get_llama_cpp_server_supervisor", return_value=supervisor)
             )
@@ -715,6 +734,10 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         knowledge_store.close.assert_called_once_with()
         activity_store.close.assert_called_once_with()
         tracing.shutdown.assert_called_once_with()
+        retrieval_service.close.assert_called_once_with(timeout_seconds=mock.ANY)
+        self.assertLess(call_order.index("retrieval_close"), call_order.index("kokoro_close"))
+        self.assertLess(call_order.index("kokoro_close"), call_order.index("speaker_shutdown"))
+        self.assertLess(call_order.index("speaker_shutdown"), call_order.index("conversation_store_close"))
 
 
 class ApplicationTaskDrainTests(unittest.IsolatedAsyncioTestCase):
@@ -731,6 +754,58 @@ class ApplicationTaskDrainTests(unittest.IsolatedAsyncioTestCase):
         finally:
             release.set()
             await task
+
+
+class OptionalResourceIdleMaintenanceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_sweep_runs_after_idle_interval_and_offloads_both_releases(self) -> None:
+        from core.api.app import (
+            OPTIONAL_RESOURCE_IDLE_SWEEP_SECONDS,
+            _run_optional_resource_idle_maintenance,
+        )
+
+        stop_event = asyncio.Event()
+        retrieval = mock.Mock()
+        release_threads: list[int] = []
+        loop_thread = threading.get_ident()
+
+        def release_retrieval() -> bool:
+            release_threads.append(threading.get_ident())
+            return True
+
+        def release_speaker() -> bool:
+            release_threads.append(threading.get_ident())
+            return True
+
+        retrieval.release_if_idle.side_effect = release_retrieval
+        wait_calls = 0
+
+        async def advance_fake_clock(awaitable, *, timeout: float) -> bool:
+            nonlocal wait_calls
+            wait_calls += 1
+            self.assertEqual(timeout, OPTIONAL_RESOURCE_IDLE_SWEEP_SECONDS)
+            awaitable.close()
+            if wait_calls == 1:
+                raise asyncio.TimeoutError
+            stop_event.set()
+            return True
+
+        task = asyncio.create_task(
+            _run_optional_resource_idle_maintenance(retrieval, stop_event)
+        )
+        try:
+            with mock.patch("core.api.app.asyncio.wait_for", side_effect=advance_fake_clock), mock.patch(
+                "core.api.app.speaker.release_kokoro_if_idle", side_effect=release_speaker
+            ):
+                await task
+        finally:
+            if not task.done():
+                stop_event.set()
+                await task
+
+        self.assertEqual(wait_calls, 2)
+        retrieval.release_if_idle.assert_called_once_with()
+        self.assertEqual(len(release_threads), 2)
+        self.assertTrue(all(thread_id != loop_thread for thread_id in release_threads))
 
 
 if __name__ == "__main__":
