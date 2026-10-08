@@ -230,6 +230,10 @@ class DistributionFailureDiagnosticTests(unittest.TestCase):
             distribution._cleanup_failure_codes(distribution.DistributionError("private path")),
             ["other"],
         )
+        self.assertEqual(
+            distribution._cleanup_failure_codes(distribution.DistributionError("\x1eprivate-secret\x1e")),
+            ["other"],
+        )
 
     def test_cleanup_failure_projection_preserves_semicolon_inside_known_message(self) -> None:
         error = distribution.DistributionError(

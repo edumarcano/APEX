@@ -273,10 +273,12 @@ def _cleanup_failure_codes(error: BaseException) -> list[str]:
     for message, code in sorted(_CLEANUP_FAILURE_CODES.items(), key=lambda item: len(item[0]), reverse=True):
         pattern = re.compile(rf"(^|; ){re.escape(message)}(?=; |$)")
         messages = pattern.sub(lambda match, value=code: f"{match.group(1)}\x1e{value}\x1e", messages)
+    known_codes = frozenset(_CLEANUP_FAILURE_CODES.values())
     codes: set[str] = set()
     for message in messages.split("; "):
         if message.startswith("\x1e") and message.endswith("\x1e"):
-            codes.add(message[1:-1])
+            marker = message[1:-1]
+            codes.add(marker if marker in known_codes else "other")
         else:
             codes.add("other")
     return sorted(codes)
