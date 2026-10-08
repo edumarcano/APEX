@@ -53,6 +53,29 @@ _CLEANUP_FAILURE_CODES = {
     "owned installer cleanup skipped because a process remains in the installed program tree": "installed_processes_remain",
     "could not remove the exact run-owned installation through its uninstaller": "uninstaller_failed",
 }
+_BACKEND_CHECK_FAILURE_CODES = {
+    "api_port_available": "loopback_port_unavailable",
+    "bundle_shape": "bundle_shape_missing_files",
+    "external_fastembed_and_kokoro_assets": "external_model_assets_unavailable",
+    "fastembed_real_model": "fastembed_model_requirement_failed",
+    "frozen_probe_required": "frozen_probe_required",
+    "idle_release_assets_required": "idle_release_assets_required",
+    "kokoro_real_model": "kokoro_model_requirement_failed",
+    "strict_gate_complete": "strict_acceptance_incomplete",
+    "strict_gate_requirements": "strict_gate_stopped_early",
+}
+_BACKEND_MESSAGE_FAILURE_CODES = {
+    "no-weight FastEmbed failure did not prove packaged module availability": "no_weight_fastembed_probe_failed",
+    "frozen probe accepted an invalid worker request or exceeded output bounds": "frozen_probe_worker_protocol_failed",
+    "cached-model startup constructed an optional model or did not select real Kokoro assets": "cached_asset_startup_failed",
+    "real FastEmbed semantic probe failed": "fastembed_semantic_probe_failed",
+    "candidate retrieval release/reload assertion did not pass": "fastembed_idle_release_failed",
+    "real Kokoro synthesis probe failed": "kokoro_synthesis_probe_failed",
+    "candidate Kokoro release/reload assertion did not pass": "kokoro_idle_release_failed",
+    "production backend speech-export worker timed out": "production_speech_worker_timed_out",
+    "production backend worker did not write a valid WAV": "production_speech_worker_invalid_wav",
+    "managed host failed readiness": "managed_host_readiness_failed",
+}
 _owned_host: tuple[subprocess.Popen[bytes], Any, Any, str] | None = None
 _owned_process_identity: tuple[int, str, str] | None = None
 _owned_install: Path | None = None
@@ -96,6 +119,32 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _backend_smoke_failure_category(name: str, detail: object) -> str | None:
+    category = _BACKEND_CHECK_FAILURE_CODES.get(name)
+    if category:
+        return category
+    if not isinstance(detail, str):
+        return "bundle_smoke_other" if name == "bundle_smoke" else None
+
+    bounded_detail = detail[:512]
+    class_match = _SAFE_ERROR_CLASS.match(bounded_detail[:81])
+    message = bounded_detail[class_match.end():].lstrip(": ") if class_match else bounded_detail
+    scenario = re.match(r"^frozen probe scenario ([a-z-]{1,40}) failed:", message[:80])
+    if scenario:
+        scenario_codes = {
+            "imports": "frozen_probe_imports_failed",
+            "retrieval": "frozen_probe_retrieval_failed",
+            "audio-worker": "frozen_probe_audio_worker_failed",
+            "no-model-assets": "frozen_probe_no_model_assets_failed",
+            "startup-no-optional-models": "frozen_probe_startup_failed",
+        }
+        return scenario_codes.get(scenario.group(1), "frozen_probe_scenario_failed")
+    for prefix, known_category in _BACKEND_MESSAGE_FAILURE_CODES.items():
+        if message.startswith(prefix):
+            return known_category
+    return "bundle_smoke_other" if name == "bundle_smoke" else None
+
+
 def _safe_backend_smoke_summary(path: Path) -> dict[str, object]:
     """Project a failed nested smoke report without exposing details or paths."""
     try:
@@ -135,8 +184,11 @@ def _safe_backend_smoke_summary(path: Path) -> dict[str, object]:
             name = "invalid_check_name"
         entry = {"name": name, "status": check_status}
         detail = item.get("detail")
+        category = _backend_smoke_failure_category(name, detail)
+        if category:
+            entry["category"] = category
         if isinstance(detail, str):
-            match = _SAFE_ERROR_CLASS.match(detail)
+            match = _SAFE_ERROR_CLASS.match(detail[:81])
             if match and len(match.group(1)) <= 80:
                 entry["error_class"] = match.group(1)
         failures.append(entry)

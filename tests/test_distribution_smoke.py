@@ -114,6 +114,39 @@ class DistributionFailureDiagnosticTests(unittest.TestCase):
         self.assertNotIn("error_class", summary["failures"][0])
         self.assertLessEqual(len(json.dumps(summary)), 2048)
 
+    def test_backend_smoke_summary_projects_only_known_failure_categories(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            report_path = Path(temporary) / "backend-report.json"
+            report_path.write_text(json.dumps({
+                "result": "failed",
+                "checks": [
+                    {
+                        "name": "bundle_shape",
+                        "status": "failed",
+                        "detail": "missing expected bundle files: C:/private/bundle/apex.exe",
+                    },
+                    {
+                        "name": "bundle_smoke",
+                        "status": "failed",
+                        "detail": "RuntimeError: frozen probe scenario audio-worker failed: private result",
+                    },
+                    {
+                        "name": "bundle_smoke",
+                        "status": "failed",
+                        "detail": "RuntimeError: candidate Kokoro release/reload assertion did not pass: private result",
+                    },
+                ],
+            }), encoding="utf-8")
+
+            summary = distribution._safe_backend_smoke_summary(report_path)
+
+        self.assertEqual(
+            [item["category"] for item in summary["failures"]],
+            ["bundle_shape_missing_files", "frozen_probe_audio_worker_failed", "kokoro_idle_release_failed"],
+        )
+        self.assertTrue(all(item.get("error_class") in {None, "RuntimeError"} for item in summary["failures"]))
+        self.assertNotIn("C:/private", json.dumps(summary))
+
     def test_owned_install_snapshot_lists_only_bounded_relative_names(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             install = Path(temporary) / "Programs" / "APEX"
