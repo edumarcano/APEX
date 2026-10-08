@@ -139,9 +139,14 @@ class BackendBundleSmokeHarnessTests(unittest.TestCase):
                 return None
 
         voice = FakeVoice()
+        memory_stream = object()
 
         def create_object(name: str) -> object:
-            return voice if name == "SAPI.SPVoice" else FakeFileStream()
+            if name == "SAPI.SPVoice":
+                return voice
+            if name == "SAPI.SpMemoryStream":
+                return memory_stream
+            return FakeFileStream()
 
         with patch.object(comtypes.client, "CreateObject", side_effect=create_object), \
              patch.object(comtypes.client, "GetEvents", return_value=object()):
