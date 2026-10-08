@@ -69,9 +69,69 @@ def _retrieval() -> dict[str, object]:
 
 
 def _audio_worker() -> dict[str, object]:
+    import io
     import threading
+    import wave
+
     from core.speaker import synthesize_audio
-    chunks, engine = synthesize_audio("APEX frozen speech worker smoke.", tts_override="pyttsx3", voice_gender="female", cancellation_event=threading.Event())
+
+    speaker_module = sys.modules["core.speaker"]
+    original_duration = speaker_module._audio_duration_seconds
+    duration_failure: dict[str, object] | None = None
+
+    def inspect_duration(data: bytes, content_type: str) -> float:
+        nonlocal duration_failure
+        duration = original_duration(data, content_type)
+        if content_type == "audio/wav" and not 0 < duration <= 60:
+            with wave.open(io.BytesIO(data), "rb") as wav_file:
+                duration_failure = {
+                    "wav_bytes": len(data),
+                    "nframes": wav_file.getnframes(),
+                    "framerate": wav_file.getframerate(),
+                    "channels": wav_file.getnchannels(),
+                    "sample_width_bytes": wav_file.getsampwidth(),
+                    "duration_seconds": duration,
+                }
+        return duration
+
+    def sapi_voice_inventory() -> dict[str, object]:
+        engine = None
+        voice_count = None
+        error_type = None
+        try:
+            import pyttsx3
+
+            engine = pyttsx3.init()
+            voices = engine.getProperty("voices")
+            voice_count = len(voices) if voices is not None else 0
+        except Exception as exc:  # noqa: BLE001 - only the class name is reported
+            error_type = type(exc).__name__
+        finally:
+            if engine is not None:
+                try:
+                    engine.stop()
+                except Exception as exc:  # noqa: BLE001 - never expose raw COM errors
+                    if error_type is None:
+                        error_type = type(exc).__name__
+        return {
+            "sapi_voice_count": voice_count,
+            "sapi_inventory_error_type": error_type,
+        }
+
+    try:
+        with patch.object(speaker_module, "_audio_duration_seconds", inspect_duration):
+            chunks, engine = synthesize_audio(
+                "APEX frozen speech worker smoke.",
+                tts_override="pyttsx3",
+                voice_gender="female",
+                cancellation_event=threading.Event(),
+            )
+    except ValueError as exc:
+        if str(exc) != "speech_audio_chunk_duration_invalid" or duration_failure is None:
+            raise
+        diagnostic = {**duration_failure, **sapi_voice_inventory()}
+        details = json.dumps(diagnostic, ensure_ascii=True, separators=(",", ":"), allow_nan=False)
+        raise ValueError(f"{exc}; diagnostic={details}") from None
     if engine != "pyttsx3" or not chunks or chunks[0].get("content_type") != "audio/wav":
         raise RuntimeError("frozen worker did not produce audio")
     audio = chunks[0]["audio"]

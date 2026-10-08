@@ -11,6 +11,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import wave
+import pyttsx3
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -35,6 +37,54 @@ _espeak_hook_spec.loader.exec_module(espeak_hook)
 
 
 class BackendBundleSmokeHarnessTests(unittest.TestCase):
+    def test_audio_worker_reports_empty_wav_metadata_without_relaxing_validation(self) -> None:
+        from core import speaker
+
+        output = io.BytesIO()
+        with wave.open(output, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(16000)
+        empty_wav = output.getvalue()
+        private_sentinel = "private voice sentinel"
+        engine = Mock()
+        engine.getProperty.return_value = [
+            SimpleNamespace(id=private_sentinel, name=private_sentinel),
+        ]
+        self.assertEqual(speaker._audio_duration_seconds(empty_wav, "audio/wav"), 0.0)
+        with (
+            patch.object(speaker, "_synthesize_pyttsx3_wav", return_value=empty_wav) as synthesis,
+            patch.object(pyttsx3, "init", return_value=engine) as initialize_engine,
+        ):
+            with self.assertRaisesRegex(ValueError, "speech_audio_chunk_duration_invalid") as raised:
+                probe._audio_worker()
+
+        synthesis.assert_called_once()
+        initialize_engine.assert_called_once_with()
+        engine.getProperty.assert_called_once_with("voices")
+        engine.stop.assert_called_once_with()
+        diagnostic_text = str(raised.exception).split("; diagnostic=", 1)[1]
+        diagnostic = json.loads(diagnostic_text)
+        self.assertEqual(diagnostic["wav_bytes"], len(empty_wav))
+        self.assertEqual(diagnostic["nframes"], 0)
+        self.assertEqual(diagnostic["framerate"], 16000)
+        self.assertEqual(diagnostic["channels"], 1)
+        self.assertEqual(diagnostic["sample_width_bytes"], 2)
+        self.assertEqual(diagnostic["duration_seconds"], 0.0)
+        self.assertEqual(diagnostic["sapi_voice_count"], 1)
+        self.assertIsNone(diagnostic["sapi_inventory_error_type"])
+        self.assertNotIn(private_sentinel, diagnostic_text)
+        self.assertEqual(set(diagnostic), {
+            "wav_bytes",
+            "nframes",
+            "framerate",
+            "channels",
+            "sample_width_bytes",
+            "duration_seconds",
+            "sapi_voice_count",
+            "sapi_inventory_error_type",
+        })
+
     def test_semantic_assets_accepts_baseline_and_lazy_first_search_contracts(self) -> None:
         fts = {"retrieval_mode": "fts_only", "results": [{"id": "fts"}]}
         semantic = {"retrieval_mode": "semantic", "results": [{"id": "semantic"}]}
