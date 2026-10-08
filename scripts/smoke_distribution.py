@@ -197,6 +197,28 @@ def _registry_uninstall() -> dict[str, Any] | None:
     return None
 
 
+def _registered_install_location(registration: dict[str, Any]) -> Path:
+    """Parse only a whole, quoted or unquoted InstallLocation filesystem path."""
+    raw = registration.get("InstallLocation")
+    if not isinstance(raw, str) or not raw.strip():
+        raise DistributionError("uninstall registration has no valid install location")
+    value = raw.strip()
+    if value.startswith('"') or value.endswith('"'):
+        if len(value) < 2 or value[0] != '"' or value[-1] != '"':
+            raise DistributionError("uninstall registration has malformed install-location quoting")
+        value = value[1:-1]
+        if not value or '"' in value:
+            raise DistributionError("uninstall registration has malformed install-location quoting")
+    elif '"' in value:
+        raise DistributionError("uninstall registration has malformed install-location quoting")
+    if not value or value != value.strip():
+        raise DistributionError("uninstall registration has an invalid install location")
+    location = Path(value)
+    if not location.is_absolute():
+        raise DistributionError("uninstall registration has a non-absolute install location")
+    return location.resolve()
+
+
 def _has_start_menu_entry() -> bool:
     menu = Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows" / "Start Menu" / "Programs"
     return bool(list(menu.glob("APEX*.lnk")) or list((menu / APP_NAME).glob("*.lnk")))
@@ -280,6 +302,19 @@ def _installer(executable: Path, arguments: Sequence[str], *, cwd: Path) -> subp
     if result.returncode != 0:
         raise DistributionError(f"{executable.name} exited with code {result.returncode}")
     return result
+
+
+def _wait_for_uninstall_completion(install: Path, *, timeout: float = INSTALL_TIMEOUT) -> None:
+    """Wait for NSIS self-deletion to remove both its registration and install tree."""
+    deadline = time.monotonic() + timeout
+    while True:
+        registration = _registry_uninstall()
+        if registration is None and not install.exists():
+            return
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise DistributionError("uninstaller did not remove its registration and installed program tree")
+        time.sleep(min(0.1, remaining))
 
 
 def _installed_paths(profile: Path) -> tuple[Path, Path, Path, Path]:
@@ -399,8 +434,11 @@ def _validate_registration(
         raise DistributionError("uninstall registration has an unexpected display name")
     if registration.get("DisplayVersion") != expected_version:
         raise DistributionError("uninstall registration does not match the expected version")
-    location = registration.get("InstallLocation")
-    if not isinstance(location, str) or Path(location).resolve() != install.resolve():
+    try:
+        location = _registered_install_location(registration)
+    except DistributionError as exc:
+        raise DistributionError("uninstall registration has an invalid install location") from exc
+    if location != install.resolve():
         raise DistributionError("uninstall registration points outside the expected per-user install root")
     run_value, approval = _run_value_and_approval()
     if expected_startup:
@@ -513,25 +551,29 @@ def _cleanup_owned_install() -> None:
     install = _owned_install
     if install is not None and install.is_dir():
         registration = _registry_uninstall()
-        location = registration.get("InstallLocation") if registration else None
-        if isinstance(location, str) and Path(location).resolve() == install.resolve():
+        if registration:
             try:
-                remaining = _processes_under_install(_process_inventory(), install)
-                if remaining:
-                    failure.append("owned installer cleanup skipped because a process remains in the installed program tree")
-                else:
-                    executable = _uninstall_command(registration)
-                    _installer(executable, ["/S"], cwd=install.parent)
-                    if install.exists() or _registry_uninstall() is not None:
-                        failure.append("owned installer cleanup did not remove its registered program tree")
+                location = _registered_install_location(registration)
             except Exception:
-                failure.append("could not remove the exact run-owned installation through its uninstaller")
+                failure.append("owned installer cleanup skipped because its registration path is malformed")
+            else:
+                if location == install.resolve():
+                    try:
+                        remaining = _processes_under_install(_process_inventory(), install)
+                        if remaining:
+                            failure.append("owned installer cleanup skipped because a process remains in the installed program tree")
+                        else:
+                            executable = _uninstall_command(registration, expected_install=install)
+                            _installer(executable, ["/S"], cwd=install.parent)
+                            _wait_for_uninstall_completion(install)
+                    except Exception:
+                        failure.append("could not remove the exact run-owned installation through its uninstaller")
     _owned_install = None
     if failure:
         raise DistributionError("; ".join(failure))
 
 
-def _uninstall_command(registration: dict[str, Any]) -> Path:
+def _uninstall_command(registration: dict[str, Any], *, expected_install: Path) -> Path:
     raw = registration.get("QuietUninstallString") or registration.get("UninstallString")
     if not isinstance(raw, str) or not raw.strip():
         raise DistributionError("registered per-user uninstaller is missing")
@@ -539,7 +581,10 @@ def _uninstall_command(registration: dict[str, Any]) -> Path:
     if not match:
         raise DistributionError("registered uninstaller path is malformed")
     executable = Path(match.group(1)).resolve()
-    if not executable.is_file() or not executable.is_relative_to(Path(str(registration["InstallLocation"])).resolve()):
+    install_location = _registered_install_location(registration)
+    if install_location != expected_install.resolve():
+        raise DistributionError("registered per-user uninstaller is outside the expected installed tree")
+    if not executable.is_file() or not executable.is_relative_to(install_location):
         raise DistributionError("registered uninstaller is outside the expected installed tree")
     return executable
 
@@ -1372,13 +1417,12 @@ def _run_distribution(args: argparse.Namespace, report: Report) -> None:
         assert registration is not None
         if _processes_under_install(_process_inventory(), install):
             raise DistributionError("uninstall skipped because an installed program process remains active")
-        uninstaller = _uninstall_command(registration)
+        uninstaller = _uninstall_command(registration, expected_install=install)
         prior_approval = _run_value_and_approval()[1]
         foreign_startup_command = '"C:\\Windows\\System32\\notepad.exe" --distribution-smoke-foreign-value'
         _set_run_value(foreign_startup_command)
         _installer(uninstaller, ["/S"], cwd=cwd)
-        if _registry_uninstall() is not None:
-            raise DistributionError("uninstall left per-user registration")
+        _wait_for_uninstall_completion(install)
         after_uninstall_run, after_uninstall_approval = _run_value_and_approval()
         if after_uninstall_run != foreign_startup_command:
             raise DistributionError("uninstall removed or changed a same-named startup command it did not own")

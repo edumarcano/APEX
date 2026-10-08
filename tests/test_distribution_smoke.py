@@ -63,6 +63,141 @@ else:
         self.assertEqual(completed.stdout.strip(), "PROCESS_BOUNDARY:FileNotFoundError")
 
 
+class DistributionInstallLocationTests(unittest.TestCase):
+    def _paths(self) -> tuple[Path, Path, Path, Path]:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        profile = root / "DisposableUser"
+        install = profile / "Programs" / distribution.APP_NAME
+        appdata = profile / "AppData" / "Roaming"
+        menu = appdata / "Microsoft" / "Windows" / "Start Menu" / "Programs"
+        install.mkdir(parents=True)
+        menu.mkdir(parents=True)
+        (menu / "APEX.lnk").write_bytes(b"test shortcut")
+        return root, profile, install, appdata
+
+    def _validate(self, profile: Path, install: Path, appdata: Path, raw_location: str) -> None:
+        registration = {
+            "DisplayName": distribution.APP_NAME,
+            "DisplayVersion": "2.1.0",
+            "InstallLocation": raw_location,
+        }
+        with patch.dict(os.environ, {"APPDATA": str(appdata)}), patch.object(
+            distribution, "_registry_uninstall", return_value=registration,
+        ), patch.object(distribution, "_run_value_and_approval", return_value=(None, None)), patch.object(
+            distribution, "_shortcut_app_id", return_value=distribution.APP_ID,
+        ) as shortcut, patch.object(distribution, "_has_embedded_manifest", return_value=True):
+            distribution._validate_registration(profile, install, "2.1.0")
+        shortcut.assert_called_once()
+
+    def test_registration_accepts_whole_quoted_and_unquoted_owned_path(self) -> None:
+        _, profile, install, appdata = self._paths()
+        for raw_location in (str(install), f'"{install}"'):
+            with self.subTest(quoted=raw_location.startswith('"')):
+                self._validate(profile, install, appdata, raw_location)
+
+    def test_registration_rejects_outside_and_malformed_install_locations(self) -> None:
+        root, profile, install, appdata = self._paths()
+        rejected = (
+            str(root / "Outside"),
+            f'"{install}',
+            f'"{install}" /S',
+        )
+        for raw_location in rejected:
+            with self.subTest(raw_location=raw_location):
+                registration = {
+                    "DisplayName": distribution.APP_NAME,
+                    "DisplayVersion": "2.1.0",
+                    "InstallLocation": raw_location,
+                }
+                with patch.dict(os.environ, {"APPDATA": str(appdata)}), patch.object(
+                    distribution, "_registry_uninstall", return_value=registration,
+                ), patch.object(distribution, "_shortcut_app_id") as shortcut:
+                    with self.assertRaises(distribution.DistributionError):
+                        distribution._validate_registration(profile, install, "2.1.0")
+                    shortcut.assert_not_called()
+
+    def test_cleanup_and_uninstaller_validate_the_same_quoted_location(self) -> None:
+        _, _, install, _ = self._paths()
+        uninstaller = install / "uninstall.exe"
+        uninstaller.write_bytes(b"test uninstaller")
+        registration = {
+            "InstallLocation": f'"{install}"',
+            "QuietUninstallString": f'"{uninstaller}" /S',
+        }
+        clock = [0.0]
+        tree_removed = [False]
+
+        def finish_external_uninstall(delay: float) -> None:
+            clock[0] += delay
+            if not tree_removed[0]:
+                tree_removed[0] = True
+                return
+            uninstaller.unlink()
+            install.rmdir()
+
+        with patch.object(distribution, "_owned_install", install), patch.object(
+            distribution, "_registry_uninstall", side_effect=[registration, None, None, None],
+        ), patch.object(distribution, "_process_inventory", return_value={}), patch.object(
+            distribution, "_uninstall_command", wraps=distribution._uninstall_command,
+        ) as command, patch.object(
+            distribution, "_installer",
+        ) as installer, patch.object(distribution.time, "monotonic", side_effect=lambda: clock[0]), patch.object(
+            distribution.time, "sleep", side_effect=finish_external_uninstall,
+        ):
+            distribution._cleanup_owned_install()
+        command.assert_called_once_with(registration, expected_install=install)
+        installer.assert_called_once_with(uninstaller.resolve(), ["/S"], cwd=install.parent)
+        self.assertFalse(install.exists())
+
+    def test_uninstall_command_rejects_executable_outside_expected_install(self) -> None:
+        root, _, install, _ = self._paths()
+        outside = root / "outside-uninstall.exe"
+        outside.write_bytes(b"outside uninstaller")
+        registration = {
+            "InstallLocation": f'"{install}"',
+            "QuietUninstallString": f'"{outside}" /S',
+        }
+        with self.assertRaises(distribution.DistributionError):
+            distribution._uninstall_command(registration, expected_install=install)
+
+        outside_install = root / "outside-install"
+        outside_install.mkdir()
+        outside_uninstaller = outside_install / "uninstall.exe"
+        outside_uninstaller.write_bytes(b"registered outside uninstaller")
+        outside_registration = {
+            "InstallLocation": f'"{outside_install}"',
+            "QuietUninstallString": f'"{outside_uninstaller}" /S',
+        }
+        with self.assertRaises(distribution.DistributionError):
+            distribution._uninstall_command(outside_registration, expected_install=install)
+
+    def test_uninstall_completion_wait_requires_both_registration_and_tree_to_disappear(self) -> None:
+        for registration_present, install_present in ((False, True), (True, False)):
+            with self.subTest(registration_present=registration_present, install_present=install_present):
+                _, _, install, _ = self._paths()
+                if not install_present:
+                    install.rmdir()
+                registration = {"InstallLocation": f'"{install}"'}
+                clock = [0.0]
+
+                def advance_clock(delay: float) -> None:
+                    clock[0] += delay
+
+                reported_registration = registration if registration_present else None
+                with patch.object(
+                    distribution, "_registry_uninstall", return_value=reported_registration,
+                ), patch.object(distribution.time, "monotonic", side_effect=lambda: clock[0]), patch.object(
+                    distribution.time, "sleep", side_effect=advance_clock,
+                ):
+                    with self.assertRaisesRegex(
+                        distribution.DistributionError, "did not remove its registration and installed program tree",
+                    ):
+                        distribution._wait_for_uninstall_completion(install, timeout=0.25)
+                self.assertGreaterEqual(clock[0], 0.25)
+
+
 def _create_test_junction(link: Path, target: Path, workdir: Path) -> None:
     creator = workdir / "create-test-junction.ps1"
     creator.write_text(
