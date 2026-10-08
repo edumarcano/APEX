@@ -37,6 +37,74 @@ _espeak_hook_spec.loader.exec_module(espeak_hook)
 
 
 class BackendBundleSmokeHarnessTests(unittest.TestCase):
+    def test_sapi_export_diagnostic_observes_real_worker_without_claiming_empty_wav_success(self) -> None:
+        callbacks = []
+        private_sentinel = "private voice and exception sentinel"
+        engine = Mock()
+        engine.getProperty.return_value = [SimpleNamespace(id=private_sentinel, name=private_sentinel)]
+
+        def connect(event: str, callback: object) -> None:
+            self.assertEqual(event, "error")
+            callbacks.append(callback)
+
+        def save_empty_wav(_text: str, output_path: str) -> None:
+            with wave.open(output_path, "wb") as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)
+                wav_file.setframerate(22050)
+
+        def run_and_report_errors() -> None:
+            class FakeSapiError(Exception):
+                hresult = -2147467259
+
+            for _ in range(5):
+                callbacks[0](engine, exception=FakeSapiError(private_sentinel))
+
+        engine.connect.side_effect = connect
+        engine.save_to_file.side_effect = save_empty_wav
+        engine.runAndWait.side_effect = run_and_report_errors
+        stdout = io.StringIO()
+        with patch.object(pyttsx3, "init", return_value=engine), contextlib.redirect_stdout(stdout):
+            exit_code = probe.main(["sapi-export-diagnostic", "--voice-gender", "female"])
+
+        self.assertEqual(exit_code, 0)
+        report = json.loads(stdout.getvalue())
+        self.assertEqual(report["status"], "diagnostic", report)
+        self.assertEqual(report["scenario"], "sapi-export-diagnostic")
+        self.assertEqual(report["voice_gender"], "female")
+        self.assertEqual(report["worker_exit_code"], 0)
+        self.assertTrue(report["wav_present"])
+        self.assertEqual(report["wav_frames"], 0)
+        self.assertEqual(report["wav_rate"], 22050)
+        self.assertEqual(report["wav_channels"], 1)
+        self.assertEqual(report["wav_sample_width_bytes"], 2)
+        self.assertEqual(report["wav_duration_seconds"], 0)
+        self.assertEqual(report["error_event_count"], 5)
+        self.assertEqual(report["errors"], [
+            {"exception_type": "FakeSapiError", "hresult": -2147467259},
+            {"exception_type": "FakeSapiError", "hresult": -2147467259},
+            {"exception_type": "FakeSapiError", "hresult": -2147467259},
+        ])
+        self.assertNotIn(private_sentinel, stdout.getvalue())
+        self.assertEqual(engine.stop.call_count, 1)
+
+    def test_sapi_export_diagnostic_preserves_nonzero_worker_exit(self) -> None:
+        engine = Mock()
+        engine.getProperty.return_value = []
+        stdout = io.StringIO()
+        with patch.object(pyttsx3, "init", return_value=engine), contextlib.redirect_stdout(stdout):
+            exit_code = probe.main(["sapi-export-diagnostic", "--voice-gender", "male"])
+
+        self.assertEqual(exit_code, 0)
+        report = json.loads(stdout.getvalue())
+        self.assertEqual(report["status"], "diagnostic")
+        self.assertEqual(report["worker_exit_code"], 3)
+        self.assertFalse(report["wav_present"])
+        self.assertEqual(report["wav_bytes"], 0)
+        self.assertEqual(report["error_event_count"], 0)
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(engine.stop.call_count, 1)
+
     def test_audio_worker_reports_empty_wav_metadata_without_relaxing_validation(self) -> None:
         from core import speaker
 

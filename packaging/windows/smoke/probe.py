@@ -140,6 +140,89 @@ def _audio_worker() -> dict[str, object]:
     return {"worker_engine": engine, "wav_bytes": len(audio)}
 
 
+def _sapi_export_diagnostic(voice_gender: str) -> dict[str, object]:
+    """Observe the production speech-export worker without changing its result."""
+    import io
+    import tempfile
+    import wave
+
+    import pyttsx3
+
+    if voice_gender not in {"male", "female"}:
+        raise ValueError("unsupported diagnostic voice gender")
+
+    error_event_count = 0
+    errors: list[dict[str, object]] = []
+
+    def observe_error(*args: object, **kwargs: object) -> None:
+        nonlocal error_event_count
+        error_event_count = min(error_event_count + 1, 1_000_000)
+        candidates = (*args, *kwargs.values())
+        exception = next((item for item in candidates if isinstance(item, BaseException)), None)
+        if exception is None or len(errors) >= 3:
+            return
+        exception_type = type(exception).__name__
+        if not exception_type.isidentifier() or len(exception_type) > 80:
+            exception_type = "Exception"
+        hresult = getattr(exception, "hresult", None)
+        if isinstance(hresult, bool) or not isinstance(hresult, int) or not -(2**31) <= hresult < 2**32:
+            hresult = None
+        errors.append({"exception_type": exception_type, "hresult": hresult})
+
+    real_init = pyttsx3.init
+
+    def observed_init(*args: object, **kwargs: object) -> object:
+        engine = real_init(*args, **kwargs)
+        engine.connect("error", observe_error)
+        return engine
+
+    evidence: dict[str, object] = {
+        "schema_version": 1,
+        "scenario": "sapi-export-diagnostic",
+        "status": "diagnostic",
+        "voice_gender": voice_gender,
+        "worker_exit_code": None,
+        "wav_present": False,
+        "wav_bytes": 0,
+        "wav_frames": None,
+        "wav_rate": None,
+        "wav_channels": None,
+        "wav_sample_width_bytes": None,
+        "wav_duration_seconds": None,
+        "wav_parse_error_type": None,
+        "error_event_count": 0,
+        "errors": [],
+    }
+    with tempfile.TemporaryDirectory(prefix="apex-sapi-diagnostic-") as temporary_root:
+        output_path = Path(temporary_root) / "speech.wav"
+        request = json.dumps({"text": "APEX speech export diagnostic.", "gender": voice_gender})
+        with patch.object(pyttsx3, "init", observed_init), patch.object(sys, "stdin", io.StringIO(request)):
+            with redirect_stdout(sys.stderr):
+                evidence["worker_exit_code"] = _worker_dispatch(["worker", "speech-export", str(output_path)])
+
+        evidence["wav_present"] = output_path.is_file()
+        if evidence["wav_present"]:
+            wav_bytes = output_path.stat().st_size
+            evidence["wav_bytes"] = wav_bytes
+            try:
+                with wave.open(str(output_path), "rb") as wav_file:
+                    frames = wav_file.getnframes()
+                    rate = wav_file.getframerate()
+                    evidence.update({
+                        "wav_frames": frames,
+                        "wav_rate": rate,
+                        "wav_channels": wav_file.getnchannels(),
+                        "wav_sample_width_bytes": wav_file.getsampwidth(),
+                        "wav_duration_seconds": frames / rate if rate else None,
+                    })
+            except (OSError, EOFError, wave.Error) as exc:
+                evidence["wav_parse_error_type"] = type(exc).__name__
+
+    evidence["error_event_count"] = error_event_count
+    evidence["errors"] = errors
+    return evidence
+
+
 def _no_model_assets() -> dict[str, object]:
     import fastembed  # noqa: F401
     from core.retrieval.embedding import EmbeddingError, FastEmbedAdapter
@@ -562,8 +645,26 @@ def main(argv: list[str] | None = None) -> int:
     if worker is not None:
         return worker
     parser = argparse.ArgumentParser(description="Constrained frozen APEX packaging checks.")
-    parser.add_argument("scenario", choices=("imports", "retrieval", "audio-worker", "no-model-assets", "startup-no-optional-models", "semantic-assets", "kokoro-assets", "lifecycle", "managed-host-diagnostic"))
+    parser.add_argument("scenario", choices=("imports", "retrieval", "audio-worker", "sapi-export-diagnostic", "no-model-assets", "startup-no-optional-models", "semantic-assets", "kokoro-assets", "lifecycle", "managed-host-diagnostic"))
+    parser.add_argument("--voice-gender", choices=("male", "female"))
     args = parser.parse_args(values)
+    if args.scenario == "sapi-export-diagnostic":
+        if args.voice_gender is None:
+            parser.error("sapi-export-diagnostic requires --voice-gender")
+        try:
+            evidence = _sapi_export_diagnostic(args.voice_gender)
+            _write_json_line(evidence)
+        except Exception as exc:  # noqa: BLE001 - diagnostic output is intentionally class-only
+            _write_json_line({
+                "schema_version": 1,
+                "scenario": "sapi-export-diagnostic",
+                "status": "unavailable",
+                "voice_gender": args.voice_gender,
+                "diagnostic_error_type": type(exc).__name__[:80],
+            })
+        return 0
+    if args.voice_gender is not None:
+        parser.error("--voice-gender is only valid with sapi-export-diagnostic")
     if args.scenario == "managed-host-diagnostic":
         return _managed_host_diagnostic()
     try:

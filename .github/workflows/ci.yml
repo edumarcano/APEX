@@ -169,6 +169,114 @@ jobs:
             }
           }
 
+      - name: Compare source and frozen SAPI export diagnostics
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          function Invoke-SapiExportDiagnostic([string]$Mode, [string]$Gender) {
+            if ($Mode -eq "source") {
+              $output = uv run --locked --all-extras --python 3.14.7 python packaging/windows/smoke/probe.py sapi-export-diagnostic --voice-gender $Gender 2>$null
+            } else {
+              $output = & "build\backend-bundle\smoke-probe\apex-bundle-probe.exe" sapi-export-diagnostic --voice-gender $Gender 2>$null
+            }
+            $helperExitCode = $LASTEXITCODE
+            if ($helperExitCode -ne 0) { throw "SAPI diagnostic helper returned a failure status." }
+
+            try {
+              $diagnostic = ($output -join "`n") | ConvertFrom-Json -ErrorAction Stop
+            } catch {
+              throw "SAPI diagnostic output was invalid."
+            }
+            if ($diagnostic.schema_version -ne 1 -or $diagnostic.scenario -ne "sapi-export-diagnostic" -or $diagnostic.status -ne "diagnostic" -or $diagnostic.voice_gender -ne $Gender) {
+              throw "SAPI diagnostic output was unavailable or unexpected."
+            }
+
+            foreach ($field in @("wav_present")) {
+              if ($diagnostic.$field -isnot [bool]) { throw "SAPI diagnostic output was invalid." }
+            }
+            $workerExitCode = $diagnostic.worker_exit_code
+            if ($null -ne $workerExitCode -and ($workerExitCode -isnot [int] -and $workerExitCode -isnot [long] -or $workerExitCode -lt -2147483648 -or $workerExitCode -gt 2147483647)) {
+              throw "SAPI diagnostic output was invalid."
+            }
+            foreach ($field in @("wav_bytes", "error_event_count")) {
+              $value = $diagnostic.$field
+              if ($null -eq $value -or ($value -isnot [int] -and $value -isnot [long] -or $value -lt 0)) {
+                throw "SAPI diagnostic output was invalid."
+              }
+            }
+            if ($diagnostic.error_event_count -gt 1000000) { throw "SAPI diagnostic output was invalid." }
+            foreach ($field in @("wav_frames", "wav_rate", "wav_channels", "wav_sample_width_bytes")) {
+              $value = $diagnostic.$field
+              if ($null -ne $value -and ($value -isnot [int] -and $value -isnot [long] -or $value -lt 0)) {
+                throw "SAPI diagnostic output was invalid."
+              }
+            }
+            $duration = $diagnostic.wav_duration_seconds
+            if ($null -ne $duration -and ($duration -isnot [double] -and $duration -isnot [int] -and $duration -isnot [long] -or [double]::IsNaN([double]$duration) -or [double]::IsInfinity([double]$duration) -or $duration -lt 0 -or $duration -gt 86400)) {
+              throw "SAPI diagnostic output was invalid."
+            }
+            foreach ($field in @("wav_parse_error_type")) {
+              $value = $diagnostic.$field
+              if ($null -ne $value -and ($value -isnot [string] -or $value -notmatch '^[A-Za-z_][A-Za-z0-9_.]{0,79}$')) {
+                throw "SAPI diagnostic output was invalid."
+              }
+            }
+            $errors = @($diagnostic.errors)
+            if ($errors.Count -gt 3) { throw "SAPI diagnostic output was invalid." }
+            $safeErrors = @()
+            foreach ($errorEvent in $errors) {
+              if ($errorEvent.exception_type -isnot [string] -or $errorEvent.exception_type -notmatch '^[A-Za-z_][A-Za-z0-9_.]{0,79}$') {
+                throw "SAPI diagnostic output was invalid."
+              }
+              $hresult = $errorEvent.hresult
+              if ($null -ne $hresult -and ($hresult -isnot [int] -and $hresult -isnot [long] -or $hresult -lt -2147483648 -or $hresult -gt 4294967295)) {
+                throw "SAPI diagnostic output was invalid."
+              }
+              $safeErrors += [ordered]@{ exception_type = $errorEvent.exception_type; hresult = $hresult }
+            }
+
+            $safeDiagnostic = [ordered]@{
+              mode = $Mode
+              schema_version = 1
+              scenario = $diagnostic.scenario
+              status = $diagnostic.status
+              voice_gender = $Gender
+              worker_exit_code = $diagnostic.worker_exit_code
+              wav_present = $diagnostic.wav_present
+              wav_bytes = $diagnostic.wav_bytes
+              wav_frames = $diagnostic.wav_frames
+              wav_rate = $diagnostic.wav_rate
+              wav_channels = $diagnostic.wav_channels
+              wav_sample_width_bytes = $diagnostic.wav_sample_width_bytes
+              wav_duration_seconds = $diagnostic.wav_duration_seconds
+              wav_parse_error_type = $diagnostic.wav_parse_error_type
+              error_event_count = $diagnostic.error_event_count
+              errors = $safeErrors
+            }
+            Write-Host ("APEX_SAPI_EXPORT_DIAGNOSTIC " + ($safeDiagnostic | ConvertTo-Json -Depth 4 -Compress))
+          }
+
+          $hadDataDir = Test-Path Env:APEX_DATA_DIR
+          $previousDataDir = $env:APEX_DATA_DIR
+          try {
+            if (-not $env:RUNNER_TEMP) { throw "SAPI diagnostic temp is unavailable." }
+            $env:APEX_DATA_DIR = Join-Path $env:RUNNER_TEMP ("apex-sapi-export-" + [guid]::NewGuid().ToString("N"))
+            New-Item -ItemType Directory -Path $env:APEX_DATA_DIR | Out-Null
+            foreach ($mode in @("source", "frozen")) {
+              foreach ($gender in @("male", "female")) {
+                Invoke-SapiExportDiagnostic -Mode $mode -Gender $gender
+              }
+            }
+          } catch {
+            throw "APEX SAPI export diagnostics could not complete."
+          } finally {
+            if ($hadDataDir) {
+              $env:APEX_DATA_DIR = $previousDataDir
+            } else {
+              Remove-Item Env:APEX_DATA_DIR -ErrorAction SilentlyContinue
+            }
+          }
+
       - name: Run strict frozen backend smoke
         run: >-
           uv run --locked --all-extras --python 3.14.7 python scripts/smoke_backend_bundle.py
