@@ -135,6 +135,11 @@ class DistributionFailureDiagnosticTests(unittest.TestCase):
                         "status": "failed",
                         "detail": "RuntimeError: candidate Kokoro release/reload assertion did not pass: private result",
                     },
+                    {
+                        "name": "bundle_smoke",
+                        "status": "failed",
+                        "detail": "RuntimeError: frozen build-info application version does not match the host runtime identity",
+                    },
                 ],
             }), encoding="utf-8")
 
@@ -142,7 +147,12 @@ class DistributionFailureDiagnosticTests(unittest.TestCase):
 
         self.assertEqual(
             [item["category"] for item in summary["failures"]],
-            ["bundle_shape_missing_files", "frozen_probe_audio_worker_failed", "kokoro_idle_release_failed"],
+            [
+                "bundle_shape_missing_files",
+                "frozen_probe_audio_worker_failed",
+                "kokoro_idle_release_failed",
+                "runtime_version_metadata_mismatch",
+            ],
         )
         self.assertTrue(all(item.get("error_class") in {None, "RuntimeError"} for item in summary["failures"]))
         self.assertNotIn("C:/private", json.dumps(summary))

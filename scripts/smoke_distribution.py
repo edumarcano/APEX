@@ -75,6 +75,7 @@ _BACKEND_MESSAGE_FAILURE_CODES = {
     "production backend speech-export worker timed out": "production_speech_worker_timed_out",
     "production backend worker did not write a valid WAV": "production_speech_worker_invalid_wav",
     "managed host failed readiness": "managed_host_readiness_failed",
+    "frozen build-info application version does not match the host runtime identity": "runtime_version_metadata_mismatch",
 }
 _owned_host: tuple[subprocess.Popen[bytes], Any, Any, str] | None = None
 _owned_process_identity: tuple[int, str, str] | None = None
