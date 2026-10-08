@@ -77,6 +77,11 @@ Var UpdateMode
 Var NoShortcutMode
 Var WixMode
 Var OldMainBinaryName
+Var PreviousUninstallMode
+Var PreviousUninstallExitCode
+Var PreviousInstallValidated
+Var PreviousRunValue
+Var PreviousMainBinaryName
 
 Name "${PRODUCTNAME}"
 BrandingText "${COPYRIGHT}"
@@ -234,6 +239,16 @@ Function PageReinstall
 
   nsis_tauri_utils::SemverCompare "${VERSION}" $R0
   Pop $R0
+  ; Version changes and explicit updates clean the previous install in the
+  ; install section, where one guarded path serves interactive and silent
+  ; installs. Do not let the maintenance page run its own uninstaller first.
+  ${If} $UpdateMode = 1
+  ${OrIf} $R0 != 0
+  ${OrIf} $PassiveMode = 1
+  ${OrIf} ${Silent}
+    Abort
+  ${EndIf}
+
   ; Reinstalling the same version
   ${If} $R0 = 0
     StrCpy $R1 "$(alreadyInstalledLong)"
@@ -354,12 +369,10 @@ Function PageLeaveReinstall
       ReadRegStr $R1 HKLM "$R6" "UninstallString"
       ExecWait '$R1' $0
     ${Else}
-      ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""
-      ReadRegStr $R1 SHCTX "${UNINSTKEY}" "UninstallString"
-      ${IfThen} $UpdateMode = 1 ${|} StrCpy $R1 "$R1 /UPDATE" ${|} ; append /UPDATE
-      ${IfThen} $PassiveMode = 1 ${|} StrCpy $R1 "$R1 /P" ${|} ; append /P
-      StrCpy $R1 "$R1 _?=$4" ; append uninstall directory
-      ExecWait '$R1' $0
+      ; Explicit maintenance uninstall is the only path that omits /UPDATE.
+      StrCpy $PreviousUninstallMode 0
+      Call UninstallPreviousVersion
+      StrCpy $0 $PreviousUninstallExitCode
     ${EndIf}
 
     BringToFront
@@ -589,24 +602,10 @@ SectionEnd
 
 Section Install
   Call CheckAPEXProcesses
-  ; Validate every existing destination path before NSIS creates or overwrites files.
-  StrCpy $0 "$INSTDIR\${MAINBINARYNAME}.exe"
-  Call CheckNoReparsePoint
-  {{#each resources_dirs}}
-    StrCpy $0 "$INSTDIR\\{{this}}"
-    Call CheckNoReparsePoint
-  {{/each}}
-  {{#each resources}}
-    StrCpy $0 "$INSTDIR\\{{this.[1]}}"
-    Call CheckNoReparsePoint
-  {{/each}}
-  {{#each binaries}}
-    StrCpy $0 "$INSTDIR\\{{this}}"
-    Call CheckNoReparsePoint
-  {{/each}}
-  ; WriteUninstaller replaces this file, so validate it before the write as well.
-  StrCpy $0 "$INSTDIR\uninstall.exe"
-  Call CheckNoReparsePoint
+  Call CheckInstallPayloadPaths
+  StrCpy $PreviousUninstallMode 1
+  Call UninstallPreviousVersion
+  Call CheckInstallPayloadPaths
   SetOutPath $INSTDIR
 
   !ifmacrodef NSIS_HOOK_PREINSTALL
@@ -902,6 +901,142 @@ Function un.CheckSafeInstallPath
   Call un.CheckNoReparsePoint
   StrCpy $0 "$INSTDIR"
   Call un.CheckNoReparsePoint
+FunctionEnd
+
+Function CheckInstallPayloadPaths
+  ; Check before cleanup and immediately before writing the new payload.
+  StrCpy $0 "$INSTDIR\${MAINBINARYNAME}.exe"
+  Call CheckNoReparsePoint
+  {{#each resources_dirs}}
+    StrCpy $0 "$INSTDIR\\{{this}}"
+    Call CheckNoReparsePoint
+  {{/each}}
+  {{#each resources}}
+    StrCpy $0 "$INSTDIR\\{{this.[1]}}"
+    Call CheckNoReparsePoint
+  {{/each}}
+  {{#each binaries}}
+    StrCpy $0 "$INSTDIR\\{{this}}"
+    Call CheckNoReparsePoint
+  {{/each}}
+  ; WriteUninstaller replaces this file, so check it in both passes too.
+  StrCpy $0 "$INSTDIR\uninstall.exe"
+  Call CheckNoReparsePoint
+FunctionEnd
+
+Function UninstallPreviousVersion
+  StrCpy $PreviousInstallValidated 0
+  StrCpy $PreviousUninstallExitCode 0
+  Call ValidatePreviousInstall
+  ${If} $PreviousInstallValidated = 0
+    Return
+  ${EndIf}
+
+  Call InvokePreviousUninstaller
+  ${If} ${Errors}
+  ${OrIf} $PreviousUninstallExitCode != 0
+    ${If} $PreviousUninstallMode = 1
+      Abort "The previous APEX installation could not be removed safely. No new files were installed."
+    ${EndIf}
+    Return
+  ${EndIf}
+  Call VerifyPreviousUninstall
+  ; Missing registration keys are expected after successful cleanup and NSIS
+  ; marks those reads as errors. PageLeaveReinstall inspects this flag.
+  ClearErrors
+FunctionEnd
+
+Function ValidatePreviousInstall
+  StrCpy $PreviousInstallValidated 0
+  ; Require the prior NSIS path and uninstall command to identify the same root.
+  ; Never execute the registry-provided command.
+  ReadRegStr $R0 SHCTX "${MANUPRODUCTKEY}" ""
+  ReadRegStr $R1 SHCTX "${UNINSTKEY}" "UninstallString"
+  ${If} $R0 == ""
+    ${If} $R1 == ""
+      ClearErrors
+      Return
+    ${EndIf}
+    Abort "The previous APEX installation could not be verified. No files were changed."
+  ${EndIf}
+  ${If} $R0 != $INSTDIR
+    Abort "The previous APEX installation path could not be verified. No files were changed."
+  ${EndIf}
+  StrCpy $R2 '$\"$INSTDIR\uninstall.exe$\"'
+  ${If} $R1 != $R2
+    Abort "The previous APEX uninstaller could not be verified. No files were changed."
+  ${EndIf}
+  ReadRegStr $R3 SHCTX "${UNINSTKEY}" "DisplayVersion"
+  ${If} $R3 == ""
+    Abort "The previous APEX version could not be verified. No files were changed."
+  ${EndIf}
+  ReadRegStr $PreviousMainBinaryName SHCTX "${UNINSTKEY}" "MainBinaryName"
+  ${If} $PreviousMainBinaryName == ""
+    Abort "The previous APEX executable could not be verified. No files were changed."
+  ${EndIf}
+  ${GetFileName} "$PreviousMainBinaryName" $R4
+  ${If} $R4 != $PreviousMainBinaryName
+    Abort "The previous APEX executable could not be verified. No files were changed."
+  ${EndIf}
+
+  Call CheckSafeInstallPath
+  StrCpy $0 "$INSTDIR\uninstall.exe"
+  Call CheckNoReparsePoint
+  IfFileExists "$INSTDIR\uninstall.exe" previous_uninstaller_exists 0
+  Abort "The previous APEX uninstaller is missing. No files were changed."
+previous_uninstaller_exists:
+  Call CheckAPEXProcesses
+  ReadRegStr $PreviousRunValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}"
+  StrCpy $PreviousInstallValidated 1
+FunctionEnd
+
+Function InvokePreviousUninstaller
+  ; _?= makes NSIS run the installed uninstaller in place and wait for it.
+  ; The executable remains until WriteUninstaller replaces it after success.
+  ${If} $PreviousUninstallMode = 1
+    ClearErrors
+    ExecWait '$\"$INSTDIR\uninstall.exe$\" /S /UPDATE _?=$INSTDIR' $PreviousUninstallExitCode
+  ${Else}
+    StrCpy $R1 '$\"$INSTDIR\uninstall.exe$\"'
+    ${IfThen} $PassiveMode = 1 ${|} StrCpy $R1 "$R1 /P" ${|}
+    StrCpy $R1 "$R1 _?=$INSTDIR"
+    ClearErrors
+    ExecWait '$R1' $PreviousUninstallExitCode
+  ${EndIf}
+FunctionEnd
+
+Function VerifyPreviousUninstall
+  ReadRegStr $R0 SHCTX "${UNINSTKEY}" "UninstallString"
+  ${If} $R0 != ""
+    Abort "The previous APEX installer registration remains. No new files were installed."
+  ${EndIf}
+  IfFileExists "$INSTDIR\$PreviousMainBinaryName" previous_shell_remains 0
+  IfFileExists "$INSTDIR\backend-bundle\apex-backend.exe" previous_backend_remains 0
+  IfFileExists "$INSTDIR\backend-bundle\apex.exe" previous_backend_cli_remains 0
+
+  ${If} $PreviousUninstallMode = 1
+    ReadRegStr $R0 SHCTX "${MANUPRODUCTKEY}" ""
+    ${If} $R0 != $INSTDIR
+      Abort "The previous APEX install registration was not preserved. No new files were installed."
+    ${EndIf}
+    ReadRegStr $R0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}"
+    ${If} $R0 != $PreviousRunValue
+      Abort "The APEX startup setting changed during update cleanup. No new files were installed."
+    ${EndIf}
+  ${Else}
+    ReadRegStr $R0 SHCTX "${MANUPRODUCTKEY}" ""
+    ${If} $R0 != ""
+      Abort "The previous APEX install registration remains. No new files were installed."
+    ${EndIf}
+  ${EndIf}
+  Return
+
+previous_shell_remains:
+  Abort "The previous APEX application file remains. No new files were installed."
+previous_backend_remains:
+  Abort "The previous APEX backend remains. No new files were installed."
+previous_backend_cli_remains:
+  Abort "The previous APEX CLI remains. No new files were installed."
 FunctionEnd
 
 Function CheckNoReparsePoint
