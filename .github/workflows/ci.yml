@@ -106,7 +106,8 @@ jobs:
 
   distribution:
     name: Windows locked distribution validation
-    runs-on: windows-latest
+    # SAPI smoke needs built-in voice data; windows-latest returned SPERR_NOT_FOUND in both probes.
+    runs-on: windows-2022
     needs: [backend, frontend]
     timeout-minutes: 360
     defaults:
