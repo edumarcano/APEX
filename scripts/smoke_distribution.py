@@ -266,8 +266,19 @@ def _owned_install_snapshot(install: Path | None) -> dict[str, object]:
 
 def _cleanup_failure_codes(error: BaseException) -> list[str]:
     """Map internal cleanup messages to fixed public diagnostic categories."""
-    messages = str(error).split("; ")
-    codes = {_CLEANUP_FAILURE_CODES.get(message, "other") for message in messages}
+    messages = str(error)
+    # Cleanup errors are joined with "; ", and one known message also contains
+    # that delimiter. Replace only whole, boundary-delimited messages before
+    # splitting so its fixed category is not lost with the trailing clause.
+    for message, code in sorted(_CLEANUP_FAILURE_CODES.items(), key=lambda item: len(item[0]), reverse=True):
+        pattern = re.compile(rf"(^|; ){re.escape(message)}(?=; |$)")
+        messages = pattern.sub(lambda match, value=code: f"{match.group(1)}\x1e{value}\x1e", messages)
+    codes: set[str] = set()
+    for message in messages.split("; "):
+        if message.startswith("\x1e") and message.endswith("\x1e"):
+            codes.add(message[1:-1])
+        else:
+            codes.add("other")
     return sorted(codes)
 
 

@@ -231,6 +231,18 @@ class DistributionFailureDiagnosticTests(unittest.TestCase):
             ["other"],
         )
 
+    def test_cleanup_failure_projection_preserves_semicolon_inside_known_message(self) -> None:
+        error = distribution.DistributionError(
+            "owned backend identity changed; it was left running; "
+            "could not safely stop the exact probe-owned backend process; private path"
+        )
+
+        self.assertEqual(distribution._cleanup_failure_codes(error), [
+            "other",
+            "owned_backend_identity_changed",
+            "owned_backend_stop_failed",
+        ])
+
 
 class DistributionInstallLocationTests(unittest.TestCase):
     def _paths(self) -> tuple[Path, Path, Path, Path]:
