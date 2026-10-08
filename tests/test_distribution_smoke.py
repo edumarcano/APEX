@@ -63,6 +63,142 @@ else:
         self.assertEqual(completed.stdout.strip(), "PROCESS_BOUNDARY:FileNotFoundError")
 
 
+class DistributionFailureDiagnosticTests(unittest.TestCase):
+    def test_backend_smoke_summary_keeps_failure_names_and_class_without_detail(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            report_path = Path(temporary) / "backend-report.json"
+            report_path.write_text(json.dumps({
+                "result": "failed",
+                "checks": [
+                    {"name": "api_port_available", "status": "passed", "detail": None},
+                    {
+                        "name": "production_backend_worker_valid_wav",
+                        "status": "failed",
+                        "detail": "RuntimeError: private profile path C:/Users/example/data",
+                    },
+                    {"name": "second_failure", "status": "failed", "detail": "opaque worker output"},
+                ],
+            }), encoding="utf-8")
+
+            summary = distribution._safe_backend_smoke_summary(report_path)
+
+        serialized = json.dumps(summary)
+        self.assertEqual(summary["report_status"], "failed")
+        self.assertEqual(summary["status_counts"], {"passed": 1, "failed": 2, "unverified": 0})
+        self.assertEqual(summary["failures"][0], {
+            "name": "production_backend_worker_valid_wav",
+            "status": "failed",
+            "error_class": "RuntimeError",
+        })
+        self.assertNotIn("private profile path", serialized)
+        self.assertNotIn("C:/Users/example", serialized)
+        self.assertNotIn("opaque worker output", serialized)
+
+    def test_backend_smoke_summary_caps_error_class_and_retains_last_passed_checks(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            report_path = Path(temporary) / "backend-report.json"
+            checks = [
+                {"name": f"check_{index}", "status": "passed", "detail": None}
+                for index in range(10)
+            ]
+            checks.append({
+                "name": "bundle_smoke",
+                "status": "failed",
+                "detail": f"{'A' * 100}Error: private diagnostics",
+            })
+            report_path.write_text(json.dumps({"result": "failed", "checks": checks}), encoding="utf-8")
+
+            summary = distribution._safe_backend_smoke_summary(report_path)
+
+        self.assertEqual(summary["last_passed_checks"], [f"check_{index}" for index in range(2, 10)])
+        self.assertNotIn("error_class", summary["failures"][0])
+        self.assertLessEqual(len(json.dumps(summary)), 2048)
+
+    def test_owned_install_snapshot_lists_only_bounded_relative_names(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            install = Path(temporary) / "Programs" / "APEX"
+            bundle = install / "backend-bundle"
+            bundle.mkdir(parents=True)
+            (install / "apex-desktop.exe").write_bytes(b"binary")
+            (bundle / "apex-backend.exe").write_bytes(b"binary")
+
+            snapshot = distribution._owned_install_snapshot(install)
+
+        serialized = json.dumps(snapshot)
+        self.assertTrue(snapshot["present"])
+        self.assertEqual(snapshot["file_count"], 2)
+        self.assertEqual(snapshot["directory_count"], 1)
+        self.assertIn("backend-bundle/apex-backend.exe", snapshot["sample"])
+        self.assertNotIn(str(install), serialized)
+
+    def test_owned_install_snapshot_caps_sample_names(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            install = Path(temporary) / "Programs" / "APEX"
+            install.mkdir(parents=True)
+            for index in range(40):
+                (install / f"file-{index:02}.dll").write_bytes(b"binary")
+
+            snapshot = distribution._owned_install_snapshot(install)
+
+        self.assertEqual(snapshot["file_count"], 40)
+        self.assertLessEqual(len(snapshot["sample"]), 24)
+
+    @unittest.skipUnless(os.name == "nt", "Windows reparse-point behavior is platform-specific")
+    def test_owned_install_snapshot_refuses_root_junction_and_skips_child_junction(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            outside = root / "outside"
+            outside.mkdir()
+            (outside / "private.marker").write_text("do not enumerate", encoding="utf-8")
+
+            root_junction = root / "root-junction"
+            _create_test_junction(root_junction, outside, root)
+            root_result = distribution._owned_install_snapshot(root_junction)
+            os.rmdir(root_junction)
+
+            install = root / "Programs" / "APEX"
+            install.mkdir(parents=True)
+            (install / "owned.txt").write_text("owned", encoding="utf-8")
+            child_junction = install / "redirected"
+            _create_test_junction(child_junction, outside, root)
+            child_result = distribution._owned_install_snapshot(install)
+            os.rmdir(child_junction)
+
+        self.assertEqual(root_result["inventory_error_class"], "ReparsePoint")
+        self.assertEqual(root_result["file_count"], 0)
+        self.assertEqual(child_result["file_count"], 1)
+        self.assertNotIn("private.marker", child_result["sample"])
+
+    def test_backend_smoke_summary_handles_malformed_status_types(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            report_path = Path(temporary) / "backend-report.json"
+            report_path.write_text(json.dumps({
+                "result": {"unexpected": "object"},
+                "checks": [{"name": "unsafe", "status": ["failed"], "detail": "ignored"}],
+            }), encoding="utf-8")
+
+            summary = distribution._safe_backend_smoke_summary(report_path)
+
+        self.assertEqual(summary["report_status"], "invalid")
+        self.assertEqual(summary["check_count"], 1)
+        self.assertEqual(summary["status_counts"], {"passed": 0, "failed": 0, "unverified": 0})
+        self.assertEqual(summary["failures"], [])
+
+    def test_cleanup_failure_messages_project_to_fixed_categories(self) -> None:
+        error = distribution.DistributionError(
+            "could not remove the exact run-owned installation through its uninstaller; "
+            "owned installer cleanup skipped because a process remains in the installed program tree"
+        )
+        self.assertEqual(distribution._cleanup_failure_codes(error), [
+            "installed_processes_remain",
+            "uninstaller_failed",
+        ])
+        self.assertEqual(
+            distribution._cleanup_failure_codes(distribution.DistributionError("private path")),
+            ["other"],
+        )
+
+
 class DistributionInstallLocationTests(unittest.TestCase):
     def _paths(self) -> tuple[Path, Path, Path, Path]:
         temporary = tempfile.TemporaryDirectory()

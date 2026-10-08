@@ -42,6 +42,17 @@ DATA_SUBDIR = Path(APP_NAME)
 PROFILE_MARKER = ".apex-distribution-smoke-profile"
 INSTALL_TIMEOUT = 300
 PROCESS_TIMEOUT = 30
+_SAFE_CHECK_NAME = re.compile(r"^[a-z][a-z0-9_]{0,95}$")
+_SAFE_ERROR_CLASS = re.compile(
+    r"^((?:[A-Za-z_][A-Za-z0-9_]*\.)*[A-Za-z_][A-Za-z0-9_]*(?:Error|Exception|TimeoutExpired))(?::|\b)"
+)
+_CLEANUP_FAILURE_CODES = {
+    "owned backend identity changed; it was left running": "owned_backend_identity_changed",
+    "could not safely stop the exact probe-owned backend process": "owned_backend_stop_failed",
+    "owned installer cleanup skipped because its registration path is malformed": "registration_path_invalid",
+    "owned installer cleanup skipped because a process remains in the installed program tree": "installed_processes_remain",
+    "could not remove the exact run-owned installation through its uninstaller": "uninstaller_failed",
+}
 _owned_host: tuple[subprocess.Popen[bytes], Any, Any, str] | None = None
 _owned_process_identity: tuple[int, str, str] | None = None
 _owned_install: Path | None = None
@@ -83,6 +94,129 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _safe_backend_smoke_summary(path: Path) -> dict[str, object]:
+    """Project a failed nested smoke report without exposing details or paths."""
+    try:
+        if path.stat().st_size > 1024 * 1024:
+            return {"report_status": "oversized"}
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {"report_status": "unavailable"}
+    if not isinstance(value, dict) or not isinstance(value.get("checks"), list):
+        return {"report_status": "invalid"}
+
+    status = value.get("result")
+    if not isinstance(status, str) or status not in {"passed", "failed", "unverified"}:
+        status = "invalid"
+    counts: Counter[str] = Counter()
+    failures: list[dict[str, str]] = []
+    last_passed: list[str] = []
+    checks = value["checks"]
+    for item in checks[:10000]:
+        if not isinstance(item, dict):
+            continue
+        check_status = item.get("status")
+        if not isinstance(check_status, str) or check_status not in {"passed", "failed", "unverified"}:
+            continue
+        counts[check_status] += 1
+        if check_status == "passed":
+            name = item.get("name")
+            if not isinstance(name, str) or not _SAFE_CHECK_NAME.fullmatch(name):
+                name = "invalid_check_name"
+            last_passed.append(name)
+            if len(last_passed) > 8:
+                del last_passed[0]
+        if check_status != "failed" or len(failures) >= 12:
+            continue
+        name = item.get("name")
+        if not isinstance(name, str) or not _SAFE_CHECK_NAME.fullmatch(name):
+            name = "invalid_check_name"
+        entry = {"name": name, "status": check_status}
+        detail = item.get("detail")
+        if isinstance(detail, str):
+            match = _SAFE_ERROR_CLASS.match(detail)
+            if match and len(match.group(1)) <= 80:
+                entry["error_class"] = match.group(1)
+        failures.append(entry)
+    return {
+        "report_status": status,
+        "check_count": len(checks),
+        "status_counts": {key: counts[key] for key in ("passed", "failed", "unverified")},
+        "last_passed_checks": last_passed,
+        "failures": failures,
+        "checks_truncated": len(checks) > 10000,
+    }
+
+
+def _owned_install_snapshot(install: Path | None) -> dict[str, object]:
+    """Return bounded relative names/counts for the exact run-owned install only."""
+    is_junction = getattr(os.path, "isjunction", lambda _path: False)
+    if install is not None and (install.is_symlink() or is_junction(install)):
+        return {"present": True, "inventory_error_class": "ReparsePoint", "file_count": 0, "directory_count": 0, "sample": []}
+    if install is None or not install.is_dir():
+        return {"present": False, "file_count": 0, "directory_count": 0, "sample": []}
+    root = install.resolve()
+    pending = [root]
+    files = 0
+    directories = 0
+    visited = 0
+    sample: list[str] = []
+    truncated = False
+    while pending and visited < 10000:
+        directory = pending.pop()
+        try:
+            entries = os.scandir(directory)
+        except OSError as exc:
+            return {
+                "present": True,
+                "inventory_error_class": type(exc).__name__,
+                "file_count": files,
+                "directory_count": directories,
+                "sample": sample,
+                "truncated": True,
+            }
+        with entries:
+            for entry in entries:
+                visited += 1
+                if visited > 10000:
+                    truncated = True
+                    break
+                try:
+                    if entry.is_symlink() or is_junction(entry.path):
+                        continue
+                    relative = Path(entry.path).relative_to(root).as_posix()
+                    if entry.is_dir(follow_symlinks=False):
+                        directories += 1
+                        pending.append(Path(entry.path))
+                    elif entry.is_file(follow_symlinks=False):
+                        files += 1
+                    else:
+                        continue
+                except (OSError, ValueError):
+                    continue
+                if len(sample) < 24:
+                    if re.fullmatch(r"[A-Za-z0-9._ /-]{1,240}", relative) and ".." not in relative.split("/"):
+                        sample.append(relative)
+                    else:
+                        sample.append("<redacted-name>")
+    if pending:
+        truncated = True
+    return {
+        "present": True,
+        "file_count": files,
+        "directory_count": directories,
+        "sample": sample,
+        "truncated": truncated,
+    }
+
+
+def _cleanup_failure_codes(error: BaseException) -> list[str]:
+    """Map internal cleanup messages to fixed public diagnostic categories."""
+    messages = str(error).split("; ")
+    codes = {_CLEANUP_FAILURE_CODES.get(message, "other") for message in messages}
+    return sorted(codes)
 
 
 def _run(command: Sequence[str], *, cwd: Path, timeout: int, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -1378,11 +1512,32 @@ def _run_distribution(args: argparse.Namespace, report: Report) -> None:
             "--kokoro-assets", str(args.kokoro_assets.resolve()), "--inference-timeout", "600",
             "--report", str(backend_report),
         ]
-        suite = _run(suite_args, cwd=cwd, timeout=1800)
+        try:
+            suite = _run(suite_args, cwd=cwd, timeout=1800)
+        except DistributionError:
+            summary = _safe_backend_smoke_summary(backend_report)
+            report.add(
+                "strict_frozen_backend_diagnostic",
+                "failed",
+                json.dumps({"invocation": "timed_out_or_failed", **summary}, sort_keys=True, separators=(",", ":")),
+            )
+            raise
         if suite.returncode != 0 or not backend_report.is_file():
+            summary = _safe_backend_smoke_summary(backend_report)
+            report.add(
+                "strict_frozen_backend_diagnostic",
+                "failed",
+                json.dumps({"invocation_exit_code": suite.returncode, **summary}, sort_keys=True, separators=(",", ":")),
+            )
             raise DistributionError("full strict frozen backend smoke did not complete successfully")
         backend_result = json.loads(backend_report.read_text(encoding="utf-8"))
         if not isinstance(backend_result, dict) or backend_result.get("result") != "passed":
+            summary = _safe_backend_smoke_summary(backend_report)
+            report.add(
+                "strict_frozen_backend_diagnostic",
+                "failed",
+                json.dumps({"invocation_exit_code": suite.returncode, **summary}, sort_keys=True, separators=(",", ":")),
+            )
             raise DistributionError("full strict frozen backend smoke reported a non-passing result")
         report.add("strict_frozen_backend_and_idle_release_smoke", "passed")
 
@@ -1495,19 +1650,39 @@ def main(argv: Sequence[str] | None = None) -> int:
     except DistributionError as exc:
         report.add("distribution_lifecycle", "failed", str(exc)[:2048])
         if _owned_install is not None:
+            install = _owned_install
             try:
                 _cleanup_owned_install()
             except DistributionError as cleanup_error:
-                report.add("owned_install_cleanup", "failed", str(cleanup_error)[:512])
+                summary = {
+                    "error_class": type(cleanup_error).__name__,
+                    "failure_categories": _cleanup_failure_codes(cleanup_error),
+                    "leftovers": _owned_install_snapshot(install),
+                }
+                report.add(
+                    "owned_install_cleanup",
+                    "failed",
+                    json.dumps(summary, sort_keys=True, separators=(",", ":")),
+                )
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         # Filesystem and JSON exceptions commonly embed absolute user paths or
         # data snippets. Keep the public report useful without exposing them.
         report.add("distribution_lifecycle", "failed", f"{type(exc).__name__}: operation failed")
         if _owned_install is not None:
+            install = _owned_install
             try:
                 _cleanup_owned_install()
             except DistributionError as cleanup_error:
-                report.add("owned_install_cleanup", "failed", str(cleanup_error)[:512])
+                summary = {
+                    "error_class": type(cleanup_error).__name__,
+                    "failure_categories": _cleanup_failure_codes(cleanup_error),
+                    "leftovers": _owned_install_snapshot(install),
+                }
+                report.add(
+                    "owned_install_cleanup",
+                    "failed",
+                    json.dumps(summary, sort_keys=True, separators=(",", ":")),
+                )
     result = report.as_dict(mode=args.mode)
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(result, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
