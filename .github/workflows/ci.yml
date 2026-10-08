@@ -106,8 +106,7 @@ jobs:
 
   distribution:
     name: Windows locked distribution validation
-    # SAPI smoke needs built-in voice data; windows-latest returned SPERR_NOT_FOUND in both probes.
-    runs-on: windows-2022
+    runs-on: windows-latest
     needs: [backend, frontend]
     timeout-minutes: 360
     defaults:
@@ -147,6 +146,10 @@ jobs:
       - name: Install locked frontend dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: Preflight source SAPI export
+        timeout-minutes: 5
+        run: uv run --locked --all-extras --python 3.14.7 python scripts/diagnose_distribution_sapi.py --source-only
 
       - name: Build reproducible backend bundle and frozen probe
         run: uv run --locked --all-extras --python 3.14.7 python scripts/build_backend_bundle.py --with-smoke-probe --reproducibility-check

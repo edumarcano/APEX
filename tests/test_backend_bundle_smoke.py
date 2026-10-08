@@ -81,12 +81,92 @@ class BackendBundleSmokeHarnessTests(unittest.TestCase):
         self.assertEqual(report["wav_duration_seconds"], 0)
         self.assertEqual(report["error_event_count"], 5)
         self.assertEqual(report["errors"], [
-            {"exception_type": "FakeSapiError", "hresult": -2147467259},
-            {"exception_type": "FakeSapiError", "hresult": -2147467259},
-            {"exception_type": "FakeSapiError", "hresult": -2147467259},
+            {"exception_type": "FakeSapiError", "hresult": -2147467259, "sapi_save_to_file_line_offset": None},
+            {"exception_type": "FakeSapiError", "hresult": -2147467259, "sapi_save_to_file_line_offset": None},
+            {"exception_type": "FakeSapiError", "hresult": -2147467259, "sapi_save_to_file_line_offset": None},
         ])
         self.assertNotIn(private_sentinel, stdout.getvalue())
         self.assertEqual(engine.stop.call_count, 1)
+
+    @unittest.skipUnless(sys.platform == "win32", "SAPI COM driver is Windows-specific")
+    def test_sapi_export_diagnostic_finds_actual_driver_line_without_exposing_traceback(self) -> None:
+        import comtypes.client
+        import pyttsx3.engine
+        from pyttsx3.drivers import sapi5
+
+        private_sentinel = "private COM traceback sentinel"
+
+        class FakeComError(Exception):
+            hresult = -2147200966
+
+        driver_code = None
+        actual_driver_offsets: list[int] = []
+
+        class FakeToken:
+            Id = private_sentinel
+
+            @staticmethod
+            def GetDescription() -> str:
+                return private_sentinel
+
+            @staticmethod
+            def GetAttribute(name: str) -> str:
+                return {"Language": "409", "Gender": "Female", "Age": "Adult"}[name]
+
+        class FakeVoice:
+            def __init__(self) -> None:
+                self.Voice = FakeToken()
+                self.AudioOutputStream = object()
+                self.Rate = 0
+
+            def GetVoices(self) -> list[FakeToken]:
+                return [FakeToken()]
+
+            def Speak(self, _text: str) -> None:
+                caller = sys._getframe(1)
+                if caller.f_code is driver_code:
+                    actual_driver_offsets.append(caller.f_lineno - caller.f_code.co_firstlineno)
+                raise FakeComError(private_sentinel)
+
+        class FakeFileStream:
+            def Open(self, filename: str, _mode: int) -> None:
+                with wave.open(filename, "wb") as wav_file:
+                    wav_file.setnchannels(1)
+                    wav_file.setsampwidth(2)
+                    wav_file.setframerate(22050)
+
+            def close(self) -> None:
+                return None
+
+        voice = FakeVoice()
+
+        def create_object(name: str) -> object:
+            return voice if name == "SAPI.SPVoice" else FakeFileStream()
+
+        with patch.object(comtypes.client, "CreateObject", side_effect=create_object), \
+             patch.object(comtypes.client, "GetEvents", return_value=object()):
+            engine = pyttsx3.engine.Engine(driverName="sapi5")
+            self.assertIsInstance(engine.proxy._driver, sapi5.SAPI5Driver)
+            driver_code = engine.proxy._driver.save_to_file.__code__
+            stdout = io.StringIO()
+            with patch.object(pyttsx3, "init", return_value=engine), contextlib.redirect_stdout(stdout):
+                exit_code = probe.main(["sapi-export-diagnostic", "--voice-gender", "female"])
+
+        self.assertEqual(exit_code, 0)
+        report = json.loads(stdout.getvalue())
+        self.assertEqual(report.get("status"), "diagnostic", report)
+        self.assertEqual(report["worker_exit_code"], 0)
+        self.assertEqual(report["wav_frames"], 0)
+        self.assertEqual(report["error_event_count"], 1)
+        self.assertEqual(len(report["errors"]), 1)
+        diagnostic_error = report["errors"][0]
+        self.assertEqual(diagnostic_error["exception_type"], "FakeComError")
+        self.assertEqual(diagnostic_error["hresult"], -2147200966)
+        self.assertIsInstance(diagnostic_error["sapi_save_to_file_line_offset"], int)
+        self.assertEqual(diagnostic_error["sapi_save_to_file_line_offset"], actual_driver_offsets[0])
+        self.assertGreater(diagnostic_error["sapi_save_to_file_line_offset"], 0)
+        self.assertLessEqual(diagnostic_error["sapi_save_to_file_line_offset"], 256)
+        self.assertNotIn(private_sentinel, stdout.getvalue())
 
     def test_sapi_export_diagnostic_preserves_nonzero_worker_exit(self) -> None:
         engine = Mock()

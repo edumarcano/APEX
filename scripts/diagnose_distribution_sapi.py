@@ -99,11 +99,20 @@ def _project_diagnostic(
         raise DiagnosticError("SAPI diagnostic output was invalid.")
     safe_errors: list[dict[str, object]] = []
     for error in errors:
-        if not isinstance(error, dict) or set(error) != {"exception_type", "hresult"}:
+        if not isinstance(error, dict) or set(error) != {
+            "exception_type", "hresult", "sapi_save_to_file_line_offset"
+        }:
             raise DiagnosticError("SAPI diagnostic output was invalid.")
         exception_type = _class_name(error.get("exception_type"))
         hresult = _integer(error.get("hresult"), minimum=-(2**31), maximum=2**32 - 1, nullable=True)
-        safe_errors.append({"exception_type": exception_type, "hresult": hresult})
+        line_offset = _integer(
+            error.get("sapi_save_to_file_line_offset"), minimum=0, maximum=256, nullable=True
+        )
+        safe_errors.append({
+            "exception_type": exception_type,
+            "hresult": hresult,
+            "sapi_save_to_file_line_offset": line_offset,
+        })
 
     return {
         "mode": mode,
@@ -154,22 +163,24 @@ def _invoke(
 
 
 def run_diagnostics(
-    frozen_probe: Path,
+    frozen_probe: Path | None,
     *,
     project_root: Path,
     scratch_root: Path,
+    source_only: bool = False,
     on_result: Callable[[dict[str, object]], None] | None = None,
 ) -> list[dict[str, object]]:
     source_probe = project_root / "packaging" / "windows" / "smoke" / "probe.py"
-    if not source_probe.is_file() or not frozen_probe.is_file():
+    if not source_probe.is_file() or (not source_only and (frozen_probe is None or not frozen_probe.is_file())):
         raise DiagnosticError("SAPI diagnostic executable was unavailable.")
 
     working_directory = scratch_root / "unrelated-working-directory"
     working_directory.mkdir(parents=True, exist_ok=True)
     results: list[dict[str, object]] = []
     strict_environment_root = scratch_root / "strict-environment"
+    modes = ("source",) if source_only else _MODES
     for context in _ENVIRONMENTS:
-        for mode in _MODES:
+        for mode in modes:
             for gender in _GENDERS:
                 profile = scratch_root / f"{context}-{mode}-{gender}-profile"
                 if context == "strict-sanitized":
@@ -178,10 +189,12 @@ def run_diagnostics(
                     environment = os.environ.copy()
                     profile.mkdir(parents=True, exist_ok=True)
                     environment["APEX_DATA_DIR"] = str(profile.resolve())
-                executable = sys.executable if mode == "source" else str(frozen_probe.resolve())
-                command = [executable]
                 if mode == "source":
-                    command.append(str(source_probe.resolve()))
+                    command = [sys.executable, str(source_probe.resolve())]
+                else:
+                    if frozen_probe is None:
+                        raise DiagnosticError("SAPI diagnostic executable was unavailable.")
+                    command = [str(frozen_probe.resolve())]
                 command.extend((_SCENARIO, "--voice-gender", gender))
                 result = _invoke(
                     command,
@@ -197,28 +210,50 @@ def run_diagnostics(
     return results
 
 
+def _source_only_diagnostics_healthy(results: list[dict[str, object]]) -> bool:
+    return len(results) == len(_ENVIRONMENTS) * len(_GENDERS) and all(
+        result.get("wav_present") is True
+        and type(result.get("wav_frames")) is int
+        and result["wav_frames"] > 0
+        and result.get("worker_exit_code") == 0
+        for result in results
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(
         description="Collect bounded source/frozen SAPI diagnostics in normal and strict environments."
     )
-    parser.add_argument("--frozen-probe", required=True, type=Path)
+    parser.add_argument("--frozen-probe", type=Path)
+    parser.add_argument("--source-only", action="store_true")
     args = parser.parse_args(argv)
+    if args.source_only != (args.frozen_probe is None):
+        parser.error("provide --source-only or --frozen-probe")
     project_root = Path(__file__).resolve().parents[1]
-    frozen_probe = args.frozen_probe if args.frozen_probe.is_absolute() else project_root / args.frozen_probe
+    frozen_probe = args.frozen_probe
+    if frozen_probe is not None and not frozen_probe.is_absolute():
+        frozen_probe = project_root / frozen_probe
     try:
         with tempfile.TemporaryDirectory(prefix="apex-smoke-測試-") as temporary:
-            run_diagnostics(
+            results = run_diagnostics(
                 frozen_probe,
                 project_root=project_root,
                 scratch_root=Path(temporary),
+                source_only=args.source_only,
                 on_result=lambda result: print(
                     "APEX_SAPI_EXPORT_DIAGNOSTIC "
                     + json.dumps(result, ensure_ascii=True, separators=(",", ":")),
                     flush=True,
                 ),
             )
+        if args.source_only and not _source_only_diagnostics_healthy(results):
+            print(
+                "APEX_SAPI_EXPORT_DIAGNOSTIC status=failed reason=source-audio-unhealthy",
+                file=sys.stderr,
+            )
+            return 1
     except DiagnosticError as exc:
         print(f"APEX_SAPI_EXPORT_DIAGNOSTIC status=unavailable reason={exc}", file=sys.stderr)
         return 1

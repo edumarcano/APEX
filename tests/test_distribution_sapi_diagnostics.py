@@ -1,31 +1,37 @@
 from __future__ import annotations
 
 import json
+import io
 import subprocess
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
 from scripts import diagnose_distribution_sapi as diagnostics
 
 
-def _diagnostic_payload(gender: str = "male") -> bytes:
+def _diagnostic_payload(gender: str = "male", *, worker_exit_code: int = 3, wav_frames: int = 0) -> bytes:
     return json.dumps({
         "schema_version": 1,
         "scenario": "sapi-export-diagnostic",
         "status": "diagnostic",
         "voice_gender": gender,
-        "worker_exit_code": 3,
+        "worker_exit_code": worker_exit_code,
         "wav_present": True,
         "wav_bytes": 46,
-        "wav_frames": 0,
+        "wav_frames": wav_frames,
         "wav_rate": 22050,
         "wav_channels": 1,
         "wav_sample_width_bytes": 2,
         "wav_duration_seconds": 0.0,
         "wav_parse_error_type": None,
         "error_event_count": 1,
-        "errors": [{"exception_type": "RuntimeError", "hresult": -1}],
+        "errors": [{
+            "exception_type": "RuntimeError",
+            "hresult": -1,
+            "sapi_save_to_file_line_offset": 34,
+        }],
         "private_extra": "must not be projected",
     }).encode("utf-8")
 
@@ -79,7 +85,11 @@ class DistributionSapiDiagnosticsTests(unittest.TestCase):
         self.assertNotIn(str((project / "packaging" / "windows" / "smoke" / "probe.py").resolve()), frozen_command)
         self.assertEqual(results[0]["worker_exit_code"], 3)
         self.assertEqual(results[0]["wav_frames"], 0)
-        self.assertEqual(results[0]["errors"], [{"exception_type": "RuntimeError", "hresult": -1}])
+        self.assertEqual(results[0]["errors"], [{
+            "exception_type": "RuntimeError",
+            "hresult": -1,
+            "sapi_save_to_file_line_offset": 34,
+        }])
         projected = json.dumps(results)
         self.assertNotIn("private_extra", projected)
         self.assertNotIn("private stderr", projected)
@@ -110,6 +120,40 @@ class DistributionSapiDiagnosticsTests(unittest.TestCase):
                     ["probe"], environment=env, cwd=Path("."), mode="frozen", context="strict-sanitized", gender="male"
                 )
         self.assertNotIn("private", str(timed_out.exception))
+
+    def test_source_only_without_frozen_probe_fails_on_empty_wav(self) -> None:
+        scratch = Path.cwd() / "apex-smoke-測試-source-only"
+        output = io.StringIO()
+        error = io.StringIO()
+        temporary_directory = mock.MagicMock()
+        temporary_directory.__enter__.return_value = str(scratch)
+        temporary_directory.__exit__.return_value = False
+        with mock.patch.object(diagnostics.tempfile, "TemporaryDirectory", return_value=temporary_directory), \
+                mock.patch.object(Path, "is_file", return_value=True), \
+                mock.patch.object(Path, "mkdir"), \
+                mock.patch.object(Path, "exists", return_value=False), \
+                mock.patch.object(Path, "write_text"), \
+                mock.patch.object(
+                    diagnostics.subprocess,
+                    "run",
+                    side_effect=lambda command, **_kwargs: subprocess.CompletedProcess(
+                        command,
+                        0,
+                        _diagnostic_payload(command[-1], worker_exit_code=0, wav_frames=0),
+                        b"private stderr",
+                    ),
+                ) as run, \
+                redirect_stdout(output), redirect_stderr(error):
+            exit_code = diagnostics.main(["--source-only"])
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(run.call_count, 4)
+        self.assertTrue(all(call.args[0][0] == diagnostics.sys.executable for call in run.call_args_list))
+        self.assertTrue(all("apex-bundle-probe.exe" not in " ".join(call.args[0]) for call in run.call_args_list))
+        self.assertEqual(output.getvalue().count("APEX_SAPI_EXPORT_DIAGNOSTIC {"), 4)
+        self.assertIn('"wav_frames":0', output.getvalue())
+        self.assertIn("reason=source-audio-unhealthy", error.getvalue())
+        self.assertNotIn("private", output.getvalue() + error.getvalue())
 
 
 if __name__ == "__main__":

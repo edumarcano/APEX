@@ -144,6 +144,7 @@ def _sapi_export_diagnostic(voice_gender: str) -> dict[str, object]:
     """Observe the production speech-export worker without changing its result."""
     import io
     import tempfile
+    import types
     import wave
 
     import pyttsx3
@@ -153,6 +154,19 @@ def _sapi_export_diagnostic(voice_gender: str) -> dict[str, object]:
 
     error_event_count = 0
     errors: list[dict[str, object]] = []
+    save_to_file_code: types.CodeType | None = None
+
+    def save_to_file_offset(exception: BaseException) -> int | None:
+        code = save_to_file_code
+        traceback = exception.__traceback__
+        depth = 0
+        while traceback is not None and depth < 32:
+            if code is not None and traceback.tb_frame.f_code is code:
+                offset = traceback.tb_lineno - code.co_firstlineno
+                return offset if 0 <= offset <= 256 else None
+            traceback = traceback.tb_next
+            depth += 1
+        return None
 
     def observe_error(*args: object, **kwargs: object) -> None:
         nonlocal error_event_count
@@ -167,12 +181,21 @@ def _sapi_export_diagnostic(voice_gender: str) -> dict[str, object]:
         hresult = getattr(exception, "hresult", None)
         if isinstance(hresult, bool) or not isinstance(hresult, int) or not -(2**31) <= hresult < 2**32:
             hresult = None
-        errors.append({"exception_type": exception_type, "hresult": hresult})
+        errors.append({
+            "exception_type": exception_type,
+            "hresult": hresult,
+            "sapi_save_to_file_line_offset": save_to_file_offset(exception),
+        })
 
     real_init = pyttsx3.init
 
     def observed_init(*args: object, **kwargs: object) -> object:
+        nonlocal save_to_file_code
         engine = real_init(*args, **kwargs)
+        driver = getattr(getattr(engine, "proxy", None), "_driver", None)
+        save_to_file = getattr(driver, "save_to_file", None)
+        code = getattr(save_to_file, "__code__", None)
+        save_to_file_code = code if isinstance(code, types.CodeType) else None
         engine.connect("error", observe_error)
         return engine
 
