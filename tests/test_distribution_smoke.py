@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -11,6 +13,54 @@ from unittest.mock import patch
 
 from scripts import provision_distribution_smoke_assets as assets
 from scripts import smoke_distribution as distribution
+
+
+class DistributionSmokeCliImportTests(unittest.TestCase):
+    def test_installed_host_lazy_import_works_from_unrelated_directory(self) -> None:
+        script = Path(distribution.__file__).resolve()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            unrelated_cwd = root / "unrelated"
+            unrelated_cwd.mkdir()
+            disposable = root / "smoke-profile"
+            code = f"""
+import runpy
+from pathlib import Path
+namespace = runpy.run_path({str(script)!r})
+try:
+    namespace["_installed_host"](
+        Path({str(disposable / 'missing-backend.exe')!r}),
+        Path({str(disposable / 'data')!r}),
+        Path({str(disposable / 'work')!r}),
+        "2.1.0",
+    )
+except FileNotFoundError:
+    print("PROCESS_BOUNDARY:FileNotFoundError")
+except ModuleNotFoundError as exc:
+    print(f"IMPORT_FAILURE:{{exc.name}}")
+except Exception as exc:
+    print(f"UNEXPECTED_FAILURE:{{type(exc).__name__}}")
+else:
+    print("UNEXPECTED_SUCCESS")
+"""
+            child_env = os.environ.copy()
+            child_env.pop("PYTHONPATH", None)
+            completed = subprocess.run(
+                [sys.executable, "-I", "-c", code],
+                cwd=unrelated_cwd,
+                env=child_env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=20,
+                check=False,
+            )
+
+        self.assertEqual(completed.returncode, 0, "isolated CLI subprocess failed")
+        self.assertEqual(completed.stdout.strip(), "PROCESS_BOUNDARY:FileNotFoundError")
 
 
 def _create_test_junction(link: Path, target: Path, workdir: Path) -> None:
