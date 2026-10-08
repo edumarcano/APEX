@@ -258,6 +258,19 @@ jobs:
           $expectedChecksum = "$actualHash  $($records[0].Name)`n"
           if ($checksumText -cne $expectedChecksum) { throw "Installer SHA-256 receipt does not match its bytes and filename." }
 
+      - name: Run compiled NSIS lifecycle regressions
+        run: |
+          if (-not $env:LOCALAPPDATA) { throw "The hosted runner has no local application data directory for the Tauri NSIS cache." }
+          $compilerCandidates = @(
+            (Join-Path $env:LOCALAPPDATA "tauri\NSIS\makensis.exe"),
+            (Join-Path $env:LOCALAPPDATA "tauri\NSIS\Bin\makensis.exe")
+          )
+          $compiler = $compilerCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+          if (-not $compiler) { throw "The Tauri-bundled NSIS compiler is missing after installer packaging." }
+          $env:APEX_NSIS_COMPILER = $compiler
+          uv run --locked --all-extras --python 3.14.7 python -m unittest tests.test_nsis_upgrade.NsisUpgradeHarnessTests
+          if ($LASTEXITCODE -ne 0) { throw "Compiled NSIS lifecycle regressions failed." }
+
       - name: Select backend provenance for artifact upload
         if: always()
         run: |
