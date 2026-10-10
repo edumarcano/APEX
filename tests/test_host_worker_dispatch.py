@@ -172,6 +172,7 @@ class SpeechExportWorkerTests(unittest.TestCase):
                 ),
             ),
             patch.object(speaker_export, "Path", lambda _path: FakeOutputPath()),
+            patch.object(speaker_export.sys, "platform", "linux"),
             patch.dict(sys.modules, {"pyttsx3": pyttsx3_module}),
         ):
             self.assertEqual(speaker_export.main(["speech.wav"]), 0)

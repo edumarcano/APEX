@@ -11,6 +11,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import wave
+import pyttsx3
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -35,6 +37,207 @@ _espeak_hook_spec.loader.exec_module(espeak_hook)
 
 
 class BackendBundleSmokeHarnessTests(unittest.TestCase):
+    def test_sapi_export_diagnostic_observes_real_worker_without_claiming_empty_wav_success(self) -> None:
+        callbacks = []
+        private_sentinel = "private voice and exception sentinel"
+        engine = Mock()
+        engine.getProperty.return_value = [SimpleNamespace(id=private_sentinel, name=private_sentinel)]
+
+        def connect(event: str, callback: object) -> None:
+            self.assertEqual(event, "error")
+            callbacks.append(callback)
+
+        def save_empty_wav(_text: str, output_path: str) -> None:
+            with wave.open(output_path, "wb") as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)
+                wav_file.setframerate(22050)
+
+        def run_and_report_errors() -> None:
+            class FakeSapiError(Exception):
+                hresult = -2147467259
+
+            for _ in range(5):
+                callbacks[0](engine, exception=FakeSapiError(private_sentinel))
+
+        engine.connect.side_effect = connect
+        engine.save_to_file.side_effect = save_empty_wav
+        engine.runAndWait.side_effect = run_and_report_errors
+        stdout = io.StringIO()
+        with patch.object(pyttsx3, "init", return_value=engine), contextlib.redirect_stdout(stdout):
+            exit_code = probe.main(["sapi-export-diagnostic", "--voice-gender", "female"])
+
+        self.assertEqual(exit_code, 0)
+        report = json.loads(stdout.getvalue())
+        self.assertEqual(report["status"], "diagnostic", report)
+        self.assertEqual(report["scenario"], "sapi-export-diagnostic")
+        self.assertEqual(report["voice_gender"], "female")
+        self.assertEqual(report["worker_exit_code"], 0)
+        self.assertTrue(report["wav_present"])
+        self.assertEqual(report["wav_frames"], 0)
+        self.assertEqual(report["wav_rate"], 22050)
+        self.assertEqual(report["wav_channels"], 1)
+        self.assertEqual(report["wav_sample_width_bytes"], 2)
+        self.assertEqual(report["wav_duration_seconds"], 0)
+        self.assertEqual(report["error_event_count"], 5)
+        self.assertEqual(report["errors"], [
+            {"exception_type": "FakeSapiError", "hresult": -2147467259, "sapi_save_to_file_line_offset": None},
+            {"exception_type": "FakeSapiError", "hresult": -2147467259, "sapi_save_to_file_line_offset": None},
+            {"exception_type": "FakeSapiError", "hresult": -2147467259, "sapi_save_to_file_line_offset": None},
+        ])
+        self.assertNotIn(private_sentinel, stdout.getvalue())
+        self.assertEqual(engine.stop.call_count, 1)
+
+    @unittest.skipUnless(sys.platform == "win32", "SAPI COM driver is Windows-specific")
+    def test_sapi_export_diagnostic_finds_actual_driver_line_without_exposing_traceback(self) -> None:
+        import comtypes.client
+        import pyttsx3.engine
+        from pyttsx3.drivers import sapi5
+
+        private_sentinel = "private COM traceback sentinel"
+
+        class FakeComError(Exception):
+            hresult = -2147200966
+
+        driver_code = None
+        actual_driver_offsets: list[int] = []
+
+        class FakeToken:
+            Id = private_sentinel
+
+            @staticmethod
+            def GetDescription() -> str:
+                return private_sentinel
+
+            @staticmethod
+            def GetAttribute(name: str) -> str:
+                return {"Language": "409", "Gender": "Female", "Age": "Adult"}[name]
+
+        class FakeVoice:
+            def __init__(self) -> None:
+                self.Voice = FakeToken()
+                self.AudioOutputStream = object()
+                self.Rate = 0
+
+            def GetVoices(self) -> list[FakeToken]:
+                return [FakeToken()]
+
+            def Speak(self, _text: str) -> None:
+                caller = sys._getframe(1)
+                if caller.f_code is driver_code:
+                    actual_driver_offsets.append(caller.f_lineno - caller.f_code.co_firstlineno)
+                raise FakeComError(private_sentinel)
+
+        class FakeFileStream:
+            def Open(self, filename: str, _mode: int) -> None:
+                with wave.open(filename, "wb") as wav_file:
+                    wav_file.setnchannels(1)
+                    wav_file.setsampwidth(2)
+                    wav_file.setframerate(22050)
+
+            def close(self) -> None:
+                return None
+
+        voice = FakeVoice()
+        memory_stream = object()
+
+        def create_object(name: str) -> object:
+            if name == "SAPI.SPVoice":
+                return voice
+            if name == "SAPI.SpMemoryStream":
+                return memory_stream
+            return FakeFileStream()
+
+        with patch.object(comtypes.client, "CreateObject", side_effect=create_object), \
+             patch.object(comtypes.client, "GetEvents", return_value=object()):
+            engine = pyttsx3.engine.Engine(driverName="sapi5")
+            self.assertIsInstance(engine.proxy._driver, sapi5.SAPI5Driver)
+            driver_code = engine.proxy._driver.save_to_file.__code__
+            stdout = io.StringIO()
+            with patch.object(pyttsx3, "init", return_value=engine), contextlib.redirect_stdout(stdout):
+                exit_code = probe.main(["sapi-export-diagnostic", "--voice-gender", "female"])
+
+        self.assertEqual(exit_code, 0)
+        report = json.loads(stdout.getvalue())
+        self.assertEqual(report.get("status"), "diagnostic", report)
+        self.assertEqual(report["worker_exit_code"], 0)
+        self.assertEqual(report["wav_frames"], 0)
+        self.assertEqual(report["error_event_count"], 1)
+        self.assertEqual(len(report["errors"]), 1)
+        diagnostic_error = report["errors"][0]
+        self.assertEqual(diagnostic_error["exception_type"], "FakeComError")
+        self.assertEqual(diagnostic_error["hresult"], -2147200966)
+        self.assertIsInstance(diagnostic_error["sapi_save_to_file_line_offset"], int)
+        self.assertEqual(diagnostic_error["sapi_save_to_file_line_offset"], actual_driver_offsets[0])
+        self.assertGreater(diagnostic_error["sapi_save_to_file_line_offset"], 0)
+        self.assertLessEqual(diagnostic_error["sapi_save_to_file_line_offset"], 256)
+        self.assertNotIn(private_sentinel, stdout.getvalue())
+
+    def test_sapi_export_diagnostic_preserves_nonzero_worker_exit(self) -> None:
+        engine = Mock()
+        engine.getProperty.return_value = []
+        stdout = io.StringIO()
+        with patch.object(pyttsx3, "init", return_value=engine), contextlib.redirect_stdout(stdout):
+            exit_code = probe.main(["sapi-export-diagnostic", "--voice-gender", "male"])
+
+        self.assertEqual(exit_code, 0)
+        report = json.loads(stdout.getvalue())
+        self.assertEqual(report["status"], "diagnostic")
+        self.assertEqual(report["worker_exit_code"], 3)
+        self.assertFalse(report["wav_present"])
+        self.assertEqual(report["wav_bytes"], 0)
+        self.assertEqual(report["error_event_count"], 0)
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(engine.stop.call_count, 1)
+
+    def test_audio_worker_reports_empty_wav_metadata_without_relaxing_validation(self) -> None:
+        from core import speaker
+
+        output = io.BytesIO()
+        with wave.open(output, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(16000)
+        empty_wav = output.getvalue()
+        private_sentinel = "private voice sentinel"
+        engine = Mock()
+        engine.getProperty.return_value = [
+            SimpleNamespace(id=private_sentinel, name=private_sentinel),
+        ]
+        self.assertEqual(speaker._audio_duration_seconds(empty_wav, "audio/wav"), 0.0)
+        with (
+            patch.object(speaker, "_synthesize_pyttsx3_wav", return_value=empty_wav) as synthesis,
+            patch.object(pyttsx3, "init", return_value=engine) as initialize_engine,
+        ):
+            with self.assertRaisesRegex(ValueError, "speech_audio_chunk_duration_invalid") as raised:
+                probe._audio_worker()
+
+        synthesis.assert_called_once()
+        initialize_engine.assert_called_once_with()
+        engine.getProperty.assert_called_once_with("voices")
+        engine.stop.assert_called_once_with()
+        diagnostic_text = str(raised.exception).split("; diagnostic=", 1)[1]
+        diagnostic = json.loads(diagnostic_text)
+        self.assertEqual(diagnostic["wav_bytes"], len(empty_wav))
+        self.assertEqual(diagnostic["nframes"], 0)
+        self.assertEqual(diagnostic["framerate"], 16000)
+        self.assertEqual(diagnostic["channels"], 1)
+        self.assertEqual(diagnostic["sample_width_bytes"], 2)
+        self.assertEqual(diagnostic["duration_seconds"], 0.0)
+        self.assertEqual(diagnostic["sapi_voice_count"], 1)
+        self.assertIsNone(diagnostic["sapi_inventory_error_type"])
+        self.assertNotIn(private_sentinel, diagnostic_text)
+        self.assertEqual(set(diagnostic), {
+            "wav_bytes",
+            "nframes",
+            "framerate",
+            "channels",
+            "sample_width_bytes",
+            "duration_seconds",
+            "sapi_voice_count",
+            "sapi_inventory_error_type",
+        })
+
     def test_semantic_assets_accepts_baseline_and_lazy_first_search_contracts(self) -> None:
         fts = {"retrieval_mode": "fts_only", "results": [{"id": "fts"}]}
         semantic = {"retrieval_mode": "semantic", "results": [{"id": "semantic"}]}

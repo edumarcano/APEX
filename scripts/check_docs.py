@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -30,6 +31,9 @@ ROUTE_HEADING_PATTERN = re.compile(
     re.IGNORECASE,
 )
 RELEASE_HEADING_PATTERN = re.compile(r"^##\s+v(\d+\.\d+\.\d+)\b", re.MULTILINE)
+PACKAGE_VERSION_PATTERN = re.compile(
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:(a|b|rc)(0|[1-9]\d*))?$"
+)
 
 
 @dataclass(frozen=True)
@@ -317,19 +321,48 @@ def check_cors_example(root: Path) -> list[DocumentationIssue]:
 
 
 def check_release_version(root: Path) -> list[DocumentationIssue]:
-    """Require Python metadata to match the latest released changelog entry."""
+    """Require distribution metadata to agree and stay newer than the latest release."""
     pyproject_path = root / "pyproject.toml"
+    uv_lock_path = root / "uv.lock"
+    cargo_toml_path = root / "frontend" / "src-tauri" / "Cargo.toml"
+    cargo_lock_path = root / "frontend" / "src-tauri" / "Cargo.lock"
+    tauri_config_path = root / "frontend" / "src-tauri" / "tauri.conf.json"
     changelog_path = root / "CHANGELOG.md"
-    project_version = tomllib.loads(
-        pyproject_path.read_text(encoding="utf-8")
-    )["project"]["version"]
-    # Strip PEP 440 pre/post-release suffix (e.g. "2.0.0b1" -> "2.0.0") so
-    # the comparison works against the X.Y.Z extracted from changelog headings.
-    base_version = re.match(r"(\d+\.\d+\.\d+)", project_version)
-    comparable_version = base_version.group(1) if base_version else project_version
+    sources = (
+        (pyproject_path, lambda: tomllib.loads(pyproject_path.read_text(encoding="utf-8"))["project"]["version"]),
+        (uv_lock_path, lambda: next(
+            package["version"]
+            for package in tomllib.loads(uv_lock_path.read_text(encoding="utf-8"))["package"]
+            if package["name"] == "apex"
+        )),
+        (cargo_toml_path, lambda: tomllib.loads(cargo_toml_path.read_text(encoding="utf-8"))["package"]["version"]),
+        (cargo_lock_path, lambda: next(
+            package["version"]
+            for package in tomllib.loads(cargo_lock_path.read_text(encoding="utf-8"))["package"]
+            if package["name"] == "apex-desktop"
+        )),
+        (tauri_config_path, lambda: json.loads(tauri_config_path.read_text(encoding="utf-8"))["version"]),
+    )
+    versions: list[tuple[Path, str, tuple[int, int, int, int, int]]] = []
+    issues: list[DocumentationIssue] = []
+    for path, read_version in sources:
+        try:
+            version = read_version()
+        except (KeyError, StopIteration, OSError, TypeError, tomllib.TOMLDecodeError, ValueError) as error:
+            issues.append(DocumentationIssue(path, 1, "package version", f"could not read version metadata: {error}"))
+            continue
+        match = PACKAGE_VERSION_PATTERN.fullmatch(version) if isinstance(version, str) else None
+        if match is None:
+            issues.append(DocumentationIssue(path, 1, str(version), "package version is malformed; expected X.Y.Z with an optional aN, bN, or rcN suffix"))
+            continue
+        major, minor, patch, stage, stage_number = match.groups()
+        # Stable releases sort after all prerelease labels for the same base version.
+        stage_rank = {"a": 0, "b": 1, "rc": 2, None: 3}[stage]
+        versions.append((path, version, (int(major), int(minor), int(patch), stage_rank, int(stage_number or 0))))
+
     match = RELEASE_HEADING_PATTERN.search(changelog_path.read_text(encoding="utf-8"))
     if match is None:
-        return [
+        return issues + [
             DocumentationIssue(
                 changelog_path,
                 1,
@@ -337,16 +370,16 @@ def check_release_version(root: Path) -> list[DocumentationIssue]:
                 "released changelog version could not be determined",
             )
         ]
-    if comparable_version == match.group(1):
-        return []
-    return [
-        DocumentationIssue(
-            pyproject_path,
-            1,
-            project_version,
-            f"project version should match latest release {match.group(1)}",
-        )
-    ]
+    released = tuple(int(part) for part in match.group(1).split(".")) + (3, 0)
+    for path, version, ordering in versions:
+        if ordering[:3] < released[:3] or (ordering[:3] == released[:3] and ordering[3:] < released[3:]):
+            issues.append(DocumentationIssue(path, 1, version, f"package version must not be older than latest release {match.group(1)}"))
+    if versions and len(versions) == len(sources):
+        expected = versions[0][1]
+        for path, version, _ordering in versions[1:]:
+            if version != expected:
+                issues.append(DocumentationIssue(path, 1, version, f"package version differs from {pyproject_path.name} version {expected}"))
+    return issues
 
 
 def check_frontend_owner_names(

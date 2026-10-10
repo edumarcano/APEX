@@ -331,17 +331,22 @@ describe('desktop backend admission', () => {
   })
 
   it('does not admit from event data and ignores an older status snapshot', async () => {
-    useStatus(
-      state('starting', { revision: 4 }),
-      state('ready', { revision: 3 }),
-    )
+    const initialStatus = deferred<DesktopBackendState>()
+    platformMocks.getBackendStatus.mockReturnValueOnce(initialStatus.promise)
+      .mockResolvedValue(state('ready', { revision: 3 }))
     let wake!: () => void
     const unsubscribe = vi.fn<() => void>()
     vi.stubGlobal('fetch', vi.fn())
-    platformMocks.subscribeBackendState.mockImplementation(async (callback) => { wake = callback; return () => unsubscribe() })
+    platformMocks.subscribeBackendState.mockImplementation(async (callback) => {
+      wake = callback
+      return () => unsubscribe()
+    })
 
     const view = render(<DesktopAdmission />)
     expect(await screen.findByText('Waiting for the owned backend to become ready.')).toBeInTheDocument()
+    await waitFor(() => expect(platformMocks.subscribeBackendState).toHaveBeenCalledOnce())
+    await waitFor(() => expect(platformMocks.getBackendStatus).toHaveBeenCalledOnce())
+    await act(async () => { initialStatus.resolve(state('starting', { revision: 4 })) })
     await act(async () => { wake() })
     expect(screen.queryByTestId('workspace-app')).not.toBeInTheDocument()
     expect(fetch).not.toHaveBeenCalled()

@@ -52,6 +52,8 @@ Demo mode skips live connectors and model calls. It provides fixed Daily and Cat
 
 See [Getting Started](docs/getting-started.md) for prerequisites, live setup, development servers, and troubleshooting.
 
+For the Windows desktop installation and its first-run setup, see [Windows desktop installation](docs/getting-started.md#windows-desktop-installation).
+
 ## Everyday workflows
 
 ### Check connected services and manage reminders

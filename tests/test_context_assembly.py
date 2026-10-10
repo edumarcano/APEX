@@ -510,12 +510,22 @@ class ContextAssemblyTests(unittest.TestCase):
         self.assertEqual(len(mentioned), 1)
         self.assertEqual(mentioned[0].id, entity.id)
 
-        # Test assembly relationship expansion
-        bundle = self.assembler.assemble(
-            prompt="Tell me about Apex Core Engine architecture",
-            conversation_id=uuid4(),
-            policy=ContextPolicy("apex", "production", True),
-        )
+        # Isolate alias-driven relationship expansion from optional semantic
+        # retrieval, which may also return this record when model weights are
+        # cached. Relationship lookup and context assembly remain real.
+        search = self.retrieval.search
+
+        def without_direct_personal_hits(query, *, namespace, **kwargs):
+            if namespace == "personal_context":
+                return []
+            return search(query, namespace=namespace, **kwargs)
+
+        with patch.object(self.retrieval, "search", side_effect=without_direct_personal_hits):
+            bundle = self.assembler.assemble(
+                prompt="Tell me about Apex Core Engine architecture",
+                conversation_id=uuid4(),
+                policy=ContextPolicy("apex", "production", True),
+            )
         self.assertIn("Related personal context", bundle.rendered)
         self.assertIn("Configured storage layer operates in loopback mode.", bundle.rendered)
         self.assertIn(str(record.id), [r.source_id for r in bundle.references])

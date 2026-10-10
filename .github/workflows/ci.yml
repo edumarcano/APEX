@@ -103,3 +103,254 @@ jobs:
       - name: Check frontend loading boundaries
         working-directory: frontend
         run: npm run check:loading
+
+  distribution:
+    name: Windows locked distribution validation
+    runs-on: windows-latest
+    needs: [backend, frontend]
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.3"
+          python-version: "3.14.7"
+          enable-cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up locked Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.0"
+          target: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Sync locked Python dependencies
+        run: uv sync --locked --all-extras --python 3.14.7
+
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Preflight source SAPI export
+        timeout-minutes: 5
+        run: uv run --locked --all-extras --python 3.14.7 python scripts/diagnose_distribution_sapi.py --source-only
+
+      - name: Build reproducible backend bundle and frozen probe
+        run: uv run --locked --all-extras --python 3.14.7 python scripts/build_backend_bundle.py --with-smoke-probe --reproducibility-check
+
+      - name: Provision external distribution smoke assets
+        run: uv run --locked --all-extras --python 3.14.7 python scripts/provision_distribution_smoke_assets.py --destination "$env:RUNNER_TEMP\apex-distribution-smoke-assets"
+
+      - name: Report Windows audio service preconditions
+        shell: pwsh
+        run: |
+          foreach ($serviceName in @("Audiosrv", "AudioEndpointBuilder")) {
+            try {
+              $service = Get-CimInstance -ClassName Win32_Service -Filter "Name='$serviceName'" -ErrorAction Stop
+              if ($null -eq $service -or [string]::IsNullOrWhiteSpace($service.State) -or [string]::IsNullOrWhiteSpace($service.StartMode)) {
+                Write-Host "APEX_AUDIO_SERVICE name=$serviceName unavailable"
+              } else {
+                Write-Host "APEX_AUDIO_SERVICE name=$serviceName status=$($service.State) start_type=$($service.StartMode)"
+              }
+            } catch {
+              Write-Host "APEX_AUDIO_SERVICE name=$serviceName unavailable"
+            }
+          }
+
+      - name: Compare source and frozen SAPI export diagnostics
+        timeout-minutes: 10
+        run: uv run --locked --all-extras --python 3.14.7 python scripts/diagnose_distribution_sapi.py --frozen-probe build/backend-bundle/smoke-probe/apex-bundle-probe.exe
+
+      - name: Run strict frozen backend smoke
+        run: >-
+          uv run --locked --all-extras --python 3.14.7 python scripts/smoke_backend_bundle.py
+          --bundle dist/backend-bundle
+          --probe build/backend-bundle/smoke-probe/apex-bundle-probe.exe
+          --fastembed-cache "$env:RUNNER_TEMP\apex-distribution-smoke-assets\fastembed_cache"
+          --kokoro-assets "$env:RUNNER_TEMP\apex-distribution-smoke-assets\kokoro"
+          --inference-timeout 600
+          --strict --require-idle-release
+          --report "$env:RUNNER_TEMP\backend-bundle-smoke-report.json"
+
+      - name: Prepare verified backend resources for Rust checks
+        working-directory: frontend
+        run: npm run desktop:prepare -- --bundle "${{ github.workspace }}\dist\backend-bundle"
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path frontend/src-tauri/Cargo.toml --check
+
+      - name: Run locked Rust tests
+        run: cargo test --manifest-path frontend/src-tauri/Cargo.toml --locked --target x86_64-pc-windows-msvc
+
+      - name: Run locked Rust lint
+        run: cargo clippy --manifest-path frontend/src-tauri/Cargo.toml --locked --target x86_64-pc-windows-msvc --all-targets -- -D warnings
+
+      - name: Preserve backend provenance fallback before packaging
+        if: always()
+        run: |
+          $source = Join-Path $env:GITHUB_WORKSPACE "dist\backend-bundle"
+          $fallback = Join-Path $env:RUNNER_TEMP "backend-bundle-provenance-fallback"
+          $required = @("bundle-manifest.json", "_internal\build-info.json")
+          $available = $true
+          foreach ($relativePath in $required) {
+            if (-not (Test-Path -LiteralPath (Join-Path $source $relativePath) -PathType Leaf)) { $available = $false }
+          }
+          if ($available) {
+            New-Item -ItemType Directory -Force -Path $fallback | Out-Null
+            foreach ($relativePath in @("LICENSE", "THIRD_PARTY_NOTICES.md", "bundle-manifest.json", "_internal\build-info.json")) {
+              $path = Join-Path $source $relativePath
+              if (Test-Path -LiteralPath $path -PathType Leaf) {
+                $destination = Join-Path $fallback $relativePath
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+                Copy-Item -LiteralPath $path -Destination $destination -Force
+              }
+            }
+            $licenses = Join-Path $source "licenses"
+            if (Test-Path -LiteralPath $licenses -PathType Container) { Copy-Item -LiteralPath $licenses -Destination $fallback -Recurse -Force }
+          } else {
+            Write-Host "Backend provenance fallback is unavailable because the verified bundle receipts are missing."
+          }
+
+      - name: Build Windows desktop installer
+        working-directory: frontend
+        run: npm run desktop:package
+
+      - name: Verify expected installer outputs
+        run: |
+          $portableRoot = Join-Path $env:GITHUB_WORKSPACE "build\desktop-shell\APEX"
+          foreach ($relativePath in @("APEX.exe", "backend-bundle\apex-backend.exe", "backend-bundle\apex.exe", "backend-bundle\bundle-manifest.json")) {
+            $path = Join-Path $portableRoot $relativePath
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item -LiteralPath $path).Length -le 0) { throw "Portable assembly is missing or empty: $relativePath" }
+          }
+          $installerRoot = Join-Path $env:GITHUB_WORKSPACE "build\desktop-shell\installers"
+          $manifest = Join-Path $installerRoot "distribution-manifest.json"
+          if (-not (Test-Path -LiteralPath $manifest -PathType Leaf) -or (Get-Item -LiteralPath $manifest).Length -le 0) { throw "Installer distribution manifest was not produced or is empty." }
+          $receipt = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+          if ($receipt.product -ne "APEX" -or $receipt.version -ne "2.1.0" -or $receipt.target -ne "x86_64-pc-windows-msvc") { throw "Installer manifest has unexpected product, version, or target." }
+          if (-not $receipt.installer -or [System.IO.Path]::GetFileName($receipt.installer) -cne $receipt.installer) { throw "Installer manifest contains an unsafe filename." }
+          $installerPath = Join-Path $installerRoot $receipt.installer
+          if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) { throw "Manifest installer was not produced." }
+          $records = Get-ChildItem -LiteralPath $installerRoot -Filter "*-setup.exe" -File
+          if ($records.Count -ne 1 -or $records[0].FullName -ne $installerPath) { throw "Expected exactly the one manifest-listed NSIS setup executable." }
+          if ($records[0].Length -le 0) { throw "Manifest installer is empty." }
+          $actualHash = (Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($receipt.installer_sha256 -cne $actualHash) { throw "Installer bytes do not match the distribution manifest." }
+          $checksum = "$installerPath.sha256"
+          if (-not (Test-Path -LiteralPath $checksum -PathType Leaf)) { throw "Installer SHA-256 receipt was not produced." }
+          if ((Get-Item -LiteralPath $checksum).Length -le 0) { throw "Installer SHA-256 receipt is empty." }
+          $checksumText = Get-Content -LiteralPath $checksum -Raw
+          $expectedChecksum = "$actualHash  $($records[0].Name)`n"
+          if ($checksumText -cne $expectedChecksum) { throw "Installer SHA-256 receipt does not match its bytes and filename." }
+
+      - name: Run compiled NSIS lifecycle regressions
+        run: |
+          if (-not $env:LOCALAPPDATA) { throw "The hosted runner has no local application data directory for the Tauri NSIS cache." }
+          $compilerCandidates = @(
+            (Join-Path $env:LOCALAPPDATA "tauri\NSIS\makensis.exe"),
+            (Join-Path $env:LOCALAPPDATA "tauri\NSIS\Bin\makensis.exe")
+          )
+          $compiler = $compilerCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+          if (-not $compiler) { throw "The Tauri-bundled NSIS compiler is missing after installer packaging." }
+          $env:APEX_NSIS_COMPILER = $compiler
+          uv run --locked --all-extras --python 3.14.7 python -m unittest tests.test_nsis_upgrade.NsisUpgradeHarnessTests
+          if ($LASTEXITCODE -ne 0) { throw "Compiled NSIS lifecycle regressions failed." }
+
+      - name: Select backend provenance for artifact upload
+        if: always()
+        run: |
+          $staged = Join-Path $env:GITHUB_WORKSPACE "frontend\src-tauri\resources\backend-bundle"
+          $fallback = Join-Path $env:RUNNER_TEMP "backend-bundle-provenance-fallback"
+          $dist = Join-Path $env:GITHUB_WORKSPACE "dist\backend-bundle"
+          $destination = Join-Path $env:RUNNER_TEMP "backend-bundle-provenance"
+          $required = @("bundle-manifest.json", "_internal\build-info.json")
+          $source = $null
+          foreach ($candidate in @($staged, $fallback, $dist)) {
+            $complete = $true
+            foreach ($relativePath in $required) {
+              if (-not (Test-Path -LiteralPath (Join-Path $candidate $relativePath) -PathType Leaf)) { $complete = $false }
+            }
+            if ($complete) { $source = $candidate; break }
+          }
+          if (-not $source) {
+            Write-Host "No complete backend provenance receipts are available for upload."
+          } else {
+            New-Item -ItemType Directory -Force -Path $destination | Out-Null
+            foreach ($relativePath in @("LICENSE", "THIRD_PARTY_NOTICES.md", "bundle-manifest.json", "_internal\build-info.json")) {
+              $path = Join-Path $source $relativePath
+              if (Test-Path -LiteralPath $path -PathType Leaf) {
+                $target = Join-Path $destination $relativePath
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+                Copy-Item -LiteralPath $path -Destination $target -Force
+              }
+            }
+            $licenses = Join-Path $source "licenses"
+            if (Test-Path -LiteralPath $licenses -PathType Container) { Copy-Item -LiteralPath $licenses -Destination $destination -Recurse -Force }
+            Write-Host "Selected backend provenance from $source."
+          }
+
+      - name: Build synthetic 2.0.0 upgrade installer fixture
+        run: uv run --locked --all-extras --python 3.14.7 python scripts/build_distribution_fixture.py --base-ref 31fdd21757a1822ac0223956c20595ff5a13d307 --output "$env:RUNNER_TEMP\apex-previous-installer" --report "$env:RUNNER_TEMP\distribution-fixture-report.json"
+
+      - name: Create the hosted smoke profile marker
+        env:
+          APEX_DISTRIBUTION_SMOKE_OPERATOR_SID: S-1-0-0
+        run: |
+          if ($env:GITHUB_ACTIONS -ne "true" -or $env:RUNNER_ENVIRONMENT -ne "github-hosted") { throw "Installer smoke is restricted to a disposable GitHub-hosted runner." }
+          if ($env:APEX_DISTRIBUTION_SMOKE_OPERATOR_SID -cne "S-1-0-0") { throw "Installer smoke requires the no-human operator SID." }
+          if (-not $env:LOCALAPPDATA -or -not (Test-Path -LiteralPath $env:LOCALAPPDATA -PathType Container)) { throw "The runner has no local application data profile." }
+          $markerPath = Join-Path $env:LOCALAPPDATA ".apex-distribution-smoke-profile"
+          if (Test-Path -LiteralPath $markerPath) { throw "A distribution smoke profile marker already exists." }
+          $label = [guid]::NewGuid().ToString("D")
+          $currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value.ToUpperInvariant()
+          if (-not $currentSid) { throw "The runner process has no Windows identity SID." }
+          $markerContent = "APEX-DISTRIBUTION-SMOKE:${label}:${currentSid}"
+          [System.IO.File]::WriteAllText($markerPath, $markerContent, [System.Text.UTF8Encoding]::new($false))
+
+      - name: Run hosted-user installer upgrade smoke
+        env:
+          APEX_DISTRIBUTION_SMOKE_PROFILE: "1"
+          APEX_DISTRIBUTION_SMOKE_OPERATOR_SID: S-1-0-0
+        run: |
+          $installerRoot = Join-Path $env:GITHUB_WORKSPACE "build\desktop-shell\installers"
+          $currentManifest = Get-Content (Join-Path $installerRoot "distribution-manifest.json") -Raw | ConvertFrom-Json
+          $currentInstaller = Join-Path $installerRoot $currentManifest.installer
+          $previousInstallerRoot = Join-Path $env:RUNNER_TEMP "apex-previous-installer"
+          $previousInstallers = @(Get-ChildItem -LiteralPath $previousInstallerRoot -Filter "*-setup.exe" -File)
+          if ($previousInstallers.Count -ne 1) { throw "Expected exactly one synthetic 2.0.0 installer; found $($previousInstallers.Count)." }
+          $previousInstaller = $previousInstallers[0].FullName
+          $previousSidecar = "$previousInstaller.fixture.json"
+          if (-not (Test-Path -LiteralPath $previousSidecar -PathType Leaf)) { throw "Synthetic installer provenance sidecar is missing." }
+          $previousReceipt = Get-Content -LiteralPath $previousSidecar -Raw | ConvertFrom-Json
+          if ($previousReceipt.kind -ne "synthetic_upgrade_fixture" -or $previousReceipt.app_version -ne "2.0.0") { throw "Synthetic installer sidecar does not identify the approved 2.0.0 fixture." }
+          uv run --locked --all-extras --python 3.14.7 python scripts/smoke_distribution.py --installer "$currentInstaller" --previous-installer "$previousInstaller" --probe build/backend-bundle/smoke-probe/apex-bundle-probe.exe --fastembed-cache "$env:RUNNER_TEMP\apex-distribution-smoke-assets\fastembed_cache" --kokoro-assets "$env:RUNNER_TEMP\apex-distribution-smoke-assets\kokoro" --expected-version 2.1.0 --previous-version 2.0.0 --mode ci --report "$env:RUNNER_TEMP\distribution-installer-smoke-report.json"
+
+      - name: Upload distribution receipts and validation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apex-windows-distribution-validation
+          if-no-files-found: warn
+          path: |
+            build/desktop-shell/installers/*-setup.exe
+            build/desktop-shell/installers/*.sha256
+            build/desktop-shell/installers/distribution-manifest.json
+            ${{ runner.temp }}/backend-bundle-provenance/**
+            ${{ runner.temp }}/backend-bundle-smoke-report.json
+            ${{ runner.temp }}/distribution-fixture-report.json
+            ${{ runner.temp }}/distribution-installer-smoke-report.json

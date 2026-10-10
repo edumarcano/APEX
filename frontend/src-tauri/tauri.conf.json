@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "APEX",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "identifier": "com.edumarcano.apex",
   "build": {
     "beforeDevCommand": "npm run dev -- --host 127.0.0.1 --port 5173 --strictPort",
@@ -21,6 +21,13 @@
   "bundle": {
     "active": true,
     "icon": ["../public/APEX_icon.ico"],
-    "resources": { "resources/backend-bundle/": "backend-bundle/" }
+    "resources": { "resources/backend-bundle/": "backend-bundle/" },
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper" },
+      "nsis": {
+        "installMode": "currentUser",
+        "template": "nsis/installer.nsi"
+      }
+    }
   }
 }
