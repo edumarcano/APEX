@@ -253,6 +253,7 @@ Section "Seed registered previous version"
   WriteRegStr HKCU "${{UNINSTKEY}}" "MainBinaryName" "apex-desktop.exe"
   WriteRegStr HKCU "${{TESTKEY}}" "failure" ""
   WriteRegStr HKCU "${{TESTKEY}}" "leave_shell" ""
+  WriteRegStr HKCU "${{TESTKEY}}" "invoked" ""
   WriteRegStr HKCU "{cls.run_key}" "${{PRODUCTNAME}}" '$\\"$INSTDIR\\apex-desktop.exe$\\" --autostart'
   WriteRegStr HKCU "{cls.run_key}" "{cls.foreign_run_name}" "foreign command"
   WriteUninstaller "$INSTDIR\\uninstall.exe"
@@ -531,7 +532,7 @@ SectionEnd
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, self.uninstall_key) as key:
             winreg.SetValueEx(key, "UninstallString", 0, winreg.REG_SZ, '"C:\\unsafe\\uninstall.exe"')
             winreg.SetValueEx(key, "DisplayVersion", 0, winreg.REG_SZ, "2.0.0")
-            winreg.SetValueEx(key, "MainBinaryName", 0, winreg.REG_SZ, "apex-desktop")
+            winreg.SetValueEx(key, "MainBinaryName", 0, winreg.REG_SZ, "apex-desktop.exe")
         result = self._run_helper()
         self.assertEqual(self.result.read_text(encoding="utf-8"), "preflight")
         self._assert_old_payload_present()
@@ -547,6 +548,11 @@ SectionEnd
         self._assert_old_payload_present()
         self._assert_registration(present=True)
         self.assertIn(result.returncode, (0, 1, 2), result.stdout + result.stderr)
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, self.test_key) as key:
+            invoked, _ = winreg.QueryValueEx(key, "invoked")
+        self.assertEqual(invoked, "")
 
     def test_current_only_destination_junction_fails_before_previous_cleanup(self) -> None:
         link = self.root / "current-only-resource"
@@ -562,10 +568,15 @@ SectionEnd
             self.skipTest(f"Windows could not create a test-owned junction: {result.stdout}{result.stderr}")
         self.addCleanup(lambda: link.rmdir() if link.exists() else None)
         result = self._run_helper()
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
         self.assertFalse(self.result.exists())
         self._assert_old_payload_present()
         self._assert_registration(present=True)
-        self.assertIn(result.returncode, (0, 1, 2), result.stdout + result.stderr)
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, self.test_key) as key:
+            invoked, _ = winreg.QueryValueEx(key, "invoked")
+        self.assertEqual(invoked, "")
 
     def test_reparse_uninstaller_fails_before_running_previous_cleanup(self) -> None:
         uninstaller = self.root / "uninstall.exe"
@@ -575,10 +586,18 @@ SectionEnd
         except (OSError, NotImplementedError) as exc:
             self.skipTest(f"Windows symlink creation is unavailable: {exc}")
         result = self._run_helper()
-        self.assertEqual(self.result.read_text(encoding="utf-8"), "preflight")
-        self.assertTrue((self.root / "apex-desktop.exe").is_file())
-        self.assertTrue((self.root / "backend-bundle/apex-backend.exe").is_file())
-        self.assertIn(result.returncode, (0, 1, 2), result.stdout + result.stderr)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertFalse(self.result.exists())
+        self._assert_old_payload_present()
+        self._assert_registration(present=True)
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, self.install_root) as key:
+            saved_root, _ = winreg.QueryValueEx(key, "")
+        self.assertEqual(saved_root, str(self.root))
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, self.test_key) as key:
+            invoked, _ = winreg.QueryValueEx(key, "invoked")
+        self.assertEqual(invoked, "")
 
     def test_running_apex_process_refuses_cleanup(self) -> None:
         process = subprocess.Popen([str(self.process_exe)], cwd=self.base)
