@@ -129,24 +129,19 @@ fn apply_transition(
 
 pub fn safe_error_code(code: &str) -> &'static str {
     match code {
-        "startup_failed" | "port_in_use" | "profile_in_use" | "protocol_error"
-        | "shutdown_timeout" | "shutdown_failed" | "child_failed" | "internal_error"
-        | "resource_missing" | "startup_timeout" | "identity_mismatch" | "cors_rejected"
-        | "backend_crashed" => match code {
-            "startup_failed" => "startup_failed",
-            "port_in_use" => "port_in_use",
-            "profile_in_use" => "profile_in_use",
-            "protocol_error" => "protocol_error",
-            "shutdown_timeout" => "shutdown_timeout",
-            "shutdown_failed" => "shutdown_failed",
-            "child_failed" => "child_failed",
-            "resource_missing" => "resource_missing",
-            "startup_timeout" => "startup_timeout",
-            "identity_mismatch" => "identity_mismatch",
-            "cors_rejected" => "cors_rejected",
-            "backend_crashed" => "backend_crashed",
-            _ => "internal_error",
-        },
+        "startup_failed" => "startup_failed",
+        "port_in_use" => "port_in_use",
+        "profile_in_use" => "profile_in_use",
+        "protocol_error" => "protocol_error",
+        "shutdown_timeout" => "shutdown_timeout",
+        "shutdown_failed" => "shutdown_failed",
+        "child_failed" => "child_failed",
+        "internal_error" => "internal_error",
+        "resource_missing" => "resource_missing",
+        "startup_timeout" => "startup_timeout",
+        "identity_mismatch" => "identity_mismatch",
+        "cors_rejected" => "cors_rejected",
+        "backend_crashed" => "backend_crashed",
         _ => "internal_error",
     }
 }
