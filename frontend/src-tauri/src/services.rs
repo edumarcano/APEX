@@ -75,6 +75,12 @@ pub struct PreferencesFrame {
     pub completion_notifications: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AcceptedPreferences {
+    pub status: DesktopServicesStatus,
+    pub launch_on_startup_changed: bool,
+}
+
 #[derive(Clone)]
 pub struct DesktopServicesState {
     status: Arc<Mutex<DesktopServicesStatus>>,
@@ -138,7 +144,7 @@ impl DesktopServicesState {
         request_id: &str,
         payload: serde_json::Value,
         current_instance: &str,
-    ) -> Result<DesktopServicesStatus, &'static str> {
+    ) -> Result<AcceptedPreferences, &'static str> {
         let seq = request_id
             .strip_prefix("desktop:")
             .ok_or("protocol_error")?
@@ -163,13 +169,18 @@ impl DesktopServicesState {
         }
         *last = seq;
         let mut status = self.status.lock().expect("desktop services mutex poisoned");
+        let launch_on_startup_changed = status.preferences_ready
+            && status.requested.launch_on_startup != preferences.launch_on_startup;
         status.preferences_ready = true;
         status.requested = RequestedPreferences {
             launch_on_startup: preferences.launch_on_startup,
             completion_notifications: preferences.completion_notifications,
         };
         status.revision = status.revision.saturating_add(1);
-        Ok(status.clone())
+        Ok(AcceptedPreferences {
+            status: status.clone(),
+            launch_on_startup_changed,
+        })
     }
 
     pub fn publish(&self, app: &AppHandle) {
@@ -314,6 +325,29 @@ mod tests {
     const RUN: &str = "c60148ac-46b0-4c28-a717-8e2e48c2548b";
 
     #[test]
+    fn launch_on_startup_change_requires_a_prior_frame_in_this_generation() {
+        let state = DesktopServicesState::new(true, true);
+        state.set_generation(4);
+        let first = json!({"instance_id":INSTANCE,"launch_on_startup":false,"completion_notifications":false});
+        let accepted = state
+            .accept_preferences("desktop:1", first, INSTANCE)
+            .unwrap();
+        assert!(!accepted.launch_on_startup_changed);
+
+        let toggled = json!({"instance_id":INSTANCE,"launch_on_startup":true,"completion_notifications":false});
+        let changed = state
+            .accept_preferences("desktop:2", toggled, INSTANCE)
+            .unwrap();
+        assert!(changed.launch_on_startup_changed);
+
+        let notifications_only = json!({"instance_id":INSTANCE,"launch_on_startup":true,"completion_notifications":true});
+        let unchanged = state
+            .accept_preferences("desktop:3", notifications_only, INSTANCE)
+            .unwrap();
+        assert!(!unchanged.launch_on_startup_changed);
+    }
+
+    #[test]
     fn preference_protocol_requires_exact_shape_identity_and_increasing_sequence() {
         let state = DesktopServicesState::new(true, true);
         assert!(!state.snapshot().preferences_ready);
@@ -330,9 +364,10 @@ mod tests {
         let accepted = state
             .accept_preferences("desktop:1", payload.clone(), INSTANCE)
             .unwrap();
-        assert!(accepted.preferences_ready);
-        assert!(accepted.requested.launch_on_startup);
-        assert_eq!(accepted.startup.actual_enabled, None);
+        assert!(accepted.status.preferences_ready);
+        assert!(accepted.status.requested.launch_on_startup);
+        assert!(!accepted.launch_on_startup_changed);
+        assert_eq!(accepted.status.startup.actual_enabled, None);
         assert_eq!(
             state.accept_preferences("desktop:1", payload, INSTANCE),
             Err("protocol_error")

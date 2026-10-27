@@ -216,7 +216,13 @@ async fn desktop_services_retry(
 ) -> Result<DesktopServicesStatus, &'static str> {
     validate_caller(&window)?;
     let generation = app.state::<DesktopState>().snapshot().generation;
-    reconcile_services(app, services.inner().clone(), generation, true).await;
+    reconcile_services(
+        app,
+        services.inner().clone(),
+        generation,
+        ReconcileTrigger::UserRetry,
+    )
+    .await;
     Ok(services.snapshot())
 }
 
@@ -1229,11 +1235,24 @@ fn safe_event(
     snapshot
 }
 
+#[derive(Clone, Copy)]
+enum ReconcileTrigger {
+    Observed,
+    StartupPreferenceChanged,
+    UserRetry,
+}
+
+impl ReconcileTrigger {
+    fn clear_notification_errors(self) -> bool {
+        matches!(self, Self::UserRetry)
+    }
+}
+
 async fn reconcile_services(
     app: tauri::AppHandle,
     services: DesktopServicesState,
     generation: u64,
-    clear_notification_errors: bool,
+    trigger: ReconcileTrigger,
 ) {
     let _guard = services.reconcile_lock.lock().await;
     if app
@@ -1252,7 +1271,13 @@ async fn reconcile_services(
         let wanted = snapshot
             .preferences_ready
             .then_some(snapshot.requested.launch_on_startup);
-        let result = tokio::task::spawn_blocking(move || autostart::reconcile(wanted)).await;
+        let enforce_approval = matches!(
+            trigger,
+            ReconcileTrigger::StartupPreferenceChanged | ReconcileTrigger::UserRetry
+        );
+        let result =
+            tokio::task::spawn_blocking(move || autostart::reconcile(wanted, enforce_approval))
+                .await;
         if app
             .state::<Supervisor>()
             .inner()
@@ -1300,6 +1325,7 @@ async fn reconcile_services(
     {
         return;
     }
+    let clear_notification_errors = trigger.clear_notification_errors();
     match notification_result {
         Ok(Ok(probe)) if clear_notification_errors => {
             let error = notification_probe_error(&probe);
@@ -1875,7 +1901,7 @@ async fn run_start(
                             service_app,
                             services,
                             generation,
-                            false,
+                            ReconcileTrigger::Observed,
                         ));
                         tauri::async_runtime::spawn(monitor_backend(
                             app.clone(),
@@ -1985,6 +2011,7 @@ async fn monitor_backend(
         };
         let mut outcome: Option<(bool, &'static str)> = None;
         let mut preferences_changed = false;
+        let mut startup_preference_changed = false;
         let mut location_preferences_changed = false;
         let mut pending_device_requests = Vec::new();
         let mut eligible_completions = 0usize;
@@ -2029,7 +2056,10 @@ async fn monitor_backend(
                             frame.payload,
                             expected_instance,
                         ) {
-                            Ok(_) => preferences_changed = true,
+                            Ok(accepted) => {
+                                preferences_changed = true;
+                                startup_preference_changed |= accepted.launch_on_startup_changed;
+                            }
                             Err(code) => outcome = Some((false, code)),
                         }
                     }
@@ -2124,7 +2154,12 @@ async fn monitor_backend(
         }
         if preferences_changed {
             services.publish(&app);
-            reconcile_services(app.clone(), services.clone(), generation, false).await;
+            let trigger = if startup_preference_changed {
+                ReconcileTrigger::StartupPreferenceChanged
+            } else {
+                ReconcileTrigger::Observed
+            };
+            reconcile_services(app.clone(), services.clone(), generation, trigger).await;
         }
         if location_preferences_changed {
             app.state::<location::LocationObserver>().remove();
@@ -2496,7 +2531,7 @@ fn main() {
                     app_handle.clone(),
                     app_handle.state::<DesktopServicesState>().inner().clone(),
                     generation,
-                    false,
+                    ReconcileTrigger::Observed,
                 )
                 .await;
             });
