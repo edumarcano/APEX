@@ -60,7 +60,7 @@
 - All documentation and repository communication must follow `docs/agent-guidance/writing.md`.
 - Product naming, Agent taxonomy, canonical terminology, and logo meaning must remain consistent with `docs/identity-and-naming.md`.
 - Saved planning handoffs and task briefs must follow `docs/agent-handoffs/template.md`.
-- Pull request, squash merge, changelog, and release procedures must follow `docs/agent-guidance/releases.md`.
+- Pull request, squash merge, changelog, and release procedures must follow `docs/agent-guidance/releases.md`, which defines the authoritative release contracts and takes precedence over generic Remora skill defaults.
 - Backend work must follow `docs/agent-guidance/backend.md`.
 - Frontend work must follow `docs/agent-guidance/frontend.md` and `docs/design-system.md` when visual behavior changes.
 - Launcher, dependency, environment, or configuration work must follow `docs/agent-guidance/infrastructure.md`.

@@ -1,6 +1,13 @@
 # Pull Request and Release Guidance
 
-Follow this procedure for branch finalization, pull requests, milestone changelogs, annotated tags, and GitHub releases. Approval covers only the explicitly displayed external-action batch; revalidate immediately before execution.
+This document is the authoritative specification for APEX pull requests, squash merges, changelogs, annotated tags, and GitHub releases. It defines project-specific release contracts and lifecycle gates that specialize and take precedence over Remora's generic skill defaults (`remora-prepare-pr` and `remora-prepare-release`), while incorporating Remora's editorial anti-slop standards and pre-flight hygiene.
+
+## Workflow Precedence and Integration
+
+- **Pull Requests:** Use `.agents/skills/remora-prepare-pr/SKILL.md` to assemble the concise brief (`Why`, `What changed`, `Verification`, `Risks and non-goals`) under Remora's anti-slop standard. Phase 1 below takes precedence for merge-base diff inspection, squash commit title/body requirements, and approval gates.
+- **Releases and Changelogs:** Use `.agents/skills/remora-prepare-release/SKILL.md` for pre-flight hygiene (clean working tree, path/secret sanitization, license check), but Phase 2 and Phase 3 below take precedence for APEX's 3-phase progression, canonical changelog heading format (`## vX.Y.Z - Milestone Name`), release notes footer links with calculated GitHub anchors, and external publication approval gates.
+
+Approval covers only the explicitly displayed external-action batch; revalidate immediately before execution.
 
 ## Phase 1: Feature PR and Squash Merge
 
@@ -17,14 +24,14 @@ Follow this procedure for branch finalization, pull requests, milestone changelo
 1. Start when milestone features are complete. Compare the previous release tag through local `main` and merged PR evidence.
 2. Verify remote `main` before preparation; never force-push or silently rewrite history.
 3. Reconcile `CHANGELOG.md` following *Keep a Changelog* conventions (`### Added`, `### Changed`, `### Fixed`, `### Removed`). Exclude reverted or superseded intermediate work.
-4. Use `## vX.Y.Z — Milestone Name` as the canonical changelog heading. This heading is authoritative for the later tag annotation and GitHub release title.
+4. Use `## vX.Y.Z - Milestone Name` as the canonical changelog heading. This heading is authoritative for the later tag annotation and GitHub release title.
 5. If explicitly requested to commit, validate the staged release diff and commit locally on `main` using `docs(release): reconcile vX.Y.Z changelog` or equivalent conventional commit title. Do not push `main`, tag, or publish in this phase.
 
 ## Phase 3: Tag and Publish Release
 
 1. Require the finalized changelog commit to exist locally on `main`.
 2. Confirm the previous release tag with `git describe --tags --abbrev=0`. Verify the new tag does not exist locally or remotely and that the target commit is synchronized with its remote state.
-3. Derive both the annotated tag message and GitHub release title exactly from the canonical changelog heading without `## `: `vX.Y.Z — Milestone Name`.
+3. Derive both the annotated tag message and GitHub release title exactly from the canonical changelog heading without `## `: `vX.Y.Z - Milestone Name`.
 4. Draft concise release notes. Begin the body with the release date. End the body with exactly these two lines and no trailing content:
 
 ```markdown
@@ -32,9 +39,9 @@ Follow this procedure for branch finalization, pull requests, milestone changelo
 **Code Diff**: [<previous-tag>...<new-tag>](https://github.com/edumarcano/APEX/compare/<previous-tag>...<new-tag>)
 ```
 
-5. Derive `<changelog-anchor>` using GitHub heading-anchor rules (e.g. `## v1.14.0 — Central Command Atmosphere` -> `v1140--central-command-atmosphere`). Validate the anchor, repository URL, versions, tag range, and target commit.
+5. Derive `<changelog-anchor>` using GitHub heading-anchor rules (e.g. `## v1.14.0 - Central Command Atmosphere` -> `v1140---central-command-atmosphere`). Validate the anchor, repository URL, versions, tag range, and target commit.
 6. Present the complete approval payload: local and remote `main` state, previous and new versions, target commit, changelog heading, tag annotation, full release title and body, and ordered external actions.
-7. After explicit approval, push the changelog commit to `main`, create the annotated tag on the verified commit (`git tag -a vX.Y.Z -m "vX.Y.Z — Milestone Name"`), push the tag (`git push origin vX.Y.Z`), publish the release (`gh release create vX.Y.Z --title "vX.Y.Z — Milestone Name" --notes-file <file>`), and verify remote tag and links. Stop on any partial failure.
+7. After explicit approval, push the changelog commit to `main`, create the annotated tag on the verified commit (`git tag -a vX.Y.Z -m "vX.Y.Z - Milestone Name"`), push the tag (`git push origin vX.Y.Z`), publish the release (`gh release create vX.Y.Z --title "vX.Y.Z - Milestone Name" --notes-file <file>`), and verify remote tag and links. Stop on any partial failure.
 
 ## Commit Text Conventions
 
