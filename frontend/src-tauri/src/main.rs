@@ -2444,12 +2444,6 @@ fn main() {
                 )
                 .build(),
         )
-        .plugin(
-            tauri_plugin_autostart::Builder::new()
-                .app_name("APEX")
-                .args(["--autostart"])
-                .build(),
-        )
         .setup(move |app| {
             let handle = app.handle().clone();
             let window =
