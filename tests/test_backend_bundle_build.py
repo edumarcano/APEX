@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
 import tomllib
 import unittest
+from unittest import mock
 
 from scripts import build_backend_bundle as builder
 
@@ -143,6 +146,79 @@ class BackendBundleBuildTests(unittest.TestCase):
         project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
         self.assertEqual(first["app_version"], project["version"])
 
+    @unittest.skipUnless(sys.platform == "win32", "comtypes package generation is Windows-specific")
+    def test_comtypes_preflight_materializes_package_in_fresh_isolated_environment(self) -> None:
+        package_spec = importlib.util.find_spec("comtypes")
+        if package_spec is None or package_spec.origin is None:
+            self.skipTest("comtypes is not installed in this test environment")
+
+        with tempfile.TemporaryDirectory(dir=self.temp_root) as temporary:
+            root = Path(temporary)
+            environment = root / "fresh-env"
+            created = subprocess.run(
+                [sys.executable, "-m", "venv", "--without-pip", str(environment)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
+            self.assertEqual(created.returncode, 0, created.stderr)
+            target_package = environment / "Lib" / "site-packages" / "comtypes"
+            shutil.copytree(
+                Path(package_spec.origin).parent,
+                target_package,
+                ignore=shutil.ignore_patterns("gen", "__pycache__"),
+            )
+            generated_package = target_package / "gen"
+            self.assertFalse(generated_package.exists())
+
+            with mock.patch.dict(os.environ, {"PYTHONOPTIMIZE": "1"}):
+                builder._prepare_comtypes_analysis_state(environment / "Scripts" / "python.exe")
+
+            self.assertTrue((generated_package / "__init__.py").is_file())
+
+    @unittest.skipUnless(sys.platform == "win32", "comtypes package generation is Windows-specific")
+    def test_comtypes_preflight_rejects_redirected_gen_initializer_before_import(self) -> None:
+        package_spec = importlib.util.find_spec("comtypes")
+        if package_spec is None or package_spec.origin is None:
+            self.skipTest("comtypes is not installed in this test environment")
+
+        with tempfile.TemporaryDirectory(dir=self.temp_root) as temporary:
+            root = Path(temporary)
+            environment = root / "fresh-env"
+            created = subprocess.run(
+                [sys.executable, "-m", "venv", "--without-pip", str(environment)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
+            self.assertEqual(created.returncode, 0, created.stderr)
+            target_package = environment / "Lib" / "site-packages" / "comtypes"
+            shutil.copytree(
+                Path(package_spec.origin).parent,
+                target_package,
+                ignore=shutil.ignore_patterns("gen", "__pycache__"),
+            )
+            generated_package = target_package / "gen"
+            generated_package.mkdir()
+            marker = root / "redirected-import-ran"
+            external_initializer = root / "outside-init.py"
+            external_initializer.write_text(
+                f"from pathlib import Path; Path({str(marker)!r}).touch()\n",
+                encoding="utf-8",
+            )
+            try:
+                (generated_package / "__init__.py").symlink_to(external_initializer)
+            except OSError as error:
+                self.skipTest(f"file symlinks are unavailable: {type(error).__name__}")
+
+            with mock.patch.dict(os.environ, {"PYTHONOPTIMIZE": "1"}):
+                with self.assertRaises(builder.BundleBuildError):
+                    builder._prepare_comtypes_analysis_state(environment / "Scripts" / "python.exe")
+
+            self.assertFalse(marker.exists())
+
     def test_manifest_hashes_sorted_files_and_omits_itself(self) -> None:
         with tempfile.TemporaryDirectory(dir=self.temp_root) as temporary:
             root = Path(temporary)
@@ -154,6 +230,144 @@ class BackendBundleBuildTests(unittest.TestCase):
             self.assertEqual([item["path"] for item in manifest["files"]], ["a.txt", "z.txt"])
             self.assertEqual(len(manifest["files"]), 2)
             self.assertEqual(json.loads((root / "bundle-manifest.json").read_text())["build_id"], "build-id")
+
+    def test_reproducibility_mismatch_summary_reports_bounded_relative_file_deltas(self) -> None:
+        first = {
+            "build_id": "first-build-id",
+            "files": [
+                {"path": "changed.bin", "sha256": "a", "size": 1},
+                {"path": "removed.bin", "sha256": "b", "size": 1},
+            ],
+            "schema_version": 1,
+        }
+        second = {
+            "build_id": "second-build-id",
+            "files": [
+                {"path": "added.bin", "sha256": "c", "size": 1},
+                {"path": "changed.bin", "sha256": "d", "size": 2},
+            ],
+            "schema_version": 1,
+        }
+
+        summary = builder._manifest_difference_summary(first, second, sample_limit=1)
+
+        self.assertIn("added files (1): added.bin", summary)
+        self.assertIn("removed files (1): removed.bin", summary)
+        self.assertIn("changed files (1): changed.bin", summary)
+        self.assertIn("metadata fields differ: build_id", summary)
+        self.assertNotIn("first-build-id", summary)
+        self.assertNotIn("second-build-id", summary)
+
+    def test_reproducibility_mismatch_summary_caps_path_samples(self) -> None:
+        first = {"files": []}
+        second = {
+            "files": [
+                {"path": f"changed/{index:02d}.bin", "sha256": str(index), "size": index}
+                for index in range(12)
+            ]
+        }
+
+        summary = builder._manifest_difference_summary(first, second, sample_limit=2)
+
+        self.assertIn("added files (12): changed/00.bin, changed/01.bin, ... (+10)", summary)
+        self.assertNotIn("changed/02.bin", summary)
+
+    def test_reproducibility_helper_accepts_exit_one_and_projects_safe_schema(self) -> None:
+        report = {
+            "schema_version": 1,
+            "equal": False,
+            "summary": {"sha256": ["a" * 64, "b" * 64], "size_bytes": [10, 11]},
+            "pe": {
+                "changed_fields": ["TimeDateStamp"],
+                "section_count": [3, 3],
+                "changed_section_count": 1,
+                "changed_sections": [".rsrc"],
+            },
+            "carchive": {
+                "order_equal": True,
+                "entry_count": [2, 2],
+                "only_left_count": 0,
+                "only_right_count": 0,
+                "changed_payload_count": 0,
+                "changed_entry_metadata_count": 0,
+                "changed_script_count": 1,
+                "serialization_only_script_count": 0,
+                "only_left": [],
+                "only_right": [],
+                "changed_payloads": [],
+                "changed_entry_metadata": [],
+                "changed_scripts": ["apex_entry"],
+                "changed_script_code_fields": ["co_consts"],
+                "pyz": [],
+                "base_library_zip": None,
+            },
+        }
+        completed = mock.Mock(returncode=1, stdout=json.dumps(report), stderr="private diagnostic path")
+
+        with mock.patch.object(builder.subprocess, "run", return_value=completed) as run:
+            result = builder._executable_reproducibility_diagnostics(
+                Path("isolated-python.exe"), Path("first.exe"), Path("second.exe")
+            )
+
+        self.assertIsNotNone(result)
+        self.assertIn('"equal":false', result)
+        self.assertIn('"changed_fields":["TimeDateStamp"]', result)
+        self.assertIn('"changed_sections":[".rsrc"]', result)
+        self.assertIn('"changed_script_code_fields":["co_consts"]', result)
+        self.assertNotIn("private diagnostic path", result)
+        self.assertEqual(run.call_args.args[0][0], "isolated-python.exe")
+
+        report["carchive"]["changed_scripts"] = ["C:/Users/runner/private.py"]
+        completed.stdout = json.dumps(report)
+        with mock.patch.object(builder.subprocess, "run", return_value=completed):
+            unsafe_result = builder._executable_reproducibility_diagnostics(
+                Path("isolated-python.exe"), Path("first.exe"), Path("second.exe")
+            )
+        self.assertIsNone(unsafe_result)
+
+    def test_forensic_helper_failure_does_not_hide_reproducibility_failure(self) -> None:
+        first = {
+            "build_id": "build-id",
+            "files": [{"path": "apex-backend.exe", "sha256": "a", "size": 1}],
+            "schema_version": 1,
+        }
+        second = {
+            "build_id": "build-id",
+            "files": [{"path": "apex-backend.exe", "sha256": "b", "size": 1}],
+            "schema_version": 1,
+        }
+        timeout = subprocess.TimeoutExpired("forensic-helper", 180)
+
+        with mock.patch.object(builder.subprocess, "run", side_effect=timeout):
+            with self.assertRaises(builder.BundleBuildError) as raised:
+                builder._raise_reproducibility_mismatch(
+                    first, second, Path("isolated-python.exe"), Path("first.exe"), Path("second.exe")
+                )
+
+        self.assertIn("Controlled PyInstaller builds produced different file hashes", str(raised.exception))
+        self.assertIn("changed files (1): apex-backend.exe", str(raised.exception))
+        self.assertIn("executable diagnostics unavailable", str(raised.exception))
+
+    def test_forensic_helper_rejects_unapproved_or_malformed_report_fields(self) -> None:
+        invalid_results = (
+            mock.Mock(returncode=2, stdout=json.dumps({"schema_version": 1, "error": "FileNotFoundError"}), stderr=""),
+            mock.Mock(
+                returncode=1,
+                stdout=json.dumps({
+                    "schema_version": 1,
+                    "equal": False,
+                    "local_path": "C:/Users/runner/private.exe",
+                }),
+                stderr="",
+            ),
+        )
+        for completed in invalid_results:
+            with mock.patch.object(builder.subprocess, "run", return_value=completed):
+                result = builder._executable_reproducibility_diagnostics(
+                    Path("isolated-python.exe"), Path("first.exe"), Path("second.exe")
+                )
+
+            self.assertIsNone(result)
 
     def test_backend_and_cli_entrypoints_expose_the_existing_commands(self) -> None:
         backend = subprocess.run(

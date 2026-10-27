@@ -13,6 +13,8 @@ Use Runtime Settings for everyday preferences and `.env` for credentials and env
 
 The selected data directory is the checkout in source runs. Set `APEX_DATA_DIR` in the process environment before starting APEX to keep data elsewhere; the value must be absolute, and a relative nonempty value stops startup. A frozen Windows app defaults to `%LOCALAPPDATA%\APEX` and rejects a data directory inside the resources or executable installation directory. The selector is read before `.env` is loaded, so `.env` cannot change the active profile. Changing this setting does not copy data; use the desktop first-run Import flow for an explicit copy. Microsoft To Do's configured encrypted token-cache path, the Context vault destination, managed model executable and preset paths, and the external activity report folder remain operator-selected destinations.
 
+The per-user desktop installer keeps the immutable shell and backend under `%LOCALAPPDATA%\Programs\APEX`; its writable profile stays in `%LOCALAPPDATA%\APEX`. This separation lets the installer replace program files without writing operator settings or persistence into the installation directory.
+
 ### Desktop first run and import
 
 On a new Windows desktop profile, choose **Fresh Start** or **Import**. Import first previews managed files from a folder you select. It copies the source SQLite database and supported managed configuration, credentials, caches, and available model weights into the desktop data folder; it does not combine databases or modify the source. Close APEX in the source folder before importing. An active source, an existing destination database, or an invalid core schema prevents the copy. Unsupported retrieval data is retained with a warning when the rest of the profile can be imported.

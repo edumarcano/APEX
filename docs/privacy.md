@@ -83,6 +83,8 @@ See [Context Vault](context-vault.md) for selection and cleanup procedures.
 
 ## Retention and deletion
 
+Uninstalling the Windows desktop application removes its installed program files and APEX-owned startup registration. It does not erase the local data profile or saved desktop window state. Removing an installation and deleting its data are separate actions; profile deletion remains under your control. Data kept at external destinations, imported source folders, backups, and sync copies also remain outside uninstall.
+
 Archived Cortex conversations are eligible for permanent deletion after 30 days by default. The configurable minimum is 14 days. Checks run at startup and about every 24 hours, and skip conversations with pending turns or active runs. Deleting a conversation also removes its linked briefing session and speech data. Separately accepted personal-context sources keep their own lifecycle.
 
 Retracting personal knowledge preserves its earlier evidence and history; it is not an erasure operation. Imported report-folder files and copies held by backups, sync services, or external providers are outside conversation deletion.

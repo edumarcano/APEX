@@ -6,8 +6,9 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -27,6 +28,19 @@ SPEC = ROOT / "packaging" / "windows" / "backend-bundle.spec"
 
 class BundleBuildError(RuntimeError):
     """A missing or invalid bundle build input."""
+
+
+_DIAGNOSTIC_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,160}$")
+_PE_FIELDS = {
+    "TimeDateStamp", "CheckSum", "AddressOfEntryPoint", "ImageBase", "SizeOfImage",
+    "SectionAlignment", "FileAlignment",
+}
+_CODE_FIELDS = {
+    "co_argcount", "co_posonlyargcount", "co_kwonlyargcount", "co_nlocals",
+    "co_stacksize", "co_flags", "co_code", "co_names", "co_varnames", "co_freevars",
+    "co_cellvars", "co_filename", "co_name", "co_qualname", "co_firstlineno",
+    "co_linetable", "co_exceptiontable", "co_consts",
+}
 
 
 def _sha256(path: Path) -> str:
@@ -270,7 +284,60 @@ def _prepare_environment(toolchain: dict[str, Any]) -> Path:
         or runtime.get("bits") != 64
     ):
         raise BundleBuildError("The locked build environment is not Python 3.14.7 AMD64.")
+    _prepare_comtypes_analysis_state(python)
     return python
+
+
+def _prepare_comtypes_analysis_state(python: Path) -> None:
+    """Materialize comtypes' generated namespace package before PyInstaller scans it."""
+    code = (
+        "from pathlib import Path; import importlib.util, os, sys; "
+        "prefix=Path(sys.prefix).resolve(); spec=importlib.util.find_spec('comtypes'); "
+        "assert spec is not None and spec.origin is not None; "
+        "package=Path(spec.origin).parent; package_resolved=package.resolve(); "
+        "expected=package/'gen'; expected_resolved=expected.resolve(); "
+        "assert package_resolved.is_relative_to(prefix); "
+        "assert expected_resolved == package_resolved/'gen'; "
+        "assert not expected.is_symlink() and not expected.is_junction(); "
+        "assert not expected.exists() or (expected.is_dir() and os.access(expected_resolved, os.W_OK)); "
+        "initializer=expected/'__init__.py'; "
+        "assert not initializer.is_symlink(); "
+        "assert not initializer.exists() or initializer.resolve() == expected_resolved/'__init__.py'; "
+        "assert os.access(package_resolved, os.W_OK); "
+        "import comtypes, comtypes.client; "
+        "assert Path(comtypes.__file__).resolve().parent == package_resolved; "
+        "gen_dir=Path(comtypes.client.gen_dir); actual=Path(comtypes.gen.__file__); "
+        "assert gen_dir == expected; "
+        "assert gen_dir.resolve() == expected_resolved; "
+        "assert expected_resolved.is_relative_to(package_resolved); "
+        "assert not initializer.is_symlink(); "
+        "assert actual.resolve() == expected_resolved/'__init__.py'; "
+        "assert initializer.is_file(); "
+        "print('APEX_COMTYPES_ANALYSIS_READY_V1')"
+    )
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    env.pop("PYTHONHOME", None)
+    env["PYTHONNOUSERSITE"] = "1"
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    try:
+        result = subprocess.run(
+            [str(python), "-I", "-B", "-c", code],
+            cwd=ROOT,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise BundleBuildError(
+            "Could not prepare the locked comtypes package for deterministic analysis."
+        ) from None
+    if result.returncode != 0 or result.stdout.strip() != "APEX_COMTYPES_ANALYSIS_READY_V1":
+        raise BundleBuildError(
+            "Could not prepare the locked comtypes package for deterministic analysis."
+        )
 
 
 def _stage_notices(environment_root: Path, python: Path) -> list[dict[str, str]]:
@@ -381,6 +448,276 @@ def write_manifest(
     return manifest
 
 
+def _manifest_difference_summary(
+    first: dict[str, Any],
+    second: dict[str, Any],
+    *,
+    sample_limit: int = 10,
+) -> str:
+    """Describe reproducibility mismatches using bounded bundle-relative paths only."""
+    if sample_limit < 0:
+        raise ValueError("sample_limit must be non-negative")
+
+    def files_by_path(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        entries: dict[str, dict[str, Any]] = {}
+        for item in manifest.get("files", []):
+            path = item.get("path")
+            if isinstance(path, str):
+                entries[path] = item
+        return entries
+
+    first_files = files_by_path(first)
+    second_files = files_by_path(second)
+    first_paths = set(first_files)
+    second_paths = set(second_files)
+    added = sorted(second_paths - first_paths)
+    removed = sorted(first_paths - second_paths)
+    changed = sorted(
+        path for path in first_paths & second_paths if first_files[path] != second_files[path]
+    )
+
+    def safe_path(path: str) -> str:
+        parsed = PurePosixPath(path)
+        if (
+            not path
+            or parsed.is_absolute()
+            or not parsed.parts
+            or "\\" in path
+            or ":" in parsed.parts[0]
+            or any(ord(char) < 32 or ord(char) == 127 for char in path)
+            or any(part in {"", ".", ".."} for part in parsed.parts)
+        ):
+            return "<invalid-relative-path>"
+        return path[:160]
+
+    details: list[str] = []
+    for label, paths in (("added", added), ("removed", removed), ("changed", changed)):
+        if not paths:
+            continue
+        samples = ", ".join(safe_path(path) for path in paths[:sample_limit])
+        omitted = len(paths) - min(len(paths), sample_limit)
+        if omitted:
+            samples = f"{samples}, ... (+{omitted})" if samples else f"... (+{omitted})"
+        details.append(f"{label} files ({len(paths)}): {samples or 'no paths shown'}")
+
+    metadata_keys = (set(first) | set(second)) - {"files"}
+    changed_metadata = sorted(
+        key for key in metadata_keys if first.get(key) != second.get(key)
+    )
+    if changed_metadata:
+        details.append(f"metadata fields differ: {', '.join(changed_metadata)}")
+    return "; ".join(details) or "manifest contents differ without a file-path delta"
+
+
+def _safe_diagnostic_report(value: Any, returncode: int) -> dict[str, Any] | None:
+    """Validate and project the forensic helper's path-free schema onto safe fields."""
+    if not isinstance(value, dict) or set(value) != {"schema_version", "equal", "summary", "pe", "carchive"}:
+        return None
+    if type(value["schema_version"]) is not int or value["schema_version"] != 1:
+        return None
+    if type(value["equal"]) is not bool or returncode != (0 if value["equal"] else 1):
+        return None
+
+    def count(item: Any) -> int | None:
+        if type(item) is not int or item < 0 or item > 1_000_000_000:
+            return None
+        return item
+
+    def count_pair(item: Any) -> list[int] | None:
+        if not isinstance(item, list) or len(item) != 2:
+            return None
+        first, second = count(item[0]), count(item[1])
+        return [first, second] if first is not None and second is not None else None
+
+    def names(item: Any, *, allow_leading_dot: bool = False) -> list[str] | None:
+        if (
+            not isinstance(item, list)
+            or len(item) > 10
+            or any(
+                not isinstance(name, str)
+                or not _DIAGNOSTIC_NAME.fullmatch(name)
+                or (name.startswith(".") and not allow_leading_dot)
+                or ".." in name
+                for name in item
+            )
+        ):
+            return None
+        return item
+
+    def string_pair(item: Any) -> list[str] | None:
+        if (
+            not isinstance(item, list)
+            or len(item) != 2
+            or any(not isinstance(entry, str) or not re.fullmatch(r"[0-9a-f]{64}", entry) for entry in item)
+        ):
+            return None
+        return item
+
+    def bool_value(item: Any) -> bool | None:
+        return item if type(item) is bool else None
+
+    summary = value["summary"]
+    if not isinstance(summary, dict) or set(summary) != {"sha256", "size_bytes"}:
+        return None
+    summary_hashes = string_pair(summary["sha256"])
+    summary_sizes = count_pair(summary["size_bytes"])
+    if summary_hashes is None or summary_sizes is None:
+        return None
+
+    pe = value["pe"]
+    pe_keys = {"changed_fields", "section_count", "changed_section_count", "changed_sections"}
+    if not isinstance(pe, dict) or set(pe) != pe_keys:
+        return None
+    pe_fields = names(pe["changed_fields"])
+    pe_sections = count_pair(pe["section_count"])
+    pe_changed_count = count(pe["changed_section_count"])
+    changed_sections = names(pe["changed_sections"], allow_leading_dot=True)
+    if (
+        pe_fields is None or any(field not in _PE_FIELDS for field in pe_fields)
+        or pe_sections is None or pe_changed_count is None or changed_sections is None
+    ):
+        return None
+
+    carchive = value["carchive"]
+    archive_keys = {
+        "order_equal", "entry_count", "only_left_count", "only_right_count",
+        "changed_payload_count", "changed_entry_metadata_count", "changed_script_count",
+        "serialization_only_script_count", "only_left", "only_right", "changed_payloads",
+        "changed_entry_metadata", "changed_scripts", "changed_script_code_fields", "pyz",
+        "base_library_zip",
+    }
+    if not isinstance(carchive, dict) or set(carchive) != archive_keys:
+        return None
+    order_equal = bool_value(carchive["order_equal"])
+    entry_count = count_pair(carchive["entry_count"])
+    archive_counts = {
+        key: count(carchive[key])
+        for key in (
+            "only_left_count", "only_right_count", "changed_payload_count",
+            "changed_entry_metadata_count", "changed_script_count",
+            "serialization_only_script_count",
+        )
+    }
+    archive_names = {
+        key: names(carchive[key])
+        for key in (
+            "only_left", "only_right", "changed_payloads", "changed_entry_metadata",
+            "changed_scripts", "changed_script_code_fields",
+        )
+    }
+    if (
+        order_equal is None or entry_count is None
+        or any(item is None for item in archive_counts.values())
+        or any(item is None for item in archive_names.values())
+        or any(field not in _CODE_FIELDS for field in archive_names["changed_script_code_fields"] or [])
+    ):
+        return None
+
+    pyz_values = carchive["pyz"]
+    pyz_keys = {
+        "name", "order_equal", "module_count", "only_left_count", "only_right_count",
+        "changed_module_count", "changed_storage_module_count", "only_left", "only_right",
+        "changed_modules", "changed_storage_modules", "changed_code_fields",
+        "serialization_only_module_count",
+    }
+    if not isinstance(pyz_values, list) or len(pyz_values) > 10:
+        return None
+    pyz_reports: list[dict[str, Any]] = []
+    for item in pyz_values:
+        if not isinstance(item, dict) or set(item) != pyz_keys:
+            return None
+        name = names([item["name"]])
+        module_count = count_pair(item["module_count"])
+        pyz_order = bool_value(item["order_equal"])
+        pyz_counts = {
+            key: count(item[key])
+            for key in (
+                "only_left_count", "only_right_count", "changed_module_count",
+                "changed_storage_module_count", "serialization_only_module_count",
+            )
+        }
+        pyz_names = {
+            key: names(item[key])
+            for key in (
+                "only_left", "only_right", "changed_modules", "changed_storage_modules",
+                "changed_code_fields",
+            )
+        }
+        if (
+            name is None or module_count is None or pyz_order is None
+            or any(value is None for value in pyz_counts.values())
+            or any(value is None for value in pyz_names.values())
+            or any(field not in _CODE_FIELDS for field in pyz_names["changed_code_fields"] or [])
+        ):
+            return None
+        pyz_reports.append({
+            "name": name[0], "order_equal": pyz_order, "module_count": module_count,
+            **pyz_counts, **pyz_names,
+        })
+
+    if carchive["base_library_zip"] is not None:
+        return None
+
+    return {
+        "schema_version": 1,
+        "equal": value["equal"],
+        "summary": {"sha256": summary_hashes, "size_bytes": summary_sizes},
+        "pe": {
+            "changed_fields": pe_fields, "section_count": pe_sections,
+            "changed_section_count": pe_changed_count, "changed_sections": changed_sections,
+        },
+        "carchive": {
+            "order_equal": order_equal, "entry_count": entry_count,
+            **archive_counts, **archive_names, "pyz": pyz_reports, "base_library_zip": None,
+        },
+    }
+
+
+def _executable_reproducibility_diagnostics(
+    python: Path,
+    first: Path,
+    second: Path,
+) -> str | None:
+    """Run and validate the bounded forensic helper; never expose its raw errors."""
+    helper = ROOT / "packaging" / "windows" / "reproducibility.py"
+    try:
+        result = subprocess.run(
+            [str(python), str(helper), str(first), str(second), "--max-items", "3"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=180,
+        )
+        if result.returncode not in {0, 1} or len(result.stdout) > 32_768:
+            return None
+        report = _safe_diagnostic_report(json.loads(result.stdout), result.returncode)
+        if report is None:
+            return None
+        return json.dumps(report, sort_keys=True, separators=(",", ":"))
+    except Exception:
+        return None
+
+
+def _raise_reproducibility_mismatch(
+    first_manifest: dict[str, Any],
+    second_manifest: dict[str, Any],
+    python: Path,
+    first_executable: Path,
+    second_executable: Path,
+) -> None:
+    details = _manifest_difference_summary(first_manifest, second_manifest)
+    diagnostics = _executable_reproducibility_diagnostics(python, first_executable, second_executable)
+    if diagnostics is None:
+        details = f"{details}; executable diagnostics unavailable"
+    else:
+        details = f"{details}; executable diagnostics: {diagnostics}"
+    raise BundleBuildError(
+        "Controlled PyInstaller builds produced different file hashes: "
+        f"{details}."
+    )
+
+
 def build(*, with_smoke_probe: bool = False, reproducibility_check: bool = False) -> Path:
     toolchain = _load_toolchain()
     _assert_uv_version(toolchain)
@@ -440,7 +777,13 @@ def build(*, with_smoke_probe: bool = False, reproducibility_check: bool = False
         _copy_notices(NOTICE_STAGE, second)
         second_manifest = write_manifest(second, build_info["build_id"], notice_inventory)
         if first_manifest != second_manifest:
-            raise BundleBuildError("Controlled PyInstaller builds produced different file hashes.")
+            _raise_reproducibility_mismatch(
+                first_manifest,
+                second_manifest,
+                python,
+                production / "apex-backend.exe",
+                second / "apex-backend.exe",
+            )
     return production
 
 

@@ -47,7 +47,7 @@ The loading check requires a completed build. For repeated frontend tests during
 
 The Windows Tauri shell uses the same React interface and the locally supervised FastAPI backend. Its development toolchain adds native prerequisites beyond the Python and Node setup in [Getting Started](../docs/getting-started.md):
 
-- Install Rust stable with the `x86_64-pc-windows-msvc` target.
+- Install rustup; the checked-in `rust-toolchain.toml` pins Rust `1.99.0` and the `x86_64-pc-windows-msvc` target.
 - Install Visual Studio 2022 Build Tools with the **Desktop development with C++** workload and a Windows SDK.
 - Use Node.js 24 and npm for the frontend build.
 - Build and smoke-check the frozen backend bundle using the canonical [Windows backend bundle build steps](../docs/backend-bundle.md#build). The desktop shell requires this verified bundle; it does not build the Python backend itself.
@@ -61,14 +61,15 @@ npm run desktop:dev
 
 `desktop:prepare` checks the bundle manifest, build identity, and file hashes before staging it under `src-tauri/resources/backend-bundle`. `desktop:dev` runs that preparation step and starts Tauri. Tauri starts Vite on `127.0.0.1:5173` with a strict port so its native origin stays predictable. `npm run dev` remains the ordinary browser workflow and still mounts the interface immediately; the browser does not load the native adapter.
 
-To build from a different verified backend bundle, pass its absolute path to both commands so preparation and assembly use the same source:
+To build from a different verified backend bundle, pass its absolute path to all three commands so preparation, assembly, and installer packaging use the same source:
 
 ```powershell
 npm run desktop:prepare -- --bundle "C:\path\to\backend-bundle"
 npm run desktop:build -- --bundle "C:\path\to\backend-bundle"
+npm run desktop:package -- --bundle "C:\path\to\backend-bundle"
 ```
 
-`desktop:build` re-verifies and stages the bundle, then invokes the locked Tauri CLI; its build hook compiles the production frontend. The command assembles a runnable folder at `build/desktop-shell/APEX/` containing `APEX.exe` and `backend-bundle/`. It does not create an installer. Installed Windows behavior still needs validation in the packaged-shell workflow.
+`desktop:build` re-verifies and stages the bundle, then invokes the locked Tauri CLI; its build hook compiles the production frontend. It assembles a portable folder at `build/desktop-shell/APEX/` containing `APEX.exe` and `backend-bundle/`. `desktop:package` uses the same verified bundle and locked x64 MSVC target to create an NSIS per-user installer. It keeps the portable folder and writes the installer with its `distribution-manifest.json` receipt under `build/desktop-shell/installers/`. The installed app uses `apex-desktop.exe` beside `backend-bundle/apex-backend.exe`; its writable data remains under `%LOCALAPPDATA%\APEX`. See [Getting Started](../docs/getting-started.md#windows-desktop-installation) for installation and first run, and [Backend Bundle](../docs/backend-bundle.md#desktop-build-installer-and-validation) for the build and distribution validation gate.
 
 In the native window, APEX waits for the owned backend and checks the fixed local runtime identity endpoint before mounting workspace API hooks. Startup, port/profile conflict, origin rejection, identity mismatch, and backend failure states provide retry or quit actions. Retrying asks first because restarting closes the current workspace and discards unsent text; drafts are not persisted.
 

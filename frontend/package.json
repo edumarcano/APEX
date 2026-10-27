@@ -10,6 +10,7 @@
     "check:loading": "node scripts/check-loading.mjs",
     "desktop:prepare": "node scripts/prepare-desktop.mjs",
     "desktop:build": "node scripts/build-desktop.mjs",
+    "desktop:package": "node scripts/build-desktop.mjs --package",
     "desktop:dev": "npm run desktop:prepare && npm run tauri -- dev --config src-tauri/tauri.dev.conf.json",
     "tauri": "tauri",
     "lint": "eslint .",

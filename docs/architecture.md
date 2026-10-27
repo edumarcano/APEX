@@ -8,6 +8,8 @@ This document explains how collection, conversations, briefings, and personal co
 
 APEX resolves immutable application resources separately from operator data. In a source checkout, the backend module locates resources and the data directory defaults to that checkout, independent of the current working directory. An absolute `APEX_DATA_DIR` selects another source data directory. Frozen Windows runs use bundled resources and default data to `%LOCALAPPDATA%\APEX`; their data directory cannot be inside the resources or executable installation directory.
 
+The installed Windows shell and its backend live under `%LOCALAPPDATA%\Programs\APEX`, while the selected mutable profile remains at `%LOCALAPPDATA%\APEX`. The shell starts its adjacent `backend-bundle\apex-backend.exe`; changing or removing installed program files does not own or delete the profile.
+
 Path resolution does not create directories or files. Startup reads the selected profile's `.env` after choosing the data directory. The `.env` file cannot retarget that choice, and `PYTHON_DOTENV_DISABLED` disables loading. Writers create their required data directories when persistence is initialized. APEX does not copy or migrate operator state when the selected data directory changes. See [Configuration](configuration.md#where-settings-live) for the configuration-layer order and operator controls.
 
 ## Backend hosting
@@ -26,7 +28,7 @@ Speech export is an allowlisted worker subcommand dispatched before backend star
 
 ## Desktop shell ownership
 
-The packaged Windows desktop application uses Tauri for native presentation and process supervision. It loads the bundled React interface directly in WebView2 and owns one managed backend child on `127.0.0.1:8000`. The shell does not start the source launcher's static frontend server or a separate browser window. The source launcher keeps its existing browser workflow for development and standalone use.
+The packaged Windows desktop application uses Tauri for native presentation and process supervision. The installed `apex-desktop.exe` loads the bundled React interface directly in WebView2 and owns one managed `apex-backend.exe` child on `127.0.0.1:8000`. The Tauri identifier remains `com.edumarcano.apex` so Windows retains the existing installed-app identity. The shell does not start the source launcher's static frontend server or a separate browser window. The source launcher keeps its existing browser workflow for development and standalone use.
 
 Before admitting API-dependent workspaces, the shell waits for its child and compares the private managed-start identity with `GET /api/v1/runtime`. A port conflict leaves the existing listener untouched and presents a retryable startup state. A child crash returns the shell to a recoverable state; retry must match a new managed backend identity. API requests, Cortex and Briefing streams, and cancellation continue through the existing HTTP contracts. The desktop layer does not own conversations, Briefing artifacts, Agent execution, or persistence.
 

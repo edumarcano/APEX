@@ -1,1 +1,3 @@
 packaging/windows/source-material/*.txt -text
+frontend/src-tauri/nsis/installer.nsi text eol=lf
+frontend/src-tauri/nsis/installer.nsi.upstream text eol=lf

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "purpose": "External test-only weights for strict Windows distribution smoke; never include these files in APEX installers or frozen probes.",
+  "assets": {
+    "fastembed": {
+      "repository": "qdrant/bge-small-en-v1.5-onnx-q",
+      "revision": "52398278842ec682c6f32300af41344b1c0b0bb2",
+      "license": "MIT",
+      "license_source": "https://huggingface.co/BAAI/bge-small-en-v1.5",
+      "source_url": "https://huggingface.co/qdrant/bge-small-en-v1.5-onnx-q/tree/52398278842ec682c6f32300af41344b1c0b0bb2",
+      "files": {
+        "config.json": {"bytes": 706, "sha256": "13582bcf2effc85b7bf3d3f5532e686bc1c9ce86bb009d10f0ec33cbe92299dd"},
+        "model_optimized.onnx": {"bytes": 66465124, "sha256": "51f1bd0addd6e859e42c2c8021a5e5461385bb676a649f4b269aa445449f2431"},
+        "special_tokens_map.json": {"bytes": 695, "sha256": "5d5b662e421ea9fac075174bb0688ee0d9431699900b90662acd44b2a350503a"},
+        "tokenizer.json": {"bytes": 711396, "sha256": "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66"},
+        "tokenizer_config.json": {"bytes": 1242, "sha256": "0b29c7bfc889e53b36d9dd3e686dd4300f6525110eaa98c76a5dafceb2029f53"}
+      }
+    },
+    "kokoro": {
+      "repository": "thewh1teagle/kokoro-onnx",
+      "revision": "6843c53fc280ab130b7a8d206ebd3407e094efdc",
+      "release": "model-files-v1.0",
+      "code_license": "MIT",
+      "weights_license": "Apache-2.0",
+      "license_source": "https://huggingface.co/hexgrad/Kokoro-82M",
+      "source_url": "https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.0",
+      "files": {
+        "kokoro-v1.0.onnx": {"bytes": 325532387, "sha256": "7d5df8ecf7d4b1878015a32686053fd0eebe2bc377234608764cc0ef3636a6c5"},
+        "voices-v1.0.bin": {"bytes": 28214398, "sha256": "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d"}
+      }
+    }
+  }
+}

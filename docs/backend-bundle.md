@@ -68,7 +68,7 @@ build\backend-bundle\smoke-probe\apex-bundle-probe.exe --run-suite `
   --report build\backend-bundle\smoke-report.json
 ```
 
-The suite relocates the packaged programs under a Unicode path, runs them from an unrelated working directory, and sanitizes child `PATH` values. It checks the frozen bundle and separate probe; it does not establish VM or clean-install evidence.
+The suite relocates the packaged programs under a Unicode path, runs them from an unrelated working directory, and sanitizes child `PATH` values. It checks the frozen bundle and separate probe; it does not establish VM or clean-install evidence. The distribution lifecycle smoke passes `--inference-timeout 600` to its strict frozen backend suite, allowing bounded cold semantic inference in CI and installed test profiles. Direct `--run-suite` invocations keep the suite's configurable timeout.
 
 ## Included and excluded files
 
@@ -76,9 +76,9 @@ The bundle contains the backend runtime, standalone CLI, default configuration, 
 
 The manifest records the source commit, reproducibility seed, staged notices, and final output files. Rebuild from the same commit and `SOURCE_DATE_EPOCH` to compare output manifests and verify reproducibility.
 
-## Desktop build handoff
+## Desktop build, installer, and validation
 
-Build the backend bundle before starting the Vite build. The desktop preparation step stages the complete repository-level `dist/backend-bundle` tree at `frontend/src-tauri/resources/backend-bundle`; Vite clears the repository-level `dist` directory, so prepare must finish first. The native assembly step later copies that staged tree beside `APEX.exe` in `build/desktop-shell/APEX/backend-bundle`. Preserve the executable, its adjacent `_internal` directory, configuration and demo resources, and license notices together. Do not stage only the executable.
+Build the backend bundle before starting the Vite build. The desktop preparation step stages the complete repository-level `dist/backend-bundle` tree at `frontend/src-tauri/resources/backend-bundle`; Vite clears the repository-level `dist` directory, so preparation must finish first. The folder assembly step copies that staged tree beside the portable `APEX.exe` in `build/desktop-shell/APEX/backend-bundle`. The installer instead installs the Tauri executable as `apex-desktop.exe` beside `backend-bundle/apex-backend.exe`. Keep the full bundle, including `_internal`, configuration, demo resources, and license notices, intact in both outputs.
 
 From the repository root, prepare the locked backend bundle, then run the desktop commands from `frontend`:
 
@@ -88,31 +88,101 @@ uv run --locked --all-extras --python 3.14.7 python scripts/build_backend_bundle
 Push-Location frontend
 npm run desktop:prepare
 npm run desktop:build
+npm run desktop:package
 Pop-Location
 ```
 
-For repeat desktop builds after Vite clears repository-level `dist`, `desktop:prepare` reuses and validates the complete staged bundle by default. If you pass `--bundle` explicitly, the value must be an absolute path.
+`desktop:build` assembles the portable folder at `build/desktop-shell/APEX/`; it does not create an installer. `desktop:package` uses the pinned Rust `1.99.0` toolchain and the locked npm, Cargo, and Python dependencies to create the x64 MSVC NSIS per-user installer. It invokes the Tauri build for `x86_64-pc-windows-msvc` with the `nsis` bundle and Cargo `--locked`. Packaging requires a clean committed checkout and an exact match between `HEAD` and the verified backend bundle commit before and after the Tauri build; after any source commit, including documentation changes, rebuild the backend bundle before packaging. The portable build checks bundle version compatibility rather than requiring the same commit. `desktop:package` keeps the same assembled folder and writes the installer and `distribution-manifest.json` receipt under `build/desktop-shell/installers/`. Rust outputs stay under the target-specific `frontend/src-tauri/target/x86_64-pc-windows-msvc/` directory.
 
-The assembled native executable is `build/desktop-shell/APEX/APEX.exe`. The sibling `backend-bundle` directory is part of its runtime and must remain intact. The shell stores mutable operator state in its selected data directory, outside these installed resources.
-
-Run the real WebView2 gate with a `tauri-driver` installation and the Microsoft Edge WebDriver binary matching the host WebView2/Edge version. The smoke launches the supplied executable, guards the fixed API port, sets a disposable data profile and `DEMO_MODE`, and writes a JSON report under the local build directory:
+For repeat desktop builds after Vite clears repository-level `dist`, `desktop:prepare` reuses and validates the complete staged bundle by default. If you pass `--bundle` explicitly, use the same absolute path with preparation and either build command:
 
 ```powershell
-uv run --locked --all-extras --python 3.14.7 python scripts/smoke_desktop_shell.py `
-  --application build/desktop-shell/APEX/APEX.exe `
-  --driver C:\tools\tauri-driver.exe `
-  --native-driver C:\tools\msedgedriver.exe `
-  --report build/desktop-shell/smoke-report.json
+npm run desktop:prepare -- --bundle "C:\path\to\backend-bundle"
+npm run desktop:build -- --bundle "C:\path\to\backend-bundle"
+npm run desktop:package -- --bundle "C:\path\to\backend-bundle"
 ```
 
-The smoke exercises native startup conflict and retry, the four workspaces, a demo Briefing, and Cortex through a disposable loopback llama.cpp-compatible streaming fixture. It waits for the first provider delta before clicking the real WebView Stop control, then checks persisted cancellation and run events. It also checks managed-child crash recovery, close-to-tray with backend and CLI access preserved, single-instance activation, tray Show and Quit, and exact owned-process cleanup. Tray checks must use actual Windows tray interaction; calling a frontend command does not count as exercising the tray. The installed-app notification and startup-registration gate is separate because Windows toast activation requires the installed package identity and Start Menu shortcut. Run that gate against an installed build and inspect actual OS notification delivery and startup registration; a successful notification API return alone does not prove that Windows displayed a toast. An essential case reported as `unverified` makes the command exit nonzero; review the JSON report with the build and do not treat an unverified case as a pass.
+### Distribution smoke checks
+
+The distribution smoke installs current and synthetic previous-version installers in a guarded disposable Windows account, then checks upgrade, uninstall, reinstall, the frozen probe, and data preservation. Build the previous-version fixture from a clean committed checkout before running the smoke. The fixture uses the actual `2.0.0` application payload from the approved baseline and overlays only the current installer wiring. Its sidecar binds the installer hash, baseline and overlay provenance, and backend build ID; it is a test fixture, not a released APEX installer.
+
+Choose a new, empty output directory outside the repository for the fixture. The helper requires a clean committed source checkout, builds a temporary worktree from the approved baseline, packages the previous app, and places one discovered `*-setup.exe` plus its adjacent `.fixture.json` sidecar in the output directory:
+
+```powershell
+python scripts/build_distribution_fixture.py `
+  --base-ref 31fdd21757a1822ac0223956c20595ff5a13d307 `
+  --output C:\apex-distribution-fixture `
+  --report build\desktop-shell\distribution-fixture-report.json
+```
+
+Keep the sidecar beside the fixture installer. The distribution controller validates it before starting an upgrade test. Build the current installer separately with `npm run desktop:package`; its installer and `distribution-manifest.json` are written to `build/desktop-shell/installers/`.
+
+Use the asset provisioner to verify any external FastEmbed and Kokoro test assets before running the distribution smoke. It writes `apex-distribution-smoke-assets.json`, `fastembed_cache/`, and `kokoro/` into the destination you choose; keep these model files outside the repository and installer:
+
+```powershell
+uv run --locked --all-extras --python 3.14.7 python scripts/provision_distribution_smoke_assets.py `
+  --destination C:\apex-distribution-test-assets
+```
+
+Use the locations from that manifest for `--fastembed-cache` and `--kokoro-assets`. Select the current installer named by the current `distribution-manifest.json` and the single setup executable produced in the fixture directory. From the repository root, run CI-mode installer and headless checks with those files and the frozen probe:
+
+```powershell
+uv run --locked --all-extras --python 3.14.7 python scripts/smoke_distribution.py `
+  --installer "C:\path\to\build\desktop-shell\installers\<current-setup-file>.exe" `
+  --previous-installer "C:\apex-distribution-fixture\<previous-setup-file>.exe" `
+  --previous-version 2.0.0 `
+  --probe build\backend-bundle\smoke-probe\apex-bundle-probe.exe `
+  --fastembed-cache "C:\apex-distribution-test-assets\fastembed_cache" `
+  --kokoro-assets "C:\apex-distribution-test-assets\kokoro" `
+  --mode ci `
+  --expected-version 2.1.0 `
+  --report build\desktop-shell\distribution-ci-report.json
+```
+
+The smoke controller refuses to run installers in the operator's Windows account, and also refuses an existing APEX install, data profile, startup entry, or listener on port 8000. For local runs, use a dedicated ordinary Windows account. Set `APEX_DISTRIBUTION_SMOKE_PROFILE=1`, set `APEX_DISTRIBUTION_SMOKE_OPERATOR_SID` to the protected operator account SID, and create `%LOCALAPPDATA%\.apex-distribution-smoke-profile` with the exact content `APEX-DISTRIBUTION-SMOKE:<unique-id>:<current-account-SID>`. The marker must bind to the current account's actual SID and registered ordinary Windows profile.
+
+Hosted CI has a narrow exception: the runner must report `GITHUB_ACTIONS=true` and `RUNNER_ENVIRONMENT=github-hosted`, and `APEX_DISTRIBUTION_SMOKE_OPERATOR_SID` must be `S-1-0-0`. The profile flag and marker bound to that hosted runner's actual account are still required. Do not use this sentinel SID outside a GitHub-hosted Actions runner.
+
+CI mode exercises silent installation and headless runtime but reports the visible WebView, tray, startup behavior, notification delivery, and foreground location checks as `unverified`. The frozen probe can run the distribution controller on a clean Windows VM without Python or uv:
+
+```powershell
+build\backend-bundle\smoke-probe\apex-bundle-probe.exe --distribution-suite `
+  --installer "C:\path\to\build\desktop-shell\installers\<current-setup-file>.exe" `
+  --previous-installer "C:\apex-distribution-fixture\<previous-setup-file>.exe" `
+  --previous-version 2.0.0 `
+  --probe build\backend-bundle\smoke-probe\apex-bundle-probe.exe `
+  --fastembed-cache "C:\apex-distribution-test-assets\fastembed_cache" `
+  --kokoro-assets "C:\apex-distribution-test-assets\kokoro" `
+  --mode ci `
+  --expected-version 2.1.0 `
+  --report "C:\apex-distribution-test-assets\distribution-ci-report.json"
+```
+
+Run interactive mode on a Windows VM with a visible desktop, `tauri-driver`, and the matching Microsoft Edge WebDriver installed. Use the same installer, previous-version fixture, and test assets, and provide the driver paths:
+
+```powershell
+build\backend-bundle\smoke-probe\apex-bundle-probe.exe --distribution-suite `
+  --installer "C:\path\to\build\desktop-shell\installers\<current-setup-file>.exe" `
+  --previous-installer "C:\apex-distribution-fixture\<previous-setup-file>.exe" `
+  --previous-version 2.0.0 `
+  --probe build\backend-bundle\smoke-probe\apex-bundle-probe.exe `
+  --fastembed-cache "C:\apex-distribution-test-assets\fastembed_cache" `
+  --kokoro-assets "C:\apex-distribution-test-assets\kokoro" `
+  --mode interactive `
+  --expected-version 2.1.0 `
+  --driver C:\tools\tauri-driver.exe `
+  --native-driver C:\tools\msedgedriver.exe `
+  --report build\desktop-shell\distribution-interactive-report.json
+```
+
+This exercises the installed WebView, tray, notifications, startup, and foreground location flow through the operating system. Notification validation reads Windows toast history for APEX's own app identity; it does not request broad notification-listener permission. A clean-machine WebView2 bootstrap check requires a VM where the runtime is absent and network access is available. A build or CI-mode report is not evidence that this interactive gate passed.
 
 ## Troubleshooting
 
 - If notice staging reports a missing distribution license file, inspect that installed wheel's `RECORD` and upstream package before adding any material. Do not infer a license from package metadata.
 - If notice staging reports that an archive hash or source revision differs, compare the checked-in source archive and manifest to `uv.lock` and the upstream build workflow. Do not replace an exact source with a newer release.
 - If the packaged API cannot start, read its stderr output and confirm the complete `_internal` installation is beside the executables. The caller's working directory may be elsewhere. Run `apex-backend.exe --help` to confirm the packaged entrypoint.
-- If Kokoro falls back with an eSpeak `phontab` path error, check whether the installation path contains non-ASCII characters. The frozen Windows runtime uses an existing ASCII short-path alias for eSpeak data when Windows provides one. If it cannot verify an alias, install APEX under an ASCII-only path such as `C:\Apps\APEX` and retry. The adapter does not copy eSpeak data or write into the installation.
+- If Kokoro reports an eSpeak `phontab` path error, the frozen Windows runtime could not find a verified ASCII short-path alias for its bundled eSpeak data. For the portable folder only, move `build/desktop-shell/APEX/` under an ASCII-only path such as `C:\Apps\APEX` and retry. Keep an installed build at its installer-managed location under `%LOCALAPPDATA%\Programs\APEX`; do not move the installation manually. For an installed build, the adapter uses a verified existing ASCII short-path alias when Windows provides one; if it cannot verify one, Kokoro initialization reports the path failure. The adapter does not copy eSpeak data or write into the installation.
 - If a smoke check needs a model file, supply the external file to the smoke command; model files are not downloaded or copied into the bundle by this build.
 
 For source development, environment setup, and the ordinary browser workflow, see [Getting Started](getting-started.md). For CLI commands and behavior, see the [CLI guide](cli.md).
