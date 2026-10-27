@@ -1,0 +1,36 @@
+{
+  "managed_files": {
+    ".agents/skills/remora-audit-documentation/SKILL.md": "d2607273973f8b94bd01b01b42d80889e15d2a4e3d48cbb5ec721b5b0ae7961d",
+    ".agents/skills/remora-audit-harness/SKILL.md": "be7194aa80a466e9dfc86b85327fee79cc7a832f1a9bc755f5328a4e22dcb0e1",
+    ".agents/skills/remora-audit-tests/SKILL.md": "d262617c9e964e1276d6ce7fd755f35f3732fe4b37d669cfa3cd39ea5b6de45c",
+    ".agents/skills/remora-fix-regression/SKILL.md": "511c3eb61a79375d2a1fcbeadd789a0465f955a07277dfafb9679d5e6990124b",
+    ".agents/skills/remora-implement-plan/SKILL.md": "b10abb688f9ed01f5d50fcccaaf1efa2dff3265d609427a5103555f0609eb3d2",
+    ".agents/skills/remora-plan-change/SKILL.md": "78b8d8de6da10baef059ce9eb4071361a39fa3f2754668013928818691a275cb",
+    ".agents/skills/remora-prepare-pr/SKILL.md": "ef1af1385ff4f2b79bb2ebb8f03383a28de6cb1c2895799f5407eb6373e5df84",
+    ".agents/skills/remora-prepare-release/SKILL.md": "ac37518e342b54f3ccfffbf475804048c3990a72af5a444782437af81d60e13f",
+    ".agents/skills/remora-remediate-project/SKILL.md": "0fe6fe8add306649a0b5660f3f2c7aa97c7df60fd0df635aea81ed605852efe5",
+    ".agents/skills/remora-review-change/SKILL.md": "0036b55908ba60b602fa4b17a2bb481bce0bf1fdd5a2a9afb631608c4482aef9",
+    ".remora/helpers/install.py": "5576bc9be75ffc85c0db2d3b528eff665b3ed1e0730ff2908c06e29d2b6a8588",
+    ".remora/profiles/local.md": "d33a310345ba5ae2b1d5b7233041ce0f9d2a3654d7d6c26b70574b1e5ed6fd23",
+    ".remora/profiles/python.md": "d7b23638935e4b9e461ea184eab66431b6623e3d7c32dfea19d12b3fa0fc0979",
+    ".remora/profiles/typescript.md": "bb04bb3ecacf22e9daa6a21105f04bb38ecd409857222593f23f53ee34cadfc4",
+    ".remora/profiles/web.md": "eb63e40b7f9112541a668663012c1d865905b2bb84ec0a4ba97cdbb4d0d39363",
+    ".remora/standards/documentation.md": "b3115dd975d1c698bcbbdb1e45d381124ff92fa1b140153c4a1eaa603e41e9b8",
+    ".remora/standards/engineering.md": "afe46201d43bf7e2d5db29d57d22438009023c439835e51aea777f65327b28ec",
+    ".remora/standards/testing.md": "37663e1bba3cb1833696c8253d94ed2cbc5717a64a2d1d77219a35219d5f870b"
+  },
+  "remora_version": "development",
+  "schema_version": 1,
+  "selected_profiles": [
+    "local",
+    "python",
+    "typescript",
+    "web"
+  ],
+  "source_revision": "b873369ee3a2072d93ac461b5b089bfd15a81a52",
+  "target_environments": [
+    "antigravity",
+    "codex",
+    "cursor"
+  ]
+}

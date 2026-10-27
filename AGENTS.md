@@ -7,6 +7,14 @@
 - `launcher.py` starts the backend on `127.0.0.1:8000` and serves the compiled frontend on `127.0.0.1:5500`.
 - Preserve offline, `DEV_MODE`, and `DEMO_MODE` behavior unless the requested change explicitly alters those modes.
 
+## Engineering Standards
+
+- Remora is the primary engineering harness. Before applying shared guidance, read `.remora/standards/engineering.md`, `.remora/standards/documentation.md`, and `.remora/standards/testing.md`.
+- Consult applicable Remora profiles under `.remora/profiles/` (`python.md`, `typescript.md`, `local.md`, `web.md`) as contextual reference.
+- Follow Remora's core engineering principles: foundational thinking, model the domain, prove it works with empirical artifact proof, reproduction-first bug fixes, proportional simplicity (YAGNI), and guidance integrity.
+- Workflows live in `.agents/skills/remora-*`; use the smallest relevant workflow instead of loading unrelated procedures.
+- Verify installation integrity with `python .remora/helpers/install.py --check --target .`.
+
 ## Working Agreement
 
 - Inspect the relevant implementation, tests, and documentation before making changes.
@@ -16,6 +24,12 @@
 - Preserve unrelated user changes and avoid broad refactors during localized work.
 - Keep one active implementation owner per branch or worktree. Use isolated worktrees for concurrent editing agents.
 - Implement complete behavior rather than placeholder-only paths unless scaffolding is explicitly requested.
+
+## Agent and Subagent Execution
+
+- The parent agent retains overall responsibility for architecture, scope, validation, and final readiness.
+- Configured Codex subagents (`.codex/`) and Cursor worker agents (`.cursor/`) remain available for focused exploration, dependency tracing, or implementation delegation.
+- Subagent delegation is optional, not mandatory. The parent agent may implement directly or delegate based on task scope and host capabilities.
 
 ## Configuration and Secrets
 
@@ -45,8 +59,8 @@
 
 - All documentation and repository communication must follow `docs/agent-guidance/writing.md`.
 - Product naming, Agent taxonomy, canonical terminology, and logo meaning must remain consistent with `docs/identity-and-naming.md`.
+- Saved planning handoffs and task briefs must follow `docs/agent-handoffs/template.md`.
+- Pull request, squash merge, changelog, and release procedures must follow `docs/agent-guidance/releases.md`, which defines the authoritative release contracts and takes precedence over generic Remora skill defaults.
 - Backend work must follow `docs/agent-guidance/backend.md`.
 - Frontend work must follow `docs/agent-guidance/frontend.md` and `docs/design-system.md` when visual behavior changes.
 - Launcher, dependency, environment, or configuration work must follow `docs/agent-guidance/infrastructure.md`.
-- Reusable procedures live in `.agents/skills/`; use the smallest relevant skill instead of loading unrelated workflows.
-

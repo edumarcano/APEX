@@ -12,7 +12,3 @@ config_file = "agents/luna-explorer.toml"
 [agents.luna-worker]
 description = "Use for substantial implementation of an approved or reconciled plan, including multi-file coding, tests, debugging, and validation while the parent retains architecture and final review."
 config_file = "agents/luna-worker.toml"
-
-[agents.luna-fast-worker]
-description = "Use for faster substantial implementation of an approved or reconciled plan when lower latency is preferred, while the parent retains architecture and final review."
-config_file = "agents/luna-fast-worker.toml"
