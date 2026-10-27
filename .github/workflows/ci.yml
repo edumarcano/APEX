@@ -4,11 +4,14 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   backend:
     name: Windows backend validation
     runs-on: windows-latest
+    outputs:
+      distribution_needed: ${{ steps.check-distribution.outputs.needed }}
     defaults:
       run:
         shell: pwsh
@@ -55,6 +58,54 @@ jobs:
             git diff --check "$env:BEFORE_SHA" "$env:HEAD_SHA"
           } else {
             git diff --check "$env:HEAD_SHA^" "$env:HEAD_SHA"
+          }
+
+      - name: Check if distribution validation is required
+        id: check-distribution
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          $distributionPatterns = @(
+            "^core/",
+            "^packaging/",
+            "^frontend/src-tauri/",
+            "^frontend/scripts/build-desktop\.mjs",
+            "^frontend/scripts/prepare-desktop\.mjs",
+            "^scripts/build_backend_bundle\.py",
+            "^scripts/build_distribution_fixture\.py",
+            "^scripts/smoke_distribution\.py",
+            "^scripts/smoke_backend_bundle\.py",
+            "^scripts/diagnose_distribution_sapi\.py",
+            "^scripts/provision_distribution_smoke_assets\.py",
+            "^tests/test_(backend_bundle|distribution|nsis|windows_reproducibility)",
+            "^pyproject\.toml$",
+            "^uv\.lock$",
+            "^rust-toolchain\.toml$",
+            "^config\.json$",
+            "^frontend/package\.json$",
+            "^frontend/package-lock\.json$",
+            "^\.github/workflows/ci\.yml$"
+          )
+          $changedFiles = git diff --name-only "$env:BASE_SHA" "$env:HEAD_SHA"
+          $matched = $false
+          foreach ($file in $changedFiles) {
+            $normalized = $file.Replace('\', '/')
+            foreach ($pattern in $distributionPatterns) {
+              if ($normalized -match $pattern) {
+                Write-Host "Distribution validation triggered by changed file: $normalized (matched $pattern)"
+                $matched = $true
+                break
+              }
+            }
+            if ($matched) { break }
+          }
+          if ($matched) {
+            "needed=true" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "No distribution-affecting files changed. Distribution validation will be skipped on this PR."
+            "needed=false" >> $env:GITHUB_OUTPUT
           }
 
       - name: Import smoke test
@@ -108,6 +159,10 @@ jobs:
     name: Windows locked distribution validation
     runs-on: windows-latest
     needs: [backend, frontend]
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      needs.backend.outputs.distribution_needed == 'true'
     timeout-minutes: 360
     defaults:
       run:
@@ -140,6 +195,14 @@ jobs:
           target: x86_64-pc-windows-msvc
           components: rustfmt, clippy
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: frontend/src-tauri
+          cache-all-crates: true
+        env:
+          CARGO_INCREMENTAL: "0"
+
       - name: Sync locked Python dependencies
         run: uv sync --locked --all-extras --python 3.14.7
 
@@ -151,8 +214,15 @@ jobs:
         timeout-minutes: 5
         run: uv run --locked --all-extras --python 3.14.7 python scripts/diagnose_distribution_sapi.py --source-only
 
-      - name: Build reproducible backend bundle and frozen probe
-        run: uv run --locked --all-extras --python 3.14.7 python scripts/build_backend_bundle.py --with-smoke-probe --reproducibility-check
+      - name: Build backend bundle and frozen probe
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if ($env:EVENT_NAME -eq "push" -or $env:EVENT_NAME -eq "workflow_dispatch") {
+            uv run --locked --all-extras --python 3.14.7 python scripts/build_backend_bundle.py --with-smoke-probe --reproducibility-check
+          } else {
+            uv run --locked --all-extras --python 3.14.7 python scripts/build_backend_bundle.py --with-smoke-probe
+          }
 
       - name: Provision external distribution smoke assets
         run: uv run --locked --all-extras --python 3.14.7 python scripts/provision_distribution_smoke_assets.py --destination "$env:RUNNER_TEMP\apex-distribution-smoke-assets"
@@ -304,7 +374,17 @@ jobs:
             Write-Host "Selected backend provenance from $source."
           }
 
+      - name: Cache synthetic 2.0.0 upgrade installer fixture
+        id: cache-fixture
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/apex-previous-installer
+            ${{ runner.temp }}/distribution-fixture-report.json
+          key: apex-fixture-2.0.0-${{ hashFiles('frontend/scripts/build-desktop.mjs', 'frontend/scripts/prepare-desktop.mjs', 'frontend/src-tauri/nsis/**', 'frontend/src-tauri/tauri.conf.json', 'frontend/package.json', 'rust-toolchain.toml', '.gitattributes', 'scripts/build_distribution_fixture.py') }}
+
       - name: Build synthetic 2.0.0 upgrade installer fixture
+        if: steps.cache-fixture.outputs.cache-hit != 'true'
         run: uv run --locked --all-extras --python 3.14.7 python scripts/build_distribution_fixture.py --base-ref 31fdd21757a1822ac0223956c20595ff5a13d307 --output "$env:RUNNER_TEMP\apex-previous-installer" --report "$env:RUNNER_TEMP\distribution-fixture-report.json"
 
       - name: Create the hosted smoke profile marker
