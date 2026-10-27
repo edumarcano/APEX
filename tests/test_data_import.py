@@ -17,9 +17,12 @@ from unittest import mock
 from uuid import uuid4
 
 from core.activity.store import ActivityStore
+from core.agent.model_catalog import DEFAULT_APEX_MODEL
 from core.briefings.store import BriefingSessionStore
+from core.config_documents import load_config_documents
 from core.conversations.store import ConversationStore
 from core.data_import.engine import ImportEngine, ImportOperationError
+from core.data_import.v2_0_0_config import V2_0_0_CONFIG
 from core.knowledge.store import KnowledgeStore
 from core.retrieval.store import RetrievalStore
 from core.runs.store import RunStore
@@ -182,6 +185,82 @@ class DataImportTests(unittest.TestCase):
             raw = original_read(path)
             if path.resolve() == (self.source / ".env").resolve():
                 return raw.replace(b"credentials.json", b"other.json")
+            return raw
+
+        with mock.patch("core.data_import.engine._read_guarded", side_effect=altered_read):
+            with self.assertRaisesRegex(ImportOperationError, "source_changed"):
+                self.engine.import_data(str(self.source), str(preview["preview_id"]))
+        self.assertFalse((self.destination / "apex_memory.db").exists())
+
+    def _mark_source_checkout(self) -> None:
+        (self.source / "pyproject.toml").write_text("[project]\nname = \"apex\"\n", encoding="utf-8")
+        (self.source / "launcher.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
+
+    def _write_checkout_config(self, payload: dict) -> None:
+        (self.source / "config.json").write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+
+    def test_checkout_snapshot_config_imports_as_empty_operator_layer(self) -> None:
+        self._mark_source_checkout()
+        self._write_checkout_config(V2_0_0_CONFIG)
+        preview = self.engine.preview(str(self.source))
+        self.assertTrue(preview["can_import"], preview["blockers"])
+        self.assertIn("configuration_needs_review", preview["warnings"])
+
+        self.engine.import_data(str(self.source), str(preview["preview_id"]))
+
+        imported = (self.destination / "config.json").read_text(encoding="utf-8")
+        self.assertEqual(imported, "{}\n")
+        defaults = Path(__file__).resolve().parents[1] / "config.json"
+        merged = load_config_documents(defaults, self.destination / "config.json")
+        self.assertEqual(merged["ask_apex"]["selected_model"], DEFAULT_APEX_MODEL)
+
+    def test_checkout_config_keeps_only_real_edits(self) -> None:
+        self._mark_source_checkout()
+        edited = json.loads(json.dumps(V2_0_0_CONFIG))
+        edited["agent_system_prompt"] = "Edited persona"
+        edited["ask_apex"]["cloud"]["effort"] = "high"
+        edited["operator_note"] = "kept"
+        self._write_checkout_config(edited)
+        preview = self.engine.preview(str(self.source))
+        self.assertIn("configuration_needs_review", preview["warnings"])
+
+        self.engine.import_data(str(self.source), str(preview["preview_id"]))
+
+        imported = json.loads((self.destination / "config.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            imported,
+            {
+                "agent_system_prompt": "Edited persona",
+                "ask_apex": {"cloud": {"effort": "high"}},
+                "operator_note": "kept",
+            },
+        )
+
+    def test_non_checkout_config_is_copied_verbatim(self) -> None:
+        raw = json.dumps(V2_0_0_CONFIG, indent=2, ensure_ascii=False) + "\n"
+        (self.source / "config.json").write_text(raw, encoding="utf-8")
+        preview = self.engine.preview(str(self.source))
+        self.assertNotIn("configuration_needs_review", preview["warnings"])
+
+        self.engine.import_data(str(self.source), str(preview["preview_id"]))
+
+        self.assertEqual((self.destination / "config.json").read_text(encoding="utf-8"), raw)
+
+    def test_checkout_config_changed_after_preview_is_source_changed(self) -> None:
+        self._mark_source_checkout()
+        self._write_checkout_config(V2_0_0_CONFIG)
+        preview = self.engine.preview(str(self.source))
+        original_read = __import__("core.data_import.engine", fromlist=["_read_guarded"])._read_guarded
+
+        def altered_read(path: Path) -> bytes:
+            raw = original_read(path)
+            if path.resolve() == (self.source / "config.json").resolve():
+                parsed = json.loads(raw)
+                parsed["operator_note"] = "changed-after-preview"
+                return (json.dumps(parsed, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
             return raw
 
         with mock.patch("core.data_import.engine._read_guarded", side_effect=altered_read):
