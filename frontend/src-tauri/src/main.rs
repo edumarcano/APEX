@@ -1381,7 +1381,7 @@ async fn refresh_services_status(
 
     #[cfg(all(windows, not(debug_assertions)))]
     {
-        let startup = tokio::task::spawn_blocking(|| autostart::reconcile(None)).await;
+        let startup = tokio::task::spawn_blocking(|| autostart::reconcile(None, false)).await;
         if app
             .state::<Supervisor>()
             .inner()
