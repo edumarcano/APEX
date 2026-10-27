@@ -40,6 +40,7 @@ from core.retrieval.store import RetrievalStore
 from core.api.app import app
 from core.api.routers import activity as activity_router
 from src.apex import cli
+from tests.support import LOOPBACK_API_BASE_URL
 
 def _report(*, key: str = "report-1", outcome: str = "Done") -> ActivityReportContent:
     return ActivityReportContent(
@@ -479,7 +480,7 @@ class ActivityAsyncSubmissionTests(unittest.IsolatedAsyncioTestCase):
 
 class ActivityApiTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.client = TestClient(app, raise_server_exceptions=True)
+        self.client = TestClient(app, base_url=LOOPBACK_API_BASE_URL, raise_server_exceptions=True)
         self.store = ActivityStore(None)
         self.store.initialize()
         self.service = ActivityService(self.store)

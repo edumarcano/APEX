@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 from fastapi import FastAPI, Response
 from fastapi.testclient import TestClient
 
+from tests.support import LOOPBACK_API_BASE_URL
 from core.api.routers import briefings as briefing_routes
 from core.agent.providers.gemini import GeminiProvider
 from core.agent.providers.contract import ProviderTurnResult
@@ -101,7 +102,7 @@ class BriefingSpeechTests(unittest.TestCase):
         self.query_patch.start()
         app = FastAPI()
         app.include_router(briefing_routes.router)
-        self.client = TestClient(app)
+        self.client = TestClient(app, base_url=LOOPBACK_API_BASE_URL)
 
     def tearDown(self) -> None:
         self.query_patch.stop()

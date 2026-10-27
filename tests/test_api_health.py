@@ -10,6 +10,7 @@ from unittest import mock
 
 from fastapi.testclient import TestClient
 
+from tests.support import LOOPBACK_API_BASE_URL
 from core.api import app
 from core.settings.store import RuntimeSettingsStore
 from core.host.identity import create_host_context
@@ -56,7 +57,7 @@ class ApiHealthTests(unittest.TestCase):
         from core import database
 
         database.initialize_db()
-        self.client = TestClient(app, raise_server_exceptions=True)
+        self.client = TestClient(app, base_url=LOOPBACK_API_BASE_URL, raise_server_exceptions=True)
 
     def test_root_liveness_and_readiness_remain_available(self) -> None:
         root = self.client.get("/")

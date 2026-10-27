@@ -37,6 +37,7 @@ from core.mcp.manager import (
     _safe_exception_detail,
 )
 from core.mcp.models import McpRuntimeConfig, McpServerConfig
+from tests.support import LOOPBACK_API_BASE_URL
 
 _SLOW_TOOL_STARTED = threading.Event()
 
@@ -942,7 +943,7 @@ class McpStatusRouteTests(unittest.TestCase):
         from core.api.app import app
 
         set_mcp_manager(None)
-        self.client = TestClient(app, raise_server_exceptions=True)
+        self.client = TestClient(app, base_url=LOOPBACK_API_BASE_URL, raise_server_exceptions=True)
 
     def tearDown(self) -> None:
         set_mcp_manager(None)

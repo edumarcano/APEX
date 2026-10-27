@@ -11,6 +11,7 @@ from unittest import mock
 
 from fastapi.testclient import TestClient
 
+from tests.support import LOOPBACK_API_BASE_URL
 from core.agent.providers.llama_cpp_lifecycle import LlamaCppRuntimeBackend
 from core.settings.models import FeaturesPatch, LlamaCppPatch, SettingsPatch
 from core.settings.normalize import normalize_layer
@@ -247,7 +248,7 @@ class LlamaCppRuntimeIntegrationTests(unittest.TestCase):
 
         from core.api import app
 
-        client = TestClient(app)
+        client = TestClient(app, base_url=LOOPBACK_API_BASE_URL)
         backend = LlamaCppRuntimeBackend()
         backend._status_snapshot = {  # type: ignore[assignment]
             "provider": "llama_cpp",
@@ -301,7 +302,7 @@ class LlamaCppRuntimeIntegrationTests(unittest.TestCase):
 
         from core.api import app
 
-        client = TestClient(app)
+        client = TestClient(app, base_url=LOOPBACK_API_BASE_URL)
         payload = client.get("/api/v1/settings").json()
         llama_cpp = payload["settings"]["llama_cpp"]
         self.assertEqual(

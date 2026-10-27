@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from tests.support import LOOPBACK_API_BASE_URL
 from core.api import app
 from core.context_vault.selection import ContextVaultSelectionService
 from core.context_vault.runtime import ContextVaultRuntimeError
@@ -28,7 +29,7 @@ class ContextVaultApiTests(unittest.TestCase):
         self.store = KnowledgeStore(self.path)
         self.store.initialize()
         self.knowledge = KnowledgeService(self.store)
-        self.client = TestClient(app, raise_server_exceptions=True)
+        self.client = TestClient(app, base_url=LOOPBACK_API_BASE_URL, raise_server_exceptions=True)
 
     def tearDown(self) -> None:
         self.store.close()

@@ -13,6 +13,7 @@ from unittest import mock
 
 from fastapi.testclient import TestClient
 
+from tests.support import LOOPBACK_API_BASE_URL
 from core.connectors.models import ConnectorResult, utc_now_iso
 from core.settings.models import SettingsPatch
 from core.settings.store import RuntimeSettingsStore, reset_settings_store_for_tests
@@ -187,7 +188,7 @@ class TelemetryApiTests(unittest.TestCase):
         from core.api import app
 
         database.initialize_db()
-        self.client = TestClient(app, raise_server_exceptions=True)
+        self.client = TestClient(app, base_url=LOOPBACK_API_BASE_URL, raise_server_exceptions=True)
 
     def test_latest_404_when_empty(self) -> None:
         response = self.client.get("/api/v1/telemetry/latest")
