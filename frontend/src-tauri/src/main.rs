@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod autostart;
+mod diagnostics;
 mod external;
 mod location;
 mod notifications;
@@ -52,7 +53,6 @@ const SETUP_STATUS_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 const SETUP_MUTATION_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 const SETUP_TOTAL_TIMEOUT: Duration = Duration::from_secs(86_400);
 const SETUP_MAX_FRAMES: usize = 100_000;
-const HELPER_STDERR_LIMIT: usize = 64 * 1024;
 const VISIBILITY_STATE_EVENT: &str = "desktop-visibility-state";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
@@ -1005,18 +1005,13 @@ async fn invoke_setup_helper(
             .ok_or_else(|| "helper_unavailable".to_owned())?;
         (child, stdin, stdout, stderr)
     };
-    tauri::async_runtime::spawn(async move {
-        let mut reader = stderr;
-        let mut bytes = [0u8; 4096];
-        let mut retained = 0usize;
-        loop {
-            match reader.read(&mut bytes).await {
-                Ok(0) | Err(_) => break,
-                Ok(count) => retained = retained.saturating_add(count).min(HELPER_STDERR_LIMIT),
-            }
-            let _ = retained;
-        }
-    });
+    let generation = app.state::<DesktopState>().snapshot().generation;
+    let setup_log = app
+        .path()
+        .app_log_dir()
+        .ok()
+        .map(|directory| diagnostics::LogFile::setup(directory, generation));
+    diagnostics::spawn_stderr_drain(stderr, setup_log);
     let mut stdout = BufReader::new(stdout);
     let progress_phase = if request.operation == "import" {
         SetupPhase::Importing
@@ -1221,6 +1216,14 @@ fn safe_event(
         identity,
     );
     if failed {
+        let code = error
+            .map(state::safe_error_code)
+            .unwrap_or("internal_error");
+        diagnostics::note(
+            app,
+            "backend.log",
+            &format!("shell: backend failed code={code}"),
+        );
         show_main(app);
     }
     snapshot
@@ -2312,11 +2315,13 @@ async fn spawn_backend(
     };
     let (tx, rx) = mpsc::channel(32);
     start_stdout_reader(stdout, tx);
-    tauri::async_runtime::spawn(async move {
-        let mut drain = BufReader::new(stderr);
-        let mut sink = tokio::io::sink();
-        let _ = tokio::io::copy(&mut drain, &mut sink).await;
-    });
+    let generation = app.state::<DesktopState>().snapshot().generation;
+    let backend_log = app
+        .path()
+        .app_log_dir()
+        .ok()
+        .map(|directory| diagnostics::LogFile::serve(directory, generation));
+    diagnostics::spawn_stderr_drain(stderr, backend_log);
     Ok((ChildSession { child, stdin, rx }, expected_build, launch_id))
 }
 
