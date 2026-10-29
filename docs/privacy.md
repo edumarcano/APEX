@@ -81,9 +81,13 @@ Disabling export retains existing copies. Deselecting a record while export is e
 
 See [Context Vault](context-vault.md) for selection and cleanup procedures.
 
+## Desktop diagnostic logs
+
+The installed shell appends backend stderr to `backend.log` and setup-helper stderr to `setup.log` in `%LOCALAPPDATA%\com.edumarcano.apex\logs`. A failed backend start also appends one shell line with a safe error code. These files can contain error messages and file paths. APEX does not upload them. Uninstalling the application leaves the logs in place, together with the data profile. Source, launcher, and standalone runs keep writing to the console and do not create these files.
+
 ## Retention and deletion
 
-Uninstalling the Windows desktop application removes its installed program files and APEX-owned startup registration. It does not erase the local data profile or saved desktop window state. Removing an installation and deleting its data are separate actions; profile deletion remains under your control. Data kept at external destinations, imported source folders, backups, and sync copies also remain outside uninstall.
+Uninstalling the Windows desktop application removes its installed program files and APEX-owned startup registration. It does not erase the local data profile, saved desktop window state, or the diagnostic logs under `%LOCALAPPDATA%\com.edumarcano.apex\logs`. Removing an installation and deleting its data are separate actions; profile deletion remains under your control. Data kept at external destinations, imported source folders, backups, and sync copies also remain outside uninstall.
 
 Archived Cortex conversations are eligible for permanent deletion after 30 days by default. The configurable minimum is 14 days. Checks run at startup and about every 24 hours, and skip conversations with pending turns or active runs. Deleting a conversation also removes its linked briefing session and speech data. Separately accepted personal-context sources keep their own lifecycle.
 
