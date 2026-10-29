@@ -19,6 +19,7 @@ from io import BytesIO, StringIO
 from pathlib import Path, PurePosixPath
 from typing import Callable, Iterable
 
+from core.data_import.v2_0_0_config import V2_0_0_CONFIG
 from core.host.profile_lock import ProfileAlreadyRunningError, ProfileLock
 from core.persistence_validation import PersistenceValidationError, validate_persistence
 from core.runtime_paths import RuntimePaths, resolve_runtime_paths
@@ -480,6 +481,51 @@ def _copy_database_to_scratch(
     shutil.rmtree(transport, ignore_errors=True)
 
 
+_DROP = object()
+
+
+def _is_regular_file(path: Path) -> bool:
+    try:
+        info = path.lstat()
+    except OSError:
+        return False
+    if stat.S_ISLNK(info.st_mode) or bool(getattr(info, "st_file_attributes", 0) & 0x400):
+        return False
+    return stat.S_ISREG(info.st_mode)
+
+
+def _is_source_checkout(source: Path) -> bool:
+    return all(_is_regular_file(source / name) for name in ("pyproject.toml", "launcher.py"))
+
+
+def _config_delta(value: object, snapshot: object) -> object:
+    """Keep source edits and drop values that still match the v2.0.0 snapshot."""
+    if isinstance(value, dict) and isinstance(snapshot, dict):
+        kept: dict[str, object] = {}
+        for key, item in value.items():
+            if key not in snapshot:
+                kept[key] = item
+                continue
+            child = _config_delta(item, snapshot[key])
+            if child is not _DROP:
+                kept[key] = child
+        return kept if kept else _DROP
+    if value != snapshot:
+        return value
+    return _DROP
+
+
+def _omitted_source_key(source: object, kept: object) -> bool:
+    if not isinstance(source, dict):
+        return False
+    if not isinstance(kept, dict):
+        return True
+    for key, item in source.items():
+        if key not in kept or _omitted_source_key(item, kept[key]):
+            return True
+    return False
+
+
 _REFERENCE_LABELS = {
     "GOOGLE_APPLICATION_CREDENTIALS": "Google application credentials",
     "MICROSOFT_TODO_TOKEN_CACHE_PATH": "Microsoft authentication cache",
@@ -490,8 +536,8 @@ _REFERENCE_LABELS = {
 
 def _reference_plan(
     paths: Iterable[Path], source: Path, destination: Path,
-    *, expected_env_hash: str | None = None,
-) -> tuple[list[str], list[dict[str, object]], bytes | None]:
+    *, expected_hashes: dict[str, str] | None = None,
+) -> tuple[list[str], list[dict[str, object]], dict[str, bytes]]:
     """Resolve only documented path keys; never traverse an external target."""
     source = source.resolve(strict=True)
     destination = destination.resolve(strict=False)
@@ -501,7 +547,9 @@ def _reference_plan(
     warnings: list[str] = []
     references: list[dict[str, object]] = []
     replacements: dict[str, str] = {}
+    prepared: dict[str, bytes] = {}
     encoded: bytes | None = None
+    expected_env_hash = None if expected_hashes is None else expected_hashes.get(".env")
     if env_path in files:
         try:
             original_bytes = _read_guarded(env_path)
@@ -587,6 +635,7 @@ def _reference_plan(
             rewritten_value = json.dumps(replacements[match.group(2)], ensure_ascii=False)
             rewritten.append(match.group(1) + rewritten_value + suffix + ending)
         encoded = "".join(rewritten).encode("utf-8")
+        prepared[".env"] = encoded
 
     json_references = {
         ("llama_cpp", "executable_path"): "Local model executable",
@@ -598,7 +647,11 @@ def _reference_plan(
         if config_path not in files:
             continue
         try:
-            config_value = json.loads(_read_guarded(config_path).decode("utf-8"))
+            original_bytes = _read_guarded(config_path)
+            expected_hash = None if expected_hashes is None else expected_hashes.get(config_name)
+            if expected_hash is not None and hashlib.sha256(original_bytes).hexdigest() != expected_hash:
+                raise ImportOperationError("source_changed")
+            config_value = json.loads(original_bytes.decode("utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError):
             warnings.append("configuration_needs_review")
             continue
@@ -614,7 +667,19 @@ def _reference_plan(
                     "total_bytes": 0,
                 })
                 warnings.append("external_path_needs_review")
-    return list(dict.fromkeys(warnings)), references, encoded
+        if (
+            config_name == "config.json"
+            and isinstance(config_value, dict)
+            and _is_source_checkout(source)
+        ):
+            kept = _config_delta(config_value, V2_0_0_CONFIG)
+            payload = {} if kept is _DROP else kept
+            if _omitted_source_key(config_value, payload):
+                warnings.append("configuration_needs_review")
+            prepared["config.json"] = (
+                json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+            ).encode("utf-8")
+    return list(dict.fromkeys(warnings)), references, prepared
 
 
 class ImportEngine:
@@ -781,8 +846,8 @@ class ImportEngine:
             if any(_node_exists(self.root / name) for name in _DATABASE_NODES):
                 raise ImportOperationError("destination_database_exists")
             fingerprint = approved_fingerprint
-            _reference_warnings, _references, prepared_env = _reference_plan(
-                files, source, self.root, expected_env_hash=file_hashes.get(".env")
+            _reference_warnings, _references, prepared = _reference_plan(
+                files, source, self.root, expected_hashes=file_hashes
             )
             operation_id = str(uuid.uuid4())
             stage = self.root / f".apex-import-stage-{operation_id}"
@@ -796,112 +861,111 @@ class ImportEngine:
             # journal and therefore cannot strand the selected profile.
             self._write_json_exclusive(self.journal, journal)
             expected_total = sum(path.stat().st_size for path in files if not _safe_rel(path, source).startswith(_DATABASE))
-            if prepared_env is not None:
-                source_env_size = next((path.stat().st_size for path in files if _safe_rel(path, source) == ".env"), 0)
-                expected_total += len(prepared_env) - source_env_size
+            for relative_name, content in prepared.items():
+                source_size = next(
+                    (path.stat().st_size for path in files if _safe_rel(path, source) == relative_name),
+                    0,
+                )
+                expected_total += len(content) - source_size
             completed = 0
             outputs: list[dict[str, str]] = []
+            for source_file in files:
+                relative = _safe_rel(source_file, source)
+                if relative.startswith(_DATABASE):
+                    continue
+                before = source_file.stat()
+                target = stage / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                copied_hash = hashlib.sha256()
+                stream_context = (
+                    BytesIO(prepared[relative])
+                    if relative in prepared
+                    else _guarded_read(source_file)
+                )
+                with stream_context as stream, target.open("xb") as out:
+                    last_emit = time.monotonic()
+                    while True:
+                        block = stream.read(1024 * 1024)
+                        if not block:
+                            break
+                        out.write(block)
+                        copied_hash.update(block)
+                        completed += len(block)
+                        now = time.monotonic()
+                        if now - last_emit >= 0.25 or len(block) < 1024 * 1024:
+                            self.progress("copying", completed, expected_total)
+                            last_emit = now
+                    out.flush()
+                    os.fsync(out.fileno())
+                after = source_file.stat()
+                if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+                    raise ImportOperationError("source_changed")
+                expected_copy_hash = (
+                    hashlib.sha256(prepared[relative]).hexdigest()
+                    if relative in prepared
+                    else file_hashes[relative]
+                )
+                if copied_hash.hexdigest() != expected_copy_hash:
+                    raise ImportOperationError("source_changed")
+                outputs.append({"path": relative, "sha256": copied_hash.hexdigest()})
+                self.progress("copying", completed, expected_total)
+            db_target = stage / _DATABASE
+            def database_progress(stage_name: str, bytes_copied: int, total_bytes: int) -> None:
+                self.progress(stage_name, bytes_copied, total_bytes)
+
+            _copy_database_to_scratch(source, db_target, progress=database_progress)
+            conn = sqlite3.connect(f"{db_target.resolve().as_uri()}?mode=ro", uri=True)
             try:
-                for source_file in files:
-                    relative = _safe_rel(source_file, source)
-                    if relative.startswith(_DATABASE):
-                        continue
-                    before = source_file.stat()
-                    target = stage / relative
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    copied_hash = hashlib.sha256()
-                    stream_context = (
-                        BytesIO(prepared_env)
-                        if relative == ".env" and prepared_env is not None
-                        else _guarded_read(source_file)
-                    )
-                    with stream_context as stream, target.open("xb") as out:
-                        last_emit = time.monotonic()
-                        while True:
-                            block = stream.read(1024 * 1024)
-                            if not block:
-                                break
-                            out.write(block)
-                            copied_hash.update(block)
-                            completed += len(block)
-                            now = time.monotonic()
-                            if now - last_emit >= 0.25 or len(block) < 1024 * 1024:
-                                self.progress("copying", completed, expected_total)
-                                last_emit = now
+                retrieval_ok = validate_persistence(conn, check_integrity=True)
+            except PersistenceValidationError as exc:
+                raise ImportOperationError(exc.code) from exc
+            finally:
+                conn.close()
+            outputs.append({"path": _DATABASE, "sha256": _sha256(db_target)})
+            setup_marker = stage / MARKER_NAME
+            self._write_json_exclusive(
+                setup_marker,
+                {"version": 1, "choice": "import", "id": operation_id},
+            )
+            outputs.append({"path": MARKER_NAME, "sha256": _sha256(setup_marker)})
+            outputs.sort(key=lambda row: 2 if row["path"] == MARKER_NAME else 1 if row["path"] == _DATABASE else 0)
+            # Verify the source again after all copies and SQLite backup.
+            _items, final_fingerprint, _files, _hashes = _inventory(
+                source,
+                progress=lambda done, total: self.progress("inventory", done, total),
+            )
+            if final_fingerprint != approved_fingerprint:
+                raise ImportOperationError("source_changed")
+            if any(_node_exists(self.root / name) for name in _DATABASE_NODES):
+                raise ImportOperationError("destination_database_exists")
+            journal["phase"] = "committing"
+            journal["outputs"] = outputs
+            self._write_json_replace(self.journal, journal)
+            for output in outputs:
+                source_staged = stage / output["path"]
+                destination = self.root / PurePosixPath(output["path"])
+                _assert_no_reparse_ancestry(destination.parent)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if _node_exists(destination):
+                    raise ImportOperationError("destination_path_exists")
+                try:
+                    os.link(source_staged, destination)
+                except FileExistsError as exc:
+                    raise ImportOperationError("destination_path_exists") from exc
+                except (OSError, ImportOperationError):
+                    # Exclusive creation never replaces a path; a crash leaves a
+                    # partial file which recovery refuses to remove without proof.
+                    with destination.open("xb") as out, source_staged.open("rb") as inp:
+                        shutil.copyfileobj(inp, out, 1024 * 1024)
                         out.flush()
                         os.fsync(out.fileno())
-                    after = source_file.stat()
-                    if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
-                        raise ImportOperationError("source_changed")
-                    expected_copy_hash = (
-                        hashlib.sha256(prepared_env).hexdigest()
-                        if relative == ".env" and prepared_env is not None
-                        else file_hashes[relative]
-                    )
-                    if copied_hash.hexdigest() != expected_copy_hash:
-                        raise ImportOperationError("source_changed")
-                    outputs.append({"path": relative, "sha256": copied_hash.hexdigest()})
-                    self.progress("copying", completed, expected_total)
-                db_target = stage / _DATABASE
-                def database_progress(stage_name: str, bytes_copied: int, total_bytes: int) -> None:
-                    self.progress(stage_name, bytes_copied, total_bytes)
-
-                _copy_database_to_scratch(source, db_target, progress=database_progress)
-                conn = sqlite3.connect(f"{db_target.resolve().as_uri()}?mode=ro", uri=True)
-                try:
-                    retrieval_ok = validate_persistence(conn, check_integrity=True)
-                except PersistenceValidationError as exc:
-                    raise ImportOperationError(exc.code) from exc
-                finally:
-                    conn.close()
-                outputs.append({"path": _DATABASE, "sha256": _sha256(db_target)})
-                setup_marker = stage / MARKER_NAME
-                self._write_json_exclusive(
-                    setup_marker,
-                    {"version": 1, "choice": "import", "id": operation_id},
-                )
-                outputs.append({"path": MARKER_NAME, "sha256": _sha256(setup_marker)})
-                outputs.sort(key=lambda row: 2 if row["path"] == MARKER_NAME else 1 if row["path"] == _DATABASE else 0)
-                # Verify the source again after all copies and SQLite backup.
-                _items, final_fingerprint, _files, _hashes = _inventory(
-                    source,
-                    progress=lambda done, total: self.progress("inventory", done, total),
-                )
-                if final_fingerprint != approved_fingerprint:
-                    raise ImportOperationError("source_changed")
-                if any(_node_exists(self.root / name) for name in _DATABASE_NODES):
-                    raise ImportOperationError("destination_database_exists")
-                journal["phase"] = "committing"
-                journal["outputs"] = outputs
-                self._write_json_replace(self.journal, journal)
-                for output in outputs:
-                    source_staged = stage / output["path"]
-                    destination = self.root / PurePosixPath(output["path"])
-                    _assert_no_reparse_ancestry(destination.parent)
-                    destination.parent.mkdir(parents=True, exist_ok=True)
-                    if _node_exists(destination):
-                        raise ImportOperationError("destination_path_exists")
-                    try:
-                        os.link(source_staged, destination)
-                    except FileExistsError as exc:
-                        raise ImportOperationError("destination_path_exists") from exc
-                    except (OSError, ImportOperationError):
-                        # Exclusive creation never replaces a path; a crash leaves a
-                        # partial file which recovery refuses to remove without proof.
-                        with destination.open("xb") as out, source_staged.open("rb") as inp:
-                            shutil.copyfileobj(inp, out, 1024 * 1024)
-                            out.flush()
-                            os.fsync(out.fileno())
-                journal["phase"] = "committed"
-                self._write_json_replace(self.journal, journal)
-                self.journal.unlink()
-                shutil.rmtree(stage, ignore_errors=True)
-                if not retrieval_ok:
-                    return {"phase": "ready", "error_code": "retrieval_schema_unsupported"}
-                return {"phase": "ready", "error_code": None}
-            except BaseException:
-                # Leave the journal and stage intact for proof-based recovery.
-                raise
+            journal["phase"] = "committed"
+            self._write_json_replace(self.journal, journal)
+            self.journal.unlink()
+            shutil.rmtree(stage, ignore_errors=True)
+            if not retrieval_ok:
+                return {"phase": "ready", "error_code": "retrieval_schema_unsupported"}
+            return {"phase": "ready", "error_code": None}
 
     def recover(self) -> dict[str, object]:
         with self._lease():

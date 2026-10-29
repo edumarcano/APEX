@@ -1,0 +1,163 @@
+"""v2.0.0 tracked config.json, kept as the source-checkout import baseline.
+
+Provenance: parsed output of `git show v2.0.0:config.json`. Import compares a
+checkout's config.json with this object and keeps only real edits. A Python
+module avoids adding a JSON resource to the Windows bundle allowlist.
+"""
+
+from __future__ import annotations
+
+V2_0_0_CONFIG: dict[str, object] = {'features': {'weather': True,
+              'sports': True,
+              'news': True,
+              'email': True,
+              'calendar': True,
+              'market': False},
+ 'modules': {'football': False, 'f1': True},
+ 'football': {'teams': []},
+ 'market': {'symbols': []},
+ 'calendar': {'selected_calendar_ids': ['primary'], 'show_calendar_names': True},
+ 'context_vault': {'enabled': False, 'scopes': []},
+ 'tts_settings': {'primary_tts': 'google', 'voice_gender': 'female'},
+ 'agent_system_prompt': 'Use your registered tools dynamically to resolve telemetry, '
+                        'calendar, and historical data queries. Speak with confidence, '
+                        'precision, and operational clarity. Avoid speculation, '
+                        'conversational formatting bloat, and redundant polite filler.',
+ 'local_agent_system_prompt': "Answer the user's request completely, using the "
+                              'available tools when needed.\n'
+                              '\n'
+                              'When APEX-managed or MCP tools are attached, use '
+                              'attached read tools directly when necessary; do not ask '
+                              'the user for permission before performing a read-only '
+                              'lookup. Native write and destructive tools create '
+                              'durable proposals only and require separate local '
+                              'operator approval; do not claim that such a change is '
+                              'complete before approval and verification.\n'
+                              '\n'
+                              "When the user's request requires information from "
+                              'multiple tools, continue calling the necessary tools '
+                              'until you have enough information to answer the '
+                              'original request or create the required action '
+                              'proposal.\n'
+                              '\n'
+                              'Do not stop after a partial lookup to ask whether you '
+                              'should perform another read-only lookup that is '
+                              'necessary to complete the request.\n'
+                              '\n'
+                              'For example, if the user asks whether the weather '
+                              'conflicts with their schedule, retrieve both the '
+                              'relevant weather and calendar events, then compare them '
+                              'and answer.\n'
+                              '\n'
+                              'Ask a clarifying question only when information '
+                              'necessary to determine the correct operation cannot '
+                              "reasonably be inferred from the user's request.\n"
+                              '\n'
+                              'Be concise but natural, helpful, and conversational. '
+                              'Prefer clear, complete sentences over terse or '
+                              'status-like phrasing. Speak with calm confidence '
+                              'without sounding robotic, overly formal, or abrupt.',
+ 'ask_apex': {'enabled': True,
+              'selected_model': 'deepseek/deepseek-v4-flash-0731',
+              'sandbox_mode': False,
+              'cloud': {'last_model': 'deepseek/deepseek-v4-flash-0731',
+                        'personal_context_enabled': False,
+                        'effort': 'low',
+                        'hosted_tools': {'google_search': True, 'google_maps': True}},
+              'local': {'last_model': 'gemma-4-E2B-Q4_K_M.gguf',
+                        'personal_context_enabled': False,
+                        'context_window': 16384,
+                        'reasoning_mode': 'none'}},
+ 'cortex_runs': {'max_concurrent_runs': 2,
+                 'max_elapsed_seconds': 600,
+                 'max_retries': 4,
+                 'max_model_turns': 6,
+                 'max_tool_calls': 10,
+                 'event_replay_limit': 512,
+                 'shutdown_drain_seconds': 30},
+ 'cortex_conversations': {'archived_retention_days': 30},
+ 'ollama': {'enabled': True,
+            'host': 'http://localhost:11434',
+            'idle_unload_timeout_minutes': 5,
+            'manual_unload_enabled': True,
+            'resource_gates': {'qwen3:1.7b': {'ram_limit': 88.0, 'cpu_limit': 95.0},
+                               'qwen3:4b-instruct': {'ram_limit': 78.0,
+                                                     'cpu_limit': 90.0}}},
+ 'llama_cpp': {'enabled': False,
+               'managed': False,
+               'host': 'http://127.0.0.1:8080',
+               'executable_path': '',
+               'preset_path': '',
+               'idle_unload_timeout_minutes': 5,
+               'manual_unload_enabled': True,
+               'request_timeout_seconds': 180,
+               'resource_gates': {'gemma-4-E2B-Q4_K_M.gguf': {'ram_limit': 88.0,
+                                                              'cpu_limit': 95.0},
+                                  'gemma-4-E4B-Q4_K_M.gguf': {'ram_limit': 80.0,
+                                                              'cpu_limit': 90.0},
+                                  'Qwen3.5-4B-Q4_K_M.gguf': {'ram_limit': 82.0,
+                                                             'cpu_limit': 92.0}}},
+ 'microsoft_todo': {'reminder_list_id': ''},
+ 'mcp': {'enabled': False,
+         'servers': {'github': {'enabled': False,
+                                'transport': 'http',
+                                'url': 'https://api.githubcopilot.com/mcp/readonly',
+                                'auth_env': 'GITHUB_PERSONAL_ACCESS_TOKEN',
+                                'tool_allowlist': ['search_repositories',
+                                                   'get_file_contents',
+                                                   'search_code',
+                                                   'list_issues',
+                                                   'issue_read',
+                                                   'list_pull_requests',
+                                                   'pull_request_read'],
+                                'tool_risks': {'search_repositories': 'read',
+                                               'get_file_contents': 'read',
+                                               'search_code': 'read',
+                                               'list_issues': 'read',
+                                               'issue_read': 'read',
+                                               'list_pull_requests': 'read',
+                                               'pull_request_read': 'read'},
+                                'tool_argument_maximums': {'search_repositories': {'perPage': 10},
+                                                           'search_code': {'perPage': 10},
+                                                           'list_issues': {'perPage': 20},
+                                                           'list_pull_requests': {'perPage': 20}},
+                                'expose_to_client_display': True,
+                                'timeout_seconds': 30,
+                                'connect_timeout_seconds': 30,
+                                'max_output_chars': 20000},
+                     'brave': {'enabled': False,
+                               'transport': 'stdio',
+                               'command': 'npx',
+                               'args': ['-y',
+                                        '@brave/brave-search-mcp-server@2.0.82',
+                                        '--transport',
+                                        'stdio'],
+                               'auth_env': 'BRAVE_API_KEY',
+                               'tool_allowlist': ['brave_web_search',
+                                                  'brave_news_search'],
+                               'tool_risks': {'brave_web_search': 'read',
+                                              'brave_news_search': 'read'},
+                               'tool_argument_maximums': {'brave_web_search': {'count': 10},
+                                                          'brave_news_search': {'count': 10}},
+                               'expose_to_client_display': True,
+                               'timeout_seconds': 30,
+                               'connect_timeout_seconds': 60,
+                               'max_output_chars': 20000},
+                     'alphavantage': {'enabled': False,
+                                      'transport': 'http',
+                                      'url': 'https://mcp.alphavantage.co/mcp',
+                                      'oauth': True,
+                                      'tool_allowlist': ['SYMBOL_SEARCH',
+                                                         'GLOBAL_QUOTE',
+                                                         'TIME_SERIES_DAILY',
+                                                         'COMPANY_OVERVIEW',
+                                                         'NEWS_SENTIMENT'],
+                                      'tool_risks': {'SYMBOL_SEARCH': 'read',
+                                                     'GLOBAL_QUOTE': 'read',
+                                                     'TIME_SERIES_DAILY': 'read',
+                                                     'COMPANY_OVERVIEW': 'read',
+                                                     'NEWS_SENTIMENT': 'read'},
+                                      'expose_to_client_display': True,
+                                      'timeout_seconds': 30,
+                                      'connect_timeout_seconds': 300,
+                                      'max_output_chars': 20000}}}}
