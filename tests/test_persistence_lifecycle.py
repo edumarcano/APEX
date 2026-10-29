@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from tests.support import LOOPBACK_API_BASE_URL
 from core.conversations.store import ConversationStore
 from core.conversations.retention import purge_expired_archived_conversations
 from core.knowledge import get_knowledge_service
@@ -91,7 +92,7 @@ class PersistenceLifecycleTests(unittest.TestCase):
                 mock.patch("core.api.app.MicrosoftTodoAuthenticationService", return_value=auth)
             )
             with self.assertRaisesRegex(RuntimeError, "conversations persistence schema"):
-                with TestClient(app):
+                with TestClient(app, base_url=LOOPBACK_API_BASE_URL):
                     self.fail("unsupported core persistence must block startup")
 
         self.assertFalse(bootstrap.called)
@@ -196,7 +197,7 @@ class PersistenceLifecycleTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(RetrievalStore, "initialize", autospec=True, side_effect=track_initialize))
             stack.enter_context(mock.patch.object(RetrievalService, "prepare", autospec=True, side_effect=track_prepare))
 
-            with TestClient(app) as client:
+            with TestClient(app, base_url=LOOPBACK_API_BASE_URL) as client:
                 self.assertTrue(retention_sweep_finished.wait(timeout=10))
                 retrieval = get_retrieval_service()
                 status = retrieval.status()
@@ -334,7 +335,7 @@ class PersistenceLifecycleTests(unittest.TestCase):
                 )
             )
 
-            with TestClient(app) as client:
+            with TestClient(app, base_url=LOOPBACK_API_BASE_URL) as client:
                 response = client.get("/api/v1/cortex/retrieval/status")
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.json()["state"], "ready")
@@ -415,7 +416,7 @@ class PersistenceLifecycleTests(unittest.TestCase):
                         else "Kokoro shutdown timed out"
                     )
                     with self.assertRaisesRegex(RuntimeError, expected_error):
-                        with TestClient(app):
+                        with TestClient(app, base_url=LOOPBACK_API_BASE_URL):
                             pass
 
                 retrieval_close.assert_called_once_with(timeout_seconds=mock.ANY)

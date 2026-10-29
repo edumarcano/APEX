@@ -11,6 +11,7 @@ from unittest import mock
 
 from fastapi.testclient import TestClient
 
+from tests.support import LOOPBACK_API_BASE_URL
 from core.agent.providers import llama_cpp_supervisor as supervisor_mod
 from core.agent.providers.llama_cpp_supervisor import (
     LlamaCppServerSupervisor,
@@ -578,7 +579,7 @@ class LlamaCppSettingsTransitionTests(unittest.TestCase):
 
         from core.api import app
 
-        client = TestClient(app)
+        client = TestClient(app, base_url=LOOPBACK_API_BASE_URL)
         self.assertTrue(coord.try_begin_local_execution())
         try:
             with mock.patch(
@@ -608,7 +609,7 @@ class LlamaCppSettingsTransitionTests(unittest.TestCase):
 
         from core.api import app
 
-        client = TestClient(app)
+        client = TestClient(app, base_url=LOOPBACK_API_BASE_URL)
         host_before = self.store.get_snapshot().llama_cpp.host
         self.supervisor._state = "starting"  # noqa: SLF001
         with mock.patch(
@@ -680,7 +681,7 @@ class LlamaCppStatusApiPrivacyTests(unittest.TestCase):
 
         reset_settings_store_for_tests()
         reset_llama_cpp_server_supervisor_for_tests()
-        client = TestClient(app)
+        client = TestClient(app, base_url=LOOPBACK_API_BASE_URL)
         agents = client.get("/api/v1/cortex/agent")
         self.assertEqual(agents.status_code, 200)
         blob = agents.text

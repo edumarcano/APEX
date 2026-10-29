@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from tests.support import LOOPBACK_API_BASE_URL
 from core.agent.types import AgentQueryResponse
 from core.api import app
 from core.api.models import (
@@ -42,7 +43,7 @@ class ApiPackageContractTests(unittest.TestCase):
 
 class ApiHttpContractTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.client = TestClient(app, raise_server_exceptions=True)
+        self.client = TestClient(app, base_url=LOOPBACK_API_BASE_URL, raise_server_exceptions=True)
 
     def test_conversation_projection_keeps_canonical_diagnostics_and_old_json(self) -> None:
         from core.api.routers.cortex import _turn_result

@@ -127,14 +127,16 @@ class ApexAgentCatalogTests(unittest.TestCase):
 
     def test_cortex_agent_endpoint_returns_one_catalog(self) -> None:
         from fastapi.testclient import TestClient
+
         from core.api.app import app
+        from tests.support import LOOPBACK_API_BASE_URL
 
         with mock.patch("core.api.routers.cortex.get_settings_store") as store:
             snapshot = mock.Mock()
             snapshot.ask_apex = AgentSettings()
             snapshot.agent_display_name = ""
             store.return_value.get_snapshot.return_value = snapshot
-            response = TestClient(app).get("/api/v1/cortex/agent")
+            response = TestClient(app, base_url=LOOPBACK_API_BASE_URL).get("/api/v1/cortex/agent")
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()

@@ -8,6 +8,7 @@ from unittest import mock
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from tests.support import LOOPBACK_API_BASE_URL
 from core.agent.capabilities import CapabilityDescriptor
 from core.agent.model_catalog import get_model_profile
 from core.agent.tool_policies import filter_agent_capabilities, hosted_tools_for_model
@@ -82,7 +83,7 @@ class SandboxPolicyTests(unittest.TestCase):
     def test_unknown_agent_key_is_rejected(self) -> None:
         from core.api.app import app
 
-        client = TestClient(app, raise_server_exceptions=True)
+        client = TestClient(app, base_url=LOOPBACK_API_BASE_URL, raise_server_exceptions=True)
         with mock.patch("core.api.cortex.is_dev_mode", return_value=False):
             response = client.post(
                 "/api/v1/cortex/query",

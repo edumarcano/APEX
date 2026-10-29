@@ -12,6 +12,7 @@ from unittest import mock
 
 from fastapi.testclient import TestClient
 
+from tests.support import LOOPBACK_API_BASE_URL
 from clients import market_client, sports_client, weather_client
 from clients.http_sessions import (
     ConnectorHttpSessions,
@@ -319,7 +320,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             ):
                 stack.enter_context(mock.patch(f"core.api.app.{setter}"))
             with self.assertRaisesRegex(RuntimeError, expected_error):
-                with TestClient(app):
+                with TestClient(app, base_url=LOOPBACK_API_BASE_URL):
                     if http_timeout:
                         # Uvicorn sets this marker when its HTTP grace expires;
                         # canceled ASGI tasks may already have disappeared.
@@ -476,7 +477,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         ), mock.patch("core.api.app.get_settings_store"), mock.patch("core.api.app.speaker.initialize"), mock.patch(
             "core.api.app.ActivityStore", return_value=activity_store
         ), mock.patch("core.api.app.ActivityService"), mock.patch("core.api.app.set_activity_service"):
-            with TestClient(app):
+            with TestClient(app, base_url=LOOPBACK_API_BASE_URL):
                 pass
 
         self.assertEqual(
@@ -543,7 +544,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         ), mock.patch("core.api.app.get_settings_store"), mock.patch("core.api.app.speaker.initialize"), mock.patch(
             "core.api.app.ActivityStore", return_value=activity_store
         ), mock.patch("core.api.app.ActivityService"), mock.patch("core.api.app.set_activity_service"):
-            with TestClient(app):
+            with TestClient(app, base_url=LOOPBACK_API_BASE_URL):
                 pass
 
         self.assertEqual(set_action_service.call_args_list, [mock.call(None)])
@@ -585,7 +586,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
         ), mock.patch("core.api.app.ActivityStore"), mock.patch("core.api.app.ActivityService"), mock.patch(
             "core.api.app.set_activity_service"
         ):
-            with TestClient(app):
+            with TestClient(app, base_url=LOOPBACK_API_BASE_URL):
                 factory.assert_called_once_with()
                 set_sessions.assert_called_once_with(registry)
                 auth.initialize.assert_awaited_once_with()
@@ -635,7 +636,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             "core.api.app.set_activity_service"
         ):
             with self.assertRaises(RuntimeError):
-                with TestClient(app):
+                with TestClient(app, base_url=LOOPBACK_API_BASE_URL):
                     pass
 
         registry.close.assert_called_once_with()
@@ -723,7 +724,7 @@ class AppHttpSessionLifecycleTests(unittest.TestCase):
             )
             stack.enter_context(mock.patch("core.api.app.MCPClientManager", return_value=manager))
             with self.assertRaisesRegex(RuntimeError, "MCP startup failed"):
-                with TestClient(app):
+                with TestClient(app, base_url=LOOPBACK_API_BASE_URL):
                     pass
 
         coordinator.close.assert_called_once_with(timeout_seconds=mock.ANY)

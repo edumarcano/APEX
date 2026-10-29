@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from tests.support import LOOPBACK_API_BASE_URL
 from core.actions import (
     ActionService,
     ActionStore,
@@ -108,7 +109,7 @@ class ActionControlApiTests(unittest.TestCase):
             ),
             self._handler,
         )
-        self.client = TestClient(app)
+        self.client = TestClient(app, base_url=LOOPBACK_API_BASE_URL)
 
     def tearDown(self) -> None:
         set_action_service(None)

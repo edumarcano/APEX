@@ -1,4 +1,4 @@
-"""CORS behavior at the production FastAPI middleware boundary."""
+"""CORS and Host behavior at the production FastAPI middleware boundary."""
 
 from __future__ import annotations
 
@@ -7,6 +7,11 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from core.api.app import app
+from tests.support import LOOPBACK_API_BASE_URL
 
 
 class ApiCorsTests(unittest.TestCase):
@@ -41,8 +46,9 @@ class ApiCorsTests(unittest.TestCase):
             r"""
 from fastapi.testclient import TestClient
 from core.api.app import app
+from tests.support import LOOPBACK_API_BASE_URL
 
-client = TestClient(app)
+client = TestClient(app, base_url=LOOPBACK_API_BASE_URL)
 origin = "http://tauri.localhost"
 get_response = client.get("/", headers={"Origin": origin})
 assert get_response.status_code == 200
@@ -77,8 +83,9 @@ assert "access-control-allow-origin" not in unrelated.headers
             r"""
 from fastapi.testclient import TestClient
 from core.api.app import app
+from tests.support import LOOPBACK_API_BASE_URL
 
-client = TestClient(app)
+client = TestClient(app, base_url=LOOPBACK_API_BASE_URL)
 configured = "https://hud.example"
 accepted = client.get("/", headers={"Origin": configured})
 assert accepted.status_code == 200
@@ -102,6 +109,25 @@ assert "access-control-allow-origin" not in preflight.headers
 """,
             allowed_origins="https://hud.example",
         )
+
+
+class ApiHostAllowlistTests(unittest.TestCase):
+    def test_non_loopback_host_is_rejected_before_readiness(self) -> None:
+        client = TestClient(app, base_url=LOOPBACK_API_BASE_URL)
+        response = client.get(
+            "/api/v1/health/ready",
+            headers={"Host": "attacker.example"},
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_loopback_hosts_reach_readiness(self) -> None:
+        client = TestClient(app, base_url=LOOPBACK_API_BASE_URL)
+        for host in ("127.0.0.1:8000", "localhost:8000"):
+            response = client.get(
+                "/api/v1/health/ready",
+                headers={"Host": host},
+            )
+            self.assertNotEqual(response.status_code, 400, host)
 
 
 if __name__ == "__main__":

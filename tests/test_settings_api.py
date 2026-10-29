@@ -10,6 +10,7 @@ from unittest import mock
 
 from fastapi.testclient import TestClient
 
+from tests.support import LOOPBACK_API_BASE_URL
 from core.settings.models import SettingsPatch, FootballPatch, FootballTeamPatch, MarketPatch
 from core.settings.store import (
     RuntimeSettingsStore,
@@ -75,7 +76,7 @@ class SettingsApiTests(unittest.TestCase):
         # Import after patches so handlers resolve the test store.
         from core.api import app
 
-        self.client = TestClient(app)
+        self.client = TestClient(app, base_url=LOOPBACK_API_BASE_URL)
 
     def test_get_settings_envelope(self) -> None:
         response = self.client.get("/api/v1/settings")

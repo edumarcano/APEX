@@ -11,6 +11,7 @@ from unittest import mock
 
 from fastapi.testclient import TestClient
 
+from tests.support import LOOPBACK_API_BASE_URL
 from core.agent.types import AgentQueryRequest
 from core.agent.prompting import SECURITY_BOUNDARY_DIRECTIVE
 from core.api.cortex import _TELEMETRY_CONTEXT_OPEN, _build_telemetry_context
@@ -237,7 +238,7 @@ class VoiceSpeakEndpointTests(unittest.TestCase):
 
         from core.api.app import app
 
-        self.client = TestClient(app, raise_server_exceptions=True)
+        self.client = TestClient(app, base_url=LOOPBACK_API_BASE_URL, raise_server_exceptions=True)
 
     def test_speak_success(self) -> None:
         with mock.patch(
