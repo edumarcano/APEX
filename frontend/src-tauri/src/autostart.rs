@@ -56,7 +56,7 @@ pub fn task_manager_allows(bytes: Option<&[u8]>) -> Result<bool, &'static str> {
 }
 
 #[cfg(windows)]
-pub fn reconcile(requested: Option<bool>) -> Reconciliation {
+pub fn reconcile(requested: Option<bool>, enforce_approval: bool) -> Reconciliation {
     use windows_registry::{Type, CURRENT_USER};
 
     let executable = match std::env::current_exe() {
@@ -85,13 +85,14 @@ pub fn reconcile(requested: Option<bool>) -> Reconciliation {
                 .create(RUN_KEY)
                 .and_then(|key| key.set_string(ENTRY_NAME, &expected))
             {
-                Ok(()) => match CURRENT_USER
+                Ok(()) if enforce_approval => match CURRENT_USER
                     .create(APPROVED_KEY)
                     .and_then(|key| key.set_bytes(ENTRY_NAME, Type::Bytes, &ENABLED_APPROVAL))
                 {
                     Ok(()) => {}
                     Err(_) => error = Some("autostart_failed"),
                 },
+                Ok(()) => {}
                 Err(_) => error = Some("autostart_failed"),
             }
         } else {

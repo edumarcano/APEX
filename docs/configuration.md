@@ -85,7 +85,7 @@ The packaged Windows desktop shell also has two opt-in preferences, both off by 
 }
 ```
 
-Enable **Launch on startup** to register the installed APEX app for the current Windows user; startup launches hidden to the tray. If startup registration or hidden launch fails, the shell shows a visible recovery window and reports the OS error. Enable **Completion notifications** to show a generic Windows notification after a successful committed Cortex or Briefing run completes while APEX is hidden or minimized. Notifications are session-deduplicated and contain no run content. These controls are available only in the packaged desktop app; backend preferences are stored in the gitignored `config.local.json`, and actual Windows capability or registration errors are reported separately from the saved preference.
+Enable **Launch on startup** to register the installed APEX app for the current Windows user; startup launches hidden to the tray. Disabling APEX in Task Manager stays disabled across restarts. Settings shows that mismatch. **Retry desktop services**, or turning **Launch on startup** off and on, writes the Windows approval again. If startup registration or hidden launch fails, the shell shows a visible recovery window and reports the OS error. Enable **Completion notifications** to show a generic Windows notification after a successful committed Cortex or Briefing run completes while APEX is hidden or minimized. Notifications are session-deduplicated and contain no run content. These controls are available only in the packaged desktop app; backend preferences are stored in the gitignored `config.local.json`, and actual Windows capability or registration errors are reported separately from the saved preference.
 
 ### Device location for Weather
 
