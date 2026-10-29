@@ -388,14 +388,7 @@ async fn send_device_control(
     let mut bytes = serde_json::to_vec(&envelope).map_err(|_| ())?;
     bytes.push(b'\n');
     protocol::decode(&bytes).map_err(|_| ())?;
-    let kind = envelope.get("type").and_then(Value::as_str).ok_or(())?;
-    let request_id = envelope
-        .get("request_id")
-        .and_then(Value::as_str)
-        .ok_or(())?
-        .to_owned();
-    let payload = envelope.get("payload").cloned().ok_or(())?;
-    send_control(stdin, kind, request_id, payload).await
+    write_frame(stdin, &bytes).await
 }
 
 fn accept_location_preferences(
@@ -1149,51 +1142,79 @@ async fn close_helper(child: &mut HelperChild, force: bool) -> Result<(), ()> {
     Ok(())
 }
 
-async fn backend_bundle(
-    app: &tauri::AppHandle,
-) -> Result<(std::path::PathBuf, std::path::PathBuf, usize), &'static str> {
+struct BundleIdentity {
+    bundle: std::path::PathBuf,
+    executable: std::path::PathBuf,
+    build_id: String,
+    resource_path_reserve: usize,
+}
+
+enum BundleError {
+    Missing,
+    BuildMismatch,
+}
+
+async fn read_bundle_identity(app: &tauri::AppHandle) -> Result<BundleIdentity, BundleError> {
     let bundle = app
         .path()
         .resource_dir()
-        .map_err(|_| "helper_unavailable")?
+        .map_err(|_| BundleError::Missing)?
         .join("backend-bundle");
     let executable = bundle.join("apex-backend.exe");
     if !executable.is_file() {
-        return Err("helper_unavailable");
+        return Err(BundleError::Missing);
     }
     let manifest: Value = serde_json::from_slice(
         &tokio::fs::read(bundle.join("bundle-manifest.json"))
             .await
-            .map_err(|_| "helper_unavailable")?,
+            .map_err(|_| BundleError::Missing)?,
     )
-    .map_err(|_| "helper_unavailable")?;
-    let expected = manifest
+    .map_err(|_| BundleError::Missing)?;
+    let build_id = manifest
         .get("build_id")
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
-        .ok_or("helper_unavailable")?;
-    let reserve = manifest
+        .ok_or(BundleError::Missing)?
+        .to_owned();
+    let resource_path_reserve = manifest
         .get("files")
         .and_then(Value::as_array)
-        .map(|files| {
+        .and_then(|files| {
             files
                 .iter()
                 .filter_map(|file| file.get("path").and_then(Value::as_str))
                 .map(|path| path.encode_utf16().count().saturating_add(1))
                 .max()
-                .unwrap_or(0)
         })
-        .ok_or("helper_unavailable")?;
+        .ok_or(BundleError::Missing)?;
     let info: Value = serde_json::from_slice(
         &tokio::fs::read(bundle.join("_internal").join("build-info.json"))
             .await
-            .map_err(|_| "helper_unavailable")?,
+            .map_err(|_| BundleError::Missing)?,
     )
-    .map_err(|_| "helper_unavailable")?;
-    if info.get("build_id").and_then(Value::as_str) != Some(expected) {
-        return Err("helper_unavailable");
+    .map_err(|_| BundleError::Missing)?;
+    if info.get("build_id").and_then(Value::as_str) != Some(build_id.as_str()) {
+        return Err(BundleError::BuildMismatch);
     }
-    Ok((bundle, executable, reserve))
+    Ok(BundleIdentity {
+        bundle,
+        executable,
+        build_id,
+        resource_path_reserve,
+    })
+}
+
+async fn backend_bundle(
+    app: &tauri::AppHandle,
+) -> Result<(std::path::PathBuf, std::path::PathBuf, usize), &'static str> {
+    let identity = read_bundle_identity(app)
+        .await
+        .map_err(|_| "helper_unavailable")?;
+    Ok((
+        identity.bundle,
+        identity.executable,
+        identity.resource_path_reserve,
+    ))
 }
 
 fn validate_caller(window: &tauri::WebviewWindow) -> Result<(), &'static str> {
@@ -1248,6 +1269,19 @@ impl ReconcileTrigger {
     }
 }
 
+fn services_current(
+    app: &tauri::AppHandle,
+    services: &DesktopServicesState,
+    generation: u64,
+) -> bool {
+    !app.state::<Supervisor>()
+        .inner()
+        .quitting
+        .load(Ordering::Acquire)
+        && app.state::<DesktopState>().snapshot().generation == generation
+        && services.snapshot().generation == generation
+}
+
 async fn reconcile_services(
     app: tauri::AppHandle,
     services: DesktopServicesState,
@@ -1255,14 +1289,7 @@ async fn reconcile_services(
     trigger: ReconcileTrigger,
 ) {
     let _guard = services.reconcile_lock.lock().await;
-    if app
-        .state::<Supervisor>()
-        .inner()
-        .quitting
-        .load(Ordering::Acquire)
-        || app.state::<DesktopState>().snapshot().generation != generation
-        || services.snapshot().generation != generation
-    {
+    if !services_current(&app, &services, generation) {
         return;
     }
     #[cfg(all(windows, not(debug_assertions)))]
@@ -1278,14 +1305,7 @@ async fn reconcile_services(
         let result =
             tokio::task::spawn_blocking(move || autostart::reconcile(wanted, enforce_approval))
                 .await;
-        if app
-            .state::<Supervisor>()
-            .inner()
-            .quitting
-            .load(Ordering::Acquire)
-            || app.state::<DesktopState>().snapshot().generation != generation
-            || services.snapshot().generation != generation
-        {
+        if !services_current(&app, &services, generation) {
             return;
         }
         match result {
@@ -1315,14 +1335,7 @@ async fn reconcile_services(
     services.refresh_startup(None, Some("unsupported"));
 
     let notification_result = tokio::task::spawn_blocking(notifications::query_setting).await;
-    if app
-        .state::<Supervisor>()
-        .inner()
-        .quitting
-        .load(Ordering::Acquire)
-        || app.state::<DesktopState>().snapshot().generation != generation
-        || services.snapshot().generation != generation
-    {
+    if !services_current(&app, &services, generation) {
         return;
     }
     let clear_notification_errors = trigger.clear_notification_errors();
@@ -1348,14 +1361,7 @@ async fn reconcile_services(
             Some("notification_unavailable"),
         ),
     }
-    if app
-        .state::<Supervisor>()
-        .inner()
-        .quitting
-        .load(Ordering::Acquire)
-        || app.state::<DesktopState>().snapshot().generation != generation
-        || services.snapshot().generation != generation
-    {
+    if !services_current(&app, &services, generation) {
         return;
     }
     services.publish(&app);
@@ -1368,28 +1374,14 @@ async fn refresh_services_status(
     publish: bool,
 ) {
     let _guard = services.reconcile_lock.lock().await;
-    if app
-        .state::<Supervisor>()
-        .inner()
-        .quitting
-        .load(Ordering::Acquire)
-        || app.state::<DesktopState>().snapshot().generation != generation
-        || services.snapshot().generation != generation
-    {
+    if !services_current(&app, &services, generation) {
         return;
     }
 
     #[cfg(all(windows, not(debug_assertions)))]
     {
         let startup = tokio::task::spawn_blocking(|| autostart::reconcile(None, false)).await;
-        if app
-            .state::<Supervisor>()
-            .inner()
-            .quitting
-            .load(Ordering::Acquire)
-            || app.state::<DesktopState>().snapshot().generation != generation
-            || services.snapshot().generation != generation
-        {
+        if !services_current(&app, &services, generation) {
             return;
         }
         match startup {
@@ -1401,14 +1393,7 @@ async fn refresh_services_status(
     services.refresh_startup(None, Some("unsupported"));
 
     let notification = tokio::task::spawn_blocking(notifications::query_setting).await;
-    if app
-        .state::<Supervisor>()
-        .inner()
-        .quitting
-        .load(Ordering::Acquire)
-        || app.state::<DesktopState>().snapshot().generation != generation
-        || services.snapshot().generation != generation
-    {
+    if !services_current(&app, &services, generation) {
         return;
     }
     match notification {
@@ -1429,22 +1414,16 @@ async fn refresh_services_status(
 async fn submit_completion_notification(
     app: tauri::AppHandle,
     services: DesktopServicesState,
-    supervisor: Supervisor,
     generation: u64,
 ) {
-    if supervisor.quitting.load(Ordering::Acquire)
-        || app.state::<DesktopState>().snapshot().generation != generation
-        || services.snapshot().generation != generation
+    if !services_current(&app, &services, generation)
         || !services.should_submit_notification()
         || !window_is_hidden_or_minimized(&app)
     {
         return;
     }
     let result = tokio::task::spawn_blocking(notifications::show_completion).await;
-    if supervisor.quitting.load(Ordering::Acquire)
-        || app.state::<DesktopState>().snapshot().generation != generation
-        || services.snapshot().generation != generation
-    {
+    if !services_current(&app, &services, generation) {
         return;
     }
     match result {
@@ -2188,7 +2167,6 @@ async fn monitor_backend(
                     tauri::async_runtime::spawn(submit_completion_notification(
                         app.clone(),
                         services.clone(),
-                        supervisor.clone(),
                         generation,
                     ));
                 }
@@ -2285,59 +2263,27 @@ async fn fail_start(
 async fn spawn_backend(
     app: &tauri::AppHandle,
 ) -> Result<(ChildSession, String, String), &'static str> {
-    let bundle = app
-        .path()
-        .resource_dir()
-        .map_err(|_| "resource_missing")?
-        .join("backend-bundle");
-    let exe = bundle.join("apex-backend.exe");
-    if !exe.is_file() {
-        return Err("resource_missing");
-    }
-    let manifest: Value = serde_json::from_slice(
-        &tokio::fs::read(bundle.join("bundle-manifest.json"))
-            .await
-            .map_err(|_| "resource_missing")?,
-    )
-    .map_err(|_| "resource_missing")?;
-    let expected_build = manifest
-        .get("build_id")
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .ok_or("resource_missing")?
-        .to_owned();
-    #[cfg(windows)]
-    let resource_path_reserve = manifest
-        .get("files")
-        .and_then(Value::as_array)
-        .and_then(|files| {
-            files
-                .iter()
-                .filter_map(|file| file.get("path").and_then(Value::as_str))
-                .map(|path| path.encode_utf16().count().saturating_add(1))
-                .max()
-        })
-        .ok_or("resource_missing")?;
-    let build_info: Value = serde_json::from_slice(
-        &tokio::fs::read(bundle.join("_internal").join("build-info.json"))
-            .await
-            .map_err(|_| "resource_missing")?,
-    )
-    .map_err(|_| "resource_missing")?;
-    if build_info.get("build_id").and_then(Value::as_str) != Some(&expected_build) {
-        return Err("identity_mismatch");
-    }
+    let identity = read_bundle_identity(app)
+        .await
+        .map_err(|error| match error {
+            BundleError::Missing => "resource_missing",
+            BundleError::BuildMismatch => "identity_mismatch",
+        })?;
     let launch_id = Uuid::new_v4().to_string();
     #[cfg(windows)]
-    let (child, stdin, stdout, stderr) =
-        windows_job::spawn(&exe, &bundle, &launch_id, resource_path_reserve)
-            .map_err(|_| "startup_failed")?;
+    let (child, stdin, stdout, stderr) = windows_job::spawn(
+        &identity.executable,
+        &identity.bundle,
+        &launch_id,
+        identity.resource_path_reserve,
+    )
+    .map_err(|_| "startup_failed")?;
     #[cfg(not(windows))]
     let (child, stdin, stdout, stderr) = {
-        let mut command = tokio::process::Command::new(exe);
+        let mut command = tokio::process::Command::new(&identity.executable);
         command
             .args(["serve", "--managed", "--launch-id", &launch_id])
-            .current_dir(&bundle)
+            .current_dir(&identity.bundle)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -2357,7 +2303,20 @@ async fn spawn_backend(
         .ok()
         .map(|directory| diagnostics::LogFile::serve(directory, generation));
     diagnostics::spawn_stderr_drain(stderr, backend_log);
-    Ok((ChildSession { child, stdin, rx }, expected_build, launch_id))
+    Ok((
+        ChildSession { child, stdin, rx },
+        identity.build_id,
+        launch_id,
+    ))
+}
+
+async fn write_frame(stdin: &mut ChildInput, bytes: &[u8]) -> Result<(), ()> {
+    #[cfg(windows)]
+    let ChildInput::Pipe(writer) = stdin;
+    #[cfg(not(windows))]
+    let writer = stdin;
+    writer.write_all(bytes).await.map_err(|_| ())?;
+    writer.flush().await.map_err(|_| ())
 }
 
 async fn send_control(
@@ -2369,12 +2328,7 @@ async fn send_control(
     let frame = json!({"version":1,"type":kind,"request_id":request_id,"payload":payload});
     let mut bytes = serde_json::to_vec(&frame).map_err(|_| ())?;
     bytes.push(b'\n');
-    #[cfg(windows)]
-    let ChildInput::Pipe(writer) = stdin;
-    #[cfg(not(windows))]
-    let writer = stdin;
-    writer.write_all(&bytes).await.map_err(|_| ())?;
-    writer.flush().await.map_err(|_| ())
+    write_frame(stdin, &bytes).await
 }
 
 #[cfg(windows)]
