@@ -6,7 +6,7 @@
 
 APEX is a local-first personal intelligence workspace. It brings schedules, reminders, weather, markets, email, and personal context together so you can check what needs attention, prepare a briefing, and follow up with an assistant that can use your connected services.
 
-The application runs on your machine and stores its history locally. You choose which services to connect and whether to use a cloud or local model. Collection, briefing generation, conversations, and speech are separate operations, with their status and failures visible in the interface.
+The application runs on your machine and stores its history locally. You choose which services to connect and whether to use a cloud or local model. It is available as a native Windows desktop application with system tray controls, or as a local browser interface served from source. Collection, briefing generation, conversations, and speech are separate operations, with their status and failures visible in the interface.
 
 APEX began as a small experiment in spoken daily briefings, inspired by the Jarvis feeling from *Iron Man*. It remains a personal project and a place for me to learn and experiment with software development using AI tools.
 
@@ -29,15 +29,27 @@ APEX opens on Launch, with access to four workspaces:
   <em>Overview after collecting demo telemetry, with four equal side cards and a central Weather and identity column.</em>
 </p>
 
-## Try the demo
+## Get started
 
-The demo uses static data and needs no connector or model credentials. The validated development baseline is Windows with Python 3.14, uv, Node.js 24, and npm. Start from the repository root. If you do not already have a `.env` file, copy the example:
+### Windows desktop app
+
+The quickest way to run APEX on Windows is the installer, which bundles the desktop shell, the local backend, and the CLI without requiring Python, Node.js, or developer tools:
+
+1. Download `APEX_2.1.0_x64-setup.exe` from [GitHub Releases](https://github.com/edumarcano/APEX/releases).
+2. Run the installer. It places the desktop app under `%LOCALAPPDATA%\Programs\APEX` and maintains your data under `%LOCALAPPDATA%\APEX`.
+3. Launch APEX from the Start menu or desktop shortcut. On first run, choose **Fresh Start** to initialize a new profile, or **Import** to copy an existing APEX data folder.
+
+See [Windows desktop installation](docs/getting-started.md#windows-desktop-installation) for first-run options and [Windows backend bundle](docs/backend-bundle.md) for packaging details.
+
+### Run from source (demo mode)
+
+The demo uses static data and needs no connector or model credentials. The validated development baseline is Windows with Python 3.14, uv, Node.js 24, and npm. Start from the repository root:
 
 ```powershell
 copy .env.example .env
 ```
 
-Set `DEMO_MODE=true` in `.env`, then install and launch:
+Set `DEMO_MODE=true` in `.env`, then install dependencies, build the frontend, and start the launcher:
 
 ```powershell
 uv sync --locked
@@ -48,11 +60,11 @@ cd ..
 uv run python launcher.py
 ```
 
+The launcher starts the FastAPI backend on `127.0.0.1:8000`, serves the compiled frontend on `127.0.0.1:5500`, and opens the browser HUD.
+
 Demo mode skips live connectors and model calls. It provides fixed Daily and Catch Up briefings and deterministic Agent responses; Deep is unavailable. Demo history is held in memory and resets when the process stops. Optional speech uses the configured demo voice engine.
 
 See [Getting Started](docs/getting-started.md) for prerequisites, live setup, development servers, and troubleshooting.
-
-For the Windows desktop installation and its first-run setup, see [Windows desktop installation](docs/getting-started.md#windows-desktop-installation).
 
 ## Everyday workflows
 
@@ -131,12 +143,18 @@ The CLI talks only to the local API and does not start the backend. See the [CLI
 
 ## How it runs
 
-The React interface handles presentation and interaction. FastAPI coordinates connectors, model and tool execution, speech, and persistence. The Cortex Engine runs bounded Agent turns, and local generation is limited to one request at a time, with model loading visible in the interface.
+The presentation layer runs either as a native Windows desktop app (Tauri v2 with WebView2) or as a local browser interface (`127.0.0.1:5500`). Both connect to the local FastAPI backend on `127.0.0.1:8000`, which coordinates connectors, model and tool execution, speech, and persistence. The Cortex Engine runs bounded Agent turns, and local generation is limited to one request at a time, with model loading visible in the interface.
 
 ```mermaid
 flowchart LR
-    UI["React · 127.0.0.1:5500"] --> API["FastAPI · 127.0.0.1:8000"]
-    CLI["APEX CLI"] --> API
+    subgraph Clients["Clients"]
+        Desk["Desktop Shell · Tauri v2"]
+        UI["Browser HUD · 127.0.0.1:5500"]
+        CLI["APEX CLI"]
+    end
+    Desk --> API["FastAPI · 127.0.0.1:8000"]
+    UI --> API
+    CLI --> API
     API --> DB["Local SQLite storage"]
     API --> C["Connected services and allowed MCP tools"]
     API --> P["Cloud or local models"]
@@ -145,13 +163,13 @@ flowchart LR
     B --> M["Daily · Catch Up · Deep profiles"]
 ```
 
-The backend uses Python 3.14, FastAPI, and Pydantic. The frontend uses React 19, TypeScript 6, Vite 8, and Tailwind CSS 4. Cloud model support includes Google and OpenRouter; local inference uses llama.cpp. See [Configuration](docs/configuration.md) for supported models and optional dependencies, and [Architecture](docs/architecture.md) for runtime ownership and failure behavior.
+The backend uses Python 3.14, FastAPI, and Pydantic, packaged for Windows with PyInstaller. The desktop shell is built with Rust and Tauri v2. The frontend uses React 19, TypeScript 6, Vite 8, and Tailwind CSS 4. Cloud model support includes Google and OpenRouter; local inference uses llama.cpp. See [Configuration](docs/configuration.md) for supported models and optional dependencies, and [Architecture](docs/architecture.md) for runtime ownership and failure behavior.
 
 ## Documentation
 
 | Start here | Reference |
 |---|---|
-| Install and run | [Getting Started](docs/getting-started.md) |
+| Install and run | [Getting Started](docs/getting-started.md), [Windows Desktop Bundle](docs/backend-bundle.md) |
 | Choose services, models, and settings | [Configuration](docs/configuration.md) |
 | Understand storage and data sharing | [Privacy](docs/privacy.md), [Context Vault](docs/context-vault.md) |
 | Use APEX from other tools | [CLI](docs/cli.md), [API](docs/api.md) |

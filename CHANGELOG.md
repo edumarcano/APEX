@@ -2,6 +2,49 @@
 
 ---
 
+## v2.1.0 - Native Desktop Foundation
+
+**Released:** November 10, 2026
+
+APEX 2.1 introduces the native Windows desktop application powered by Tauri v2, delivering desktop integration, background process supervision, system tray control, and per-user packaging without tying local context or persistence to the browser window. This milestone also adds a Windows location bridge for weather, on-demand local model lifecycle management, and remediation fixes from an independent architecture audit.
+
+### Added
+
+- Hosted the React/Vite interface within a native Tauri v2 desktop application with system tray controls, window visibility management, auto-start on login, and native Windows notifications for completed background runs.
+- Supervised the Python backend using a Windows Job Object assigned at creation for clean child process termination, generation-aware retries, and graceful shutdown over a versioned bidirectional control protocol.
+- Added per-user Windows distribution packaging with a reproducible PyInstaller one-folder backend bundle and an NSIS installer (`APEX_2.1.0_x64-setup.exe`) installing to `%LOCALAPPDATA%\Programs\APEX`.
+- Separated immutable application resources from mutable runtime data (`%LOCALAPPDATA%\APEX`), routing SQLite persistence, runtime settings, credentials, caches, and weights through a unified profile contract.
+- Added a desktop first-run data import flow with folder preview, compatibility validation, staged SQLite backup, proof-based recovery, and delta-against-v2.0 configuration imports.
+- Added a permissioned Windows native location bridge to provide device coordinates to the Weather client while preserving manual location fallbacks.
+- Persisted rotating `backend.log` and `setup.log` files with session byte caps in the application log directory, capturing child stderr for post-startup troubleshooting.
+- Added on-demand idle detection and resource unloading for optional local models, freeing system and GPU memory after inactivity.
+- Added read-only agent capabilities allowing Lynx to inspect and query received external activity reports.
+- Added GPT-6-Luna under OpenRouter with official token limits and reasoning configurations.
+
+### Changed
+
+- Replaced DeepSeek V4 Flash with GLM 5.3 Flash as the default cloud model for APEX Agent and Briefings.
+- Rebalanced the Overview workspace layout with Events over Market on the left, Email over Reminders on the right, and Weather centered above the APEX logo following news telemetry retirement.
+- Regenerated smoothed, anti-aliased multi-resolution ICO and PNG application icons across all standard Windows display scales.
+- Migrated developer tooling and engineering skills to Remora v0.1.0 while preserving APEX-specific release and PR contracts.
+- Optimized the Windows distribution CI workflow with dependency caching, path-based packaging triggers, and synthetic 2.0.0 upgrade fixture testing.
+
+### Fixed
+
+- Added `TrustedHostMiddleware` to restrict the loopback API to `127.0.0.1` and `localhost`, mitigating DNS rebinding risks.
+- Preserved user-initiated Task Manager startup disablement by writing `StartupApproved` only during explicit user preferences changes or retries.
+- Resolved Windows backend startup stall by preloading NumPy before starting backend host worker threads.
+- Resolved desktop shell redundancies across bundle manifest parsing, frame serialization, and error code normalization.
+
+### Removed
+
+- Removed GNews-backed news collection, news feed settings, preflight checks, and UI cards while preserving historical briefing news evidence.
+- Pruned obsolete model stability tags and badges across the settings interface and prompt templates.
+- Removed unused `tauri-plugin-autostart`, unused `reqwest` TLS/JSON features, and redundant development capabilities from the desktop bundle.
+- Pruned unused provider adapters (OpenAI, Ollama) and retired non-Gemma local models from the catalog in favor of Google AI Studio, OpenRouter, and llama.cpp.
+
+---
+
 ## v2.0.0 - APEX 2.0
 
 **Released:** October 1, 2026

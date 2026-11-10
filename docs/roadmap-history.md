@@ -1,6 +1,6 @@
 # APEX Roadmap History
 
-This roadmap is complete through the APEX 2.0 release. The [current roadmap](roadmap.md) starts with v2.1 and sets out APEX's focus on sharing personal context with other AI services.
+This roadmap is complete through the APEX 2.0 release. See the [current roadmap](roadmap.md) for future possibilities and the [Changelog](../CHANGELOG.md) for detailed release history.
 
 APEX began as small automation scripts. By v2.0, it had a local assistant and a system for storing personal context. The five phases below record that work. Their milestone names, goals, and outcomes remain as written at the close of v2.0. They describe the direction at the time, not the plan for future releases.
 
