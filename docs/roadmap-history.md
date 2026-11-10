@@ -1,8 +1,8 @@
 # APEX Roadmap History
 
-This document records the completed milestone history from APEX's initial development through v2.1. See [Roadmap and Future Possibilities](roadmap.md) for potential exploratory ideas and the [Changelog](../CHANGELOG.md) for detailed release notes.
+This roadmap is complete through the APEX 2.0 release. See the [current roadmap](roadmap.md) for future possibilities and the [Changelog](../CHANGELOG.md) for detailed release history.
 
-APEX began as small automation scripts. By v2.0, it had a local assistant and a system for storing personal context, and by v2.1, a native Windows desktop foundation. The six phases below record that work. Their milestone names, goals, and outcomes remain as written at the close of their milestones.
+APEX began as small automation scripts. By v2.0, it had a local assistant and a system for storing personal context. The five phases below record that work. Their milestone names, goals, and outcomes remain as written at the close of v2.0. They describe the direction at the time, not the plan for future releases.
 
 The [Changelog](../CHANGELOG.md) holds the detailed release history.
 
@@ -12,8 +12,7 @@ The [Changelog](../CHANGELOG.md) holds the detailed release history.
 [Phase II: Modernization](#phase-ii-modernization) |
 [Phase III: Cognitive Interface](#phase-iii-cognitive-interface) |
 [Phase IV: Interactive Intelligence](#phase-iv-interactive-intelligence) |
-[Phase V: APEX 2.0 Beta](#phase-v-apex-20-beta) |
-[Phase VI: Desktop Foundation](#phase-vi-desktop-foundation)
+[Phase V: APEX 2.0 Beta](#phase-v-apex-20-beta)
 
 ---
 
@@ -458,21 +457,3 @@ Rebuild briefings around a bounded, saved-session engine with Daily, Catch Up, a
 
 **Objective:**
 Consolidate the six beta milestones into a stable local-first foundation for personal context, verified actions, external reports, context sharing, and saved briefings.
-
----
-
-# Phase VI: Desktop Foundation
-
-**Status:** Complete
-
-**Core Focus:**
-Packaging APEX as an independent native Windows desktop application without tying local context, background services, or persistence to the browser window.
-
----
-
-## v2.1.0 - Native Desktop Foundation
-
-**Status:** Complete
-
-**Objective:**
-Package APEX as a Windows desktop application using Tauri v2 with a supervised Python backend under a Windows Job Object, separate runtime data profile (`%LOCALAPPDATA%\APEX`), per-user NSIS packaging, system tray controls, and idle resource management.

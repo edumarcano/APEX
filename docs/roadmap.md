@@ -1,16 +1,8 @@
 # APEX Roadmap and Future Possibilities
 
-APEX has completed its core foundational milestones through **v2.1.0** (the Native Desktop Foundation). There is no longer a rigid development schedule or committed sequence of versioned releases. Future work is exploratory and spontaneous; features may be picked up, changed, or set aside based on interest rather than a fixed timeline.
+APEX has completed its core foundational milestones, including its stable local foundation and native Windows desktop application. There is no longer a rigid development schedule or committed sequence of versioned releases. Future work is exploratory and spontaneous; features may be picked up, changed, or set aside based on interest rather than a fixed timeline.
 
-This document collects architectural ideas, potential workflows, and areas of exploration that may be explored in the future. See [Roadmap History](roadmap-history.md) for completed milestones from v0.1 through v2.1, and the [Changelog](../CHANGELOG.md) for detailed release notes.
-
-## Completed Milestones
-
-All planned foundation milestones through v2.1.0 are complete:
-
-- **v1.0 - v1.20**: Foundational data ingestion, daily operations, and modernization (archived in [Roadmap History](roadmap-history.md)).
-- **v2.0.0 - APEX 2.0**: Local-first personal intelligence foundation, persistent conversations, verified actions, external reports, context vault, and adaptive briefings.
-- **v2.1.0 - Native Desktop Foundation**: Native Windows desktop shell powered by Tauri v2 with supervised background hosting, separate runtime profile, system tray integration, and per-user packaging.
+This document collects architectural ideas, potential workflows, and areas of exploration that may be considered in the future. See [Roadmap History](roadmap-history.md) for the original milestone history leading to APEX 2.0, and the [Changelog](../CHANGELOG.md) for detailed release history.
 
 ---
 
