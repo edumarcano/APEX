@@ -2,7 +2,7 @@
 
 APEX will focus on helping you bring your personal context to the AI services you choose. Changing AI apps should not mean explaining your projects, preferences, and past decisions from scratch.
 
-APEX 2.0 built the first version of that context system. This roadmap starts with v2.1, the desktop release already in progress. It replaces the old phase numbers with release milestones. See [Roadmap History](roadmap-history.md) for the completed work through v2.0 and the [Changelog](../CHANGELOG.md) for release details.
+APEX 2.0 built the first version of that context system. This roadmap starts with v2.1, the desktop foundation release. It replaces the old phase numbers with release milestones. See [Roadmap History](roadmap-history.md) for the completed work through v2.0 and the [Changelog](../CHANGELOG.md) for release details.
 
 These milestones describe planned outcomes, not features that have all shipped. Each milestone gets its own implementation plan before work starts. That plan will choose the exact tools, screens, and branch order. Scope may change as we test what works.
 
@@ -55,14 +55,14 @@ Imported text must retain its source. It must not silently replace accepted reco
 
 | Release | Status | Outcome |
 | --- | --- | --- |
-| [v2.1.0 - Native Desktop Foundation](#v210---native-desktop-foundation) | In progress | Run APEX as a desktop app without tying its data to the window. |
+| [v2.1.0 - Native Desktop Foundation](#v210---native-desktop-foundation) | Complete | Run APEX as a desktop app without tying its data to the window. |
 | [v2.2.0 - Context Portability Foundation](#v220---context-portability-foundation) | Planned | Share selected context locally or as files and text; review context from reports. |
 | [v2.3.0 - Remote Context Access](#v230---remote-context-access) | Planned | Let supported cloud AI apps read selected live context through a protected connection. |
 | [v2.4.0 - Context-Centered Interface](#v240---context-centered-interface) | Planned | Rework the app around managing context and working with Lynx. |
 
 ## v2.1.0 - Native Desktop Foundation
 
-**Status: In progress.** Keep the existing desktop milestone in this roadmap. Its scope does not change because of the new direction.
+**Status: Complete.** Run APEX as a native Windows desktop app using Tauri with a supervised backend, separate runtime profile, and per-user packaging.
 
 Use **Tauri**, a tool for packaging web interfaces as desktop apps, to host the existing React and Vite interface. The packaged app must not need a separate browser window or static web server.
 
